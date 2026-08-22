@@ -11,9 +11,13 @@ namespace CardiTrack.Mobile.Core.Devices;
 /// <c>GoogleHealthApiClient</c> actually reads it, so the pills say what the card can show rather
 /// than what Google would let us ask for.
 /// <para>
-/// HRV joined <c>health_metrics_and_measurements</c> in the 2026-08 sweep, so it now gets a pill
-/// where the remark below once said it could not: the test has not changed, the client has — it
-/// fetches HRV.
+/// HRV and overnight breathing joined <c>health_metrics_and_measurements</c> in the 2026-08 sweep,
+/// and heart-rate zones and activity-level intervals joined <c>activity_and_fitness</c>. HRV
+/// therefore now gets a pill where the remark below once said it could not: the test has not
+/// changed, the client has. Overnight breathing shares the <c>Breathing Rate</c> name the daily
+/// figure already carries — one pill for one reading a caregiver would not distinguish at a
+/// glance — and the activity-level intervals ride the <c>Active Minutes</c> name for the same
+/// reason.
 /// </para>
 /// <para>
 /// SpO2, VO2 max, breathing rate and body temperature are named here because
@@ -35,6 +39,7 @@ public static class DeviceDatasets
     private const string HeartRate = "Heart Rate";
     private const string RestingHeartRate = "Resting HR";
     private const string HeartRateVariability = "HRV";
+    private const string HeartRateZones = "HR Zones";
     private const string Weight = "Weight";
     private const string Spo2 = "SpO2";
     private const string Vo2Max = "VO2 Max";
@@ -60,6 +65,7 @@ public static class DeviceDatasets
         new(HeartRate, DatasetFamily.Heart),
         new(RestingHeartRate, DatasetFamily.Heart),
         new(HeartRateVariability, DatasetFamily.Heart),
+        new(HeartRateZones, DatasetFamily.Heart),
         new(Sleep, DatasetFamily.Sleep),
         new(SleepStages, DatasetFamily.Sleep),
         new(Weight, DatasetFamily.Body),
@@ -78,7 +84,7 @@ public static class DeviceDatasets
     private static readonly Dictionary<string, string[]> DatasetsByScope = new(StringComparer.Ordinal)
     {
         // Google Health API (https://www.googleapis.com/auth/googlehealth.<bundle>.readonly)
-        ["activity_and_fitness"] = [Steps, Distance, ActiveMinutes, Floors, Calories],
+        ["activity_and_fitness"] = [Steps, Distance, ActiveMinutes, Floors, Calories, HeartRateZones],
         ["health_metrics_and_measurements"] =
             [HeartRate, RestingHeartRate, HeartRateVariability, Spo2, Vo2Max, BreathingRate,
              Temperature],

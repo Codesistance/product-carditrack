@@ -91,7 +91,10 @@ public class StatisticalAlertService : IStatisticalAlertService
             && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule)
-            && !rulePrefs.IsEnabled(StatisticalAlertRules.HeartRateVariabilityDropRule))
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.HeartRateVariabilityDropRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.OvernightBreathingUpRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule))
         {
             return 0;
         }
@@ -144,6 +147,16 @@ public class StatisticalAlertService : IStatisticalAlertService
             AddIfPresent(candidates, StatisticalAlertRules.HeartRateVariabilityDrop(
                 baseline, lastNightLog, previousNightLog));
         }
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.OvernightBreathingUpRule))
+        {
+            // Last night's row, like sleep and HRV: the reading is derived from the night and is
+            // filed under the civil day it ended on.
+            AddIfPresent(candidates, StatisticalAlertRules.OvernightBreathingUp(baseline, lastNightLog));
+        }
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule))
+            AddIfPresent(candidates, StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, yesterdayLog));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule))
+            AddIfPresent(candidates, StatisticalAlertRules.DaytimeInactivityBlock(baseline, yesterdayLog));
 
         // NOTE: this engine's alerts are not auto-resolved, and so still latch — see
         // AlertResolution for what that costs. Closing them needs each rule to say whether it was

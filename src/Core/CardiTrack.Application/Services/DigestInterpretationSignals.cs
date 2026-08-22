@@ -210,6 +210,26 @@ public static class DigestInterpretationSignals
                 $"heart rate variability {hrv:0.#} ms overnight, lower than their usual {usualHrv:0.#} ms"));
         }
 
+        // The overnight figure, not the daily one — see StatisticalAlertRules.OvernightBreathingUp
+        // for why a whole-day average moves for reasons that are not about health.
+        if (StatisticalAlertRules.OvernightBreathingUp(baseline, log) is not null
+            && log.OvernightBreathingRate is { } overnightBreathing
+            && baseline.AvgOvernightBreathingRate is { } usualBreathing)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"breathing {overnightBreathing:0.#} a minute asleep, above their usual {usualBreathing:0.#}"));
+        }
+
+        // Named here even though the still-day pairing below would also catch it, because the
+        // pairing reads "quiet day" from steps alone: a heart that worked while the steps stayed
+        // low is the case where a quiet day is not a restful one.
+        if (StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, log) is not null
+            && BaselineCalculator.ElevatedZoneMinutes(log) is { } elevated)
+        {
+            parts.Add($"{elevated} minutes with their heart rate raised, on a day of little movement");
+        }
+
         return parts;
     }
 

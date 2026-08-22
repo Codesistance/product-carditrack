@@ -77,7 +77,9 @@ public static class DigestRefreshRules
             || StatisticalAlertRules.ElevatedHeartRate(baseline, today) is not null
             // Sleep-derived like the night it comes from, so last night's HRV lives on today's row
             // and the night before on yesterday's — the pair the drop rule reads.
-            || StatisticalAlertRules.HeartRateVariabilityDrop(baseline, today, yesterday) is not null;
+            || StatisticalAlertRules.HeartRateVariabilityDrop(baseline, today, yesterday) is not null
+            // Overnight readings live on the row for the day the night ended, like sleep.
+            || StatisticalAlertRules.OvernightBreathingUp(baseline, today) is not null;
     }
 
     /// <summary>

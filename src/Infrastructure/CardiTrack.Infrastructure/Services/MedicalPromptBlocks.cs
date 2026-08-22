@@ -853,6 +853,15 @@ internal static partial class MedicalPromptBlocks
 
         if (log.HeartRateVariabilityMs is { } hrv)
             parts.Add(string.Create(CultureInfo.InvariantCulture, $"HRV={hrv:0.#}ms"));
+        if (log.OvernightBreathingRate is { } overnightBreathing)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture, $"breathingAsleep={overnightBreathing:0.#}/min"));
+        }
+        if (CardiTrack.Application.Services.BaselineCalculator.ElevatedZoneMinutes(log) is { } elevated)
+            parts.Add($"minutesHeartRateRaised={elevated}");
+        if (log.LongestSedentaryStretchMinutes is { } stretch)
+            parts.Add($"longestStillStretch={stretch}min");
 
         return string.Join(", ", parts);
     }

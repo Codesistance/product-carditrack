@@ -6,4 +6,5 @@ public interface IGoogleHealthApiClient
     Task<GoogleHealthHeartRateResult> GetHeartRateAsync(string accessToken, DateOnly date);
     Task<GoogleHealthSleepResult> GetSleepAsync(string accessToken, DateOnly date);
     Task<GoogleHealthAdditionalMetricsResult> GetAdditionalMetricsAsync(string accessToken, DateOnly date);
+    Task<GoogleHealthExertionResult> GetExertionAsync(string accessToken, DateOnly date);
 }

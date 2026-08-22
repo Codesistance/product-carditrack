@@ -18,7 +18,7 @@ public class DeviceDatasetsTests
 
         Assert.Equal(
             ["Steps", "Distance", "Active Minutes", "Floors", "Calories",
-             "Heart Rate", "Resting HR", "HRV",
+             "Heart Rate", "Resting HR", "HRV", "HR Zones",
              "Sleep", "Sleep Stages",
              "SpO2", "VO2 Max", "Breathing Rate", "Temperature"],
             datasets.Select(d => d.Name));
@@ -32,7 +32,7 @@ public class DeviceDatasetsTests
         Assert.Equal(
             [DatasetFamily.Activity, DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Activity, DatasetFamily.Activity,
-             DatasetFamily.Heart, DatasetFamily.Heart, DatasetFamily.Heart,
+             DatasetFamily.Heart, DatasetFamily.Heart, DatasetFamily.Heart, DatasetFamily.Heart,
              DatasetFamily.Sleep, DatasetFamily.Sleep,
              DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body],
             datasets.Select(d => d.Family));
@@ -95,9 +95,11 @@ public class DeviceDatasetsTests
     [Fact]
     public void For_ScopesGrantingTheSameDataset_EmitsOnePill()
     {
+        // The legacy `activity` scope maps to the same five names, and the bundle adds HR Zones —
+        // a dataset the legacy Fitbit mapping never had. Neither is emitted twice.
         var datasets = DeviceDatasets.For([ActivityScope, "activity"]);
 
-        Assert.Equal(["Steps", "Distance", "Active Minutes", "Floors", "Calories"],
+        Assert.Equal(["Steps", "Distance", "Active Minutes", "Floors", "Calories", "HR Zones"],
             datasets.Select(d => d.Name));
     }
 
@@ -162,7 +164,7 @@ public class DeviceDatasetsTests
             [DatasetFamily.Activity, DatasetFamily.Heart, DatasetFamily.Sleep, DatasetFamily.Body],
             groups.Select(g => g.Family));
         Assert.Equal(["Activity", "Heart", "Sleep", "Body"], groups.Select(g => g.Label));
-        Assert.Equal([5, 3, 2, 4], groups.Select(g => g.Count));
+        Assert.Equal([5, 4, 2, 4], groups.Select(g => g.Count));
     }
 
     // The body readings under health_metrics_and_measurements cost one pill between them, not one
@@ -175,8 +177,8 @@ public class DeviceDatasetsTests
 
         Assert.Equal(3, withoutBody.Count);
         Assert.Equal(4, withBody.Count);
-        Assert.Equal(9, withoutBody.Sum(g => g.Datasets.Count));
-        Assert.Equal(14, withBody.Sum(g => g.Datasets.Count));
+        Assert.Equal(10, withoutBody.Sum(g => g.Datasets.Count));
+        Assert.Equal(15, withBody.Sum(g => g.Datasets.Count));
     }
 
     [Fact]

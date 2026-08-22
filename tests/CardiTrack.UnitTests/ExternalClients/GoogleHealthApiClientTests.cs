@@ -1630,6 +1630,191 @@ public class GoogleHealthApiClientTests
         Assert.Null(result.HeartRateVariabilityMs);
     }
 
+    // ── Overnight breathing, effort zones and unbroken rest ──────────────────────
+
+    /// <summary>
+    /// The overnight figure comes off `respiratory-rate-sleep-summary`, not the daily respiratory
+    /// record this client already reads: one averages hours of stillness, the other a whole day
+    /// with stairs in it, and the alert that fires on a rise only means anything for the first.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_ReadsOvernightBreathing_FromTheSleepSummary()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/respiratory-rate-sleep-summary/", """
+                {
+                  "dataPoints": [
+                    {
+                      "respiratoryRateSleepSummary": {
+                        "sampleTime": { "physicalTime": "2026-08-05T06:30:00Z" },
+                        "fullSleepStats": { "breathsPerMinute": 15.4, "standardDeviation": 0.8 },
+                        "deepSleepStats": { "breathsPerMinute": 14.9 }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(15.4m, result.OvernightBreathingRate);
+    }
+
+    /// <summary>
+    /// Zone durations are protobuf Durations ("1800s"), like sedentary-period — parsing them as
+    /// bare numbers returns null on every wearer, which is indistinguishable from a still day.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReadsZoneMinutes_FromDurationStrings()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/time-in-heart-rate-zone/", Rollup("timeInHeartRateZone", """
+                {
+                  "timeInHeartRateZones": [
+                    { "heartRateZone": "LIGHT",    "duration": "3600s" },
+                    { "heartRateZone": "MODERATE", "duration": "1500s" },
+                    { "heartRateZone": "VIGOROUS", "duration": "300s"  }
+                  ]
+                }
+                """));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", Today);
+
+        Assert.Equal(60, result.LightZoneMinutes);
+        Assert.Equal(25, result.ModerateZoneMinutes);
+        Assert.Equal(5, result.VigorousZoneMinutes);
+        // Present rollup, absent zone: the wearer was measured and never reached peak. A real zero,
+        // not a gap — which is what lets the elevated-minutes sum mean something.
+        Assert.Equal(0, result.PeakZoneMinutes);
+    }
+
+    /// <summary>
+    /// The moderate-zone floor is the wearer's own Karvonen figure, read rather than re-derived so
+    /// CardiTrack's copy and their watch cannot disagree about where effort starts for them.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReadsTheModerateZoneFloor_FromTheDailyZonesRecord()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-heart-rate-zones/", """
+                {
+                  "dataPoints": [
+                    {
+                      "dailyHeartRateZones": {
+                        "date": { "year": 2026, "month": 8, "day": 5 },
+                        "heartRateZones": [
+                          { "heartRateZoneType": "LIGHT",    "minBeatsPerMinute": "78",  "maxBeatsPerMinute": "95"  },
+                          { "heartRateZoneType": "MODERATE", "minBeatsPerMinute": "96",  "maxBeatsPerMinute": "112" }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", Today);
+
+        Assert.Equal(96, result.ModerateZoneFloorBpm);
+    }
+
+    private static string ActivityLevelPoint(string level, string start, string end) => $$"""
+        {
+          "activityLevel": {
+            "activityLevelType": "{{level}}",
+            "interval": { "startTime": "{{start}}", "endTime": "{{end}}" }
+          }
+        }
+        """;
+
+    /// <summary>
+    /// The reading that cannot be derived from a daily total: touching sedentary intervals are one
+    /// unbroken stretch, and a device that emits level-per-minute emits a run of them. A strict
+    /// equality test on the boundaries would report the longest stretch as a single interval.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_JoinsTouchingSedentaryIntervals_IntoOneStretch()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T13:00:00Z", "2026-08-05T14:00:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T14:00:00Z", "2026-08-05T15:30:00Z")}},
+                    {{ActivityLevelPoint("LIGHTLY_ACTIVE", "2026-08-05T15:30:00Z", "2026-08-05T15:45:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T15:45:00Z", "2026-08-05T16:15:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5));
+
+        // 13:00-15:30 is one stretch of 150 minutes; the 30-minute stretch after the walk is not it.
+        Assert.Equal(150, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 13, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// A gap wider than the join tolerance is a real interruption — the wearer got up — and breaks
+    /// the run, which is the entire point of measuring an unbroken stretch.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_BreaksTheStretch_WhenTheWearerMovedInBetween()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T09:00:00Z", "2026-08-05T10:00:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T10:20:00Z", "2026-08-05T11:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5));
+
+        Assert.Equal(60, result.LongestSedentaryStretchMinutes);
+    }
+
+    [Fact]
+    public async Task GetExertionAsync_ReturnsNulls_WhenTheDeviceRecordsNoneOfIt()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-heart-rate-zones/", """{ "dataPoints": [] }""")
+            .Map("/dataTypes/activity-level/", """{ "dataPoints": [] }""");
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", Today);
+
+        Assert.Null(result.LightZoneMinutes);
+        Assert.Null(result.ModerateZoneFloorBpm);
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.Null(result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// The minute series and the nightly record report the same quantity at two grains, so the
+    /// granular read takes RMSSD rather than the record's standard-deviation sibling.
+    /// </summary>
+    [Fact]
+    public async Task GetGranularDayAsync_ReadsHeartRateVariabilitySamples()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate-variability/", SamplePage(
+                "heartRateVariability", "rootMeanSquareOfSuccessiveDifferencesMilliseconds", null,
+                "31.5", "28.25"));
+
+        var (sut, _) = CreateSut(handler);
+        var day = await ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        Assert.Equal([31.5f, 28.25f], day.HeartRateVariability.Select(s => s.Value));
+    }
+
     private static string SamplePage(
         string unionMember, string valueField, string? nextPageToken, params string[] values)
     {

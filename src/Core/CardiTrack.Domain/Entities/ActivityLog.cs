@@ -49,7 +49,23 @@ public class ActivityLog : BaseEntity
     public decimal? TemperatureBaseline { get; set; } // the wearer's own nightly baseline
     public decimal? TemperatureVariation { get; set; } // relative nightly stddev over a 30-day window
 
-    // Overnight heart rate variability (RMSSD), from the wearable itself — null on a device that
-    // derives none, like every other optional reading above.
-    public decimal? HeartRateVariabilityMs { get; set; }
+    // Overnight readings, measured over hours of stillness rather than across the whole day —
+    // null on a device that derives none, like every other optional reading above.
+    public decimal? HeartRateVariabilityMs { get; set; } // RMSSD, milliseconds
+    public decimal? OvernightBreathingRate { get; set; } // breaths per minute, asleep
+
+    // Effort. Minutes in each of the wearer's own heart-rate zones, and the bpm their moderate
+    // zone starts at — the device's Karvonen figure, not one CardiTrack derived. Null means the
+    // day carries no zone rollup at all; a zone at 0 means they were measured and never reached it.
+    public int? LightZoneMinutes { get; set; }
+    public int? ModerateZoneMinutes { get; set; }
+    public int? VigorousZoneMinutes { get; set; }
+    public int? PeakZoneMinutes { get; set; }
+    public int? ModerateZoneFloorBpm { get; set; }
+
+    // Rest, as a shape rather than a total. SedentaryMinutes above says how much of the day was
+    // still; this says how much of it was still *at once*, which is the part a family would want
+    // to hear about.
+    public int? LongestSedentaryStretchMinutes { get; set; }
+    public DateTime? LongestSedentaryStretchStartUtc { get; set; }
 }

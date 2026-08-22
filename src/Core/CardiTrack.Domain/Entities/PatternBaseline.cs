@@ -33,6 +33,18 @@ public class PatternBaseline : BaseEntity
     public decimal? MedianHeartRateVariabilityMs { get; set; }
     public decimal? MadHeartRateVariability { get; set; }
 
+    // Overnight Breathing Baseline Metrics. The published adult band (12-20/min) is a wide one
+    // and a rise inside it can still be this member's own change, which is why the rule that reads
+    // this compares against them rather than against WHO.
+    public decimal? AvgOvernightBreathingRate { get; set; }
+    public decimal? StdDevOvernightBreathingRate { get; set; }
+
+    // Effort and rest baselines. Elevated-zone minutes are the moderate, vigorous and peak zones
+    // summed — the three that mean the heart was working — and the sedentary stretch is the
+    // longest unbroken one, not the day's total.
+    public int? AvgElevatedZoneMinutes { get; set; }
+    public int? AvgLongestSedentaryStretchMinutes { get; set; }
+
     // Sleep Baseline Metrics
     public int? AvgSleepMinutes { get; set; }
     public int? MedianSleepMinutes { get; set; }

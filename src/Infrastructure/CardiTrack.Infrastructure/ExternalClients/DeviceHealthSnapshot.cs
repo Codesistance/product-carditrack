@@ -39,8 +39,18 @@ public record DeviceHealthSnapshot(
     decimal? Temperature = null,
     decimal? TemperatureBaseline = null,
     decimal? TemperatureVariation = null,
-    // Overnight heart rate variability (RMSSD), from the wearable itself.
-    decimal? HeartRateVariabilityMs = null
+    // Overnight readings, measured over hours of stillness rather than across the whole day.
+    decimal? HeartRateVariabilityMs = null,
+    decimal? OvernightBreathingRate = null,
+    // Effort and rest: where the day's heart rate sat against this wearer's own zones, and the
+    // longest unbroken stretch their device recorded them as sedentary.
+    int? LightZoneMinutes = null,
+    int? ModerateZoneMinutes = null,
+    int? VigorousZoneMinutes = null,
+    int? PeakZoneMinutes = null,
+    int? ModerateZoneFloorBpm = null,
+    int? LongestSedentaryStretchMinutes = null,
+    DateTime? LongestSedentaryStretchStartUtc = null
 )
 {
     /// <summary>
@@ -59,5 +69,8 @@ public record DeviceHealthSnapshot(
         SpO2Average is not null || SpO2Min is not null || SpO2Max is not null ||
         VO2Max is not null || StressScore is not null || BreathingRate is not null ||
         Temperature is not null || TemperatureBaseline is not null || TemperatureVariation is not null ||
-        HeartRateVariabilityMs is not null;
+        HeartRateVariabilityMs is not null || OvernightBreathingRate is not null ||
+        LightZoneMinutes is not null || ModerateZoneMinutes is not null ||
+        VigorousZoneMinutes is not null || PeakZoneMinutes is not null ||
+        LongestSedentaryStretchMinutes is not null;
 }

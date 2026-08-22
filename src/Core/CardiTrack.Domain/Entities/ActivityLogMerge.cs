@@ -72,7 +72,20 @@ public static class ActivityLogMerge
             TemperatureBaseline = First(rowsByPriority, r => r.TemperatureBaseline),
             TemperatureVariation = First(rowsByPriority, r => r.TemperatureVariation),
 
-            HeartRateVariabilityMs = First(rowsByPriority, r => r.HeartRateVariabilityMs)
+            HeartRateVariabilityMs = First(rowsByPriority, r => r.HeartRateVariabilityMs),
+            OvernightBreathingRate = First(rowsByPriority, r => r.OvernightBreathingRate),
+
+            LightZoneMinutes = First(rowsByPriority, r => r.LightZoneMinutes),
+            ModerateZoneMinutes = First(rowsByPriority, r => r.ModerateZoneMinutes),
+            VigorousZoneMinutes = First(rowsByPriority, r => r.VigorousZoneMinutes),
+            PeakZoneMinutes = First(rowsByPriority, r => r.PeakZoneMinutes),
+            ModerateZoneFloorBpm = First(rowsByPriority, r => r.ModerateZoneFloorBpm),
+
+            // Coalesced, not maxed: the stretch and the instant it began are one reading, and
+            // taking the longest stretch from one device beside a start time from another would
+            // describe a stretch that never happened.
+            LongestSedentaryStretchMinutes = First(rowsByPriority, r => r.LongestSedentaryStretchMinutes),
+            LongestSedentaryStretchStartUtc = First(rowsByPriority, r => r.LongestSedentaryStretchStartUtc)
         };
     }
 

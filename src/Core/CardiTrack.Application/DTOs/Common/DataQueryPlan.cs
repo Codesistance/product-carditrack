@@ -28,6 +28,9 @@ public enum ChartMetricKind
     /// <summary>Overnight heart rate variability (RMSSD), in milliseconds.</summary>
     HeartRateVariability = 4,
 
+    /// <summary>Breaths per minute averaged over the night, not across the whole day.</summary>
+    OvernightBreathingRate = 5,
+
 }
 
 /// <summary>

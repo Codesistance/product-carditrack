@@ -402,8 +402,18 @@ public class DeviceSyncService : IDeviceSyncService
             TemperatureBaseline = snapshot.TemperatureBaseline,
             TemperatureVariation = snapshot.TemperatureVariation,
 
-            // Overnight heart rate variability
-            HeartRateVariabilityMs = snapshot.HeartRateVariabilityMs
+            // Overnight readings
+            HeartRateVariabilityMs = snapshot.HeartRateVariabilityMs,
+            OvernightBreathingRate = snapshot.OvernightBreathingRate,
+
+            // Effort and rest
+            LightZoneMinutes = snapshot.LightZoneMinutes,
+            ModerateZoneMinutes = snapshot.ModerateZoneMinutes,
+            VigorousZoneMinutes = snapshot.VigorousZoneMinutes,
+            PeakZoneMinutes = snapshot.PeakZoneMinutes,
+            ModerateZoneFloorBpm = snapshot.ModerateZoneFloorBpm,
+            LongestSedentaryStretchMinutes = snapshot.LongestSedentaryStretchMinutes,
+            LongestSedentaryStretchStartUtc = snapshot.LongestSedentaryStretchStartUtc
         };
 
         // Save the raw row first — the merge reads every device's stored row for the day,

@@ -244,12 +244,15 @@ Prefer the **civil** variants throughout. Physical-instant filtering buckets by 
 |--------|--------------------|----|-----------|
 | Heart Rate (intraday) | `heart-rate` — `list` | 1-min intervals | Primary time-series for SSA decomposition |
 | Resting Heart Rate | `daily-resting-heart-rate` — `list` | Daily scalar | Baseline anchor for HR trend |
-| HRV (RMSSD) | `daily-heart-rate-variability` — `list` (granular: `heart-rate-variability` — `list`) | Daily scalar | Secondary series — **daily record built 2026-08-22**; the granular series is still unread |
+| HRV (RMSSD) | `daily-heart-rate-variability` — `list` (granular: `heart-rate-variability` — `list`) | Daily scalar + ~5-min samples | Secondary series — **both grains built 2026-08-22**. The minute series lands in the granular substrate and reaches the real-time assessor's prompt as context beside the HR window; it does not gate whether a window is assessed, which stays the HR deviation score |
 | SpO2 (intraday) | `oxygen-saturation` — `list` | ~5-min intervals | Upsample to 1-min via forward-fill before SSA |
 | Steps (intraday) | `steps` — `list` | 1-min intervals | Used as activity context feature alongside HR |
 | Active Zone Minutes | `active-zone-minutes` — `list` | 1-min intervals | Activity-context feature alongside HR |
 | Skin Temperature | skin-temperature data type — `dailyRollUp` | Daily scalar (nightly) | Early-warning feature; include when available |
 | Sleep Stages | `sleep` — `list` (session-shaped) | Daily summary | Context feature for next-day recovery model |
+| Overnight respiratory rate | `respiratory-rate-sleep-summary` — `list` | Per night | **Built 2026-08-22.** Distinct from `daily-respiratory-rate`, which this pipeline already read: a whole-day average moves with stairs and naps, an overnight one is hours of stillness measured the same way each night — which is what makes a rise of one or two breaths a minute legible |
+| Heart-rate zones | `time-in-heart-rate-zone` — `dailyRollUp`, plus `daily-heart-rate-zones` — `list` for the thresholds | Daily, per zone | **Built 2026-08-22.** Effort the step count cannot see. The zone floors are the wearer's own Karvonen figures, read rather than re-derived so CardiTrack's copy and their watch cannot disagree |
+| Activity level | `activity-level` — `list` (intervals) | Per interval | **Built 2026-08-22.** Read as intervals rather than as the rollup, for the one figure a daily total cannot carry: the *longest unbroken* sedentary stretch. Six hours split into twelve half-hours and six hours taken at once sum the same and are not the same day |
 
 > **HRV needs no new consent**: it reads under `health_metrics_and_measurements`, which every connection already holds. Weight, blood glucose, ECG and irregular-rhythm notifications were built alongside it and then **parked before merge** — ECG and IRN need their own scopes (`googlehealth.ecg.readonly`, `googlehealth.irn.readonly`, both Google-classed SaMD features, so both land in the restricted-scope verification track of issue #39), and weight and glucose depend on a connected scale or meter most wearers do not own. The implementation of all four is on record in commit `dce291d` for whenever those two questions are answered.
 

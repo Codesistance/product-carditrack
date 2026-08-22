@@ -15,7 +15,7 @@ public class DataQueryPlannerService : IDataQueryPlanner
 {
     private static readonly IReadOnlyDictionary<DataQueryKind, string> SourceDescriptions = new Dictionary<DataQueryKind, string>
     {
-        [DataQueryKind.RecentActivity] = "RecentActivity — daily steps, heart rate, sleep and overnight heart rate variability over the last several days",
+        [DataQueryKind.RecentActivity] = "RecentActivity — daily steps, heart rate, sleep, overnight heart rate variability and overnight breathing rate over the last several days",
         [DataQueryKind.Baseline] = "Baseline — the member's own established behavioural pattern (typical steps, heart rate, sleep)",
         [DataQueryKind.UnresolvedAlerts] = "UnresolvedAlerts — alerts raised for this member that nobody has acknowledged yet",
         [DataQueryKind.RealtimeAssessments] = "RealtimeAssessments — recent hour-by-hour heart-rate severity assessments",
@@ -71,7 +71,8 @@ public class DataQueryPlannerService : IDataQueryPlanner
             hours back is relevant (default 24, at most 72).
 
             Always answer metrics, naming which specific daily readings the question is about: any
-            of Steps, RestingHeartRate, Sleep, HeartRateVariability. Name every one the question
+            of Steps, RestingHeartRate, Sleep, HeartRateVariability, OvernightBreathingRate. Name
+            every one the question
             asks about and no others — "how many steps has he done?" is ["Steps"], "how did he
             sleep and what was his heart rate?" is ["Sleep","RestingHeartRate"]. Only a question
             about how the person is doing overall, naming no particular reading, gets an empty

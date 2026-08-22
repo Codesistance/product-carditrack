@@ -181,4 +181,45 @@ public class ActivityLogMergeTests
         Assert.Equal(5200, merged.Steps);
         Assert.Equal(31.5m, merged.HeartRateVariabilityMs);
     }
+
+    /// <summary>
+    /// The stretch and the instant it began are one reading. Taking the length from one device and
+    /// the start from another would describe a stretch that never happened, so both come from the
+    /// same row by coming through the same coalesce.
+    /// </summary>
+    [Fact]
+    public void Merge_KeepsTheSedentaryStretchAndItsStart_Together()
+    {
+        var started = new DateTime(2026, 8, 6, 13, 0, 0, DateTimeKind.Utc);
+        var watch = new DeviceActivityLog
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = MemberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DataSource = DeviceType.GooglePixelWatch,
+            Date = Date,
+            LongestSedentaryStretchMinutes = 240,
+            LongestSedentaryStretchStartUtc = started,
+            ModerateZoneMinutes = 22,
+        };
+        var ring = new DeviceActivityLog
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = MemberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DataSource = DeviceType.Oura,
+            Date = Date,
+            LongestSedentaryStretchMinutes = 90,
+            LongestSedentaryStretchStartUtc = started.AddHours(4),
+            OvernightBreathingRate = 14.6m,
+        };
+
+        var merged = ActivityLogMerge.Merge(MemberId, Date, [watch, ring]);
+
+        Assert.NotNull(merged);
+        Assert.Equal(240, merged.LongestSedentaryStretchMinutes);
+        Assert.Equal(started, merged.LongestSedentaryStretchStartUtc);
+        Assert.Equal(22, merged.ModerateZoneMinutes);
+        Assert.Equal(14.6m, merged.OvernightBreathingRate);
+    }
 }

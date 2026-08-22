@@ -985,9 +985,17 @@ public class MemberChatService : IMemberChatService
                 .ToList()));
         }
 
+        if (Wanted(ChartMetricKind.OvernightBreathingRate))
+        {
+            charts.Add(new ChartSeries("Breathing while asleep", data.RecentActivity
+                .Where(l => l.OvernightBreathingRate.HasValue)
+                .Select(l => new ChartPoint(l.Date, (double)l.OvernightBreathingRate!.Value))
+                .ToList()));
+        }
+
         // A series the member has no readings for charts as an empty line, which draws as an empty
-        // panel under the answer. HRV is sparse by nature — a device that derives none never has a
-        // point — so an empty series is dropped rather than rendered.
+        // panel under the answer. The overnight readings are sparse by nature — a device that
+        // derives none never has a point — so an empty series is dropped rather than rendered.
         charts.RemoveAll(c => c.Points.Count == 0);
 
         return charts;

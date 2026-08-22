@@ -43,14 +43,15 @@ public class AlertRuleOrderTests
     [Fact]
     public void The_catalogue_declaration_order_no_longer_decides()
     {
-        // Sleep as the catalogue declares it. Before this, a stable sort left the "Soon" three in
-        // declaration order — bedtime, restless, daytime rest — which is not something a reader
-        // could predict. The available rule still leads.
+        // Sleep as the catalogue declares it. Before this, a stable sort left the "Soon" rules in
+        // declaration order, which is not something a reader could predict. The available rules
+        // lead, alphabetically among themselves — "Long daytime rest" joined them when the
+        // activity-level intervals gave daytime_inactivity_block something to read.
         var sleep = AlertRuleCatalogue.Clusters.Single(c => c.Id == AlertRuleCatalogue.ClusterSleep);
         var ordered = AlertRuleOrder.ForDisplay(sleep.Rules.Select(Rule));
 
         Assert.Equal(
-            ["Unusual sleep length", "Late or missed bedtime", "Long daytime rest", "Restless night"],
+            ["Long daytime rest", "Unusual sleep length", "Late or missed bedtime", "Restless night"],
             ordered.Select(r => r.Title));
     }
 

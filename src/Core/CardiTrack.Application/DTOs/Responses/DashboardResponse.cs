@@ -201,6 +201,14 @@ public class DashboardMetrics
     /// </summary>
     public DashboardMetric HeartRateVariability { get; set; } = new();
 
+    /// <summary>
+    /// Breaths per minute averaged over the night, from the sleep-summary record. Kept beside
+    /// <see cref="BreathingRate"/> rather than replacing it: the daily figure averages a whole day
+    /// of stairs and naps, this one hours of stillness, and only this one has a learned baseline
+    /// worth comparing against.
+    /// </summary>
+    public DashboardMetric OvernightBreathingRate { get; set; } = new();
+
 }
 
 public class DashboardMetric

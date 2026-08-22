@@ -158,7 +158,7 @@ Wrapped in the standard `ApiResponse<T>` envelope:
 
 Field notes:
 
-- There are **seven metrics** — `steps`, `restingHeartRate`, `sleep`, `temperature` (nightly *skin* temperature, compared against the device's own nightly baseline), `spO2`, `breathingRate` and `heartRateVariability` (overnight RMSSD in ms, against the member's own learned baseline and no published band — none exists for adult RMSSD). The last arrived on 2026-08-22 and is null-valued for a device that derives no HRV. The sleep key is **`sleep`** (not `sleepHours`); there is **no `activeMinutes` metric**.
+- There are **eight metrics** — `steps`, `restingHeartRate`, `sleep`, `temperature` (nightly *skin* temperature, compared against the device's own nightly baseline), `spO2`, `breathingRate`, `heartRateVariability` (overnight RMSSD in ms, against the member's own learned baseline and no published band — none exists for adult RMSSD) and `overnightBreathingRate` (breaths per minute *asleep*, against their own baseline and the published adult band). The last two arrived on 2026-08-22 and are null-valued on a device that derives neither. `overnightBreathingRate` sits **beside** `breathingRate` rather than replacing it: one averages a whole day of stairs and naps, the other hours of stillness, and only the second has a learned baseline worth comparing against. The sleep key is **`sleep`** (not `sleepHours`); there is **no `activeMinutes` metric**.
 - `photoUrl` is always `null` today (no photo storage exists).
 - `metrics` is **`null`** when the member has no activity logs in the last 30 days.
 - `dataFreshness` is deterministic **data-pipeline** freshness, deliberately independent of `healthStatus`'s clinical severity: `red` = no sync in 12 h, `amber` = no sync in 4 h, `blue` = synced but not yet assessed, `green` = the latest sync has been assessed. `dataFreshnessMessage` is its human-readable caption.
@@ -196,7 +196,7 @@ Field notes:
 | `sleep` | The **worse** of sleep efficiency (≥ 90 → 5, ≥ 80 → 4, ≥ 70 → 3, ≥ 60 → 2, else 1) and the **shortfall in duration** against baseline — either alone where the other is unavailable — then **capped on the length of the night** against the published band for the member's age: inside it → 5, then one star per hour outside it (≤ 1 h → 4, ≤ 2 h → 3, ≤ 3 h → 2, else 1). **Both ends**, so 4.5 h and 12 h are both marked down | Neither an efficiency nor a sleep baseline exists |
 | `temperature` | Distance from the device's own nightly baseline in units of its nightly variation: ≤ 0.5σ → 5, ≤ 1σ → 4, ≤ 1.5σ → 3, ≤ 2σ → 2, else 1 | The device reports no baseline/variation |
 | `spO2`, `breathingRate` | — always `null` | Always: no baseline concept exists for these yet, and rating them would mean inventing a normal |
-| `heartRateVariability` | The shared percent-of-baseline bands, against the member's own learned overnight average | No established HRV baseline yet |
+| `heartRateVariability`, `overnightBreathingRate` | The shared percent-of-baseline bands, against the member's own learned overnight average | No established baseline for that reading yet |
 
 - For `steps` and `restingHeartRate`, the percentage-deviation bands (`≤ 5%` → 5, `≤ 15%` → 4, `≤ 30%` → 3, `≤ 50%` → 2, else 1) **nest inside** the status thresholds above, so the rating and the status can never contradict each other: 3–5 stars is `green`, 2 is `yellow`, 1 is `orange`.
 - **The other two rated metrics do not use that mapping**, so a client cannot derive a star-row colour from the star count alone:
@@ -214,7 +214,7 @@ Field notes:
 | `restingHeartRate` | 60–100 bpm | `AHA` — normal adult resting heart rate |
 | `sleep` | 7–9 hours, or **7–8 from age 65** | `NSF` — recommended nightly sleep, adults / older adults |
 | `spO2` | 94–100 % | `WHO` — pulse oximetry guidance (90–93 % hypoxaemia, < 90 % severe) |
-| `breathingRate` | 12–20 brpm | `WHO` — Basic Emergency Care, adult respiratory rate |
+| `breathingRate`, `overnightBreathingRate` | 12–20 brpm | `WHO` — Basic Emergency Care, adult respiratory rate. The same published band for both; only the overnight figure also carries a personal baseline |
 | `steps`, `temperature`, `heartRateVariability` | `null` | No body publishes an adult band for overnight RMSSD — it spans an order of magnitude between healthy adults and falls steeply with age, so the member's own baseline is the only honest comparison |
 
 - **Each range is attributed to the body that publishes it, and only ranges that exist are sent.** WHO publishes the two it is named for here; it publishes no resting heart rate or sleep duration range, so those carry their actual source rather than being re-labelled WHO. `steps` gets none because no standards body publishes a daily step count — WHO's physical activity guidelines are written in minutes of moderate activity per week, and converting those to steps would be our arithmetic under WHO's name. `temperature` gets none because skin temperature is a wearer-relative measurement, already compared against the device's own nightly baseline.

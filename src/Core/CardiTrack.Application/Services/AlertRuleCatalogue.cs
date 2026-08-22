@@ -17,13 +17,15 @@ public static class AlertRuleCatalogue
     public const string DeviceSilence = "device_silence";
     public const string RealtimeHeartRate = "realtime_hr";
     public const string HeartRateVariabilityDrop = StatisticalAlertRules.HeartRateVariabilityDropRule;
+    public const string OvernightBreathingUp = StatisticalAlertRules.OvernightBreathingUpRule;
+    public const string ElevatedZoneWithoutMovement = StatisticalAlertRules.ElevatedZoneWithoutMovementRule;
 
     // A–G (catalogue reserved; producers not shipped yet)
     public const string LateBedtime = "late_bedtime";
     public const string FragmentedSleep = "fragmented_sleep";
     public const string OvernightVitals = "overnight_vitals";
     public const string LowMorningMobility = "low_morning_mobility";
-    public const string DaytimeInactivityBlock = "daytime_inactivity_block";
+    public const string DaytimeInactivityBlock = StatisticalAlertRules.DaytimeInactivityBlockRule;
     public const string MultiSignalCluster = "multi_signal_cluster";
     public const string BaselineShift = "baseline_shift";
 
@@ -41,7 +43,7 @@ public static class AlertRuleCatalogue
                 new(LateBedtime, "Late or missed bedtime", "Still active past their usual bedtime", IsImplemented: false),
                 new(FragmentedSleep, "Restless night", "More wake-ups or awake time than usual", IsImplemented: false),
                 new(IrregularSleep, "Unusual sleep length", "Last night was much shorter than usual, or well past the recommended hours", IsImplemented: true),
-                new(DaytimeInactivityBlock, "Long daytime rest", "An unusually long inactive stretch in waking hours", IsImplemented: false),
+                new(DaytimeInactivityBlock, "Long daytime rest", "An unusually long inactive stretch in waking hours", IsImplemented: true),
             ]),
             new(ClusterHeart, "Heart & overnight", "Resting heart rate and overnight vitals",
             [
@@ -49,6 +51,8 @@ public static class AlertRuleCatalogue
                 new(OvernightVitals, "Unusual overnight vitals", "Heart rate or SpO₂ looked off during sleep", IsImplemented: false),
                 new(RealtimeHeartRate, "Sudden heart-rate change", "A sharp change in the last hour of heart-rate data", IsImplemented: true),
                 new(HeartRateVariabilityDrop, "Heart rate variability has dropped", "Two nights running well below their usual — often the first sign of illness or strain", IsImplemented: true),
+                new(OvernightBreathingUp, "Breathing faster overnight", "Breathing while asleep running above their own usual", IsImplemented: true),
+                new(ElevatedZoneWithoutMovement, "Heart working on a quiet day", "Real time in a raised heart-rate zone on a day they barely moved", IsImplemented: true),
             ]),
             new(ClusterActivity, "Activity & mobility", "Steps, morning movement, and a quiet device",
             [

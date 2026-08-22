@@ -74,6 +74,14 @@ public class DeviceActivityLogRepository : Repository<DeviceActivityLog>, IDevic
         existing.TemperatureVariation = log.TemperatureVariation;
 
         existing.HeartRateVariabilityMs = log.HeartRateVariabilityMs;
+        existing.OvernightBreathingRate = log.OvernightBreathingRate;
+        existing.LightZoneMinutes = log.LightZoneMinutes;
+        existing.ModerateZoneMinutes = log.ModerateZoneMinutes;
+        existing.VigorousZoneMinutes = log.VigorousZoneMinutes;
+        existing.PeakZoneMinutes = log.PeakZoneMinutes;
+        existing.ModerateZoneFloorBpm = log.ModerateZoneFloorBpm;
+        existing.LongestSedentaryStretchMinutes = log.LongestSedentaryStretchMinutes;
+        existing.LongestSedentaryStretchStartUtc = log.LongestSedentaryStretchStartUtc;
     }
 
     public async Task<IEnumerable<DeviceActivityLog>> GetByCardiMemberAndDateAsync(
