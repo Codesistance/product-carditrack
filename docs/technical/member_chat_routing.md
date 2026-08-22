@@ -1,6 +1,6 @@
 # Member chat routing — one call, six entries, seven handlers
 
-**Status:** **Proposed (2026-08-22)** — design settled, nothing built. Phase 1 (the eval set, §10) is the next step and may still change §2.
+**Status:** **Proposed (2026-08-22)** — design settled, nothing built. Phase 1 (the eval set, §11) is the next step and may still change §2.
 **Scope:** How a caregiver's chat message is routed to the code that answers it, and what vocabulary that decision is made in. Covers the routing call, the workflow catalogue, the dataset registry and where it is rendered, and the invariants the redesign inherits. Does **not** cover prompt wording beyond the purpose lines in §4, the mobile client, or anything about how MedGemma is served.
 **Relationship to other docs:** [llm_design.md](../llm_design.md) owns the SSA → MedGemma contract. [medgemma_serving_architecture.md](./medgemma_serving_architecture.md) owns where inference runs and what it costs. [dpia.md](../compliance/dpia.md) owns row A20 — the clinical/rewrite slot split this design must not weaken. [data_protection_architecture.md](./data_protection_architecture.md) owns encryption at rest for turns.
 
@@ -27,7 +27,7 @@ The entries are not five categories; they are one progression. Each rung takes t
 | Why? | `investigation` | Multi-hypothesis. The only entry that fetches twice. |
 | What should I do? | `advise` | Serves a grounded suggestion. Never generated per question. |
 
-This is the design's main claim and the thing to falsify first (§10). A router asked to place a question on a ladder answers one question — *how far up does answering this go?* — rather than learning five arbitrary boundaries.
+This is the design's main claim and the thing to falsify first (§11). A router asked to place a question on a ladder answers one question — *how far up does answering this go?* — rather than learning five arbitrary boundaries.
 
 **The tie-break follows from the ordering:** when two adjacent rungs are both plausible, take the lower one. Analysis rather than Inference gives correct figures without an unasked-for interpretation; Inference rather than Investigation gives a real read without a second fetch. Every ambiguity resolves toward less claim and less latency.
 
@@ -202,7 +202,121 @@ No per-turn filtering on whether an entry can currently serve. `advise` stays in
 
 The cost: the router can route to a dead end. The mitigation is a property of the handlers, not the router — **every entry's empty case must explain itself and offer what it can do instead**, tested per handler.
 
-## 5. The dataset registry
+## 5. The six workflows, defined
+
+Each entry's purpose line (§4) is what the router reads. What follows is what the handler must do — the discriminator a reviewer adjudicates against, the data it may touch, the rules it is bound by, and what it says when it has nothing.
+
+### `status` — observation, no model call
+
+**Answers.** "How many steps today?" · "How did he sleep last night?" · "What's her resting heart rate?" · "When did his watch last sync?" · "Is he asleep right now?"
+
+**Discriminator.** Answering needs no knowledge of what is usual for this person. Window length is not the test — comparison is.
+
+**Data.** Readings over any window, plus device, sync and monitoring state. Never the baseline. Resolved in code from the question shape, with no planning call.
+
+**Rules.**
+- **Two sources, chosen by question shape.** A specific value computes from readings; a general "how is he right now" serves the stored `MemberStatusLine` the batch already generated — the same sentence the Dashboard hero card shows.
+- **Covers the data pipeline, not just the body.** "Is his watch connected?", "why no data since Tuesday?", "is monitoring paused?" — the questions asked when the app looks broken, which nothing else on the ladder answers.
+- **Zero model calls, whatever the window.** This is the rung where a confident generated sentence is most dangerous and least necessary. `LiveStatusReply` exists because MedGemma answered "Yes, Dad is asleep now" from a nightly sleep total and a prompt rule did not hold.
+- **Charts only if the fetch already produced a series.** No widening a fetch to have something to draw.
+- **Nulls are named.** A metric the watch did not record is said to be unrecorded, never skipped.
+
+**Empty case.** Names what it looked at, says there is nothing recorded, offers what it can answer.
+
+### `analysis` — comparison, plan + clinical + rewrite
+
+**Answers.** "How's his sleep been this week?" · "Is she walking less than usual?" · "How does this month compare to last?" · "Is 58 a normal resting heart rate?"
+
+**Discriminator.** Needs arithmetic over a window and a comparison — to this member's own baseline, to the published band, or both. The default rung, and the failure target for everything unsure.
+
+**Data.** One to four series over a clamped window; the baseline when the question states or implies a comparison with usual; the published range where the metric has one.
+
+**Rules.**
+- **Findings first, raw rows beneath.** The registry's formulas run in .NET and lead the prompt; daily rows follow as context. The prompt must state which are authoritative — a model given numbers it can read will quote ones it derived.
+- **Two benchmarks, named separately** (§4). Own history and published band answer different questions and must not be blurred into one sentence.
+- **A provisional baseline still answers** — with the caveat that it is still forming. Deliberately looser than the alert rules, which never fire on 7- or 14-day windows: a caregiver who just onboarded should not wait a month for an answer.
+- **May state direction and size, never significance.** "About a third below his usual" is `analysis`. "Worth keeping an eye on" is `inference`. The line is whether the sentence tells the caregiver how to feel.
+- **Questions-only history to the clinical read.** Its own prior prose is what made it quote figures from outside the window.
+
+**Empty case.** Names the window it looked at and says there were no readings in it. Never infers from silence.
+
+### `inference` — judgement, plan + clinical + rewrite
+
+**Answers.** "Should I be concerned about his nights?" · "Is this a real change or noise?" · "Is she doing okay?" · "Is his oxygen level okay?"
+
+**Discriminator.** Asks for a verdict on the findings, not for the findings. Same fetch as `analysis`, different job for the prompt.
+
+**Data.** As `analysis`, plus any unresolved alerts — always.
+
+**Rules.**
+- **A superset of `analysis`.** Every reply carries the comparison and then the judgement. This is what makes the router's hardest boundary safe to get wrong: routing up when `analysis` would have done costs a clause, not an answer.
+- **Judges on multi-signal findings and single-metric deviation alike.** The paired findings — a still day beside a raised vital — are material only this rung can use; a plain "well below usual for six days" is still judgeable.
+- **Cannot contradict an open alert.** Unresolved alerts are always in the findings, so a reply cannot say "nothing to worry about" on a day the alert engine paged about.
+- **One permitted next step, fixed:** "worth mentioning to their doctor". Not generated, never elaborated. A reading outside a published band is the clearest legitimate trigger for it.
+- **States its grounds and what would change them** — days with no data, a device swap, a paused member.
+
+**Empty case.** Insufficient findings to judge, said plainly. Never defaults to reassurance.
+
+### `investigation` — judgement (plural, ranked), two fetches
+
+**Answers.** "Why has he been so restless?" · "What changed around the 14th?" · "Why is his heart rate up this week?"
+
+**Discriminator.** Asks why, and answering honestly means looking at things the question did not name.
+
+**Data.** Readings, alerts, questionnaire answers and environmental context. An opening selection plus one conditioned follow-up.
+
+**Rules.**
+- **Names co-occurrence, never asserts cause.** "His restless nights line up with the three hottest of the month, and with the week you told us he had a cold." The caregiver draws the link; the app supplies the coincidence. This is the platform's most likely place for a diagnosis-shaped sentence, and this rule is what stops it.
+- **Exactly two passes.** Fetch, probe the findings for what to look at next, fetch again. A fixed count rather than a loop, so latency is a number rather than a range.
+- **Questionnaire answers reach the clinical slot only.** They are member health data and must not travel to the rewrite step with the findings. DPIA A20, not a preference.
+- **Environmental evidence is consent-gated.** Without `EnvironmentalContextConsentGranted` the investigation does not consider weather — and does not mention that it could have.
+- **Synchronous, capped, with its own waiting copy** that names what it is checking rather than cycling generic lines.
+
+**Empty case.** Nothing co-occurred worth naming — said as that, not as "no cause found".
+
+### `advise` — suggestion, no model call
+
+**Answers.** "Does he need help with his sleep?" · "What can I do about how little she's walking?" · "Any tips?"
+
+**Discriminator.** Answering would mean recommending an action. The only entry licensed to.
+
+**Data.** The stored topic-scoped suggestions. No readings fetched.
+
+**Rules.**
+- **Matches the question's topic to a stored suggestion.** Requires `MemberAdvise` to become topic-scoped — one row per topic where the readings support one, rather than one row per member. A schema and generation change that lands outside chat.
+- **Never generates.** Not inline, not queued. The one prompt licensed to recommend stays in a batch with the grounding machinery and nobody waiting: `AdviseGenerationService` is the only prompt carrying `ToneWellness`, and it earns that by grounding each suggestion in a named public-health reference so an ungrounded reply can be withheld.
+- **Declines a stale row**, matching `HealthInsightService` exactly so chat and the Details card can never disagree about whether there is a current suggestion.
+- **Names its guideline only when asked.** The default reply stays conversational; "why do you say that?" reaches the reference. A citation read aloud in every reply is what made the first version sound like a leaflet.
+- **Assembled in code.** A stored suggestion has the member's real name already resolved into it — handing it to the Rewrite slot to be phrased would put that name on the split provider.
+
+**Empty case.** An honest "I can't help with that", naming what `analysis` could tell them instead.
+
+### `steer` — no claim, one model call
+
+**Answers.** "Hi" · "Thanks!" · "What can you do?" · "Write me a poem" · "What's the weather?"
+
+**Discriminator.** Not a question about this person's health.
+
+**Rules.**
+- **Two registers, one entry.** A greeting is answered warmly; an off-topic request is redirected. The distinction is a field on the routed result, not a second entry.
+- **No history travels with it.** Sending a caregiver's prior clinical exchanges to answer "hi" widens what the rewrite slot sees for no gain.
+- **A steer that fails to generate falls back to the canned redirect** rather than surfacing an error over a greeting.
+
+### `clarify` — no claim, no entry, no extra call
+
+Not a catalogue entry and never returned by the router. Triggered by the shape of the routing answer.
+
+**Fires when.** The router names close alternatives, or returns a workflow that cannot be run.
+
+**Rules.**
+- **The candidates come from the routing call itself**, so clarifying costs nothing beyond the route that already ran.
+- **Rendered as tappable options** on the existing suggestion-chip row. A tap re-enters the pipeline with the rung already decided — no second routing call, nothing retyped.
+- **The chips carry the rung, not a rephrasing.** Tapping "whether it is worth worrying about" routes to `inference` directly; it does not resubmit different words and hope.
+- **Once per message, never twice.** If the answer still does not route, `analysis` runs. Two questions in a row reads as an app that is not listening.
+- **Never on a hard failure.** A router that did not answer cannot propose candidates; that path falls to `analysis` with a default selection.
+
+
+## 6. The dataset registry
 
 Two entry kinds in one closed, versioned catalogue: `source` (fetch these rows) and `finding` (run this formula).
 
@@ -249,7 +363,7 @@ A per-member availability line travels with it, naming the entries that have no 
 
 Entries do **not** declare which model slot may see them; the handlers carry that. The compensating control is an **assembly-level test over every rewrite-slot prompt**: build each one from fixtures containing questionnaire answers, medical notes and a real member name, and assert none appear. With no flag on the entries and a vocabulary this wide, that test is what stands between the registry and a DPIA incident. It ships before the registry does.
 
-## 6. The uniform contract
+## 7. The uniform contract
 
 Every handler takes the same input and returns the same output. This is what makes persistence, billing, error handling and the client contract shared rather than duplicated seven times.
 
@@ -268,7 +382,7 @@ Two consequences worth stating:
 
 Every workflow now receives a **resolver** rather than pre-fetched datasets, because routing no longer names any. `status` calls it with a selection it derived in code; `advise` and `steer` never call it; `analysis` and `inference` call it once, after their own planning call; `investigation` calls it twice, the second time conditioned on the first result. The resolver is where clamping and the whitelist live, so no workflow can widen its own fetch.
 
-## 7. Failure posture
+## 8. Failure posture
 
 **Uncertainty asks; failure descends.**
 
@@ -287,7 +401,7 @@ Every workflow now receives a **resolver** rather than pre-fetched datasets, bec
 
 **Clarify is only better than a guess while it is rare.** At 20 % of traffic every fifth message costs a tap and the app reads as not understanding people. That rate is the number that decides whether the behaviour stays on.
 
-## 8. What we build on
+## 9. What we build on
 
 Twenty-one PRs touched chat in the two days before this document. **They are not patch debt to be reverted — they are the specification.** Each is a failure found the expensive way.
 
@@ -320,11 +434,11 @@ A revert would not buy what it appears to. Reverting the code does not revert th
 
 **The gap this exposes:** every *server-side* invariant has a home. The client ones do not — a message appended behind a skeleton panel vanishes, a reload mid-send clears the turns it just added, a resumed thread must open at the latest turn. Those were found the same expensive way, by caregivers, and this document does not cover them. They need their own list before client work starts.
 
-## 9. Rollout
+## 10. Rollout
 
 Sequenced so each step is separately revertable and the router lands late.
 
-1. **Write the eval set** (§10). Before any code. It can still change §2 — including telling us the taxonomy is three entries rather than six.
+1. **Write the eval set** (§11). Before any code. It can still change §2 — including telling us the taxonomy is three entries rather than six.
 2. **Define the contract, wrap what exists.** Today's branches move behind the uniform interface: full pipeline → `analysis`, live status → `status`, advise → `advise`, steer → `steer`. No routing change, no behaviour change. Consolidates the duplicated persistence call sites.
 3. **Land the workflow catalogue and its three-way parity test.** Nothing reads it yet; from here a new entry cannot ship half-wired.
 4. **Persist the workflow enum** — stamped by the existing `if` chain. Gives a real traffic distribution before a model is near the decision.
@@ -337,9 +451,9 @@ Sequenced so each step is separately revertable and the router lands late.
 
 Steps 2–4 are pure consolidation and are worth shipping whatever happens to the rest.
 
-## 10. Eval set — seed
+## 11. Eval set — seed
 
-Hand-labelled caregiver phrasings, expected entry, and what each case guards. Seeded from §8; real phrasings to be added on top. This is the artefact the design stands on.
+Hand-labelled caregiver phrasings, expected entry, and what each case guards. Seeded from §9; real phrasings to be added on top. This is the artefact the design stands on.
 
 | Question | Expected | Guards |
 |---|---|---|
@@ -377,7 +491,7 @@ Hand-labelled caregiver phrasings, expected entry, and what each case guards. Se
 
 **How it is read:** a confusion matrix, not an accuracy figure. `analysis`↔`inference` confusion is tolerable by design. Anything↔`advise` is not — that is the boundary where a reply starts recommending things.
 
-## 11. Open items
+## 12. Open items
 
 Decided in principle, settled by building:
 
