@@ -50,12 +50,7 @@ internal static class AlertRuleMarkers
         if (alert.IsResolved || alert.AlertType != type)
             return false;
 
-        // Type-scoped, like HeartRate and for the same reason: the two rhythm producers (the
-        // watch's own notification and an ECG the wearer then took) routinely describe one
-        // episode, and paging a family twice about it is the noise cooldowns exist to prevent.
-        // Scoped separately from HeartRate so that a standing rate alert cannot suppress a rhythm
-        // finding, which is the whole point of the type existing.
-        if (type is AlertType.HeartRate or AlertType.Rhythm)
+        if (type == AlertType.HeartRate)
             return true;
 
         if (HasRule(alert, rule))

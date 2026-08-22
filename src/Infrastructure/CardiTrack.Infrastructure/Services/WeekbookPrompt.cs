@@ -191,17 +191,6 @@ internal static class WeekbookPrompt
             baseline?.AvgHeartRateVariabilityMs,
             null);
 
-        written += Metric(sb, days, "Weight", l => l.WeightKg,
-            v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} kg",
-            baseline?.AvgWeightKg,
-            null);
-
-        var glucoseBand = HealthReferenceRanges.BloodGlucose;
-        written += Metric(sb, days, "Blood sugar", l => l.BloodGlucoseAverage,
-            v => $"{Math.Round(v):N0} mg/dL",
-            null,
-            JournalPeriodSections.Band(glucoseBand.Low, glucoseBand.High, "mg/dL", glucoseBand.Source));
-
         written += Metric(sb, days, "Steps", l => l.Steps,
             v => $"{Math.Round(v):N0} steps",
             baseline?.AvgSteps,

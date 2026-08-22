@@ -7,7 +7,6 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared.Json;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -29,13 +28,6 @@ public class DeviceSyncService : IDeviceSyncService
     private readonly INotificationGapResolver _gapResolver;
     private readonly List<DeviceProviderSettings> _providers;
 
-    /// <summary>
-    /// Optional because this service is constructed by hand in the provider registration and in
-    /// tests, and every path that uses it is best-effort reporting rather than control flow — a
-    /// host that wires no logger loses a warning, never a reading.
-    /// </summary>
-    private readonly ILogger<DeviceSyncService>? _logger;
-
     public DeviceSyncService(
         IOAuthTokenRefreshService tokenRefresh,
         IDeviceApiClient deviceApi,
@@ -45,8 +37,7 @@ public class DeviceSyncService : IDeviceSyncService
         IGranularIngestionService granularIngestion,
         IUnitOfWork unitOfWork,
         INotificationGapResolver gapResolver,
-        IOptions<List<DeviceProviderSettings>> providers,
-        ILogger<DeviceSyncService>? logger = null)
+        IOptions<List<DeviceProviderSettings>> providers)
     {
         _tokenRefresh = tokenRefresh;
         _deviceApi = deviceApi;
@@ -57,7 +48,6 @@ public class DeviceSyncService : IDeviceSyncService
         _unitOfWork = unitOfWork;
         _gapResolver = gapResolver;
         _providers = providers.Value;
-        _logger = logger;
     }
 
     public async Task SyncCardiMemberAsync(DeviceConnection connection, SyncScope scope = SyncScope.Routine)
@@ -288,48 +278,12 @@ public class DeviceSyncService : IDeviceSyncService
     private async Task PullWindowAsync(
         DeviceConnection connection, string accessToken, int lookbackDays, DateOnly today)
     {
-        var readsRhythm = DeviceScopes.GrantsRhythm(ParseScopes(connection.Scopes));
-
         // Oldest first, so a mid-window provider failure still leaves the earlier days stored.
         for (var offset = lookbackDays; offset >= 0; offset--)
         {
             var targetDate = today.AddDays(-offset);
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
-            var rhythm = readsRhythm
-                ? await ReadRhythmAsync(accessToken, targetDate, connection.Id)
-                : DeviceRhythmDay.None;
-            await StoreDayAsync(connection, snapshot, rhythm, targetDate);
-        }
-    }
-
-    /// <summary>
-    /// Reads one day's ECG and irregular-rhythm counts, or <see cref="DeviceRhythmDay.None"/> when
-    /// the provider could not serve them this pull.
-    /// </summary>
-    /// <remarks>
-    /// Best-effort, like the battery read and for the same reason: these are supplementary data
-    /// types behind their own scopes, and a failure to read them must not park a working
-    /// connection in <see cref="ConnectionStatus.SyncError"/> or cost the member the day's health
-    /// data. What makes swallowing safe here — where it would not be for steps — is that the
-    /// routine window re-reads today on every pull, so a transient failure is retried within ten
-    /// minutes rather than lost. It is logged rather than silent, because a connection that
-    /// *never* succeeds at this read is a different problem and one nothing else would show.
-    /// </remarks>
-    private async Task<DeviceRhythmDay> ReadRhythmAsync(
-        string accessToken, DateOnly date, Guid connectionId)
-    {
-        try
-        {
-            return await _deviceApi.GetRhythmDayAsync(accessToken, date);
-        }
-        catch (Exception ex) when (IsProviderApiException(ex))
-        {
-            _logger?.LogWarning(
-                ex,
-                "Rhythm read failed for DeviceConnection {DeviceConnectionId} on {Date}; the day is stored without it.",
-                connectionId,
-                date);
-            return DeviceRhythmDay.None;
+            await StoreDayAsync(connection, snapshot, targetDate);
         }
     }
 
@@ -392,15 +346,7 @@ public class DeviceSyncService : IDeviceSyncService
         {
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, date);
             if (snapshot.HasAnyData)
-            {
-                // No rhythm read on a backfill day. ECG's filter grammar has no upper bound and no
-                // civil-time field (see GoogleHealthApiClient.GetEcgDayAsync), so an old day can
-                // only be reached by paging back through every reading taken since — which is the
-                // opposite of what a chunked, quota-bounded backfill can afford. History therefore
-                // carries no ECG or notification counts, and the columns stay null there rather
-                // than reading as zero: the alert rules only ever look at today and yesterday.
-                await StoreDayAsync(connection, snapshot, DeviceRhythmDay.None, date);
-            }
+                await StoreDayAsync(connection, snapshot, date);
 
             await _deviceConnections.UpdateHistoryBackfilledToAsync(connection.Id, date);
             connection.HistoryBackfilledTo = date;
@@ -411,10 +357,7 @@ public class DeviceSyncService : IDeviceSyncService
     /// Stores one day's snapshot as this device's raw row and re-merges the member's day.
     /// </summary>
     private async Task StoreDayAsync(
-        DeviceConnection connection,
-        DeviceHealthSnapshot snapshot,
-        DeviceRhythmDay rhythm,
-        DateOnly targetDate)
+        DeviceConnection connection, DeviceHealthSnapshot snapshot, DateOnly targetDate)
     {
         var log = new DeviceActivityLog
         {
@@ -459,17 +402,8 @@ public class DeviceSyncService : IDeviceSyncService
             TemperatureBaseline = snapshot.TemperatureBaseline,
             TemperatureVariation = snapshot.TemperatureVariation,
 
-            // Body and autonomic metrics
-            HeartRateVariabilityMs = snapshot.HeartRateVariabilityMs,
-            WeightKg = snapshot.WeightKg,
-            BloodGlucoseAverage = snapshot.BloodGlucoseAverage,
-            BloodGlucoseMin = snapshot.BloodGlucoseMin,
-            BloodGlucoseMax = snapshot.BloodGlucoseMax,
-
-            // Rhythm events, from their own scoped read rather than the snapshot
-            EcgReadings = rhythm.EcgReadings,
-            EcgAtrialFibrillationReadings = rhythm.EcgAtrialFibrillationReadings,
-            IrregularRhythmNotifications = rhythm.IrregularRhythmNotifications
+            // Overnight heart rate variability
+            HeartRateVariabilityMs = snapshot.HeartRateVariabilityMs
         };
 
         // Save the raw row first — the merge reads every device's stored row for the day,

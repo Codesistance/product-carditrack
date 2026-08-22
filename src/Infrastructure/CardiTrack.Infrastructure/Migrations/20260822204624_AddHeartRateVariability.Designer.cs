@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260822171805_AddDeviceRhythmHrvWeightGlucose")]
-    partial class AddDeviceRhythmHrvWeightGlucose
+    [Migration("20260822204624_AddHeartRateVariability")]
+    partial class AddHeartRateVariability
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -39,15 +39,6 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<int?>("AwakeMinutes")
                         .HasColumnType("integer");
-
-                    b.Property<decimal?>("BloodGlucoseAverage")
-                        .HasColumnType("decimal(6,1)");
-
-                    b.Property<decimal?>("BloodGlucoseMax")
-                        .HasColumnType("decimal(6,1)");
-
-                    b.Property<decimal?>("BloodGlucoseMin")
-                        .HasColumnType("decimal(6,1)");
 
                     b.Property<decimal?>("BreathingRate")
                         .HasColumnType("decimal(5,2)");
@@ -80,20 +71,11 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<decimal?>("Distance")
                         .HasColumnType("decimal(10,2)");
 
-                    b.Property<int?>("EcgAtrialFibrillationReadings")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("EcgReadings")
-                        .HasColumnType("integer");
-
                     b.Property<int?>("Floors")
                         .HasColumnType("integer");
 
                     b.Property<decimal?>("HeartRateVariabilityMs")
                         .HasColumnType("decimal(6,1)");
-
-                    b.Property<int?>("IrregularRhythmNotifications")
-                        .HasColumnType("integer");
 
                     b.Property<int?>("LightSleepMinutes")
                         .HasColumnType("integer");
@@ -154,9 +136,6 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<decimal?>("VO2Max")
                         .HasColumnType("decimal(5,2)");
-
-                    b.Property<decimal?>("WeightKg")
-                        .HasColumnType("decimal(6,2)");
 
                     b.HasKey("Id");
 
@@ -670,15 +649,6 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<int?>("AwakeMinutes")
                         .HasColumnType("integer");
 
-                    b.Property<decimal?>("BloodGlucoseAverage")
-                        .HasColumnType("decimal(6,1)");
-
-                    b.Property<decimal?>("BloodGlucoseMax")
-                        .HasColumnType("decimal(6,1)");
-
-                    b.Property<decimal?>("BloodGlucoseMin")
-                        .HasColumnType("decimal(6,1)");
-
                     b.Property<decimal?>("BreathingRate")
                         .HasColumnType("decimal(5,2)");
 
@@ -710,20 +680,11 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<decimal?>("Distance")
                         .HasColumnType("decimal(10,2)");
 
-                    b.Property<int?>("EcgAtrialFibrillationReadings")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("EcgReadings")
-                        .HasColumnType("integer");
-
                     b.Property<int?>("Floors")
                         .HasColumnType("integer");
 
                     b.Property<decimal?>("HeartRateVariabilityMs")
                         .HasColumnType("decimal(6,1)");
-
-                    b.Property<int?>("IrregularRhythmNotifications")
-                        .HasColumnType("integer");
 
                     b.Property<int?>("LightSleepMinutes")
                         .HasColumnType("integer");
@@ -784,9 +745,6 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<decimal?>("VO2Max")
                         .HasColumnType("decimal(5,2)");
-
-                    b.Property<decimal?>("WeightKg")
-                        .HasColumnType("decimal(6,2)");
 
                     b.HasKey("Id");
 
@@ -1883,9 +1841,6 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<int?>("AvgSteps")
                         .HasColumnType("integer");
-
-                    b.Property<decimal?>("AvgWeightKg")
-                        .HasColumnType("decimal(6,2)");
 
                     b.Property<DateTime>("CalculatedDate")
                         .ValueGeneratedOnAdd()

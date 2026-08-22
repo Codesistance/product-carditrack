@@ -238,8 +238,7 @@ public class AdviseGenerationService
               // is a yardstick the model would try to use.
               (baseline.AvgHeartRateVariabilityMs is { } hrv
                   ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
-                  : string.Empty) +
-              (baseline.AvgWeightKg is { } weight ? $", Weight: {weight} kg" : string.Empty);
+                  : string.Empty);
 
         return $"""
             {AdviseInstructions}

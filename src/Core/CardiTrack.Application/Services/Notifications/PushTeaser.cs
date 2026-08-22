@@ -33,7 +33,6 @@ public static class PushTeaser
         var title = alertType switch
         {
             AlertType.HeartRate => "Heart rate alert",
-            AlertType.Rhythm => "Heart rhythm alert",
             AlertType.Sleep => "Sleep alert",
             AlertType.Inactivity => "Activity alert",
             AlertType.PatternBreak => "Pattern alert",

@@ -5,10 +5,9 @@ using CardiTrack.Domain.Enums;
 namespace CardiTrack.Application.Services;
 
 /// <summary>One rule's verdict: everything the orchestrator needs to write the alert.
-/// <see cref="NightOf"/> is set by rules that judge one specific day's data rather than the
-/// firing day's — a night (stamped with the civil day it ended on), or an event such as a
-/// rhythm notification or a blood-sugar reading. The orchestrator dedups those per stamped day,
-/// because late-arriving data can put the same night or event in front of the rule on two
+/// <see cref="NightOf"/> is set by rules that judge one specific night (the civil day the
+/// night ended on) rather than the firing day's data — the orchestrator dedups those per
+/// night, because late-arriving data can put the same night in front of the rule on two
 /// calendar days.</summary>
 public sealed record StatisticalAlertCandidate(
     string Rule, AlertType Type, AlertSeverity Severity, string Title, string Message, string MetricValues,
@@ -39,10 +38,6 @@ public static class StatisticalAlertRules
     public const string NoMorningActivityRule = "no_morning_activity";
     public const string LongTermTrendRule = "long_term_trend";
     public const string HeartRateVariabilityDropRule = "hrv_drop";
-    public const string IrregularRhythmRule = "irregular_rhythm";
-    public const string EcgAtrialFibrillationRule = "ecg_afib";
-    public const string RapidWeightGainRule = "rapid_weight_gain";
-    public const string BloodSugarOutOfRangeRule = "blood_sugar_out_of_range";
 
     /// <summary>Medium sensitivity: a reading more than 30% off its baseline is worth a word.</summary>
     public const double DeviationFraction = 0.30;
@@ -74,27 +69,6 @@ public static class StatisticalAlertRules
     /// </summary>
     public const int HrvSigmaMultiplier = 2;
     public const decimal HrvMarginFloorFraction = 0.15m;
-
-    /// <summary>
-    /// Weight-gain thresholds and the windows they are measured over: 1.4 kg (3 lb) inside three
-    /// days, or 2.3 kg (5 lb) inside a week. These are the figures heart-failure self-monitoring
-    /// guidance gives patients for daily weighing, and they are about fluid, not fat — nobody puts
-    /// on three pounds of tissue in three days, which is exactly what makes the number readable.
-    /// </summary>
-    public const decimal WeightGainShortWindowKg = 1.4m;
-    public const decimal WeightGainLongWindowKg = 2.3m;
-    public const int WeightGainShortWindowDays = 3;
-    public const int WeightGainLongWindowDays = 7;
-
-    /// <summary>
-    /// Blood glucose thresholds in mg/dL, the unit the provider reports in. 70 is the ADA's level-1
-    /// hypoglycaemia threshold and 250 the level at which its guidance tells people to check for
-    /// ketones. Deliberately wide of the 70–180 target band the dashboard draws: a target band is
-    /// what a reading should sit inside, and paging a family every time one strays outside it would
-    /// page them several times a day for a person managing their diabetes normally.
-    /// </summary>
-    public const decimal HypoglycaemiaMgDl = 70m;
-    public const decimal HyperglycaemiaMgDl = 250m;
 
     /// <summary>Yesterday's steps more than 30% below the baseline average.</summary>
     public static StatisticalAlertCandidate? ActivityDecline(PatternBaseline baseline, ActivityLog? yesterday)
@@ -368,203 +342,6 @@ public static class StatisticalAlertRules
                 marginMs = Math.Round(margin, 1),
             }),
             NightOf: lastNight.Date);
-    }
-
-    /// <summary>
-    /// The wearable raised one or more irregular-rhythm notifications — its own screening feature
-    /// telling the wearer it saw a rhythm that could be atrial fibrillation.
-    /// </summary>
-    /// <remarks>
-    /// CardiTrack judges nothing here and must not appear to: the device made the finding, told the
-    /// wearer, and this rule carries it to the family who would otherwise hear about it only if the
-    /// wearer thought to mention it. Orange rather than red — this is a screening notification from
-    /// an optical sensor, and the reading that can actually be shown to a doctor is the ECG in
-    /// <see cref="EcgAtrialFibrillation"/>.
-    /// <para>
-    /// Reads the freshest day carrying an event, today or yesterday: a notification raised late in
-    /// the evening lands on that day's row, and by the time the fifteen-minute pass sees it the
-    /// member's own calendar may have rolled over. The day it judged is stamped on the candidate,
-    /// so an event alerts once whichever pass gets to it first.
-    /// </para>
-    /// </remarks>
-    public static StatisticalAlertCandidate? IrregularRhythm(ActivityLog? today, ActivityLog? yesterday)
-    {
-        var day = FirstWith(today, yesterday, l => l.IrregularRhythmNotifications is > 0);
-        if (day?.IrregularRhythmNotifications is not { } notifications)
-            return null;
-
-        var plural = notifications == 1 ? "a notification" : $"{notifications} notifications";
-        return new StatisticalAlertCandidate(
-            IrregularRhythmRule, AlertType.Rhythm, AlertSeverity.Orange,
-            "Their watch flagged an irregular heart rhythm",
-            $"The watch raised {plural} about an irregular heart rhythm. That is the watch's own "
-            + "check, not a diagnosis, but it is worth telling their doctor about and worth a call "
-            + "to ask how they are feeling.",
-            Serialize(new
-            {
-                rule = IrregularRhythmRule,
-                day = day.Date.ToString("O"),
-                irregularRhythmNotifications = notifications,
-            }),
-            NightOf: day.Date);
-    }
-
-    /// <summary>
-    /// An ECG the wearer recorded on their device came back classified as atrial fibrillation.
-    /// </summary>
-    /// <remarks>
-    /// The strongest single signal this engine can report, and the only red one that is not about
-    /// someone being unresponsive: a recorded trace their own device classified, which a clinician
-    /// can open and read. Only the <c>ATRIAL_FIBRILLATION</c> classification counts — the
-    /// inconclusive and unreadable ones mean the device declined to judge, and the ingestion layer
-    /// never counts them here (see <c>GoogleHealthApiDtos</c>).
-    /// </remarks>
-    public static StatisticalAlertCandidate? EcgAtrialFibrillation(ActivityLog? today, ActivityLog? yesterday)
-    {
-        var day = FirstWith(today, yesterday, l => l.EcgAtrialFibrillationReadings is > 0);
-        if (day?.EcgAtrialFibrillationReadings is not { } readings)
-            return null;
-
-        return new StatisticalAlertCandidate(
-            EcgAtrialFibrillationRule, AlertType.Rhythm, AlertSeverity.Red,
-            "An ECG came back as atrial fibrillation",
-            "They took an ECG on their device and it was classified as atrial fibrillation. The "
-            + "reading is saved on their device for a doctor to look at — please get in touch with "
-            + "them, and with their GP or clinic.",
-            Serialize(new
-            {
-                rule = EcgAtrialFibrillationRule,
-                day = day.Date.ToString("O"),
-                ecgAtrialFibrillationReadings = readings,
-                ecgReadings = day.EcgReadings,
-            }),
-            NightOf: day.Date);
-    }
-
-    /// <summary>
-    /// Weight up 1.4 kg inside three days, or 2.3 kg inside a week, against the earliest weighing
-    /// in that window.
-    /// </summary>
-    /// <remarks>
-    /// This is a fluid-retention rule wearing a weight rule's clothes. Sudden weight gain over days
-    /// is the classic early sign that a failing heart is holding on to fluid, and it is the one
-    /// thing on this list a family can see coming days before anyone feels unwell.
-    /// <para>
-    /// Measured against the earliest reading in the window rather than the lowest: the lowest turns
-    /// one unusually light weighing — the scale caught before breakfast, or a day of poor appetite
-    /// — into a permanent low-water mark that everything afterwards is a "gain" from. A member who
-    /// does not weigh themselves at both ends of a window gets no alert at all, which is correct:
-    /// two readings days apart are the entire measurement.
-    /// </para>
-    /// </remarks>
-    public static StatisticalAlertCandidate? RapidWeightGain(
-        IReadOnlyDictionary<DateOnly, ActivityLog> logsByDate, DateOnly today)
-    {
-        var latest = Enumerable.Range(0, 2)
-            .Select(offset => logsByDate.GetValueOrDefault(today.AddDays(-offset)))
-            .FirstOrDefault(l => l?.WeightKg is not null);
-        if (latest?.WeightKg is not { } weight)
-            return null;
-
-        foreach (var (windowDays, thresholdKg) in new[]
-                 {
-                     (WeightGainShortWindowDays, WeightGainShortWindowKg),
-                     (WeightGainLongWindowDays, WeightGainLongWindowKg),
-                 })
-        {
-            var earliest = Enumerable.Range(1, windowDays)
-                .Select(offset => logsByDate.GetValueOrDefault(latest.Date.AddDays(-offset)))
-                .LastOrDefault(l => l?.WeightKg is not null);
-            if (earliest?.WeightKg is not { } previousWeight)
-                continue;
-
-            var gain = weight - previousWeight;
-            if (gain < thresholdKg)
-                continue;
-
-            return new StatisticalAlertCandidate(
-                RapidWeightGainRule, AlertType.Trend, AlertSeverity.Orange,
-                "Their weight has gone up quickly",
-                $"Weight is up {gain:0.#} kg since {earliest.Date:d MMMM} — {weight:0.#} kg against "
-                + $"{previousWeight:0.#} kg. A rise this fast over a few days is usually fluid rather than "
-                + "anything they have eaten, and it is worth mentioning to their doctor.",
-                Serialize(new
-                {
-                    rule = RapidWeightGainRule,
-                    day = latest.Date.ToString("O"),
-                    weightKg = weight,
-                    fromWeightKg = previousWeight,
-                    fromDay = earliest.Date.ToString("O"),
-                    gainKg = Math.Round(gain, 2),
-                    windowDays,
-                    thresholdKg,
-                }),
-                NightOf: latest.Date);
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// A blood-sugar reading below 70 mg/dL or above 250 mg/dL — read from the day's lowest and
-    /// highest, which is why ingestion keeps both rather than the average alone.
-    /// </summary>
-    /// <remarks>
-    /// Only fires for a member whose readings reach CardiTrack at all, which means a meter or CGM
-    /// feeding the same provider account. The low side is red and the high side orange, and the
-    /// asymmetry is the point: a high reading is a bad afternoon that needs managing, a low one can
-    /// take someone off their feet within the hour, and an older person living alone is exactly who
-    /// nobody would find.
-    /// </remarks>
-    public static StatisticalAlertCandidate? BloodSugarOutOfRange(ActivityLog? today, ActivityLog? yesterday)
-    {
-        var day = FirstWith(
-            today,
-            yesterday,
-            l => l.BloodGlucoseMin < HypoglycaemiaMgDl || l.BloodGlucoseMax > HyperglycaemiaMgDl);
-        if (day is null)
-            return null;
-
-        var low = day.BloodGlucoseMin < HypoglycaemiaMgDl ? day.BloodGlucoseMin : null;
-        var high = day.BloodGlucoseMax > HyperglycaemiaMgDl ? day.BloodGlucoseMax : null;
-
-        var (severity, title, message) = low is { } lowest
-            ? (AlertSeverity.Red,
-                "A very low blood sugar reading",
-                $"A blood sugar reading of {lowest:0.#} mg/dL came through — below the 70 mg/dL "
-                + "mark. Please check on them now, and make sure they have something sugary to hand.")
-            : (AlertSeverity.Orange,
-                "A very high blood sugar reading",
-                $"A blood sugar reading of {high:0.#} mg/dL came through — well above the usual "
-                + "target range. Worth a call to see how they are, and worth their doctor knowing.");
-
-        return new StatisticalAlertCandidate(
-            BloodSugarOutOfRangeRule, AlertType.PatternBreak, severity, title, message,
-            Serialize(new
-            {
-                rule = BloodSugarOutOfRangeRule,
-                day = day.Date.ToString("O"),
-                bloodGlucoseMin = day.BloodGlucoseMin,
-                bloodGlucoseMax = day.BloodGlucoseMax,
-                hypoglycaemiaMgDl = HypoglycaemiaMgDl,
-                hyperglycaemiaMgDl = HyperglycaemiaMgDl,
-            }),
-            NightOf: day.Date);
-    }
-
-    /// <summary>
-    /// The freshest of today and yesterday that carries the signal a rule is looking for, or null
-    /// when neither does. Event rules read two days rather than one because an event landing late
-    /// in the member's evening can be read by a pass that has already rolled over to the next
-    /// calendar day — and an alert about their heart rhythm must not be lost to that hour.
-    /// </summary>
-    private static ActivityLog? FirstWith(
-        ActivityLog? today, ActivityLog? yesterday, Func<ActivityLog, bool> carriesSignal)
-    {
-        if (today is not null && carriesSignal(today))
-            return today;
-
-        return yesterday is not null && carriesSignal(yesterday) ? yesterday : null;
     }
 
     private static string Serialize(object metrics) => JsonSerializer.Serialize(metrics);

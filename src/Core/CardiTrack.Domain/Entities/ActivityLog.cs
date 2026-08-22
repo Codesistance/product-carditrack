@@ -49,21 +49,7 @@ public class ActivityLog : BaseEntity
     public decimal? TemperatureBaseline { get; set; } // the wearer's own nightly baseline
     public decimal? TemperatureVariation { get; set; } // relative nightly stddev over a 30-day window
 
-    // Body and autonomic metrics (2026-08 device-data sweep). HRV is the wearable's own overnight
-    // RMSSD; weight and blood glucose reach the same provider account from a connected scale or
-    // meter, so they are null for any member without that kit rather than zero.
-    public decimal? HeartRateVariabilityMs { get; set; } // overnight RMSSD, milliseconds
-    public decimal? WeightKg { get; set; }
-    public decimal? BloodGlucoseAverage { get; set; } // mg/dL, the provider's own unit
-    public decimal? BloodGlucoseMin { get; set; }
-    public decimal? BloodGlucoseMax { get; set; }
-
-    // Rhythm events the device itself judged. Counts, never waveforms — see DeviceRhythmDay for
-    // why the ECG trace is deliberately never fetched or stored. Null means "we cannot see this
-    // wearer's rhythm data" (the scope was never granted, or the day predates the read); 0 means
-    // "we looked and the device raised nothing", which is the reassuring answer and must stay
-    // distinguishable from the other.
-    public int? EcgReadings { get; set; }
-    public int? EcgAtrialFibrillationReadings { get; set; }
-    public int? IrregularRhythmNotifications { get; set; }
+    // Overnight heart rate variability (RMSSD), from the wearable itself — null on a device that
+    // derives none, like every other optional reading above.
+    public decimal? HeartRateVariabilityMs { get; set; }
 }

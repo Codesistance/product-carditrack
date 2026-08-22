@@ -25,20 +25,6 @@ public static class DeviceScopes
     /// </summary>
     public const string Settings = "settings";
 
-    /// <summary>
-    /// Electrocardiogram readings, and the irregular-rhythm notifications a watch raises on its
-    /// own. Two scopes rather than one because Google gates them separately, and both were added
-    /// after <see cref="Settings"/> — so, like it, every connection authorised earlier lacks them
-    /// until the wearer reconnects.
-    /// </summary>
-    /// <remarks>
-    /// Google classes both as SaMD features. CardiTrack neither performs nor interprets the
-    /// measurement: it reads what the wearer's own device already decided and told them, and
-    /// relays it to the family who would otherwise hear about it only if the wearer mentioned it.
-    /// </remarks>
-    public const string Ecg = "ecg";
-    public const string Irn = "irn";
-
     public static string Normalise(string? scope)
     {
         if (string.IsNullOrWhiteSpace(scope))
@@ -77,13 +63,4 @@ public static class DeviceScopes
     /// </summary>
     public static bool GrantsSettings(IEnumerable<string> scopes) =>
         scopes.Any(s => Normalise(s) == Settings);
-
-    /// <summary>
-    /// Whether the granted set covers either rhythm data type. One question rather than two
-    /// because the caller's decision is a single one — whether to spend a request on the rhythm
-    /// read at all — and the read itself tolerates the half-granted case, counting whichever of
-    /// the two it can see and leaving the other null.
-    /// </summary>
-    public static bool GrantsRhythm(IEnumerable<string> scopes) =>
-        scopes.Any(s => Normalise(s) is Ecg or Irn);
 }

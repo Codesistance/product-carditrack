@@ -64,18 +64,11 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
             // while every neighbouring column moved. The dashboard's temperature card reads the
             // baseline to say whether a night was unusual, so the stale pair could out-argue the fresh
             // reading beside it. Fixed here rather than filed, because the sweep that added the
-            // columns below would otherwise have copied the same omission nine more times.
+            // column below would otherwise have copied the same omission again.
             existing.TemperatureBaseline = log.TemperatureBaseline;
             existing.TemperatureVariation = log.TemperatureVariation;
 
             existing.HeartRateVariabilityMs = log.HeartRateVariabilityMs;
-            existing.WeightKg = log.WeightKg;
-            existing.BloodGlucoseAverage = log.BloodGlucoseAverage;
-            existing.BloodGlucoseMin = log.BloodGlucoseMin;
-            existing.BloodGlucoseMax = log.BloodGlucoseMax;
-            existing.EcgReadings = log.EcgReadings;
-            existing.EcgAtrialFibrillationReadings = log.EcgAtrialFibrillationReadings;
-            existing.IrregularRhythmNotifications = log.IrregularRhythmNotifications;
             _dbSet.Update(existing);
         }
     }

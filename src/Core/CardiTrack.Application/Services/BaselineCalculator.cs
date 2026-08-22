@@ -142,8 +142,6 @@ public static class BaselineCalculator
             MedianHeartRateVariabilityMs = MedianRounded(heartRateVariability, minimumSamples, stats),
             MadHeartRateVariability = MedianAbsoluteDeviation(heartRateVariability, minimumSamples, stats),
 
-            AvgWeightKg = MeanRounded(Samples(days, l => l.WeightKg), minimumSamples),
-
             AvgSleepMinutes = MeanAsInt(sleepMinutes, minimumSamples),
             MedianSleepMinutes = MedianAsInt(sleepMinutes, minimumSamples, stats),
             MadSleepMinutes = MedianAbsoluteDeviation(sleepMinutes, minimumSamples, stats),
@@ -165,8 +163,8 @@ public static class BaselineCalculator
         Mean(samples, minimumSamples) is decimal mean ? (int)Math.Round(mean, MidpointRounding.AwayFromZero) : null;
 
     /// <summary>
-    /// The mean to two decimals, for the metrics whose whole-number form would lose real signal —
-    /// millisecond HRV and kilogram weight, both of which are read as differences of a unit or two.
+    /// The mean to two decimals, for a metric whose whole-number form would lose real signal:
+    /// millisecond HRV, which is read as differences of a unit or two.
     /// </summary>
     private static decimal? MeanRounded(IReadOnlyList<decimal> samples, int minimumSamples) =>
         Mean(samples, minimumSamples) is decimal mean
@@ -188,7 +186,7 @@ public static class BaselineCalculator
     }
 
     /// <summary>The median to two decimals — the <see cref="MeanRounded"/> counterpart, for the
-    /// same metrics and the same reason.</summary>
+    /// same metric and the same reason.</summary>
     private static decimal? MedianRounded(
         IReadOnlyList<decimal> samples, int minimumSamples, IDescriptiveStatistics stats)
     {

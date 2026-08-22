@@ -1585,14 +1585,14 @@ public class GoogleHealthApiClientTests
         Assert.True(gap >= pacing, $"Expected the second page to wait at least {pacing}, gap was {gap}.");
     }
 
-    // ── Body metrics: HRV, weight, blood glucose ─────────────────────────────────
+    // ── Heart rate variability ───────────────────────────────────────────────────
 
     /// <summary>
     /// HRV is a Daily record, so it is listed on its own `date` rather than rolled up — and its
     /// value is a `double`, not one of the quoted int64s the counts around it use.
     /// </summary>
     [Fact]
-    public async Task GetBodyMetricsAsync_ReadsOvernightRmssd_FromTheDailyRecord()
+    public async Task GetAdditionalMetricsAsync_ReadsOvernightRmssd_FromTheDailyRecord()
     {
         var handler = new RoutedFakeHttpHandler()
             .Map("/dataTypes/daily-heart-rate-variability/", """
@@ -1609,196 +1609,25 @@ public class GoogleHealthApiClientTests
                 """);
 
         var (sut, _) = CreateSut(handler);
-        var result = await sut.GetBodyMetricsAsync("token", Today);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
 
         Assert.Equal(27.4m, result.HeartRateVariabilityMs);
     }
 
     /// <summary>
-    /// The rollup reports grams. A member is not 82,400 kg, but nothing downstream would catch it:
-    /// the weight alert reads differences, and a 1.4 kg threshold against gram-scale numbers is
-    /// permanently tripped.
+    /// A great many wearables derive no HRV at all. That is a fact about the device: null, never a
+    /// substituted figure, and never a failed snapshot.
     /// </summary>
     [Fact]
-    public async Task GetBodyMetricsAsync_ConvertsWeightGramsToKilograms()
+    public async Task GetAdditionalMetricsAsync_ReturnsNullRmssd_WhenTheDeviceDerivesNone()
     {
         var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/weight/", Rollup("weight", """{ "weightGramsAvg": 82400 }"""));
+            .Map("/dataTypes/daily-heart-rate-variability/", """{ "dataPoints": [] }""");
 
         var (sut, _) = CreateSut(handler);
-        var result = await sut.GetBodyMetricsAsync("token", Today);
-
-        Assert.Equal(82.4m, result.WeightKg);
-    }
-
-    /// <summary>
-    /// The day's lowest reading is the one the alert fires on, and it exists only in the sample
-    /// series — the rollup carries an average and nothing else, which would have reported this day
-    /// as a comfortable 118.
-    /// </summary>
-    [Fact]
-    public async Task GetBodyMetricsAsync_ReadsBloodGlucoseLowAndHigh_FromTheSampleSeries()
-    {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/blood-glucose/", SamplePage(
-                "bloodGlucose", "bloodGlucoseMilligramsPerDeciliter", null, "64", "140", "150"));
-
-        var (sut, _) = CreateSut(handler);
-        var result = await sut.GetBodyMetricsAsync("token", Today);
-
-        Assert.Equal(64m, result.BloodGlucoseMin);
-        Assert.Equal(150m, result.BloodGlucoseMax);
-        Assert.Equal(118m, result.BloodGlucoseAverage);
-    }
-
-    /// <summary>
-    /// Most wearers own no scale and no meter, and their device derives no HRV. That is a fact
-    /// about their kit: null, never a substituted figure, and never a failed snapshot.
-    /// </summary>
-    [Fact]
-    public async Task GetBodyMetricsAsync_ReturnsNulls_WhenTheDeviceRecordsNoneOfThem()
-    {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/daily-heart-rate-variability/", """{ "dataPoints": [] }""")
-            .Map("/dataTypes/blood-glucose/", """{ "dataPoints": [] }""");
-
-        var (sut, _) = CreateSut(handler);
-        var result = await sut.GetBodyMetricsAsync("token", Today);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
 
         Assert.Null(result.HeartRateVariabilityMs);
-        Assert.Null(result.WeightKg);
-        Assert.Null(result.BloodGlucoseAverage);
-        Assert.Null(result.BloodGlucoseMin);
-        Assert.Null(result.BloodGlucoseMax);
-    }
-
-    // ── Rhythm: ECG and irregular-rhythm notifications ───────────────────────────
-
-    private static string EcgPoint(string classification, int year, int month, int day) => $$"""
-        {
-          "electrocardiogram": {
-            "resultClassification": "{{classification}}",
-            "interval": {
-              "startTime": "{{year}}-{{month:00}}-{{day:00}}T09:15:00Z",
-              "civilStartTime": { "date": { "year": {{year}}, "month": {{month}}, "day": {{day}} } }
-            }
-          }
-        }
-        """;
-
-    private static string EcgPage(params string[] points) =>
-        $$"""{ "dataPoints": [ {{string.Join(",", points)}} ] }""";
-
-    /// <summary>
-    /// Only the ATRIAL_FIBRILLATION member counts. The inconclusive results sitting beside it mean
-    /// the device declined to judge, and reading one as a positive finding would page a family
-    /// about a reading their own watch refused to call.
-    /// </summary>
-    [Fact]
-    public async Task GetRhythmDayAsync_CountsOnlyAtrialFibrillationClassifications()
-    {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/electrocardiogram/", EcgPage(
-                EcgPoint("ATRIAL_FIBRILLATION", 2026, 8, 5),
-                EcgPoint("INCONCLUSIVE_HIGH_HEART_RATE", 2026, 8, 5),
-                EcgPoint("NORMAL_SINUS_RHYTHM", 2026, 8, 5)))
-            .Map("/dataTypes/irregular-rhythm-notification/", """{ "dataPoints": [] }""");
-
-        var (sut, _) = CreateSut(handler);
-        var result = await ((IDeviceApiClient)sut).GetRhythmDayAsync("token", new DateOnly(2026, 8, 5));
-
-        Assert.Equal(3, result.EcgReadings);
-        Assert.Equal(1, result.EcgAtrialFibrillationReadings);
-    }
-
-    /// <summary>
-    /// ECG's filter admits no upper bound, so the response legitimately carries later readings and
-    /// the walk has to place each one on the wearer's civil day itself. A reading from the next day
-    /// belongs to the next day's count, not to this one.
-    /// </summary>
-    [Fact]
-    public async Task GetRhythmDayAsync_CountsOnlyTheRequestedCivilDay()
-    {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/electrocardiogram/", EcgPage(
-                EcgPoint("ATRIAL_FIBRILLATION", 2026, 8, 6),
-                EcgPoint("NORMAL_SINUS_RHYTHM", 2026, 8, 5),
-                EcgPoint("ATRIAL_FIBRILLATION", 2026, 8, 4)))
-            .Map("/dataTypes/irregular-rhythm-notification/", """{ "dataPoints": [] }""");
-
-        var (sut, _) = CreateSut(handler);
-        var result = await ((IDeviceApiClient)sut).GetRhythmDayAsync("token", new DateOnly(2026, 8, 5));
-
-        Assert.Equal(1, result.EcgReadings);
-        Assert.Equal(0, result.EcgAtrialFibrillationReadings);
-    }
-
-    /// <summary>
-    /// The waveform is thirty seconds of voltages per reading and CardiTrack neither stores nor
-    /// shows one, so the request must not ask for it. A partial-response selector that named it —
-    /// or no selector at all — would move diagnostic-grade PHI across the wire to be discarded.
-    /// </summary>
-    [Fact]
-    public async Task GetRhythmDayAsync_NeverRequestsTheEcgWaveform()
-    {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/electrocardiogram/", EcgPage(EcgPoint("NORMAL_SINUS_RHYTHM", 2026, 8, 5)))
-            .Map("/dataTypes/irregular-rhythm-notification/", """{ "dataPoints": [] }""");
-
-        var (sut, _) = CreateSut(handler);
-        await ((IDeviceApiClient)sut).GetRhythmDayAsync("token", new DateOnly(2026, 8, 5));
-
-        var query = Uri.UnescapeDataString(handler.Requests
-            .Single(r => r.RequestUri!.AbsolutePath.Contains("electrocardiogram", StringComparison.Ordinal))
-            .RequestUri!.Query);
-        Assert.Contains("fields=", query, StringComparison.Ordinal);
-        Assert.Contains("resultClassification", query, StringComparison.Ordinal);
-        Assert.DoesNotContain("waveformSamples", query, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task GetRhythmDayAsync_CountsNotifications_NotTheirAnalysisWindows()
-    {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/electrocardiogram/", EcgPage())
-            .Map("/dataTypes/irregular-rhythm-notification/", """
-                {
-                  "dataPoints": [
-                    {
-                      "irregularRhythmNotification": {
-                        "interval": { "startTime": "2026-08-05T14:00:00Z" },
-                        "alertWindows": [ { "positive": true }, { "positive": true } ]
-                      }
-                    }
-                  ]
-                }
-                """);
-
-        var (sut, _) = CreateSut(handler);
-        var result = await ((IDeviceApiClient)sut).GetRhythmDayAsync("token", new DateOnly(2026, 8, 5));
-
-        Assert.Equal(1, result.IrregularRhythmNotifications);
-    }
-
-    /// <summary>
-    /// A connection made before the rhythm scopes shipped gets a 403, which is a fact about the
-    /// grant rather than a broken sync. It must come back null and not zero: "the watch raised
-    /// nothing" and "we cannot see what the watch raised" are opposite claims to a family.
-    /// </summary>
-    [Fact]
-    public async Task GetRhythmDayAsync_ReturnsNullCounts_WhenTheScopeWasNeverGranted()
-    {
-        var handler = new RoutedFakeHttpHandler()
-            .Map("/dataTypes/electrocardiogram/", """{ "error": { "code": 403 } }""", HttpStatusCode.Forbidden)
-            .Map("/dataTypes/irregular-rhythm-notification/", """{ "error": { "code": 403 } }""", HttpStatusCode.Forbidden);
-
-        var (sut, _) = CreateSut(handler);
-        var result = await ((IDeviceApiClient)sut).GetRhythmDayAsync("token", new DateOnly(2026, 8, 5));
-
-        Assert.Null(result.EcgReadings);
-        Assert.Null(result.EcgAtrialFibrillationReadings);
-        Assert.Null(result.IrregularRhythmNotifications);
-        Assert.False(result.HasAnyData);
     }
 
     private static string SamplePage(

@@ -201,18 +201,6 @@ public class DashboardMetrics
     /// </summary>
     public DashboardMetric HeartRateVariability { get; set; } = new();
 
-    /// <summary>
-    /// Weight in kilograms, from a connected scale. Null-valued for the many members who have
-    /// none — the card is drawn from what arrived, and an absent reading is not a zero.
-    /// </summary>
-    public DashboardMetric Weight { get; set; } = new();
-
-    /// <summary>
-    /// The day's <em>lowest</em> blood-sugar reading in mg/dL, not its average, against the
-    /// published target range. The low is the reading that matters most and the one an average
-    /// hides; the alert chart plots the same figure for the same reason.
-    /// </summary>
-    public DashboardMetric BloodGlucose { get; set; } = new();
 }
 
 public class DashboardMetric

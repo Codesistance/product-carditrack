@@ -379,8 +379,7 @@ public class HealthInsightService : IHealthInsightService
               // is a yardstick the model would try to use.
               (baseline.AvgHeartRateVariabilityMs is { } hrv
                   ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
-                  : string.Empty) +
-              (baseline.AvgWeightKg is { } weight ? $", Weight: {weight} kg" : string.Empty);
+                  : string.Empty);
 
         var recentSummary = MedicalPromptBlocks.DailyLines(recentLogs, take: 3, today);
 
@@ -447,7 +446,6 @@ public class HealthInsightService : IHealthInsightService
             (b.AvgHeartRateVariabilityMs is { } hrv
                 ? $", HRV: {hrv}±{b.StdDevHeartRateVariability} ms overnight"
                 : string.Empty) +
-            (b.AvgWeightKg is { } weight ? $", Weight: {weight} kg" : string.Empty) +
             SleepWindow(b));
 
         return $"""

@@ -28,15 +28,6 @@ public enum ChartMetricKind
     /// <summary>Overnight heart rate variability (RMSSD), in milliseconds.</summary>
     HeartRateVariability = 4,
 
-    /// <summary>Weight in kilograms, from a connected scale.</summary>
-    Weight = 5,
-
-    /// <summary>
-    /// The day's lowest blood-sugar reading, in mg/dL — the same figure the dashboard card and the
-    /// alert chart plot, so a caregiver who asks about it in chat is shown the series they already
-    /// know from the other two surfaces.
-    /// </summary>
-    BloodGlucose = 6,
 }
 
 /// <summary>

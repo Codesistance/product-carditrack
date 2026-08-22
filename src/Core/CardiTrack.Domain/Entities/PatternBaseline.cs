@@ -33,11 +33,6 @@ public class PatternBaseline : BaseEntity
     public decimal? MedianHeartRateVariabilityMs { get; set; }
     public decimal? MadHeartRateVariability { get; set; }
 
-    // Body Baseline Metrics. The weight alert judges short-window gain rather than a departure
-    // from this figure — fluid retention shows up over days, not against a month's average — but
-    // the summaries need a "their usual" to put a reading beside.
-    public decimal? AvgWeightKg { get; set; }
-
     // Sleep Baseline Metrics
     public int? AvgSleepMinutes { get; set; }
     public int? MedianSleepMinutes { get; set; }

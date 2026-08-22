@@ -10,10 +10,6 @@ public class DeviceDatasetsTests
         "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly";
     private const string SleepScope =
         "https://www.googleapis.com/auth/googlehealth.sleep.readonly";
-    private const string EcgScope =
-        "https://www.googleapis.com/auth/googlehealth.ecg.readonly";
-    private const string IrnScope =
-        "https://www.googleapis.com/auth/googlehealth.irn.readonly";
 
     [Fact]
     public void For_GoogleHealthScopes_ReturnsDatasetsNotScopeUris()
@@ -24,7 +20,7 @@ public class DeviceDatasetsTests
             ["Steps", "Distance", "Active Minutes", "Floors", "Calories",
              "Heart Rate", "Resting HR", "HRV",
              "Sleep", "Sleep Stages",
-             "Weight", "SpO2", "VO2 Max", "Breathing Rate", "Temperature", "Blood Sugar"],
+             "SpO2", "VO2 Max", "Breathing Rate", "Temperature"],
             datasets.Select(d => d.Name));
     }
 
@@ -38,40 +34,26 @@ public class DeviceDatasetsTests
              DatasetFamily.Activity, DatasetFamily.Activity,
              DatasetFamily.Heart, DatasetFamily.Heart, DatasetFamily.Heart,
              DatasetFamily.Sleep, DatasetFamily.Sleep,
-             DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body,
-             DatasetFamily.Body, DatasetFamily.Body],
+             DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body, DatasetFamily.Body],
             datasets.Select(d => d.Family));
     }
 
     // Issue #82 added four body readings under health_metrics_and_measurements; the 2026-08 sweep
-    // added HRV, weight and blood sugar to the same bundle. All of them earn pills by the rule
-    // every other pill follows — name what we actually pull. The three newest reuse the existing
-    // Heart and Body families, so the row gains names but no new visual vocabulary.
+    // added HRV to the same bundle. All of them earn pills by the rule every other pill follows —
+    // name what we actually pull. HRV reuses the existing Heart family, so the row gains a name
+    // but no new visual vocabulary.
     [Fact]
     public void For_MetricsScope_NamesTheBodyReadingsTheClientNowIngests()
     {
         var datasets = DeviceDatasets.For([MetricsScope]);
 
         Assert.Equal(
-            ["Heart Rate", "Resting HR", "HRV", "Weight", "SpO2", "VO2 Max", "Breathing Rate",
-             "Temperature", "Blood Sugar"],
+            ["Heart Rate", "Resting HR", "HRV", "SpO2", "VO2 Max", "Breathing Rate", "Temperature"],
             datasets.Select(d => d.Name));
         Assert.All(
-            datasets.Where(d => d.Name is "SpO2" or "VO2 Max" or "Breathing Rate" or "Temperature"
-                or "Weight" or "Blood Sugar"),
+            datasets.Where(d => d.Name is "SpO2" or "VO2 Max" or "Breathing Rate" or "Temperature"),
             d => Assert.Equal(DatasetFamily.Body, d.Family));
         Assert.Equal(DatasetFamily.Heart, datasets.Single(d => d.Name == "HRV").Family);
-    }
-
-    // The two rhythm bundles are read by the client, so they are named rather than humanised — and
-    // both land in Heart, where a card that already shows heart rate gains no extra pill for them.
-    [Fact]
-    public void For_RhythmScopes_AreNamedDatasetsInTheHeartFamily()
-    {
-        var datasets = DeviceDatasets.For([EcgScope, IrnScope]);
-
-        Assert.Equal(["ECG", "Irregular Rhythm"], datasets.Select(d => d.Name));
-        Assert.All(datasets, d => Assert.Equal(DatasetFamily.Heart, d.Family));
     }
 
     [Fact]
@@ -134,12 +116,10 @@ public class DeviceDatasetsTests
     [Fact]
     public void For_UnknownScopeWithAnAcronym_KeepsTheAcronymUppercase()
     {
-        // "hrv" is a mapped bundle name no longer, but the acronym table still has to carry any
-        // unmapped scope that contains one — here the provider's ECG bundle under a spelling this
-        // mapping does not know.
-        var datasets = DeviceDatasets.For(["googlehealth.ecg_history.readonly", "HEALTH_API"]);
+        var datasets = DeviceDatasets.For(
+            ["https://www.googleapis.com/auth/googlehealth.ecg.readonly", "HEALTH_API"]);
 
-        Assert.Equal(["ECG History", "Health API"], datasets.Select(d => d.Name));
+        Assert.Equal(["ECG", "Health API"], datasets.Select(d => d.Name));
     }
 
     [Fact]
@@ -182,19 +162,7 @@ public class DeviceDatasetsTests
             [DatasetFamily.Activity, DatasetFamily.Heart, DatasetFamily.Sleep, DatasetFamily.Body],
             groups.Select(g => g.Family));
         Assert.Equal(["Activity", "Heart", "Sleep", "Body"], groups.Select(g => g.Label));
-        Assert.Equal([5, 3, 2, 6], groups.Select(g => g.Count));
-    }
-
-    // The bound the family row exists for: granting both rhythm scopes on top of a full grant adds
-    // two named datasets and not one pill, because Heart is already on the card.
-    [Fact]
-    public void GroupedFor_RhythmScopes_AddNoPillToACardThatAlreadyShowsHeart()
-    {
-        var without = DeviceDatasets.GroupedFor([ActivityScope, MetricsScope, SleepScope]);
-        var with = DeviceDatasets.GroupedFor([ActivityScope, MetricsScope, SleepScope, EcgScope, IrnScope]);
-
-        Assert.Equal(without.Count, with.Count);
-        Assert.Equal(without.Sum(g => g.Datasets.Count) + 2, with.Sum(g => g.Datasets.Count));
+        Assert.Equal([5, 3, 2, 4], groups.Select(g => g.Count));
     }
 
     // The body readings under health_metrics_and_measurements cost one pill between them, not one
@@ -208,7 +176,7 @@ public class DeviceDatasetsTests
         Assert.Equal(3, withoutBody.Count);
         Assert.Equal(4, withBody.Count);
         Assert.Equal(9, withoutBody.Sum(g => g.Datasets.Count));
-        Assert.Equal(16, withBody.Sum(g => g.Datasets.Count));
+        Assert.Equal(14, withBody.Sum(g => g.Datasets.Count));
     }
 
     [Fact]
@@ -249,7 +217,7 @@ public class DeviceDatasetsTests
 
         Assert.Equal("Heart Rate · Resting HR · HRV",
             Assert.Single(groups, g => g.Family == DatasetFamily.Heart).Detail);
-        Assert.Equal("Weight · SpO2 · VO2 Max · Breathing Rate · Temperature · Blood Sugar",
+        Assert.Equal("SpO2 · VO2 Max · Breathing Rate · Temperature",
             Assert.Single(groups, g => g.Family == DatasetFamily.Body).Detail);
     }
 

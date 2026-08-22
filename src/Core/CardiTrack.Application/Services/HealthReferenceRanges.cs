@@ -85,20 +85,6 @@ public static class HealthReferenceRanges
     public static MetricReference BreathingRate => new() { Low = 12m, High = 20m, Source = "WHO" };
 
     /// <summary>
-    /// The ADA's general glycaemic target range for adults, 70–180 mg/dL — the "time in range"
-    /// band, in the mg/dL the provider reports in.
-    /// </summary>
-    /// <remarks>
-    /// A band to draw against, not a threshold to alert on: a person managing their diabetes
-    /// normally strays outside it several times a week, and
-    /// <see cref="StatisticalAlertRules.HypoglycaemiaMgDl"/> / <c>HyperglycaemiaMgDl</c> sit well
-    /// outside it for exactly that reason. Note this is one band for adults with diabetes; a
-    /// member without diabetes whose meter data arrives anyway will sit inside it comfortably,
-    /// which is the harmless direction to be wrong in.
-    /// </remarks>
-    public static MetricReference BloodGlucose => new() { Low = 70m, High = 180m, Source = "ADA" };
-
-    /// <summary>
     /// There is deliberately no heart-rate-variability range here. Overnight RMSSD spans an order
     /// of magnitude between healthy adults and falls steeply with age, and no body publishes an
     /// adult band for it — so HRV is drawn against the member's own learned baseline alone
