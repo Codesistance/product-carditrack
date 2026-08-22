@@ -106,9 +106,7 @@ public partial class StatusHeroCard : ContentView
     private void ApplyPendingQuestionnaire(QuestionnaireResponse? pending)
     {
         var hasPending = pending is not null;
-        QaBorder.IsVisible = hasPending;
-        QaBadge.IsVisible = hasPending;
-        QaPulseRing.IsVisible = hasPending;
+        QaCluster.IsVisible = hasPending;
 
         if (!hasPending)
         {
@@ -126,7 +124,7 @@ public partial class StatusHeroCard : ContentView
 
     /// <summary>
     /// Same construction as <see cref="PendingBotIndicator"/>'s breathing ring, scaled to stay
-    /// inside the button's own 36x36 bounds rather than growing past them — this button sits in a
+    /// inside QaCluster's own 42x42 bounds rather than growing past them — this button sits in a
     /// row with Alerts right beside it, with no room for a ring to spill into.
     /// </summary>
     private void StartQaPulse()
@@ -140,7 +138,7 @@ public partial class StatusHeroCard : ContentView
             { 0.00, 0.50, new Animation(v => QaPulseRing.Scale = v, 0.9, 1.05, Easing.SinInOut) },
             { 0.50, 1.00, new Animation(v => QaPulseRing.Scale = v, 1.05, 0.9, Easing.SinInOut) },
         };
-        pulse.Commit(this, QaPulseAnimation, length: 1400, repeat: () => IsLoaded && QaBorder.IsVisible);
+        pulse.Commit(this, QaPulseAnimation, length: 1400, repeat: () => IsLoaded && QaCluster.IsVisible);
     }
 
     private void StopQaPulse()
