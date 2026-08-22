@@ -25,7 +25,7 @@ namespace CardiTrack.Infrastructure.ExternalClients.Medical;
 /// tag or exception message produced by this class. Token counts, durations, model names,
 /// status codes and JSON error positions are the only telemetry payload.
 /// </summary>
-public class MedGemmaClient : IExternalAiClient
+public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
 {
     private const string ProviderName = "ollama";
 
@@ -107,6 +107,41 @@ public class MedGemmaClient : IExternalAiClient
     }
 
     /// <summary>
+    /// Loads the model without asking it for anything — Ollama's documented preload: a
+    /// <c>/api/generate</c> with an empty prompt returns as soon as the weights are resident,
+    /// with <c>done_reason: "load"</c> and no completion.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It goes through the same instrumented path as every other call on purpose: a warm-up is
+    /// the one request whose whole point is how long it takes, so it belongs on the same span and
+    /// duration metric as the calls it exists to make faster — filterable by
+    /// <c>gen_ai.operation.name = warm_up</c>. Empty content is the success shape here rather
+    /// than the "the model answered with nothing" warning it is everywhere else, which is what
+    /// <c>allowEmptyContent</c> says.
+    /// </para>
+    /// <para>
+    /// One attempt, unlike every other operation. <see cref="MaxAttempts"/> exists for a caller
+    /// who needs an answer; this one does not. Worse, the service admits a single request at a
+    /// time, so a warm-up that retried a 429 would be queueing behind — and then ahead of — the
+    /// real calls it exists to speed up. And a 429 has already answered the only question a
+    /// warm-up asks: something is being served, so the model is loaded.
+    /// </para>
+    /// </remarks>
+    public async Task WarmUpAsync(CancellationToken ct = default)
+    {
+        var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = string.Empty };
+        await SendInstrumentedCoreAsync<OllamaGenerateResponse, string>(
+            operationName: "warm_up",
+            send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
+            selectContent: response => response.Response,
+            parseContent: content => content,
+            ct,
+            allowEmptyContent: true,
+            maxAttempts: 1);
+    }
+
+    /// <summary>
     /// The JSON Schema for <typeparamref name="T"/> is the single source of truth for two things
     /// at once: it is set as Ollama's <c>format</c> field (grammar-constrained decoding — the model
     /// cannot produce a token sequence outside the shape), and its text is appended to the prompt
@@ -181,12 +216,22 @@ public class MedGemmaClient : IExternalAiClient
     /// <see cref="GenerateStructuredWithUsageAsync{T}"/>) reads the same numbers the telemetry does,
     /// rather than a second, possibly-drifting parse of the same response.
     /// </summary>
+    /// <param name="allowEmptyContent">
+    /// Whether an empty completion is the expected shape. Only <see cref="WarmUpAsync"/> sets it:
+    /// everywhere else a model that answered with nothing is worth a warning.
+    /// </param>
+    /// <param name="maxAttempts">
+    /// How many times to send before giving up. Defaults to <see cref="MaxAttempts"/>; only
+    /// <see cref="WarmUpAsync"/> lowers it, for the reason given there.
+    /// </param>
     private async Task<(TResult Result, CardiTrack.Application.DTOs.Common.AiUsage Usage)> SendInstrumentedCoreAsync<TResponse, TResult>(
         string operationName,
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
         Func<TResponse, string?> selectContent,
         Func<string, TResult> parseContent,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool allowEmptyContent = false,
+        int maxAttempts = MaxAttempts)
         where TResponse : OllamaResponseMetadata
     {
         using var activity = AiTelemetry.Source.StartActivity(
@@ -201,7 +246,7 @@ public class MedGemmaClient : IExternalAiClient
         try
         {
             var client = _httpClientFactory.CreateClient(_httpClientName);
-            var body = await SendWithRetryAsync(client, send, operationName, stopwatch, ct);
+            var body = await SendWithRetryAsync(client, send, operationName, stopwatch, maxAttempts, ct);
             // Lenient parse on purpose: the strict JsonUtility.Deserialize throws a
             // JsonDeserializationException whose message embeds a 1000-char payload preview —
             // for MedGemma that preview is model output derived from health data, so it must
@@ -237,7 +282,7 @@ public class MedGemmaClient : IExternalAiClient
                 AiTelemetry.TokenUsage.Record(outputTokens, TokenTags(operationName, "output"));
             }
 
-            if (string.IsNullOrEmpty(content))
+            if (string.IsNullOrEmpty(content) && !allowEmptyContent)
             {
                 _logger.LogWarning(
                     "MedGemma {Operation} returned empty content (done_reason {DoneReason})",
@@ -291,8 +336,8 @@ public class MedGemmaClient : IExternalAiClient
     }
 
     /// <summary>
-    /// Sends the request, retrying a non-success response up to <see cref="MaxAttempts"/> times
-    /// with a backoff sized by what the rejection means — see <see cref="BackoffFor"/>. Only the
+    /// Sends the request, retrying a non-success response up to <paramref name="maxAttempts"/>
+    /// times with a backoff sized by what the rejection means — see <see cref="BackoffFor"/>. Only the
     /// HTTP outcome is retried — a 200 with an unparseable body is the model having already
     /// answered, not a transport blip, so that path still fails on the first attempt, and a
     /// client-side timeout is terminal for the reasons <see cref="SendOnceAsync"/> gives.
@@ -307,6 +352,7 @@ public class MedGemmaClient : IExternalAiClient
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
         string operationName,
         Stopwatch stopwatch,
+        int maxAttempts,
         CancellationToken ct)
     {
         for (var attempt = 1; ; attempt++)
@@ -319,13 +365,13 @@ public class MedGemmaClient : IExternalAiClient
                     _logger.LogWarning(
                         "MedGemma {Operation} succeeded on attempt {Attempt} of {MaxAttempts} "
                         + "after a transient failure.",
-                        operationName, attempt, MaxAttempts);
+                        operationName, attempt, maxAttempts);
                 }
                 return await response.Content.ReadAsStringAsync(ct);
             }
 
             var statusCode = response.StatusCode;
-            if (attempt >= MaxAttempts)
+            if (attempt >= maxAttempts)
             {
                 _logger.LogError(
                     "MedGemma {Operation} failed: HTTP {StatusCode} after {ElapsedMs} ms ({Attempts} attempt(s))",

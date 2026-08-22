@@ -114,6 +114,14 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         GetAsync<AdviseResponse>($"api/v1/insights/members/{cardiMemberId}/advise", ct);
 
     /// <summary>
+    /// The one call in this client whose answer nobody reads. It returns 202 the moment the API
+    /// has noted the arrival, so it needs no special timeout and gets the default: the model load
+    /// it may start happens on the server, long after this has returned.
+    /// </summary>
+    public Task PrepareAssistantAsync(CancellationToken ct = default) =>
+        SendNoDataAsync(HttpMethod.Post, "api/v1/assistant/prepare", ct);
+
+    /// <summary>
     /// How long a member-chat send may run before the app hangs up. The clinical read is the one
     /// call in this chain that can't move off the self-hosted MedGemma instance, so this has to
     /// outlast that call's own server-side ceiling — AI:Private:TimeoutSeconds (900s as of the

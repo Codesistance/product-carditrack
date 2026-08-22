@@ -27,6 +27,28 @@ public class PrivateAiSettings : IMedGemmaModelSettings
     // request waits on a generation and the budget has nothing left to protect.
 
     /// <summary>
+    /// Whether an arriving caregiver may trigger a model load ahead of their first question —
+    /// see <c>MedGemmaWarmUpService</c>. On by default: the deployed service runs at
+    /// <c>min_instance_count = 0</c>, so without this the first interactive call after an idle
+    /// spell waits ~54 s for the weights to be read off disk
+    /// (docs/technical/medgemma_serving_architecture.md §9.1a).
+    /// </summary>
+    /// <remarks>
+    /// A switch rather than a constant because the cost is real and asymmetric: warming is what
+    /// keeps the GPU instance up, and an environment that would rather pay the wait than the
+    /// seconds — or one whose model is local and loads instantly — turns it off with one variable.
+    /// </remarks>
+    public bool WarmUpEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Floor on how often one host will actually issue a warm-up, however many arrivals ask for
+    /// one. Five minutes: long enough that a burst of morning app-opens costs a single load,
+    /// short enough to stay well inside Cloud Run's idle scale-in, so a caregiver who comes back
+    /// after a gap still finds the instance warm.
+    /// </summary>
+    public int WarmUpMinimumIntervalSeconds { get; set; } = 300;
+
+    /// <summary>
     /// Whether to attach a Google-minted OIDC identity token to every MedGemma request, with the
     /// audience set to <see cref="BaseUrl"/>. Required in dev/prod: the Cloud Run service authorises
     /// callers by IAM (<c>roles/run.invoker</c>) rather than by network position, and rejects an

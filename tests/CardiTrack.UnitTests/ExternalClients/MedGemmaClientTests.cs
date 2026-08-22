@@ -65,6 +65,91 @@ public class MedGemmaClientTests
         Assert.Contains("chest pain at night", request.Body);
     }
 
+    /// <summary>What Ollama answers a prompt-less /api/generate with: nothing generated, the
+    /// load timed, and <c>done_reason: "load"</c> instead of a stop reason.</summary>
+    private const string LoadPayload =
+        """
+        {"model":"medgemma-4b","created_at":"2026-08-22T09:00:00Z","response":"",
+         "done":true,"done_reason":"load","total_duration":54000000000,"load_duration":53900000000}
+        """;
+
+    [Fact]
+    public async Task WarmUpAsync_PostsAnEmptyPromptToApiGenerate()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, LoadPayload);
+        var client = CreateClient(handler, out _);
+
+        await client.WarmUpAsync();
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/generate", request.Uri?.AbsolutePath);
+        Assert.Contains($"\"model\":\"{Model}\"", request.Body);
+        // The empty prompt is the whole instruction: Ollama loads the model and generates
+        // nothing. Anything else here would be a health-data-free prompt still billed as one.
+        Assert.Contains("\"prompt\":\"\"", request.Body);
+    }
+
+    [Fact]
+    public async Task WarmUpAsync_DoesNotWarnThatTheModelAnsweredWithNothing()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, LoadPayload);
+        var client = CreateClient(handler, out var logger);
+
+        await client.WarmUpAsync();
+
+        // Empty content is this call's success shape, not the "returned empty content" warning
+        // every other operation earns for it.
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task WarmUpAsync_EmitsItsOwnOperationOnTheSharedSpan()
+    {
+        using var capture = new SpanCapture();
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, LoadPayload);
+        var client = CreateClient(handler, out _);
+
+        await client.WarmUpAsync();
+
+        var span = Assert.Single(capture.Stopped);
+        Assert.Equal($"warm_up {Model}", span.DisplayName);
+        Assert.Equal("warm_up", span.GetTagItem("gen_ai.operation.name"));
+        Assert.NotEqual(ActivityStatusCode.Error, span.Status);
+    }
+
+    /// <summary>
+    /// The one operation that does not retry. The service admits a single request at a time, so a
+    /// warm-up that re-sent a 429 would be queueing ahead of the real calls it exists to speed
+    /// up — and a 429 has already answered its only question: something is being served, so the
+    /// model is loaded.
+    /// </summary>
+    [Fact]
+    public async Task WarmUpAsync_DoesNotRetry_WhenTheServiceIsBusy()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.TooManyRequests, "")
+            .Enqueue(HttpStatusCode.OK, LoadPayload);
+        var client = CreateClient(handler, out _);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.WarmUpAsync());
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, ex.StatusCode);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_StillRetries_WhenTheServiceIsBusy()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.TooManyRequests, "")
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _);
+
+        Assert.Equal(ResponseText, await client.GenerateAsync(Prompt));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
     [Fact]
     public async Task GenerateAsync_ReturnsTheResponseText()
     {

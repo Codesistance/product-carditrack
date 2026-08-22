@@ -184,6 +184,13 @@ public interface ICardiTrackApiClient
     Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
 
     /// <summary>
+    /// Tells the API a caregiver has arrived, so the medical model can be loaded before they get
+    /// as far as asking it something. Fire-and-forget: the server answers immediately whatever it
+    /// decides to do, and a failure costs nothing but the head start.
+    /// </summary>
+    Task PrepareAssistantAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Sends one member-chat message, auto-creating or continuing the caregiver's active session
     /// for this member. No Figma frame — as-built, see the design-sync backlog.
     /// </summary>

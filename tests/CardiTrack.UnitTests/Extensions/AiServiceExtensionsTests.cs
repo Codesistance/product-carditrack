@@ -1,8 +1,10 @@
 using CardiTrack.Application.Interfaces.Clients;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.ExternalClients.General;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.ExternalClients.Vertex;
+using CardiTrack.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -53,6 +55,56 @@ public class AiServiceExtensionsTests
         var client = Resolve(config).GetRequiredKeyedService<IExternalAiClient>("MedicalProvider");
 
         Assert.IsType<MedGemmaClient>(client);
+    }
+
+    /// <summary>
+    /// The warm-up seam has to land on the same client the next real call will use — a warm-up
+    /// that loaded some other model would be indistinguishable from one that worked, right up
+    /// until the caregiver waited the full minute anyway.
+    /// </summary>
+    [Fact]
+    public void AddAiServices_ResolvesTheWarmUpClient_ToTheMedicalProvider()
+    {
+        var provider = Resolve(Config());
+
+        var warmUp = provider.GetRequiredService<IAiWarmUpClient>();
+
+        Assert.Same(provider.GetRequiredKeyedService<IExternalAiClient>("MedicalProvider"), warmUp);
+    }
+
+    [Fact]
+    public void AddMedicalAiServices_RegistersTheWarmUpService_ForHostsWithOnlyThePrivateSlot()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(Config()).Build();
+        var provider = new ServiceCollection().AddLogging()
+            .AddMedicalAiServices(configuration).BuildServiceProvider();
+
+        Assert.IsType<MedGemmaWarmUpService>(provider.GetRequiredService<IAiWarmUpService>());
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenWarmUpIsOnWithNoInterval()
+    {
+        var config = Config();
+        config["AI:Private:WarmUpMinimumIntervalSeconds"] = "0";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI:Private:WarmUpMinimumIntervalSeconds", ex.Message);
+    }
+
+    /// <summary>
+    /// A stale zero left in a config that has warm-up switched off describes nothing, and
+    /// refusing to boot over it would be a failure with no reader.
+    /// </summary>
+    [Fact]
+    public void AddAiServices_IgnoresTheInterval_WhenWarmUpIsOff()
+    {
+        var config = Config();
+        config["AI:Private:WarmUpEnabled"] = "false";
+        config["AI:Private:WarmUpMinimumIntervalSeconds"] = "0";
+
+        Assert.NotNull(Resolve(config).GetRequiredService<IAiWarmUpService>());
     }
 
     // With no Kind configured the rewrite slot defaults to Ollama — the local-dev shape must

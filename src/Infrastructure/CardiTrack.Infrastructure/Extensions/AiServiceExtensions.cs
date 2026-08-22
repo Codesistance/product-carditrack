@@ -169,6 +169,22 @@ public static class AiServiceExtensions
 
         services.AddScoped<IMedicalAiService, MedicalAiService>();
 
+        // The warm-up seam, resolved from the medical slot rather than constructed again, so the
+        // model that gets loaded is by definition the one the next call will ask. The cast is
+        // checked by the compiler and holds because that slot is pinned to MedGemmaClient above;
+        // if the pin ever moves to a client with nothing to preload, this stops compiling, which
+        // is the right place to notice.
+        services.AddScoped<IAiWarmUpClient>(sp =>
+            (MedGemmaClient)sp.GetRequiredKeyedService<IExternalAiClient>("MedicalProvider"));
+
+        // Singleton: the "one at a time, and not again for a few minutes" guards are the whole
+        // point, and per-request state would enforce neither. It resolves the client through a
+        // scope of its own because the work outlives the request that asked for it.
+        services.AddSingleton<IAiWarmUpService>(sp => new MedGemmaWarmUpService(
+            sp.GetRequiredService<IServiceScopeFactory>(),
+            privateSettings,
+            sp.GetRequiredService<ILogger<MedGemmaWarmUpService>>()));
+
         // The Dashboard status line's batch generator — registered here so it travels with the
         // medical slot the same way the member-context composer does: the digest and assess
         // passes are its callers, and any host that can run them can regenerate the line.
@@ -296,6 +312,15 @@ public static class AiServiceExtensions
         RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.BaseUrl));
 
         RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.PrivateSectionName, settings.BaseUrl, settings.UseIdentityToken);
+
+        // Only when it is on: a zero left behind in a config that has warm-up disabled describes
+        // nothing and should not cost anyone a failed boot. When it is on, the value is both the
+        // debounce and the warm-up's own deadline, and neither has a sane reading at zero.
+        if (settings.WarmUpEnabled)
+        {
+            RequirePositive(settings.WarmUpMinimumIntervalSeconds, ConfigurationKeys.AI.PrivateSectionName,
+                nameof(PrivateAiSettings.WarmUpMinimumIntervalSeconds));
+        }
 
         return settings;
     }
