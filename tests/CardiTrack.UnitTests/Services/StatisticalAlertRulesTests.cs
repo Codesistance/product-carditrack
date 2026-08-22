@@ -641,7 +641,8 @@ public class StatisticalAlertRulesTests
         Assert.Equal(AlertType.Inactivity, candidate.Type);
         Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
         Assert.Contains("\"rule\":\"daytime_inactivity_block\"", candidate.MetricValues);
-        Assert.Contains("13:15", candidate.Message);
+        // The clock time is deliberately not in the message — see the copy test below.
+        Assert.Contains("4.3 hours", candidate.Message);
     }
 
     // Three hours is ordinary — a nap, a long film, an afternoon in a chair.
@@ -670,5 +671,56 @@ public class StatisticalAlertRulesTests
     public void DaytimeInactivityBlock_StaysSilent_WhenTheDeviceRecordedNoIntervals()
     {
         Assert.Null(StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(120), StretchLog(null)));
+    }
+
+    // ── Markers and copy, across the rules added in this sweep ───────────────────────────
+
+    /// <summary>
+    /// Every rule that names the day it judged must stamp it under `night`, which is the key
+    /// <c>AlertRuleMarkers.HasNight</c> reads. Stamping only `day` left the per-night dedup falling
+    /// back to per-firing-day, so a night whose data landed after local midnight could alert twice
+    /// — the exact case <c>NightOf</c> exists to prevent.
+    /// </summary>
+    [Fact]
+    public void EveryRuleThatNamesANight_StampsItWhereTheDedupLooks()
+    {
+        var candidates = new[]
+        {
+            StatisticalAlertRules.HeartRateVariabilityDrop(
+                HrvBaseline(),
+                HrvLog(new DateOnly(2026, 8, 10), 31m),
+                HrvLog(new DateOnly(2026, 8, 9), 33m)),
+            StatisticalAlertRules.OvernightBreathingUp(BreathingBaseline(), BreathingLog(15.2m)),
+            StatisticalAlertRules.ElevatedZoneWithoutMovement(
+                Baseline(), ZoneLog(steps: 1200, moderate: 30)),
+            StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(120), StretchLog(260)),
+        };
+
+        Assert.All(candidates, candidate =>
+        {
+            Assert.NotNull(candidate);
+            Assert.NotNull(candidate!.NightOf);
+            Assert.Contains(
+                $"\"night\":\"{candidate.NightOf!.Value:O}\"", candidate.MetricValues);
+        });
+    }
+
+    /// <summary>
+    /// No clock time in copy a caregiver reads. The rules layer has no timezone, so any time it
+    /// named would be UTC — and a caregiver cannot tell an afternoon in a chair from the small
+    /// hours that way. The instant stays in the metrics for the detail screen to localise.
+    /// </summary>
+    [Fact]
+    public void TheInactivityAlert_NamesNoClockTime_ButKeepsTheInstantInItsMetrics()
+    {
+        var startedAt = new DateTime(2026, 8, 9, 13, 15, 0, DateTimeKind.Utc);
+
+        var candidate = StatisticalAlertRules.DaytimeInactivityBlock(
+            StretchBaseline(120), StretchLog(260, startedAt));
+
+        Assert.NotNull(candidate);
+        Assert.DoesNotContain("UTC", candidate.Message);
+        Assert.DoesNotContain("13:15", candidate.Message);
+        Assert.Contains(startedAt.ToString("O"), candidate.MetricValues);
     }
 }

@@ -1662,6 +1662,41 @@ public class GoogleHealthApiClientTests
     }
 
     /// <summary>
+    /// A nap and a night both produce a summary on the same civil day. The night is the earlier
+    /// stamp — a sleep session is stamped when it ended, in the morning — and the API returns the
+    /// list newest-first, so taking the first element takes the nap. Ordering is compared here
+    /// rather than trusted.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_TakesTheNightsSummary_NotTheAfternoonNaps()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/respiratory-rate-sleep-summary/", """
+                {
+                  "dataPoints": [
+                    {
+                      "respiratoryRateSleepSummary": {
+                        "sampleTime": { "physicalTime": "2026-08-05T15:10:00Z" },
+                        "fullSleepStats": { "breathsPerMinute": 18.9 }
+                      }
+                    },
+                    {
+                      "respiratoryRateSleepSummary": {
+                        "sampleTime": { "physicalTime": "2026-08-05T06:30:00Z" },
+                        "fullSleepStats": { "breathsPerMinute": 14.2 }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(14.2m, result.OvernightBreathingRate);
+    }
+
+    /// <summary>
     /// Zone durations are protobuf Durations ("1800s"), like sedentary-period — parsing them as
     /// bare numbers returns null on every wearer, which is indistinguishable from a still day.
     /// </summary>
@@ -1756,6 +1791,69 @@ public class GoogleHealthApiClientTests
         Assert.Equal(150, result.LongestSedentaryStretchMinutes);
         Assert.Equal(
             new DateTime(2026, 8, 5, 13, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// A sleeping wearer is a sedentary wearer and the civil day opens at midnight, so without the
+    /// sleep window the small hours are the longest unbroken sedentary run on almost every day —
+    /// and "Long daytime rest" becomes a rule about sleep.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ExcludesTheNightsSleep_FromTheLongestStretch()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T00:00:00Z", "2026-08-05T07:00:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T13:00:00Z", "2026-08-05T15:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var sleep = (
+            new DateTime(2026, 8, 4, 23, 15, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 5, 7, 0, 0, DateTimeKind.Utc));
+
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleep);
+
+        // The seven-hour run is the night; the afternoon's two hours is the day's longest rest.
+        Assert.Equal(120, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 13, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// An interval that spans the whole night keeps both of its daytime ends rather than being
+    /// dropped or collapsed to the longer one — an evening in a chair and a morning in one are
+    /// separate rests.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_KeepsBothDaytimeEnds_OfAnIntervalSpanningTheNight()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T19:00:00Z", "2026-08-06T09:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var sleep = (
+            new DateTime(2026, 8, 5, 22, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 6, 7, 0, 0, DateTimeKind.Utc));
+
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleep);
+
+        // Three hours before the night and two after it. The evening end is reported — which it
+        // could not be if the split dropped everything before the sleep window — and the nine
+        // hours in between are gone.
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 19, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
     }
 
     /// <summary>

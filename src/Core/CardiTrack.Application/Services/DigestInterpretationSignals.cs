@@ -120,7 +120,7 @@ public static class DigestInterpretationSignals
             return;
 
         var quiet = IsQuiet(baseline, log, complete, localNow);
-        var raised = RaisedVitals(baseline, log);
+        var raised = RaisedVitals(baseline, log, complete);
 
         if (quiet && raised.Count > 0)
         {
@@ -167,7 +167,15 @@ public static class DigestInterpretationSignals
     /// prompt — above for heart rate and breathing, below for oxygen and heart rate variability.
     /// Empty when nothing is off.
     /// </summary>
-    public static IReadOnlyList<string> RaisedVitals(PatternBaseline baseline, ActivityLog log)
+    /// <param name="complete">
+    /// Whether the day is over. Only the findings that read a *running total* care: the
+    /// elevated-zone pairing weighs raised minutes against the day's steps, and both accumulate,
+    /// so on a day in progress it would read a morning walk against a morning's step count and
+    /// call it effort without movement. The overnight and per-reading findings are settled figures
+    /// and are stated either way — see <see cref="IsQuiet"/>, which draws the same line.
+    /// </param>
+    public static IReadOnlyList<string> RaisedVitals(
+        PatternBaseline baseline, ActivityLog log, bool complete = true)
     {
         var parts = new List<string>();
         var usualResting = baseline.AvgRestingHeartRate;
@@ -223,8 +231,10 @@ public static class DigestInterpretationSignals
 
         // Named here even though the still-day pairing below would also catch it, because the
         // pairing reads "quiet day" from steps alone: a heart that worked while the steps stayed
-        // low is the case where a quiet day is not a restful one.
-        if (StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, log) is not null
+        // low is the case where a quiet day is not a restful one. Finished days only — see the
+        // `complete` parameter.
+        if (complete
+            && StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, log) is not null
             && BaselineCalculator.ElevatedZoneMinutes(log) is { } elevated)
         {
             parts.Add($"{elevated} minutes with their heart rate raised, on a day of little movement");

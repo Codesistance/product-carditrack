@@ -32,7 +32,8 @@ public class DigestInterpretationSignalsTests
         int? avgHr = null,
         decimal? spo2 = null,
         decimal? breathing = null,
-        int? sleepMinutes = null) => new()
+        int? sleepMinutes = null,
+        int? moderateZoneMinutes = null) => new()
     {
         Date = date,
         Steps = steps,
@@ -41,6 +42,7 @@ public class DigestInterpretationSignalsTests
         SpO2Average = spo2,
         BreathingRate = breathing,
         SleepMinutes = sleepMinutes,
+        ModerateZoneMinutes = moderateZoneMinutes,
     };
 
     /// <summary>
@@ -296,5 +298,37 @@ public class DigestInterpretationSignalsTests
         {
             CultureInfo.CurrentCulture = original;
         }
+    }
+
+    /// <summary>
+    /// The elevated-zone finding weighs raised minutes against the day's steps, and both are
+    /// running totals — so on a day still in progress it would read a morning walk against a
+    /// morning's step count and call it effort without movement. It is stated for finished days
+    /// only, the same line <see cref="DigestInterpretationSignals.IsQuiet"/> draws.
+    /// </summary>
+    [Fact]
+    public void TheElevatedZoneFinding_IsHeldBack_WhileTheDayIsStillRunning()
+    {
+        var partial = Log(Today, steps: 900, moderateZoneMinutes: 30);
+
+        var duringTheDay = DigestInterpretationSignals.RaisedVitals(Baseline(), partial, complete: false);
+        var onceFinished = DigestInterpretationSignals.RaisedVitals(Baseline(), partial, complete: true);
+
+        Assert.DoesNotContain(duringTheDay, line => line.Contains("heart rate raised"));
+        Assert.Contains(onceFinished, line => line.Contains("heart rate raised"));
+    }
+
+    // The whole section, as the digest builds it: a morning with a walk behind it must not tell a
+    // family their heart worked on a day of little movement — the day has barely started.
+    [Fact]
+    public void Section_SaysNothingAboutEffortWithoutMovement_InTheMorning()
+    {
+        var section = DigestInterpretationSignals.Section(
+            Baseline(),
+            today: Log(Today, steps: 900, moderateZoneMinutes: 30),
+            yesterday: Log(Yesterday, steps: 6100),
+            localNow: Morning);
+
+        Assert.DoesNotContain("heart rate raised", section);
     }
 }

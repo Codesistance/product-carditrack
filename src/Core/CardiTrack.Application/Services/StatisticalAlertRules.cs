@@ -365,6 +365,10 @@ public static class StatisticalAlertRules
             {
                 rule = HeartRateVariabilityDropRule,
                 day = lastNight.Date.ToString("O"),
+                // The key AlertRuleMarkers.HasNight reads. `day` alone left every rule below
+                // deduping per firing day, so a night whose data landed after local midnight could
+                // alert twice — the exact case NightOf exists to prevent.
+                night = lastNight.Date.ToString("O"),
                 heartRateVariabilityMs = latest,
                 previousNightHeartRateVariabilityMs = previous,
                 baselineAvgHeartRateVariabilityMs = average,
@@ -416,6 +420,7 @@ public static class StatisticalAlertRules
             {
                 rule = OvernightBreathingUpRule,
                 day = lastNight.Date.ToString("O"),
+                night = lastNight.Date.ToString("O"),
                 overnightBreathingRate = breathing,
                 baselineAvgOvernightBreathingRate = average,
                 marginPerMinute = Math.Round(margin, 1),
@@ -469,6 +474,7 @@ public static class StatisticalAlertRules
             {
                 rule = ElevatedZoneWithoutMovementRule,
                 day = yesterday.Date.ToString("O"),
+                night = yesterday.Date.ToString("O"),
                 elevatedZoneMinutes = elevated,
                 baselineAvgElevatedZoneMinutes = baseline.AvgElevatedZoneMinutes,
                 thresholdMinutes = threshold,
@@ -508,9 +514,6 @@ public static class StatisticalAlertRules
         if (stretch <= threshold)
             return null;
 
-        var startedAt = yesterday.LongestSedentaryStretchStartUtc is { } start
-            ? $", from about {start:HH\\:mm} UTC"
-            : string.Empty;
         var usualClause = usual is > 0
             ? $" — their usual longest is about {Hours(usual.Value)}"
             : string.Empty;
@@ -518,13 +521,18 @@ public static class StatisticalAlertRules
         return new StatisticalAlertCandidate(
             DaytimeInactivityBlockRule, AlertType.Inactivity, AlertSeverity.Yellow,
             "A long stretch without moving",
-            $"They went about {Hours(stretch)} without moving at all yesterday{startedAt}"
+            // No clock time in this copy. The instant is stored in the metrics below for the
+            // detail screen, which knows the member's timezone; naming it here would have to name
+            // it in UTC, and a caregiver cannot tell an afternoon in a chair from the small hours
+            // that way.
+            $"They went about {Hours(stretch)} without moving at all yesterday"
             + $"{usualClause}. A long unbroken rest is not the same as a quiet day — worth asking "
             + "whether they were comfortable, and whether anything kept them in the chair.",
             Serialize(new
             {
                 rule = DaytimeInactivityBlockRule,
                 day = yesterday.Date.ToString("O"),
+                night = yesterday.Date.ToString("O"),
                 longestSedentaryStretchMinutes = stretch,
                 baselineAvgLongestSedentaryStretchMinutes = usual,
                 thresholdMinutes = threshold,
