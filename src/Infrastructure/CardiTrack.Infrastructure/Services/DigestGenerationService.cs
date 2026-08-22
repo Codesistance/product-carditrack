@@ -1152,7 +1152,18 @@ public partial class DigestGenerationService : IDigestGenerationService
 
             if (floorHolds
                 && !DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday)
-                && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday))
+                && !DigestRefreshRules.ReadingsJumpedFromPrevious(today, yesterday)
+                // Waived by a finding the device itself made — a rhythm notification, an ECG read
+                // as atrial fibrillation, a blood sugar outside the alerting thresholds. Listed
+                // separately from the divergence waiver because none of these needs a baseline, so
+                // this one also cuts through for a member still learning.
+                //
+                // Weight gain is deliberately not among them: it is measured over three to seven
+                // days, and this method holds two, so waiving on it would mean widening the
+                // fleet's half-hourly fetch fourfold to catch a signal that moves over days and
+                // loses nothing by waiting out an hour's floor. The alert engine still pages on it
+                // within fifteen minutes, and the next summary states it.
+                && !DigestRefreshRules.DeviceReportedAFinding(today, yesterday))
             {
                 return false;
             }
@@ -1315,6 +1326,13 @@ public partial class DigestGenerationService : IDigestGenerationService
             usuals.Add(string.Create(CultureInfo.InvariantCulture, $"a resting heart rate around {restingHr} bpm"));
         if (baseline.AvgSleepMinutes is { } sleepMinutes)
             usuals.Add($"about {Hours(sleepMinutes)} hours of sleep a night");
+        if (baseline.AvgHeartRateVariabilityMs is { } hrv)
+        {
+            usuals.Add(string.Create(
+                CultureInfo.InvariantCulture, $"overnight heart rate variability around {hrv:0.#} ms"));
+        }
+        if (baseline.AvgWeightKg is { } weight)
+            usuals.Add(string.Create(CultureInfo.InvariantCulture, $"a weight around {weight:0.#} kg"));
         if (usuals.Count == 0)
             return string.Empty;
 

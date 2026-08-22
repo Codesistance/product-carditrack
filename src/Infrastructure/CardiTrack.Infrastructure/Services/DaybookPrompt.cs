@@ -49,7 +49,7 @@ internal static class DaybookPrompt
         """ + MedicalPromptBlocks.JournalRegister + """
         Past tense throughout: this day has finished and nothing in it is still accumulating.
         Do not quote a figure that is not in the readings below, and do not round one that is.
-        Cover the day's sleep, heart, oxygen and breathing, movement, and body — in that order, and only where each was measured.
+        Cover the day's sleep, heart (including anything their device made of the rhythm), oxygen and breathing, movement, and body — in that order, and only where each was measured.
         The hour-by-hour readings are the day's own record: use them to say when in the day things happened, and quote only figures that appear in them.
         Where a reading was not measured, say so plainly and move on; never let a missing reading read as a reassuring one.
         Where their own usual is given, say where the reading sat against it. Where a published band is given, say where the reading sat against that too, and name who publishes it.
@@ -148,7 +148,7 @@ internal static class DaybookPrompt
         AppendHeart(sb, log, baseline);
         AppendOxygenAndBreathing(sb, log);
         AppendMovement(sb, log, baseline);
-        AppendBody(sb, log);
+        AppendBody(sb, log, baseline);
 
         return sb.ToString().TrimEnd();
     }
@@ -225,6 +225,57 @@ internal static class DaybookPrompt
             span.Add($"highest={max}bpm");
         if (span.Count > 0)
             sb.Append("  across the day: ").AppendLine(string.Join(", ", span));
+
+        if (log.HeartRateVariabilityMs is { } hrv)
+        {
+            // No published band, so no Band() clause — their own usual is the only yardstick HRV
+            // has (see HealthReferenceRanges.NoHeartRateVariabilityBand).
+            sb.Append("  overnightVariability=")
+              .Append(Decimal1(hrv)).Append("ms")
+              .Append(UsualDecimal(baseline?.AvgHeartRateVariabilityMs, v => Decimal1(v) + "ms"))
+              .AppendLine();
+        }
+
+        AppendRhythm(sb, log);
+    }
+
+    /// <summary>
+    /// What the device itself found in the heartbeat: notifications it raised unprompted, and ECG
+    /// readings the wearer took.
+    /// </summary>
+    /// <remarks>
+    /// Stated only when there is something to state — and, where there is, stated as the device's
+    /// finding rather than the day's. A day with no rhythm event gets no line at all, because a
+    /// "no atrial fibrillation today" line invites a paragraph reassuring the family about
+    /// something nobody raised; and the columns are null rather than zero for every member whose
+    /// connection predates the rhythm scopes, so a printed zero would be untrue as often as not.
+    /// <para>
+    /// ECG readings that came back normal <em>are</em> named, unlike the absence of a reading:
+    /// the wearer taking an ECG is itself a fact about their day — usually that something prompted
+    /// them to — and a normal result is the reassuring half of it.
+    /// </para>
+    /// </remarks>
+    private static void AppendRhythm(StringBuilder sb, ActivityLog log)
+    {
+        var parts = new List<string>();
+
+        if (log.IrregularRhythmNotifications is > 0 and { } notifications)
+            parts.Add($"irregularRhythmNotificationsRaisedByTheirWatch={notifications}");
+
+        if (log.EcgReadings is > 0 and { } readings)
+        {
+            var afib = log.EcgAtrialFibrillationReadings ?? 0;
+            parts.Add(afib > 0
+                ? $"ecgReadingsTheyRecorded={readings} (of which classified atrial fibrillation by the device: {afib})"
+                : $"ecgReadingsTheyRecorded={readings} (none classified atrial fibrillation)");
+        }
+
+        if (parts.Count == 0)
+            return;
+
+        sb.AppendLine("  what their device made of the rhythm:");
+        foreach (var part in parts)
+            sb.Append("    ").AppendLine(part);
     }
 
     private static void AppendOxygenAndBreathing(StringBuilder sb, ActivityLog log)
@@ -287,7 +338,7 @@ internal static class DaybookPrompt
     /// absolute figure is a wrist measurement and reads as a fever to anyone who takes it for a
     /// core temperature, which is the single most misreadable number the watch produces.
     /// </summary>
-    private static void AppendBody(StringBuilder sb, ActivityLog log)
+    private static void AppendBody(StringBuilder sb, ActivityLog log, PatternBaseline? baseline)
     {
         var parts = new List<string>();
 
@@ -303,6 +354,30 @@ internal static class DaybookPrompt
             parts.Add($"stressScore={stress} (0-100, from the device's own model)");
         if (log.VO2Max is { } vo2)
             parts.Add(string.Create(CultureInfo.InvariantCulture, $"vo2Max={vo2:0.#}"));
+        if (log.WeightKg is { } weight)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"weight={weight:0.#}kg{UsualDecimal(baseline?.AvgWeightKg, v => Decimal1(v) + "kg")}"));
+        }
+
+        // Given as the day's range rather than its average, and against the published band, for
+        // the same reason the alert reads the lowest reading: an average of a high morning and a
+        // low afternoon is a number that happened to nobody.
+        if (log.BloodGlucoseMin is { } glucoseLow && log.BloodGlucoseMax is { } glucoseHigh)
+        {
+            var band = HealthReferenceRanges.BloodGlucose;
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"bloodSugar={glucoseLow:0.#}-{glucoseHigh:0.#}mg/dL")
+                + Band(band.Low, band.High, "mg/dL", band.Source));
+        }
+        else if (log.BloodGlucoseAverage is { } glucose)
+        {
+            var band = HealthReferenceRanges.BloodGlucose;
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"bloodSugar={glucose:0.#}mg/dL")
+                + Band(band.Low, band.High, "mg/dL", band.Source));
+        }
 
         if (parts.Count == 0)
             return;
@@ -324,6 +399,14 @@ internal static class DaybookPrompt
     /// yardstick, not an empty one the model will try to fill.
     /// </summary>
     private static string Usual(int? average, Func<int, string> format) =>
+        average is { } value ? $" (their usual {format(value)})" : string.Empty;
+
+    /// <summary>
+    /// The decimal counterpart of <see cref="Usual(int?, Func{int, string})"/>, for the baselines
+    /// stored to two places — HRV in milliseconds and weight in kilograms, both of which are read
+    /// as differences of a unit or less.
+    /// </summary>
+    private static string UsualDecimal(decimal? average, Func<decimal, string> format) =>
         average is { } value ? $" (their usual {format(value)})" : string.Empty;
 
     private static string UsualTime(string label, TimeOnly? time) =>

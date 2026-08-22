@@ -74,7 +74,38 @@ public static class DigestRefreshRules
             // the severity that grading would put on the divergence is not part of the question.
             || StatisticalAlertRules.SleepDepartsFromBaseline(baseline, today)
             || StatisticalAlertRules.ElevatedHeartRate(baseline, yesterday) is not null
-            || StatisticalAlertRules.ElevatedHeartRate(baseline, today) is not null;
+            || StatisticalAlertRules.ElevatedHeartRate(baseline, today) is not null
+            // Sleep-derived like the night it comes from, so last night's HRV lives on today's row
+            // and the night before on yesterday's — the pair the drop rule reads.
+            || StatisticalAlertRules.HeartRateVariabilityDrop(baseline, today, yesterday) is not null;
+    }
+
+    /// <summary>
+    /// True when the device itself found something today or yesterday that a family summary must
+    /// not be an hour late in mentioning: a rhythm notification, an ECG classified as atrial
+    /// fibrillation, a blood-sugar reading outside the alerting thresholds, or a rapid weight gain.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="ReadingsDivergeFromBaseline"/> because none of these needs a
+    /// baseline to be true, and a member still inside their learning window is exactly the one
+    /// whose summary would otherwise say nothing about the ECG their watch flagged this morning.
+    /// The alert engine pages about all four independently; this is about the summary agreeing
+    /// with the page, which is the same reason every other rule here is borrowed rather than
+    /// invented.
+    /// </remarks>
+    public static bool DeviceReportedAFinding(
+        ActivityLog? today, ActivityLog? yesterday, IReadOnlyDictionary<DateOnly, ActivityLog>? recentDays = null)
+    {
+        if (StatisticalAlertRules.EcgAtrialFibrillation(today, yesterday) is not null
+            || StatisticalAlertRules.IrregularRhythm(today, yesterday) is not null
+            || StatisticalAlertRules.BloodSugarOutOfRange(today, yesterday) is not null)
+        {
+            return true;
+        }
+
+        return recentDays is not null
+            && today is not null
+            && StatisticalAlertRules.RapidWeightGain(recentDays, today.Date) is not null;
     }
 
     /// <summary>

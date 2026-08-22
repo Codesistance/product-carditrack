@@ -7,9 +7,15 @@ namespace CardiTrack.Mobile.Core.Devices;
 /// pulls from that device, for the pills on the M1-15 device card.
 /// </summary>
 /// <remarks>
-/// A scope is a permission, not a promise: <c>health_metrics_and_measurements</c> also covers HRV,
-/// which <c>GoogleHealthApiClient</c> does not fetch, so it gets no pill. The pills say what the card can
-/// show, not what Google would let us ask for.
+/// A scope is a permission, not a promise: a bundle earns a name here only where
+/// <c>GoogleHealthApiClient</c> actually reads it, so the pills say what the card can show rather
+/// than what Google would let us ask for.
+/// <para>
+/// HRV, weight and blood sugar joined <c>health_metrics_and_measurements</c> in the 2026-08 sweep,
+/// and ECG and irregular-rhythm notifications arrived with scopes of their own. HRV therefore now
+/// gets a pill where the remark below once said it could not: the test has not changed, the client
+/// has — it fetches all five. Weight keeps the name the legacy Fitbit mapping already gave it.
+/// </para>
 /// <para>
 /// SpO2, VO2 max, breathing rate and body temperature are named here because
 /// <c>GoogleHealthApiClient</c> now ingests all four under <c>health_metrics_and_measurements</c>, which
@@ -29,11 +35,15 @@ public static class DeviceDatasets
     private const string Calories = "Calories";
     private const string HeartRate = "Heart Rate";
     private const string RestingHeartRate = "Resting HR";
+    private const string HeartRateVariability = "HRV";
+    private const string Ecg = "ECG";
+    private const string IrregularRhythm = "Irregular Rhythm";
     private const string Weight = "Weight";
     private const string Spo2 = "SpO2";
     private const string Vo2Max = "VO2 Max";
     private const string BreathingRate = "Breathing Rate";
     private const string Temperature = "Temperature";
+    private const string BloodSugar = "Blood Sugar";
     private const string Sleep = "Sleep";
     private const string SleepStages = "Sleep Stages";
     private const string Profile = "Profile";
@@ -53,6 +63,9 @@ public static class DeviceDatasets
         new(Calories, DatasetFamily.Activity),
         new(HeartRate, DatasetFamily.Heart),
         new(RestingHeartRate, DatasetFamily.Heart),
+        new(HeartRateVariability, DatasetFamily.Heart),
+        new(Ecg, DatasetFamily.Heart),
+        new(IrregularRhythm, DatasetFamily.Heart),
         new(Sleep, DatasetFamily.Sleep),
         new(SleepStages, DatasetFamily.Sleep),
         new(Weight, DatasetFamily.Body),
@@ -60,6 +73,7 @@ public static class DeviceDatasets
         new(Vo2Max, DatasetFamily.Body),
         new(BreathingRate, DatasetFamily.Body),
         new(Temperature, DatasetFamily.Body),
+        new(BloodSugar, DatasetFamily.Body),
         new(Profile, DatasetFamily.Other),
     ];
 
@@ -73,8 +87,15 @@ public static class DeviceDatasets
         // Google Health API (https://www.googleapis.com/auth/googlehealth.<bundle>.readonly)
         ["activity_and_fitness"] = [Steps, Distance, ActiveMinutes, Floors, Calories],
         ["health_metrics_and_measurements"] =
-            [HeartRate, RestingHeartRate, Spo2, Vo2Max, BreathingRate, Temperature],
+            [HeartRate, RestingHeartRate, HeartRateVariability, Spo2, Vo2Max, BreathingRate,
+             Temperature, Weight, BloodSugar],
         ["sleep"] = [Sleep, SleepStages],
+
+        // The two rhythm bundles, each its own scope. They earn pills on the same test as every
+        // other name here — GoogleHealthApiClient reads both — and both land in the Heart family,
+        // so a device that shares them adds no pill to a card that already shows one.
+        ["ecg"] = [Ecg],
+        ["irn"] = [IrregularRhythm],
 
         // Legacy Fitbit Web API
         ["activity"] = [Steps, Distance, ActiveMinutes, Floors, Calories],

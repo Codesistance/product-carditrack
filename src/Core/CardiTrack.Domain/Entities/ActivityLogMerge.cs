@@ -70,7 +70,20 @@ public static class ActivityLogMerge
             BreathingRate = First(rowsByPriority, r => r.BreathingRate),
             Temperature = First(rowsByPriority, r => r.Temperature),
             TemperatureBaseline = First(rowsByPriority, r => r.TemperatureBaseline),
-            TemperatureVariation = First(rowsByPriority, r => r.TemperatureVariation)
+            TemperatureVariation = First(rowsByPriority, r => r.TemperatureVariation),
+
+            HeartRateVariabilityMs = First(rowsByPriority, r => r.HeartRateVariabilityMs),
+            WeightKg = First(rowsByPriority, r => r.WeightKg),
+            BloodGlucoseAverage = First(rowsByPriority, r => r.BloodGlucoseAverage),
+            BloodGlucoseMin = First(rowsByPriority, r => r.BloodGlucoseMin),
+            BloodGlucoseMax = First(rowsByPriority, r => r.BloodGlucoseMax),
+
+            // Coalesced like every other metric, not summed: two devices on the same wrist-day
+            // both see the same episode, so adding their counts would report one notification as
+            // two. The highest-priority device that could see rhythm data at all wins the day.
+            EcgReadings = First(rowsByPriority, r => r.EcgReadings),
+            EcgAtrialFibrillationReadings = First(rowsByPriority, r => r.EcgAtrialFibrillationReadings),
+            IrregularRhythmNotifications = First(rowsByPriority, r => r.IrregularRhythmNotifications)
         };
     }
 

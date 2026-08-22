@@ -38,7 +38,15 @@ public record DeviceHealthSnapshot(
     decimal? BreathingRate = null,
     decimal? Temperature = null,
     decimal? TemperatureBaseline = null,
-    decimal? TemperatureVariation = null
+    decimal? TemperatureVariation = null,
+    // Body and autonomic metrics. HRV comes off the wearable itself; weight and blood glucose
+    // arrive from a connected scale or meter through the same provider account, so they are null
+    // for any wearer without that kit — a fact about their hardware, never a failed read.
+    decimal? HeartRateVariabilityMs = null,
+    decimal? WeightKg = null,
+    decimal? BloodGlucoseAverage = null,
+    decimal? BloodGlucoseMin = null,
+    decimal? BloodGlucoseMax = null
 )
 {
     /// <summary>
@@ -56,5 +64,7 @@ public record DeviceHealthSnapshot(
         LightSleepMinutes is not null || RemSleepMinutes is not null || AwakeMinutes is not null ||
         SpO2Average is not null || SpO2Min is not null || SpO2Max is not null ||
         VO2Max is not null || StressScore is not null || BreathingRate is not null ||
-        Temperature is not null || TemperatureBaseline is not null || TemperatureVariation is not null;
+        Temperature is not null || TemperatureBaseline is not null || TemperatureVariation is not null ||
+        HeartRateVariabilityMs is not null || WeightKg is not null ||
+        BloodGlucoseAverage is not null || BloodGlucoseMin is not null || BloodGlucoseMax is not null;
 }

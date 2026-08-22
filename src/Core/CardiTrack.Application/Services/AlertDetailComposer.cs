@@ -41,6 +41,14 @@ public static class AlertDetailComposer
     public const int HeartRateDays = 7;
     public const int SleepDays = 14;
 
+    /// <summary>
+    /// Windows for the body readings. Both are longer than the heart-rate window because both are
+    /// sparse by nature — someone weighs themselves or tests their blood sugar on the days they
+    /// remember to, and a seven-day window around a gap would draw two points and a lot of white.
+    /// </summary>
+    public const int WeightDays = 21;
+    public const int GlucoseDays = 14;
+
     /// <summary>Cap on minute-grain points so a long realtime window still plots as a line.</summary>
     public const int GranularMaxPoints = 90;
 
@@ -77,6 +85,17 @@ public static class AlertDetailComposer
         StatisticalAlertRules.IrregularSleepRule => SleepDays,
         StatisticalAlertRules.ActivityDeclineRule => ActivityDays,
         StatisticalAlertRules.NoMorningActivityRule => ActivityDays,
+        StatisticalAlertRules.HeartRateVariabilityDropRule => HeartRateDays,
+        StatisticalAlertRules.RapidWeightGainRule => WeightDays,
+        StatisticalAlertRules.BloodSugarOutOfRangeRule => GlucoseDays,
+        // The two rhythm rules plot nothing, deliberately. Their finding is an event, not a
+        // series, and the only daily series that could be drawn beside it — resting heart rate —
+        // is routinely unremarkable during atrial fibrillation. A flat, ordinary-looking line
+        // under "an ECG came back as atrial fibrillation" would read as reassurance the reading
+        // does not support, which is the same trap the journal prompts guard against when they
+        // refuse to let a missing reading read as a good one.
+        StatisticalAlertRules.IrregularRhythmRule => 0,
+        StatisticalAlertRules.EcgAtrialFibrillationRule => 0,
         DeviceSilenceRule => 0,
         RealtimeHeartRateRule => 0,
         // A markerless Inactivity row is the old device-silence producer; don't fetch steps.
@@ -323,7 +342,16 @@ public static class AlertDetailComposer
         StatisticalAlertRules.ActivityDeclineRule
             or StatisticalAlertRules.NoMorningActivityRule
             or StatisticalAlertRules.LongTermTrendRule => AlertReasons.Activity,
-        StatisticalAlertRules.ElevatedHeartRateRule or RealtimeHeartRateRule => AlertReasons.Heart,
+        StatisticalAlertRules.ElevatedHeartRateRule
+            or RealtimeHeartRateRule
+            or StatisticalAlertRules.HeartRateVariabilityDropRule
+            or StatisticalAlertRules.IrregularRhythmRule
+            or StatisticalAlertRules.EcgAtrialFibrillationRule => AlertReasons.Heart,
+        // Weight and blood sugar take the catch-all rather than a reason of their own: the reason
+        // picks a hand-authored icon on the detail screen, and inventing an id with no artwork
+        // behind it would render as the monitoring icon anyway, minus the honesty.
+        StatisticalAlertRules.RapidWeightGainRule
+            or StatisticalAlertRules.BloodSugarOutOfRangeRule => AlertReasons.Monitoring,
         StatisticalAlertRules.IrregularSleepRule => AlertReasons.Sleep,
         DeviceSilenceRule => AlertReasons.Device,
         _ => type switch
@@ -332,7 +360,7 @@ public static class AlertDetailComposer
             // it is about the watch having gone quiet, not about the wearer having slowed down.
             AlertType.Inactivity when rule is null => AlertReasons.Device,
             AlertType.Inactivity or AlertType.Trend => AlertReasons.Activity,
-            AlertType.HeartRate => AlertReasons.Heart,
+            AlertType.HeartRate or AlertType.Rhythm => AlertReasons.Heart,
             AlertType.Sleep => AlertReasons.Sleep,
             _ => AlertReasons.Monitoring,
         },
@@ -349,7 +377,90 @@ public static class AlertDetailComposer
             StatisticalAlertRules.IrregularSleepRule => SleepComparison(metrics, baseline),
             StatisticalAlertRules.NoMorningActivityRule => NoMorningComparison(metrics, baseline),
             RealtimeHeartRateRule => RealtimeHeartComparison(metrics, baseline),
+            StatisticalAlertRules.HeartRateVariabilityDropRule
+                => HeartRateVariabilityComparison(metrics, baseline, today, aboutDate),
+            StatisticalAlertRules.RapidWeightGainRule => WeightComparison(metrics, today, aboutDate),
+            StatisticalAlertRules.BloodSugarOutOfRangeRule => BloodSugarComparison(metrics, today, aboutDate),
+            // The rhythm rules compare nothing, for the same reason they chart nothing: there is
+            // no "usual" number of atrial fibrillation findings to sit one beside.
             _ => null,
+        };
+    }
+
+    private static AlertComparisonResponse? HeartRateVariabilityComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
+    {
+        var current = ReadDecimal(metrics, "heartRateVariabilityMs");
+        var usual = ReadDecimal(metrics, "baselineAvgHeartRateVariabilityMs")
+            ?? baseline?.AvgHeartRateVariabilityMs;
+        if (current is null && usual is null)
+            return null;
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Last night",
+            CurrentValue = current is { } hrv ? $"{hrv:0.#} ms" : "—",
+            NormalLabel = "Usual night",
+            NormalValue = usual is { } avg ? $"{avg:0.#} ms" : "—",
+            ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
+        };
+    }
+
+    /// <summary>
+    /// Weight against the earlier weighing the rule measured from — not against the member's
+    /// monthly average. The alert is about a change over days, and the average of a month that
+    /// includes the gain would understate exactly the number the family needs to see.
+    /// </summary>
+    private static AlertComparisonResponse? WeightComparison(
+        JsonElement metrics, DateOnly today, DateOnly aboutDate)
+    {
+        var current = ReadDecimal(metrics, "weightKg");
+        var previous = ReadDecimal(metrics, "fromWeightKg");
+        if (current is null && previous is null)
+            return null;
+
+        var fromDay = ReadDateOnly(metrics, "fromDay");
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Latest",
+            CurrentValue = current is { } weight ? $"{weight:0.#} kg" : "—",
+            NormalLabel = fromDay is { } from ? DayLabel(from, today) ?? $"{from:d MMM}" : "Earlier",
+            NormalValue = previous is { } was ? $"{was:0.#} kg" : "—",
+            ChangeLabel = ReadDecimal(metrics, "gainKg") is { } gain
+                ? $"{gain:0.#} kg heavier"
+                : ChangeLabel(current, previous, "before"),
+            ChangePercent = ChangePercent(current, previous),
+        };
+    }
+
+    /// <summary>
+    /// The reading that fired against the edge of the target band it crossed — the published
+    /// figure, not a personal average, because blood sugar is judged against thresholds rather
+    /// than against what this member usually runs.
+    /// </summary>
+    private static AlertComparisonResponse? BloodSugarComparison(
+        JsonElement metrics, DateOnly today, DateOnly aboutDate)
+    {
+        var low = ReadDecimal(metrics, "bloodGlucoseMin");
+        var high = ReadDecimal(metrics, "bloodGlucoseMax");
+        var isLow = low is { } lowest && lowest < StatisticalAlertRules.HypoglycaemiaMgDl;
+        var current = isLow ? low : high;
+        if (current is null)
+            return null;
+
+        var band = HealthReferenceRanges.BloodGlucose;
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Today",
+            CurrentValue = $"{current:0.#} mg/dL",
+            NormalLabel = "Target range",
+            NormalValue = $"{band.Low:0}–{band.High:0} mg/dL",
+            ChangeLabel = isLow
+                ? $"{band.Low - current:0.#} mg/dL below the range"
+                : $"{current - band.High:0.#} mg/dL above the range",
+            ChangePercent = null,
         };
     }
 
@@ -510,6 +621,26 @@ public static class AlertDetailComposer
                     l => Hours(l.SleepMinutes),
                     Hours(baseline?.AvgSleepMinutes) ?? Hours(ReadDecimal(metrics, "baselineAvgSleepMinutes")),
                     reference: SleepReference(metrics, member, today)),
+
+            StatisticalAlertRules.HeartRateVariabilityDropRule
+                => DailyChart(
+                    "heartRateVariability", "Heart Rate Variability", "ms", HeartRateDays, today, logs,
+                    l => l.HeartRateVariabilityMs,
+                    baseline?.AvgHeartRateVariabilityMs
+                        ?? ReadDecimal(metrics, "baselineAvgHeartRateVariabilityMs")),
+
+            StatisticalAlertRules.RapidWeightGainRule
+                => DailyChart(
+                    "weight", "Weight", "kg", WeightDays, today, logs,
+                    l => l.WeightKg, baseline?.AvgWeightKg),
+
+            // The day's lowest reading, not its average: the low is what the alert is about on the
+            // side that matters most, and an average would hide the very reading that fired it.
+            StatisticalAlertRules.BloodSugarOutOfRangeRule
+                => DailyChart(
+                    "bloodGlucose", "Blood Sugar", "mg/dL", GlucoseDays, today, logs,
+                    l => l.BloodGlucoseMin, baseline: null,
+                    reference: HealthReferenceRanges.BloodGlucose),
 
             RealtimeHeartRateRule => GranularHeartChart(granular, baseline?.AvgRestingHeartRate),
 

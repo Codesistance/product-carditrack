@@ -196,6 +196,39 @@ public static class MemberInsightsCalculator
             series: BuildSeries(byDate, today, l => l.BreathingRate),
             reference: HealthReferenceRanges.BreathingRate);
 
+        // HRV does compare against a learned baseline, unlike the two above: there is no published
+        // adult band to draw instead (see HealthReferenceRanges), so the member's own overnight
+        // usual is the only honest comparison — and it is a good one, which is why the drop rule
+        // alerts on it. BuildMetric's shared percent thresholds suit it: a fall of a third from
+        // someone's own overnight usual is a real change at any absolute level.
+        var latestHrv = LatestWith(newestFirst, l => l.HeartRateVariabilityMs);
+        var heartRateVariability = BuildMetric(
+            value: latestHrv?.HeartRateVariabilityMs,
+            baselineValue: baseline?.AvgHeartRateVariabilityMs,
+            unit: "ms",
+            series: BuildSeries(byDate, today, l => l.HeartRateVariabilityMs));
+
+        // Weight against their own usual, with no published band: what a healthy weight is for a
+        // given person is a clinical judgement about their height, frailty and history, and
+        // printing a population band beside an 82-year-old's weight would invite a family to read
+        // one. What the card is for is the direction of travel.
+        var latestWeight = LatestWith(newestFirst, l => l.WeightKg);
+        var weight = BuildMetric(
+            value: latestWeight?.WeightKg,
+            baselineValue: baseline?.AvgWeightKg,
+            unit: "kg",
+            series: BuildSeries(byDate, today, l => l.WeightKg));
+
+        // The day's lowest reading, plotted against the published target range — the same choice
+        // the alert chart makes, and for the same reason: a day's average hides the low.
+        var latestGlucose = LatestWith(newestFirst, l => l.BloodGlucoseMin ?? l.BloodGlucoseAverage);
+        var bloodGlucose = BuildMetric(
+            value: latestGlucose?.BloodGlucoseMin ?? latestGlucose?.BloodGlucoseAverage,
+            baselineValue: null,
+            unit: "mg/dL",
+            series: BuildSeries(byDate, today, l => l.BloodGlucoseMin ?? l.BloodGlucoseAverage),
+            reference: HealthReferenceRanges.BloodGlucose);
+
         return new DashboardMetrics
         {
             Steps = steps,
@@ -204,6 +237,9 @@ public static class MemberInsightsCalculator
             Temperature = temperature,
             SpO2 = spO2,
             BreathingRate = breathingRate,
+            HeartRateVariability = heartRateVariability,
+            Weight = weight,
+            BloodGlucose = bloodGlucose,
         };
     }
 

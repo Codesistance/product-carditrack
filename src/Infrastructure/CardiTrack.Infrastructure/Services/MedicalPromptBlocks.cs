@@ -851,6 +851,30 @@ internal static partial class MedicalPromptBlocks
         if (log.BreathingRate is { } breathing)
             parts.Add(string.Create(CultureInfo.InvariantCulture, $"breathing={breathing:0.#}/min"));
 
+        if (log.HeartRateVariabilityMs is { } hrv)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"HRV={hrv:0.#}ms"));
+        if (log.WeightKg is { } weight)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"weight={weight:0.#}kg"));
+        if (log.BloodGlucoseMin is { } glucoseLow && log.BloodGlucoseMax is { } glucoseHigh)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"bloodSugar(mg/dL)={glucoseLow:0.#}-{glucoseHigh:0.#}"));
+        }
+        else if (log.BloodGlucoseAverage is { } glucose)
+        {
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"bloodSugar={glucose:0.#}mg/dL"));
+        }
+
+        // Only ever stated when the device raised something. A zero on this line would be a
+        // reassurance the reader did not ask for, on a line whose every other figure is a
+        // measurement — and the difference between "the watch saw nothing" and "we cannot see what
+        // the watch saw" is not one a prompt line can carry without saying more than it is worth.
+        if (log.IrregularRhythmNotifications is > 0 and { } notifications)
+            parts.Add($"irregularRhythmNotifications={notifications}");
+        if (log.EcgAtrialFibrillationReadings is > 0 and { } afib)
+            parts.Add($"ecgReadingsClassifiedAFib={afib}");
+
         return string.Join(", ", parts);
     }
 

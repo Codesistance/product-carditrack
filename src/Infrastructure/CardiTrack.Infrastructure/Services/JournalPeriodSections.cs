@@ -55,7 +55,9 @@ internal static class JournalPeriodSections
         string label,
         Func<ActivityLog, T?> select,
         Func<decimal, string> format,
-        int? usual,
+        // decimal rather than int: HRV and weight keep two decimal places in the baseline, and
+        // widening here costs the integer baselines nothing (they convert implicitly).
+        decimal? usual,
         string? band,
         string periodNoun,
         Func<IReadOnlyList<(DateOnly Day, decimal Value)>, decimal, Func<decimal, string>, string?> standoutClause)

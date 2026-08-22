@@ -11,10 +11,11 @@ using NSubstitute.ExceptionExtensions;
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// Pins the engine's orchestration guarantees: no established baseline means total silence
-/// (provisional never alerts), cooldowns are scoped to the family's remedy — rule-scoped
-/// where remedies differ, type-scoped for the heart — and one day's data produces at most one
-/// alert per rule regardless of the 15-minute cadence.
+/// Pins the engine's orchestration guarantees: no established baseline silences every
+/// comparative rule (provisional never alerts) while leaving the measured device findings free to
+/// fire, cooldowns are scoped to the family's remedy — rule-scoped where remedies differ,
+/// type-scoped for the heart and for rhythm — and one day's data produces at most one alert per
+/// rule regardless of the 15-minute cadence.
 /// </summary>
 public class StatisticalAlertServiceTests
 {
@@ -98,12 +99,60 @@ public class StatisticalAlertServiceTests
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
-    // Provisional-never-alerts, enforced by what is fetched: no 30-day baseline, no rules —
-    // and no wasted reads.
+    // Provisional-never-alerts: no 30-day baseline, no comparative rule. The steps decline set up
+    // in the constructor is exactly such a rule, and it stays silent.
     [Fact]
-    public async Task NoEstablishedBaseline_MeansTotalSilence()
+    public async Task NoEstablishedBaseline_SilencesEveryComparativeRule()
     {
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    // ...but a finding the device itself made is not an inference about the member, so it does not
+    // wait on a month of their data. A member two weeks into wearing a watch that has just told
+    // them it saw atrial fibrillation is precisely who this must reach.
+    [Fact]
+    public async Task NoEstablishedBaseline_StillRaisesAMeasuredDeviceFinding()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        SetupLogs(new ActivityLog
+        {
+            CardiMemberId = _memberId,
+            Date = Yesterday,
+            EcgReadings = 1,
+            EcgAtrialFibrillationReadings = 1,
+        });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.AlertType == AlertType.Rhythm
+            && a.Severity == AlertSeverity.Red
+            && a.MetricValues!.Contains("\"rule\":\"ecg_afib\"")));
+    }
+
+    // Nothing enabled that could fire means no timezone resolution and no log read — the cheap
+    // path the engine has always had, now expressed as "neither family of rule is on" rather than
+    // "there is no baseline".
+    [Fact]
+    public async Task EveryRuleDisabled_MeansNoWastedReads()
+    {
+        var everyRule = string.Join(",", new[]
+        {
+            "activity_decline", "irregular_sleep", "elevated_heart_rate", "no_morning_activity",
+            "long_term_trend", "hrv_drop", "irregular_rhythm", "ecg_afib", "rapid_weight_gain",
+            "blood_sugar_out_of_range",
+        }.Select(r => $"\"{r}\""));
+        _alertPreferences.GetByCardiMemberIdAsync(_memberId).Returns(new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = $"[{everyRule}]",
+        });
 
         var raised = await CreateSut().EvaluateAsync(UtcNow);
 

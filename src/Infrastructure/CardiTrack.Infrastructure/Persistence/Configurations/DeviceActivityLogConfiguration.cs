@@ -61,6 +61,18 @@ public class DeviceActivityLogConfiguration : IEntityTypeConfiguration<DeviceAct
         builder.Property(a => a.TemperatureBaseline).HasColumnType("decimal(5,2)");
         builder.Property(a => a.TemperatureVariation).HasColumnType("decimal(5,2)");
 
+        // Body and autonomic metrics
+        builder.Property(a => a.HeartRateVariabilityMs).HasColumnType("decimal(6,1)");
+        builder.Property(a => a.WeightKg).HasColumnType("decimal(6,2)");
+        builder.Property(a => a.BloodGlucoseAverage).HasColumnType("decimal(6,1)");
+        builder.Property(a => a.BloodGlucoseMin).HasColumnType("decimal(6,1)");
+        builder.Property(a => a.BloodGlucoseMax).HasColumnType("decimal(6,1)");
+
+        // Rhythm events
+        builder.Property(a => a.EcgReadings);
+        builder.Property(a => a.EcgAtrialFibrillationReadings);
+        builder.Property(a => a.IrregularRhythmNotifications);
+
         builder.Property(a => a.CreatedDate)
             .IsRequired()
             .HasDefaultValueSql("NOW()");

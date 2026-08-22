@@ -15,6 +15,16 @@ public interface IDeviceApiClient
     Task<DeviceGranularDay> GetGranularDayAsync(string accessToken, DateOnly date);
 
     /// <summary>
+    /// One civil day's rhythm events — ECG readings the wearer took and irregular-rhythm
+    /// notifications their device raised on its own. Requires the provider's rhythm scopes
+    /// (<c>googlehealth.ecg.readonly</c> and <c>googlehealth.irn.readonly</c> on Google Health);
+    /// callers check the connection's granted scopes first, and implementations return
+    /// <see cref="DeviceRhythmDay.None"/> rather than throwing where a scope was never granted.
+    /// Every count is null for providers that expose no rhythm data at all.
+    /// </summary>
+    Task<DeviceRhythmDay> GetRhythmDayAsync(string accessToken, DateOnly date);
+
+    /// <summary>
     /// The wearer's public health-user id — the `users/{user}` segment webhook notifications and
     /// subscriptions are addressed by. Null when the provider does not expose one.
     /// </summary>

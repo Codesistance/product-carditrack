@@ -28,7 +28,14 @@ public class DaybookPromptTests
         decimal? spo2Max = null,
         decimal? breathing = null,
         decimal? temperature = null,
-        decimal? temperatureBaseline = null) => new()
+        decimal? temperatureBaseline = null,
+        decimal? hrv = null,
+        decimal? weight = null,
+        decimal? glucoseMin = null,
+        decimal? glucoseMax = null,
+        int? notifications = null,
+        int? ecgReadings = null,
+        int? ecgAfib = null) => new()
     {
         Date = Reviewed,
         Steps = steps,
@@ -46,6 +53,13 @@ public class DaybookPromptTests
         BreathingRate = breathing,
         Temperature = temperature,
         TemperatureBaseline = temperatureBaseline,
+        HeartRateVariabilityMs = hrv,
+        WeightKg = weight,
+        BloodGlucoseMin = glucoseMin,
+        BloodGlucoseMax = glucoseMax,
+        IrregularRhythmNotifications = notifications,
+        EcgReadings = ecgReadings,
+        EcgAtrialFibrillationReadings = ecgAfib,
     };
 
     private static PatternBaseline Baseline() => new()
@@ -56,6 +70,8 @@ public class DaybookPromptTests
         AvgRestingHeartRate = 58,
         AvgSleepMinutes = 246,
         AvgSleepEfficiency = 71,
+        AvgHeartRateVariabilityMs = 38.5m,
+        AvgWeightKg = 78.2m,
     };
 
     // ── The readings block ───────────────────────────────────────────────────
@@ -582,5 +598,71 @@ public class DaybookPromptTests
     {
         Assert.False(DaybookPrompt.ReadsLikeTheInstructions(
             "Dad slept 6.2 hours, noticeably more than his usual 4.1."));
+    }
+
+    // ── The readings added by the 2026-08 device-data sweep ──────────────────────
+
+    /// <summary>
+    /// HRV is given against their own overnight usual and against nothing else: no body publishes
+    /// an adult RMSSD band, so a bracketed recommendation here would be one we made up.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_GivesHeartRateVariability_AgainstTheirOwnUsualOnly()
+    {
+        var section = DaybookPrompt.ReadingsSection(Log(hrv: 26.4m), Baseline(), AdultAge);
+
+        Assert.Contains("overnightVariability=26.4ms (their usual 38.5ms)", section);
+        Assert.DoesNotContain("recommend", section.Split("overnightVariability")[1].Split('\n')[0]);
+    }
+
+    [Fact]
+    public void ReadingsSection_GivesWeightAndBloodSugar_InTheBodySection()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Log(weight: 80.4m, glucoseMin: 62m, glucoseMax: 188m), Baseline(), AdultAge);
+
+        Assert.Contains("weight=80.4kg (their usual 78.2kg)", section);
+        Assert.Contains("bloodSugar=62-188mg/dL [ADA recommend 70-180mg/dL]", section);
+    }
+
+    /// <summary>
+    /// The device's own rhythm findings are named as the device's, and a normal ECG is named too —
+    /// the wearer taking one is a fact about their day, and its result is the reassuring half.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_ReportsWhatTheDeviceMadeOfTheRhythm()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Log(notifications: 1, ecgReadings: 2, ecgAfib: 1), Baseline(), AdultAge);
+
+        Assert.Contains("what their device made of the rhythm:", section);
+        Assert.Contains("irregularRhythmNotificationsRaisedByTheirWatch=1", section);
+        Assert.Contains("ecgReadingsTheyRecorded=2 (of which classified atrial fibrillation by the device: 1)", section);
+    }
+
+    [Fact]
+    public void ReadingsSection_NamesANormalEcg_WithoutImplyingAFinding()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Log(ecgReadings: 1, ecgAfib: 0), Baseline(), AdultAge);
+
+        Assert.Contains("ecgReadingsTheyRecorded=1 (none classified atrial fibrillation)", section);
+    }
+
+    /// <summary>
+    /// A quiet day says nothing about rhythm at all. Printing "0 notifications" would invite a
+    /// paragraph reassuring the family about something nobody raised — and for every connection
+    /// made before the rhythm scopes shipped the count is null rather than zero anyway, so the
+    /// reassurance would be untrue as often as not.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_SaysNothingAboutRhythm_WhenTheDeviceRaisedNothing()
+    {
+        var quiet = DaybookPrompt.ReadingsSection(
+            Log(steps: 4200, notifications: 0, ecgReadings: 0), Baseline(), AdultAge);
+        var unreadable = DaybookPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
+
+        Assert.DoesNotContain("rhythm", quiet);
+        Assert.DoesNotContain("rhythm", unreadable);
     }
 }

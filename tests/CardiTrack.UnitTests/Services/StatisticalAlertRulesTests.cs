@@ -434,4 +434,243 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(StatisticalAlertRules.LongTermTrend(logs, Yesterday));
     }
+
+    // ── hrv_drop ─────────────────────────────────────────────────────────────────────────
+
+    private static PatternBaseline HrvBaseline(decimal average = 40m, decimal? stdDev = 2m) =>
+        new()
+        {
+            PeriodDays = 30,
+            AvgHeartRateVariabilityMs = average,
+            StdDevHeartRateVariability = stdDev,
+        };
+
+    private static ActivityLog HrvLog(DateOnly date, decimal? hrv) =>
+        new() { Date = date, HeartRateVariabilityMs = hrv };
+
+    /// <summary>
+    /// The floor is 15% of their own average, not 2σ, whenever 2σ is the smaller — a member whose
+    /// HRV barely moves night to night would otherwise be alerted over a millisecond.
+    /// </summary>
+    [Fact]
+    public void HeartRateVariabilityDrop_Fires_WhenBothNightsAreBelowTheProportionalFloor()
+    {
+        // 15% of 40 is 6, so the threshold is 34; 2σ is only 4.
+        var candidate = StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(),
+            HrvLog(new DateOnly(2026, 8, 10), 31m),
+            HrvLog(new DateOnly(2026, 8, 9), 33m));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.HeartRate, candidate.Type);
+        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        Assert.Contains("\"rule\":\"hrv_drop\"", candidate.MetricValues);
+        Assert.Equal(new DateOnly(2026, 8, 10), candidate.NightOf);
+    }
+
+    /// <summary>
+    /// Where the member's own variability is wide, 2σ takes over from the floor: 2×8 is 16, so a
+    /// night at 30 against a usual 40 is inside their ordinary range and says nothing.
+    /// </summary>
+    [Fact]
+    public void HeartRateVariabilityDrop_UsesTwoSigma_WhenItIsWiderThanTheFloor()
+    {
+        Assert.Null(StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(stdDev: 8m),
+            HrvLog(new DateOnly(2026, 8, 10), 30m),
+            HrvLog(new DateOnly(2026, 8, 9), 30m)));
+    }
+
+    // One low night is a late meal, a glass of wine or a bad night — not a signal.
+    [Fact]
+    public void HeartRateVariabilityDrop_StaysSilent_OnASingleLowNight()
+    {
+        Assert.Null(StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(),
+            HrvLog(new DateOnly(2026, 8, 10), 28m),
+            HrvLog(new DateOnly(2026, 8, 9), 41m)));
+    }
+
+    // A missing previous night is one night, not two, and never fires — null is not permission.
+    [Fact]
+    public void HeartRateVariabilityDrop_StaysSilent_WhenThePreviousNightWasNotMeasured()
+    {
+        Assert.Null(StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(),
+            HrvLog(new DateOnly(2026, 8, 10), 28m),
+            HrvLog(new DateOnly(2026, 8, 9), null)));
+    }
+
+    // ── irregular_rhythm and ecg_afib ────────────────────────────────────────────────────
+
+    private static ActivityLog RhythmLog(
+        DateOnly date, int? notifications = null, int? ecgReadings = null, int? afib = null) =>
+        new()
+        {
+            Date = date,
+            IrregularRhythmNotifications = notifications,
+            EcgReadings = ecgReadings,
+            EcgAtrialFibrillationReadings = afib,
+        };
+
+    [Fact]
+    public void IrregularRhythm_Fires_OnTheDeviceOwnNotification()
+    {
+        var candidate = StatisticalAlertRules.IrregularRhythm(
+            RhythmLog(new DateOnly(2026, 8, 10), notifications: 1), yesterday: null);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.Rhythm, candidate.Type);
+        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        Assert.Contains("\"rule\":\"irregular_rhythm\"", candidate.MetricValues);
+    }
+
+    // Zero is the reassuring reading and null is the unreadable one; neither is an alert.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(null)]
+    public void IrregularRhythm_StaysSilent_WithoutANotification(int? notifications)
+    {
+        Assert.Null(StatisticalAlertRules.IrregularRhythm(
+            RhythmLog(new DateOnly(2026, 8, 10), notifications), yesterday: null));
+    }
+
+    // An event late in the member's evening can be read by a pass that has already rolled over.
+    [Fact]
+    public void IrregularRhythm_ReadsYesterday_WhenTodayCarriesNoEvent()
+    {
+        var candidate = StatisticalAlertRules.IrregularRhythm(
+            RhythmLog(new DateOnly(2026, 8, 10)),
+            RhythmLog(new DateOnly(2026, 8, 9), notifications: 2));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(new DateOnly(2026, 8, 9), candidate.NightOf);
+    }
+
+    [Fact]
+    public void EcgAtrialFibrillation_IsTheOneRedRhythmFinding()
+    {
+        var candidate = StatisticalAlertRules.EcgAtrialFibrillation(
+            RhythmLog(new DateOnly(2026, 8, 10), ecgReadings: 2, afib: 1), yesterday: null);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.Rhythm, candidate.Type);
+        Assert.Equal(AlertSeverity.Red, candidate.Severity);
+        Assert.Contains("\"rule\":\"ecg_afib\"", candidate.MetricValues);
+    }
+
+    // A reading the device declined to classify is counted as an ECG and never as a finding.
+    [Fact]
+    public void EcgAtrialFibrillation_StaysSilent_WhenNoReadingWasClassifiedAsAfib()
+    {
+        Assert.Null(StatisticalAlertRules.EcgAtrialFibrillation(
+            RhythmLog(new DateOnly(2026, 8, 10), ecgReadings: 3, afib: 0), yesterday: null));
+    }
+
+    // ── rapid_weight_gain ────────────────────────────────────────────────────────────────
+
+    private static Dictionary<DateOnly, ActivityLog> Weights(DateOnly today, params (int Offset, decimal? Kg)[] days) =>
+        days.ToDictionary(
+            d => today.AddDays(-d.Offset),
+            d => new ActivityLog { Date = today.AddDays(-d.Offset), WeightKg = d.Kg });
+
+    [Fact]
+    public void RapidWeightGain_Fires_OnAKiloAndAHalfInThreeDays()
+    {
+        var today = new DateOnly(2026, 8, 10);
+        var candidate = StatisticalAlertRules.RapidWeightGain(
+            Weights(today, (0, 79.6m), (3, 78.1m)), today);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.Trend, candidate.Type);
+        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        Assert.Contains("\"rule\":\"rapid_weight_gain\"", candidate.MetricValues);
+        Assert.Contains("\"windowDays\":3", candidate.MetricValues);
+    }
+
+    // Under the three-day threshold but over the week's: the longer window catches the slower rise.
+    [Fact]
+    public void RapidWeightGain_Fires_OnTheWeekThresholdWhenTheThreeDayOneHolds()
+    {
+        var today = new DateOnly(2026, 8, 10);
+        var candidate = StatisticalAlertRules.RapidWeightGain(
+            Weights(today, (0, 80.5m), (3, 79.9m), (7, 78.1m)), today);
+
+        Assert.NotNull(candidate);
+        Assert.Contains("\"windowDays\":7", candidate.MetricValues);
+    }
+
+    [Fact]
+    public void RapidWeightGain_StaysSilent_BelowBothThresholds()
+    {
+        var today = new DateOnly(2026, 8, 10);
+        Assert.Null(StatisticalAlertRules.RapidWeightGain(
+            Weights(today, (0, 78.9m), (3, 78.1m), (7, 77.9m)), today));
+    }
+
+    // Two readings days apart are the whole measurement — one weighing is not a change.
+    [Fact]
+    public void RapidWeightGain_StaysSilent_WithoutAnEarlierWeighing()
+    {
+        var today = new DateOnly(2026, 8, 10);
+        Assert.Null(StatisticalAlertRules.RapidWeightGain(Weights(today, (0, 82m)), today));
+    }
+
+    // Weighings are sparse: a member who did not step on the scale today still has yesterday's.
+    [Fact]
+    public void RapidWeightGain_ReadsYesterdayWeighing_WhenTodayHasNone()
+    {
+        var today = new DateOnly(2026, 8, 10);
+        var candidate = StatisticalAlertRules.RapidWeightGain(
+            Weights(today, (1, 79.6m), (4, 78.1m)), today);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(today.AddDays(-1), candidate.NightOf);
+    }
+
+    // ── blood_sugar_out_of_range ─────────────────────────────────────────────────────────
+
+    private static ActivityLog GlucoseLog(DateOnly date, decimal? min = null, decimal? max = null) =>
+        new() { Date = date, BloodGlucoseMin = min, BloodGlucoseMax = max };
+
+    /// <summary>
+    /// The low side is red and the high side orange, deliberately: a high reading is an afternoon
+    /// to manage, a low one can take someone off their feet within the hour.
+    /// </summary>
+    [Fact]
+    public void BloodSugarOutOfRange_IsRedOnTheLowSide()
+    {
+        var candidate = StatisticalAlertRules.BloodSugarOutOfRange(
+            GlucoseLog(new DateOnly(2026, 8, 10), min: 61m, max: 150m), yesterday: null);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Red, candidate.Severity);
+        Assert.Contains("\"rule\":\"blood_sugar_out_of_range\"", candidate.MetricValues);
+    }
+
+    [Fact]
+    public void BloodSugarOutOfRange_IsOrangeOnTheHighSide()
+    {
+        var candidate = StatisticalAlertRules.BloodSugarOutOfRange(
+            GlucoseLog(new DateOnly(2026, 8, 10), min: 110m, max: 265m), yesterday: null);
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+    }
+
+    // The thresholds sit well outside the 70-180 target band the dashboard draws: a reading inside
+    // that band's shoulder is an ordinary day for someone managing their diabetes.
+    [Fact]
+    public void BloodSugarOutOfRange_StaysSilent_JustOutsideTheTargetBand()
+    {
+        Assert.Null(StatisticalAlertRules.BloodSugarOutOfRange(
+            GlucoseLog(new DateOnly(2026, 8, 10), min: 70m, max: 250m), yesterday: null));
+    }
+
+    [Fact]
+    public void BloodSugarOutOfRange_StaysSilent_WhenNoReadingsWereTaken()
+    {
+        Assert.Null(StatisticalAlertRules.BloodSugarOutOfRange(
+            GlucoseLog(new DateOnly(2026, 8, 10)), yesterday: null));
+    }
 }

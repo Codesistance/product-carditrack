@@ -148,4 +148,72 @@ public class ActivityLogMergeTests
 
         Assert.Equal(connected.Id, ordered[0].Id);
     }
+
+    /// <summary>
+    /// The 2026-08 columns coalesce like every other metric — a ring that reports HRV and a scale
+    /// that reports weight fill each other's gaps on one merged day.
+    /// </summary>
+    [Fact]
+    public void Merge_FillsTheBodyAndRhythmColumns_FromWhicheverDeviceReportedThem()
+    {
+        var watch = new DeviceActivityLog
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = MemberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DataSource = DeviceType.GooglePixelWatch,
+            Date = Date,
+            HeartRateVariabilityMs = 31.5m,
+            EcgReadings = 1,
+            EcgAtrialFibrillationReadings = 1,
+            IrregularRhythmNotifications = 0,
+        };
+        var scale = new DeviceActivityLog
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = MemberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DataSource = DeviceType.Withings,
+            Date = Date,
+            WeightKg = 81.2m,
+            BloodGlucoseMin = 66m,
+            BloodGlucoseMax = 190m,
+        };
+
+        var merged = ActivityLogMerge.Merge(MemberId, Date, [watch, scale]);
+
+        Assert.NotNull(merged);
+        Assert.Equal(31.5m, merged.HeartRateVariabilityMs);
+        Assert.Equal(81.2m, merged.WeightKg);
+        Assert.Equal(66m, merged.BloodGlucoseMin);
+        Assert.Equal(190m, merged.BloodGlucoseMax);
+        Assert.Equal(1, merged.EcgAtrialFibrillationReadings);
+        // Zero is a reading — the watch looked and the day was quiet — so it wins over the scale's
+        // null exactly as a measured zero does for steps.
+        Assert.Equal(0, merged.IrregularRhythmNotifications);
+    }
+
+    /// <summary>
+    /// Rhythm counts are coalesced, never summed: two devices on one wrist-day see the same
+    /// episode, and adding them would report one notification as two.
+    /// </summary>
+    [Fact]
+    public void Merge_NeverSumsRhythmCounts_AcrossDevices()
+    {
+        DeviceActivityLog WithNotifications(DeviceType source, int count) => new()
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = MemberId,
+            DeviceConnectionId = Guid.NewGuid(),
+            DataSource = source,
+            Date = Date,
+            IrregularRhythmNotifications = count,
+        };
+
+        var merged = ActivityLogMerge.Merge(
+            MemberId, Date,
+            [WithNotifications(DeviceType.GooglePixelWatch, 1), WithNotifications(DeviceType.Fitbit, 1)]);
+
+        Assert.Equal(1, merged!.IrregularRhythmNotifications);
+    }
 }

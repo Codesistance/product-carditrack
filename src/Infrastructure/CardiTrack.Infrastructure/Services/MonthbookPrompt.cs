@@ -172,6 +172,24 @@ internal static class MonthbookPrompt
             null,
             JournalPeriodSections.Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
 
+        // No band for HRV: nobody publishes an adult one (see HealthReferenceRanges), so the
+        // member's own baseline is the only comparison offered.
+        written += Metric(sb, days, "Heart rate variability", l => l.HeartRateVariabilityMs,
+            v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} ms overnight",
+            baseline?.AvgHeartRateVariabilityMs,
+            null);
+
+        written += Metric(sb, days, "Weight", l => l.WeightKg,
+            v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} kg",
+            baseline?.AvgWeightKg,
+            null);
+
+        var glucoseBand = HealthReferenceRanges.BloodGlucose;
+        written += Metric(sb, days, "Blood sugar", l => l.BloodGlucoseAverage,
+            v => $"{Math.Round(v):N0} mg/dL",
+            null,
+            JournalPeriodSections.Band(glucoseBand.Low, glucoseBand.High, "mg/dL", glucoseBand.Source));
+
         written += Metric(sb, days, "Steps", l => l.Steps,
             v => $"{Math.Round(v):N0} steps",
             baseline?.AvgSteps,
@@ -203,7 +221,7 @@ internal static class MonthbookPrompt
         string label,
         Func<ActivityLog, T?> select,
         Func<decimal, string> format,
-        int? usual,
+        decimal? usual,
         string? band)
         where T : struct, IConvertible =>
         JournalPeriodSections.AppendMetric(

@@ -113,6 +113,7 @@ public static class BaselineCalculator
         var steps = Samples(days, l => l.Steps);
         var restingHeartRate = Samples(days, l => l.RestingHeartRate);
         var sleepMinutes = Samples(days, l => l.SleepMinutes);
+        var heartRateVariability = Samples(days, l => l.HeartRateVariabilityMs);
 
         return new PatternBaseline
         {
@@ -132,6 +133,16 @@ public static class BaselineCalculator
             // An observed maximum is a fact rather than an estimate, so it is reported from whatever
             // readings exist instead of being gated on a sample count.
             MaxHeartRateObserved = days.Select(l => l.MaxHeartRate).Where(v => v.HasValue).Max(),
+
+            // Kept as decimals, unlike the heart-rate figures beside them: overnight RMSSD is
+            // routinely under 20 ms in this cohort, where rounding to whole milliseconds would
+            // throw away a tenth of the very spread the drop rule measures against.
+            AvgHeartRateVariabilityMs = MeanRounded(heartRateVariability, minimumSamples),
+            StdDevHeartRateVariability = StandardDeviation(heartRateVariability, minimumSamples),
+            MedianHeartRateVariabilityMs = MedianRounded(heartRateVariability, minimumSamples, stats),
+            MadHeartRateVariability = MedianAbsoluteDeviation(heartRateVariability, minimumSamples, stats),
+
+            AvgWeightKg = MeanRounded(Samples(days, l => l.WeightKg), minimumSamples),
 
             AvgSleepMinutes = MeanAsInt(sleepMinutes, minimumSamples),
             MedianSleepMinutes = MedianAsInt(sleepMinutes, minimumSamples, stats),
@@ -154,6 +165,15 @@ public static class BaselineCalculator
         Mean(samples, minimumSamples) is decimal mean ? (int)Math.Round(mean, MidpointRounding.AwayFromZero) : null;
 
     /// <summary>
+    /// The mean to two decimals, for the metrics whose whole-number form would lose real signal —
+    /// millisecond HRV and kilogram weight, both of which are read as differences of a unit or two.
+    /// </summary>
+    private static decimal? MeanRounded(IReadOnlyList<decimal> samples, int minimumSamples) =>
+        Mean(samples, minimumSamples) is decimal mean
+            ? Math.Round(mean, 2, MidpointRounding.AwayFromZero)
+            : null;
+
+    /// <summary>
     /// Sample standard deviation (n−1). The dashboard turns this into the member's "normal range"
     /// (avg ± σ), so the population form would quietly narrow that band on every member.
     /// </summary>
@@ -165,6 +185,17 @@ public static class BaselineCalculator
         var mean = samples.Average();
         var variance = samples.Sum(v => (v - mean) * (v - mean)) / (samples.Count - 1);
         return Math.Round((decimal)Math.Sqrt((double)variance), 2, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>The median to two decimals — the <see cref="MeanRounded"/> counterpart, for the
+    /// same metrics and the same reason.</summary>
+    private static decimal? MedianRounded(
+        IReadOnlyList<decimal> samples, int minimumSamples, IDescriptiveStatistics stats)
+    {
+        if (samples.Count < minimumSamples)
+            return null;
+
+        return Math.Round((decimal)stats.Median(ToDoubles(samples)), 2, MidpointRounding.AwayFromZero);
     }
 
     private static int? MedianAsInt(

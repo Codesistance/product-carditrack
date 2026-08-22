@@ -977,6 +977,33 @@ public class MemberChatService : IMemberChatService
                 .Select(l => new ChartPoint(l.Date, l.SleepMinutes!.Value))
                 .ToList()));
         }
+        if (Wanted(ChartMetricKind.HeartRateVariability))
+        {
+            charts.Add(new ChartSeries("Heart rate variability", data.RecentActivity
+                .Where(l => l.HeartRateVariabilityMs.HasValue)
+                .Select(l => new ChartPoint(l.Date, (double)l.HeartRateVariabilityMs!.Value))
+                .ToList()));
+        }
+        if (Wanted(ChartMetricKind.Weight))
+        {
+            charts.Add(new ChartSeries("Weight", data.RecentActivity
+                .Where(l => l.WeightKg.HasValue)
+                .Select(l => new ChartPoint(l.Date, (double)l.WeightKg!.Value))
+                .ToList()));
+        }
+        if (Wanted(ChartMetricKind.BloodGlucose))
+        {
+            // The lowest reading of each day, as everywhere else this series is drawn.
+            charts.Add(new ChartSeries("Blood sugar", data.RecentActivity
+                .Where(l => (l.BloodGlucoseMin ?? l.BloodGlucoseAverage).HasValue)
+                .Select(l => new ChartPoint(l.Date, (double)(l.BloodGlucoseMin ?? l.BloodGlucoseAverage)!.Value))
+                .ToList()));
+        }
+
+        // A series the member has no readings for charts as an empty line, which draws as an empty
+        // panel under the answer. Three of these metrics are sparse by nature — a member with no
+        // scale never has a weight point — so an empty series is dropped rather than rendered.
+        charts.RemoveAll(c => c.Points.Count == 0);
 
         return charts;
     }

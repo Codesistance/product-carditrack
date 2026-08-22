@@ -163,8 +163,10 @@ public static class DigestInterpretationSignals
     }
 
     /// <summary>
-    /// Vitals that sit above (or, for oxygen, below) this member's usual / the published
-    /// adult band, named for the prompt. Empty when nothing is off.
+    /// Readings that sit outside this member's usual or the published adult band, named for the
+    /// prompt — above for heart rate and breathing, below for oxygen and heart rate variability,
+    /// either side for blood sugar — together with anything the device itself found in the rhythm.
+    /// Empty when nothing is off.
     /// </summary>
     public static IReadOnlyList<string> RaisedVitals(PatternBaseline baseline, ActivityLog log)
     {
@@ -196,8 +198,58 @@ public static class DigestInterpretationSignals
                 CultureInfo.InvariantCulture, $"breathing {breathing:0.#} breaths/min"));
         }
 
+        // Overnight HRV below the member's own usual by the margin the alert rule uses. Phrased as
+        // "lower than usual" rather than as a raised vital, because it is the one reading here
+        // where the worrying direction is down — a summary that listed it among things "running
+        // high" would read as the opposite of what it is.
+        if (baseline.AvgHeartRateVariabilityMs is > 0 and { } usualHrv
+            && log.HeartRateVariabilityMs is { } hrv
+            && hrv < usualHrv - HeartRateVariabilityMarginMs(baseline))
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"heart rate variability {hrv:0.#} ms overnight, lower than their usual {usualHrv:0.#} ms"));
+        }
+
+        // A rhythm finding is the device's, not ours, and it goes in whatever the day's activity
+        // looked like — the still-day pairing this block exists for does not apply to something
+        // the watch determined on its own.
+        if (log.IrregularRhythmNotifications is > 0 and { } notifications)
+        {
+            parts.Add(notifications == 1
+                ? "an irregular-rhythm notification raised by their own device"
+                : $"{notifications} irregular-rhythm notifications raised by their own device");
+        }
+
+        if (log.EcgAtrialFibrillationReadings is > 0 and { } afib)
+        {
+            parts.Add(afib == 1
+                ? "an ECG they recorded, classified as atrial fibrillation by their device"
+                : $"{afib} ECGs they recorded, classified as atrial fibrillation by their device");
+        }
+
+        if (log.BloodGlucoseMin is { } low && low < StatisticalAlertRules.HypoglycaemiaMgDl)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture, $"a blood sugar reading down at {low:0.#} mg/dL"));
+        }
+        else if (log.BloodGlucoseMax is { } high && high > StatisticalAlertRules.HyperglycaemiaMgDl)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture, $"a blood sugar reading up at {high:0.#} mg/dL"));
+        }
+
         return parts;
     }
+
+    /// <summary>
+    /// The HRV margin the drop rule uses, so the digest and the alert engine agree on what counts
+    /// as low — the same reason every other threshold in this file is borrowed rather than chosen.
+    /// </summary>
+    private static decimal HeartRateVariabilityMarginMs(PatternBaseline baseline) =>
+        Math.Max(
+            StatisticalAlertRules.HrvSigmaMultiplier * (baseline.StdDevHeartRateVariability ?? 0m),
+            (baseline.AvgHeartRateVariabilityMs ?? 0m) * StatisticalAlertRules.HrvMarginFloorFraction);
 
     private static double HeartRateMarginBpm(PatternBaseline baseline) =>
         Math.Max(

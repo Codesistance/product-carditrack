@@ -16,6 +16,11 @@ public static class AlertRuleCatalogue
     public const string LongTermTrend = StatisticalAlertRules.LongTermTrendRule;
     public const string DeviceSilence = "device_silence";
     public const string RealtimeHeartRate = "realtime_hr";
+    public const string HeartRateVariabilityDrop = StatisticalAlertRules.HeartRateVariabilityDropRule;
+    public const string IrregularRhythm = StatisticalAlertRules.IrregularRhythmRule;
+    public const string EcgAtrialFibrillation = StatisticalAlertRules.EcgAtrialFibrillationRule;
+    public const string RapidWeightGain = StatisticalAlertRules.RapidWeightGainRule;
+    public const string BloodSugarOutOfRange = StatisticalAlertRules.BloodSugarOutOfRangeRule;
 
     // A–G (catalogue reserved; producers not shipped yet)
     public const string LateBedtime = "late_bedtime";
@@ -29,6 +34,8 @@ public static class AlertRuleCatalogue
     public const string ClusterSleep = "sleep";
     public const string ClusterHeart = "heart_overnight";
     public const string ClusterActivity = "activity_mobility";
+    public const string ClusterRhythm = "rhythm";
+    public const string ClusterBody = "body";
     public const string ClusterPattern = "pattern";
     public const string ClusterDigests = "digests_trends";
 
@@ -47,6 +54,21 @@ public static class AlertRuleCatalogue
                 new(ElevatedHeartRate, "Elevated resting heart rate", "Yesterday's resting rate was higher than usual", IsImplemented: true),
                 new(OvernightVitals, "Unusual overnight vitals", "Heart rate or SpO₂ looked off during sleep", IsImplemented: false),
                 new(RealtimeHeartRate, "Sudden heart-rate change", "A sharp change in the last hour of heart-rate data", IsImplemented: true),
+                new(HeartRateVariabilityDrop, "Heart rate variability has dropped", "Two nights running well below their usual — often the first sign of illness or strain", IsImplemented: true),
+            ]),
+            // Rhythm sits apart from heart rate rather than inside it, for the same reason
+            // AlertType.Rhythm does: these two are findings the device made about how the heart is
+            // beating, they carry their own remedy ("get this to a doctor"), and a family that
+            // wants no more rate-and-baseline nudges must still be able to leave them on.
+            new(ClusterRhythm, "Heart rhythm", "What the device itself found in their heartbeat",
+            [
+                new(EcgAtrialFibrillation, "ECG showed atrial fibrillation", "An ECG they recorded was classified as AFib by their device", IsImplemented: true),
+                new(IrregularRhythm, "Irregular rhythm notification", "Their watch flagged a heartbeat pattern that could be AFib", IsImplemented: true),
+            ]),
+            new(ClusterBody, "Body & readings", "Weight and blood sugar, from a connected scale or meter",
+            [
+                new(RapidWeightGain, "Weight up quickly", "A gain of a kilo or two over a few days, which usually means fluid", IsImplemented: true),
+                new(BloodSugarOutOfRange, "Blood sugar out of range", "A reading far below or above the usual target range", IsImplemented: true),
             ]),
             new(ClusterActivity, "Activity & mobility", "Steps, morning movement, and a quiet device",
             [

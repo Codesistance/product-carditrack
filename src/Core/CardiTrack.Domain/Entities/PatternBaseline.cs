@@ -24,6 +24,20 @@ public class PatternBaseline : BaseEntity
     public decimal? MadHeartRate { get; set; }
     public int? MaxHeartRateObserved { get; set; }
 
+    // Heart Rate Variability Baseline Metrics. Overnight RMSSD is strongly personal — a healthy
+    // 80-year-old's normal can be a fifth of a healthy 40-year-old's — so it has no published band
+    // and only the member's own window can say what is unusual for them. The robust pair is stored
+    // alongside the mean for the same reason it is for steps and heart rate.
+    public decimal? AvgHeartRateVariabilityMs { get; set; }
+    public decimal? StdDevHeartRateVariability { get; set; }
+    public decimal? MedianHeartRateVariabilityMs { get; set; }
+    public decimal? MadHeartRateVariability { get; set; }
+
+    // Body Baseline Metrics. The weight alert judges short-window gain rather than a departure
+    // from this figure — fluid retention shows up over days, not against a month's average — but
+    // the summaries need a "their usual" to put a reading beside.
+    public decimal? AvgWeightKg { get; set; }
+
     // Sleep Baseline Metrics
     public int? AvgSleepMinutes { get; set; }
     public int? MedianSleepMinutes { get; set; }
