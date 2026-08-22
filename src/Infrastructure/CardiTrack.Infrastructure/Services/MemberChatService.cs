@@ -587,17 +587,29 @@ public class MemberChatService : IMemberChatService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Closes with what the suggestion rests on and what it is not, every time. The card on
-    /// CardiMember Details can set "Based on: …" in muted small type under the suggestion and let
-    /// the layout carry that qualification; a chat bubble has no small type, and a suggestion
-    /// arriving in the same voice that answered "how did he sleep" a moment earlier is the one
-    /// place on this platform where a caregiver could most easily read guidance as an instruction.
+    /// Closes by marking what it just said as a suggestion, every time. A suggestion arriving in
+    /// the same voice that answered "how did he sleep" a moment earlier is the one place on this
+    /// platform where a caregiver could most easily read guidance as an instruction, and the card
+    /// on CardiMember Details has a heading and a layout to carry that framing where a chat bubble
+    /// has neither.
     /// </para>
     /// <para>
-    /// A row with no <see cref="MemberAdvise.GuidelineCited"/> is treated as nothing to serve
+    /// It does not name the reference the suggestion drew on, though it still refuses to serve a
+    /// row that has none. Read aloud, "that's general wellness guidance based on Adult physical
+    /// activity" is a citation, and a citation is what made the first version of this reply sound
+    /// like a leaflet rather than an answer — the second half of the same problem that had the
+    /// model itself saying "it's a general wellness thing" (see
+    /// <see cref="MedicalPromptBlocks.ToneWellnessNotClinical"/>'s remark). The grounding is a
+    /// generation-time gate, not something the caregiver has to be shown to be safe; the Details
+    /// card still sets it as "Based on: …" for anyone who wants it.
+    /// </para>
+    /// <para>
+    /// A row with no <see cref="MemberAdvise.GuidelineCited"/> is still treated as nothing to serve
     /// rather than served bare — the same call <c>AdviseGenerationService</c> makes when it
     /// withholds such a row, and what <see cref="AdviseResponse.GuidelineCited"/> tells clients to
-    /// do with a null.
+    /// do with a null. That rule now lives in <see cref="AdviseServability"/> rather than here:
+    /// stated only in this method it made chat disagree with the Details card and the Dashboard
+    /// pulse dot, which went on rendering such a row and lighting for it.
     /// </para>
     /// <para>
     /// The empty case says why there is nothing and what can be asked instead, rather than only
@@ -607,28 +619,18 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     internal static string AdviseReply(string? firstName, MemberAdvise? advise, DateTime utcNow)
     {
-        var servable = advise is not null
-            && utcNow - advise.GeneratedAtUtc <= AdviseStaleness.MaxAge
-            && !string.IsNullOrWhiteSpace(advise.Summary)
-            && !string.IsNullOrWhiteSpace(advise.Suggestion)
-            && !string.IsNullOrWhiteSpace(advise.GuidelineCited);
-
-        if (!servable)
+        if (!AdviseServability.IsServable(advise, utcNow))
         {
             // "them" rather than an invented relationship word, for the reason LiveStatusReply's
             // subject line gives at length.
             var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
-            return $"I don't have a wellness suggestion for {subject} right now — those are put "
-                + "together from their readings once a day, and there isn't a current one. I can "
-                + "tell you how their sleep, activity or heart rate compare with what's usual for "
-                + "them, though.";
+            return $"I don't have a suggestion for {subject} right now — those come from their "
+                + "readings once a day, and there isn't a current one. I can tell you how their "
+                + "sleep, activity or heart rate compare with what's usual for them, though.";
         }
 
-        // TrimEnd('.') so the citation joins the closing clause without stopping it mid-sentence:
-        // the model is asked for this in a few words, and answers with and without a full stop.
-        return $"{advise!.Summary.Trim()} {advise.Suggestion.Trim()} That's general wellness "
-            + $"guidance based on {advise.GuidelineCited!.Trim().TrimEnd('.')} — worth mentioning "
-            + "to their doctor rather than acting on by itself.";
+        return $"{advise.Summary.Trim()} {advise.Suggestion.Trim()} That's just an idea to "
+            + "consider — their doctor is the one to ask if you're unsure about it.";
     }
 
     /// <summary>The message and nothing else — see <see cref="SteerAsync"/> for why no history
@@ -890,7 +892,10 @@ public class MemberChatService : IMemberChatService
             // and a heading built from the count told the model a four-reading week was four days.
             var window = data.RecentActivityWindow;
             var heading = window is { } w
-                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; days with no reading are omitted"
+                // "unless it is today": DailyLines now writes today's row whether or not a reading
+                // has arrived for it, so the old blanket "days with no reading are omitted" said
+                // the opposite of the line directly beneath it.
+                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; a day with no reading is omitted unless it is today"
                 : "oldest first";
 
             sections.Add(

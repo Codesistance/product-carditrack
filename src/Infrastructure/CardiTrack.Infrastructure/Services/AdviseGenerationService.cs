@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -48,14 +48,14 @@ public class AdviseGenerationService
     /// </summary>
     private const string AdviseInstructions =
         MedicalPromptBlocks.ToneWellness + MedicalPromptBlocks.Pronouns + """
-        Suggest one general wellness action for this person, grounded in the wellness reference
-        below and their own recent readings and baseline.
+        Suggest one everyday thing the family could try for this person, grounded in the
+        reference below and their own recent readings and baseline.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: what in the readings prompted this suggestion.
-        - suggestion: one general wellness action grounded in the reference below — never a
-          diagnosis, a prescription, or a change to medication or treatment.
+        - suggestion: one everyday thing the family could try, grounded in the reference below —
+          never a diagnosis, a prescription, or a change to medication or treatment.
         - guidelineCited: which reference below the suggestion draws on, in a few words. If nothing
           in the reference fits the readings, say there is nothing to suggest right now and leave
           this blank.
@@ -95,6 +95,13 @@ public class AdviseGenerationService
     /// hiccup, and the honest response is to withhold the row entirely — a stale suggestion that no
     /// longer applies is worse than none, especially for a feature this careful about not reading
     /// as a clinical instruction.
+    /// <para>
+    /// A well-formed reply that names a condition or proposes a treatment is withheld the same way,
+    /// and so is a citation that names no reference. Both are <see cref="AdviseRegisterGuards"/>'s
+    /// job: the prompt states the boundary and cannot enforce it, and a nonblank check on the
+    /// citation is not the traceability check the field was added for — "N/A" passes it. This is
+    /// the guard every comparable generation on the platform already had and this one did not.
+    /// </para>
     /// </remarks>
     public async Task RegenerateIfDueAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
@@ -124,8 +131,26 @@ public class AdviseGenerationService
         var suggestion = ResolvedOrEmpty(aiResponse.Suggestion, name);
         var guidelineCited = ResolvedOrEmpty(aiResponse.GuidelineCited, name);
 
-        if (string.IsNullOrWhiteSpace(guidelineCited))
+        // Two different "nothing to serve" replies, withheld the same way. A citation naming no
+        // reference is the model declining to ground the suggestion — which the prompt explicitly
+        // invites when nothing fits, and which AdviseRegisterGuards also recognises in the
+        // placeholders a model reaches for instead of leaving the field blank. A summary or
+        // suggestion that names a condition or proposes a treatment is the model crossing the one
+        // boundary this generation exists inside; the prompt asks it not to, and asking is not
+        // enforcing (see AdviseRegisterGuards). Either way the honest outcome is no row: a
+        // suggestion is not so valuable that it is worth serving one that broke its own contract.
+        if (AdviseRegisterGuards.IsUngroundedCitation(guidelineCited)
+            || AdviseRegisterGuards.ReadsAsClinical(summary)
+            || AdviseRegisterGuards.ReadsAsClinical(suggestion))
         {
+            if (AdviseRegisterGuards.ReadsAsClinical(summary) || AdviseRegisterGuards.ReadsAsClinical(suggestion))
+            {
+                _logger.LogWarning(
+                    "Advise for CardiMember {CardiMemberId} came back naming a condition or a "
+                    + "treatment; withholding it.",
+                    cardiMemberId);
+            }
+
             if (existing is not null)
             {
                 _unitOfWork.MemberAdvises.Remove(existing);
@@ -215,7 +240,7 @@ public class AdviseGenerationService
 
             {memberContext}
 
-            --- Wellness reference ---
+            --- General health reference ---
             {MedicalPromptBlocks.WellnessGuidelineReference}
 
             --- Baseline ---

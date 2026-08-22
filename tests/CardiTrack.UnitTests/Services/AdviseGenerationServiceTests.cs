@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services;
@@ -260,16 +260,134 @@ public class AdviseGenerationServiceTests
     }
 
     [Fact]
-    public async Task Prompt_GroundsInTheWellnessReference_NotClinicalLanguage()
+    public async Task Prompt_GroundsInTheHealthReference_NotClinicalLanguage()
     {
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
         Assert.Contains("Write as a caregiver would", prompt);
-        Assert.Contains("--- Wellness reference ---", prompt);
+        Assert.Contains("--- General health reference ---", prompt);
         Assert.Contains("WHO, 2020", prompt);
-        Assert.Contains("never as a diagnosis, a prescription, or a change to medication or treatment", prompt);
-        Assert.Contains("worth mentioning to a clinician", prompt);
+        Assert.Contains("never a diagnosis, a prescription, or a change to medication or treatment", prompt);
+        Assert.Contains("worth mentioning to their doctor", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A reply that crosses the one boundary this generation lives inside is withheld, not
+    /// persisted. The prompt states the boundary and cannot enforce it — the line
+    /// <c>JournalNoCondition</c>'s remark draws in one sentence — and Advise was the only
+    /// comparable generation on the platform with no check behind the asking.
+    /// </summary>
+    [Theory]
+    [InlineData("His readings suggest a heart condition.", "A short walk after lunch is worth trying.")]
+    [InlineData("Steps have been below her usual.", "She should stop taking the evening dose.")]
+    [InlineData("Steps have been below her usual.", "Ask the GP for a prescription to help her sleep.")]
+    [InlineData("This looks like sleep apnoea has been diagnosed.", "A steadier bedtime is worth trying.")]
+    public async Task AReplyNamingAConditionOrATreatment_IsWithheld(string summary, string suggestion)
+    {
+        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AdviseGenerationService.AdviseAiResponse
+            {
+                Summary = summary,
+                Suggestion = suggestion,
+                GuidelineCited = "WHO adult activity guidance",
+            });
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
+    }
+
+    /// <summary>
+    /// An everyday suggestion is not discarded for sounding vaguely health-adjacent. The markers
+    /// are compound phrases and action shapes for exactly this reason — a false discard costs the
+    /// caregiver that day's suggestion entirely, since the row is written once a day.
+    /// </summary>
+    [Theory]
+    [InlineData("Warm conditions this week.", "A short walk after lunch is worth trying.")]
+    [InlineData("Her sleep has been shorter than usual.", "A steadier bedtime could help her settle.")]
+    [InlineData("Steps are down.", "Getting outside for 15 minutes a day is worth a try.")]
+    public async Task AnEverydaySuggestion_IsNotDiscarded(string summary, string suggestion)
+    {
+        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AdviseGenerationService.AdviseAiResponse
+            {
+                Summary = summary,
+                Suggestion = suggestion,
+                GuidelineCited = "WHO adult activity guidance",
+            });
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.Received(1).AddAsync(Arg.Any<MemberAdvise>());
+    }
+
+    /// <summary>
+    /// The traceability check the field exists for is that a reference was named, not that the
+    /// field was filled. A model that will not leave it blank writes "N/A" instead, which passed a
+    /// nonblank check and made an ungrounded suggestion look grounded to every reader of the row.
+    /// </summary>
+    [Theory]
+    [InlineData("N/A")]
+    [InlineData("n/a")]
+    [InlineData("None")]
+    [InlineData("none.")]
+    [InlineData("Not applicable")]
+    [InlineData("unknown")]
+    [InlineData("-")]
+    public async Task ACitationNamingNoReference_WithholdsTheRow(string cited)
+    {
+        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AdviseGenerationService.AdviseAiResponse
+            {
+                Summary = "Steps have been below her usual this week.",
+                Suggestion = "A short walk after lunch is worth trying.",
+                GuidelineCited = cited,
+            });
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
+    }
+
+    /// <summary>
+    /// "None" inside a sentence about the references is an answer about them, not a refusal to name
+    /// one — the placeholders are matched whole for this reason.
+    /// </summary>
+    [Fact]
+    public async Task ACitationMentioningNoneInASentence_IsStillACitation()
+    {
+        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AdviseGenerationService.AdviseAiResponse
+            {
+                Summary = "Steps have been below her usual this week.",
+                Suggestion = "A short walk after lunch is worth trying.",
+                GuidelineCited = "WHO adult activity, none of the sleep references",
+            });
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.Received(1).AddAsync(Arg.Any<MemberAdvise>());
+    }
+
+    /// <summary>
+    /// The prompt never says "wellness", because MedGemma completes from the nearest text — the
+    /// failure <c>CaregiverRegister</c>'s remark documents at length, and the one that put "it's a
+    /// general wellness thing that can help with overall feeling" in front of a caregiver. The
+    /// words were in the tone block, twice in the instructions, and again as the reference
+    /// heading; the boundary they carried is stated in a family's words instead.
+    /// </summary>
+    [Fact]
+    public async Task Prompt_NeverSaysWellness()
+    {
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.DoesNotContain("wellness", prompt, StringComparison.OrdinalIgnoreCase);
     }
 }
