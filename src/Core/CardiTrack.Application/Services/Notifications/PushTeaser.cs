@@ -19,6 +19,12 @@ public static class PushTeaser
             DeliveryCategory.Safety => (AppName, "Urgent — open CardiTrack now"),
             DeliveryCategory.Health => Health(severity, alertType),
             DeliveryCategory.Questionnaire => (AppName, "A question is waiting — open CardiTrack"),
+            // The one teaser a caregiver is allowed to read and then put the phone down. Every
+            // other line here ends in "open CardiTrack" because the detail is the point; here the
+            // whole message *is* the lock screen, and demanding a tap to find out that nothing is
+            // wrong would make the good news cost the same as the bad. The invitation stays, but
+            // as an offer rather than an instruction.
+            DeliveryCategory.Reassurance => ("All quiet", "Nothing has come up this week. Open CardiTrack for the details."),
             _ => (AppName, "Something needs your attention — open CardiTrack"),
         };
 

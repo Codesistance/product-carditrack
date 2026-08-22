@@ -78,7 +78,45 @@ public class DashboardResponse
     /// </summary>
     public QuestionnaireResponse? PendingQuestionnaire { get; set; }
 
+    /// <summary>
+    /// The good news, when there is any: nothing has been raised about this member for a while
+    /// and every part of the pipeline that would have raised it was running. Null the rest of the
+    /// time — including for a member who is simply new, paused, or whose device has gone quiet,
+    /// none of whom may be told they are fine. See <see cref="Services.QuietStretch"/>.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not folded into <see cref="HealthStatus"/>. Green already means "no unresolved
+    /// alerts right now", which is true on the first green morning after a bad week; this says how
+    /// long that has held, which is a different and much more reassuring claim, and the client
+    /// shows it where the Recent Alerts strip would otherwise just be absent.
+    /// </remarks>
+    public ReassuranceResponse? Reassurance { get; set; }
+
     public DateTime GeneratedAt { get; set; }
+}
+
+/// <summary>
+/// A stretch with nothing to report, as the apps read it. Carries the numbers rather than a
+/// sentence: the copy lives with the card that shows it, next to the per-tier status copy it sits
+/// beneath, so the two are written in one voice and neither is a string this DTO froze.
+/// </summary>
+public class ReassuranceResponse
+{
+    /// <summary>Whole days since anything was last raised — at least
+    /// <see cref="Services.QuietStretch.MinimumDays"/>.</summary>
+    public int QuietDays { get; set; }
+
+    /// <summary>
+    /// What the stretch is measured from: the last alert, or the member coming under watch when
+    /// there has never been one.
+    /// </summary>
+    public DateTime QuietSince { get; set; }
+
+    /// <summary>
+    /// False when this member has never had an alert at all, so the client can say "since we
+    /// started watching" rather than implying an episode ended that never began.
+    /// </summary>
+    public bool FollowsAnAlert { get; set; }
 }
 
 /// <summary>

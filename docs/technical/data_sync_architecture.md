@@ -105,6 +105,7 @@ The aggregator's **first increment is live (dev)**: every 5 minutes the `pipelin
 | | `StatisticalAlertWorker` | statistical alert rules over `ActivityLogs` vs baselines | `0 7-59/15 * * * *` — every 15 min, :07 offset |
 | | `DeviceAuthRecoveryWorker` | retries `TokenExpired`/`AuthError` grants, per-connection backoff | `0 3-59/15 * * * *` — every 15 min, :03 offset |
 | | `DataCompletenessWorker` | data-gap detection → notifications | `0 0 6 * * *` — daily 06:00 |
+| | `QuietReassuranceWorker` | all-clear pushes for members with no alert in 7+ days | `0 30 8 * * *` — daily 08:30 |
 | | `NotificationDispatchWorker` | push delivery + escalation ladder | `*/30 * * * * *` — every 30 s |
 | | `PushCanaryWorker` | end-to-end push delivery canary | `0 */15 * * * *` — every 15 min |
 | | `OAuthTokenRefreshService` | OAuth 2.0 `refresh_token` grant, `IHttpClientFactory` | inline in sync path, 5-min expiry buffer |
@@ -189,6 +190,7 @@ The same query excludes removed and monitoring-paused members — in the query r
 | `StatisticalAlertWorker` cron | `0 7-59/15 * * * *` | `Workers:…:CronExpression` |
 | `DeviceAuthRecoveryWorker` cron | `0 3-59/15 * * * *` | `Workers:…:CronExpression` |
 | `DataCompletenessWorker` cron | `0 0 6 * * *` | `Workers:…:CronExpression` |
+| `QuietReassuranceWorker` cron | `0 30 8 * * *` | `Workers:…:CronExpression` |
 | `NotificationDispatchWorker` cron | `*/30 * * * * *` | `Workers:…:CronExpression` |
 | `PushCanaryWorker` cron | `0 */15 * * * *` | `Workers:…:CronExpression` |
 | `SyncFrequencyMinutes` | 10 | per `DeviceConnection` row |

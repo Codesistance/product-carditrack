@@ -164,8 +164,21 @@ channel it lands in, whether it escalates, and whether the user may silence it.
 | Silenceable | No — snooze ≤72h with logged acknowledgement | Sensitivity tuning (R2) | Yes — snooze, mute forever |
 | OS channel | `carditrack.safety.v2` (sound + vibration) | `carditrack.health.v4` (HIGH, sound, no vibration) | `carditrack.nudges.v2` (ding, no vibration) |
 
+Two categories have been added since this table was written, both of which push and both of which
+defer to quiet hours in full rather than overriding them, and neither of which escalates:
+**Questionnaire** (`MemberQuestionnaire`, pushed by `QuestionnaireAlertWorker`) and
+**Reassurance** — the all-clear `QuietReassuranceWorker` sends when nothing has been raised about a
+member for seven days or more with the whole pipeline demonstrably running (`QuietStretch`). They
+share the Nudge OS channel and its ding: neither is an anomaly, and neither has earned the pager.
+Reassurance is the one delivery with a longer TTL than its siblings (6h, not 5min) — "nothing has
+come up" is still true hours later, and the phone worth reaching is the one that was off overnight.
+It is also the only category that carries no severity at all, because it exists to say there is
+nothing to grade.
+
 Health alerts keep their own `Alert` table and lifecycle (New → Acknowledged → Resolved). Nudges get
-the `Notification` table. **Both produce `NotificationDelivery` rows** — that shared outbox is what
+the `Notification` table. Reassurance has no table of its own — nothing writes down that nothing
+happened, so its `NotificationDelivery` row *is* the record that a family was told, and its
+`SourceId` carries the CardiMember rather than an event. **Both produce `NotificationDelivery` rows** — that shared outbox is what
 makes the reliability work in §6 apply uniformly, without merging two domain models that disagree
 about almost everything else.
 

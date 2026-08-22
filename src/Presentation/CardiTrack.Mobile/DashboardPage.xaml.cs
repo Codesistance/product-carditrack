@@ -1,6 +1,7 @@
 ﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Navigation;
@@ -524,7 +525,12 @@ public partial class DashboardPage : ContentPage
             MetricsAccordion.IsVisible = false;
         }
 
-        // Recent alerts
+        // Recent alerts, and — when there are none and the silence has earned it — the card that
+        // says so. Never both: an "all quiet" claim sitting above a list of live alerts would be
+        // the screen contradicting itself. The server withholds Reassurance whenever anything is
+        // unresolved, so this is belt-and-braces rather than the only guard.
+        ApplyReassurance(data, firstName);
+
         AlertsStack.Clear();
         AlertsSection.IsVisible = data.RecentAlerts.Count > 0;
         foreach (var alert in data.RecentAlerts)
@@ -534,6 +540,29 @@ public partial class DashboardPage : ContentPage
             card.AlertTapped += OnAlertTapped;
             AlertsStack.Add(card);
         }
+    }
+
+    /// <summary>
+    /// Shows the "all quiet" card, or hides it. Reads the server's verdict rather than inferring
+    /// one from an empty <see cref="DashboardResponse.RecentAlerts"/>: that list is equally empty
+    /// for a paused member, for one whose watch stopped syncing a fortnight ago, and for one
+    /// signed up yesterday, and telling any of those three families that nothing has come up
+    /// would be telling them the one thing this app must never get wrong.
+    /// </summary>
+    private void ApplyReassurance(DashboardResponse data, string firstName)
+    {
+        var reassurance = data.RecentAlerts.Count == 0 ? data.Reassurance : null;
+        ReassuranceCard.IsVisible = reassurance is not null;
+        if (reassurance is null)
+            return;
+
+        ReassuranceTitleLabel.Text = ReassuranceCopy.Title;
+        ReassuranceDetailLabel.Text = ReassuranceCopy.Detail(reassurance, firstName);
+
+        // One announcement, not two fragments: a screen reader landing on the headline alone
+        // hears "All quiet" with no idea who it is about.
+        SemanticProperties.SetDescription(
+            ReassuranceCard, $"{ReassuranceTitleLabel.Text}. {ReassuranceDetailLabel.Text}");
     }
 
     /// <summary>

@@ -18,6 +18,18 @@ public interface IAlertRepository : IRepository<Alert>
     /// </summary>
     Task<IReadOnlyList<Alert>> GetUnresolvedByCardiMemberAsync(Guid cardiMemberId);
 
+    /// <summary>
+    /// When this member's most recent alert was raised, or null when nothing has ever been raised
+    /// about them. The anchor for <see cref="Services.QuietStretch"/>.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately counts resolved <em>and</em> caregiver-deleted rows, unlike every other read
+    /// here. Those flags say what is still worth showing on a list; this asks when something last
+    /// happened, and an episode a caregiver swiped away still happened. Telling them "all quiet
+    /// for 30 days" about a week they were called about would read as the app having lost track.
+    /// </remarks>
+    Task<DateTime?> GetLastTriggeredDateAsync(Guid cardiMemberId, CancellationToken ct = default);
+
     Task<Alert?> GetByIdWithCardiMemberAsync(Guid alertId);
 
     /// <summary>One page of alerts matching <paramref name="query"/>, newest first.</summary>

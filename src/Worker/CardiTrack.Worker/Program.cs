@@ -94,6 +94,7 @@ builder.Services.AddNumerics();
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 builder.Services.AddScoped<IInactivityDetectionService, InactivityDetectionService>();
 builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();
+builder.Services.AddScoped<IQuietReassuranceService, QuietReassuranceService>();
 builder.Services.AddScoped<IDeviceAuthRecoveryService, DeviceAuthRecoveryService>();
 
 // External clients
@@ -129,6 +130,11 @@ builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(Devic
 builder.Services.Configure<InactivityDetectionOptions>(
     configuration.GetSection($"Workers:{nameof(InactivityDetectionWorker)}"));
 builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
+
+// The other half of the alert engine: tells a family nothing has come up, once the silence has
+// lasted long enough to mean something. Scheduled after BaselineCalculationWorker, whose
+// established 30-day baseline is what makes that silence evidence rather than an absence.
+builder.Services.AddWorker<QuietReassuranceWorker>(configuration, nameof(QuietReassuranceWorker));
 
 // Enforcement backstop for member photo blobs: reaps bucket objects no active member references
 // (24h grace) and clears photos a crashed removal left on soft-deleted rows. DryRun shares the
