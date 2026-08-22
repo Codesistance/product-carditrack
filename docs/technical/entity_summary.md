@@ -54,7 +54,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 
 #### 6. **DeviceActivityLog** *(raw)*
 - One day of metrics exactly as a **single device** reported them — **unique on (DeviceConnectionId, Date)**
-- Same ~25 nullable metric columns as ActivityLog; indexed on (CardiMemberId, Date) for the merge read
+- Same ~34 nullable metric columns as ActivityLog; indexed on (CardiMemberId, Date) for the merge read
 - A CardiMember wearing several devices has one row here **per device per day**
 - No FK constraints - uses CardiMemberId and DeviceConnectionId (Guid)
 
@@ -62,7 +62,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Normalized daily health data for a CardiMember — **unique on (CardiMemberId, Date)**, one row per member per day
 - Derived from that member's DeviceActivityLog rows by `ActivityLogMerge`; **every reader consumes this table, not the raw one**
 - Merge rule: each metric resolved independently, first non-null wins by device priority (`IsPrimary` desc → `ConnectedDate` asc → `Id`). **Never sums** — two wearables on one body count the same steps. Idempotent, since it always rebuilds from the full raw set
-- **Rich metric surface (~27 nullable metrics)**: Steps, Distance, ActiveMinutes, SedentaryMinutes, Floors, CaloriesBurned; Resting/Avg/Max/Min heart rate; sleep duration, start/end, efficiency, and Deep/Light/REM/Awake stage minutes; SpO2 (avg/min/max), VO2Max, StressScore, BreathingRate, Temperature (nightly, plus the wearer's own TemperatureBaseline and TemperatureVariation)
+- **Rich metric surface (~34 nullable metrics)**: Steps, Distance, ActiveMinutes, SedentaryMinutes, Floors, CaloriesBurned; Resting/Avg/Max/Min heart rate; sleep duration, start/end, efficiency, and Deep/Light/REM/Awake stage minutes; SpO2 (avg/min/max), VO2Max, StressScore, BreathingRate, Temperature (nightly, plus the wearer's own TemperatureBaseline and TemperatureVariation); and, from 2026-08-22, HeartRateVariabilityMs (overnight RMSSD), OvernightBreathingRate, Light/Moderate/Vigorous/PeakZoneMinutes with ModerateZoneFloorBpm, and LongestSedentaryStretchMinutes with LongestSedentaryStretchStartUtc
 - DataSource / DeviceConnectionId record the highest-priority contributing device
 - No FK constraints - uses CardiMemberId and DeviceConnectionId (Guid)
 
@@ -82,7 +82,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 #### 10. **PatternBaseline**
 - AI-learned normal patterns for each CardiMember, recalculated daily by `BaselineCalculationWorker` (02:30 UTC)
 - Calculated over 7, 14, 30, 60, and 90 day periods
-- Contains: Average and sample σ for steps and resting heart rate, **median and unscaled MAD** for steps, resting HR, and sleep minutes (additive; live alerts still use the mean), sleep averages, typical bedtime/wake, day-of-week variations (JSON)
+- Contains: Average and sample σ for steps and resting heart rate, **median and unscaled MAD** for steps, resting HR, and sleep minutes (additive; live alerts still use the mean), sleep averages, typical bedtime/wake, day-of-week variations (JSON); and, from 2026-08-22, avg/σ **and** median/MAD for overnight heart-rate variability, avg/σ for overnight respiratory rate, and averages for minutes with the heart rate raised and the longest unbroken sedentary stretch — the four the alert rules added in that sweep threshold on
 
 ### Business Entities
 

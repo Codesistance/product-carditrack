@@ -163,7 +163,7 @@ C4Component
   Rel(base, sql3, "PatternBaselines")
   Rel(part, sql3, "DDL: create ahead / drop expired")
   Rel(inact, sql3, "Inactivity alerts (rule: device_silence)")
-  Rel(stat, sql3, "Alerts (rules: activity_decline, irregular_sleep, elevated_heart_rate, no_morning_activity, long_term_trend)")
+  Rel(stat, sql3, "Alerts (rules: activity_decline, irregular_sleep, elevated_heart_rate, no_morning_activity, long_term_trend, hrv_drop, overnight_breathing_up, elevated_zone_without_movement, daytime_inactivity_block)")
   Rel(audit, sql3, "Audit findings")
   Rel(authrec, health2, "Refresh-token retries")
   Rel(complete, sql3, "Notifications + NotificationRunLogs")

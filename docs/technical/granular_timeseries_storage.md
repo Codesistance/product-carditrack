@@ -4,7 +4,7 @@
 **Decision owner:** Architecture
 **Related:** [llm_design.md](../llm_design.md) · [data_sync_architecture.md](./data_sync_architecture.md) · [data_protection_architecture.md](./data_protection_architecture.md) · [infrastructure.md](../infrastructure.md)
 
-Sub-daily wearable samples (1-minute heart rate, steps, active-zone minutes; ~5-minute SpO2) are stored in **the existing Cloud SQL PostgreSQL instance**, in day-partitioned hour-vector tables in the clinical schema, behind a repository interface. **No new storage engine is introduced.**
+Sub-daily wearable samples (1-minute heart rate, steps, active-zone minutes; ~5-minute SpO2 and heart-rate variability) are stored in **the existing Cloud SQL PostgreSQL instance**, in day-partitioned hour-vector tables in the clinical schema, behind a repository interface. **No new storage engine is introduced.**
 
 ---
 
@@ -16,13 +16,13 @@ Everything CardiTrack stores about a wearer's day today is **one row per member 
 - **moving-window inference** ("assess the last hour, every few minutes") has no substrate — a daily row cannot answer an intra-day question;
 - the agreed product direction is **granular points plus multi-horizon rollups** (hour / day / week / month), with inference running on a moving window over the granular series.
 
-The Google Health API already serves the granular series (`list` methods at 1-minute grain for heart rate, steps, and active-zone minutes; ~5-minute for SpO2 — see the data-type table in [llm_design.md](../llm_design.md)). The question this ADR answers is **where those points live**: another storage type, or the existing data plane.
+The Google Health API already serves the granular series (`list` methods at 1-minute grain for heart rate, steps, and active-zone minutes; ~5-minute for SpO2 and, from 2026-08-22, heart-rate variability — see the data-type table in [llm_design.md](../llm_design.md)). The question this ADR answers is **where those points live**: another storage type, or the existing data plane.
 
 ### Scale envelope
 
 | | Points/wearer/day | At 100 wearers (today's cap) | At 10,000 wearers (design ceiling) |
 |---|---|---|---|
-| Granular points | ~4,600 (HR 1440 + steps 1440 + AZM 1440 + SpO2 ~288) | ~460 K/day | ~46 M/day (~530 writes/s average, arriving pre-batched) |
+| Granular points | ~4,900 (HR 1440 + steps 1440 + AZM 1440 + SpO2 ~288 + HRV ~288) | ~490 K/day | ~49 M/day (~570 writes/s average, arriving pre-batched) |
 | Hour-vector rows (this design) | ~96 (4 metrics × 24 h) | ~9.6 K/day | ~1 M/day |
 | Granular storage @ 90-day retention | — | ~4 GB | ~30–60 GB |
 
@@ -111,5 +111,6 @@ Escape hatch: a Bigtable adapter behind `IGranularMetricRepository` — row key 
 
 Two questions originally listed here are **settled and built**, and now belong to the decision (§2):
 
-- Granular AZM **is stored** — `GranularMetric.ActiveZoneMinutes` is one of the four granular series (an activity-context feature for the SSA/assessment path).
+- Granular AZM **is stored** — `GranularMetric.ActiveZoneMinutes` is one of the five granular series (an activity-context feature for the SSA/assessment path).
+- Granular **HRV is stored** — `GranularMetric.HeartRateVariability`, added 2026-08-22, is the sub-daily twin of the nightly RMSSD and the "secondary series" the SSA mapping has named since the original design. It reaches the real-time assessor's prompt as context beside the heart-rate window; it does **not** gate whether a window is assessed, which stays the HR deviation score. Sparser than SpO2 in practice — a wearer still enough to measure RMSSD is not a wearer doing very much — so most minutes of its grid are empty by nature rather than by omission. The enum is persisted as a **string** (`HasConversion<string>()`), so adding a member needs no migration and cannot renumber existing rows.
 - SpO2 is stored in **60-slot hours with nulls** — one shape everywhere, as the default proposed.
