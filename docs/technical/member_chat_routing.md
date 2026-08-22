@@ -74,11 +74,113 @@ These six lines *are* the routing prompt. Everything else in this document is sc
 | id | claim | purpose line (draft) |
 |---|---|---|
 | `status` | observation | What a reading currently is, or when something last happened — answerable by reading a value back. No comparison with what is usual for this person and no judgement about whether it is good. Also covers device, sync and monitoring state: "is his watch connected", "why is there no data since Tuesday". |
-| `analysis` | comparison | What the readings say over a period, set against what is usual for this member. Choose this when answering needs arithmetic over a window. Ask for the baseline when the question states or implies a comparison with usual. |
+| `analysis` | comparison | What the readings say over a period, set against what is usual for this member and against the published typical range where one exists. Choose this when answering needs arithmetic over a window. |
 | `inference` | judgement | Whether what the readings show is settled or worth attention. Choose this when the question asks for a verdict rather than for figures — "should I be concerned", "is that a real change". It returns the figures as well. |
 | `investigation` | judgement | Why something changed, and what co-occurred with it. Choose this only when the question asks to explain a change and answering would mean looking at things the question did not name. |
 | `advise` | suggestion | What could be done about the member's wellbeing. Choose this when answering would mean recommending an action. |
 | `steer` | none | Not a question about this person's health — a greeting, thanks, small talk, a question about the assistant itself, or a request about something unrelated. |
+
+### The assembled prompt
+
+Catalogues first so the prefix stays byte-identical and cacheable; everything that varies per turn comes after.
+
+```
+A family caregiver asked a question about a person whose wearable and health
+data this service already holds. Choose which one of these ways of answering
+fits the question, and which data it needs.
+
+Ways of answering:
+- status: {purpose line}
+- analysis: {purpose line}
+- inference: {purpose line}
+- investigation: {purpose line}
+- advise: {purpose line}
+- steer: {purpose line}
+
+These are ordered: status reads a value, analysis measures it, inference judges
+it, investigation explains it, advise acts on it. Each step up claims more than
+the one below. When two neighbouring ones both fit, choose the lower.
+
+Data you may ask for:
+{registry — id and one line each, stable order}
+
+You are not told who the person is and must not ask — the system already knows
+and will fetch the data you name for the right person. Name data only, never a
+person.
+
+── everything below varies per turn ─────────────────────────────────
+
+Not recorded for this person: {availability list}
+
+--- Earlier in this conversation ---
+{history, both sides, name-redacted}
+The question may be a follow-up; read it in the context of what was already
+asked and answered.
+
+--- Caregiver question ---
+{question}
+
+Answer with the way of answering, any close alternatives, the data it needs,
+and the days back if the question is about a period.
+
+{MedicalPromptBlocks.ChatMessageGuardrail}
+```
+
+Three parts carry most of the weight. **The ordering paragraph** replaces six boundary definitions with one rule and states the downward tie-break. **"Any close alternatives"** is the uncertainty signal — observed behaviour, not a self-rated score. **The subject-free rule** is lifted verbatim from `DataQueryPlannerService`, where it already works.
+
+Whether the ordering paragraph and the purpose lines are redundant with each other is an open question the eval set answers, not a judgement call: it may route better with the ordering and shorter lines, or with richer lines and no ordering.
+
+### Two benchmarks, named separately
+
+`analysis` and `inference` compare against **both** references, never one blurred into the other:
+
+1. **This member's own history** — the `PatternBaseline` mean/median. What is usual *for them*.
+2. **The published typical range** — `HealthReferenceRanges`, where a standards body publishes one.
+
+The two answer different questions and a caregiver needs to be able to tell them apart: a resting heart rate of 58 can be below the AHA's typical adult band and entirely normal for this person, and saying so is the whole value of carrying both.
+
+| Metric | Published band | Source |
+|---|---|---|
+| Resting heart rate | 60–100 bpm | AHA |
+| Sleep | 7–9 h, and 7–8 h from `OlderAdultAge` | NSF |
+| SpO₂ | 94–100 % | WHO |
+| Breathing rate | 12–20 /min | WHO |
+| Steps | **none** — WHO publishes minutes of activity, not steps | — |
+| Skin temperature | **none** — wearer-relative, no population normal | — |
+
+Four rules, each of which `HealthReferenceRanges` already establishes and this must not weaken:
+
+- **Attribute every band to the body that publishes it.** They do not all come from one, and a single unattributed "normal range" would credit three bodies with one recommendation.
+- **Where there is no band, say there is none.** Never substitute a vendor range or one of our own. Steps and temperature compare against the member's own history only, and that is a finding, not a gap.
+- **Pass the member's age.** The sleep band is the one published age split, and most CardiMembers are the older side of it — comparing them against the adult ceiling gives them an hour of headroom the recommendation does not.
+- **A band exit is a position, not a diagnosis.** `analysis` may say a reading sits below the AHA's typical adult range; it may not name a condition, and neither may `inference`. Being outside a published band is, however, the clearest legitimate trigger for `inference`'s one permitted next step — "worth mentioning to their doctor".
+
+This keeps both claim classes as they were. Stating where a number sits relative to an attributed published band is a `comparison`. Judging whether that matters is a `judgement`. Neither becomes a `suggestion`.
+
+### The response format
+
+The router's answer is constrained by `StructuredOutputSchema`, which copies `[Description]` attributes into the schema the model is held to — so the format is carried by the record, not by prose at the end of the prompt.
+
+```csharp
+internal sealed record RoutingAiResponse
+{
+    [Description("The one way of answering that fits, by id, from the list given.")]
+    public required string Workflow { get; init; }
+
+    [Description("Other ids that fit almost as well, best first. Empty when one clearly fits.")]
+    public required IReadOnlyList<string> Alternatives { get; init; }
+
+    [Description("Data ids the answer needs, from the list given. May be empty.")]
+    public required IReadOnlyList<string> Datasets { get; init; }
+
+    [Description("How many days back the question is about, 1 to 7. Omit when it is not about a period.")]
+    public int? Days { get; init; }
+}
+```
+
+`Alternatives` is **required rather than optional**, for the reason `DataQueryPlanAiResponse.Metrics` is: an omitted field and a deliberately empty one mean different things, and "one clearly fits" has to be *said* rather than skipped. An omitted `Alternatives` is a model that did not answer; an empty one is a model that is sure. Only the second should suppress clarify.
+
+With the schema carrying the spec, the prompt's closing instruction shrinks to one line — *"Answer with the way of answering, any close alternatives, the data it needs, and the days back if the question is about a period"* — and the parse stays what the planner already does: `TryParse` plus `IsDefined`, unknown names dropped rather than coerced.
 
 ### Six entries, seven handlers
 
@@ -130,6 +232,8 @@ That is wider than the platform currently reasons about. Across every prompt bui
 ### Absence is stated
 
 A metric with no published range says so and says why — the pattern `HealthReferenceRanges` already sets, where steps get no band because converting WHO's minutes-per-week into a step count "would be our arithmetic wearing WHO's name". Silence cannot be told apart from an unfilled field.
+
+`referenceRange` is what `analysis` and `inference` benchmark against (§4), so the entry carries the band *and* its publishing body — a range without attribution is not usable by either. For the 22 metrics with no reads and no published band, the field states its own absence and the finding compares against the member's own history alone.
 
 ### Prompt shape
 
@@ -251,6 +355,10 @@ Hand-labelled caregiver phrasings, expected entry, and what each case guards. Se
 | "How's his sleep been this week?" | `analysis` or `inference` | The superset boundary — either is acceptable, neither should be `status` |
 | "Is she walking less than usual?" | `analysis` | Explicit comparison |
 | "What were his steps on Tuesday?" | `status` | Named day, no comparison |
+| "Is 58 a normal resting heart rate?" | `analysis` | The published band, attributed — and below-band need not mean abnormal for him |
+| "Is his oxygen level okay?" | `inference` | Band position plus a verdict on it |
+| "Is he getting enough sleep?" | `analysis` or `inference` | The age-split band — must use the older-adult ceiling, not the adult one |
+| "Is 6,000 steps good?" | `analysis` | No published band exists; must compare against his own history and say so |
 | "Why has he been so restless?" | `investigation` | Explanation, second fetch |
 | "What changed around the 14th?" | `investigation` | Change explanation |
 | "Why?" (after a sleep answer) | inherit prior | Terse follow-up must be judged in context |
