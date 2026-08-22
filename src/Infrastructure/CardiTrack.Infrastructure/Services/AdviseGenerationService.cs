@@ -95,6 +95,13 @@ public class AdviseGenerationService
     /// hiccup, and the honest response is to withhold the row entirely — a stale suggestion that no
     /// longer applies is worse than none, especially for a feature this careful about not reading
     /// as a clinical instruction.
+    /// <para>
+    /// A well-formed reply that names a condition or proposes a treatment is withheld the same way,
+    /// and so is a citation that names no reference. Both are <see cref="AdviseRegisterGuards"/>'s
+    /// job: the prompt states the boundary and cannot enforce it, and a nonblank check on the
+    /// citation is not the traceability check the field was added for — "N/A" passes it. This is
+    /// the guard every comparable generation on the platform already had and this one did not.
+    /// </para>
     /// </remarks>
     public async Task RegenerateIfDueAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
@@ -124,8 +131,26 @@ public class AdviseGenerationService
         var suggestion = ResolvedOrEmpty(aiResponse.Suggestion, name);
         var guidelineCited = ResolvedOrEmpty(aiResponse.GuidelineCited, name);
 
-        if (string.IsNullOrWhiteSpace(guidelineCited))
+        // Two different "nothing to serve" replies, withheld the same way. A citation naming no
+        // reference is the model declining to ground the suggestion — which the prompt explicitly
+        // invites when nothing fits, and which AdviseRegisterGuards also recognises in the
+        // placeholders a model reaches for instead of leaving the field blank. A summary or
+        // suggestion that names a condition or proposes a treatment is the model crossing the one
+        // boundary this generation exists inside; the prompt asks it not to, and asking is not
+        // enforcing (see AdviseRegisterGuards). Either way the honest outcome is no row: a
+        // suggestion is not so valuable that it is worth serving one that broke its own contract.
+        if (AdviseRegisterGuards.IsUngroundedCitation(guidelineCited)
+            || AdviseRegisterGuards.ReadsAsClinical(summary)
+            || AdviseRegisterGuards.ReadsAsClinical(suggestion))
         {
+            if (AdviseRegisterGuards.ReadsAsClinical(summary) || AdviseRegisterGuards.ReadsAsClinical(suggestion))
+            {
+                _logger.LogWarning(
+                    "Advise for CardiMember {CardiMemberId} came back naming a condition or a "
+                    + "treatment; withholding it.",
+                    cardiMemberId);
+            }
+
             if (existing is not null)
             {
                 _unitOfWork.MemberAdvises.Remove(existing);

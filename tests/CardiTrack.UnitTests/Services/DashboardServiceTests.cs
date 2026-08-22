@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -753,12 +753,35 @@ public class DashboardServiceTests
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
+            GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
         });
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
         Assert.True(result.HasAdvise);
+    }
+
+    /// <summary>
+    /// The dot may not pulse for a row the details card is contracted not to render. It used to
+    /// light on age alone, so a row citing no reference lit the dot, and opening the card showed
+    /// nothing — the same row member chat would also have declined.
+    /// </summary>
+    [Fact]
+    public async Task HasAdvise_IsFalse_ForARowThatCitesNoReference()
+    {
+        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        {
+            CardiMemberId = _memberId,
+            Summary = "Summary.",
+            Suggestion = "Suggestion.",
+            GuidelineCited = null,
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
+        });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.False(result.HasAdvise);
     }
 
     [Fact]

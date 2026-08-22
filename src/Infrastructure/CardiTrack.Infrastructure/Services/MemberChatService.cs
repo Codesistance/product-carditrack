@@ -607,7 +607,9 @@ public class MemberChatService : IMemberChatService
     /// A row with no <see cref="MemberAdvise.GuidelineCited"/> is still treated as nothing to serve
     /// rather than served bare — the same call <c>AdviseGenerationService</c> makes when it
     /// withholds such a row, and what <see cref="AdviseResponse.GuidelineCited"/> tells clients to
-    /// do with a null.
+    /// do with a null. That rule now lives in <see cref="AdviseServability"/> rather than here:
+    /// stated only in this method it made chat disagree with the Details card and the Dashboard
+    /// pulse dot, which went on rendering such a row and lighting for it.
     /// </para>
     /// <para>
     /// The empty case says why there is nothing and what can be asked instead, rather than only
@@ -617,13 +619,7 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     internal static string AdviseReply(string? firstName, MemberAdvise? advise, DateTime utcNow)
     {
-        var servable = advise is not null
-            && utcNow - advise.GeneratedAtUtc <= AdviseStaleness.MaxAge
-            && !string.IsNullOrWhiteSpace(advise.Summary)
-            && !string.IsNullOrWhiteSpace(advise.Suggestion)
-            && !string.IsNullOrWhiteSpace(advise.GuidelineCited);
-
-        if (!servable)
+        if (!AdviseServability.IsServable(advise, utcNow))
         {
             // "them" rather than an invented relationship word, for the reason LiveStatusReply's
             // subject line gives at length.
@@ -633,7 +629,7 @@ public class MemberChatService : IMemberChatService
                 + "sleep, activity or heart rate compare with what's usual for them, though.";
         }
 
-        return $"{advise!.Summary.Trim()} {advise.Suggestion.Trim()} That's just an idea to "
+        return $"{advise.Summary.Trim()} {advise.Suggestion.Trim()} That's just an idea to "
             + "consider — their doctor is the one to ask if you're unsure about it.";
     }
 

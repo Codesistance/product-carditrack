@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -102,7 +102,10 @@ public class DashboardService : IDashboardService
         // member's stored suggestion is withheld there, and a pulsing badge promising one the
         // details screen will never show would be worse than no badge at all.
         var advise = isPaused ? null : await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
-        var hasAdvise = advise is not null && DateTime.UtcNow - advise.GeneratedAtUtc <= AdviseStaleness.MaxAge;
+        // The same predicate the details card and member chat serve on, so the dot cannot pulse for
+        // a row either of them would withhold — it used to light on age alone, including for a row
+        // citing no reference that the card is contracted not to render.
+        var hasAdvise = AdviseServability.IsServable(advise, DateTime.UtcNow);
 
         // GetPendingAsync re-checks access on its own — a second round trip, since access was
         // already required above — but a cheap one against the caller's small set of linked

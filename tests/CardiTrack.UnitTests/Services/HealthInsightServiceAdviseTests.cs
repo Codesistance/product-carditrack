@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -92,6 +92,7 @@ public class HealthInsightServiceAdviseTests
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
+            GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = generatedAt,
         });
 
@@ -140,12 +141,38 @@ public class HealthInsightServiceAdviseTests
             CardiMemberId = _memberId,
             Summary = "Old summary.",
             Suggestion = "Old suggestion.",
+            GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = DateTime.UtcNow.AddDays(-4),
         });
 
         var result = await CreateSut().GetAdviseAsync(_userId, _memberId);
 
         Assert.Equal(string.Empty, result.Suggestion);
+    }
+
+    /// <summary>
+    /// A suggestion is not rendered without its grounding — the rule
+    /// <c>AdviseResponse.GuidelineCited</c> already documented for clients and this reader was not
+    /// applying. Shared with the Dashboard's pulse dot and member chat through
+    /// <c>AdviseServability</c>, so a caregiver cannot be shown a suggestion here that chat then
+    /// says does not exist.
+    /// </summary>
+    [Fact]
+    public async Task RowThatCitesNoReference_IsWithheld()
+    {
+        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        {
+            CardiMemberId = _memberId,
+            Summary = "Summary.",
+            Suggestion = "Suggestion.",
+            GuidelineCited = null,
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
+        });
+
+        var result = await CreateSut().GetAdviseAsync(_userId, _memberId);
+
+        Assert.Equal(string.Empty, result.Suggestion);
+        Assert.Null(result.GuidelineCited);
     }
 
     [Fact]
@@ -156,6 +183,7 @@ public class HealthInsightServiceAdviseTests
             CardiMemberId = _memberId,
             Summary = "Recent summary.",
             Suggestion = "Recent suggestion.",
+            GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
         });
 

@@ -791,12 +791,21 @@ internal static partial class MedicalPromptBlocks
     internal static string FamilyDigestDailyLines(
         IEnumerable<ActivityLog> logs, DateOnly today, DigestDayProgress? progress = null)
     {
-        var lines = logs
-            .TakeLast(2)
-            .Select(l =>
-                $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null, progress: progress)}: "
-                + DigestDayFigures(l))
-            .ToList();
+        string Render(ActivityLog l) =>
+            $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null, progress: progress)}: "
+            + DigestDayFigures(l);
+
+        var rows = logs.ToList();
+        var lines = rows.TakeLast(2).Select(Render).ToList();
+
+        // The anchor <see cref="DailyLines"/> writes, for the same reason and on the same terms.
+        // The digest fetches exactly yesterday and today and the repository omits a day the
+        // wearable sent nothing for, so a member whose watch has not synced this morning had no
+        // "Today so far" line at all — leaving yesterday's row as the newest thing in the prompt
+        // and its sleep figure as the only night on offer. That is the misattribution this block's
+        // labels exist to prevent, arriving by the one route the label alone could not close.
+        if (lines.Count > 0 && rows.TrueForAll(l => l.Date != today))
+            lines.Add(Render(new ActivityLog { Date = today }));
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
     }

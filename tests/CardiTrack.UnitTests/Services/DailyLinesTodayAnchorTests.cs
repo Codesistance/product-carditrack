@@ -119,4 +119,37 @@ public class DailyLinesTodayAnchorTests
     {
         Assert.Equal("No recent activity data.", MedicalPromptBlocks.DailyLines([], take: 7, Today));
     }
+
+    // ── The family digest's own rows ────────────────────────────────────────────
+    //
+    // Same anchor, same reason, and it needs its own: the digest fetches exactly yesterday and
+    // today, so a member whose watch has not synced this morning is left with a single row —
+    // yesterday's — whose sleep figure is then the only night in the prompt.
+
+    [Fact]
+    public void TheDigestAlsoWritesTodaysRow_WhenNoReadingHasArrived()
+    {
+        var lines = MedicalPromptBlocks.FamilyDigestDailyLines(
+            [Log(Today.AddDays(-1), steps: 3835, sleep: 400)], Today);
+
+        Assert.Contains($"Today so far ({Today}", lines);
+        Assert.Contains("last night's sleep belongs on this row and has not arrived", lines);
+        Assert.Contains("steps=not measured", lines);
+    }
+
+    [Fact]
+    public void TheDigestDoesNotDuplicateARealTodayRow()
+    {
+        var lines = MedicalPromptBlocks.FamilyDigestDailyLines(
+            [Log(Today.AddDays(-1), steps: 3835), Log(Today, steps: 3442, sleep: 372)], Today);
+
+        Assert.Single(lines.Split('\n'), l => l.Contains("Today so far"));
+        Assert.Contains("the sleep figure is last night's and complete", lines);
+    }
+
+    [Fact]
+    public void TheDigestSynthesisesNothingForAMemberWithNoReadingsAtAll()
+    {
+        Assert.Equal("No recent activity data.", MedicalPromptBlocks.FamilyDigestDailyLines([], Today));
+    }
 }

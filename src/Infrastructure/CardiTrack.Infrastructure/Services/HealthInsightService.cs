@@ -346,8 +346,11 @@ public class HealthInsightService : IHealthInsightService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(DateTime.UtcNow))
             return NoAdvise(cardiMemberId);
 
+        // Shared with the Dashboard's pulse indicator and member chat's advice reply, so the three
+        // cannot answer differently for the same row — see AdviseServability, which this used to
+        // disagree with by rendering a suggestion that cited no reference.
         var advise = await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
-        if (advise is null || DateTime.UtcNow - advise.GeneratedAtUtc > AdviseStaleness.MaxAge)
+        if (!AdviseServability.IsServable(advise, DateTime.UtcNow))
             return NoAdvise(cardiMemberId);
 
         return new AdviseResponse
