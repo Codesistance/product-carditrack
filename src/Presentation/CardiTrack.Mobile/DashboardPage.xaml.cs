@@ -80,6 +80,7 @@ public partial class DashboardPage : ContentPage
         HeroCard.DaybookTapped += OnDaybookTapped;
         HeroCard.AlertsTapped += OnHeroAlertsTapped;
         HeroCard.QaTapped += OnHeroQaTapped;
+        HeroCard.AdviseTapped += OnHeroAdviseTapped;
         HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
         Header.BellTapped += OnBellClicked;
 
@@ -581,6 +582,20 @@ public partial class DashboardPage : ContentPage
         if (_lastData is not { } data)
             return;
         _ = Shell.Current.GoToAsync($"{CardiMemberDetailPage.Route}?memberId={data.CardiMemberId}");
+    }
+
+    /// <summary>
+    /// The card's Advise button — M1-13, opened at the Wellness suggestion rather than at the top.
+    /// The button only exists while there is one to read, so landing anywhere else would be
+    /// asking a caregiver to go and find the thing they just tapped.
+    /// </summary>
+    private void OnHeroAdviseTapped(object? sender, EventArgs e)
+    {
+        if (_lastData is not { } data)
+            return;
+        _ = Shell.Current.GoToAsync(
+            $"{CardiMemberDetailPage.Route}?memberId={data.CardiMemberId}" +
+            $"&focus={CardiMemberDetailPage.AdviseFocus}");
     }
 
     /// <summary>

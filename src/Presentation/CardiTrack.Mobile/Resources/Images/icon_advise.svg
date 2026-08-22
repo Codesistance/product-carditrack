@@ -1,0 +1,11 @@
+<!-- A compass, which is what a wellness suggestion is: a bearing, not an instruction. Same
+     24-unit box, #939DAA stroke and 2-unit weight as icon_tab_journal.svg and icon_tab_qa.svg,
+     so the row of buttons reads as one set. Deliberately not a lightbulb — the Detail page's
+     Tips card already owns that glyph, and this button opens the Advise card beside it, not
+     Tips. The needle is drawn open rather than filled so it carries the same line weight as the
+     ring around it. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="12" cy="12" r="9" stroke="#939DAA" stroke-width="2"/>
+  <path d="M15.6 8.4 13.6 13.6 8.4 15.6 10.4 10.4z"
+        stroke="#939DAA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

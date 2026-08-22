@@ -24,7 +24,7 @@
              cluster (42) is showing beside the 36 buttons, so the card doesn't jolt when a
              question arrives — but it still grows if a larger system font needs it to. -->
         <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-              ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8"
+              ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8"
               MinimumHeightRequest="42">
             <Label x:Name="NameLabel"
                    Grid.Column="0"
@@ -150,6 +150,51 @@
                        WidthRequest="20" HeightRequest="20"
                        HorizontalOptions="Center" VerticalOptions="Center"/>
             </Border>
+
+            <!-- Advise: last in the row, only while this member has a fresh wellness suggestion
+                 waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
+                 now — a dot that pulsed at something without saying what, and with nothing to tap.
+                 As a button it says both: the same 36 face and 20 glyph as CardiJournal and Alerts
+                 beside it, and a tap that lands on the suggestion itself.
+
+                 The cell is 36 rather than QaCluster's 42 — no badge to hang — which is what keeps
+                 the 8 gap to Alerts identical to CardiJournal's and the button flush with the
+                 card's right edge. The ring pulses *over* the button face rather than behind it,
+                 because a 36 face is opaque: QaCluster's ring is 34 behind a 36 border and only
+                 its outer sliver ever shows. Blooming outward from the glyph keeps the whole
+                 animation inside those 36 and still reads. -->
+            <Grid x:Name="AdviseCluster"
+                  Grid.Column="5"
+                  WidthRequest="36" HeightRequest="36"
+                  VerticalOptions="Center"
+                  IsVisible="False"
+                  SemanticProperties.Description="Wellness suggestion"
+                  SemanticProperties.Hint="Opens this CardiMember's wellness suggestion">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnAdviseTapped"/>
+                </Grid.GestureRecognizers>
+
+                <Border WidthRequest="36" HeightRequest="36"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        HorizontalOptions="Center" VerticalOptions="Center"
+                        InputTransparent="True">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="18"/>
+                    </Border.StrokeShape>
+                    <Image Source="icon_advise.svg"
+                           WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Border>
+
+                <Ellipse x:Name="AdvisePulseRing"
+                         WidthRequest="32" HeightRequest="32"
+                         HorizontalOptions="Center" VerticalOptions="Center"
+                         Stroke="{StaticResource Primary}"
+                         StrokeThickness="2"
+                         Opacity="0"
+                         InputTransparent="True"/>
+            </Grid>
         </Grid>
 
         <!-- Member Detail's display image box, not one of this card's own: the same person must
@@ -157,21 +202,10 @@
              block now that the name no longer shares this row — bottom-aligning it against a
              sentence that wraps to two or three lines floated the box away from the text it
              belongs to. -->
-        <Grid Grid.Row="1" Grid.Column="0" HorizontalOptions="Start" VerticalOptions="Start">
-            <controls:MemberAvatar x:Name="Avatar"
-                                   BoxWidth="76"
-                                   VerticalOptions="Start"/>
-
-            <!-- Advise's corner badge: pulses only while this member has a fresh wellness
-                 suggestion waiting on CardiMember Details (DashboardResponse.HasAdvise). No count,
-                 same "something's here" language as DashboardHeader's NudgeDot, but animated
-                 because this is worth noticing rather than merely present. -->
-            <controls:PulseDot x:Name="AdvisePulseDot"
-                                IsVisible="False"
-                                HorizontalOptions="End" VerticalOptions="Start"
-                                Margin="0,-6,-6,0"
-                                InputTransparent="True"/>
-        </Grid>
+        <controls:MemberAvatar x:Name="Avatar"
+                               Grid.Row="1" Grid.Column="0"
+                               BoxWidth="76"
+                               HorizontalOptions="Start" VerticalOptions="Start"/>
 
         <!-- Two lines, not one: the headline is the note a caregiver reads at a glance — short
              enough to land in one beat — and the sentence under it is the context they read

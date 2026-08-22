@@ -14,10 +14,18 @@ namespace CardiTrack.Mobile;
 /// action, and re-entered after M1-14/M1-15 so edits show up immediately.
 /// </summary>
 [QueryProperty(nameof(MemberId), "memberId")]
+[QueryProperty(nameof(FocusSection), "focus")]
 public partial class CardiMemberDetailPage : ContentPage
 {
     /// <summary>Shell route; see <see cref="AppShell"/>.</summary>
     public const string Route = "memberdetail";
+
+    /// <summary>
+    /// <c>?focus=</c> value that opens this page at the Wellness suggestion card rather than at
+    /// the top — what the Dashboard card's Advise button navigates with, so the pulse a caregiver
+    /// tapped lands on the suggestion it was pulsing about instead of somewhere down a long page.
+    /// </summary>
+    public const string AdviseFocus = "advise";
 
     private static readonly (string Label, int Hours)[] PauseDurations =
     [
@@ -45,6 +53,14 @@ public partial class CardiMemberDetailPage : ContentPage
     private bool _contactsBound;
 
     private Guid _memberId;
+
+    /// <summary>
+    /// Set by <see cref="FocusSection"/>, consumed by the first <see cref="LoadAsync"/> after
+    /// it. One arrival, not a standing preference: the page reloads itself every thirty seconds,
+    /// and a flag left standing would haul a caregiver back to the suggestion each time.
+    /// </summary>
+    private bool _focusAdvise;
+
     private bool _isLoading;
     private bool _isBusy;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
@@ -122,6 +138,17 @@ public partial class CardiMemberDetailPage : ContentPage
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
         }
+    }
+
+    /// <summary>
+    /// Which section this page was opened for, when it was opened for one — see
+    /// <see cref="AdviseFocus"/>. Left unset by every other way in, which is the ordinary
+    /// top-of-page arrival.
+    /// </summary>
+    public string FocusSection
+    {
+        set => _focusAdvise = string.Equals(
+            Uri.UnescapeDataString(value ?? string.Empty), AdviseFocus, StringComparison.Ordinal);
     }
 
     protected override void OnAppearing()
@@ -222,9 +249,17 @@ public partial class CardiMemberDetailPage : ContentPage
             // reading taken here is of a scroll position that has moved.
             var anchor = _anchorOnLeaving ?? CaptureScrollAnchor();
             _anchorOnLeaving = null;
+
+            // Only this pass honours it. Every restore below re-asserts the same target, so the
+            // suggestion holds its place while the digest above it rewrites itself; by the pass
+            // after, the caregiver is sitting on that card and the ordinary anchor keeps them
+            // there without any help.
+            var focusAdvise = _focusAdvise;
+            _focusAdvise = false;
+
             Apply(_member);
             SetState(loaded: true);
-            _ = RestoreScrollAnchorAsync(anchor);
+            _ = RestoreScrollAnchorAsync(anchor, focusAdvise);
 
             // Fire-and-forget, not awaited: Apply already rendered the placeholder summary
             // copy, and the digest read is a separate round trip that shouldn't hold up the
@@ -233,10 +268,10 @@ public partial class CardiMemberDetailPage : ContentPage
             // height of it — the digest rewrites the summary, the questionnaires add or remove a
             // whole card — so the anchor is re-asserted as each one finishes rather than only
             // after Apply. Restoring is a no-op when nothing moved.
-            _ = LoadThenRestoreAsync(LoadDigestAsync(_memberId), anchor);
-            _ = LoadThenRestoreAsync(LoadAdviseAsync(_memberId), anchor);
-            _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(_memberId), anchor);
-            _ = LoadThenRestoreAsync(LoadAlertPreferencesAsync(_memberId), anchor);
+            _ = LoadThenRestoreAsync(LoadDigestAsync(_memberId), anchor, focusAdvise);
+            _ = LoadThenRestoreAsync(LoadAdviseAsync(_memberId), anchor, focusAdvise);
+            _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(_memberId), anchor, focusAdvise);
+            _ = LoadThenRestoreAsync(LoadAlertPreferencesAsync(_memberId), anchor, focusAdvise);
         }
         catch (ApiException ex)
         {
@@ -281,7 +316,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// unexpected, and losing the caregiver's place is not the right response to it — the reading
     /// position is worth restoring precisely when something went wrong above it.
     /// </remarks>
-    private async Task LoadThenRestoreAsync(Task load, ScrollAnchor? anchor)
+    private async Task LoadThenRestoreAsync(Task load, ScrollAnchor? anchor, bool focusAdvise = false)
     {
         try
         {
@@ -293,7 +328,7 @@ public partial class CardiMemberDetailPage : ContentPage
         }
         finally
         {
-            await RestoreScrollAnchorAsync(anchor);
+            await RestoreScrollAnchorAsync(anchor, focusAdvise);
         }
     }
 
@@ -343,8 +378,17 @@ public partial class CardiMemberDetailPage : ContentPage
     /// to be. Unanimated, because this is meant to look like nothing happened — a visible glide
     /// would announce the very movement it exists to hide.
     /// </remarks>
-    private async Task RestoreScrollAnchorAsync(ScrollAnchor? anchor)
+    private async Task RestoreScrollAnchorAsync(ScrollAnchor? anchor, bool focusAdvise = false)
     {
+        // An arrival aimed at the suggestion overrides the anchor rather than competing with it —
+        // and on that arrival there is no anchor to override anyway, since the page opens at the
+        // top and CaptureScrollAnchor returns null there.
+        if (focusAdvise)
+        {
+            await FocusAdviseAsync();
+            return;
+        }
+
         if (anchor is not { } held)
             return;
 
@@ -374,6 +418,35 @@ public partial class CardiMemberDetailPage : ContentPage
         catch (Exception)
         {
             // The page went away mid-refresh. Nothing to restore it to.
+        }
+    }
+
+    /// <summary>
+    /// Puts the Wellness suggestion card under the top of the viewport, for an arrival that asked
+    /// for it — see <see cref="AdviseFocus"/>.
+    /// </summary>
+    /// <remarks>
+    /// A no-op while the card is still hidden, which it is until <see cref="LoadAdviseAsync"/>
+    /// lands: this runs after every section of the arriving pass, so the one that follows the
+    /// suggestion itself is the one that moves the page, and the ones after that hold it there
+    /// as the digest above rewrites itself. Unanimated for the same reason the anchor restore is
+    /// — a caregiver who tapped Advise should find themselves at the suggestion, not watch the
+    /// page travel to it.
+    /// </remarks>
+    private async Task FocusAdviseAsync()
+    {
+        await Task.Yield();
+
+        if (!AdviseCard.IsVisible)
+            return;
+
+        try
+        {
+            await DetailScroller.ScrollToAsync(AdviseCard, ScrollToPosition.Start, animated: false);
+        }
+        catch (Exception)
+        {
+            // The page went away mid-refresh. Nothing left to scroll.
         }
     }
 

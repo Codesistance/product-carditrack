@@ -308,9 +308,14 @@
                                 Style="{StaticResource ElevatedCard}"
                                 IsVisible="False">
                             <VerticalStackLayout Spacing="10">
+                                <!-- Compass, matching icon_advise.svg on the Dashboard card's
+                                     button that leads here — the button and the card it opens
+                                     have to be the same symbol, or the pulse points at nothing
+                                     recognisable. Was a seedling, which read as growth but had no
+                                     counterpart anywhere else; the bulb next door is Tips'. -->
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <Label Grid.Column="0"
-                                           Text="&#x1F331;"
+                                           Text="&#x1F9ED;"
                                            FontSize="16"
                                            VerticalOptions="Start"
                                            Margin="0,2,0,0"
