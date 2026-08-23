@@ -228,6 +228,13 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
         var steps = SumIfAny(window.MinuteSeries, GranularMetric.Steps, lastIndex, WindowMinutes);
         var spo2 = MeanIfAny(window.MinuteSeries, GranularMetric.SpO2, lastIndex, WindowMinutes);
+        // Context, not a trigger. What decides whether this window is assessed at all stays the
+        // heart-rate deviation score above; HRV is here because the same rise in heart rate reads
+        // differently depending on whether the autonomic signal moved with it, and the model
+        // cannot weigh that without being shown it. Sparse by nature — a wearer still enough to
+        // measure RMSSD is not a wearer doing very much — so most hours have none.
+        var hrv = MeanIfAny(
+            window.MinuteSeries, GranularMetric.HeartRateVariability, lastIndex, WindowMinutes);
 
         // The member's own context — demographics, the conditions of a recent session, anything a
         // later source adds — is composed centrally now (see MemberContextComposer). The consent
@@ -239,7 +246,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             ct);
 
         var prompt = BuildPrompt(AssessmentInstructions, memberContext, ssa.TrendLast, deviationScore,
-            noiseRms, series[^1], covered, steps, spo2);
+            noiseRms, series[^1], covered, steps, spo2, hrv);
         var aiResponse = await _medicalAi.GenerateStructuredAsync<AssessmentAiResponse>(prompt, ct);
         var (rawSeverity, severity) = AssessmentSeverityParser.Map(aiResponse.Severity);
 
@@ -391,7 +398,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// </remarks>
     internal static string BuildPrompt(
         string instructions, string memberContext, double trendLast, double deviationScore,
-        double noiseRms, double lastReading, int coveredMinutes, double? steps, double? spo2)
+        double noiseRms, double lastReading, int coveredMinutes, double? steps, double? spo2,
+        double? heartRateVariability = null)
     {
         var contextLines = new List<string>
         {
@@ -406,6 +414,9 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             spo2.HasValue
                 ? $"Average SpO2 this hour: {spo2:F0}%"
                 : "Average SpO2 this hour: not measured",
+            heartRateVariability.HasValue
+                ? $"Average heart rate variability this hour: {heartRateVariability:F0} ms"
+                : "Average heart rate variability this hour: not measured",
         };
 
         return $"""

@@ -47,6 +47,14 @@ public record GoogleHealthSleepResult(
 /// this API can populate <c>ActivityLog.StressScore</c>. The column is left null rather than filled
 /// with a number CardiTrack invented and then presented beside measured values.
 /// </remarks>
+/// <param name="HeartRateVariabilityMs">
+/// Overnight RMSSD in milliseconds, from the <c>daily-heart-rate-variability</c> Daily record.
+/// Null on a device that derives none, like every other field on this record.
+/// </param>
+/// <param name="OvernightBreathingRate">
+/// Breaths per minute averaged over the night, from <c>respiratory-rate-sleep-summary</c> — the
+/// stillness-measured twin of <paramref name="BreathingRate"/>, which averages the whole day.
+/// </param>
 public record GoogleHealthAdditionalMetricsResult(
     decimal? SpO2Average,
     decimal? SpO2Min,
@@ -55,4 +63,34 @@ public record GoogleHealthAdditionalMetricsResult(
     decimal? BreathingRate,
     decimal? Temperature,
     decimal? TemperatureBaseline,
-    decimal? TemperatureVariation);
+    decimal? TemperatureVariation,
+    decimal? HeartRateVariabilityMs,
+    decimal? OvernightBreathingRate);
+
+/// <summary>
+/// How hard the day's heart worked and how long the wearer went unbroken without moving — the two
+/// questions the daily totals cannot answer, from the same scopes every connection already holds.
+/// </summary>
+/// <remarks>
+/// Zone minutes are null when the day carries no rollup at all and a number — zero included — when
+/// it does: a zone the wearer never reached is a measurement, not a gap. The sedentary stretch is
+/// null when the device records no activity-level intervals for the day.
+/// </remarks>
+/// <param name="ModerateZoneFloorBpm">
+/// Where this wearer's moderate zone begins, in bpm. Their device's own Karvonen figure, computed
+/// against their resting rate and age — read rather than re-derived, so CardiTrack's copy and the
+/// wearer's watch cannot disagree about what "moderate" means for them.
+/// </param>
+/// <param name="LongestSedentaryStretchMinutes">
+/// The longest unbroken run of sedentary intervals. Deliberately not the day's sedentary total,
+/// which CardiTrack already stores: six hours of stillness in twelve half-hours and one unbroken
+/// six-hour stretch sum the same and are not the same day.
+/// </param>
+public record GoogleHealthExertionResult(
+    int? LightZoneMinutes,
+    int? ModerateZoneMinutes,
+    int? VigorousZoneMinutes,
+    int? PeakZoneMinutes,
+    int? ModerateZoneFloorBpm,
+    int? LongestSedentaryStretchMinutes,
+    DateTime? LongestSedentaryStretchStartUtc);

@@ -544,7 +544,7 @@ public class DeviceSyncServiceTests
 
     private static DeviceGranularDay GranularDayWithData() =>
         new(HeartRate: [new GranularSample(DateTime.UtcNow, 70f)],
-            Steps: [], ActiveZoneMinutes: [], SpO2: []);
+            Steps: [], ActiveZoneMinutes: [], SpO2: [], HeartRateVariability: []);
 
     [Fact]
     public async Task SyncCardiMemberAsync_FetchesGranular_ForEachRoutineWindowDay_OnWorkerCadence()

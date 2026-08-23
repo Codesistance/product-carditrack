@@ -28,6 +28,9 @@ public static class GranularDayBucketer
         AddSeries(day.Steps, GranularMetric.Steps, additive: true);
         AddSeries(day.ActiveZoneMinutes, GranularMetric.ActiveZoneMinutes, additive: true);
         AddSeries(day.SpO2, GranularMetric.SpO2, additive: false);
+        // Level, not additive: two RMSSD readings in one minute are two estimates of the same
+        // quantity, and summing them would report double the variability the wearer has.
+        AddSeries(day.HeartRateVariability, GranularMetric.HeartRateVariability, additive: false);
 
         foreach (var row in rows.Values)
             row.SampleCount = (short)row.Values.Count(v => v.HasValue);

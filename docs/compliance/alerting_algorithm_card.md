@@ -1,6 +1,6 @@
 # Alerting algorithm card
 
-**Status:** Matches the code as of 2026-08-14. Companion to [art22_alerting_analysis.md](art22_alerting_analysis.md) and [mathnet_numerics.md](../technical/mathnet_numerics.md). Caregiver-facing summary lives on `/privacy` (“How alerting works”). This card is the Art. 15 artefact: named formulas, named engine, named constants.
+**Status:** Matches the code as of 2026-08-22. Companion to [art22_alerting_analysis.md](art22_alerting_analysis.md) and [mathnet_numerics.md](../technical/mathnet_numerics.md). Caregiver-facing summary lives on `/privacy` (“How alerting works”). This card is the Art. 15 artefact: named formulas, named engine, named constants.
 
 CardiTrack computes every number in-process. MedGemma only interprets numbers it is given. It never sets a threshold, never writes an `Alert` by mumbling, and never replaces the rules below.
 
@@ -25,6 +25,16 @@ Mean and sample σ (n−1) are computed in `BaselineCalculator` (package-free Ap
 | Elevated resting HR | Yesterday’s resting HR &gt; mean + max(2σ, 5 bpm) | Orange | 2σ, 5 bpm floor |
 | No morning activity | Today’s steps are a **measured 0**, and local time is ≥ typical wake + 2 hours | Red | 2-hour grace |
 | Long-term trend | Four consecutive weeks each ≥5% below the previous week’s average steps (week needs ≥4 days with a reading) | Yellow | 5%/week × 4 |
+| HRV drop | Overnight RMSSD below `AvgHeartRateVariabilityMs` − max(2σ, 15% of the mean) on **both** of the last two nights | Orange | 2σ, 15%-of-mean floor, 2 nights |
+| Overnight breathing up | Last night’s *asleep* breathing rate above `AvgOvernightBreathingRate` + max(2σ, 1 breath/min) | Orange | 2σ, 1/min floor |
+| Elevated zone without movement | Minutes above the light HR zone &gt; max(`AvgElevatedZoneMinutes`, 25) **and** the same day already satisfies activity decline | Orange | 25-minute floor + the decline rule |
+| Long daytime rest | One unbroken sedentary stretch &gt; max(3 h, `AvgLongestSedentaryStretchMinutes` + 50%) | Yellow | 3-hour floor, +50% margin |
+
+Three of the four rules added on 2026-08-22 threshold on data types CardiTrack did not previously read (`daily-heart-rate-variability`, `respiratory-rate-sleep-summary`, `time-in-heart-rate-zone`, `activity-level`); see [llm_design.md](../llm_design.md) for the mapping. Two carry a floor as well as a σ margin, and the floors are not interchangeable in kind: HRV’s is **proportional** (15% of the member’s own mean) because overnight RMSSD is not comparable between people — a healthy 80-year-old may sit near 15 ms where a healthy 40-year-old sits near 60 — while breathing’s is **absolute** (1 breath/min) because every adult sits in the low-to-mid teens asleep and a rise of one means the same thing at 13 as at 17.
+
+**Long daytime rest excludes the night.** The stretch is measured from `activity-level` intervals with the night’s own sleep session clipped out before the longest run is taken. Without that exclusion a sleeping wearer — who is a sedentary wearer — makes the small hours the longest unbroken run on nearly every day, and the rule would report sleep as daytime rest.
+
+**Elevated zone without movement is a pairing, not a threshold.** Raised-zone minutes after a walk are what exercise looks like; the finding is those minutes on a day the activity-decline rule already calls quiet. It reuses that rule rather than restating its threshold, so the two cannot disagree about what a quiet day is.
 
 Bedtime / wake time on the baseline are a **circular mean** on the 24-hour clock (UTC as stored). There is no Math.NET circular clock-mean; that formula stays homemade.
 

@@ -58,6 +58,25 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
             existing.StressScore = log.StressScore;
             existing.BreathingRate = log.BreathingRate;
             existing.Temperature = log.Temperature;
+
+            // TemperatureBaseline and TemperatureVariation were missing from this update list: a day
+            // row created before them, or revised after, kept whatever the two columns already held
+            // while every neighbouring column moved. The dashboard's temperature card reads the
+            // baseline to say whether a night was unusual, so the stale pair could out-argue the fresh
+            // reading beside it. Fixed here rather than filed, because the sweep that added the
+            // column below would otherwise have copied the same omission again.
+            existing.TemperatureBaseline = log.TemperatureBaseline;
+            existing.TemperatureVariation = log.TemperatureVariation;
+
+            existing.HeartRateVariabilityMs = log.HeartRateVariabilityMs;
+            existing.OvernightBreathingRate = log.OvernightBreathingRate;
+            existing.LightZoneMinutes = log.LightZoneMinutes;
+            existing.ModerateZoneMinutes = log.ModerateZoneMinutes;
+            existing.VigorousZoneMinutes = log.VigorousZoneMinutes;
+            existing.PeakZoneMinutes = log.PeakZoneMinutes;
+            existing.ModerateZoneFloorBpm = log.ModerateZoneFloorBpm;
+            existing.LongestSedentaryStretchMinutes = log.LongestSedentaryStretchMinutes;
+            existing.LongestSedentaryStretchStartUtc = log.LongestSedentaryStretchStartUtc;
             _dbSet.Update(existing);
         }
     }

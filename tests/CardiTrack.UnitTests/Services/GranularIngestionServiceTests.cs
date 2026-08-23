@@ -41,7 +41,7 @@ public class GranularIngestionServiceTests
                 new GranularSample(Hour.AddMinutes(1), 70f),
                 new GranularSample(Hour.AddHours(2).AddMinutes(3), 74f),
             ],
-            Steps: [], ActiveZoneMinutes: [], SpO2: []);
+            Steps: [], ActiveZoneMinutes: [], SpO2: [], HeartRateVariability: []);
 
         // The merged window the repository reports back — what the rollups must be derived from.
         var mergedSeries = new float?[180];

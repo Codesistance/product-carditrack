@@ -61,6 +61,19 @@ public class DeviceActivityLogConfiguration : IEntityTypeConfiguration<DeviceAct
         builder.Property(a => a.TemperatureBaseline).HasColumnType("decimal(5,2)");
         builder.Property(a => a.TemperatureVariation).HasColumnType("decimal(5,2)");
 
+        // Overnight readings
+        builder.Property(a => a.HeartRateVariabilityMs).HasColumnType("decimal(6,1)");
+        builder.Property(a => a.OvernightBreathingRate).HasColumnType("decimal(5,2)");
+
+        // Effort and rest
+        builder.Property(a => a.LightZoneMinutes);
+        builder.Property(a => a.ModerateZoneMinutes);
+        builder.Property(a => a.VigorousZoneMinutes);
+        builder.Property(a => a.PeakZoneMinutes);
+        builder.Property(a => a.ModerateZoneFloorBpm);
+        builder.Property(a => a.LongestSedentaryStretchMinutes);
+        builder.Property(a => a.LongestSedentaryStretchStartUtc);
+
         builder.Property(a => a.CreatedDate)
             .IsRequired()
             .HasDefaultValueSql("NOW()");

@@ -221,7 +221,7 @@ All 18 §164.514(b)(2) categories, mapped to CardiTrack fields:
 |---|----------------|--------------------|--------|
 | 1 | Names | `pii` vault name, emergency contacts, `ConsentedByName`, `DeviceConnection.DeviceName`, `Organization.Name` (family surname!) | **Strip** (never enters export input) |
 | 2 | Geographic subdivisions < state | None stored today. `User.Locale`/`TimeZoneId` are proxies | **Generalize**: timezone → country-level UTC offset band. If address/ZIP is ever added: first 3 ZIP digits only where the 3-digit area population > 20,000, else `000` (the §164.514(b)(2)(i)(B) carve-out) — encode the current census list in config, not code |
-| 3 | All date elements < year (incl. DOB, admission/service dates); ages > 89 | `DateOfBirth`; `ActivityLogs.Date`, `SleepStartTime/EndTime`; `Alert.TriggeredDate`; `PatternBaseline.CalculatedDate`, `TypicalBedtime/WakeTime` | **Generalize**: DOB → year; age > 89 → `90+`; reading dates → year (or month-of-year *count* aggregates); absolute sleep timestamps → durations only. Clock-time-of-day fields (`TypicalBedtime`) are quasi-identifiers → §4.3 |
+| 3 | All date elements < year (incl. DOB, admission/service dates); ages > 89 | `DateOfBirth`; `ActivityLogs.Date`, `SleepStartTime/EndTime`, `LongestSedentaryStretchStartUtc`; `Alert.TriggeredDate`; `PatternBaseline.CalculatedDate`, `TypicalBedtime/WakeTime` | **Generalize**: DOB → year; age > 89 → `90+`; reading dates → year (or month-of-year *count* aggregates); absolute sleep timestamps → durations only. Clock-time-of-day fields (`TypicalBedtime`) are quasi-identifiers → §4.3 |
 | 4 | Telephone numbers | vault | Strip |
 | 5 | Fax numbers | n/a | — |
 | 6 | Email addresses | vault, `FamilyInvitations.Email` | Strip |

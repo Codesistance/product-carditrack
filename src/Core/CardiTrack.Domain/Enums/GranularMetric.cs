@@ -18,4 +18,13 @@ public enum GranularMetric
 
     /// <summary>Blood oxygen saturation, % — ~5-minute samples, stored sparse in the minute grid.</summary>
     SpO2 = 4,
+
+    /// <summary>
+    /// Heart rate variability (RMSSD), ms — the sub-daily twin of the nightly figure on
+    /// <see cref="Entities.ActivityLog.HeartRateVariabilityMs"/>, and the secondary SSA series
+    /// docs/llm_design.md has named since the original design. Sampled sparsely (~5-minute at
+    /// best, and only while the wearer is still enough to measure), so most minutes of the grid
+    /// are empty by nature rather than by omission.
+    /// </summary>
+    HeartRateVariability = 5,
 }

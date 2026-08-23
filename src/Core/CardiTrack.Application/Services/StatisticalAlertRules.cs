@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -37,6 +38,10 @@ public static class StatisticalAlertRules
     public const string ElevatedHeartRateRule = "elevated_heart_rate";
     public const string NoMorningActivityRule = "no_morning_activity";
     public const string LongTermTrendRule = "long_term_trend";
+    public const string HeartRateVariabilityDropRule = "hrv_drop";
+    public const string OvernightBreathingUpRule = "overnight_breathing_up";
+    public const string ElevatedZoneWithoutMovementRule = "elevated_zone_without_movement";
+    public const string DaytimeInactivityBlockRule = "daytime_inactivity_block";
 
     /// <summary>Medium sensitivity: a reading more than 30% off its baseline is worth a word.</summary>
     public const double DeviationFraction = 0.30;
@@ -58,6 +63,41 @@ public static class StatisticalAlertRules
 
     /// <summary>Days with a steps reading a week needs before its average means anything.</summary>
     public const int TrendMinDaysPerWeek = 4;
+
+    /// <summary>
+    /// HRV drop margin: 2σ of the member's own night-to-night variability, floored at 15% of their
+    /// baseline. The floor is proportional where the heart-rate one is absolute (5 bpm) because
+    /// overnight RMSSD is not comparable between people — a healthy 80-year-old may sit near 15 ms
+    /// where a healthy 40-year-old sits near 60, and a fixed millisecond floor would be untrippable
+    /// for the first and permanently tripped for the second.
+    /// </summary>
+    public const int HrvSigmaMultiplier = 2;
+    public const decimal HrvMarginFloorFraction = 0.15m;
+
+    /// <summary>
+    /// Overnight breathing margin: 2σ of the member's own night-to-night variability, floored at
+    /// 1 breath per minute. The floor is absolute where HRV's is proportional, because respiratory
+    /// rate does not span between people the way RMSSD does — every adult sits in the low-to-mid
+    /// teens asleep, and a rise of a breath a minute means the same thing at 13 as at 17.
+    /// </summary>
+    public const int BreathingSigmaMultiplier = 2;
+    public const decimal BreathingMarginFloorPerMinute = 1m;
+
+    /// <summary>
+    /// Elevated-zone minutes that count as the heart having worked, on a day the steps say the
+    /// member did not. Floored rather than purely baseline-relative because a member whose usual
+    /// is near zero would otherwise be alerted by ten minutes of gardening.
+    /// </summary>
+    public const int ElevatedZoneFloorMinutes = 25;
+
+    /// <summary>
+    /// The longest unbroken sedentary stretch that is worth a word, and the margin over the
+    /// member's own usual. Three hours is the floor because a nap, a long film and an afternoon in
+    /// a chair are all ordinary; what is not ordinary is one of those becoming four hours where
+    /// this member's own day usually breaks after two.
+    /// </summary>
+    public const int SedentaryStretchFloorMinutes = 180;
+    public const double SedentaryStretchMarginFraction = 0.5;
 
     /// <summary>Yesterday's steps more than 30% below the baseline average.</summary>
     public static StatisticalAlertCandidate? ActivityDecline(PatternBaseline baseline, ActivityLog? yesterday)
@@ -278,6 +318,232 @@ public static class StatisticalAlertRules
                 declineFraction = Math.Round(totalDecline, 2),
             }));
     }
+
+    /// <summary>
+    /// Overnight heart rate variability below baseline − max(2σ, 15%) on <b>both</b> of the last
+    /// two nights.
+    /// </summary>
+    /// <remarks>
+    /// A fall in HRV is the earliest of the signals this engine watches — it moves before resting
+    /// heart rate does when someone is coming down with something or their heart is under strain —
+    /// and it is also the noisiest. A single night is moved by a late meal, a glass of wine or a
+    /// bad night's sleep in a person with nothing wrong at all, so one night never fires this rule:
+    /// both of the last two must sit below the threshold. A missing previous night is not
+    /// permission to fire on one night either — it is one night, and the rule stays silent.
+    /// <para>
+    /// Filed as <see cref="AlertType.HeartRate"/> deliberately, which shares one cooldown across
+    /// every producer of that type: a member whose HRV has dropped is often the same member whose
+    /// resting rate has risen, and the family needs one "check on them", not two.
+    /// </para>
+    /// </remarks>
+    public static StatisticalAlertCandidate? HeartRateVariabilityDrop(
+        PatternBaseline baseline, ActivityLog? lastNight, ActivityLog? previousNight)
+    {
+        if (baseline.AvgHeartRateVariabilityMs is not > 0
+            || lastNight?.HeartRateVariabilityMs is not { } latest
+            || previousNight?.HeartRateVariabilityMs is not { } previous)
+        {
+            return null;
+        }
+
+        var average = baseline.AvgHeartRateVariabilityMs.Value;
+        var margin = Math.Max(
+            HrvSigmaMultiplier * (baseline.StdDevHeartRateVariability ?? 0m),
+            average * HrvMarginFloorFraction);
+        var threshold = average - margin;
+
+        if (latest >= threshold || previous >= threshold)
+            return null;
+
+        return new StatisticalAlertCandidate(
+            HeartRateVariabilityDropRule, AlertType.HeartRate, AlertSeverity.Orange,
+            "Their heart rate variability has dropped",
+            $"Overnight heart rate variability has been low two nights running — {latest:0.#} ms "
+            + $"last night against a usual {average:0.#} ms. On its own it often just means a "
+            + "poor night or a cold coming on, but it is worth a check-in.",
+            Serialize(new
+            {
+                rule = HeartRateVariabilityDropRule,
+                day = lastNight.Date.ToString("O"),
+                // The key AlertRuleMarkers.HasNight reads. `day` alone left every rule below
+                // deduping per firing day, so a night whose data landed after local midnight could
+                // alert twice — the exact case NightOf exists to prevent.
+                night = lastNight.Date.ToString("O"),
+                heartRateVariabilityMs = latest,
+                previousNightHeartRateVariabilityMs = previous,
+                baselineAvgHeartRateVariabilityMs = average,
+                marginMs = Math.Round(margin, 1),
+            }),
+            NightOf: lastNight.Date);
+    }
+
+    /// <summary>
+    /// Last night's breathing rate above the member's own usual by max(2σ, 1 breath/min).
+    /// </summary>
+    /// <remarks>
+    /// The overnight figure, not the daily one: a whole-day average mixes a stair climb with a nap
+    /// and moves for reasons that have nothing to do with health, while a night is hours of
+    /// stillness measured the same way every time. That is what makes a rise of one or two breaths
+    /// a minute mean something — it is the earliest cheap signal there is of a chest infection or
+    /// of fluid gathering, and it usually moves before the resting heart rate does.
+    /// <para>
+    /// Compared against the member and not against the published band. WHO's adult range (12-20)
+    /// is wide enough that someone can climb four breaths a minute inside it, which is a real
+    /// change hidden by a normal-looking number; the band is quoted in the copy for context, but
+    /// what fires the rule is their own night-to-night usual.
+    /// </para>
+    /// </remarks>
+    public static StatisticalAlertCandidate? OvernightBreathingUp(
+        PatternBaseline baseline, ActivityLog? lastNight)
+    {
+        if (baseline.AvgOvernightBreathingRate is not > 0
+            || lastNight?.OvernightBreathingRate is not { } breathing)
+        {
+            return null;
+        }
+
+        var average = baseline.AvgOvernightBreathingRate.Value;
+        var margin = Math.Max(
+            BreathingSigmaMultiplier * (baseline.StdDevOvernightBreathingRate ?? 0m),
+            BreathingMarginFloorPerMinute);
+        if (breathing <= average + margin)
+            return null;
+
+        var band = HealthReferenceRanges.BreathingRate;
+        return new StatisticalAlertCandidate(
+            OvernightBreathingUpRule, AlertType.PatternBreak, AlertSeverity.Orange,
+            "They were breathing faster than usual overnight",
+            $"Breathing averaged {breathing:0.#} a minute while they slept, against a usual "
+            + $"{average:0.#}. A rise like this is often the first sign of a cold or chest "
+            + "infection coming on — worth a check-in, and worth watching over the next night or two.",
+            Serialize(new
+            {
+                rule = OvernightBreathingUpRule,
+                day = lastNight.Date.ToString("O"),
+                night = lastNight.Date.ToString("O"),
+                overnightBreathingRate = breathing,
+                baselineAvgOvernightBreathingRate = average,
+                marginPerMinute = Math.Round(margin, 1),
+                recommendedLowPerMinute = band.Low,
+                recommendedHighPerMinute = band.High,
+            }),
+            NightOf: lastNight.Date);
+    }
+
+    /// <summary>
+    /// Yesterday's heart spent real time above the light zone on a day the member barely moved.
+    /// </summary>
+    /// <remarks>
+    /// The pairing is the finding, not either half. Elevated zone minutes after a walk are what
+    /// exercise looks like; the same minutes on a day of 1,200 steps are a heart working without
+    /// being asked to, which is what a fever, an arrhythmia, pain or dehydration look like from the
+    /// outside. It is also the one signal here that a step count alone actively hides: a still day
+    /// reads as restful, and this is the case where it is not.
+    /// <para>
+    /// Both halves are measured against this member. The steps side reuses
+    /// <see cref="ActivityDecline"/> so the two rules cannot disagree about what a quiet day is,
+    /// and the zone side takes the larger of their own usual and a floor, so a member who normally
+    /// records no elevated minutes at all is not alerted by ten minutes of gardening.
+    /// </para>
+    /// </remarks>
+    public static StatisticalAlertCandidate? ElevatedZoneWithoutMovement(
+        PatternBaseline baseline, ActivityLog? yesterday)
+    {
+        if (yesterday is null || ActivityDecline(baseline, yesterday) is null)
+            return null;
+
+        if (BaselineCalculator.ElevatedZoneMinutes(yesterday) is not { } elevated)
+            return null;
+
+        var threshold = Math.Max(baseline.AvgElevatedZoneMinutes ?? 0, ElevatedZoneFloorMinutes);
+        if (elevated <= threshold)
+            return null;
+
+        var zoneFloor = yesterday.ModerateZoneFloorBpm is { } floor
+            ? $" — above {floor} bpm, where their watch puts the start of real effort"
+            : string.Empty;
+
+        return new StatisticalAlertCandidate(
+            ElevatedZoneWithoutMovementRule, AlertType.HeartRate, AlertSeverity.Orange,
+            "Their heart worked hard on a quiet day",
+            $"Yesterday their heart spent about {elevated} minutes in a raised zone{zoneFloor}, "
+            + $"on a day of only {yesterday.Steps:N0} steps against a usual "
+            + $"{baseline.AvgSteps:N0}. Effort without movement is worth a check-in — how are they "
+            + "feeling, and have they been warm or short of breath?",
+            Serialize(new
+            {
+                rule = ElevatedZoneWithoutMovementRule,
+                day = yesterday.Date.ToString("O"),
+                night = yesterday.Date.ToString("O"),
+                elevatedZoneMinutes = elevated,
+                baselineAvgElevatedZoneMinutes = baseline.AvgElevatedZoneMinutes,
+                thresholdMinutes = threshold,
+                steps = yesterday.Steps,
+                baselineAvgSteps = baseline.AvgSteps,
+                moderateZoneFloorBpm = yesterday.ModerateZoneFloorBpm,
+            }),
+            NightOf: yesterday.Date);
+    }
+
+    /// <summary>
+    /// One unbroken sedentary stretch far longer than this member's own usual, and past three
+    /// hours in absolute terms.
+    /// </summary>
+    /// <remarks>
+    /// The rule the settings catalogue has carried as "Long daytime rest — an unusually long
+    /// inactive stretch in waking hours" since before there was data behind it. What makes it
+    /// possible now is reading <c>activity-level</c> as intervals rather than as a daily total:
+    /// six hours of stillness in twelve half-hours and one unbroken six-hour stretch sum to the
+    /// same <c>SedentaryMinutes</c> and are not the same day. Only the second is worth a word.
+    /// <para>
+    /// Both a floor and a margin, because either alone misreads someone. The floor keeps a member
+    /// whose usual longest stretch is forty minutes from being alerted at an hour; the margin
+    /// keeps a member who habitually sits for three hours from being alerted every afternoon.
+    /// </para>
+    /// </remarks>
+    public static StatisticalAlertCandidate? DaytimeInactivityBlock(
+        PatternBaseline baseline, ActivityLog? yesterday)
+    {
+        if (yesterday?.LongestSedentaryStretchMinutes is not { } stretch)
+            return null;
+
+        var usual = baseline.AvgLongestSedentaryStretchMinutes;
+        var threshold = usual is > 0
+            ? Math.Max(SedentaryStretchFloorMinutes, (int)(usual.Value * (1 + SedentaryStretchMarginFraction)))
+            : SedentaryStretchFloorMinutes;
+        if (stretch <= threshold)
+            return null;
+
+        var usualClause = usual is > 0
+            ? $" — their usual longest is about {Hours(usual.Value)}"
+            : string.Empty;
+
+        return new StatisticalAlertCandidate(
+            DaytimeInactivityBlockRule, AlertType.Inactivity, AlertSeverity.Yellow,
+            "A long stretch without moving",
+            // No clock time in this copy. The instant is stored in the metrics below for the
+            // detail screen, which knows the member's timezone; naming it here would have to name
+            // it in UTC, and a caregiver cannot tell an afternoon in a chair from the small hours
+            // that way.
+            $"They went about {Hours(stretch)} without moving at all yesterday"
+            + $"{usualClause}. A long unbroken rest is not the same as a quiet day — worth asking "
+            + "whether they were comfortable, and whether anything kept them in the chair.",
+            Serialize(new
+            {
+                rule = DaytimeInactivityBlockRule,
+                day = yesterday.Date.ToString("O"),
+                night = yesterday.Date.ToString("O"),
+                longestSedentaryStretchMinutes = stretch,
+                baselineAvgLongestSedentaryStretchMinutes = usual,
+                thresholdMinutes = threshold,
+                startedAtUtc = yesterday.LongestSedentaryStretchStartUtc?.ToString("O"),
+            }),
+            NightOf: yesterday.Date);
+    }
+
+    /// <summary>Minutes as a plain-language span — "3.5 hours" — for the copy above.</summary>
+    private static string Hours(int minutes) =>
+        string.Create(CultureInfo.InvariantCulture, $"{minutes / 60m:0.#} hours");
 
     private static string Serialize(object metrics) => JsonSerializer.Serialize(metrics);
 }

@@ -11,6 +11,10 @@ namespace CardiTrack.Domain.Entities;
 /// and SpO2, a watch supplies steps and heart rate).
 /// </para>
 /// <para>
+/// The one exception is the longest sedentary stretch, whose duration and start time are a single
+/// reading and are taken from one device together.
+/// </para>
+/// <para>
 /// Pure and order-independent: callers pass rows already sorted by device priority, and the result
 /// depends only on that input, so re-running the merge over the full raw set is always safe.
 /// </para>
@@ -32,6 +36,9 @@ public static class ActivityLogMerge
         // Provenance points at the highest-priority device that contributed anything, which is the
         // first row — callers only pass rows that exist for this member-day.
         var primary = rowsByPriority[0];
+
+        // The one metric here that is a pair rather than a value — see where it is assigned.
+        var stretch = rowsByPriority.FirstOrDefault(r => r.LongestSedentaryStretchMinutes is not null);
 
         return new ActivityLog
         {
@@ -70,7 +77,23 @@ public static class ActivityLogMerge
             BreathingRate = First(rowsByPriority, r => r.BreathingRate),
             Temperature = First(rowsByPriority, r => r.Temperature),
             TemperatureBaseline = First(rowsByPriority, r => r.TemperatureBaseline),
-            TemperatureVariation = First(rowsByPriority, r => r.TemperatureVariation)
+            TemperatureVariation = First(rowsByPriority, r => r.TemperatureVariation),
+
+            HeartRateVariabilityMs = First(rowsByPriority, r => r.HeartRateVariabilityMs),
+            OvernightBreathingRate = First(rowsByPriority, r => r.OvernightBreathingRate),
+
+            LightZoneMinutes = First(rowsByPriority, r => r.LightZoneMinutes),
+            ModerateZoneMinutes = First(rowsByPriority, r => r.ModerateZoneMinutes),
+            VigorousZoneMinutes = First(rowsByPriority, r => r.VigorousZoneMinutes),
+            PeakZoneMinutes = First(rowsByPriority, r => r.PeakZoneMinutes),
+            ModerateZoneFloorBpm = First(rowsByPriority, r => r.ModerateZoneFloorBpm),
+
+            // Taken from one row, not coalesced field by field: the stretch and the instant it
+            // began are one reading, and a duration from the first device that reported one beside
+            // a start time from the next would describe a stretch that never happened. The pair is
+            // resolved by the duration — a start time without one is not a stretch.
+            LongestSedentaryStretchMinutes = stretch?.LongestSedentaryStretchMinutes,
+            LongestSedentaryStretchStartUtc = stretch?.LongestSedentaryStretchStartUtc
         };
     }
 

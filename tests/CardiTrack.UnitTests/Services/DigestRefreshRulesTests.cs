@@ -25,7 +25,7 @@ public class DigestRefreshRulesTests
 
     private static ActivityLog Log(
         DateOnly date, int? steps = null, int? restingHr = null, int? sleepMinutes = null,
-        int? avgHr = null, decimal? spo2 = null) => new()
+        int? avgHr = null, decimal? spo2 = null, decimal? overnightBreathing = null) => new()
     {
         Date = date,
         Steps = steps,
@@ -33,7 +33,26 @@ public class DigestRefreshRulesTests
         SleepMinutes = sleepMinutes,
         AvgHeartRate = avgHr,
         SpO2Average = spo2,
+        OvernightBreathingRate = overnightBreathing,
     };
+
+    /// <summary>
+    /// The night's row is picked on the presence of a night reading, not on sleep's — the same
+    /// selection the alert engine makes. Gating on sleep sent the overnight rules back to
+    /// yesterday, a night already judged, and left the summary standing while the alert fired.
+    /// </summary>
+    [Fact]
+    public void ReadingsDivergeFromBaseline_ReadsOvernightBreathingOffTodaysRow_WithoutASleepFigure()
+    {
+        var baseline = Baseline();
+        baseline.AvgOvernightBreathingRate = 14m;
+        baseline.StdDevOvernightBreathingRate = 0.4m;
+
+        var today = Log(new DateOnly(2026, 8, 10), overnightBreathing: 17m);
+        var yesterday = Log(new DateOnly(2026, 8, 9), steps: 6100, overnightBreathing: 14m);
+
+        Assert.True(DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday));
+    }
 
     private static RealtimeAssessment Assessment(
         AlertSeverity? severity, double score, DateTime generatedAt) => new()
@@ -128,6 +147,44 @@ public class DigestRefreshRulesTests
         // today as "yesterday". The rule is yesterday-only so every member does not waive the
         // floor at breakfast.
         var today = Log(new DateOnly(2026, 8, 10), steps: 2000);
+        var yesterday = Log(new DateOnly(2026, 8, 9), steps: 6100);
+
+        Assert.False(DigestRefreshRules.ReadingsDivergeFromBaseline(Baseline(), today, yesterday));
+    }
+
+    /// <summary>
+    /// The two whole-day rules the waiver missed: a heart that worked on a quiet day, and a long
+    /// unbroken stretch in the chair. Both fire alerts, so a summary written before the alert
+    /// lands must not be the one the caregiver still has in front of them afterwards.
+    /// </summary>
+    [Fact]
+    public void ReadingsDivergeFromBaseline_WhenYesterdaysHeartWorkedOnAQuietDay()
+    {
+        var yesterday = Log(new DateOnly(2026, 8, 9), steps: 3000);
+        yesterday.ModerateZoneMinutes = 40;
+
+        Assert.True(DigestRefreshRules.ReadingsDivergeFromBaseline(Baseline(), today: null, yesterday));
+    }
+
+    [Fact]
+    public void ReadingsDivergeFromBaseline_WhenYesterdayHeldALongStillStretch()
+    {
+        var yesterday = Log(new DateOnly(2026, 8, 9), steps: 6100);
+        yesterday.LongestSedentaryStretchMinutes = 300;
+
+        Assert.True(DigestRefreshRules.ReadingsDivergeFromBaseline(Baseline(), today: null, yesterday));
+    }
+
+    /// <summary>
+    /// Both read a figure that accumulates over the day, so today's is a morning's worth — the
+    /// same trap steps-decline is kept off today's row for.
+    /// </summary>
+    [Fact]
+    public void ReadingsDivergeFromBaseline_DoesNotReadTodaysPartialDayAsEitherOfThem()
+    {
+        var today = Log(new DateOnly(2026, 8, 10), steps: 2000);
+        today.ModerateZoneMinutes = 40;
+        today.LongestSedentaryStretchMinutes = 300;
         var yesterday = Log(new DateOnly(2026, 8, 9), steps: 6100);
 
         Assert.False(DigestRefreshRules.ReadingsDivergeFromBaseline(Baseline(), today, yesterday));

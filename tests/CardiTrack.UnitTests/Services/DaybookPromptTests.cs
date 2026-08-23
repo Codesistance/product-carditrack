@@ -28,7 +28,13 @@ public class DaybookPromptTests
         decimal? spo2Max = null,
         decimal? breathing = null,
         decimal? temperature = null,
-        decimal? temperatureBaseline = null) => new()
+        decimal? temperatureBaseline = null,
+        decimal? hrv = null,
+        decimal? overnightBreathing = null,
+        int? moderateZoneMinutes = null,
+        int? vigorousZoneMinutes = null,
+        int? moderateZoneFloorBpm = null,
+        int? longestSedentaryStretch = null) => new()
     {
         Date = Reviewed,
         Steps = steps,
@@ -46,6 +52,12 @@ public class DaybookPromptTests
         BreathingRate = breathing,
         Temperature = temperature,
         TemperatureBaseline = temperatureBaseline,
+        HeartRateVariabilityMs = hrv,
+        OvernightBreathingRate = overnightBreathing,
+        ModerateZoneMinutes = moderateZoneMinutes,
+        VigorousZoneMinutes = vigorousZoneMinutes,
+        ModerateZoneFloorBpm = moderateZoneFloorBpm,
+        LongestSedentaryStretchMinutes = longestSedentaryStretch,
     };
 
     private static PatternBaseline Baseline() => new()
@@ -56,6 +68,10 @@ public class DaybookPromptTests
         AvgRestingHeartRate = 58,
         AvgSleepMinutes = 246,
         AvgSleepEfficiency = 71,
+        AvgHeartRateVariabilityMs = 38.5m,
+        AvgOvernightBreathingRate = 14.2m,
+        AvgElevatedZoneMinutes = 18,
+        AvgLongestSedentaryStretchMinutes = 95,
     };
 
     // ── The readings block ───────────────────────────────────────────────────
@@ -582,5 +598,78 @@ public class DaybookPromptTests
     {
         Assert.False(DaybookPrompt.ReadsLikeTheInstructions(
             "Dad slept 6.2 hours, noticeably more than his usual 4.1."));
+    }
+
+    // ── Heart rate variability ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// HRV is given against their own overnight usual and against nothing else: no body publishes
+    /// an adult RMSSD band, so a bracketed recommendation here would be one we made up.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_GivesHeartRateVariability_AgainstTheirOwnUsualOnly()
+    {
+        var section = DaybookPrompt.ReadingsSection(Log(hrv: 26.4m), Baseline(), AdultAge);
+
+        Assert.Contains("overnightVariability=26.4ms (their usual 38.5ms)", section);
+        Assert.DoesNotContain("recommend", section.Split("overnightVariability")[1].Split('\n')[0]);
+    }
+
+    // ── Overnight breathing, effort and unbroken rest ────────────────────────────
+
+    /// <summary>
+    /// The overnight figure is labelled as its own reading rather than replacing the daily one:
+    /// they are different measurements, and a reader shown one number called "breathing" could not
+    /// tell which they were being given.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_GivesOvernightBreathing_ItsOwnLabelUsualAndBand()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Log(breathing: 17.1m, overnightBreathing: 15.4m), Baseline(), AdultAge);
+
+        Assert.Contains("breathingRate=17.1/min [WHO recommend 12-20/min]", section);
+        Assert.Contains(
+            "breathingRateWhileAsleep=15.4/min (their usual 14.2/min) [WHO recommend 12-20/min]",
+            section);
+    }
+
+    /// <summary>
+    /// Effort is given as minutes above the light zone, with the wearer's own threshold in bpm —
+    /// zone-by-zone would invite a paragraph about training load, which is not what this reading is
+    /// for in this cohort.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_GivesRaisedMinutes_AgainstTheirOwnZoneThreshold()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Log(moderateZoneMinutes: 24, vigorousZoneMinutes: 6, moderateZoneFloorBpm: 96),
+            Baseline(),
+            AdultAge);
+
+        Assert.Contains("minutesWithHeartRateRaised=30 (their usual 18min)", section);
+        Assert.Contains("start of real effort at 96bpm", section);
+    }
+
+    /// <summary>
+    /// The shape of the stillness beside its total: the same six hours split into half-hours and
+    /// taken in one go are different days, and only this line tells them apart.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_GivesTheLongestUnbrokenStillStretch_BesideTheDaysTotal()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Log(steps: 3100, longestSedentaryStretch: 245), Baseline(), AdultAge);
+
+        Assert.Contains("longestUnbrokenStillStretch=245min", section);
+    }
+
+    // A day the device reported no zones for is not a day of zero effort.
+    [Fact]
+    public void ReadingsSection_SaysNothingAboutEffort_WhenZonesWereNotMeasured()
+    {
+        var section = DaybookPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
+
+        Assert.DoesNotContain("minutesWithHeartRateRaised", section);
     }
 }

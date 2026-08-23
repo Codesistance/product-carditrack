@@ -19,8 +19,59 @@ public class DailyLinesTodayAnchorTests
 {
     private static readonly DateOnly Today = new(2026, 8, 22);
 
-    private static ActivityLog Log(DateOnly date, int? steps = null, int? sleep = null) =>
-        new() { Date = date, Steps = steps, SleepMinutes = sleep };
+    private static ActivityLog Log(
+        DateOnly date, int? steps = null, int? sleep = null, decimal? hrv = null) =>
+        new() { Date = date, Steps = steps, SleepMinutes = sleep, HeartRateVariabilityMs = hrv };
+
+    /// <summary>
+    /// Member chat can draw an HRV chart, and the block the clinical read is written from did not
+    /// carry an HRV figure — so a caregiver could be shown a chart under an answer written by a
+    /// model that had never seen the series. The column is written for a member whose device
+    /// reports the reading at all.
+    /// </summary>
+    [Fact]
+    public void OvernightReadingsAreWritten_WhenTheDeviceReportsThem()
+    {
+        var lines = MedicalPromptBlocks.DailyLines(
+            [Log(Today.AddDays(-1), steps: 2800, sleep: 375, hrv: 41.2m), Log(Today, sleep: 402, hrv: 28m)],
+            take: 7,
+            Today);
+
+        Assert.Contains("HRVovernight=41.2ms", lines);
+        Assert.Contains("HRVovernight=28ms", lines);
+    }
+
+    /// <summary>
+    /// Within a window where the reading exists, a gap is a fact about that night and says so —
+    /// the same reason <c>Figure</c> writes "not measured" rather than nothing.
+    /// </summary>
+    [Fact]
+    public void AGapInTheOvernightSeriesReadsNotMeasured()
+    {
+        var lines = MedicalPromptBlocks.DailyLines(
+            [Log(Today.AddDays(-1), steps: 2800, sleep: 375), Log(Today, sleep: 402, hrv: 28m)],
+            take: 7,
+            Today);
+
+        var yesterdayLine = Assert.Single(lines.Split('\n'), l => l.Contains("Yesterday"));
+        Assert.Contains("HRVovernight=not measured", yesterdayLine);
+    }
+
+    /// <summary>
+    /// And nothing at all for a member whose device does not report it: a column of "not measured"
+    /// on every row of every prompt is noise about a feature they do not have.
+    /// </summary>
+    [Fact]
+    public void NoOvernightColumns_ForADeviceThatNeverReportsThem()
+    {
+        var lines = MedicalPromptBlocks.DailyLines(
+            [Log(Today.AddDays(-1), steps: 2800, sleep: 375), Log(Today, steps: 900, sleep: 402)],
+            take: 7,
+            Today);
+
+        Assert.DoesNotContain("HRVovernight", lines);
+        Assert.DoesNotContain("breathingAsleep", lines);
+    }
 
     /// <summary>
     /// A missing today row used to mean no today line at all, which left the newest sleep figure

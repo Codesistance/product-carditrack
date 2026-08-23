@@ -434,4 +434,293 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(StatisticalAlertRules.LongTermTrend(logs, Yesterday));
     }
+
+    // ── hrv_drop ─────────────────────────────────────────────────────────────────────────
+
+    private static PatternBaseline HrvBaseline(decimal average = 40m, decimal? stdDev = 2m) =>
+        new()
+        {
+            PeriodDays = 30,
+            AvgHeartRateVariabilityMs = average,
+            StdDevHeartRateVariability = stdDev,
+        };
+
+    private static ActivityLog HrvLog(DateOnly date, decimal? hrv) =>
+        new() { Date = date, HeartRateVariabilityMs = hrv };
+
+    /// <summary>
+    /// The floor is 15% of their own average, not 2σ, whenever 2σ is the smaller — a member whose
+    /// HRV barely moves night to night would otherwise be alerted over a millisecond.
+    /// </summary>
+    [Fact]
+    public void HeartRateVariabilityDrop_Fires_WhenBothNightsAreBelowTheProportionalFloor()
+    {
+        // 15% of 40 is 6, so the threshold is 34; 2σ is only 4.
+        var candidate = StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(),
+            HrvLog(new DateOnly(2026, 8, 10), 31m),
+            HrvLog(new DateOnly(2026, 8, 9), 33m));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.HeartRate, candidate.Type);
+        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        Assert.Contains("\"rule\":\"hrv_drop\"", candidate.MetricValues);
+        Assert.Equal(new DateOnly(2026, 8, 10), candidate.NightOf);
+    }
+
+    /// <summary>
+    /// Where the member's own variability is wide, 2σ takes over from the floor: 2×8 is 16, so a
+    /// night at 30 against a usual 40 is inside their ordinary range and says nothing.
+    /// </summary>
+    [Fact]
+    public void HeartRateVariabilityDrop_UsesTwoSigma_WhenItIsWiderThanTheFloor()
+    {
+        Assert.Null(StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(stdDev: 8m),
+            HrvLog(new DateOnly(2026, 8, 10), 30m),
+            HrvLog(new DateOnly(2026, 8, 9), 30m)));
+    }
+
+    // One low night is a late meal, a glass of wine or a bad night — not a signal.
+    [Fact]
+    public void HeartRateVariabilityDrop_StaysSilent_OnASingleLowNight()
+    {
+        Assert.Null(StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(),
+            HrvLog(new DateOnly(2026, 8, 10), 28m),
+            HrvLog(new DateOnly(2026, 8, 9), 41m)));
+    }
+
+    // A missing previous night is one night, not two, and never fires — null is not permission.
+    [Fact]
+    public void HeartRateVariabilityDrop_StaysSilent_WhenThePreviousNightWasNotMeasured()
+    {
+        Assert.Null(StatisticalAlertRules.HeartRateVariabilityDrop(
+            HrvBaseline(),
+            HrvLog(new DateOnly(2026, 8, 10), 28m),
+            HrvLog(new DateOnly(2026, 8, 9), null)));
+    }
+
+    // ── overnight_breathing_up ───────────────────────────────────────────────────────────
+
+    private static PatternBaseline BreathingBaseline(decimal average = 14m, decimal? stdDev = 0.3m) =>
+        new()
+        {
+            PeriodDays = 30,
+            AvgOvernightBreathingRate = average,
+            StdDevOvernightBreathingRate = stdDev,
+        };
+
+    private static ActivityLog BreathingLog(decimal? overnight) =>
+        new() { Date = new DateOnly(2026, 8, 10), OvernightBreathingRate = overnight };
+
+    /// <summary>
+    /// The floor is a breath a minute, and it binds for the steady sleeper 2σ would alert over a
+    /// third of one.
+    /// </summary>
+    [Fact]
+    public void OvernightBreathingUp_Fires_PastTheAbsoluteFloor()
+    {
+        var candidate = StatisticalAlertRules.OvernightBreathingUp(
+            BreathingBaseline(), BreathingLog(15.2m));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.PatternBreak, candidate.Type);
+        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        Assert.Contains("\"rule\":\"overnight_breathing_up\"", candidate.MetricValues);
+        Assert.Equal(new DateOnly(2026, 8, 10), candidate.NightOf);
+    }
+
+    [Fact]
+    public void OvernightBreathingUp_StaysSilent_AtTheFloorItself()
+    {
+        Assert.Null(StatisticalAlertRules.OvernightBreathingUp(
+            BreathingBaseline(), BreathingLog(15m)));
+    }
+
+    // A restless sleeper's own spread is what decides: 2σ of 1.5 is 3 breaths, so 16.4 is ordinary
+    // for them where it would alert someone steadier.
+    [Fact]
+    public void OvernightBreathingUp_UsesTwoSigma_WhenItIsWiderThanTheFloor()
+    {
+        Assert.Null(StatisticalAlertRules.OvernightBreathingUp(
+            BreathingBaseline(stdDev: 1.5m), BreathingLog(16.4m)));
+    }
+
+    // A rise inside the published band is still this member's own change — the whole reason the
+    // rule is baseline-relative rather than band-relative.
+    [Fact]
+    public void OvernightBreathingUp_Fires_EvenWhereTheReadingSitsInsideThePublishedBand()
+    {
+        var candidate = StatisticalAlertRules.OvernightBreathingUp(
+            BreathingBaseline(average: 13m), BreathingLog(17m));
+
+        Assert.NotNull(candidate);
+        Assert.Contains("\"recommendedHighPerMinute\":20", candidate.MetricValues);
+    }
+
+    [Fact]
+    public void OvernightBreathingUp_StaysSilent_WhenTheNightWasNotMeasured()
+    {
+        Assert.Null(StatisticalAlertRules.OvernightBreathingUp(BreathingBaseline(), BreathingLog(null)));
+    }
+
+    // ── elevated_zone_without_movement ───────────────────────────────────────────────────
+
+    private static ActivityLog ZoneLog(
+        int? steps, int? moderate = null, int? vigorous = null, int? peak = null, int? floorBpm = null) =>
+        new()
+        {
+            Date = Yesterday,
+            Steps = steps,
+            ModerateZoneMinutes = moderate,
+            VigorousZoneMinutes = vigorous,
+            PeakZoneMinutes = peak,
+            ModerateZoneFloorBpm = floorBpm,
+        };
+
+    /// <summary>
+    /// The pairing is the finding: raised minutes on a day the steps say they barely moved.
+    /// </summary>
+    [Fact]
+    public void ElevatedZoneWithoutMovement_Fires_OnRaisedMinutesDuringAQuietDay()
+    {
+        var candidate = StatisticalAlertRules.ElevatedZoneWithoutMovement(
+            Baseline(), ZoneLog(steps: 1200, moderate: 30, floorBpm: 96));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.HeartRate, candidate.Type);
+        Assert.Contains("\"rule\":\"elevated_zone_without_movement\"", candidate.MetricValues);
+        Assert.Contains("96 bpm", candidate.Message);
+    }
+
+    // The same minutes after a walk are what exercise looks like, and say nothing.
+    [Fact]
+    public void ElevatedZoneWithoutMovement_StaysSilent_OnAnOrdinaryDayOfSteps()
+    {
+        Assert.Null(StatisticalAlertRules.ElevatedZoneWithoutMovement(
+            Baseline(), ZoneLog(steps: 6200, moderate: 30)));
+    }
+
+    // Ten minutes of gardening is not a finding, whatever the member's usual.
+    [Fact]
+    public void ElevatedZoneWithoutMovement_StaysSilent_BelowTheAbsoluteFloor()
+    {
+        Assert.Null(StatisticalAlertRules.ElevatedZoneWithoutMovement(
+            Baseline(), ZoneLog(steps: 1200, moderate: 10)));
+    }
+
+    // A day with no zone rollup at all is not a day of zero raised minutes.
+    [Fact]
+    public void ElevatedZoneWithoutMovement_StaysSilent_WhenZonesWereNotMeasured()
+    {
+        Assert.Null(StatisticalAlertRules.ElevatedZoneWithoutMovement(
+            Baseline(), ZoneLog(steps: 1200)));
+    }
+
+    // ── daytime_inactivity_block ─────────────────────────────────────────────────────────
+
+    private static PatternBaseline StretchBaseline(int? usual) =>
+        new() { PeriodDays = 30, AvgLongestSedentaryStretchMinutes = usual };
+
+    private static ActivityLog StretchLog(int? minutes, DateTime? startUtc = null) =>
+        new()
+        {
+            Date = Yesterday,
+            LongestSedentaryStretchMinutes = minutes,
+            LongestSedentaryStretchStartUtc = startUtc,
+        };
+
+    [Fact]
+    public void DaytimeInactivityBlock_Fires_PastBothTheFloorAndTheirOwnUsual()
+    {
+        var candidate = StatisticalAlertRules.DaytimeInactivityBlock(
+            StretchBaseline(120), StretchLog(260, new DateTime(2026, 8, 9, 13, 15, 0, DateTimeKind.Utc)));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertType.Inactivity, candidate.Type);
+        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
+        Assert.Contains("\"rule\":\"daytime_inactivity_block\"", candidate.MetricValues);
+        // The clock time is deliberately not in the message — see the copy test below.
+        Assert.Contains("4.3 hours", candidate.Message);
+    }
+
+    // Three hours is ordinary — a nap, a long film, an afternoon in a chair.
+    [Fact]
+    public void DaytimeInactivityBlock_StaysSilent_BelowTheThreeHourFloor()
+    {
+        Assert.Null(StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(60), StretchLog(175)));
+    }
+
+    // A member who habitually sits for three hours is not alerted every afternoon.
+    [Fact]
+    public void DaytimeInactivityBlock_StaysSilent_WhenTheStretchIsUsualForThem()
+    {
+        Assert.Null(StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(200), StretchLog(280)));
+    }
+
+    // Without a usual to compare against, the floor alone decides.
+    [Fact]
+    public void DaytimeInactivityBlock_UsesTheFloorAlone_WhileThereIsNoUsual()
+    {
+        Assert.NotNull(StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(null), StretchLog(240)));
+        Assert.Null(StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(null), StretchLog(180)));
+    }
+
+    [Fact]
+    public void DaytimeInactivityBlock_StaysSilent_WhenTheDeviceRecordedNoIntervals()
+    {
+        Assert.Null(StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(120), StretchLog(null)));
+    }
+
+    // ── Markers and copy, across the rules added in this sweep ───────────────────────────
+
+    /// <summary>
+    /// Every rule that names the day it judged must stamp it under `night`, which is the key
+    /// <c>AlertRuleMarkers.HasNight</c> reads. Stamping only `day` left the per-night dedup falling
+    /// back to per-firing-day, so a night whose data landed after local midnight could alert twice
+    /// — the exact case <c>NightOf</c> exists to prevent.
+    /// </summary>
+    [Fact]
+    public void EveryRuleThatNamesANight_StampsItWhereTheDedupLooks()
+    {
+        var candidates = new[]
+        {
+            StatisticalAlertRules.HeartRateVariabilityDrop(
+                HrvBaseline(),
+                HrvLog(new DateOnly(2026, 8, 10), 31m),
+                HrvLog(new DateOnly(2026, 8, 9), 33m)),
+            StatisticalAlertRules.OvernightBreathingUp(BreathingBaseline(), BreathingLog(15.2m)),
+            StatisticalAlertRules.ElevatedZoneWithoutMovement(
+                Baseline(), ZoneLog(steps: 1200, moderate: 30)),
+            StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(120), StretchLog(260)),
+        };
+
+        Assert.All(candidates, candidate =>
+        {
+            Assert.NotNull(candidate);
+            Assert.NotNull(candidate!.NightOf);
+            Assert.Contains(
+                $"\"night\":\"{candidate.NightOf!.Value:O}\"", candidate.MetricValues);
+        });
+    }
+
+    /// <summary>
+    /// No clock time in copy a caregiver reads. The rules layer has no timezone, so any time it
+    /// named would be UTC — and a caregiver cannot tell an afternoon in a chair from the small
+    /// hours that way. The instant stays in the metrics for the detail screen to localise.
+    /// </summary>
+    [Fact]
+    public void TheInactivityAlert_NamesNoClockTime_ButKeepsTheInstantInItsMetrics()
+    {
+        var startedAt = new DateTime(2026, 8, 9, 13, 15, 0, DateTimeKind.Utc);
+
+        var candidate = StatisticalAlertRules.DaytimeInactivityBlock(
+            StretchBaseline(120), StretchLog(260, startedAt));
+
+        Assert.NotNull(candidate);
+        Assert.DoesNotContain("UTC", candidate.Message);
+        Assert.DoesNotContain("13:15", candidate.Message);
+        Assert.Contains(startedAt.ToString("O"), candidate.MetricValues);
+    }
 }

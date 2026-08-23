@@ -193,6 +193,22 @@ public class DashboardMetrics
 
     /// <summary>Breathing (respiratory) rate. Same no-established-baseline caveat as SpO2.</summary>
     public DashboardMetric BreathingRate { get; set; } = new();
+
+    /// <summary>
+    /// Overnight heart rate variability (RMSSD), in milliseconds. Compared against the member's own
+    /// learned baseline and against nothing else: RMSSD is too personal for a published band to
+    /// mean anything, so <see cref="DashboardMetric.Reference"/> stays empty here by design.
+    /// </summary>
+    public DashboardMetric HeartRateVariability { get; set; } = new();
+
+    /// <summary>
+    /// Breaths per minute averaged over the night, from the sleep-summary record. Kept beside
+    /// <see cref="BreathingRate"/> rather than replacing it: the daily figure averages a whole day
+    /// of stairs and naps, this one hours of stillness, and only this one has a learned baseline
+    /// worth comparing against.
+    /// </summary>
+    public DashboardMetric OvernightBreathingRate { get; set; } = new();
+
 }
 
 public class DashboardMetric
