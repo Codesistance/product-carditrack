@@ -141,6 +141,10 @@ module "deployments" {
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.api)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.api
+      # appsettings.json pins Logging:LogLevel:Default to Information, and that filter runs
+      # ahead of Serilog — without also raising it here, a Debug log_minimum_level never
+      # reaches Serilog's sink at all (see the log_minimum_level variable description).
+      "Logging__LogLevel__Default" = var.log_minimum_level.api
       # CardiMember profile photos (member_photos.tf). Bucket name only — signed-URL TTL
       # and upload limits are app config with appsettings defaults.
       "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
@@ -232,6 +236,8 @@ module "deployments" {
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.worker)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
+      # See the matching comment on the API block above — this filter runs ahead of Serilog.
+      "Logging__LogLevel__Default" = var.log_minimum_level.worker
       # Same bucket as the API's entry above — OrphanedPhotoCleanupWorker's sweep target.
       "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
     },
@@ -306,8 +312,11 @@ module "deployments" {
       "Apm__Engine"                    = var.apm_engine
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
-      "PubSub__ProjectId"              = var.project_id
-      "PubSub__SubscriptionId"         = "${local.pubsub_topic_name}-sub"
+      # See the matching comment on the API block above — this filter runs ahead of Serilog.
+      # This aggregator runs the Worker's own device sync path, so it needs the same pairing.
+      "Logging__LogLevel__Default" = var.log_minimum_level.worker
+      "PubSub__ProjectId"          = var.project_id
+      "PubSub__SubscriptionId"     = "${local.pubsub_topic_name}-sub"
     },
     local.device_pull_env_vars
   )
