@@ -34,8 +34,10 @@ The vocabulary is built from `ChatWorkflowCatalogue.All`, not from a list typed 
 new workflow cannot reach a labelling sheet unnamed. Two deliberate differences from what the
 routing prompt renders:
 
-- **`investigation` is offered**, though `IsImplemented: false` keeps it out of `Routable`. The eval
-  set is what decides whether that handler gets built, so a labeller has to be able to choose it.
+- **`investigation` is offered regardless of its production flags.** Its handler has since shipped
+  and it renders today, but the sheets would offer it even if `IsImplemented` were turned back off —
+  the eval set is what judges whether the rung earns its keep, so a labeller must always be able to
+  choose it.
 - **`Steer` is not offered.** It is retired — it exists so already-stamped turns keep their meaning
   (see `MemberChatWorkflow.Steer`), and offering it would collect labels nothing routes.
 

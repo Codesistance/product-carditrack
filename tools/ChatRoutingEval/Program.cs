@@ -660,8 +660,12 @@ static string Slug(string s) =>
 
 static string Csv(string? s)
 {
-    s ??= "";
-    return s.Contains(',') || s.Contains('"') || s.Contains('\n')
+    // Newlines are flattened, not quoted: the whole tool is line-based — ReadSheet reads one
+    // physical line per case — so a quoted multi-line field would emit a sheet score cannot
+    // parse back. The bundled fixture is single-line by construction, but --cases accepts
+    // arbitrary fixtures and the real eval set's caregiver phrasings may not be.
+    s = (s ?? "").ReplaceLineEndings(" ");
+    return s.Contains(',') || s.Contains('"')
         ? "\"" + s.Replace("\"", "\"\"") + "\""
         : s;
 }
