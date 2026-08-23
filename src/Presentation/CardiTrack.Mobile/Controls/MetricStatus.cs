@@ -1,4 +1,5 @@
-// CardiTrack.Application shadows MAUI's Application in any file importing it — see NudgeMiniRow.
+﻿// CardiTrack.Application shadows MAUI's Application in any file importing it — see NudgeMiniRow.
+using CardiTrack.Application.DTOs.Responses;
 using MauiApplication = Microsoft.Maui.Controls.Application;
 
 namespace CardiTrack.Mobile.Controls;
@@ -27,6 +28,23 @@ internal static class MetricStatus
         "red" => ("PillRedBackground", "StatusRed", "URGENT"),
         _ => null,
     };
+
+    /// <summary>
+    /// The pill for a metric with no learned baseline, judged instead against the published
+    /// reference range the payload carries (SpO2 and breathing rate, whose bands are WHO's — see
+    /// <c>HealthReferenceRanges</c>). Inside the band is NORMAL, outside it UNUSUAL — the same
+    /// two words the baseline pill uses, because the caption beside it names the band and its
+    /// publisher, which is what tells the reader which comparison was made.
+    /// </summary>
+    /// <remarks>
+    /// Only the band's two sides, never CHECK IN or URGENT: a severity grading against a
+    /// population range is a clinical judgement this card must not make. How far outside the
+    /// band matters is the alert pipeline's question, and it answers on the alerts tab.
+    /// </remarks>
+    public static (string Tint, string Ink, string Text)? ReferencePill(decimal? value, MetricReference? reference) =>
+        value is not { } v || reference is null
+            ? null
+            : Pill(v >= reference.Low && v <= reference.High ? "green" : "yellow");
 
     /// <summary>
     /// The sleep card's pill: one word naming the band of the night's rating (the API's
