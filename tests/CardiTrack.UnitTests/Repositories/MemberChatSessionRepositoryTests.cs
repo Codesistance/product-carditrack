@@ -98,6 +98,71 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         Assert.Null(active);
     }
 
+    /// <summary>
+    /// The history list's one read: newest activity first, each session carrying its opening
+    /// caregiver question and its question count — computed in SQL, so this is the projection
+    /// worth proving against the database it runs on.
+    /// </summary>
+    [Fact]
+    public async Task ListForMemberAsync_ReturnsNewestFirst_WithOpeningQuestionAndQuestionCount()
+    {
+        using var scope = fixture.CreateScope();
+        var userId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var older = Session(userId, memberId, now.AddDays(-1));
+        var newer = Session(userId, memberId, now);
+        var otherCaregivers = Session(Guid.NewGuid(), memberId, now);
+        var aboutSomeoneElse = Session(userId, Guid.NewGuid(), now);
+
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
+        var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();
+        foreach (var s in new[] { older, newer, otherCaregivers, aboutSomeoneElse })
+            await sessionRepo.AddAsync(s);
+        // The older session: two questions with a reply between them — the count is caregiver
+        // questions only, and the opening question is the earliest, not the latest.
+        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.User, "How did he sleep?", now.AddDays(-1).AddMinutes(-9)));
+        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.Assistant, "About as usual.", now.AddDays(-1).AddMinutes(-8)));
+        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.User, "And the night before?", now.AddDays(-1)));
+        await turnRepo.AddAsync(Turn(newer.Id, ChatTurnRole.User, "Any alerts today?", now));
+        await turnRepo.AddAsync(Turn(otherCaregivers.Id, ChatTurnRole.User, "Not this caregiver's", now));
+        await turnRepo.AddAsync(Turn(aboutSomeoneElse.Id, ChatTurnRole.User, "Not this member's", now));
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
+
+        var listings = await sessionRepo.ListForMemberAsync(userId, memberId);
+
+        Assert.Equal(new[] { newer.Id, older.Id }, listings.Select(l => l.Session.Id));
+        Assert.Equal("Any alerts today?", listings[0].FirstQuestionContent);
+        Assert.Equal(1, listings[0].QuestionCount);
+        Assert.Equal("How did he sleep?", listings[1].FirstQuestionContent);
+        Assert.Equal(2, listings[1].QuestionCount);
+    }
+
+    /// <summary>A session whose only turn is the assistant's has no opening question to be
+    /// recognised by — the projection says so with a null, and the service omits the row.</summary>
+    [Fact]
+    public async Task ListForMemberAsync_SessionWithNoCaregiverTurn_HasNullOpeningQuestion()
+    {
+        using var scope = fixture.CreateScope();
+        var userId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var session = Session(userId, memberId, now);
+
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
+        var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();
+        await sessionRepo.AddAsync(session);
+        await turnRepo.AddAsync(Turn(session.Id, ChatTurnRole.Assistant, "An orphaned reply", now));
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
+
+        var listings = await sessionRepo.ListForMemberAsync(userId, memberId);
+
+        var listing = Assert.Single(listings);
+        Assert.Null(listing.FirstQuestionContent);
+        Assert.Equal(0, listing.QuestionCount);
+    }
+
     [Fact]
     public async Task GetByIdWithTurnsAsync_ReturnsTurnsOldestFirst()
     {
