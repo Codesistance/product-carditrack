@@ -285,21 +285,49 @@ public class MemberChatService : IMemberChatService
                 + "alerts, or recent activity instead.");
         }
 
-        if (triage.Result.IsAboutThisMoment)
+        // One workflow answers, then one path persists, bills and responds. The branch chain
+        // decides *which* workflow; it no longer decides what happens afterwards, which is what
+        // stops a future branch quietly omitting a usage row or a SaveChanges.
+        var result = triage.Result switch
         {
-            return await AnswerLiveStatusAsync(
-                session, flattened, triage.Usage, cardiMemberId, member?.Name, utcNow, ct);
-        }
+            { IsAboutThisMoment: true } =>
+                await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow, ct),
+            { IsAskingForAdvice: true } =>
+                await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
+            { IsCasualOrSocial: true } or { IsOffTopic: true } =>
+                await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, ct),
+            _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
+        };
 
-        if (triage.Result.IsAskingForAdvice)
+        var (_, assistantTurn) = await PersistTurnsAsync(
+            session, flattened, result.Reply, result.Charts, utcNow, ct);
+        await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
+
+        await _unitOfWork.SaveChangesAsync();
+
+        return new MemberChatMessageResponse
         {
-            return await AnswerAdviseAsync(
-                session, flattened, triage.Usage, cardiMemberId, member, utcNow, ct);
-        }
+            SessionId = session.Id,
+            Reply = result.Reply,
+            Charts = result.Charts,
+            GeneratedAt = DateTimeOffset.UtcNow,
+        };
+    }
 
-        if (triage.Result.IsCasualOrSocial || triage.Result.IsOffTopic)
-            return await SteerAsync(session, flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, utcNow, ct);
-
+    /// <summary>
+    /// The full pipeline: plan the fetch, resolve it through the whitelist, read it clinically on
+    /// the private slot, and rewrite that read into caregiver prose. The default rung — everything
+    /// the triage does not divert lands here.
+    /// </summary>
+    private async Task<MemberChatWorkflowResult> AnalyseAsync(
+        string flattened,
+        AiUsage triageUsage,
+        Guid cardiMemberId,
+        CardiMember? member,
+        ChatHistory history,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
         var plan = await _planner.PlanAsync(flattened, history.Full, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
@@ -316,32 +344,26 @@ public class MemberChatService : IMemberChatService
         var name = NamePlaceholder.FirstName(member?.Name);
         var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
 
-        var charts = BuildCharts(fetched, plan.Result.ChartMetrics);
-
-        var (userTurn, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, charts, utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct,
-            (AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triage.Usage),
-            (AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
-            (AiCallStep.ClinicalAnalysis, AiProviderSlot.Private, clinical.Usage),
-            (AiCallStep.Rewrite, AiProviderSlot.Rewrite, rewrite.Usage));
-
-        await _unitOfWork.SaveChangesAsync();
-
-        return new MemberChatMessageResponse
+        return new MemberChatWorkflowResult
         {
-            SessionId = session.Id,
             Reply = reply,
-            Charts = charts,
-            GeneratedAt = DateTimeOffset.UtcNow,
+            Charts = BuildCharts(fetched, plan.Result.ChartMetrics),
+            Calls =
+            [
+                new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
+                new AiCallRecord(AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
+                new AiCallRecord(AiCallStep.ClinicalAnalysis, AiProviderSlot.Private, clinical.Usage),
+                new AiCallRecord(AiCallStep.Rewrite, AiProviderSlot.Rewrite, rewrite.Usage),
+            ],
         };
     }
 
     /// <summary>
     /// The short path a casual or off-topic message takes: one Rewrite-slot generation, no query
     /// plan, no clinical read — a greeting answers in about a second instead of holding the
-    /// caregiver through a full clinical generation. The turn persists like any other (same
-    /// session, same encryption, same retention envelope), with usage rows only for the two calls
-    /// actually made.
+    /// caregiver through a full clinical generation. The turn persists like any other — same
+    /// session, same encryption, same retention envelope — because persistence is no longer this
+    /// method's to do: it reports the calls it made and the shared path bills exactly those.
     /// </summary>
     /// <remarks>
     /// Deliberately takes no conversation history, unlike the triage and planning steps either
@@ -351,13 +373,11 @@ public class MemberChatService : IMemberChatService
     /// a caregiver's prior clinical exchanges to answer "hi" widens what the slot sees for no
     /// gain, which is the opposite of the minimisation DPIA row A20 records for it.
     /// </remarks>
-    private async Task<MemberChatMessageResponse> SteerAsync(
-        MemberChatSession session,
+    private async Task<MemberChatWorkflowResult> SteerAsync(
         string flattened,
         AiUsage triageUsage,
         bool casual,
         string? memberName,
-        DateTime utcNow,
         CancellationToken ct)
     {
         var instructions = casual ? CasualSteerInstructions : OffTopicSteerInstructions;
@@ -387,23 +407,16 @@ public class MemberChatService : IMemberChatService
             reply = FallbackSteerReply;
         }
 
-        var (_, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, [], utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct, steerUsage is null
-            ? [(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)]
-            : new[]
-            {
-                (AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
-                (AiCallStep.Steer, AiProviderSlot.Rewrite, steerUsage),
-            });
-
-        await _unitOfWork.SaveChangesAsync();
-
-        return new MemberChatMessageResponse
+        return new MemberChatWorkflowResult
         {
-            SessionId = session.Id,
             Reply = reply,
-            Charts = [],
-            GeneratedAt = DateTimeOffset.UtcNow,
+            Calls = steerUsage is null
+                ? [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)]
+                :
+                [
+                    new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
+                    new AiCallRecord(AiCallStep.Steer, AiProviderSlot.Rewrite, steerUsage),
+                ],
         };
     }
 
@@ -433,9 +446,7 @@ public class MemberChatService : IMemberChatService
     /// and a usage row that skipped it would make this path look free.
     /// </para>
     /// </remarks>
-    private async Task<MemberChatMessageResponse> AnswerLiveStatusAsync(
-        MemberChatSession session,
-        string flattened,
+    private async Task<MemberChatWorkflowResult> AnswerLiveStatusAsync(
         AiUsage triageUsage,
         Guid cardiMemberId,
         string? memberName,
@@ -446,21 +457,10 @@ public class MemberChatService : IMemberChatService
         var recent = (await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-2), today)).ToList();
 
-        var reply = CapReply(LiveStatusReply(
-            NamePlaceholder.FirstName(memberName), recent, today));
-
-        var (_, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, [], utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct,
-            (AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage));
-
-        await _unitOfWork.SaveChangesAsync();
-
-        return new MemberChatMessageResponse
+        return new MemberChatWorkflowResult
         {
-            SessionId = session.Id,
-            Reply = reply,
-            Charts = [],
-            GeneratedAt = DateTimeOffset.UtcNow,
+            Reply = CapReply(LiveStatusReply(NamePlaceholder.FirstName(memberName), recent, today)),
+            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
     }
 
@@ -551,33 +551,20 @@ public class MemberChatService : IMemberChatService
     /// <see cref="AdviseStaleness.MaxAge"/>.
     /// </para>
     /// </remarks>
-    private async Task<MemberChatMessageResponse> AnswerAdviseAsync(
-        MemberChatSession session,
-        string flattened,
+    private async Task<MemberChatWorkflowResult> AnswerAdviseAsync(
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
-        DateTime utcNow,
-        CancellationToken ct)
+        DateTime utcNow)
     {
         var advise = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
             ? await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId)
             : null;
 
-        var reply = CapReply(AdviseReply(NamePlaceholder.FirstName(member?.Name), advise, utcNow));
-
-        var (_, assistantTurn) = await PersistTurnsAsync(session, flattened, reply, [], utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct,
-            (AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage));
-
-        await _unitOfWork.SaveChangesAsync();
-
-        return new MemberChatMessageResponse
+        return new MemberChatWorkflowResult
         {
-            SessionId = session.Id,
-            Reply = reply,
-            Charts = [],
-            GeneratedAt = DateTimeOffset.UtcNow,
+            Reply = CapReply(AdviseReply(NamePlaceholder.FirstName(member?.Name), advise, utcNow)),
+            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
     }
 
@@ -1033,7 +1020,7 @@ public class MemberChatService : IMemberChatService
     private async Task PersistUsageAsync(
         Guid assistantTurnId,
         CancellationToken ct,
-        params (AiCallStep Step, AiProviderSlot Slot, AiUsage Usage)[] calls)
+        IReadOnlyList<AiCallRecord> calls)
     {
         foreach (var (step, slot, usage) in calls)
             await _unitOfWork.MemberChatTurnUsages.AddAsync(ToUsageRow(assistantTurnId, step, slot, usage));
