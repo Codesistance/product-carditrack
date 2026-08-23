@@ -111,7 +111,12 @@ public partial class MetricCard : ContentView
         NameLabel.Text = "Skin Temp";
         SetReading(metric.Value is { } v ? $"{v:0.#}°C" : "—", metric);
 
-        ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
+        // No star row on this card. Its rating is derived from the same per-day deviation as its
+        // status, one band finer (see MemberInsightsCalculator), so under a NORMAL pill the stars
+        // could only restate the pill — the one card whose two accents were the same fact twice.
+        // The pill, the degrees-from-usual caption and the track carry everything the row did.
+        ApplyStatusPill(metric.Status);
+        HideStars();
         CaptionLabel.Text = TemperatureComparison(metric);
         ApplyTemperatureTrack(metric);
     }
@@ -268,9 +273,16 @@ public partial class MetricCard : ContentView
         SetReading(metric.Value is { } v ? $"{v:0.#}%" : "—", metric);
 
         // No baseline exists for this metric yet, so Status is always "unknown" and QualityScore
-        // always null — pill and stars both stay hidden. A bare reading, not a judgement.
-        ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
-        CaptionLabel.Text = "SpO2";
+        // always null. The one comparison it does have is the published band the payload carries
+        // (WHO's 94-100%), so the pill reads that — and the caption names the band and who
+        // publishes it, which is what keeps NORMAL on this card from claiming a baseline the
+        // metric does not have. No stars: a rating needs a member-relative normal to grade
+        // against, and there is none.
+        ShowPill(MetricStatus.ReferencePill(metric.Value, metric.Reference));
+        HideStars();
+        CaptionLabel.Text = metric.Reference is { } r
+            ? $"{r.Low:0}-{r.High:0}% typical ({r.Source})"
+            : "SpO2";
     }
 
     public void ApplyBreathingRate(DashboardMetric metric)
@@ -282,9 +294,13 @@ public partial class MetricCard : ContentView
         NameLabel.Text = "Breathing";
         SetReading(metric.Value is { } v ? $"{v:0.#} brpm" : "—", metric);
 
-        // No baseline exists for this metric yet, same as SpO2 — a bare reading, not a trend.
-        ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
-        CaptionLabel.Text = "Breaths per minute";
+        // Same stance as SpO2: no baseline yet, so the pill and caption read the published band
+        // (WHO's 12-20 brpm) rather than pretending to a member-relative one, and no stars.
+        ShowPill(MetricStatus.ReferencePill(metric.Value, metric.Reference));
+        HideStars();
+        CaptionLabel.Text = metric.Reference is { } r
+            ? $"{r.Low:0}-{r.High:0} brpm typical ({r.Source})"
+            : "Breaths per minute";
     }
 
     /// <summary>
@@ -432,8 +448,7 @@ public partial class MetricCard : ContentView
     {
         if (metric.QualityScore is not { } score)
         {
-            StarRow.IsVisible = false;
-            AutomationProperties.SetIsInAccessibleTree(StarRow, false);
+            HideStars();
             return;
         }
 
@@ -448,6 +463,17 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
+    /// No star row on this card — either because the metric has nothing member-relative to rate
+    /// against (SpO2, breathing rate), or because the rating would only restate the pill above it
+    /// (skin temperature). Out of the accessible tree too: an invisible row is still a stop.
+    /// </summary>
+    private void HideStars()
+    {
+        StarRow.IsVisible = false;
+        AutomationProperties.SetIsInAccessibleTree(StarRow, false);
+    }
+
+    /// <summary>
     /// The fill for the earned stars on the two cards whose accent comes from the rating itself —
     /// activity, which shows no pill, and sleep, whose pill names these same bands — read off
     /// <c>RateAgainstNormal</c>'s own scale: 3-5 green, 2 yellow, 1 orange.
@@ -458,8 +484,9 @@ public partial class MetricCard : ContentView
     /// this card had put one on screen, which is a different question and got sleep wrong:
     /// sleep has a status, so it took the status colour, and a habitually short sleeper's two stars
     /// came out green — the one reading the rating exists to surface, painted as if it were fine.
-    /// Deriving the colour everywhere instead would only move the error to skin temperature, whose
-    /// bands do not nest in its status thresholds (3 stars is 1-1.5σ, which is yellow).
+    /// (Skin temperature was the counter-example that kept this from being derived everywhere —
+    /// its bands did not nest in its status thresholds — until its star row came off entirely;
+    /// see ApplyTemperature.)
     /// </remarks>
     private static Color StarInk(int filled) =>
         MetricStatus.Accent(filled switch
