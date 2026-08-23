@@ -83,8 +83,11 @@
 
             <!-- Accessory slot. The movement rides on the reading above and the pill marks the
                  corner, so what is left here is the resolution and the terms: the stars rate the
-                 same comparison the pill names, one band finer, and the caption says what the
-                 reading is being read against. -->
+                 comparison against this member's own normal — the one the pill names, one band
+                 finer, on the cards that show a pill — and the caption says what the reading is
+                 being read against. Activity is the exception at both ends: no pill, and a
+                 reading compared with the previous day while its stars still rate the day against
+                 their usual one, which is why its caption names that day outright. -->
             <VerticalStackLayout Spacing="3">
                 <controls:StarRatingView x:Name="StarRow" IsVisible="False"/>
 

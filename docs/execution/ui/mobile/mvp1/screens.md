@@ -613,14 +613,14 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 
 The comparison is the member's own baseline (`changePercent`) on every card but Activity, which compares with the day its bar and caption already name — steps accumulate, so the payload leaves `changePercent` unset while the day is running (see `MemberInsightsCalculator`) and a tile that only showed a percentage after midnight showed one almost never. Everything on the Activity tile therefore answers "against the day before" except its star row, which stays the rating against their usual day.
 
-Whole percent from 1% up, a tenth below it ("↓0.3%"): a skin temperature 0.1°C off a 33.8°C baseline is a real movement its own caption states in degrees, and rounding to whole percent would drop it. Nothing is drawn where there is no comparison to make (SpO2 and Breathing Rate have no baseline; Activity's first day has no previous day), or where the movement rounds to 0% at that tenth.
+Whole percent from 1% up, a tenth below it ("↓0.3%"): a skin temperature 0.1°C off a 33.8°C baseline is a real movement its own caption states in degrees, and rounding to whole percent would drop it. Nothing is drawn where there is no comparison to make (SpO2 and Breathing Rate have no baseline; Activity has no previous day, or a previous day of zero, which no percentage can express), or where the movement rounds to 0% at that tenth.
 
 **Status pill placement:** the pill (NORMAL / UNUSUAL, and Sleep's GOOD / FAIR / POOR) sits in the tile's top-right corner, opposite the metric icon, with the name on the row beneath. At half-grid width a name and a pill do not fit side by side, and the alternative was truncating "Heart Rate" to make room for NORMAL. **Tile corners** are 12, not the shared `OutlinedCard` 20 — a radius drawn for a full-width card takes a visible bite out of a tile this size.
 
 **Card 1: Activity**
 - Icon: shoe
 - Large value: "4,250 steps"
-- Visual progress bar (current vs. goal)
+- Visual progress bar — today against the previous calendar day's total, not a goal (the track's max grows to today once today is ahead; two stacked colours when it is)
 - Movement sits on the value line itself (see **Change against normal** above), against the previous day rather than the baseline: "8,846 steps  ↑48%" over "vs 5,959 yesterday"
 - Star rating (1-5) — the shortfall against normal; walking further than usual is not marked down
 

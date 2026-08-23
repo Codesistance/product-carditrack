@@ -48,7 +48,12 @@ public partial class MetricCard : ContentView
         // percentage is that same comparison in figures, so everything on the tile answers one
         // question. The star row is the exception, and stays the rating against their usual day.
         var progress = ActivityDayProgress.For(metric);
-        SetReading(metric.Value is { } v ? $"{v:N0} steps" : "—", progress?.ChangePercent);
+        SetReading(
+            metric.Value is { } v ? $"{v:N0} steps" : "—",
+            progress?.ChangePercent,
+            // Named for a screen reader the same way the caption names it in print, so the two
+            // cannot describe different days.
+            progress is { PreviousIsYesterday: true } ? "yesterday" : "the previous day");
 
         // This card carries no pill, so there is nothing on it for the star row to match and the
         // rating colours itself.
@@ -283,23 +288,36 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
+    /// What the spoken form of a reading calls the thing it is being compared with, for the cards
+    /// whose percentage is against the member's own baseline — which is all of them but Activity.
+    /// </summary>
+    private const string BaselineComparison = "usual";
+
+    /// <summary>
     /// The card's reading, with how far it sits from this member's own normal on the same line —
-    /// "5,959 steps  ↑63%". Every card goes through here, so a metric that carries a comparison
-    /// shows it in the same place and the same shape whichever tile it lands in.
+    /// "73 bpm  ↑1%". Every card goes through here, so a metric that carries a comparison shows it
+    /// in the same place and the same shape whichever tile it lands in.
     /// </summary>
     /// <returns>Whether a percentage actually went beside the reading. See <see cref="ApplyTrend"/>.</returns>
-    private bool SetReading(string value, DashboardMetric metric) => SetReading(value, metric.ChangePercent);
+    private bool SetReading(string value, DashboardMetric metric) =>
+        SetReading(value, metric.ChangePercent, BaselineComparison);
 
+    /// <param name="comparedWith">
+    /// What the percentage is measured against, as a screen reader should say it ("usual",
+    /// "yesterday"). The arrow and the figure are the same either way; only the spoken form can
+    /// say which comparison is being made, and the sighted reader has the caption for it.
+    /// </param>
     /// <inheritdoc cref="SetReading(string, DashboardMetric)"/>
-    private bool SetReading(string value, decimal? changePercent)
+    private bool SetReading(string value, decimal? changePercent, string comparedWith)
     {
         ValueSpan.Text = value;
-        return ApplyTrend(changePercent);
+        return ApplyTrend(changePercent, comparedWith);
     }
 
     /// <summary>
-    /// The movement beside the reading: an arrow for the direction and the distance from the
-    /// member's own baseline as a whole percent, green up and red down.
+    /// The movement beside the reading: an arrow for the direction and the distance from whatever
+    /// the card compares against, green up and red down. See <see cref="Percent"/> for how far the
+    /// figure is spelled out.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -315,13 +333,13 @@ public partial class MetricCard : ContentView
     /// sentiment on a metric where up is not good news.
     /// </para>
     /// <para>
-    /// Nothing is drawn for a metric with no baseline to compare against (SpO2 and breathing rate
-    /// have none yet), for a reading covering a period that is not over — steps mid-morning, which
-    /// the bar under them compares to yesterday instead — or for a movement under half a percent,
-    /// which the whole-percent label could only print as an arrow over "0%".
+    /// Nothing is drawn where the caller has no comparison to hand: no baseline for the metric
+    /// (SpO2 and breathing rate have none yet), no previous day for Activity to measure against —
+    /// including a previous day of zero, which no percentage can express — or a movement under
+    /// <see cref="TrendResolution"/>, which the label could only print as an arrow over "0%".
     /// </para>
     /// </remarks>
-    private bool ApplyTrend(decimal? changePercent)
+    private bool ApplyTrend(decimal? changePercent, string comparedWith)
     {
         if (changePercent is not { } change || Math.Abs(change) < TrendResolution)
         {
@@ -342,7 +360,7 @@ public partial class MetricCard : ContentView
         // The arrow is a glyph a screen reader either skips or names as punctuation, and the two
         // spans are read as one run — so the line gets a spoken form that says the comparison.
         SemanticProperties.SetDescription(
-            ReadingLabel, $"{ValueSpan.Text}, {Percent(size)} {(up ? "above" : "below")} usual");
+            ReadingLabel, $"{ValueSpan.Text}, {Percent(size)} {(up ? "above" : "below")} {comparedWith}");
         return true;
     }
 
