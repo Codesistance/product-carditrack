@@ -104,9 +104,10 @@ public class MemberChatHistoryListTests
     [Fact]
     public async Task GetSession_ReturnsDecryptedTurns_ForTheCaregiversOwnSession()
     {
+        var sessionId = Guid.NewGuid();
         var session = new MemberChatSession
         {
-            Id = Guid.NewGuid(),
+            Id = sessionId,
             UserId = _userId,
             CardiMemberId = _memberId,
             StartedAtUtc = DateTime.UtcNow.AddDays(-2),
@@ -115,12 +116,12 @@ public class MemberChatHistoryListTests
             [
                 new MemberChatTurn
                 {
-                    SessionId = Guid.NewGuid(), Role = ChatTurnRole.User,
+                    SessionId = sessionId, Role = ChatTurnRole.User,
                     Content = Stored("How did he sleep?"), CreatedAtUtc = DateTime.UtcNow.AddDays(-2),
                 },
                 new MemberChatTurn
                 {
-                    SessionId = Guid.NewGuid(), Role = ChatTurnRole.Assistant,
+                    SessionId = sessionId, Role = ChatTurnRole.Assistant,
                     Content = Stored("About as usual."), CreatedAtUtc = DateTime.UtcNow.AddDays(-2),
                 },
             ],

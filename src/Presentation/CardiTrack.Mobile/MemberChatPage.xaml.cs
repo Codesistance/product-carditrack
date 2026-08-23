@@ -53,9 +53,10 @@ public partial class MemberChatPage : ContentView
     /// presenting the empty list the failure left behind as a conversation.</summary>
     private bool _threadLoadFailed;
 
-    /// <summary>The in-flight history load, if any — a send awaits it before appending, so the
-    /// load's rebuild of the list cannot wipe turns added after it started. Never faults:
-    /// <see cref="LoadAsync"/> handles its own failures.</summary>
+    /// <summary>The in-flight load of the live thread, if any — a send awaits it before
+    /// appending, so the load's rebuild of the list cannot wipe turns added after it started.
+    /// Never faults: <see cref="LoadAsync"/> handles its own failures. (Only ever a
+    /// <see cref="LoadAsync"/> task — the history list's loads have no such race to guard.)</summary>
     private Task? _loadTask;
 
     public MemberChatPage(ICardiTrackApiClient api, Guid memberId, string? memberFirstName)
