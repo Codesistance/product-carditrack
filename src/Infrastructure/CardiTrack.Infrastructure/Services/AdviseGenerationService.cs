@@ -216,11 +216,14 @@ public class AdviseGenerationService
         {
             await _unitOfWork.SaveChangesAsync();
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
+            when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
         {
             // Lost an insert race on the unique (CardiMemberId, Topic) index — the same recovery
             // the single-row version applied, per topic: detach this pass's staged inserts, let
-            // the winner's rows stand, and overwrite them with this pass's content.
+            // the winner's rows stand, and overwrite them with this pass's content. Filtered to
+            // the unique violation, unlike its predecessor: any other write failure bubbles
+            // rather than being "recovered" into a second, harder-to-debug save.
             foreach (var insert in staged)
                 _unitOfWork.MemberAdvises.Remove(insert);
 

@@ -76,6 +76,14 @@ public class AdviseGenerationServiceTests
         GeneratedAtUtc = DateTime.UtcNow.AddDays(-ageDays),
     };
 
+    /// <summary>The shape the narrowed catch filters for: a DbUpdateException whose inner is
+    /// Postgres's unique violation — any other write failure now bubbles.</summary>
+    private static DbUpdateException UniqueViolation() => new(
+        "duplicate key value violates unique constraint",
+        new Npgsql.PostgresException(
+            "duplicate key value violates unique constraint", "ERROR", "ERROR",
+            Npgsql.PostgresErrorCodes.UniqueViolation));
+
     private AdviseGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
             NullLogger<AdviseGenerationService>.Instance);
@@ -247,7 +255,7 @@ public class AdviseGenerationServiceTests
         _advises.GetAllByCardiMemberAsync(_memberId).Returns(
             (IReadOnlyList<MemberAdvise>)[], (IReadOnlyList<MemberAdvise>)[winner]);
         _unitOfWork.SaveChangesAsync().Returns(
-            _ => throw new DbUpdateException("duplicate key value violates unique constraint"),
+            _ => throw UniqueViolation(),
             _ => 1);
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
@@ -287,7 +295,7 @@ public class AdviseGenerationServiceTests
         _advises.GetAllByCardiMemberAsync(_memberId).Returns(
             (IReadOnlyList<MemberAdvise>)[], (IReadOnlyList<MemberAdvise>)[winner]);
         _unitOfWork.SaveChangesAsync().Returns(
-            _ => throw new DbUpdateException("duplicate key value violates unique constraint"),
+            _ => throw UniqueViolation(),
             _ => 1);
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
@@ -296,6 +304,18 @@ public class AdviseGenerationServiceTests
         // Sleep staged twice: once in the aborted batch, once re-staged by the recovery.
         await _advises.Received(2).AddAsync(Arg.Is<MemberAdvise>(a => a.Topic == AdviseTopic.Sleep));
         await _unitOfWork.Received(2).SaveChangesAsync();
+    }
+
+    /// <summary>The recovery is for the insert race only: any other write failure bubbles rather
+    /// than being "recovered" into a second save that hides the real problem.</summary>
+    [Fact]
+    public async Task ANonRaceWriteFailure_Bubbles()
+    {
+        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(
+            _ => throw new DbUpdateException("value too long for type character varying(500)"));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => CreateSut().RegenerateIfDueAsync(_memberId));
+        await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
     [Fact]

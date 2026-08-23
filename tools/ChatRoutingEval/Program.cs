@@ -271,6 +271,11 @@ async Task<int> CmdRouteAsync(string[] args)
     try
     {
         var builder = Host.CreateApplicationBuilder([]);
+        // "Beside the binary", as the README promises: the default content root is the process's
+        // current directory, so a run from anywhere else would silently miss the appsettings the
+        // csproj copies to the output. The base-directory file wins over any cwd one.
+        builder.Configuration.AddJsonFile(
+            Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true);
         builder.Logging.ClearProviders();
         builder.Services.AddMedicalAiServices(builder.Configuration);
         host = builder.Build();
@@ -755,10 +760,10 @@ sealed class EvalInputException(string message) : Exception(message);
 // Vocabulary
 // ---------------------------------------------------------------------------------------------
 
-// Deliberately built from ChatWorkflowCatalogue.All, NOT .Routable. Routable is what the routing
-// prompt renders today, which excludes `investigation` because its handler is unbuilt — but the
-// eval set is precisely what decides whether that handler gets built, so a labeller must be able
-// to choose it.
+// Deliberately built from ChatWorkflowCatalogue.All, NOT .Routable — the sheet's vocabulary must
+// not follow production's rendering flags. Today the two sets happen to coincide (every entry but
+// clarify is implemented and routable), but the eval set is what judges whether a rung earns its
+// keep, so a labeller must be able to choose an entry even in a build where its flag is off.
 //
 // The label strings are the catalogue's own, not a copy: ChatWorkflowDefinition.Label is a required
 // parameter, so an entry with no external name fails to compile rather than reaching a sheet

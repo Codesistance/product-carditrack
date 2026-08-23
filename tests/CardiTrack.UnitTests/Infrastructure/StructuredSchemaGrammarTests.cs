@@ -77,6 +77,23 @@ public class StructuredSchemaGrammarTests
     }
 
     /// <summary>
+    /// Array items lose their null too — the exporter has no nullability view of a collection's
+    /// reference-type items, so a list of entry records exported as items that may each be null,
+    /// and the grammar then offered a null element no deserializer wanted. Pinned on the first
+    /// response type with an object list, so the array half of the stripping cannot silently
+    /// regress even if that type leaves the theory's roster.
+    /// </summary>
+    [Fact]
+    public void Schema_DeclaresObjectsInsideArrays_NotObjectOrNull()
+    {
+        var schemaText = SchemaTextFor(
+            typeof(CardiTrack.Infrastructure.Services.AdviseGenerationService.AdviseAiResponse));
+
+        Assert.Contains("\"items\":{\"type\":\"object\"", schemaText);
+        Assert.DoesNotContain("\"type\":[\"object\",\"null\"]", schemaText);
+    }
+
+    /// <summary>
     /// Only the root loses its null. A nullable property is a real part of the contract — a
     /// daybook with no suggestion worth making says so with a null — and the schema has to keep
     /// letting it.
