@@ -1769,14 +1769,24 @@ public class GoogleHealthApiClientTests
         }
         """;
 
-    /// <summary>The same point with the civil times the API actually returns, for the clip.</summary>
+    /// <summary>
+    /// The same point with a civil end time, in the structured shape the API actually returns —
+    /// <c>{ date: {year,month,day}, time: {hours,minutes} }</c>, not the RFC-3339 string this
+    /// fixture originally assumed (the assumption that shipped the 2026-08-23 outage's second,
+    /// non-crashing bug: this method's own day-end clip silently never fired).
+    /// </summary>
     private static string ActivityLevelPointWithCivil(
-        string level, string start, string end, string civilEnd) => $$"""
+        string level, string start, string end, int civilEndYear, int civilEndMonth,
+        int civilEndDay, int civilEndHour, int civilEndMinute) => $$"""
         {
           "activityLevel": {
             "activityLevelType": "{{level}}",
             "interval": {
-              "startTime": "{{start}}", "endTime": "{{end}}", "civilEndTime": "{{civilEnd}}"
+              "startTime": "{{start}}", "endTime": "{{end}}",
+              "civilEndTime": {
+                "date": { "year": {{civilEndYear}}, "month": {{civilEndMonth}}, "day": {{civilEndDay}} },
+                "time": { "hours": {{civilEndHour}}, "minutes": {{civilEndMinute}} }
+              }
             }
           }
         }
@@ -1798,7 +1808,7 @@ public class GoogleHealthApiClientTests
                   "dataPoints": [
                     {{ActivityLevelPointWithCivil(
                         "SEDENTARY", "2026-08-05T21:00:00Z", "2026-08-06T06:00:00Z",
-                        "2026-08-06T06:00:00")}}
+                        2026, 8, 6, 6, 0)}}
                   ]
                 }
                 """);
