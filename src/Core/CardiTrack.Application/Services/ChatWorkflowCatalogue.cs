@@ -30,6 +30,13 @@ public enum ChatClaimClass
 }
 
 /// <summary>One entry as the router sees it, plus the limits the handler is held to.</summary>
+/// <param name="Label">
+/// The entry's stable external name — what the model returns, what a labelling sheet records, and
+/// what <c>docs/technical/member_chat_routing.md</c> calls it. Required rather than derived from
+/// <paramref name="Id"/> so a new entry cannot reach a prompt or a sheet unnamed: the compiler
+/// refuses the entry, rather than something failing later at runtime. Renaming one rewrites the
+/// meaning of every sheet already filled in against it, so treat it as fixed once used.
+/// </param>
 /// <param name="Purpose">
 /// The line rendered into the routing prompt. These lines <em>are</em> the routing prompt — see
 /// <c>docs/technical/member_chat_routing.md</c> §4 — and they get rewritten against the eval set
@@ -50,6 +57,7 @@ public enum ChatClaimClass
 /// </param>
 public sealed record ChatWorkflowDefinition(
     MemberChatWorkflow Id,
+    string Label,
     string Purpose,
     ChatClaimClass ClaimClass,
     IReadOnlyList<DataQueryKind> AllowedDatasets,
@@ -85,6 +93,7 @@ public static class ChatWorkflowCatalogue
         Array.AsReadOnly(new ChatWorkflowDefinition[]
         {
             new(MemberChatWorkflow.Status,
+                "status",
                 "One reading, or one moment — what a value currently is, or when something last "
                 + "happened. No comparison with what is usual for this person and no judgement "
                 + "about whether it is good. Also covers device, sync and monitoring state. A "
@@ -93,6 +102,7 @@ public static class ChatWorkflowCatalogue
                 [DataQueryKind.RecentActivity]),
 
             new(MemberChatWorkflow.Analysis,
+                "analysis",
                 "What the readings say over a period, set against what is usual for this member "
                 + "and against the published typical range where one exists. Choose this when "
                 + "answering needs arithmetic over a window.",
@@ -100,6 +110,7 @@ public static class ChatWorkflowCatalogue
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.RealtimeAssessments]),
 
             new(MemberChatWorkflow.Inference,
+                "inference",
                 "Whether what the readings show is settled or worth attention. Choose this when "
                 + "the question asks for a verdict rather than for figures. It returns the figures "
                 + "as well.",
@@ -109,6 +120,7 @@ public static class ChatWorkflowCatalogue
             // Reserved ahead of its handler: the two-pass fetch, the consent gate and the
             // co-occurrence rule are not built, and §10's off-ramp decides whether they will be.
             new(MemberChatWorkflow.Investigation,
+                "investigation",
                 "Why something changed, and what co-occurred with it. Choose this only when the "
                 + "question asks to explain a change and answering would mean looking at things "
                 + "the question did not name.",
@@ -117,18 +129,21 @@ public static class ChatWorkflowCatalogue
                 IsImplemented: false),
 
             new(MemberChatWorkflow.Advise,
+                "advise",
                 "What could be done about the member's wellbeing. Choose this when answering would "
                 + "mean recommending an action.",
                 ChatClaimClass.Suggestion,
                 []),
 
             new(MemberChatWorkflow.SteerCasual,
+                "steer.casual",
                 "Not a question at all — a greeting, thanks, small talk, or a question about the "
                 + "assistant itself.",
                 ChatClaimClass.None,
                 []),
 
             new(MemberChatWorkflow.SteerOffTopic,
+                "steer.offtopic",
                 "A genuine request, but about something unrelated to this person's health or care.",
                 ChatClaimClass.None,
                 []),
@@ -137,6 +152,7 @@ public static class ChatWorkflowCatalogue
             // that cannot be run — never returned by the model. Adjacent ambiguity is what the
             // ladder's tie-break is for.
             new(MemberChatWorkflow.Clarify,
+                "clarify",
                 "The router could not place the question; ask which rung was meant.",
                 ChatClaimClass.None,
                 [],

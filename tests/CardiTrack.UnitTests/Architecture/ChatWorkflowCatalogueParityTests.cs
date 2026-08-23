@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
@@ -160,4 +162,115 @@ public class ChatWorkflowCatalogueParityTests
             "lines are the routing prompt; a blank one is an id the model is asked to choose with " +
             "nothing to choose it on.");
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Labels, and the eval fixture that is written in them
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The bundled eval fixture — <c>tools/ChatRoutingEval/cases.json</c>, linked into this project
+    /// rather than copied, so these assert against the file the tool actually ships.
+    /// </summary>
+    private static CaseFile Cases
+    {
+        get
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "cases.json");
+            Assert.True(File.Exists(path),
+                $"No eval fixture at {path}. It is linked from tools/ChatRoutingEval/cases.json by " +
+                "this project's csproj; a missing file means that link was dropped, not that the " +
+                "fixture is optional.");
+
+            return JsonSerializer.Deserialize<CaseFile>(
+                       File.ReadAllText(path),
+                       new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                   ?? throw new InvalidOperationException($"{path} did not parse as a case fixture.");
+        }
+    }
+
+    /// <summary>Outcomes a labeller may record that are not catalogue entries — kept in step with
+    /// <c>Vocabulary.Special</c> in the eval tool.</summary>
+    private static readonly string[] NonCatalogueOutcomes = ["inherit-prior", "rejected-pre-router"];
+
+    private static IReadOnlyCollection<string> Vocabulary { get; } =
+        ChatWorkflowCatalogue.All.Select(w => w.Label).Concat(NonCatalogueOutcomes).ToHashSet();
+
+    [Fact]
+    public void EveryEntry_HasAUsableLabel()
+    {
+        // A label is a required constructor parameter, so "missing" is already a compile error.
+        // What the compiler cannot refuse is an empty or badly-shaped one, and the label travels
+        // into prompts and onto labelling sheets where casing and stray whitespace matter.
+        var bad = ChatWorkflowCatalogue.All
+            .Where(w => !Regex.IsMatch(w.Label, "^[a-z]+([.-][a-z]+)*$"))
+            .Select(w => $"{w.Id}='{w.Label}'")
+            .ToList();
+
+        Assert.True(bad.Count == 0,
+            $"Entr(y/ies) with an unusable label: {string.Join(", ", bad)}. A label is the entry's " +
+            "external name — it goes into the routing prompt and onto labelling sheets that outlive " +
+            "any one run — so it must be lowercase words joined by dots or hyphens, no spaces.");
+    }
+
+    [Fact]
+    public void NoLabelIsUsedTwice()
+    {
+        var duplicates = ChatWorkflowCatalogue.All
+            .GroupBy(w => w.Label)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        Assert.True(duplicates.Count == 0,
+            $"Label(s) on more than one entry: {string.Join(", ", duplicates)}. The router returns " +
+            "a label, so two entries sharing one makes the answer ambiguous and silently picks " +
+            "whichever entry is found first.");
+    }
+
+    [Fact]
+    public void NoLabelCollidesWithANonCatalogueOutcome()
+    {
+        var collisions = ChatWorkflowCatalogue.All
+            .Where(w => NonCatalogueOutcomes.Contains(w.Label))
+            .Select(w => w.Label)
+            .ToList();
+
+        Assert.True(collisions.Count == 0,
+            $"Label(s) colliding with a non-catalogue labelling outcome: {string.Join(", ", collisions)}. " +
+            "A labeller writing that word would be recorded as choosing the workflow, not the outcome.");
+    }
+
+    [Fact]
+    public void EveryEvalCase_ExpectsALabelInTheVocabulary()
+    {
+        var unknown = Cases.Cases
+            .SelectMany(c => c.Special is null ? c.Accepted : [c.Special])
+            .Where(label => !Vocabulary.Contains(label))
+            .Distinct()
+            .ToList();
+
+        Assert.True(unknown.Count == 0,
+            $"Eval case(s) expecting label(s) outside the vocabulary: {string.Join(", ", unknown)}. " +
+            "Renaming a workflow invalidates the answer key without touching the fixture, and the " +
+            "symptom is every labeller scoring wrong on those cases — which reads as a labelling " +
+            "failure rather than the fixture bug it is. Update tools/ChatRoutingEval/cases.json.");
+    }
+
+    [Fact]
+    public void NoEvalCaseIdIsUsedTwice()
+    {
+        var duplicates = Cases.Cases
+            .GroupBy(c => c.Id)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        Assert.True(duplicates.Count == 0,
+            $"Eval case id(s) listed twice: {string.Join(", ", duplicates)}. Scoring keys labels by " +
+            "case id, so a duplicate makes one of the two unreachable.");
+    }
+
+    private sealed record CaseFile(EvalCase[] Cases);
+
+    private sealed record EvalCase(string Id, string[] Accepted, string? Special);
 }

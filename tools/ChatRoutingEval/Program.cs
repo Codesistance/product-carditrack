@@ -663,24 +663,14 @@ sealed class EvalInputException(string message) : Exception(message);
 // Deliberately built from ChatWorkflowCatalogue.All, NOT .Routable. Routable is what the routing
 // prompt renders today, which excludes `investigation` because its handler is unbuilt — but the
 // eval set is precisely what decides whether that handler gets built, so a labeller must be able
-// to choose it. Steer is excluded because it is retired (see MemberChatWorkflow.Steer): it exists
-// so already-stamped turns keep their meaning, and offering it would invite labels nothing routes.
+// to choose it.
+//
+// The label strings are the catalogue's own, not a copy: ChatWorkflowDefinition.Label is a required
+// parameter, so an entry with no external name fails to compile rather than reaching a sheet
+// unnamed. The Steer filter is defensive — that retired id is not in the catalogue today and no
+// test forbids re-adding it, so this keeps a re-added one off the sheet rather than reacting to it.
 static class Vocabulary
 {
-    // Explicit, because the label a person writes on a sheet is a stable artefact and an enum
-    // rename must not silently rewrite last month's sheets. Kept in sync by CoversCatalogue below.
-    private static readonly Dictionary<MemberChatWorkflow, string> Ids = new()
-    {
-        [MemberChatWorkflow.Status] = "status",
-        [MemberChatWorkflow.Analysis] = "analysis",
-        [MemberChatWorkflow.Inference] = "inference",
-        [MemberChatWorkflow.Investigation] = "investigation",
-        [MemberChatWorkflow.Advise] = "advise",
-        [MemberChatWorkflow.SteerCasual] = "steer.casual",
-        [MemberChatWorkflow.SteerOffTopic] = "steer.offtopic",
-        [MemberChatWorkflow.Clarify] = "clarify",
-    };
-
     /// <summary>Outcomes a labeller may pick that are not catalogue entries at all.</summary>
     public static readonly Dictionary<string, string> Special = new()
     {
@@ -689,18 +679,11 @@ static class Vocabulary
         ["rejected-pre-router"] = "Must never reach routing at all (injection, prompt extraction).",
     };
 
-    public static string IdOf(MemberChatWorkflow w) =>
-        Ids.TryGetValue(w, out var id)
-            ? id
-            : throw new EvalInputException(
-                $"No label id for catalogue entry '{w}'. Add it to Vocabulary.Ids — a new entry "
-                + "must not reach a labelling sheet unnamed.");
-
     /// <summary>Every label a filled sheet may legally contain.</summary>
     public static IReadOnlyList<string> All { get; } =
         ChatWorkflowCatalogue.All
             .Where(w => w.Id != MemberChatWorkflow.Steer)
-            .Select(w => IdOf(w.Id))
+            .Select(w => w.Label)
             .Concat(Special.Keys)
             .ToArray();
 
@@ -720,7 +703,7 @@ static class Vocabulary
     public static IEnumerable<(string Id, string Meaning)> Described() =>
         ChatWorkflowCatalogue.All
             .Where(w => w.Id != MemberChatWorkflow.Steer)
-            .Select(w => (IdOf(w.Id), w.Purpose))
+            .Select(w => (w.Label, w.Purpose))
             .Concat(Special.Select(kv => (kv.Key, kv.Value)));
 }
 

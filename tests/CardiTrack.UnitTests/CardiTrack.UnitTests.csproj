@@ -33,6 +33,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Linked, not copied: ChatWorkflowCatalogueParityTests asserts the eval fixture agrees with
+         the catalogue, and a duplicate would let the two drift apart while the test kept passing
+         against the stale copy. tools/ChatRoutingEval stays outside the solution; only this data
+         file crosses over. -->
+    <Content Include="..\..\tools\ChatRoutingEval\cases.json" Link="cases.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Core\CardiTrack.Domain\CardiTrack.Domain.csproj" />
     <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
