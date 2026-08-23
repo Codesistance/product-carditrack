@@ -89,9 +89,10 @@ public class MemberChatAdviseRoutingTests
     private MemberChatService CreateSut() =>
         new(_medicalAi, _rewriteAi, _planner, Substitute.For<IChatRouter>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
-            // Routing Off: these tests assert the triage-decided behaviour, which the default
-            // mode preserves — the router substitute must never be reached.
-            Options.Create(new ChatRoutingSettings()),
+            // Routing Off explicitly: these tests pin the triage-decided path, which is the
+            // rollback lever and the router-failure fallback — reachable, just no longer the
+            // default now that routed is the normal pipeline.
+            Options.Create(new ChatRoutingSettings { Mode = ChatRoutingMode.Off }),
             NullLogger<MemberChatService>.Instance);
 
     [Fact]

@@ -94,6 +94,12 @@ public class MemberChatRoutedDispatchTests
             Options.Create(new ChatRoutingSettings { Mode = mode }),
             NullLogger<MemberChatService>.Instance);
 
+    /// <summary>Routed is the new normal (decision 2026-08-24): a deployment with no ChatRouting
+    /// section runs the router. Off exists as the rollback lever, not the starting point.</summary>
+    [Fact]
+    public void TheDefault_IsOn() =>
+        Assert.Equal(ChatRoutingMode.On, new ChatRoutingSettings().Mode);
+
     // ---- Off ------------------------------------------------------------------------------
 
     [Fact]
