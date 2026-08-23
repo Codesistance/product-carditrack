@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Offline labelling instrument, deliberately NOT in CardiTrack.sln and not built by CI —
+    the same convention tools/AiSplitEvaluator follows. Unlike that tool this one needs no
+    database, no model endpoint and no network: it shuffles a fixture into blind labelling
+    sheets and scores the sheets people hand back. See tools/ChatRoutingEval/README.md.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CardiTrack.Tools.ChatRoutingEval</RootNamespace>
+    <AssemblyName>CardiTrack.Tools.ChatRoutingEval</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Referenced so the labelling vocabulary comes from ChatWorkflowCatalogue itself rather
+         than a hand-copied list. A new catalogue entry then shows up as a build-time gap in the
+         id map below, not as a silently missing label on the next sheet. -->
+    <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="cases.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

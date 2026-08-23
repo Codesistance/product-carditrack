@@ -551,6 +551,10 @@ Hand-labelled caregiver phrasings, expected entry, and what each case guards. Se
 
 **How it is read:** a confusion matrix, not an accuracy figure. `analysis`↔`inference` confusion is tolerable by design. Anything↔`advise` is not — that is the boundary where a reply starts recommending things.
 
+**The instrument exists.** [`tools/ChatRoutingEval`](../../tools/ChatRoutingEval/README.md) turns this table into one shuffled, answer-free sheet per labeller and scores the sheets back into the matrix above, applying the tolerable/serious distinction in the paragraph you just read. It takes `--cases` so the real eval set, once there is one, runs through the same instrument.
+
+**What it cannot fix.** It still labels *these* rows — one author's phrasings of failures already known, which is the self-validation §13 logs. Real phrasings come from step 4's stamp, so the blind labelling that decides anything waits on traffic. Running it on the seed is a dry run of the process and a test of whether the ladder is teachable from its own definitions; it is not evidence about caregivers, and the tool prints that above every report.
+
 ## 12. Open items
 
 Closed by the review:
