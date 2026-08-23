@@ -1,6 +1,8 @@
 # Member chat routing — one call, seven entries, eight handlers
 
-**Status:** **Proposed (2026-08-22)** — design settled, nothing built. Phase 1 (the eval set, §11) is the next step and may still change §2.
+**Status:** **Proposed (2026-08-23)** — design settled, nothing built. Reviewed through the software-architect, product-manager, security-architect and cloud-architect lenses; findings folded in below and logged in §13.
+**Placement:** Rework of a shipped R1 surface — *AI insights + chat endpoints*, [release_matrix.md](../release_matrix.md). Phases 1–4 are R1 hardening with no plan gate. **Phases 5+ are gated on phase 4 traffic data** and unplaced until it exists.
+**North Star:** questions per active caregiver per week. Baseline unknown — an open question, not a target.
 **Scope:** How a caregiver's chat message is routed to the code that answers it, and what vocabulary that decision is made in. Covers the routing call, the workflow catalogue, the dataset registry and where it is rendered, and the invariants the redesign inherits. Does **not** cover prompt wording beyond the purpose lines in §4, the mobile client, or anything about how MedGemma is served.
 **Relationship to other docs:** [llm_design.md](../llm_design.md) owns the SSA → MedGemma contract. [medgemma_serving_architecture.md](./medgemma_serving_architecture.md) owns where inference runs and what it costs. [dpia.md](../compliance/dpia.md) owns row A20 — the clinical/rewrite slot split this design must not weaken. [data_protection_architecture.md](./data_protection_architecture.md) owns encryption at rest for turns.
 
@@ -38,7 +40,7 @@ One structured call on `AI:Rewrite` (Vertex), and it does **one job: classify**.
 ```
 // in
 question       flattened, guard-wrapped caregiver message
-history        last N turns, name-redacted, both sides
+history        the caregiver's prior QUESTIONS only, name-redacted
 // nothing else: no registry, no availability, no member id, no name,
 // no notes, no questionnaire answers
 
@@ -54,10 +56,11 @@ Three properties carry over from `DataQueryPlannerService` unchanged and are not
 - **Closed vocabulary, parsed defensively.** `TryParse` *and* `IsDefined`, so `"999"` cannot become a recognised member.
 - **No subject identifier, structurally.** The output type stays incapable of naming a person. The CardiMember always comes from the authenticated caller.
 - **Untrusted framing on both sections.** The question *and* the recalled turns — see §4.
+- **The router sees questions, never prior answers.** With the registry gone, history is this prompt's entire untrusted payload, and the only guard on it is prompt text — which this document's own invariants say does not hold. So the router gets `ChatHistory.QuestionsOnly`, the cut that already exists for the clinical read. A terse follow-up stays resolvable — "why?" after "how did he sleep last night?" carries its subject in the question — and the model's own prior output never re-enters the step that decides what runs.
 
 ### Where dataset selection went
 
-Each workflow plans its own fetch, against the slice of the registry its `allowedDatasets` permits:
+Each workflow plans its own fetch against the slice of the registry its `allowedDatasets` permits. **One planner, not three:** `IDataQueryPlanner` already exists in `Application/Interfaces/Services` with a single Infrastructure implementation; its signature gains the registry slice and the workflow id. Three planner services for three callers would be a boundary with no stated cost.
 
 | Workflow | How it gets data |
 |---|---|
@@ -116,7 +119,7 @@ it, investigation explains it, advise acts on it. Each claims more than the one
 below. When two neighbours both fit, choose the lower.
 
 --- Earlier in this conversation ---
-{history, both sides, name-redacted}
+{the caregiver's prior questions, name-redacted}
 The question may be a follow-up; read it against what was already asked.
 
 --- Caregiver question ---
@@ -209,6 +212,8 @@ The cost: the router can route to a dead end. The mitigation is a property of th
 Each entry's purpose line (§4) is what the router reads. What follows is what the handler must do — the discriminator a reviewer adjudicates against, the data it may touch, the rules it is bound by, and what it says when it has nothing.
 
 Seven catalogue entries, eight handlers. `clarify` is app-triggered and never returned by the router.
+
+**Where the handlers live.** Prompt-building handlers go in `Infrastructure/Services/`, beside `MemberChatService` and the existing `DaybookPrompt` / `WeekbookPrompt` / `PublicChatPrompt`. The **pure reply assembly moves to `Application/Services/`** — `LiveStatusReply` and `AdviseReply` are `internal static` string builders today and belong beside `AlertDetailComposer`, `AdviseServability` and `AdviseStaleness`, which are exactly this: reply-composition policy with no I/O. That makes the two zero-model-call rungs testable without a host, which is what the zero-package invariant on `src/Core` exists to buy. Model-response records stay `internal sealed record` inside the owning service, following `MaliciousCheckAiResponse` — not `Application/DTOs`, which is the public API contract.
 
 ### `status` — observation, no model call
 
@@ -369,7 +374,20 @@ A per-member availability line travels with it, naming the entries that have no 
 
 ### Slot routing
 
-Entries do **not** declare which model slot may see them; the handlers carry that. The compensating control is an **assembly-level test over every rewrite-slot prompt**: build each one from fixtures containing questionnaire answers, medical notes and a real member name, and assert none appear. With no flag on the entries and a vocabulary this wide, that test is what stands between the registry and a DPIA incident. It ships before the registry does.
+Entries do **not** declare which model slot may see them; the handlers carry that. But with the vocabulary widened to ~26 sources plus questionnaire answers, notes and environmental readings — and `investigation` pulling questionnaire answers explicitly — a review-time convention is not enough for the boundary DPIA row A20 names. **The enforcement is a type, not a test.**
+
+```csharp
+// the resolver returns two shapes, not one bag
+public sealed record ClinicalOnlyData      { /* questionnaire answers, notes */ }
+public sealed record DeidentifiedFindings  { /* bands, deviations, counts */ }
+
+BuildClinicalPrompt(question, findings, clinical);   // takes both
+BuildRewritePrompt(question, findings);              // no overload takes ClinicalOnlyData
+```
+
+A leak becomes a compile error rather than a code-review miss — the same move `DataQueryPlan` already makes for the subject identifier, where the type is structurally incapable of naming a person.
+
+The **assembly-level test over every rewrite-slot prompt** stays as defence in depth: build each from fixtures carrying questionnaire answers, medical notes and a real name, and assert none survive. It ships before the registry does. Vertex being EU-regional under the Cloud DPA with zero data retention bounds the blast radius; it does not close the boundary.
 
 ## 7. The uniform contract
 
@@ -447,18 +465,31 @@ A revert would not buy what it appears to. Reverting the code does not revert th
 
 Sequenced so each step is separately revertable and the router lands late.
 
-1. **Write the eval set** (§11). Before any code. It can still change §2 — including telling us the taxonomy is three entries rather than seven.
+1. **Write the eval set** (§11). Before any code, **labelled blind by two people**. It can still change §2 — including telling us the taxonomy is three entries rather than seven. If two labellers disagree on more than ~20 % of real messages, the ladder is wrong and no router will fix it.
 2. **Define the contract, wrap what exists.** Today's branches move behind the uniform interface: full pipeline → `analysis`, live status → `status`, advise → `advise`, steer → `steer`. No routing change, no behaviour change. Consolidates the duplicated persistence call sites.
 3. **Land the workflow catalogue and its three-way parity test.** Nothing reads it yet; from here a new entry cannot ship half-wired.
-4. **Persist the workflow enum** — stamped by the existing `if` chain. Gives a real traffic distribution before a model is near the decision.
-5. **Land the dataset registry with the routing call**, plus the slot-guard test.
+4. **Persist the workflow enum** — stamped by the existing `if` chain. **This is the gate for everything after it:** it produces the traffic distribution that decides whether `investigation` is built, sizes the MedGemma cold-start risk, and supplies the real caregiver messages the eval set needs. Phases 5+ do not start without it.
+5. **Land the dataset registry with the routing call**, plus the split resolver types and the slot-guard test — both before anything reads the registry.
 6. **Shadow-route.** Log disagreement against the existing triage and how often close candidates appear. Ship nothing on its answer.
 7. **Cut over** `status`, `analysis`, `advise`, `steer`, `clarify`.
 8. **Topic-scope the suggestions.** `MemberAdvise` becomes one row per topic; the generation pass is rewritten. Lands outside chat and changes what CardiMember Details and the Dashboard indicator read.
 9. **Add `inference`.**
 10. **Add `investigation`** — two-pass fetch, consent gate, co-occurrence rule, own waiting copy.
 
-Steps 2–4 are pure consolidation and are worth shipping whatever happens to the rest.
+Steps 2–4 are pure consolidation and are worth shipping whatever happens to the rest — no new attack surface, no new GCP cost, and they fix a bug class on their own.
+
+**Sequencing on the numbers.** Reach is capped at **100 connected wearers** until Google restricted-scope verification clears ([release_matrix.md](../release_matrix.md)), which sets the ceiling on every RICE below:
+
+| Phase | R | I | C | E | RICE |
+|---|---|---|---|---|---|
+| Contract + catalogue + persist enum (2–4) | 100 | 1 | 100 % | 0.5 | **200** |
+| Router + registry (5–7) | 100 | 2 | 50 % | 2 | 50 |
+| Advise topic-scoping (8) | ~40 | 1 | 50 % | 1 | 20 |
+| Investigation (10) | ~5 | 2 | 50 % | 2 | **2.5** |
+
+`investigation` scores roughly eighty times below the consolidation work, which agrees with the off-ramp §5 already gives it.
+
+**One dependency worth naming.** Four of eight handlers never touch the Private slot, so this design reduces MedGemma request volume — good for the scale-to-zero GPU service ([medgemma_serving_architecture.md](./medgemma_serving_architecture.md)). The second-order effect cuts the other way: sparser traffic makes cold starts *more* likely for the rungs that still need it, which are the rungs a caregiver waits longest on. **Warm-at-app-open (#458) becomes a dependency of this design, not an unrelated optimisation.** Measure the mix at phase 4 before reaching for `medgemma_min_instances`.
 
 ## 11. Eval set — seed
 
@@ -505,11 +536,42 @@ Hand-labelled caregiver phrasings, expected entry, and what each case guards. Se
 
 ## 12. Open items
 
-Decided in principle, settled by building:
+Closed by the review:
 
-- **The advise topic taxonomy.** Which topics exist, and what the generation pass does when the readings support none.
-- **What counts as "close" candidates.** Only settable against shadow-phase traffic.
-- **The on-demand findings budget.** How much 30-day aggregation `analysis` can absorb.
-- **Whether the malicious check should become a seventh routed outcome.** The original argument for keeping it separate was that a prompt returning "which datasets do we need" has already engaged with a manipulation attempt. The router no longer returns datasets — it returns one label. Folding it in would take every path back to today's call count and `status` to a single call for the whole turn. What survives the change is narrower: one prompt doing safety and dispatch means a jailbreak defeating the classification also defeats the refusal. Decide on eval data, not reasoning.
-- **Whether the routing call needs caching at all.** With the registry gone it is six purpose lines, a paragraph and the turn — small enough that a cached prefix may not earn its complexity. Measure before adding it.
-- **Re-measure latency post-GPU.** The 47.6 s figure that set the one-week activity window is a CPU-era number. The whole cost argument rests on it and it moved on 2026-08-21.
+- ~~Whether the malicious check becomes a routed outcome.~~ **No.** One prompt doing safety *and* dispatch means a jailbreak that defeats the classification defeats the refusal in the same step, and the refusal stops being independently testable. Two saved calls do not buy that.
+- ~~Whether the routing call needs prompt caching.~~ **No.** Seven purpose lines and a turn will not clear Vertex's explicit-caching minimum, and per-member filtering has already left this prompt. Revisit only if it grows.
+
+Still open, with an owner:
+
+- **What the CardiMember sees or controls** — product + legal. Chat is a caregiver interrogating an AI about an elderly person's body, and this document says nothing about the wearer. Required per [data_protection_architecture.md](./data_protection_architecture.md).
+- **Trial expiry, day 31** — product. R1 is trial-only and chat has no defined behaviour past it.
+- **Legal read on the escalation phrase** — legal. "Worth mentioning to their doctor" is new copy on the not-a-medical-device boundary; the read happens before it ships.
+- **Per-user rate limiting budgeted in model calls** — engineering. `app.UseIpRateLimiting()` is IP-scoped and unaware that a request now costs between two and seven model calls; one account across several IPs is effectively unthrottled. Cloud Armor rate-based rules are the eventual control, but prod has no load balancer (deferred 2026-08-06), so this is in-app for now.
+- **Where the new telemetry lands** — engineering. Workflow, routing source and dataset ids are persisted, but nothing routes them to a dashboard ([apm_setup_runbook.md](./apm_setup_runbook.md)).
+- **The advise topic taxonomy** — which topics exist, and what the generation pass does when the readings support none.
+- **What counts as "close" alternatives** — settable only against shadow-phase traffic.
+- **The on-demand findings budget** — how much 30-day aggregation `analysis` can absorb, and whether a per-turn memo is enough. Cloud SQL read amplification becomes a read-replica conversation at roughly ten times current scale, not now.
+- **Re-measure latency post-GPU.** The 47.6 s figure that set the one-week activity window is a CPU-era number and the whole cost argument rests on it.
+
+## 13. Review log
+
+Reviewed 2026-08-23 through four lenses. Findings are folded into the sections above; this records what each one caught so the next reader knows what has already been asked.
+
+| Lens | Finding | Where it landed |
+|---|---|---|
+| Software architect | Handler placement unspecified; pure reply assembly belongs in `Application` | §5 |
+| Software architect | "Each workflow plans its own fetch" read as three services | §3 — one planner, parameterised |
+| Software architect | `RoutingAiResponse` placement unstated | §5 |
+| Product manager | No wave, no plan gate, no success metric | Header |
+| Product manager | Eval set validates our taxonomy against itself, not against caregivers | §10 — blind labelling by two people |
+| Product manager | Reach capped at 100 wearers; `investigation` ~80× below consolidation | §10 — RICE table |
+| Product manager | Nothing about what the CardiMember sees or controls; trial expiry undefined | §12 |
+| Security architect | **High** — the DPIA A20 boundary became a CI test rather than a type | §6 — split resolver types |
+| Security architect | History is the router prompt's entire untrusted payload, guarded by prompt text | §3 — questions-only |
+| Security architect | Per-request cost rises ~7× against an IP-scoped throttle | §12 |
+| Security architect | Do not fold the malicious check into the router | §12 — closed |
+| Cloud architect | Fewer MedGemma calls, but sparser traffic worsens cold starts on the rungs that remain | §10 — warm-at-open is a dependency |
+| Cloud architect | Vertex caching will not clear the minimum | §12 — closed |
+| Cloud architect | Cloud SQL read amplification from on-demand findings | §12 |
+
+No layer violations, no new GCP services, no new deployables, and no residency finding. Auth, audit logging, the subject-free plan type and turn encryption survive the redesign unchanged.
