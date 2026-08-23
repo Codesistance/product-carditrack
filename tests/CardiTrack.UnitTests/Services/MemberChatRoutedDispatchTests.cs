@@ -208,6 +208,25 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal("The week looks steady.", reply.Reply);
     }
 
+    /// <summary>A routing failure must never cost the caregiver their answer: the send falls
+    /// through to the triage-decided path, in shadow and cutover alike, and no route is billed
+    /// for a call that returned nothing.</summary>
+    [Theory]
+    [InlineData(ChatRoutingMode.Shadow)]
+    [InlineData(ChatRoutingMode.On)]
+    public async Task ARouterFailure_DescendsToTheTriagePath_InsteadOfFailingTheSend(ChatRoutingMode mode)
+    {
+        _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<AiGenerationResult<ChatRouteDecision>>>(
+                _ => throw new HttpRequestException("model host unreachable"));
+        PipelineAnswers();
+
+        var reply = await CreateSut(mode).SendMessageAsync(_userId, _memberId, "how did he sleep?");
+
+        Assert.Equal("The week looks steady.", reply.Reply);
+        await _usages.DidNotReceive().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.Route));
+    }
+
     [Fact]
     public async Task On_TheMaliciousVerdictStillHardStops()
     {

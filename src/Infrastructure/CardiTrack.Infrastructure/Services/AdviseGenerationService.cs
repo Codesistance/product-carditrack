@@ -229,7 +229,24 @@ public class AdviseGenerationService
             {
                 var winner = winners.FirstOrDefault(r => r.Topic == topic);
                 if (winner is not null)
+                {
                     Overwrite(winner, summary, suggestion, guideline);
+                    continue;
+                }
+
+                // No winner for this topic: the race was on a different topic's index, and this
+                // one's staged insert was aborted with the rest of the batch. Re-stage it — the
+                // first version of this recovery only overwrote winners, which silently dropped
+                // every topic the concurrent pass had not written.
+                await _unitOfWork.MemberAdvises.AddAsync(new MemberAdvise
+                {
+                    CardiMemberId = cardiMemberId,
+                    Topic = topic,
+                    Summary = summary,
+                    Suggestion = suggestion,
+                    GuidelineCited = guideline,
+                    GeneratedAtUtc = DateTime.UtcNow,
+                });
             }
             await _unitOfWork.SaveChangesAsync();
         }

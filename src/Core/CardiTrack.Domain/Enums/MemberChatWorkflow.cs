@@ -10,7 +10,8 @@ namespace CardiTrack.Domain.Enums;
 /// Persisted by <em>name</em>, not number — the convention <c>MemberChatTurnConfiguration.Role</c>
 /// and <c>MemberQuestionnaireConfiguration.Status</c> already follow, because a name survives both
 /// an incident and a renumbering. So the numbers here are free to move and the names are not:
-/// renaming a member rewrites the meaning of every turn already stamped with it.
+/// renaming one of these enum member names rewrites the meaning of every stored turn stamped
+/// with the old spelling — "member" here in the C# sense, nothing to do with a CardiMember.
 /// </para>
 /// <para>
 /// <see cref="Steer"/> is retired rather than removed for exactly that reason. It was the single

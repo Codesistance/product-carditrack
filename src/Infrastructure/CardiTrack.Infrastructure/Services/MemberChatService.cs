@@ -364,9 +364,24 @@ public class MemberChatService : IMemberChatService
         AiCallRecord? routeCall = null;
         if (_routing.Mode != ChatRoutingMode.Off)
         {
-            var routed = await _router.RouteAsync(flattened, history.QuestionsOnly, ct);
-            route = routed.Result;
-            routeCall = new AiCallRecord(AiCallStep.Route, AiProviderSlot.Rewrite, routed.Usage);
+            try
+            {
+                var routed = await _router.RouteAsync(flattened, history.QuestionsOnly, ct);
+                route = routed.Result;
+                routeCall = new AiCallRecord(AiCallStep.Route, AiProviderSlot.Rewrite, routed.Usage);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // The caller hung up — theirs to see, like everywhere else in this service.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // A routing failure must never cost the caregiver their answer: with route left
+                // null the dispatch below falls through to the triage-decided path in every mode,
+                // which is the ladder's failure direction expressed at the call level.
+                _logger.LogWarning(ex, "Chat routing call failed; descending to the triage-decided path.");
+            }
         }
 
         // One workflow answers, then one path persists, bills and responds. The branch chain

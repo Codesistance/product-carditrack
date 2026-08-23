@@ -257,6 +257,47 @@ public class AdviseGenerationServiceTests
         await _unitOfWork.Received(2).SaveChangesAsync();
     }
 
+    /// <summary>
+    /// The race can be on a different topic's index than the ones this pass would add: a
+    /// concurrent pass wrote Activity only, this pass wants Activity and Sleep, and the aborted
+    /// batch took the Sleep insert down with it. The recovery must re-stage the topics that have
+    /// no winner — the first version only overwrote winners and silently dropped the rest.
+    /// </summary>
+    [Fact]
+    public async Task LosingTheRace_StillWritesTheTopicsTheWinnerDidNotHave()
+    {
+        ModelAnswers(
+            ActivityEntry(),
+            new AdviseGenerationService.AdviseEntryAiResponse
+            {
+                Topic = "Sleep",
+                Summary = "Her nights have been shorter than her usual.",
+                Suggestion = "A steadier bedtime could help her settle.",
+                GuidelineCited = "NSF sleep duration guidance",
+            });
+        var winner = new MemberAdvise
+        {
+            CardiMemberId = _memberId,
+            Topic = AdviseTopic.Activity,
+            Summary = "Winner summary.",
+            Suggestion = "Winner suggestion.",
+            GuidelineCited = "Winner reference",
+            GeneratedAtUtc = DateTime.UtcNow,
+        };
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns(
+            (IReadOnlyList<MemberAdvise>)[], (IReadOnlyList<MemberAdvise>)[winner]);
+        _unitOfWork.SaveChangesAsync().Returns(
+            _ => throw new DbUpdateException("duplicate key value violates unique constraint"),
+            _ => 1);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        Assert.Equal("A short walk after lunch is worth trying.", winner.Suggestion);
+        // Sleep staged twice: once in the aborted batch, once re-staged by the recovery.
+        await _advises.Received(2).AddAsync(Arg.Is<MemberAdvise>(a => a.Topic == AdviseTopic.Sleep));
+        await _unitOfWork.Received(2).SaveChangesAsync();
+    }
+
     [Fact]
     public async Task PausedMember_IsNeverGeneratedFor()
     {
