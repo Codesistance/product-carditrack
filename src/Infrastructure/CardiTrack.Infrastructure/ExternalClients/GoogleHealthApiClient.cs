@@ -516,7 +516,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                     Start: ParseInstantUtc(ReadString(level?["interval"], "startTime")),
                     End: ClipToCivilDayEnd(
                         ParseInstantUtc(ReadString(level?["interval"], "endTime")),
-                        ReadString(level?["interval"], "civilEndTime"),
+                        level?["interval"]?["civilEndTime"],
                         date)))
                 .Where(i => i.Start.HasValue && i.End.HasValue && i.End > i.Start)
                 .Select(i => (Start: i.Start!.Value, End: i.End!.Value))
@@ -1297,17 +1297,52 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// below already allows for.
     /// </para>
     /// </remarks>
-    private static DateTime? ClipToCivilDayEnd(DateTime? endUtc, string? civilEndTime, DateOnly date)
+    private DateTime? ClipToCivilDayEnd(DateTime? endUtc, JToken? civilEndTime, DateOnly date)
     {
-        if (endUtc is not { } end
-            || !DateTime.TryParse(
-                civilEndTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out var civilEnd))
-        {
+        if (endUtc is not { } end || ParseCivilDateTime(civilEndTime) is not { } civilEnd)
             return endUtc;
-        }
 
         var dayEnd = date.AddDays(1).ToDateTime(TimeOnly.MinValue);
         return civilEnd > dayEnd ? end - (civilEnd - dayEnd) : end;
+    }
+
+    /// <summary>
+    /// Reads a civil timestamp off <c>civilStartTime</c>/<c>civilEndTime</c> on
+    /// <c>ObservationTimeInterval</c> — <c>{ date: {year,month,day}, time: {hours,minutes[,
+    /// seconds]} }</c>, confirmed against a live payload on 2026-08-23. Not the RFC-3339 string
+    /// this client originally assumed the field held: that assumption shipped in the same PR as
+    /// the rest of this method and only surfaced once <see cref="ReadString"/>'s shape-mismatch
+    /// logging existed to catch it — every point in the sweep was hitting it, silently defeating
+    /// the day-end clip this exists for (a clip that can't parse its own field falls back to no
+    /// clip, per <see cref="ClipToCivilDayEnd"/>'s own remarks — the same fallback an out-of-range
+    /// hour or minute here still gets, via the catch below).
+    /// </summary>
+    private DateTime? ParseCivilDateTime(JToken? civilDateTime)
+    {
+        if (civilDateTime is not JObject o)
+            return null;
+
+        var dateFields = o["date"];
+        var timeFields = o["time"];
+        if (ReadInt(dateFields, "year") is not { } year
+            || ReadInt(dateFields, "month") is not { } month
+            || ReadInt(dateFields, "day") is not { } day)
+        {
+            return null;
+        }
+
+        try
+        {
+            var civilDate = new DateOnly(year, month, day);
+            var civilTime = new TimeOnly(
+                ReadInt(timeFields, "hours") ?? 0, ReadInt(timeFields, "minutes") ?? 0,
+                ReadInt(timeFields, "seconds") ?? 0);
+            return civilDate.ToDateTime(civilTime);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
     }
 
     private static DateTime? ParseInstantUtc(string? value) =>
