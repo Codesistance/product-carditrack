@@ -464,6 +464,71 @@ public class StatisticalAlertServiceTests
             a.AlertType == AlertType.PatternBreak && a.Severity == AlertSeverity.Red));
     }
 
+    // Wiring, not thresholds: the pure rules are pinned in StatisticalAlertRulesTests, but only
+    // EvaluateAsync can catch a rule registered under the wrong preference id, reading the wrong
+    // row, or losing its candidate to the shared HeartRate cooldown.
+    [Fact]
+    public async Task TheOvernightBreathingRule_RaisesThroughTheOrchestrator()
+    {
+        var baseline = EstablishedBaseline();
+        baseline.AvgOvernightBreathingRate = 14m;
+        baseline.StdDevOvernightBreathingRate = 0.4m;
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(baseline);
+
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000 },
+            new ActivityLog
+            {
+                CardiMemberId = _memberId, Date = Yesterday.AddDays(1), OvernightBreathingRate = 17m,
+            });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.MetricValues!.Contains("\"rule\":\"overnight_breathing_up\"")
+            && a.MetricValues!.Contains("\"night\":\"2026-08-10\"")));
+    }
+
+    [Fact]
+    public async Task TheElevatedZoneRule_RaisesThroughTheOrchestrator_OnYesterdaysRow()
+    {
+        SetupLogs(new ActivityLog
+        {
+            CardiMemberId = _memberId,
+            Date = Yesterday,
+            Steps = 1000,
+            ModerateZoneMinutes = 40,
+        });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        // The step decline fires too — they are the same quiet day read two ways, which is the
+        // point of the pairing.
+        Assert.Equal(2, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.MetricValues!.Contains("\"rule\":\"elevated_zone_without_movement\"")));
+    }
+
+    [Fact]
+    public async Task TheInactivityBlockRule_RaisesThroughTheOrchestrator_OnYesterdaysRow()
+    {
+        SetupLogs(new ActivityLog
+        {
+            CardiMemberId = _memberId,
+            Date = Yesterday,
+            Steps = 6000,
+            LongestSedentaryStretchMinutes = 300,
+        });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.AlertType == AlertType.Inactivity
+            && a.MetricValues!.Contains("\"rule\":\"daytime_inactivity_block\"")));
+    }
+
     // Overnight vitals share sleep's attribution but not its payload: a device can post the
     // night's HRV while the sleep session is still syncing. Gating them on SleepMinutes sent both
     // overnight rules a day back, to a night they had already judged.

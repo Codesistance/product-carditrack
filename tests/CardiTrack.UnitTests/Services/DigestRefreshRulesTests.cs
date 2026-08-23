@@ -25,7 +25,7 @@ public class DigestRefreshRulesTests
 
     private static ActivityLog Log(
         DateOnly date, int? steps = null, int? restingHr = null, int? sleepMinutes = null,
-        int? avgHr = null, decimal? spo2 = null) => new()
+        int? avgHr = null, decimal? spo2 = null, decimal? overnightBreathing = null) => new()
     {
         Date = date,
         Steps = steps,
@@ -33,7 +33,26 @@ public class DigestRefreshRulesTests
         SleepMinutes = sleepMinutes,
         AvgHeartRate = avgHr,
         SpO2Average = spo2,
+        OvernightBreathingRate = overnightBreathing,
     };
+
+    /// <summary>
+    /// The night's row is picked on the presence of a night reading, not on sleep's — the same
+    /// selection the alert engine makes. Gating on sleep sent the overnight rules back to
+    /// yesterday, a night already judged, and left the summary standing while the alert fired.
+    /// </summary>
+    [Fact]
+    public void ReadingsDivergeFromBaseline_ReadsOvernightBreathingOffTodaysRow_WithoutASleepFigure()
+    {
+        var baseline = Baseline();
+        baseline.AvgOvernightBreathingRate = 14m;
+        baseline.StdDevOvernightBreathingRate = 0.4m;
+
+        var today = Log(new DateOnly(2026, 8, 10), overnightBreathing: 17m);
+        var yesterday = Log(new DateOnly(2026, 8, 9), steps: 6100, overnightBreathing: 14m);
+
+        Assert.True(DigestRefreshRules.ReadingsDivergeFromBaseline(baseline, today, yesterday));
+    }
 
     private static RealtimeAssessment Assessment(
         AlertSeverity? severity, double score, DateTime generatedAt) => new()

@@ -69,6 +69,17 @@ public static class DigestRefreshRules
         if (baseline is null)
             return false;
 
+        // Which row is "last night" for a reading measured across the night. Sleep, HRV and
+        // overnight breathing are all filed under the civil day the night ended on, but they do not
+        // always arrive together, so the row is chosen on the presence of any of them rather than
+        // on sleep alone — the same selection StatisticalAlertService makes, and for the same
+        // reason: gating on sleep sends the overnight rules back to a night already judged.
+        var lastNight = today?.HeartRateVariabilityMs is not null
+            || today?.OvernightBreathingRate is not null
+            || today?.SleepMinutes is not null
+                ? today
+                : yesterday;
+
         return StatisticalAlertRules.ActivityDecline(baseline, yesterday) is not null
             // The trigger, not the graded candidate: this asks whether the readings diverge, and
             // the severity that grading would put on the divergence is not part of the question.
@@ -76,10 +87,13 @@ public static class DigestRefreshRules
             || StatisticalAlertRules.ElevatedHeartRate(baseline, yesterday) is not null
             || StatisticalAlertRules.ElevatedHeartRate(baseline, today) is not null
             // Sleep-derived like the night it comes from, so last night's HRV lives on today's row
-            // and the night before on yesterday's — the pair the drop rule reads.
+            // and the night before on yesterday's — the pair the drop rule reads. Deliberately not
+            // routed through `lastNight`: in the fallback case the pair would be yesterday and the
+            // day before, and this method is only handed two rows. That case is not lost, only
+            // late — it becomes the ordinary pairing as soon as today's row lands, and the alert
+            // it would waive the floor for regenerates the summary on arrival regardless.
             || StatisticalAlertRules.HeartRateVariabilityDrop(baseline, today, yesterday) is not null
-            // Overnight readings live on the row for the day the night ended, like sleep.
-            || StatisticalAlertRules.OvernightBreathingUp(baseline, today) is not null
+            || StatisticalAlertRules.OvernightBreathingUp(baseline, lastNight) is not null
             // Yesterday only, for the reason steps-decline is: both read a figure that accumulates
             // over the day — minutes with the heart raised, and the longest unbroken still stretch
             // — so today's is a morning's worth, not a day's.

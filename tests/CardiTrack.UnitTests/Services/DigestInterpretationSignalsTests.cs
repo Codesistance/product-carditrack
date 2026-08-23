@@ -47,6 +47,39 @@ public class DigestInterpretationSignalsTests
         HeartRateVariabilityMs = hrv,
     };
 
+    /// <summary>
+    /// The other half of the still-day picture: not how little they moved in total, but how long
+    /// they went without moving at all. A quiet day broken into errands is not the day this names,
+    /// and the daybook's raw figure is not the explicit finding the model is told to lead with.
+    /// </summary>
+    [Fact]
+    public void ALongUnbrokenStillStretch_IsAComputedObservation()
+    {
+        var yesterday = Log(Yesterday, steps: 6100);
+        yesterday.LongestSedentaryStretchMinutes = 300;
+
+        var section = DigestInterpretationSignals.Section(
+            Baseline(), today: null, yesterday, Afternoon);
+
+        Assert.Contains("5.0 hours in one stretch without moving", section);
+    }
+
+    /// <summary>
+    /// Finished days only, like the elevated-zone pairing: the stretch accumulates, so a morning's
+    /// worth is not a day's.
+    /// </summary>
+    [Fact]
+    public void ALongStillStretch_IsNotObserved_OnADayStillInProgress()
+    {
+        var today = Log(Today, steps: 2000);
+        today.LongestSedentaryStretchMinutes = 300;
+
+        var section = DigestInterpretationSignals.Section(
+            Baseline(), today, yesterday: null, Afternoon);
+
+        Assert.DoesNotContain("without moving", section);
+    }
+
     private static PatternBaseline BaselineWithHrv()
     {
         var baseline = Baseline();

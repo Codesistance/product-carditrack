@@ -1764,6 +1764,71 @@ public class GoogleHealthApiClientTests
         }
         """;
 
+    /// <summary>The same point with the civil times the API actually returns, for the clip.</summary>
+    private static string ActivityLevelPointWithCivil(
+        string level, string start, string end, string civilEnd) => $$"""
+        {
+          "activityLevel": {
+            "activityLevelType": "{{level}}",
+            "interval": {
+              "startTime": "{{start}}", "endTime": "{{end}}", "civilEndTime": "{{civilEnd}}"
+            }
+          }
+        }
+        """;
+
+    /// <summary>
+    /// The list filter selects on civil START time, so an interval that begins before local
+    /// midnight and runs into the small hours arrives whole. Left whole it is counted as this
+    /// day's stillness — an early bedtime would hand `daytime_inactivity_block` a night's sleep
+    /// wearing a daytime rule's name, which is the failure the sleep-window clip prevents at the
+    /// other end of the day.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ClipsAStretchThatRunsPastMidnight_AtTheDaysEnd()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPointWithCivil(
+                        "SEDENTARY", "2026-08-05T21:00:00Z", "2026-08-06T06:00:00Z",
+                        "2026-08-06T06:00:00")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        // Nine hours reported, three of them before midnight — only those three are this day's.
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 21, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// `civilEndTime` is optional on `ObservationTimeInterval`. Without it the interval is left
+    /// alone — a clip we cannot size is worse than no clip.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_LeavesAnIntervalAlone_WhenItCarriesNoCivilEnd()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T13:00:00Z", "2026-08-05T16:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+    }
+
     /// <summary>
     /// The reading that cannot be derived from a daily total: touching sedentary intervals are one
     /// unbroken stretch, and a device that emits level-per-minute emits a run of them. A strict

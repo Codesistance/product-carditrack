@@ -256,8 +256,12 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     public async Task<GoogleHealthAdditionalMetricsResult> GetAdditionalMetricsAsync(
         string accessToken, DateOnly date)
     {
+        // Sample series, both of them: SpO2 is read for its min/max as well as its mean, and the
+        // overnight breathing rate has to pick the night's own summary out of the day's.
         var spO2Task = GetSpO2Async(accessToken, date);
-        // Each of the four is a Daily record read through `list`, so each is filtered on its own
+        var overnightBreathingTask = OptionalOvernightBreathingRateAsync(accessToken, date);
+
+        // The four below are Daily records read through `list`, so each is filtered on its own
         // `date` field rather than rolled up.
         var vo2MaxTask = OptionalDailyValueAsync(
             accessToken, "daily-vo2-max", "dailyVo2Max", "vo2Max", date);
@@ -277,7 +281,6 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         // wearer's own baseline, so the record's baseline and 30-day variation are read alongside
         // the nightly value in a single fetch rather than three.
         var temperatureTask = OptionalDailyTemperatureAsync(accessToken, date);
-        var overnightBreathingTask = OptionalOvernightBreathingRateAsync(accessToken, date);
         await Task.WhenAll(
             spO2Task, vo2MaxTask, breathingRateTask, temperatureTask, heartRateVariabilityTask,
             overnightBreathingTask);
@@ -505,7 +508,10 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                     level?.Value<string>("activityLevelType"), "SEDENTARY", StringComparison.Ordinal))
                 .Select(level => (
                     Start: ParseInstantUtc(level?["interval"]?.Value<string>("startTime")),
-                    End: ParseInstantUtc(level?["interval"]?.Value<string>("endTime"))))
+                    End: ClipToCivilDayEnd(
+                        ParseInstantUtc(level?["interval"]?.Value<string>("endTime")),
+                        level?["interval"]?.Value<string>("civilEndTime"),
+                        date)))
                 .Where(i => i.Start.HasValue && i.End.HasValue && i.End > i.Start)
                 .Select(i => (Start: i.Start!.Value, End: i.End!.Value))
                 .SelectMany(i => OutsideSleep(i, sleepWindow.Value))
@@ -1267,6 +1273,37 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// parse returns <c>Kind=Utc</c> whatever the provider sends, and the instant itself is
     /// unchanged.
     /// </remarks>
+    /// <summary>
+    /// Trims an interval's physical end back to the end of the requested civil day.
+    /// </summary>
+    /// <remarks>
+    /// The list filter selects on civil <em>start</em> time, so an interval that begins before local
+    /// midnight and runs past it arrives whole. Left whole it counts as this day's own stillness,
+    /// and a device that emits one long run from an early bedtime into the small hours would hand
+    /// <c>daytime_inactivity_block</c> a night's sleep wearing a daytime rule's name — the same
+    /// failure the sleep-window clip prevents, at the other end of the day.
+    /// <para>
+    /// The overshoot is measured in civil time and subtracted from the UTC instant, because civil
+    /// time is the only place the wearer's own midnight is named: this client is never told their
+    /// zone. <c>civilEndTime</c> is optional on <c>ObservationTimeInterval</c>; without it the
+    /// interval is left alone, since a clip we cannot size is worse than no clip. An interval
+    /// spanning a DST change is off by the shift, which is smaller than the tolerance the joining
+    /// below already allows for.
+    /// </para>
+    /// </remarks>
+    private static DateTime? ClipToCivilDayEnd(DateTime? endUtc, string? civilEndTime, DateOnly date)
+    {
+        if (endUtc is not { } end
+            || !DateTime.TryParse(
+                civilEndTime, CultureInfo.InvariantCulture, DateTimeStyles.None, out var civilEnd))
+        {
+            return endUtc;
+        }
+
+        var dayEnd = date.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        return civilEnd > dayEnd ? end - (civilEnd - dayEnd) : end;
+    }
+
     private static DateTime? ParseInstantUtc(string? value) =>
         DateTime.TryParse(
             value,

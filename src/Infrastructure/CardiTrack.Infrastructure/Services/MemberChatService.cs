@@ -905,11 +905,34 @@ public class MemberChatService : IMemberChatService
 
         if (data.Baseline is { } baseline)
         {
+            // The usual for every series the reply can chart, not only the first three. A chart
+            // without its usual beside it in the prompt is a question the model cannot answer:
+            // asked whether their heart rate variability is down, it would have the nightly
+            // figures and nothing to call low. Overnight readings are named as overnight, because
+            // the daily breathing rate is in the readings block above under a similar word.
+            var usual = new List<string>
+            {
+                $"Avg steps: {baseline.AvgSteps?.ToString() ?? "n/a"}",
+                $"Avg resting HR: {baseline.AvgRestingHeartRate?.ToString() ?? "n/a"} bpm",
+                $"Avg sleep: {MedicalPromptBlocks.SleepFigure((int?)baseline.AvgSleepMinutes)}",
+            };
+
+            // Omitted rather than written "n/a" when the member has no learned figure: unlike the
+            // three above, these two are absent for whole classes of device, and a baseline block
+            // listing what a member's watch cannot measure invites the reply to mention it.
+            if (baseline.AvgHeartRateVariabilityMs is { } avgHrv)
+                usual.Add($"Avg overnight HRV: {MedicalPromptBlocks.OvernightFigure(avgHrv, "ms")}");
+
+            if (baseline.AvgOvernightBreathingRate is { } avgBreathingAsleep)
+            {
+                usual.Add(
+                    "Avg breathing asleep: "
+                    + MedicalPromptBlocks.OvernightFigure(avgBreathingAsleep, "/min"));
+            }
+
             sections.Add(
                 $"--- {baseline.PeriodDays}-day baseline ---\n"
-                + $"  Avg steps: {baseline.AvgSteps?.ToString() ?? "n/a"}, "
-                + $"Avg resting HR: {baseline.AvgRestingHeartRate?.ToString() ?? "n/a"} bpm, "
-                + $"Avg sleep: {MedicalPromptBlocks.SleepFigure((int?)baseline.AvgSleepMinutes)}");
+                + $"  {string.Join(", ", usual)}");
         }
 
         if (data.UnresolvedAlerts.Count > 0)

@@ -264,6 +264,19 @@ public static class DigestInterpretationSignals
             parts.Add($"{elevated} minutes with their heart rate raised, on a day of little movement");
         }
 
+        // The other half of the same day: not how much they moved in total, but how long they went
+        // without moving at all. The daybook carries the raw figure, but a figure in a table is not
+        // the finding the model is told to lead with — and a quiet day broken into errands is not
+        // the day this names. Finished days only, like the pairing above: the stretch accumulates.
+        if (complete
+            && StatisticalAlertRules.DaytimeInactivityBlock(baseline, log) is not null
+            && log.LongestSedentaryStretchMinutes is { } stretch)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{stretch / 60.0:F1} hours in one stretch without moving"));
+        }
+
         return parts;
     }
 
