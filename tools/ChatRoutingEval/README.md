@@ -55,6 +55,18 @@ dotnet run --project tools/ChatRoutingEval -- score \
     --labels ./labelling/labels-bob.csv
 ```
 
+```bash
+# 3. Or measure the ROUTER itself: every case through the real ChatRouterService against the
+#    configured Rewrite-slot model, scored against the seed key. One model call per case; needs
+#    an appsettings.json beside the tool with the same Rewrite section AiSplitEvaluator uses.
+dotnet run --project tools/ChatRoutingEval -- route
+```
+
+`route` measures routing accuracy on these phrasings — which is not caregiver validity (the
+caveat above still holds) but is a genuine end-to-end test of the production prompt, parser and
+clarify logic that no amount of human labelling covers. Special-outcome cases (`inherit-prior`,
+`rejected-pre-router`) are reported but not scored: the router cannot produce them by design.
+
 `sheet` also writes `LABELLING.md` into the output directory — the vocabulary, each label's meaning
 taken from the catalogue's own purpose line, and the rules. Hand that to the labellers with their
 sheet; it is the only briefing they need.
@@ -89,8 +101,9 @@ Sheets are ordinary CSV and open in Excel; CRLF comes back fine.
 ## What it will not do
 
 - Decide anything. It produces the numbers a human reads.
-- Call a model, or route a message. Nothing here touches `MemberChatService`.
-- Read or write a database, or leave the machine it runs on.
+- `sheet` and `score` call no model and touch no network; `route` is the one command that does,
+  and it says what it will spend before it spends it.
+- Read or write a database.
 - Score one sheet against itself — `score` refuses a single `--labels` file, because agreement
   between one person and themselves is not the measurement step 1 asks for.
 

@@ -1,7 +1,13 @@
 using System.Text;
 using System.Text.Json;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Infrastructure.Extensions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 // The labelling instrument for rollout step 1 of docs/technical/member_chat_routing.md — the step
 // that asks for the eval set to be "labelled blind by two people" before the ladder is trusted.
@@ -11,9 +17,10 @@ using CardiTrack.Domain.Enums;
 //   score  — reads the filled sheets back and reports inter-labeller agreement, the confusion
 //            matrix between labellers, and each labeller against the seed key
 //
-// What it does NOT do: call a model, touch a database, or route anything. It never decides whether
-// the ladder is right — it produces the numbers a human reads to decide that. See README.md, and
-// in particular the caveat about what the seed fixture is and is not.
+// sheet and score call no model and touch no database or network. route is the one command that
+// does — it sends each case through the real ChatRouterService so the router itself is measured.
+// Nothing here ever decides whether the ladder is right — it produces the numbers a human reads
+// to decide that. See README.md, and in particular the caveat about what the seed fixture is.
 
 const string CasesFileName = "cases.json";
 
@@ -25,13 +32,14 @@ if (args.Length == 0)
 
 try
 {
-    return args[0] switch
+    return await (args[0] switch
     {
-        "sheet" => CmdSheet(args),
-        "score" => CmdScore(args),
-        "--help" or "-h" or "help" => Usage(),
-        _ => Fail($"Unknown command '{args[0]}'."),
-    };
+        "sheet" => Task.FromResult(CmdSheet(args)),
+        "score" => Task.FromResult(CmdScore(args)),
+        "route" => CmdRouteAsync(args),
+        "--help" or "-h" or "help" => Task.FromResult(Usage()),
+        _ => Task.FromResult(Fail($"Unknown command '{args[0]}'.")),
+    });
 }
 catch (EvalInputException ex)
 {
@@ -61,6 +69,12 @@ int Usage()
           score --labels <file> --labels <file> [--labels <file> ...] [--cases <file>]
               Reads the filled sheets and reports agreement, the confusion matrix, the
               disagreements case by case, and each labeller against the seed key.
+
+          route [--cases <file>]
+              Sends every case through the REAL router (ChatRouterService against the configured
+              Rewrite-slot model) and scores the answers against the seed key — the router
+              measured, not a person. Needs an appsettings.json beside the binary with the same
+              Rewrite section AiSplitEvaluator uses, and it spends one model call per case.
 
         Both commands accept --cases <file> to point at a fixture other than the bundled one.
         """);
@@ -244,6 +258,83 @@ int CmdScore(string[] args)
         Console.WriteLine();
     }
 
+    return 0;
+}
+
+async Task<int> CmdRouteAsync(string[] args)
+{
+    var cases = LoadCases(Option(args, "--cases"));
+
+    // The same wiring a real host uses for the Rewrite slot — the point is to measure the
+    // production router, prompt and parser, not a re-implementation of any of them.
+    IHost host;
+    try
+    {
+        var builder = Host.CreateApplicationBuilder([]);
+        builder.Logging.ClearProviders();
+        builder.Services.AddMedicalAiServices(builder.Configuration);
+        host = builder.Build();
+    }
+    catch (InvalidOperationException ex)
+    {
+        // Missing model configuration, said in one line — the config's own message names the
+        // exact key and the environment-variable spelling.
+        throw new EvalInputException(
+            $"route needs the Rewrite-slot configuration an appsettings.json provides "
+            + $"(same section AiSplitEvaluator uses). {ex.Message}");
+    }
+
+    using var _ = host;
+    var router = new CardiTrack.Infrastructure.Services.ChatRouterService(
+        host.Services.GetRequiredService<IRewriteAiService>());
+
+    Console.WriteLine();
+    Console.WriteLine("=== What this is ===");
+    Console.WriteLine(Wrap(cases.Caveat));
+    Console.WriteLine(Wrap(
+        "This run measures the ROUTER against the seed key — routing accuracy on these phrasings, "
+        + "not caregiver validity. One model call per case follows."));
+    Console.WriteLine();
+
+    var results = new List<(EvalCase Case, string Got, bool Match, bool WouldClarify)>();
+    foreach (var c in cases.Cases)
+    {
+        // Context rows carry their prior exchange as a bare history block; cases without one
+        // route on the question alone, exactly as a first turn does.
+        var history = c.Context is null ? null : $"--- Earlier turns ---\nCaregiver: {c.Context}";
+        string got;
+        bool clarify = false;
+        try
+        {
+            var decision = (await router.RouteAsync(c.Question, history)).Result;
+            clarify = decision.NeedsClarify;
+            got = decision.Primary is { } p
+                ? ChatWorkflowCatalogue.Find(p)!.Label
+                : "(unparsed \u2192 analysis)";
+        }
+        catch (Exception ex)
+        {
+            got = $"(error: {ex.GetType().Name})";
+        }
+
+        // The two non-catalogue outcomes cannot be produced by the router, so a case expecting
+        // one scores by what should happen instead: inherit-prior rides the history, and a
+        // rejected-pre-router case never reaches routing in production at all.
+        var match = c.Key.Contains(got);
+        results.Add((c, got, match, clarify));
+        Console.WriteLine($"  {(match ? "ok  " : "MISS")} {c.Id}  key={string.Join(" or ", c.Key),-28} got={got}{(clarify ? "  [would clarify]" : "")}");
+    }
+
+    var scored = results.Where(r => r.Case.Special is null).ToList();
+    var hits = scored.Count(r => r.Match);
+    Console.WriteLine();
+    Console.WriteLine($"Router vs seed key: {hits}/{scored.Count} " +
+        $"({(double)hits / scored.Count:P0}); would-clarify on {results.Count(r => r.WouldClarify)} case(s). " +
+        $"{results.Count - scored.Count} special-outcome case(s) reported above but not scored.");
+    Console.WriteLine();
+    Console.WriteLine(Wrap(
+        "Read misses through \u00a711's lens: analysis\u2194inference confusion is tolerable by design; "
+        + "anything\u2194advise is not."));
     return 0;
 }
 

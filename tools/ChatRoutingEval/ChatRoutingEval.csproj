@@ -22,10 +22,21 @@
          ChatWorkflowDefinition.Label parameter, so a new entry with no name fails to compile —
          it cannot reach a labelling sheet unnamed, and there is no map here to fall out of sync. -->
     <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+    <!-- For the `route` command only: ChatRouterService and the Rewrite-slot client it runs on.
+         sheet and score still touch no network — route is the one command that does, and it needs
+         the same appsettings a hand-run of AiSplitEvaluator does. -->
+    <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="cases.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="appsettings.json" Condition="Exists('appsettings.json')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
