@@ -227,7 +227,7 @@ The cost: the router can route to a dead end. The mitigation is a property of th
 
 Each entry's purpose line (§4) is what the router reads. What follows is what the handler must do — the discriminator a reviewer adjudicates against, the data it may touch, the rules it is bound by, and what it says when it has nothing.
 
-Seven catalogue entries, eight handlers. `clarify` is app-triggered and never returned by the router.
+Eight catalogue entries, eight handlers — six of the entries render into the routing prompt today (§4). `clarify` is a catalogue entry but an unroutable one: app-triggered, never returned by the router.
 
 **Where the handlers live.** Prompt-building handlers go in `Infrastructure/Services/`, beside `MemberChatService` and the existing `DaybookPrompt` / `WeekbookPrompt` / `PublicChatPrompt`. The **pure reply assembly moves to `Application/Services/`** — `LiveStatusReply` and `AdviseReply` are `internal static` string builders today and belong beside `AlertDetailComposer`, `AdviseServability` and `AdviseStaleness`, which are exactly this: reply-composition policy with no I/O. That makes the two zero-model-call rungs testable without a host, which is what the zero-package invariant on `src/Core` exists to buy. Model-response records stay `internal sealed record` inside the owning service, following `MaliciousCheckAiResponse` — not `Application/DTOs`, which is the public API contract.
 
@@ -331,7 +331,7 @@ Two entries rather than one register decided in a handler — the router already
 - **No history travels with either.** Sending prior clinical exchanges to answer "hi" widens what the rewrite slot sees for no gain.
 - **A steer that fails to generate falls back to the canned redirect** rather than surfacing an error over a greeting.
 
-### `clarify` — no claim, no entry, no extra call
+### `clarify` — no claim, unroutable, no extra call
 
 Never returned by the router. Triggered by the shape of the routing answer.
 
@@ -556,7 +556,7 @@ Hand-labelled caregiver phrasings, expected entry, and what each case guards. Se
 Closed by the review:
 
 - ~~Whether the malicious check becomes a routed outcome.~~ **No.** One prompt doing safety *and* dispatch means a jailbreak that defeats the classification defeats the refusal in the same step, and the refusal stops being independently testable. Two saved calls do not buy that.
-- ~~Whether the routing call needs prompt caching.~~ **No.** Seven purpose lines and a turn will not clear Vertex's explicit-caching minimum, and per-member filtering has already left this prompt. Revisit only if it grows.
+- ~~Whether the routing call needs prompt caching.~~ **No.** Six rendered purpose lines and a turn will not clear Vertex's explicit-caching minimum, and per-member filtering has already left this prompt. Revisit only if it grows.
 
 Still open, with an owner:
 
