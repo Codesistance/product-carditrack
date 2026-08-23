@@ -8,6 +8,9 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
+using CardiTrack.Infrastructure.Settings;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Services;
 
@@ -186,6 +189,39 @@ public class MemberChatService : IMemberChatService
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
     /// <summary>
+    /// The judgement rung's clinical read — a superset of <see cref="ClinicalInstructions"/>: it
+    /// returns the figures too, and on top of them a verdict that must name what it rests on.
+    /// The claim limit is <see cref="ChatClaimClass.Judgement"/>: whether something is settled or
+    /// worth attention, never a diagnosis and never a recommendation — an inference that drifts
+    /// into "what to do" is answering the advise entry's question with none of its grounding.
+    /// </summary>
+    private const string InferenceClinicalInstructions =
+        MedicalPromptBlocks.ToneSafetyOnly + MedicalPromptBlocks.Pronouns + """
+        A family caregiver asked for a verdict about this member — whether what the readings show
+        is settled or worth attention. Answer from the data below only — this is an internal
+        clinical read, not the final reply, so write precisely rather than in caregiver language.
+
+        Open with the verdict in one sentence: settled, or worth attention. Then name exactly what
+        it rests on — the readings, the comparison against this member's own baseline, and the
+        published range where one applies. A verdict that does not name its basis is not usable
+        and will be discarded. Include the figures that carry the verdict; the caregiver's reply
+        is built from this read and must be able to quote them.
+
+        Judge against both references where both exist: this member's own baseline says what is
+        usual for them, and the published range says what is typical generally. When they
+        disagree, the member's own baseline decides whether attention is worth raising, and the
+        published range is context to mention. Never diagnose, and never recommend an action —
+        what to do about a finding is a different question this read must not answer.
+
+        Every figure below describes a period that has already finished. Never state what the
+        person is doing at this moment. If the data below cannot support a verdict either way,
+        say so plainly rather than manufacturing confidence.
+
+        Respond with:
+        - analysis: the verdict, what it rests on, and the figures that carry it.
+        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+
+    /// <summary>
     /// Turns the clinical read into the sentence the caregiver actually receives.
     /// </summary>
     /// <remarks>
@@ -231,27 +267,36 @@ public class MemberChatService : IMemberChatService
     private readonly IMedicalAiService _medicalAi;
     private readonly IRewriteAiService _rewriteAi;
     private readonly IDataQueryPlanner _planner;
+    private readonly IChatRouter _router;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly MemberContextComposer _memberContext;
     private readonly IEncryptionService _encryption;
+    private readonly ChatRoutingSettings _routing;
+    private readonly ILogger<MemberChatService> _logger;
 
     public MemberChatService(
         IMedicalAiService medicalAi,
         IRewriteAiService rewriteAi,
         IDataQueryPlanner planner,
+        IChatRouter router,
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
         MemberContextComposer memberContext,
-        IEncryptionService encryption)
+        IEncryptionService encryption,
+        IOptions<ChatRoutingSettings> routing,
+        ILogger<MemberChatService> logger)
     {
         _medicalAi = medicalAi;
         _rewriteAi = rewriteAi;
         _planner = planner;
+        _router = router;
         _unitOfWork = unitOfWork;
         _access = access;
         _memberContext = memberContext;
         _encryption = encryption;
+        _routing = routing.Value;
+        _logger = logger;
     }
 
     public async Task<MemberChatMessageResponse> SendMessageAsync(
@@ -285,19 +330,53 @@ public class MemberChatService : IMemberChatService
                 + "alerts, or recent activity instead.");
         }
 
+        // The routing call, when the dial is past Off. In Shadow it runs and is logged but the
+        // triage still decides; On, its answer selects the workflow. Either way the malicious
+        // verdict above already ran — the pre-check is standalone on every path.
+        ChatRouteDecision? route = null;
+        AiCallRecord? routeCall = null;
+        if (_routing.Mode != ChatRoutingMode.Off)
+        {
+            var routed = await _router.RouteAsync(flattened, history.QuestionsOnly, ct);
+            route = routed.Result;
+            routeCall = new AiCallRecord(AiCallStep.Route, AiProviderSlot.Rewrite, routed.Usage);
+        }
+
         // One workflow answers, then one path persists, bills and responds. The branch chain
         // decides *which* workflow; it no longer decides what happens afterwards, which is what
         // stops a future branch quietly omitting a usage row or a SaveChanges.
-        var result = triage.Result switch
+        var result = _routing.Mode == ChatRoutingMode.On && route is not null
+            ? await DispatchRoutedAsync(route, flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct)
+            : triage.Result switch
+            {
+                { IsAboutThisMoment: true } =>
+                    await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow),
+                { IsAskingForAdvice: true } =>
+                    await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
+                { IsCasualOrSocial: true } or { IsOffTopic: true } =>
+                    await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, ct),
+                _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
+            };
+
+        if (routeCall is { } billedRoute)
         {
-            { IsAboutThisMoment: true } =>
-                await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow),
-            { IsAskingForAdvice: true } =>
-                await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
-            { IsCasualOrSocial: true } or { IsOffTopic: true } =>
-                await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, ct),
-            _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
-        };
+            // The route ran, so the turn pays for it — shadow included; a usage row that skipped
+            // it would make the shadow period look free. Inserted after the malicious check to
+            // keep the calls list in the order the calls were actually made.
+            result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
+
+            if (_routing.Mode == ChatRoutingMode.Shadow)
+            {
+                // Step 6's whole output: the disagreement rate between the router and the triage,
+                // and how often the router would have asked to clarify. Nothing ships on it.
+                var triageWorkflow = TriageWorkflow(triage.Result);
+                _logger.LogInformation(
+                    "Chat shadow route: router={RouterWorkflow} runnerUp={RunnerUp} wouldClarify={WouldClarify} "
+                    + "triage={TriageWorkflow} agree={Agree}",
+                    route!.Primary, route.RunnerUp, route.NeedsClarify, triageWorkflow,
+                    route.Primary == triageWorkflow);
+            }
+        }
 
         var (_, assistantTurn) = await PersistTurnsAsync(
             session, flattened, result, utcNow, ct);
@@ -341,7 +420,8 @@ public class MemberChatService : IMemberChatService
         // The A20 boundary as types: everything member-identifying or clinical travels wrapped,
         // and the only method that can unwrap it is the one building the Private-slot prompt. The
         // rewrite builder's signature takes DeidentifiedFindings and cannot take this.
-        var clinicalOnly = ClinicalOnlyData.Wrap($"{memberContext}\n\n{FormatFetchedData(fetched, today)}");
+        var clinicalOnly = ClinicalOnlyData.Wrap(
+            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
@@ -365,6 +445,151 @@ public class MemberChatService : IMemberChatService
             ],
         };
     }
+
+    /// <summary>
+    /// The judgement rung: the same plan → fetch → clinical → rewrite chain as
+    /// <see cref="AnalyseAsync"/>, with the clinical read briefed to open on a verdict and name
+    /// what it rests on. A superset of analysis by design — it returns the figures too — which is
+    /// why confusing the two is the one ambiguity the ladder's tie-break absorbs rather than
+    /// clarifies.
+    /// </summary>
+    private async Task<MemberChatWorkflowResult> InferAsync(
+        string flattened,
+        AiUsage triageUsage,
+        Guid cardiMemberId,
+        CardiMember? member,
+        ChatHistory history,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Inference)!.AllowedDatasets;
+        var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
+        var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
+
+        var today = DateOnly.FromDateTime(utcNow);
+        var memberContext = await _memberContext.ComposeAsync(
+            new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
+
+        var clinicalOnly = ClinicalOnlyData.Wrap(
+            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
+        var clinicalPrompt = BuildClinicalPrompt(
+            flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions);
+        var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
+
+        var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
+        var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
+
+        var name = NamePlaceholder.FirstName(member?.Name);
+        var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
+
+        return new MemberChatWorkflowResult
+        {
+            Workflow = MemberChatWorkflow.Inference,
+            Reply = reply,
+            Charts = BuildCharts(fetched, plan.Result.ChartMetrics),
+            Calls =
+            [
+                new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
+                new AiCallRecord(AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
+                new AiCallRecord(AiCallStep.ClinicalAnalysis, AiProviderSlot.Private, clinical.Usage),
+                new AiCallRecord(AiCallStep.Rewrite, AiProviderSlot.Rewrite, rewrite.Usage),
+            ],
+        };
+    }
+
+    /// <summary>
+    /// The cutover path — the router's answer selects the workflow. Clarify is decided here, not
+    /// by the model: a non-adjacent runner-up asks once which rung was meant, and a second
+    /// unroutable answer in a row runs analysis instead of asking again (the once-per-message
+    /// rule, read from whether the previous assistant turn was itself a clarify).
+    /// </summary>
+    private async Task<MemberChatWorkflowResult> DispatchRoutedAsync(
+        ChatRouteDecision route,
+        string flattened,
+        AiUsage triageUsage,
+        Guid cardiMemberId,
+        CardiMember? member,
+        ChatHistory history,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        if (route.NeedsClarify && !history.LastAssistantWasClarify)
+            return ClarifyResult(route, triageUsage, member?.Name);
+
+        // Descend on failure and on repeated ambiguity alike: analysis is the rung that serves
+        // the caregiver something real whichever way the confusion resolves.
+        var primary = route.NeedsClarify || route.Primary is null
+            ? MemberChatWorkflow.Analysis
+            : route.Primary.Value;
+
+        return primary switch
+        {
+            MemberChatWorkflow.Status =>
+                await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow),
+            MemberChatWorkflow.Advise =>
+                await AnswerAdviseAsync(triageUsage, cardiMemberId, member, utcNow),
+            MemberChatWorkflow.SteerCasual =>
+                await SteerAsync(flattened, triageUsage, casual: true, member?.Name, ct),
+            MemberChatWorkflow.SteerOffTopic =>
+                await SteerAsync(flattened, triageUsage, casual: false, member?.Name, ct),
+            MemberChatWorkflow.Inference =>
+                await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+            _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+        };
+    }
+
+    /// <summary>
+    /// The clarify turn: one code-assembled question offering both readings — no extra model
+    /// call, since the candidates come from the routing answer that already ran. Chips carrying
+    /// the rung are the design's eventual shape (§5); until the client renders them, the two
+    /// phrasings in the sentence are the tappable-option vocabulary spoken aloud.
+    /// </summary>
+    private static MemberChatWorkflowResult ClarifyResult(
+        ChatRouteDecision route, AiUsage triageUsage, string? memberName)
+    {
+        var subject = string.IsNullOrWhiteSpace(NamePlaceholder.FirstName(memberName))
+            ? "them"
+            : NamePlaceholder.FirstName(memberName)!;
+
+        var reply = $"I can answer that a couple of different ways — {DescribeForClarify(route.Primary!.Value, subject)}, "
+            + $"or {DescribeForClarify(route.RunnerUp!.Value, subject)}. Which would help most?";
+
+        return new MemberChatWorkflowResult
+        {
+            Workflow = MemberChatWorkflow.Clarify,
+            Reply = reply,
+            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+        };
+    }
+
+    /// <summary>Each rung as a caregiver-facing offer — what tapping that chip would get them.</summary>
+    private static string DescribeForClarify(MemberChatWorkflow workflow, string subject) => workflow switch
+    {
+        MemberChatWorkflow.Status => "what the latest reading shows",
+        MemberChatWorkflow.Analysis => $"how {subject}'s readings have looked recently",
+        MemberChatWorkflow.Inference => "whether it looks worth attention",
+        MemberChatWorkflow.Investigation => "what might be behind the change",
+        MemberChatWorkflow.Advise => "a suggestion for what could help",
+        MemberChatWorkflow.SteerCasual => "just saying hi",
+        _ => "something outside their health data",
+    };
+
+    /// <summary>The workflow today's triage booleans select — the shadow comparison's other half,
+    /// and the same mapping the pre-cutover branch chain applies.</summary>
+    internal static MemberChatWorkflow TriageWorkflow(MaliciousCheckAiResponse triage) => triage switch
+    {
+        { IsAboutThisMoment: true } => MemberChatWorkflow.Status,
+        { IsAskingForAdvice: true } => MemberChatWorkflow.Advise,
+        { IsCasualOrSocial: true } => MemberChatWorkflow.SteerCasual,
+        { IsOffTopic: true } => MemberChatWorkflow.SteerOffTopic,
+        _ => MemberChatWorkflow.Analysis,
+    };
+
+    /// <summary>The calls list with the route inserted after the malicious check — every handler
+    /// reports the pre-check first, and the route ran immediately after it.</summary>
+    internal static IReadOnlyList<AiCallRecord> InsertAfterTriage(
+        IReadOnlyList<AiCallRecord> calls, AiCallRecord route) =>
+        calls.Count == 0 ? [route] : [calls[0], route, .. calls.Skip(1)];
 
     /// <summary>
     /// The short path a casual or off-topic message takes: one Rewrite-slot generation, no query
@@ -798,6 +1023,9 @@ public class MemberChatService : IMemberChatService
         if (turns is not { Count: > 0 })
             return new ChatHistory(null, null);
 
+        var lastAssistantWasClarify = turns
+            .LastOrDefault(t => t.Role == ChatTurnRole.Assistant)?.Workflow == MemberChatWorkflow.Clarify;
+
         string? Block(bool questionsOnly)
         {
             var kept = questionsOnly ? turns.Where(t => t.Role == ChatTurnRole.User).ToList() : turns;
@@ -810,7 +1038,7 @@ public class MemberChatService : IMemberChatService
             return $"--- {MedicalPromptBlocks.ChatHistoryLabel} ---\n{string.Join("\n", lines)}";
         }
 
-        return new ChatHistory(Block(questionsOnly: false), Block(questionsOnly: true));
+        return new ChatHistory(Block(questionsOnly: false), Block(questionsOnly: true), lastAssistantWasClarify);
     }
 
     /// <summary>
@@ -839,7 +1067,11 @@ public class MemberChatService : IMemberChatService
     /// the data block, because nothing else in the prompt contains any.
     /// </para>
     /// </remarks>
-    private sealed record ChatHistory(string? Full, string? QuestionsOnly);
+    /// <param name="LastAssistantWasClarify">
+    /// Whether the most recent assistant turn was itself a clarify — the once-per-message marker:
+    /// a caregiver already asked which rung they meant does not get asked twice in a row.
+    /// </param>
+    private sealed record ChatHistory(string? Full, string? QuestionsOnly, bool LastAssistantWasClarify = false);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null

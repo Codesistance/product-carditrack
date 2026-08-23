@@ -24,4 +24,9 @@ public enum AiCallStep
     /// <summary>The short steer reply a casual or off-topic message gets instead of the full
     /// pipeline — one Rewrite-slot call, no clinical read.</summary>
     Steer = 5,
+
+    /// <summary>The routing classification — which catalogue entry serves the question. Billed to
+    /// the turn in shadow mode too: the call ran, and a usage row that skipped it would make the
+    /// shadow period look free.</summary>
+    Route = 6,
 }

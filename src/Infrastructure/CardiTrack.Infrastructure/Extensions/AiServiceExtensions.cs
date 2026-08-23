@@ -128,6 +128,7 @@ public static class AiServiceExtensions
         services.AddScoped<IReportGenerationService, ReportGenerationService>();
         services.AddScoped<IDataQueryPlanner, DataQueryPlannerService>();
         services.AddScoped<IChatRouter, ChatRouterService>();
+        services.Configure<ChatRoutingSettings>(configuration.GetSection(ChatRoutingSettings.SectionName));
         services.AddScoped<IMemberChatService, MemberChatService>();
 
         return services;

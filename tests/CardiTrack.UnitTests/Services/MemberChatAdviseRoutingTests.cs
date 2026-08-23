@@ -1,4 +1,7 @@
 using CardiTrack.Application.DTOs.Common;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging.Abstractions;
+using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -84,8 +87,12 @@ public class MemberChatAdviseRoutingTests
     }
 
     private MemberChatService CreateSut() =>
-        new(_medicalAi, _rewriteAi, _planner, _unitOfWork, _access,
-            PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption);
+        new(_medicalAi, _rewriteAi, _planner, Substitute.For<IChatRouter>(), _unitOfWork, _access,
+            PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
+            // Routing Off: these tests assert the triage-decided behaviour, which the default
+            // mode preserves — the router substitute must never be reached.
+            Options.Create(new ChatRoutingSettings()),
+            NullLogger<MemberChatService>.Instance);
 
     [Fact]
     public async Task AnAdviceQuestion_IsAnsweredFromTheStoredRow()
