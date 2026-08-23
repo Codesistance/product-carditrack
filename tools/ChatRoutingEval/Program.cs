@@ -39,6 +39,14 @@ catch (EvalInputException ex)
     Console.Error.WriteLine($"error: {ex.Message}");
     return 1;
 }
+catch (TypeInitializationException ex) when (ex.InnerException is EvalInputException inner)
+{
+    // A catalogue entry with no label id throws from Vocabulary's static initialiser, and the
+    // runtime wraps that — so without this clause the fail-fast message above is replaced by an
+    // unhandled-exception dump, which is the opposite of failing fast legibly.
+    Console.Error.WriteLine($"error: {inner.Message}");
+    return 1;
+}
 
 int Usage()
 {
@@ -272,7 +280,7 @@ void PrintMatrix(Sheet a, Sheet b)
     var used = shared
         .SelectMany(id => new[] { a.Labels[id], b.Labels[id] })
         .Distinct()
-        .OrderBy(x => Array.IndexOf(Vocabulary.All.ToArray(), x))
+        .OrderBy(Vocabulary.RankOf)
         .ToList();
 
     if (used.Count == 0)
@@ -695,6 +703,17 @@ static class Vocabulary
             .Select(w => IdOf(w.Id))
             .Concat(Special.Keys)
             .ToArray();
+
+    // Declared after All so the static initialiser fills it from a populated list. Exists because
+    // the display order was being recomputed inside an OrderBy key selector, which rebuilt the
+    // whole vocabulary array once per element compared.
+    private static readonly Dictionary<string, int> Ranks =
+        All.Select((id, i) => (id, i)).ToDictionary(t => t.id, t => t.i);
+
+    /// <summary>Catalogue order, for display: the ladder, then the off-ladder outcomes. An
+    /// unknown label sorts last rather than throwing — ordering a report is not where a bad
+    /// label should surface.</summary>
+    public static int RankOf(string label) => Ranks.TryGetValue(label, out var r) ? r : int.MaxValue;
 
     /// <summary>What each label means, for the labelling sheet — the catalogue's own purpose
     /// line, so the instructions cannot drift from what the router will be told.</summary>

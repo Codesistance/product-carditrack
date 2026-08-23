@@ -18,8 +18,10 @@
 
   <ItemGroup>
     <!-- Referenced so the labelling vocabulary comes from ChatWorkflowCatalogue itself rather
-         than a hand-copied list. A new catalogue entry then shows up as a build-time gap in the
-         id map below, not as a silently missing label on the next sheet. -->
+         than a hand-copied list. A new catalogue entry with no row in Vocabulary.Ids then fails
+         the next command with a named error rather than going out on a sheet unnamed. That check
+         is a runtime one — the compiler cannot see a missing dictionary row, so this build stays
+         green and the tool refuses to run. -->
     <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
   </ItemGroup>
 
