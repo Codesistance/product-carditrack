@@ -107,13 +107,18 @@ apm_metrics_enabled = true
 
 # Serilog root level per service — Warning keeps Cloud Logging and APM ingest lean.
 # The APM sink inherits this level, so a raise here ships more to Datadog as well as
-# widening Cloud Logging. API and Worker run at Information in dev deliberately: this is
-# where wearable syncs and OAuth bounces are diagnosed, and their per-run detail
-# (WearableSync summaries, per-connection outcomes) is Information. Web stays lean.
+# widening Cloud Logging. API and Worker run at Debug in dev deliberately: this is where
+# wearable syncs and OAuth bounces are diagnosed, and their per-run detail (WearableSync
+# summaries, per-connection outcomes) is Information — Debug adds GoogleHealthApiClient's
+# shape-mismatch payload dumps (LogShapeMismatch) on top, which only fire on a field whose
+# JSON shape didn't match what the client expected, not on the ordinary "device doesn't
+# report this field" case. Raised from Information after the 2026-08-23 sync outage, where
+# the raw payload behind the crash had to be reconstructed from a bare stack trace. Web
+# stays lean — it never touches a device sync.
 log_minimum_level = {
-  api    = "Information"
+  api    = "Debug"
   web    = "Warning"
-  worker = "Information"
+  worker = "Debug"
 }
 
 # Trace head-sampling per service, 0.0-1.0. Full sampling: the ingest cost lever to
