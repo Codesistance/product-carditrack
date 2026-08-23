@@ -15,6 +15,12 @@ public partial class MetricCard : ContentView
     private const decimal CaptionResolution = 0.05m;
 
     /// <summary>
+    /// Smallest movement the whole-percent trend beside a reading can state. Anything under it
+    /// rounds to "0%", which is an arrow pointing at no change. See <see cref="ApplyTrend"/>.
+    /// </summary>
+    private const decimal TrendResolution = 0.5m;
+
+    /// <summary>
     /// The ends of the skin-temperature track (see <see cref="ApplyTemperatureTrack"/>). Wide
     /// enough to hold what a wrist wearable reads through a cold room or a warm bed, tight enough
     /// that a degree of movement is a visible step rather than a twitch.
@@ -33,11 +39,10 @@ public partial class MetricCard : ContentView
     {
         MetricIcon.Source = "icon_metric_steps.svg";
         NameLabel.Text = "Activity";
-        ValueLabel.Text = metric.Value is { } v ? $"{v:N0} steps" : "—";
+        SetReading(metric.Value is { } v ? $"{v:N0} steps" : "—", metric);
 
-        ApplyTrend(metric, higherIsBetter: true);
-        // This card carries a trend arrow rather than a pill, so there is nothing on it for the
-        // star row to match and the rating colours itself.
+        // This card carries no pill, so there is nothing on it for the star row to match and the
+        // rating colours itself.
         ApplyStars(metric, matchPill: false);
         ApplyActivityTrack(metric);
     }
@@ -46,7 +51,7 @@ public partial class MetricCard : ContentView
     {
         MetricIcon.Source = "icon_metric_heart.svg";
         NameLabel.Text = "Heart Rate";
-        ValueLabel.Text = metric.Value is { } v ? $"{v:N0} bpm" : "—";
+        SetReading(metric.Value is { } v ? $"{v:N0} bpm" : "—", metric);
 
         ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
         CaptionLabel.Text = metric is { RangeLow: { } low, RangeHigh: { } high }
@@ -58,7 +63,7 @@ public partial class MetricCard : ContentView
     {
         MetricIcon.Source = "icon_metric_sleep.svg";
         NameLabel.Text = "Sleep";
-        ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} hours" : "—";
+        var showedTrend = SetReading(metric.Value is { } v ? $"{v:0.#} hours" : "—", metric);
 
         // The one card whose stars and status answer different questions — the stars read how well
         // and how long the night was, the status reads its duration against the baseline — so its
@@ -67,24 +72,30 @@ public partial class MetricCard : ContentView
         // either reading the status that may honestly disagree with both.
         ShowPill(MetricStatus.SleepQualityPill(metric.QualityScore));
         ApplyStars(metric, matchPill: false);
-        // Direction only, no verdict — a longer night is not automatically a better one, and this
-        // caption used to call twelve hours "Better than average" directly under the stars that
-        // now mark it down for exactly that. The rating carries the judgement; this says which way
-        // the night went.
-        CaptionLabel.Text = metric.ChangePercent switch
-        {
-            > 0 => "Longer than usual",
-            < 0 => "Shorter than usual",
-            0 => "In line with usual",
-            _ => "Last night",
-        };
+        // Which way the night went, when the reading is not already carrying it. Direction only,
+        // no verdict — a longer night is not automatically a better one, and this caption used to
+        // call twelve hours "Better than average" directly under the stars that now mark it down
+        // for exactly that. The rating carries the judgement.
+        //
+        // Silent about direction once the percentage beside the reading states it: the two would
+        // be the same sentence twice on a tile with room for neither to spare, so the caption
+        // names the night instead.
+        CaptionLabel.Text = showedTrend
+            ? "Last night"
+            : metric.ChangePercent switch
+            {
+                > 0 => "Longer than usual",
+                < 0 => "Shorter than usual",
+                0 => "In line with usual",
+                _ => "Last night",
+            };
     }
 
     public void ApplyTemperature(DashboardMetric metric)
     {
         MetricIcon.Source = "icon_metric_temperature.svg";
         NameLabel.Text = "Skin Temp";
-        ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}°C" : "—";
+        SetReading(metric.Value is { } v ? $"{v:0.#}°C" : "—", metric);
 
         ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
         CaptionLabel.Text = TemperatureComparison(metric);
@@ -108,8 +119,7 @@ public partial class MetricCard : ContentView
             MarkerGrid.IsVisible = false;
             OverflowFill.IsVisible = false;
             SemanticProperties.SetDescription(ProgressTrackBorder, null);
-            if (!TrendLabel.IsVisible)
-                CaptionLabel.Text = "Daily activity";
+            CaptionLabel.Text = "Daily activity";
             return;
         }
 
@@ -120,8 +130,7 @@ public partial class MetricCard : ContentView
         OverflowFill.BackgroundColor = (Color)resources["MetricStepsAhead"];
         SetStack(progress.Compared, progress.Overflow);
         SemanticProperties.SetDescription(ProgressTrackBorder, progress.Description);
-        if (!TrendLabel.IsVisible)
-            CaptionLabel.Text = progress.Caption;
+        CaptionLabel.Text = progress.Caption;
     }
 
     /// <summary>
@@ -242,7 +251,7 @@ public partial class MetricCard : ContentView
     {
         MetricIcon.Source = "icon_metric_spo2.svg";
         NameLabel.Text = "Blood Oxygen";
-        ValueLabel.Text = metric.Value is { } v ? $"{v:0.#}%" : "—";
+        SetReading(metric.Value is { } v ? $"{v:0.#}%" : "—", metric);
 
         // No baseline exists for this metric yet, so Status is always "unknown" and QualityScore
         // always null — pill and stars both stay hidden. A bare reading, not a judgement.
@@ -257,7 +266,7 @@ public partial class MetricCard : ContentView
         // width, and the caption underneath already says "Breaths per minute" — the word "Rate"
         // was the only casualty worth taking.
         NameLabel.Text = "Breathing";
-        ValueLabel.Text = metric.Value is { } v ? $"{v:0.#} brpm" : "—";
+        SetReading(metric.Value is { } v ? $"{v:0.#} brpm" : "—", metric);
 
         // No baseline exists for this metric yet, same as SpO2 — a bare reading, not a trend.
         ApplyStars(metric, matchPill: ApplyStatusPill(metric.Status));
@@ -265,28 +274,63 @@ public partial class MetricCard : ContentView
     }
 
     /// <summary>
-    /// Activity's accessory: how today compares with the member's own baseline. Its colour bands
-    /// are the status thresholds — the same 30%/50% lines the star bands nest inside — so the
-    /// arrow and the star row beneath it can never accent one reading two ways: a 30-50%
-    /// shortfall is yellow on both, not orange over a yellow two-star row.
+    /// The card's reading, with how far it sits from this member's own normal on the same line —
+    /// "5,959 steps  ↑63%". Every card goes through here, so a metric that carries a comparison
+    /// shows it in the same place and the same shape whichever tile it lands in.
     /// </summary>
-    private void ApplyTrend(DashboardMetric metric, bool higherIsBetter)
+    /// <returns>Whether a percentage actually went beside the reading. See <see cref="ApplyTrend"/>.</returns>
+    private bool SetReading(string value, DashboardMetric metric)
     {
-        if (metric.ChangePercent is not { } change)
+        ValueSpan.Text = value;
+        return ApplyTrend(metric);
+    }
+
+    /// <summary>
+    /// The movement beside the reading: an arrow for the direction and the distance from the
+    /// member's own baseline as a whole percent, green up and red down.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It states the change itself ("↑63%"), not the reading as a share of normal ("163%"), which
+    /// is what this used to print under the value with "of normal" beneath it as the only thing
+    /// telling the two apart. On one line beside the reading there is no room for that caption,
+    /// and an arrow in front of 163% would read as a number that had gone up by 163%.
+    /// </para>
+    /// <para>
+    /// Direction alone decides the colour, so the same movement is the same colour on every card.
+    /// The accessory below still carries the verdict — the pill and the star row read the size of
+    /// the deviation against this member's own bands, and either can disagree with the arrow's
+    /// sentiment on a metric where up is not good news.
+    /// </para>
+    /// <para>
+    /// Nothing is drawn for a metric with no baseline to compare against (SpO2 and breathing rate
+    /// have none yet), for a reading covering a period that is not over — steps mid-morning, which
+    /// the bar under them compares to yesterday instead — or for a movement under half a percent,
+    /// which the whole-percent label could only print as an arrow over "0%".
+    /// </para>
+    /// </remarks>
+    private bool ApplyTrend(DashboardMetric metric)
+    {
+        if (metric.ChangePercent is not { } change || Math.Abs(change) < TrendResolution)
         {
-            TrendLabel.IsVisible = false;
-            return;
+            TrendSpan.Text = string.Empty;
+            SemanticProperties.SetDescription(ReadingLabel, ValueSpan.Text);
+            return false;
         }
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-        var isGood = higherIsBetter ? change >= 0 : change <= 0;
+        var up = change > 0;
 
-        TrendLabel.Text = $"{(change >= 0 ? "↗" : "↘")} {100 + change:0}%";
-        TrendLabel.TextColor = (Color)resources[isGood || Math.Abs(change) <= 30
-            ? "StatusGreen"
-            : Math.Abs(change) <= 50 ? "StatusYellow" : "StatusOrange"];
-        TrendLabel.IsVisible = true;
-        CaptionLabel.Text = "of normal";
+        // Two spaces rather than one: the percentage is set five points smaller than the reading
+        // it follows, and a single gap at that difference reads as part of the same figure.
+        TrendSpan.Text = $"  {(up ? "↑" : "↓")}{Math.Abs(change):0}%";
+        TrendSpan.TextColor = (Color)resources[up ? "StatusGreen" : "StatusRed"];
+
+        // The arrow is a glyph a screen reader either skips or names as punctuation, and the two
+        // spans are read as one run — so the line gets a spoken form that says the comparison.
+        SemanticProperties.SetDescription(
+            ReadingLabel, $"{ValueSpan.Text}, {Math.Abs(change):0}% {(up ? "above" : "below")} usual");
+        return true;
     }
 
     /// <summary>

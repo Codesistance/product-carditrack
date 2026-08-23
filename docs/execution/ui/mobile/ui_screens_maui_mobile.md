@@ -753,11 +753,13 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 
 **Star rating (1-5)** appears on every card that has something to compare against (Activity, Heart Rate, Sleep, Skin Temp): how the reading sits against this member's own normal — except sleep, which is also held to the published recommended band for the member's age, because a habitually short sleeper's own normal is the very reading being watched for. The row takes the status pill's colour on cards whose pill is built from `status` (Heart Rate, Skin Temp) and colours itself from the star count (3-5 green, 2 yellow, 1 orange) elsewhere — Activity, which shows no pill, and Sleep, whose GOOD/FAIR/POOR pill is itself named from those bands — never from a status the card isn't showing, which is what would paint a short sleeper's two stars green. SpO2 and Breathing Rate have no baseline yet, so their star row stays hidden rather than rating a reading against an invented normal. See `qualityScore` in [health-data.md](../../backend/api/health-data.md).
 
+**Change against normal** rides on the reading itself on every card that carries a `changePercent` — "5,959 steps  ↑63%" — an arrow for the direction and the distance from the member's own baseline as a whole percent, green up and red down, at 13sp beside the 18sp value. It states the change, not the reading as a share of normal ("163%"), which is what the card used to print on its own line with "of normal" under it. The value and the percentage are two spans of one wrapping label, so a tile too narrow for both drops the percentage to a second line and grows to hold it rather than clipping the reading. Nothing is drawn where there is no baseline to compare against (SpO2, Breathing Rate), where the period is not over (steps mid-day — the bar under them compares to yesterday instead), or where the movement rounds to 0%.
+
 **Card 1: Activity**
 - Icon: shoe
 - Large value: "4,250 steps"
 - Visual progress bar (today vs the previous calendar day's total; the track's max is yesterday until today exceeds it, then it is today's total). **Two stacked colours** when today is ahead: yesterday's share, then the extra. One colour while behind or level. Caption is a comparison ("vs 5,000 yesterday"), not a remainder against a goal. Hidden when day n−1 is missing.
-- Comparison text: "85% of normal" with trend arrow (up/down)
+- Movement against normal sits on the value line itself (see **Change against normal** above): "4,250 steps  ↓15%"
 - Star rating (1-5) — the shortfall against normal; walking further than usual is not marked down
 
 **Card 2: Heart Rate**
@@ -772,7 +774,7 @@ Heart Rate, Sleep, Skin Temp, Steps, SpO2, and Breathing Rate — the last three
 - Large value: "7.2 hours"
 - Status pill: **GOOD / FAIR / POOR** — one word naming the band of the star rating (3-5 / 2 / 1), in the same pill chrome and status colours as the other cards; hidden when the night is unrated. From the rating, never from `status`: a quality vocabulary rather than NORMAL/UNUSUAL, because a 4.5-hour night is entirely usual for a member who always sleeps 4.5 hours — and still FAIR
 - Star rating (1-5) — the worse of sleep efficiency and the shortfall in duration against baseline (either alone when the other is unavailable), capped on the length of the night against the published band for the member's age — both ends, so neither 4.5 nor 12 hours can rate five stars
-- Comparison: "Longer than usual" / "Shorter than usual" / "In line with usual" — direction only, no verdict; the stars and pill carry the judgement
+- Caption: "Last night" once the percentage beside the value states the direction; "Longer than usual" / "Shorter than usual" / "In line with usual" when it does not — direction only, no verdict; the stars and pill carry the judgement
 
 **Recent Alerts (conditional — unresolved alerts only):**
 - Section heading: "Recent Alerts"

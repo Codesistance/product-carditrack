@@ -1,14 +1,19 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
-             x:Class="CardiTrack.Mobile.Controls.MetricCard">
+             x:Class="CardiTrack.Mobile.Controls.MetricCard"
+             VerticalOptions="Start">
 
     <!-- Figma 101:2807 / 101:2821 / 101:2835, adapted for the half-width Key Metrics grid:
          Figma's single row (icon | name+value | accessory) doesn't fit two-per-row, so this
          stacks icon+name, then value, then the accessory underneath instead of beside it. -->
     <!-- Outlined, not elevated: these tiles sit inside the CardiMember card, and a shadow on a
          surface that is already raised reads as tacky rather than as depth. -->
+    <!-- The tile is as tall as what it holds (VerticalOptions="Start" above), not as tall as
+         whichever tile it happens to share a grid row with: a card carrying a reading and a
+         caption used to be stretched to the height of a neighbour carrying a bar and a star row,
+         which left it signing off with an inch of blank surface. -->
     <Border Style="{StaticResource OutlinedCard}" Padding="12,14">
         <VerticalStackLayout Spacing="10">
 
@@ -25,19 +30,33 @@
                        LineBreakMode="TailTruncation"/>
             </HorizontalStackLayout>
 
-            <Label x:Name="ValueLabel"
-                   Style="{StaticResource Heading3}"
-                   LineBreakMode="TailTruncation"/>
+            <!-- The reading and its movement against the member's own normal on one line —
+                 "5,959 steps  ↑63%". Two spans of one label rather than two labels in a row so a
+                 tile too narrow to hold both wraps the percentage onto a second line and grows to
+                 fit it, instead of clipping or truncating the reading itself. The value span
+                 carries Heading3's own settings: a label's style does not reach inside its spans
+                 (same reason the alert detail screen's reading sets them per span). -->
+            <Label x:Name="ReadingLabel"
+                   LineBreakMode="WordWrap">
+                <Label.FormattedText>
+                    <FormattedString>
+                        <Span x:Name="ValueSpan"
+                              FontFamily="Quicksand"
+                              FontAttributes="Bold"
+                              FontSize="18"
+                              TextColor="{StaticResource HeadingText}"/>
+                        <Span x:Name="TrendSpan"
+                              FontFamily="QuicksandSemiBold"
+                              FontSize="13"/>
+                    </FormattedString>
+                </Label.FormattedText>
+            </Label>
 
-            <!-- Accessory slot. The trend arrow and the status pill are alternatives — a card
-                 shows one or the other — but the star row sits under whichever it got: the pill
-                 names the band, the stars give its resolution, both off the same comparison. -->
+            <!-- Accessory slot. The movement now rides on the reading above, so what sits here is
+                 the verdict on it: the pill names the band, the stars give its resolution, both
+                 off the same comparison, and the caption says what the reading is being read
+                 against. -->
             <VerticalStackLayout Spacing="3">
-                <Label x:Name="TrendLabel"
-                       IsVisible="False"
-                       FontFamily="QuicksandSemiBold"
-                       FontSize="14"/>
-
                 <Border x:Name="StatusPillBorder"
                         IsVisible="False"
                         Style="{StaticResource StatusPill}"

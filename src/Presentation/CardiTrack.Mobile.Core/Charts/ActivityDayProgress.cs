@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 
 namespace CardiTrack.Mobile.Core.Charts;
 
@@ -85,8 +85,9 @@ public readonly record struct ActivityDayProgress
         CurrentDate == SeriesEnd && PreviousDate == SeriesEnd.AddDays(-1);
 
     /// <summary>
-    /// The caption under the bar when the card is not already showing "% of normal". A comparison
-    /// with the previous day — "vs 5,000 yesterday" — not a remainder against a target.
+    /// The caption under the bar. A comparison with the previous day — "vs 5,000 yesterday" — not
+    /// a remainder against a target, and not the comparison with the member's own normal that the
+    /// percentage beside the reading already makes.
     /// </summary>
     public string Caption =>
         PreviousIsYesterday ? $"vs {Previous:N0} yesterday" : $"vs previous day's {Previous:N0}";
