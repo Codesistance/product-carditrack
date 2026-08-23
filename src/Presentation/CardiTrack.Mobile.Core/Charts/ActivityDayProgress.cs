@@ -106,6 +106,24 @@ public readonly record struct ActivityDayProgress
     }
 
     /// <summary>
+    /// The movement between the two days the bar draws, as a signed percent of the previous day.
+    /// </summary>
+    /// <remarks>
+    /// This is the comparison the Activity card shows beside its reading, in place of the one
+    /// against the member's usual day. Steps accumulate, so the payload leaves
+    /// <see cref="DashboardMetric.ChangePercent"/> unset for a day still in progress (see
+    /// <c>MemberInsightsCalculator</c>) — at breakfast every member alive reads as a collapse
+    /// against a finished usual day. The card's bar and caption already answer the question that
+    /// is fair to ask of a running total, "how does this compare with the day before", and the
+    /// percentage says the same thing in figures rather than leaving the tile with none.
+    ///
+    /// Null when the previous day was zero: nobody is up by an infinite percentage on a day
+    /// their wearable counted nothing.
+    /// </remarks>
+    public decimal? ChangePercent =>
+        Previous > 0 ? Math.Round((Current - Previous) / Previous * 100m, 1) : null;
+
+    /// <summary>
     /// The bar to draw for this metric, or null when there is no honest previous day to fill
     /// against — no reading yet, a gap on day n−1, or both days at zero (a zero max).
     /// </summary>

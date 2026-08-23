@@ -7,64 +7,88 @@
 
     <!-- Figma 101:2807 / 101:2821 / 101:2835, adapted for the half-width Key Metrics grid:
          Figma's single row (icon | name+value | accessory) doesn't fit two-per-row, so this
-         stacks icon+name, then value, then the accessory underneath instead of beside it. -->
+         stacks icon (with the status pill opposite it), then name and reading, then the rest of
+         the accessory underneath instead of beside it. -->
     <!-- Outlined, not elevated: these tiles sit inside the CardiMember card, and a shadow on a
          surface that is already raised reads as tacky rather than as depth. -->
     <!-- The tile is as tall as what it holds (VerticalOptions="Start" above), not as tall as
          whichever tile it happens to share a grid row with: a card carrying a reading and a
          caption used to be stretched to the height of a neighbour carrying a bar and a star row,
          which left it signing off with an inch of blank surface. -->
+    <!-- Corners at 12 rather than the shared OutlinedCard's 20: these are the smallest cards in
+         the app, two to a row, and a radius drawn for a full-width card eats a visible bite out of
+         a tile this size — most of all at the top corners, where it crowds the icon and the pill
+         now sitting beside it. -->
     <Border Style="{StaticResource OutlinedCard}" Padding="12,14">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="12"/>
+        </Border.StrokeShape>
         <VerticalStackLayout Spacing="10">
 
-            <HorizontalStackLayout Spacing="8">
+            <!-- Icon left, status pill hard right. The pill used to sit in the accessory stack
+                 below, directly over the star row that reads the same comparison one band finer —
+                 two accents an inch apart, and a line of the tile's height spent on a word. Up
+                 here it is the tile's top-right corner mark, and the name has the row below to
+                 itself: at half-grid width there is no room for a name and a pill side by side,
+                 and truncating "Heart Rate" to fit NORMAL beside it is the worse trade. -->
+            <Grid ColumnDefinitions="Auto,*">
                 <Border Style="{StaticResource IconTile}"
                         BackgroundColor="{StaticResource MetricTileTint}"
                         WidthRequest="36" HeightRequest="36">
                     <Image x:Name="MetricIcon"
                            WidthRequest="22" HeightRequest="22"/>
                 </Border>
-                <Label x:Name="NameLabel"
-                       Style="{StaticResource MetricRowLabel}"
-                       VerticalOptions="Center"
-                       LineBreakMode="TailTruncation"/>
-            </HorizontalStackLayout>
 
-            <!-- The reading and its movement against the member's own normal on one line —
-                 "5,959 steps  ↑63%". Two spans of one label rather than two labels in a row so a
-                 tile too narrow to hold both wraps the percentage onto a second line and grows to
-                 fit it, instead of clipping or truncating the reading itself. The value span
-                 carries Heading3's own settings: a label's style does not reach inside its spans
-                 (same reason the alert detail screen's reading sets them per span). -->
-            <Label x:Name="ReadingLabel"
-                   LineBreakMode="WordWrap">
-                <Label.FormattedText>
-                    <FormattedString>
-                        <Span x:Name="ValueSpan"
-                              FontFamily="Quicksand"
-                              FontAttributes="Bold"
-                              FontSize="18"
-                              TextColor="{StaticResource HeadingText}"/>
-                        <Span x:Name="TrendSpan"
-                              FontFamily="QuicksandSemiBold"
-                              FontSize="13"/>
-                    </FormattedString>
-                </Label.FormattedText>
-            </Label>
-
-            <!-- Accessory slot. The movement now rides on the reading above, so what sits here is
-                 the verdict on it: the pill names the band, the stars give its resolution, both
-                 off the same comparison, and the caption says what the reading is being read
-                 against. -->
-            <VerticalStackLayout Spacing="3">
                 <Border x:Name="StatusPillBorder"
+                        Grid.Column="1"
                         IsVisible="False"
                         Style="{StaticResource StatusPill}"
-                        HorizontalOptions="Start">
+                        HorizontalOptions="End"
+                        VerticalOptions="Start"
+                        Margin="8,2,0,0">
                     <Label x:Name="StatusPillLabel"
                            Style="{StaticResource StatusPillText}"/>
                 </Border>
+            </Grid>
 
+            <!-- Name and reading are one block: the name labels the figure under it, so the two
+                 sit closer to each other than either does to the rows around them. -->
+            <VerticalStackLayout Spacing="2">
+                <Label x:Name="NameLabel"
+                       Style="{StaticResource MetricRowLabel}"
+                       LineBreakMode="TailTruncation"/>
+
+                <!-- The reading and its movement on one line — "5,959 steps  ↑48%". Two spans of
+                     one label rather than two labels in a row so a tile too narrow to hold both
+                     wraps the percentage onto a second line and grows to fit it, instead of
+                     clipping or truncating the reading itself. The value span carries Heading3's
+                     own settings: a label's style does not reach inside its spans (same reason
+                     the alert detail screen's reading sets them per span). -->
+                <Label x:Name="ReadingLabel"
+                       LineBreakMode="WordWrap">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span x:Name="ValueSpan"
+                                  FontFamily="Quicksand"
+                                  FontAttributes="Bold"
+                                  FontSize="18"
+                                  TextColor="{StaticResource HeadingText}"/>
+                            <Span x:Name="TrendSpan"
+                                  FontFamily="QuicksandSemiBold"
+                                  FontSize="13"/>
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+            </VerticalStackLayout>
+
+            <!-- Accessory slot. The movement rides on the reading above and the pill marks the
+                 corner, so what is left here is the resolution and the terms: the stars rate the
+                 comparison against this member's own normal — the one the pill names, one band
+                 finer, on the cards that show a pill — and the caption says what the reading is
+                 being read against. Activity is the exception at both ends: no pill, and a
+                 reading compared with the previous day while its stars still rate the day against
+                 their usual one, which is why its caption names that day outright. -->
+            <VerticalStackLayout Spacing="3">
                 <controls:StarRatingView x:Name="StarRow" IsVisible="False"/>
 
                 <Label x:Name="CaptionLabel"
