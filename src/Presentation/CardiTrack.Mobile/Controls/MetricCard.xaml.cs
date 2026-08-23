@@ -15,10 +15,11 @@ public partial class MetricCard : ContentView
     private const decimal CaptionResolution = 0.05m;
 
     /// <summary>
-    /// Smallest movement the whole-percent trend beside a reading can state. Anything under it
-    /// rounds to "0%", which is an arrow pointing at no change. See <see cref="ApplyTrend"/>.
+    /// Smallest movement the trend beside a reading can state. Anything under it rounds to "0%"
+    /// at the tenth <see cref="Percent"/> prints, which is an arrow pointing at no change.
+    /// See <see cref="ApplyTrend"/>.
     /// </summary>
-    private const decimal TrendResolution = 0.5m;
+    private const decimal TrendResolution = 0.05m;
 
     /// <summary>
     /// The ends of the skin-temperature track (see <see cref="ApplyTemperatureTrack"/>). Wide
@@ -39,12 +40,20 @@ public partial class MetricCard : ContentView
     {
         MetricIcon.Source = "icon_metric_steps.svg";
         NameLabel.Text = "Activity";
-        SetReading(metric.Value is { } v ? $"{v:N0} steps" : "—", metric);
+
+        // The one card that states a movement between two days rather than against the member's
+        // usual one. Steps accumulate, so the payload leaves ChangePercent unset while the day is
+        // still running and the tile would otherwise carry no percentage at all for most of the
+        // day. The bar and the caption under it already compare with the day before; the
+        // percentage is that same comparison in figures, so everything on the tile answers one
+        // question. The star row is the exception, and stays the rating against their usual day.
+        var progress = ActivityDayProgress.For(metric);
+        SetReading(metric.Value is { } v ? $"{v:N0} steps" : "—", progress?.ChangePercent);
 
         // This card carries no pill, so there is nothing on it for the star row to match and the
         // rating colours itself.
         ApplyStars(metric, matchPill: false);
-        ApplyActivityTrack(metric);
+        ApplyActivityTrack(progress);
     }
 
     public void ApplyHeartRate(DashboardMetric metric)
@@ -111,9 +120,9 @@ public partial class MetricCard : ContentView
     /// yesterday is visible rather than a full bar that looks like matching it. One fill while
     /// still behind or level. Hidden when day n−1 is missing or both days are zero.
     /// </remarks>
-    private void ApplyActivityTrack(DashboardMetric metric)
+    private void ApplyActivityTrack(ActivityDayProgress? dayProgress)
     {
-        if (ActivityDayProgress.For(metric) is not { } progress)
+        if (dayProgress is not { } progress)
         {
             ProgressTrackBorder.IsVisible = false;
             MarkerGrid.IsVisible = false;
@@ -279,10 +288,13 @@ public partial class MetricCard : ContentView
     /// shows it in the same place and the same shape whichever tile it lands in.
     /// </summary>
     /// <returns>Whether a percentage actually went beside the reading. See <see cref="ApplyTrend"/>.</returns>
-    private bool SetReading(string value, DashboardMetric metric)
+    private bool SetReading(string value, DashboardMetric metric) => SetReading(value, metric.ChangePercent);
+
+    /// <inheritdoc cref="SetReading(string, DashboardMetric)"/>
+    private bool SetReading(string value, decimal? changePercent)
     {
         ValueSpan.Text = value;
-        return ApplyTrend(metric);
+        return ApplyTrend(changePercent);
     }
 
     /// <summary>
@@ -309,9 +321,9 @@ public partial class MetricCard : ContentView
     /// which the whole-percent label could only print as an arrow over "0%".
     /// </para>
     /// </remarks>
-    private bool ApplyTrend(DashboardMetric metric)
+    private bool ApplyTrend(decimal? changePercent)
     {
-        if (metric.ChangePercent is not { } change || Math.Abs(change) < TrendResolution)
+        if (changePercent is not { } change || Math.Abs(change) < TrendResolution)
         {
             TrendSpan.Text = string.Empty;
             SemanticProperties.SetDescription(ReadingLabel, ValueSpan.Text);
@@ -320,18 +332,32 @@ public partial class MetricCard : ContentView
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var up = change > 0;
+        var size = Math.Abs(change);
 
         // Two spaces rather than one: the percentage is set five points smaller than the reading
         // it follows, and a single gap at that difference reads as part of the same figure.
-        TrendSpan.Text = $"  {(up ? "↑" : "↓")}{Math.Abs(change):0}%";
+        TrendSpan.Text = $"  {(up ? "↑" : "↓")}{Percent(size)}";
         TrendSpan.TextColor = (Color)resources[up ? "StatusGreen" : "StatusRed"];
 
         // The arrow is a glyph a screen reader either skips or names as punctuation, and the two
         // spans are read as one run — so the line gets a spoken form that says the comparison.
         SemanticProperties.SetDescription(
-            ReadingLabel, $"{ValueSpan.Text}, {Math.Abs(change):0}% {(up ? "above" : "below")} usual");
+            ReadingLabel, $"{ValueSpan.Text}, {Percent(size)} {(up ? "above" : "below")} usual");
         return true;
     }
+
+    /// <summary>
+    /// A movement as a percentage, to the decimal it needs and no further: whole percent from one
+    /// up, a tenth below that.
+    /// </summary>
+    /// <remarks>
+    /// Skin temperature is why the tenth exists. A night 0.1°C off a 33.8°C baseline is 0.3% — a
+    /// real movement the card's own caption states in degrees, and one a whole-percent label could
+    /// only round to nothing and drop. Everything a wearable reports in a unit with a distant zero
+    /// moves in fractions of a percent like this; the metrics that move in whole numbers never see
+    /// the decimal, so no tile pays for it in width.
+    /// </remarks>
+    private static string Percent(decimal size) => size < 1m ? $"{size:0.#}%" : $"{size:0}%";
 
     /// <summary>
     /// Heart rate's accessory. The tint, ink and wording come from <see cref="MetricStatus"/>, which

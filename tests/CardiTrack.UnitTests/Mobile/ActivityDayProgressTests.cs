@@ -163,6 +163,31 @@ public class ActivityDayProgressTests
         Assert.Equal(5000m, progress.Value.Previous);
     }
 
+    [Fact]
+    public void The_change_against_the_previous_day_is_what_the_card_shows_beside_the_reading()
+    {
+        var ahead = ActivityDayProgress.For(Series((Today.AddDays(-1), 5959m), (Today, 8846m)));
+        var behind = ActivityDayProgress.For(Series((Today.AddDays(-1), 5000m), (Today, 2000m)));
+        var level = ActivityDayProgress.For(Series((Today.AddDays(-1), 5000m), (Today, 5000m)));
+
+        Assert.NotNull(ahead);
+        Assert.NotNull(behind);
+        Assert.NotNull(level);
+        Assert.Equal(48.4m, ahead.Value.ChangePercent);
+        Assert.Equal(-60m, behind.Value.ChangePercent);
+        Assert.Equal(0m, level.Value.ChangePercent);
+    }
+
+    [Fact]
+    public void A_previous_day_of_zero_has_no_percentage_to_state()
+    {
+        // The bar still draws — today is the whole of it — but "up ∞%" is not a reading.
+        var progress = ActivityDayProgress.For(Series((Today.AddDays(-1), 0m), (Today, 4000m)));
+
+        Assert.NotNull(progress);
+        Assert.Null(progress.Value.ChangePercent);
+    }
+
     private static List<MetricPoint> Series(params (DateOnly Date, decimal? Value)[] points) =>
         points.Select(p => new MetricPoint { Date = p.Date, Value = p.Value }).ToList();
 }
