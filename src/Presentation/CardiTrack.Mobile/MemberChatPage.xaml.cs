@@ -25,13 +25,33 @@ public partial class MemberChatPage : ContentView
     /// host page removes this view from whatever layer it added it to.</summary>
     public event EventHandler? CloseRequested;
 
+    /// <summary>What row 0 is currently showing: the live thread, the list of past
+    /// conversations, or one past conversation opened read-only from that list.</summary>
+    private enum ChatViewMode { Thread, HistoryList, PastSession }
+
     private readonly ICardiTrackApiClient _api;
     private readonly ObservableCollection<ChatTurnItem> _turns = [];
+    private readonly ObservableCollection<ChatSessionItem> _sessions = [];
+
+    /// <summary>A reopened past conversation's bubbles — its own collection, so browsing history
+    /// never touches <see cref="_turns"/> and the live thread survives the visit intact.</summary>
+    private readonly ObservableCollection<ChatTurnItem> _pastTurns = [];
 
     private readonly Guid _memberId;
     private readonly string? _memberFirstName;
+    private readonly string _threadSubtitle;
+    private ChatViewMode _mode = ChatViewMode.Thread;
+
+    /// <summary>The session the thread is (or would be) continuing — how the history list knows
+    /// which of its rows is this conversation rather than a past one.</summary>
+    private Guid? _currentSessionId;
+
     private bool _isLoading;
     private bool _isSending;
+
+    /// <summary>The last thread load failed — so a return from history retries it rather than
+    /// presenting the empty list the failure left behind as a conversation.</summary>
+    private bool _threadLoadFailed;
 
     /// <summary>The in-flight history load, if any — a send awaits it before appending, so the
     /// load's rebuild of the list cannot wipe turns added after it started. Never faults:
@@ -45,9 +65,11 @@ public partial class MemberChatPage : ContentView
         _memberId = memberId;
         _memberFirstName = memberFirstName;
         TurnsList.ItemsSource = _turns;
+        SessionsList.ItemsSource = _sessions;
 
         if (!string.IsNullOrWhiteSpace(memberFirstName))
             SubtitleLabel.Text = $"What would you like to know about {memberFirstName}?";
+        _threadSubtitle = SubtitleLabel.Text;
 
         // No OnAppearing on a ContentView — the host adds this to its tree only at the moment
         // it's shown (see MemberChatLauncher), so construction time is the right time to load.
@@ -60,14 +82,169 @@ public partial class MemberChatPage : ContentView
     /// AppPopupPage's scrim.</summary>
     private void OnScrimTapped(object? sender, EventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _loadTask = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e)
+    {
+        // The error panel is shared between modes, so the retry has to redo whichever load
+        // actually failed. A past conversation that failed to open retries to the list — the id
+        // it needed came from there, and the list is the safe place to pick it again.
+        if (_mode == ChatViewMode.Thread)
+            _loadTask = LoadAsync();
+        else
+            _ = ShowHistoryListAsync();
+    }
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
+        // The refresher wraps the one CollectionView both the thread and a reopened past
+        // conversation render in — but it only ever refreshes the live thread, and a past
+        // conversation is finished: there is nothing fresher to fetch into it.
+        if (_mode != ChatViewMode.Thread)
+        {
+            Refresher.IsRefreshing = false;
+            return;
+        }
+
         var load = LoadAsync();
         _loadTask = load;
         await load;
         Refresher.IsRefreshing = false;
+    }
+
+    /// <summary>The header's history button: a toggle as much as a door. From the thread it opens
+    /// the list, from the list it returns to the thread, and from a reopened old conversation it
+    /// steps back out to the list.</summary>
+    private void OnHistoryTapped(object? sender, EventArgs e)
+    {
+        // Not while a reply is in flight: the pending bubble belongs to the thread, and the send's
+        // completion would land its answer into a view showing something else.
+        if (_isSending)
+            return;
+
+        if (_mode == ChatViewMode.HistoryList)
+            ShowThread();
+        else
+            _ = ShowHistoryListAsync();
+    }
+
+    private void OnBackToChatClicked(object? sender, EventArgs e) => ShowThread();
+
+    private async void OnSessionTapped(object? sender, TappedEventArgs e)
+    {
+        if ((sender as BindableObject)?.BindingContext is not ChatSessionItem item)
+            return;
+
+        // The row that is this conversation opens as the conversation — live, input and all —
+        // not as a second, read-only copy of itself.
+        if (item.IsCurrent)
+        {
+            ShowThread();
+            return;
+        }
+
+        await ShowPastSessionAsync(item);
+    }
+
+    /// <summary>Puts the live thread back: its bubbles, its input bar, its subtitle. If the
+    /// thread's own load had failed, returning here retries it instead of presenting the empty
+    /// list the failure left behind.</summary>
+    private void ShowThread()
+    {
+        _mode = ChatViewMode.Thread;
+        SubtitleLabel.Text = _threadSubtitle;
+        TurnsList.ItemsSource = _turns;
+        InputBar.IsVisible = true;
+        BackToChatPanel.IsVisible = false;
+        SessionsList.IsVisible = false;
+
+        if (_threadLoadFailed)
+        {
+            _loadTask = LoadAsync();
+            return;
+        }
+
+        SetState(loaded: true);
+        SuggestionsPanel.IsVisible = _turns.Count == 0 && SuggestionsRow.Count > 0;
+        ScrollToLatest(animate: false);
+    }
+
+    private async Task ShowHistoryListAsync()
+    {
+        _mode = ChatViewMode.HistoryList;
+        SubtitleLabel.Text = "Past conversations";
+        SuggestionsPanel.IsVisible = false;
+        InputBar.IsVisible = false;
+        BackToChatPanel.IsVisible = true;
+        SessionsList.IsVisible = false;
+        SetState(loading: true);
+
+        try
+        {
+            var response = await _api.GetMemberChatSessionsAsync(_memberId);
+
+            // The caregiver may have tapped their way out while this was in flight — the mode
+            // they moved to owns the panels now.
+            if (_mode != ChatViewMode.HistoryList)
+                return;
+
+            _sessions.Clear();
+            foreach (var session in response.Sessions)
+                _sessions.Add(ChatSessionItem.From(session, session.SessionId == _currentSessionId));
+
+            SetState();
+            SessionsList.IsVisible = true;
+        }
+        catch (ApiException ex)
+        {
+            if (_mode != ChatViewMode.HistoryList)
+                return;
+            ErrorDetailLabel.Text = ex.Message;
+            SetState(error: true);
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading past conversations");
+            if (_mode != ChatViewMode.HistoryList)
+                return;
+            ErrorDetailLabel.Text = "Something went wrong while showing this.";
+            SetState(error: true);
+        }
+    }
+
+    private async Task ShowPastSessionAsync(ChatSessionItem item)
+    {
+        _mode = ChatViewMode.PastSession;
+        SubtitleLabel.Text = item.OpenedLabel;
+        SessionsList.IsVisible = false;
+        SetState(loading: true);
+
+        try
+        {
+            var history = await _api.GetMemberChatSessionAsync(_memberId, item.SessionId);
+            if (_mode != ChatViewMode.PastSession)
+                return;
+
+            _pastTurns.Clear();
+            foreach (var turn in history.Turns)
+                _pastTurns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
+
+            TurnsList.ItemsSource = _pastTurns;
+            SetState(loaded: true);
+        }
+        catch (ApiException ex)
+        {
+            if (_mode != ChatViewMode.PastSession)
+                return;
+            ErrorDetailLabel.Text = ex.Message;
+            SetState(error: true);
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while opening a past conversation");
+            if (_mode != ChatViewMode.PastSession)
+                return;
+            ErrorDetailLabel.Text = "Something went wrong while showing this.";
+            SetState(error: true);
+        }
     }
 
     private async void OnSendTapped(object? sender, EventArgs e)
@@ -95,7 +272,10 @@ public partial class MemberChatPage : ContentView
             // _isSending as well as the turn count: a send hides this panel before it appends the
             // caregiver's own bubble, so a reply to this request landing in that gap would find
             // an empty thread and put the chips back underneath a message already on its way.
-            if (response.Suggestions.Count == 0 || _turns.Count > 0 || _isSending)
+            // The mode check is the same race one layer out — a caregiver already looking at
+            // history must not get the thread's chips drawn under the sessions list.
+            if (response.Suggestions.Count == 0 || _turns.Count > 0 || _isSending
+                || _mode != ChatViewMode.Thread)
                 return;
 
             SuggestionsRow.Clear();
@@ -215,6 +395,14 @@ public partial class MemberChatPage : ContentView
                     _turns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
             }
 
+            _currentSessionId = history?.SessionId;
+            _threadLoadFailed = false;
+
+            // The caregiver may have opened history while this was in flight — keep the data,
+            // leave the panels to the mode that owns them now.
+            if (_mode != ChatViewMode.Thread)
+                return;
+
             SetState(loaded: true);
 
             // Only on an empty conversation — a resumed session already has its own thread to
@@ -236,7 +424,8 @@ public partial class MemberChatPage : ContentView
         }
         catch (ApiException ex)
         {
-            if (_turns.Count == 0)
+            _threadLoadFailed = _turns.Count == 0;
+            if (_turns.Count == 0 && _mode == ChatViewMode.Thread)
             {
                 ErrorDetailLabel.Text = ex.Message;
                 SetState(error: true);
@@ -247,7 +436,8 @@ public partial class MemberChatPage : ContentView
             // Same async-void-has-no-observer hole MedicalInformationPage documents on its own
             // OnAppearing/pull handlers — without this the page never leaves its skeleton.
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading");
-            if (_turns.Count == 0)
+            _threadLoadFailed = _turns.Count == 0;
+            if (_turns.Count == 0 && _mode == ChatViewMode.Thread)
             {
                 ErrorDetailLabel.Text = "Something went wrong while showing this.";
                 SetState(error: true);
@@ -306,6 +496,9 @@ public partial class MemberChatPage : ContentView
         {
             var response = await _api.SendMemberChatMessageAsync(
                 _memberId, new MemberChatMessageRequest { Message = message });
+            // The send may have started a fresh session (first message, or the active window
+            // lapsed) — the history list tells its rows apart by this id.
+            _currentSessionId = response.SessionId;
             _turns.Add(ChatTurnItem.FromReply(response, _memberFirstName));
         }
         catch (ApiException ex)
@@ -596,5 +789,58 @@ public sealed class ChatTurnItem
             .Select(c => $"{c.Metric}: {ChatMetricFormat.Bare(c.Metric, c.Points[0].Value)} → "
                 + $"{ChatMetricFormat.Bare(c.Metric, c.Points[^1].Value)}");
         return string.Join(" · ", parts);
+    }
+}
+
+/// <summary>
+/// One row of the history list, display values pre-computed at construction — the same
+/// converter-free convention as <see cref="ChatTurnItem"/>.
+/// </summary>
+public sealed class ChatSessionItem
+{
+    public required Guid SessionId { get; init; }
+
+    /// <summary>The caregiver's opening question — the line a past conversation is recognised
+    /// by, so it names the row.</summary>
+    public required string FirstQuestion { get; init; }
+
+    /// <summary>"Yesterday · 3 questions", or "Current conversation · 3 questions" for the row
+    /// that is this thread.</summary>
+    public required string Meta { get; init; }
+
+    /// <summary>This row is the conversation the sheet is already having — tapping it returns to
+    /// the live thread rather than opening a read-only copy.</summary>
+    public required bool IsCurrent { get; init; }
+
+    /// <summary>The header subtitle while this conversation is open — "From yesterday",
+    /// "From Aug 21" — so the sheet says whose words the caregiver is rereading.</summary>
+    public required string OpenedLabel { get; init; }
+
+    public static ChatSessionItem From(MemberChatSessionSummaryResponse session, bool isCurrent)
+    {
+        // Day granularity, not clock time: the list is scanned by "which conversation was that?",
+        // and per-bubble times live inside the conversation itself.
+        var local = session.LastTurnAtUtc.ToLocalTime();
+        var day = DateOnly.FromDateTime(local.DateTime);
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var dayLabel = day == today ? "Today"
+            : day == today.AddDays(-1) ? "Yesterday"
+            : local.ToString("MMM d", CultureInfo.CurrentCulture);
+        var questions = session.QuestionCount == 1 ? "1 question" : $"{session.QuestionCount} questions";
+
+        return new ChatSessionItem
+        {
+            SessionId = session.SessionId,
+            // A question that decrypts to nothing (a row from before encryption, or under a
+            // rotated key) still gets a nameable row rather than a blank one.
+            FirstQuestion = string.IsNullOrWhiteSpace(session.FirstQuestion)
+                ? "A conversation"
+                : session.FirstQuestion,
+            Meta = isCurrent ? $"Current conversation · {questions}" : $"{dayLabel} · {questions}",
+            IsCurrent = isCurrent,
+            OpenedLabel = day == today ? "From earlier today"
+                : day == today.AddDays(-1) ? "From yesterday"
+                : $"From {dayLabel}",
+        };
     }
 }

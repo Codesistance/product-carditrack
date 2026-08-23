@@ -742,20 +742,64 @@ public class MemberChatService : IMemberChatService
         if (withTurns is null)
             return null;
 
-        return new MemberChatHistoryResponse
+        return ToHistoryResponse(withTurns);
+    }
+
+    public async Task<MemberChatSessionListResponse> GetSessionsAsync(
+        Guid userId, Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        var listings = await _unitOfWork.MemberChatSessions.ListForMemberAsync(userId, cardiMemberId, ct);
+
+        return new MemberChatSessionListResponse
         {
-            SessionId = withTurns.Id,
-            Turns = withTurns.Turns
-                .Select(t => new MemberChatTurnResponse
+            // A session with no caregiver turn has nothing a list row can be recognised by. It
+            // exists only when a send failed before its first turn persisted, and showing it
+            // would put an unlabelled, empty conversation at the top of the list.
+            Sessions = listings
+                .Where(l => l.FirstQuestionContent is not null)
+                .Select(l => new MemberChatSessionSummaryResponse
                 {
-                    Role = t.Role.ToString(),
-                    Content = Reveal(t.Content),
-                    Charts = RevealCharts(t.Charts),
-                    CreatedAtUtc = t.CreatedAtUtc,
+                    SessionId = l.Session.Id,
+                    StartedAtUtc = l.Session.StartedAtUtc,
+                    LastTurnAtUtc = l.Session.LastTurnAtUtc,
+                    FirstQuestion = Reveal(l.FirstQuestionContent),
+                    QuestionCount = l.QuestionCount,
                 })
                 .ToList(),
         };
     }
+
+    public async Task<MemberChatHistoryResponse> GetSessionAsync(
+        Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        var session = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);
+
+        // Ownership is both halves, checked after the member gate: a session id that exists but
+        // belongs to another caregiver — or to the same caregiver about a different member — gets
+        // the same 404 as one that never existed, so a guessed id learns nothing.
+        if (session is null || session.UserId != userId || session.CardiMemberId != cardiMemberId)
+            throw new KeyNotFoundException("We couldn't find that conversation.");
+
+        return ToHistoryResponse(session);
+    }
+
+    private MemberChatHistoryResponse ToHistoryResponse(MemberChatSession withTurns) => new()
+    {
+        SessionId = withTurns.Id,
+        Turns = withTurns.Turns
+            .Select(t => new MemberChatTurnResponse
+            {
+                Role = t.Role.ToString(),
+                Content = Reveal(t.Content),
+                Charts = RevealCharts(t.Charts),
+                CreatedAtUtc = t.CreatedAtUtc,
+            })
+            .ToList(),
+    };
 
     private async Task<MemberChatSession> GetOrCreateSessionAsync(
         Guid userId, Guid cardiMemberId, DateTime utcNow, CancellationToken ct)

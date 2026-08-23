@@ -202,6 +202,16 @@ public interface ICardiTrackApiClient
     Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
         Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>Every conversation the caregiver has had about this member, newest activity
+    /// first — what the chat sheet's history list shows. An empty list is a caregiver who
+    /// hasn't chatted yet, not an error.</summary>
+    Task<MemberChatSessionListResponse> GetMemberChatSessionsAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>One past conversation and its turns, opened from the history list.</summary>
+    Task<MemberChatHistoryResponse> GetMemberChatSessionAsync(
+        Guid cardiMemberId, Guid sessionId, CancellationToken ct = default);
+
     /// <summary>Short lines to cycle in the pending reply bubble while the send for the same
     /// message is in flight — fired alongside <see cref="SendMemberChatMessageAsync"/>, never
     /// instead of it. The caller falls back to its own canned lines if this fails or loses the
