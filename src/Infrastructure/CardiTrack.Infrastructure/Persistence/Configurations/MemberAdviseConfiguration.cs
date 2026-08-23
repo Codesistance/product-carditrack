@@ -12,9 +12,16 @@ public class MemberAdviseConfiguration : IEntityTypeConfiguration<MemberAdvise>
 
         builder.HasKey(a => a.Id);
 
-        // One suggestion per member, and the dashboard's read is by member — the unique index is
+        // One suggestion per member per topic, and every read is by member — the unique index is
         // both the upsert guarantee and the lookup path.
-        builder.HasIndex(a => a.CardiMemberId).IsUnique();
+        builder.HasIndex(a => new { a.CardiMemberId, a.Topic }).IsUnique();
+
+        // By name, following MemberChatTurnConfiguration.Workflow: this column keys which
+        // suggestion answers which question, and a renumbering must not silently retopic rows.
+        builder.Property(a => a.Topic)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
 
         // Generous ceilings, not the prompt's asked-for lengths: the writer already caps what the
         // model returns, and the column guards against a runaway value, not style.

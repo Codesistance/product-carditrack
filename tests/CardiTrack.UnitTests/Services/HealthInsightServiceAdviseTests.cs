@@ -59,14 +59,14 @@ public class HealthInsightServiceAdviseTests
             DateOfBirth = new DateOnly(1948, 3, 15),
             IsActive = true,
         });
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Steps have been below her usual this week.",
             Suggestion = "A short walk after lunch is worth trying.",
             GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
-        });
+        }]);
     }
 
     private HealthInsightService CreateSut() =>
@@ -87,14 +87,14 @@ public class HealthInsightServiceAdviseTests
     public async Task ReportsTheRowsGenerationTime_NotTheReadTime()
     {
         var generatedAt = DateTime.UtcNow.AddHours(-2);
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = generatedAt,
-        });
+        }]);
 
         var result = await CreateSut().GetAdviseAsync(_userId, _memberId);
 
@@ -120,7 +120,7 @@ public class HealthInsightServiceAdviseTests
     [Fact]
     public async Task NoRowYet_AnswersNothingToSuggest()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns((MemberAdvise?)null);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
 
         var result = await CreateSut().GetAdviseAsync(_userId, _memberId);
 
@@ -136,14 +136,14 @@ public class HealthInsightServiceAdviseTests
     [Fact]
     public async Task StaleRow_IsWithheld()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Old summary.",
             Suggestion = "Old suggestion.",
             GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = DateTime.UtcNow.AddDays(-4),
-        });
+        }]);
 
         var result = await CreateSut().GetAdviseAsync(_userId, _memberId);
 
@@ -160,14 +160,14 @@ public class HealthInsightServiceAdviseTests
     [Fact]
     public async Task RowThatCitesNoReference_IsWithheld()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GuidelineCited = null,
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
-        });
+        }]);
 
         var result = await CreateSut().GetAdviseAsync(_userId, _memberId);
 
@@ -178,14 +178,14 @@ public class HealthInsightServiceAdviseTests
     [Fact]
     public async Task RowJustInsideTheCeiling_StillServes()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Recent summary.",
             Suggestion = "Recent suggestion.",
             GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
-        });
+        }]);
 
         var result = await CreateSut().GetAdviseAsync(_userId, _memberId);
 

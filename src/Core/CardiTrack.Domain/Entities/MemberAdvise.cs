@@ -1,11 +1,13 @@
 using CardiTrack.Domain.Common;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Domain.Entities;
 
 /// <summary>
-/// One member's current wellness suggestion — the latest output of the batch Advise pass, served
-/// read-only to caregivers. One row per member, overwritten on each regeneration (no history: the
-/// suggestion is current guidance, not a record).
+/// One member's current wellness suggestion for one topic — the latest output of the batch Advise
+/// pass, served read-only to caregivers. One row per member per <see cref="AdviseTopic"/>,
+/// overwritten on each regeneration (no history: the suggestion is current guidance, not a
+/// record).
 /// </summary>
 /// <remarks>
 /// Persisted for the same reason as <see cref="MemberStatusLine"/>: the writer (the pipeline job)
@@ -16,6 +18,10 @@ namespace CardiTrack.Domain.Entities;
 public class MemberAdvise : BaseEntity
 {
     public Guid CardiMemberId { get; set; }
+
+    /// <summary>Which area of wellbeing this suggestion addresses — see <see cref="AdviseTopic"/>.
+    /// Part of the row's identity: the unique index is (member, topic).</summary>
+    public AdviseTopic Topic { get; set; } = AdviseTopic.General;
 
     /// <summary>What in the readings prompted the suggestion.</summary>
     public string Summary { get; set; } = string.Empty;

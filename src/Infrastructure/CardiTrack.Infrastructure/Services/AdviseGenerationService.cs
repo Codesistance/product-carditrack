@@ -2,6 +2,7 @@
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -52,13 +53,15 @@ public class AdviseGenerationService
         reference below and their own recent readings and baseline.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
-        Respond with:
+        Respond with entries — one per area of wellbeing where the readings genuinely support a
+        suggestion, at most one each for Sleep, Activity and HeartRate, and General only for a
+        suggestion that spans areas. Include an area only when something in the readings calls for
+        it; an empty list is the correct answer when nothing does. Each entry:
+        - topic: Sleep, Activity, HeartRate or General, exactly as written.
         - summary: what in the readings prompted this suggestion.
         - suggestion: one everyday thing the family could try, grounded in the reference below —
           never a diagnosis, a prescription, or a change to medication or treatment.
-        - guidelineCited: which reference below the suggestion draws on, in a few words. If nothing
-          in the reference fits the readings, say there is nothing to suggest right now and leave
-          this blank.
+        - guidelineCited: which reference below the suggestion draws on, in a few words.
 
         """ + MedicalPromptBlocks.ContextGuardrail;
 
@@ -109,8 +112,10 @@ public class AdviseGenerationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(DateTime.UtcNow))
             return;
 
-        var existing = await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
-        if (existing is not null && DateTime.UtcNow - existing.GeneratedAtUtc < RegenerationInterval)
+        var existing = await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId);
+        // The batch writes every topic in one pass, so the newest row's age gates them all.
+        if (existing.Count > 0
+            && DateTime.UtcNow - existing.Max(a => a.GeneratedAtUtc) < RegenerationInterval)
             return;
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -127,77 +132,105 @@ public class AdviseGenerationService
         var aiResponse = await _medicalAi.GenerateStructuredAsync<AdviseAiResponse>(prompt, ct);
 
         var name = NamePlaceholder.FirstName(member.Name);
-        var summary = ResolvedOrEmpty(aiResponse.Summary, name);
-        var suggestion = ResolvedOrEmpty(aiResponse.Suggestion, name);
-        var guidelineCited = ResolvedOrEmpty(aiResponse.GuidelineCited, name);
 
-        // Two different "nothing to serve" replies, withheld the same way. A citation naming no
-        // reference is the model declining to ground the suggestion — which the prompt explicitly
-        // invites when nothing fits, and which AdviseRegisterGuards also recognises in the
-        // placeholders a model reaches for instead of leaving the field blank. A summary or
-        // suggestion that names a condition or proposes a treatment is the model crossing the one
-        // boundary this generation exists inside; the prompt asks it not to, and asking is not
-        // enforcing (see AdviseRegisterGuards). Either way the honest outcome is no row: a
-        // suggestion is not so valuable that it is worth serving one that broke its own contract.
-        if (AdviseRegisterGuards.IsUngroundedCitation(guidelineCited)
-            || AdviseRegisterGuards.ReadsAsClinical(summary)
-            || AdviseRegisterGuards.ReadsAsClinical(suggestion))
+        // One survivor per topic, defensively parsed: an unrecognised topic name is dropped like
+        // any other out-of-vocabulary model answer, a second entry for the same topic loses to the
+        // first, and the register guards apply per entry exactly as they did to the single row —
+        // an entry that names a condition, proposes a treatment, or cites no reference is
+        // withheld, not softened.
+        var incoming = new Dictionary<AdviseTopic, (string Summary, string Suggestion, string Guideline)>();
+        // Topics whose entry came back with a blank summary or suggestion — a transient model
+        // hiccup, same stance as the single-row version: the previous suggestion beats none, so
+        // the existing row for that topic is kept rather than removed as deliberate silence.
+        var hiccups = new HashSet<AdviseTopic>();
+        foreach (var entry in aiResponse.Entries)
         {
-            if (AdviseRegisterGuards.ReadsAsClinical(summary) || AdviseRegisterGuards.ReadsAsClinical(suggestion))
+            if (!Enum.TryParse<AdviseTopic>(entry.Topic, ignoreCase: true, out var topic)
+                || !Enum.IsDefined(topic) || incoming.ContainsKey(topic))
+                continue;
+
+            var summary = ResolvedOrEmpty(entry.Summary, name);
+            var suggestion = ResolvedOrEmpty(entry.Suggestion, name);
+            var guideline = ResolvedOrEmpty(entry.GuidelineCited, name);
+
+            if (string.IsNullOrWhiteSpace(summary) || string.IsNullOrWhiteSpace(suggestion))
+            {
+                hiccups.Add(topic);
+                continue;
+            }
+
+            if (AdviseRegisterGuards.IsUngroundedCitation(guideline)
+                || AdviseRegisterGuards.ReadsAsClinical(summary)
+                || AdviseRegisterGuards.ReadsAsClinical(suggestion))
             {
                 _logger.LogWarning(
-                    "Advise for CardiMember {CardiMemberId} came back naming a condition or a "
-                    + "treatment; withholding it.",
-                    cardiMemberId);
+                    "Advise for CardiMember {CardiMemberId} topic {Topic} came back ungrounded or "
+                    + "clinical; withholding it.",
+                    cardiMemberId, topic);
+                continue;
             }
 
-            if (existing is not null)
+            incoming[topic] = (summary, suggestion, guideline);
+        }
+
+        // Reconcile: every topic the model spoke for is upserted; every topic it stayed silent on
+        // has its row removed — the prompt makes silence deliberate ("include an area only when
+        // something calls for it"), and a suggestion the readings no longer support is worse than
+        // none. The whole pass is one SaveChanges, so a reader never sees half a regeneration.
+        var removals = existing
+            .Where(r => !incoming.ContainsKey(r.Topic) && !hiccups.Contains(r.Topic))
+            .ToList();
+        foreach (var row in removals)
+            _unitOfWork.MemberAdvises.Remove(row);
+
+        // Nothing to write and nothing to remove — a hiccup-only pass, or silence with no rows to
+        // withdraw. Saving here would be a no-op flush on every such pass; the single-row version
+        // did not pay it and neither does this.
+        if (incoming.Count == 0 && removals.Count == 0)
+            return;
+
+        var staged = new List<MemberAdvise>();
+        foreach (var (topic, (summary, suggestion, guideline)) in incoming)
+        {
+            var row = existing.FirstOrDefault(r => r.Topic == topic);
+            if (row is not null)
             {
-                _unitOfWork.MemberAdvises.Remove(existing);
-                await _unitOfWork.SaveChangesAsync();
+                Overwrite(row, summary, suggestion, guideline);
+                continue;
             }
-            return;
+
+            var fresh = new MemberAdvise
+            {
+                CardiMemberId = cardiMemberId,
+                Topic = topic,
+                Summary = summary,
+                Suggestion = suggestion,
+                GuidelineCited = guideline,
+                GeneratedAtUtc = DateTime.UtcNow,
+            };
+            staged.Add(fresh);
+            await _unitOfWork.MemberAdvises.AddAsync(fresh);
         }
 
-        if (string.IsNullOrWhiteSpace(summary) || string.IsNullOrWhiteSpace(suggestion))
-        {
-            _logger.LogWarning(
-                "Advise for CardiMember {CardiMemberId} came back blank; keeping the previous suggestion.",
-                cardiMemberId);
-            return;
-        }
-
-        if (existing is not null)
-        {
-            Overwrite(existing, summary, suggestion, guidelineCited);
-            await _unitOfWork.SaveChangesAsync();
-            return;
-        }
-
-        var fresh = new MemberAdvise
-        {
-            CardiMemberId = cardiMemberId,
-            Summary = summary,
-            Suggestion = suggestion,
-            GuidelineCited = guidelineCited,
-            GeneratedAtUtc = DateTime.UtcNow,
-        };
-        await _unitOfWork.MemberAdvises.AddAsync(fresh);
         try
         {
             await _unitOfWork.SaveChangesAsync();
         }
         catch (DbUpdateException)
         {
-            // Lost the insert race on the unique CardiMemberId index — same recovery
-            // StatusLineGenerationService applies: detach the staged insert and overwrite the
-            // winner's row instead.
-            _unitOfWork.MemberAdvises.Remove(fresh);
-            var winner = await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId)
-                ?? throw new InvalidOperationException(
-                    $"Insert of the Advise row for CardiMember {cardiMemberId} failed, but no "
-                    + "existing row was found — not the unique-index race this handles.");
-            Overwrite(winner, summary, suggestion, guidelineCited);
+            // Lost an insert race on the unique (CardiMemberId, Topic) index — the same recovery
+            // the single-row version applied, per topic: detach this pass's staged inserts, let
+            // the winner's rows stand, and overwrite them with this pass's content.
+            foreach (var insert in staged)
+                _unitOfWork.MemberAdvises.Remove(insert);
+
+            var winners = await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId);
+            foreach (var (topic, (summary, suggestion, guideline)) in incoming)
+            {
+                var winner = winners.FirstOrDefault(r => r.Topic == topic);
+                if (winner is not null)
+                    Overwrite(winner, summary, suggestion, guideline);
+            }
             await _unitOfWork.SaveChangesAsync();
         }
     }
@@ -255,6 +288,17 @@ public class AdviseGenerationService
     // exercised directly in tests.
     internal sealed record AdviseAiResponse
     {
+        /// <summary>At most one entry per <see cref="AdviseTopic"/>; empty when nothing in the
+        /// readings supports a suggestion anywhere — which the prompt names as the correct
+        /// answer, not a failure. Required so "nothing fits" has to be said as an empty list
+        /// rather than an omitted field — the same rationale as the planner's metrics, and what
+        /// keeps the schema free of the object-or-null branch the grammar tests forbid.</summary>
+        public required IReadOnlyList<AdviseEntryAiResponse> Entries { get; init; }
+    }
+
+    internal sealed record AdviseEntryAiResponse
+    {
+        public required string Topic { get; init; }
         public required string Summary { get; init; }
         public required string Suggestion { get; init; }
         public string? GuidelineCited { get; init; }

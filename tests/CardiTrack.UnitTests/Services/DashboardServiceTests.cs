@@ -57,7 +57,7 @@ public class DashboardServiceTests
         _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([]);
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((RealtimeAssessment?)null);
-        _advises.GetByCardiMemberAsync(_memberId).Returns((MemberAdvise?)null);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
     }
 
     // Composed with the real access service rather than a stub: the link rules under test here
@@ -748,14 +748,14 @@ public class DashboardServiceTests
     [Fact]
     public async Task HasAdvise_IsTrue_ForAFreshRow()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GuidelineCited = "WHO adult activity guidance",
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
-        });
+        }]);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
@@ -770,14 +770,14 @@ public class DashboardServiceTests
     [Fact]
     public async Task HasAdvise_IsFalse_ForARowThatCitesNoReference()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GuidelineCited = null,
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
-        });
+        }]);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
@@ -795,13 +795,13 @@ public class DashboardServiceTests
     [Fact]
     public async Task HasAdvise_IsFalse_ForAStaleRow()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GeneratedAtUtc = DateTime.UtcNow.AddDays(-4),
-        });
+        }]);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
@@ -817,17 +817,17 @@ public class DashboardServiceTests
     public async Task HasAdvise_IsFalse_ForAPausedMember_EvenWithAFreshRow()
     {
         SetupPausedMember(DateTime.UtcNow.AddHours(12), "Travelling");
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
-        });
+        }]);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
         Assert.False(result.HasAdvise);
-        await _advises.DidNotReceive().GetByCardiMemberAsync(Arg.Any<Guid>());
+        await _advises.DidNotReceive().GetAllByCardiMemberAsync(Arg.Any<Guid>());
     }
 }

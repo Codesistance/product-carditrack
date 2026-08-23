@@ -57,14 +57,14 @@ public class MemberChatAdviseRoutingTests
         });
         _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns((MemberChatSession?)null);
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "His steps have been below his usual this week.",
             Suggestion = "A short walk after lunch is worth trying.",
             GuidelineCited = "Adult physical activity (WHO, 2020)",
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-6),
-        });
+        }]);
 
         Triage(askingForAdvice: true);
     }
@@ -153,7 +153,7 @@ public class MemberChatAdviseRoutingTests
     [Fact]
     public async Task NoCurrentRow_StillAnswersOnThisPath()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns((MemberAdvise?)null);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
 
         var result = await CreateSut().SendMessageAsync(_userId, _memberId, "does he need help with his sleep");
 
@@ -190,6 +190,6 @@ public class MemberChatAdviseRoutingTests
         await _planner.Received(1).PlanAsync(
             Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
             Arg.Any<CancellationToken>());
-        await _advises.DidNotReceive().GetByCardiMemberAsync(_memberId);
+        await _advises.DidNotReceive().GetAllByCardiMemberAsync(_memberId);
     }
 }

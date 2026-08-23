@@ -99,6 +99,7 @@ internal static class StructuredOutputSchema
     {
         var node = JsonSchemaExporter.GetJsonSchemaAsNode(SerializerOptions, t, DescribedSchemaOptions);
         RequireAnObjectAtTheRoot(node);
+        RequireObjectsInsideArrays(node);
         return node.ToJsonString(SerializerOptions);
     });
 
@@ -141,6 +142,28 @@ internal static class StructuredOutputSchema
         // leave it alone rather than guess.
         if (named is ["object"])
             root["type"] = "object";
+    }
+
+    /// <summary>
+    /// Drops <c>null</c> from object-typed array items, for exactly the root's reason: the
+    /// exporter has no nullability annotation to read for a collection's reference-type items, so
+    /// a list of entry records exports as items that may each be <c>null</c> — a legal element
+    /// the deserializer turns into a null entry no caller wants. A nullable <em>property</em> on
+    /// an entry keeps its null, as everywhere else; only the entry object itself loses it.
+    /// </summary>
+    private static void RequireObjectsInsideArrays(System.Text.Json.Nodes.JsonNode node)
+    {
+        if (node is not System.Text.Json.Nodes.JsonObject obj)
+            return;
+
+        foreach (var property in obj.ToList())
+        {
+            if (property.Key == "items" && property.Value is System.Text.Json.Nodes.JsonNode items)
+                RequireAnObjectAtTheRoot(items);
+
+            if (property.Value is not null)
+                RequireObjectsInsideArrays(property.Value);
+        }
     }
 
     /// <summary>

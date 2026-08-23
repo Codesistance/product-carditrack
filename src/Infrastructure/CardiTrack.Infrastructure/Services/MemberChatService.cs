@@ -379,7 +379,7 @@ public class MemberChatService : IMemberChatService
                 { IsAboutThisMoment: true } =>
                     await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow),
                 { IsAskingForAdvice: true } =>
-                    await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
+                    await AnswerAdviseAsync(flattened, triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
                     await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, ct),
                 _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
@@ -623,7 +623,7 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.Status =>
                 await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow),
             MemberChatWorkflow.Advise =>
-                await AnswerAdviseAsync(triageUsage, cardiMemberId, member, utcNow),
+                await AnswerAdviseAsync(flattened, triageUsage, cardiMemberId, member, utcNow),
             MemberChatWorkflow.SteerCasual =>
                 await SteerAsync(flattened, triageUsage, casual: true, member?.Name, ct),
             MemberChatWorkflow.SteerOffTopic =>
@@ -884,13 +884,18 @@ public class MemberChatService : IMemberChatService
     /// </para>
     /// </remarks>
     private async Task<MemberChatWorkflowResult> AnswerAdviseAsync(
+        string flattened,
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
         DateTime utcNow)
     {
+        // Topic-scoped: the question's own words pick which suggestion answers it — the sleep
+        // question gets the sleep row — through the same picker the details card and the
+        // dashboard indicator read, so the three surfaces cannot disagree.
         var advise = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
-            ? await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId)
+            ? AdvisePicker.Pick(
+                flattened, await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), utcNow)
             : null;
 
         return new MemberChatWorkflowResult
