@@ -7,9 +7,15 @@ namespace CardiTrack.Domain.Enums;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Values are DB-persisted; never renumber. The gap at 6 is deliberate: <see cref="Steer"/> was
-/// the single entry before the casual/off-topic split, and reusing its number for one half would
-/// silently relabel every turn already stamped with it.
+/// Persisted by <em>name</em>, not number — the convention <c>MemberChatTurnConfiguration.Role</c>
+/// and <c>MemberQuestionnaireConfiguration.Status</c> already follow, because a name survives both
+/// an incident and a renumbering. So the numbers here are free to move and the names are not:
+/// renaming a member rewrites the meaning of every turn already stamped with it.
+/// </para>
+/// <para>
+/// <see cref="Steer"/> is retired rather than removed for exactly that reason. It was the single
+/// entry before the casual/off-topic split, and turns written under it stay honest only while the
+/// name still resolves.
 /// </para>
 /// <para>
 /// Until this is stamped, which workflow ran is only recoverable by inspecting which

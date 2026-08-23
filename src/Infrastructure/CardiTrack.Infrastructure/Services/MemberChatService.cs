@@ -300,7 +300,7 @@ public class MemberChatService : IMemberChatService
         };
 
         var (_, assistantTurn) = await PersistTurnsAsync(
-            session, flattened, result.Reply, result.Charts, utcNow, ct);
+            session, flattened, result, utcNow, ct);
         await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
 
         await _unitOfWork.SaveChangesAsync();
@@ -346,6 +346,7 @@ public class MemberChatService : IMemberChatService
 
         return new MemberChatWorkflowResult
         {
+            Workflow = MemberChatWorkflow.Analysis,
             Reply = reply,
             Charts = BuildCharts(fetched, plan.Result.ChartMetrics),
             Calls =
@@ -409,6 +410,7 @@ public class MemberChatService : IMemberChatService
 
         return new MemberChatWorkflowResult
         {
+            Workflow = casual ? MemberChatWorkflow.SteerCasual : MemberChatWorkflow.SteerOffTopic,
             Reply = reply,
             Calls = steerUsage is null
                 ? [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)]
@@ -459,6 +461,7 @@ public class MemberChatService : IMemberChatService
 
         return new MemberChatWorkflowResult
         {
+            Workflow = MemberChatWorkflow.Status,
             Reply = CapReply(LiveStatusReply(NamePlaceholder.FirstName(memberName), recent, today)),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
@@ -563,6 +566,7 @@ public class MemberChatService : IMemberChatService
 
         return new MemberChatWorkflowResult
         {
+            Workflow = MemberChatWorkflow.Advise,
             Reply = CapReply(AdviseReply(NamePlaceholder.FirstName(member?.Name), advise, utcNow)),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
@@ -976,11 +980,12 @@ public class MemberChatService : IMemberChatService
     private async Task<(MemberChatTurn User, MemberChatTurn Assistant)> PersistTurnsAsync(
         MemberChatSession session,
         string question,
-        string reply,
-        IReadOnlyList<ChartSeries> charts,
+        MemberChatWorkflowResult result,
         DateTime utcNow,
         CancellationToken ct)
     {
+        var (reply, charts) = (result.Reply, result.Charts);
+
         var userTurn = new MemberChatTurn
         {
             SessionId = session.Id,
@@ -992,6 +997,7 @@ public class MemberChatService : IMemberChatService
         {
             SessionId = session.Id,
             Role = ChatTurnRole.Assistant,
+            Workflow = result.Workflow,
             Content = _encryption.Encrypt(reply),
             Charts = charts.Count > 0
                 ? _encryption.Encrypt(System.Text.Json.JsonSerializer.Serialize(charts))

@@ -29,6 +29,14 @@ public class MemberChatTurnConfiguration : IEntityTypeConfiguration<MemberChatTu
             .HasMaxLength(20)
             .IsRequired();
 
+        // Stored by name for the same reason Role is, and it matters more here: this column exists
+        // to be read back as a distribution months later, and a renumbering would silently retitle
+        // every historical turn. Nullable — the caregiver's own turn has no workflow, and neither
+        // does anything written before this shipped.
+        builder.Property(t => t.Workflow)
+            .HasConversion<string>()
+            .HasMaxLength(20);
+
         builder.Property(t => t.CreatedAtUtc)
             .IsRequired();
 

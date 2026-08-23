@@ -31,6 +31,10 @@ public readonly record struct AiCallRecord(AiCallStep Step, AiProviderSlot Slot,
 /// </remarks>
 public sealed record MemberChatWorkflowResult
 {
+    /// <summary>Which way of answering produced this — stamped onto the assistant turn so the
+    /// distribution of real caregiver questions is a query rather than a guess.</summary>
+    public required MemberChatWorkflow Workflow { get; init; }
+
     /// <summary>The caregiver-facing answer, already capped and with the member's real name
     /// resolved back in — a workflow never returns a placeholder.</summary>
     public required string Reply { get; init; }
