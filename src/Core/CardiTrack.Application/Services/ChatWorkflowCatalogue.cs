@@ -58,14 +58,25 @@ public sealed record ChatWorkflowDefinition(
 
 /// <summary>
 /// The member-chat workflow vocabulary: what the router may return, what each entry may claim, and
-/// what data each may ask for. Data, not code — but every rendered id has a registered handler and
-/// the pair ships together, which the architecture parity test asserts in both directions.
+/// what data each may ask for. Data, not code — every rendered id is meant to have a registered
+/// handler, and the pair ships together.
 /// </summary>
 /// <remarks>
+/// <para>
+/// What the architecture parity test actually enforces today is the vocabulary and the claim
+/// limits — the catalogue agrees with <see cref="MemberChatWorkflow"/> in both directions, only
+/// Advise may claim <see cref="ChatClaimClass.Suggestion"/>, an entry that recommends or says
+/// nothing fetches nothing, anything licensed to judge can reach a baseline, and clarify is never
+/// rendered. The handler half — every rendered id has a handler, every handler is routable or
+/// explicitly app-triggered — waits for those handlers to become types; they are private methods
+/// on <c>MemberChatService</c> today, so there is nothing to reflect over.
+/// </para>
+/// <para>
 /// Constants in the Application layer, reviewed like an alert rule — see
 /// <see cref="AlertRuleCatalogue"/>, whose reserved-id pattern this follows. Changing what an entry
 /// may claim should take the same review as changing an alert threshold, because it is the same
 /// kind of decision.
+/// </para>
 /// </remarks>
 public static class ChatWorkflowCatalogue
 {

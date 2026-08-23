@@ -291,7 +291,7 @@ public class MemberChatService : IMemberChatService
         var result = triage.Result switch
         {
             { IsAboutThisMoment: true } =>
-                await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow, ct),
+                await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow),
             { IsAskingForAdvice: true } =>
                 await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
             { IsCasualOrSocial: true } or { IsOffTopic: true } =>
@@ -452,8 +452,7 @@ public class MemberChatService : IMemberChatService
         AiUsage triageUsage,
         Guid cardiMemberId,
         string? memberName,
-        DateTime utcNow,
-        CancellationToken ct)
+        DateTime utcNow)
     {
         var today = DateOnly.FromDateTime(utcNow);
         var recent = (await _unitOfWork.ActivityLogs

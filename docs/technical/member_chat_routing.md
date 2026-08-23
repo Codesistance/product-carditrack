@@ -1,6 +1,6 @@
 # Member chat routing — one call, seven entries, eight handlers
 
-**Status:** **Proposed (2026-08-23)** — design settled, nothing built. Reviewed through the software-architect, product-manager, security-architect and cloud-architect lenses; findings folded in below and logged in §13.
+**Status:** **Partly built (2026-08-23)** — design settled and reviewed through the software-architect, product-manager, security-architect and cloud-architect lenses; findings folded in below and logged in §13. **Rollout steps 2–4 are implemented** (the uniform workflow contract, the catalogue and its parity tests, and the persisted workflow stamp). Steps 5+ are not started and are gated on step 4's traffic data — see §10.
 **Placement:** Rework of a shipped R1 surface — *AI insights + chat endpoints*, [release_matrix.md](../release_matrix.md). Phases 1–4 are R1 hardening with no plan gate. **Phases 5+ are gated on phase 4 traffic data** and unplaced until it exists.
 **North Star:** questions per active caregiver per week. Baseline unknown — an open question, not a target.
 **Scope:** How a caregiver's chat message is routed to the code that answers it, and what vocabulary that decision is made in. Covers the routing call, the workflow catalogue, the dataset registry and where it is rendered, and the invariants the redesign inherits. Does **not** cover prompt wording beyond the purpose lines in §4, the mobile client, or anything about how MedGemma is served.
