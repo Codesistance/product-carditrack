@@ -328,17 +328,24 @@ public class MemberChatService : IMemberChatService
         DateTime utcNow,
         CancellationToken ct)
     {
-        var plan = await _planner.PlanAsync(flattened, history.Full, ct);
+        // The planner sees only what this workflow's catalogue entry allows — the registry slice
+        // and the parse gate are the same list, so prompt and validator cannot drift.
+        var plan = await _planner.PlanAsync(
+            flattened, history.Full, ChatWorkflowCatalogue.Find(MemberChatWorkflow.Analysis)!.AllowedDatasets, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
         var today = DateOnly.FromDateTime(utcNow);
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
-        var clinicalPrompt = BuildClinicalPrompt(flattened, memberContext, fetched, history.QuestionsOnly, today);
+        // The A20 boundary as types: everything member-identifying or clinical travels wrapped,
+        // and the only method that can unwrap it is the one building the Private-slot prompt. The
+        // rewrite builder's signature takes DeidentifiedFindings and cannot take this.
+        var clinicalOnly = ClinicalOnlyData.Wrap($"{memberContext}\n\n{FormatFetchedData(fetched, today)}");
+        var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
-        var rewritePrompt = BuildRewritePrompt(flattened, clinical.Result.Analysis);
+        var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
@@ -851,10 +858,12 @@ public class MemberChatService : IMemberChatService
               {question}
               """;
 
+    /// <summary>Builds the Private-slot prompt — the one place <see cref="ClinicalOnlyData"/> is
+    /// unwrapped. Instructions vary by rung (analysis and inference share this shape).</summary>
     private static string BuildClinicalPrompt(
-        string question, string memberContext, FetchedMemberData data, string? historyBlock, DateOnly today)
+        string question, ClinicalOnlyData clinicalOnly, string? historyBlock, string? instructions = null)
     {
-        var sections = new List<string> { ClinicalInstructions, memberContext, FormatFetchedData(data, today) };
+        var sections = new List<string> { instructions ?? ClinicalInstructions, clinicalOnly.RenderForClinicalPrompt() };
         if (historyBlock is not null)
             sections.Add(historyBlock);
         sections.Add($"--- {MedicalPromptBlocks.ChatQuestionLabel} ---\n{question}");
@@ -862,14 +871,17 @@ public class MemberChatService : IMemberChatService
         return string.Join("\n\n", sections);
     }
 
-    private static string BuildRewritePrompt(string question, string clinicalAnalysis) => $"""
+    /// <summary>Builds a Rewrite-slot prompt. Takes <see cref="DeidentifiedFindings"/> and there is
+    /// deliberately no overload taking <see cref="ClinicalOnlyData"/> — DPIA row A20's boundary as
+    /// a signature rather than a review-time convention.</summary>
+    private static string BuildRewritePrompt(string question, DeidentifiedFindings findings) => $"""
         {RewriteInstructions}
 
         --- {MedicalPromptBlocks.ChatQuestionLabel} ---
         {question}
 
         --- Clinical read to rewrite ---
-        {clinicalAnalysis}
+        {findings.Text}
         """;
 
     private static string FormatFetchedData(FetchedMemberData data, DateOnly today)

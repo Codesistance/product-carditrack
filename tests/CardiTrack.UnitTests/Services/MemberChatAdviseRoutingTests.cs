@@ -106,7 +106,8 @@ public class MemberChatAdviseRoutingTests
         await CreateSut().SendMessageAsync(_userId, _memberId, "does he need help with his sleep");
 
         await _planner.DidNotReceive().PlanAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+            Arg.Any<CancellationToken>());
         await _medicalAi.DidNotReceiveWithAnyArgs()
             .GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(default!, default);
         await _rewriteAi.DidNotReceive().GenerateWithUsageAsync(
@@ -151,7 +152,8 @@ public class MemberChatAdviseRoutingTests
 
         Assert.Contains("don't have a suggestion for Moses", result.Reply, StringComparison.Ordinal);
         await _planner.DidNotReceive().PlanAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+            Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -162,7 +164,9 @@ public class MemberChatAdviseRoutingTests
     public async Task AnOrdinaryQuestion_StillReachesThePlanner()
     {
         Triage(askingForAdvice: false);
-        _planner.PlanAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DataQueryPlan>(
                 new DataQueryPlan { Sources = [], RecentActivityDays = 7, RealtimeAssessmentHours = 24, ChartMetrics = [] },
                 new AiUsage()));
@@ -177,7 +181,8 @@ public class MemberChatAdviseRoutingTests
         await CreateSut().SendMessageAsync(_userId, _memberId, "how many steps has he done this week");
 
         await _planner.Received(1).PlanAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+            Arg.Any<CancellationToken>());
         await _advises.DidNotReceive().GetByCardiMemberAsync(_memberId);
     }
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 
 namespace CardiTrack.Infrastructure.Services;
 
@@ -13,30 +14,34 @@ namespace CardiTrack.Infrastructure.Services;
 /// </summary>
 public class DataQueryPlannerService : IDataQueryPlanner
 {
-    private static readonly IReadOnlyDictionary<DataQueryKind, string> SourceDescriptions = new Dictionary<DataQueryKind, string>
-    {
-        [DataQueryKind.RecentActivity] = "RecentActivity — daily steps, heart rate and sleep over the last several days",
-        [DataQueryKind.Baseline] = "Baseline — the member's own established behavioural pattern (typical steps, heart rate, sleep)",
-        [DataQueryKind.UnresolvedAlerts] = "UnresolvedAlerts — alerts raised for this member that nobody has acknowledged yet",
-        [DataQueryKind.RealtimeAssessments] = "RealtimeAssessments — recent hour-by-hour heart-rate severity assessments",
-    };
-
     private readonly IRewriteAiService _rewriteAi;
 
     public DataQueryPlannerService(IRewriteAiService rewriteAi) => _rewriteAi = rewriteAi;
 
     public async Task<AiGenerationResult<DataQueryPlan>> PlanAsync(
-        string question, string? conversationHistory = null, CancellationToken ct = default)
+        string question,
+        string? conversationHistory = null,
+        IReadOnlyList<DataQueryKind>? allowedSources = null,
+        CancellationToken ct = default)
     {
-        var prompt = BuildPrompt(question, conversationHistory);
+        // The registry slice this workflow may see — the catalogue's AllowedDatasets, or the
+        // whole registry for a caller that predates workflow scoping. The same list gates the
+        // parse below, so prompt and validator cannot drift.
+        var offered = allowedSources is null
+            ? ChatDataRegistry.All
+            : ChatDataRegistry.For(allowedSources);
+
+        var prompt = BuildPrompt(question, conversationHistory, offered);
         var result = await _rewriteAi.GenerateStructuredWithUsageAsync<DataQueryPlanAiResponse>(prompt, ct);
 
-        return new AiGenerationResult<DataQueryPlan>(Parse(result.Result), result.Usage);
+        return new AiGenerationResult<DataQueryPlan>(
+            Parse(result.Result, offered.Select(e => e.Kind).ToList()), result.Usage);
     }
 
-    private static string BuildPrompt(string question, string? conversationHistory)
+    private static string BuildPrompt(
+        string question, string? conversationHistory, IReadOnlyList<ChatDataRegistryEntry> offered)
     {
-        var sourceList = string.Join("\n", SourceDescriptions.Select(kv => $"- {kv.Value}"));
+        var sourceList = string.Join("\n", offered.Select(e => $"- {e.Line}"));
         // Framed history, not raw turns — the same block the clinical prompt gets (see
         // MemberChatService.BuildHistoryBlockAsync). Without it a follow-up like "and that week's
         // sleep?" carries its window only in turns this prompt never saw, so the planner answered
@@ -88,7 +93,8 @@ public class DataQueryPlannerService : IDataQueryPlanner
     /// <c>PromptContext.MemberContextComposer</c>), which is correct for a question that does not
     /// need any of the four data sources at all.
     /// </summary>
-    internal static DataQueryPlan Parse(DataQueryPlanAiResponse response)
+    internal static DataQueryPlan Parse(
+        DataQueryPlanAiResponse response, IReadOnlyList<DataQueryKind>? allowed = null)
     {
         // IsDefined alongside TryParse, not instead of it: TryParse succeeds on any numeric
         // string, so "999" would parse to (DataQueryKind)999 and travel on as a recognised source
@@ -100,6 +106,10 @@ public class DataQueryPlannerService : IDataQueryPlanner
                 : (DataQueryKind?)null)
             .Where(k => k is not null)
             .Select(k => k!.Value)
+            // Intersected with what this workflow was offered: a model that answers with a source
+            // outside its slice is answering a question it was not asked, and the whitelist would
+            // fetch it. Dropped like an unrecognised name, not thrown — same defensive posture.
+            .Where(k => allowed is null || allowed.Contains(k))
             .Distinct()
             .ToList();
 
