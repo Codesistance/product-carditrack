@@ -223,4 +223,105 @@ public class DispatchServiceTests
     {
         public override DateTimeOffset GetUtcNow() => now;
     }
+
+    // ── Reassurance fan-out ─────────────────────────────────────────────────────
+
+    private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
+    private readonly IUserRepository _users = Substitute.For<IUserRepository>();
+
+    /// <summary>
+    /// An active member with two caregivers, only one of whom receives alerts, and no live push
+    /// tokens — enough to observe which delivery rows are planned without reaching the FCM stub.
+    /// </summary>
+    private (Guid MemberId, Guid Receiving, Guid OptedOut) SetupReassuranceMember()
+    {
+        var memberId = Guid.NewGuid();
+        var receiving = Guid.NewGuid();
+        var optedOut = Guid.NewGuid();
+
+        _unitOfWork.CardiMembers.Returns(_members);
+        _unitOfWork.Users.Returns(_users);
+        _members.GetByIdAsync(memberId).Returns(new CardiMember
+        {
+            Id = memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 2),
+            IsActive = true,
+        });
+        _links.GetByCardiMemberIdAsync(memberId).Returns(
+        [
+            new UserCardiMember { UserId = receiving, CardiMemberId = memberId, IsActive = true, ReceiveAlerts = true },
+            new UserCardiMember { UserId = optedOut, CardiMemberId = memberId, IsActive = true, ReceiveAlerts = false },
+        ]);
+        _users.GetByIdAsync(Arg.Any<Guid>()).Returns((User?)null);
+        _preferences.EvaluateQuietHoursAsync(
+                Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns((false, (DateTime?)null));
+        _deliveries.GetByDedupKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((NotificationDelivery?)null);
+        _tokens.GetLiveForUserAsync(Arg.Any<Guid>(), Arg.Any<DeliveryCategory>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        return (memberId, receiving, optedOut);
+    }
+
+    [Fact]
+    public async Task EnqueueForReassuranceAsync_ReachesOnlyCaregiversWhoReceiveAlerts()
+    {
+        var (memberId, receiving, optedOut) = SetupReassuranceMember();
+
+        var deliveries = await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1);
+
+        // A caregiver who asked not to hear about this member did not ask to hear about them
+        // weekly instead.
+        var delivery = Assert.Single(deliveries);
+        Assert.Equal(receiving, delivery.UserId);
+        Assert.DoesNotContain(deliveries, d => d.UserId == optedOut);
+    }
+
+    [Fact]
+    public async Task EnqueueForReassuranceAsync_KeysTheWeekIntoTheDedupKeyAndOutOfTheCollapseKey()
+    {
+        var (memberId, receiving, _) = SetupReassuranceMember();
+
+        var delivery = Assert.Single(
+            await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 3));
+
+        // The dedup key carries the week, which is the whole of what paces this to one push a
+        // week: a second sweep the same day recomputes the same key and is deduped.
+        Assert.Equal($"reassurance:{memberId}:{receiving}:3", delivery.DedupKey);
+        // The collapse key deliberately does not, so this week's all-clear replaces last week's
+        // on the device rather than stacking a pile of identical good news in the shade.
+        Assert.Equal($"reassurance-{memberId}", delivery.CollapseKey);
+    }
+
+    [Fact]
+    public async Task EnqueueForReassuranceAsync_CarriesTheMemberAsItsSource_SinceNoRowExists()
+    {
+        var (memberId, _, _) = SetupReassuranceMember();
+
+        var delivery = Assert.Single(
+            await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1));
+
+        Assert.Equal(DeliverySourceType.Reassurance, delivery.SourceType);
+        Assert.Equal(memberId, delivery.SourceId);
+        Assert.Equal(memberId, delivery.CardiMemberId);
+        // No severity at all: this exists to say there is nothing to grade.
+        Assert.Null(delivery.Severity);
+    }
+
+    [Fact]
+    public async Task EnqueueForReassuranceAsync_SaysNothing_AboutAMemberRemovedSinceTheSweepReadThem()
+    {
+        var (memberId, _, _) = SetupReassuranceMember();
+        _members.GetByIdAsync(memberId).Returns(new CardiMember
+        {
+            Id = memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 2),
+            IsActive = false,
+        });
+
+        Assert.Empty(await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1));
+    }
 }

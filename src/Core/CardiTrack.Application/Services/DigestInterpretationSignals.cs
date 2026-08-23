@@ -49,6 +49,7 @@ public static class DigestInterpretationSignals
 
         var lines = new List<string>();
         AddLastNight(lines, baseline, today);
+        AddOvernightHeartRateVariability(lines, baseline, today, yesterday);
         AddDay(lines, baseline, yesterday, complete: true, localNow, "Yesterday");
         AddDay(lines, baseline, today, complete: false, localNow, "Today so far");
 
@@ -102,6 +103,41 @@ public static class DigestInterpretationSignals
     }
 
     /// <summary>
+    /// Overnight heart rate variability, when it has been low for the two consecutive nights
+    /// <see cref="StatisticalAlertRules.HeartRateVariabilityDrop"/> requires. Phrased as "lower
+    /// than usual" rather than as a raised vital, because it is the one reading in this block
+    /// where the worrying direction is down — a summary that listed it among things "running
+    /// high" would read as the opposite of what it is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two nights, not one, for the reason the alert rule gives: a single low night is ordinary
+    /// night-to-night variation, and this block is the one the prompt tells the model to lead
+    /// with, so a finding that tomorrow's reading would withdraw does not belong in it.
+    /// </para>
+    /// <para>
+    /// Stated once rather than per-day, like <see cref="AddLastNight"/>: the reading is measured
+    /// across a night and filed under the day that night ended on, so per-day lines would report
+    /// the same pair of nights twice under two labels.
+    /// </para>
+    /// </remarks>
+    private static void AddOvernightHeartRateVariability(
+        List<string> lines, PatternBaseline baseline, ActivityLog? today, ActivityLog? yesterday)
+    {
+        if (StatisticalAlertRules.HeartRateVariabilityDrop(baseline, today, yesterday) is null
+            || today?.HeartRateVariabilityMs is not { } lastNight
+            || baseline.AvgHeartRateVariabilityMs is not { } usual)
+        {
+            return;
+        }
+
+        lines.Add(string.Create(
+            CultureInfo.InvariantCulture,
+            $"- Last night: heart rate variability {lastNight:0.#} ms overnight, lower than their "
+            + $"usual {usual:0.#} ms — and low the night before as well."));
+    }
+
+    /// <summary>
     /// Minutes as hours to one decimal, always invariant: the prompt is model input and a cacheable
     /// fixed-prefix construction, so nothing in it may vary with the host's ambient culture.
     /// </summary>
@@ -120,7 +156,7 @@ public static class DigestInterpretationSignals
             return;
 
         var quiet = IsQuiet(baseline, log, complete, localNow);
-        var raised = RaisedVitals(baseline, log);
+        var raised = RaisedVitals(baseline, log, complete);
 
         if (quiet && raised.Count > 0)
         {
@@ -163,10 +199,20 @@ public static class DigestInterpretationSignals
     }
 
     /// <summary>
-    /// Vitals that sit above (or, for oxygen, below) this member's usual / the published
-    /// adult band, named for the prompt. Empty when nothing is off.
+    /// Readings that sit outside this member's usual or the published adult band, named for the
+    /// prompt — above for heart rate and breathing, below for oxygen. Empty when nothing is off.
+    /// Overnight heart rate variability is not here: it needs two nights to mean anything, which
+    /// a per-day call cannot see — see <see cref="AddOvernightHeartRateVariability"/>.
     /// </summary>
-    public static IReadOnlyList<string> RaisedVitals(PatternBaseline baseline, ActivityLog log)
+    /// <param name="complete">
+    /// Whether the day is over. Only the findings that read a *running total* care: the
+    /// elevated-zone pairing weighs raised minutes against the day's steps, and both accumulate,
+    /// so on a day in progress it would read a morning walk against a morning's step count and
+    /// call it effort without movement. The overnight and per-reading findings are settled figures
+    /// and are stated either way — see <see cref="IsQuiet"/>, which draws the same line.
+    /// </param>
+    public static IReadOnlyList<string> RaisedVitals(
+        PatternBaseline baseline, ActivityLog log, bool complete = true)
     {
         var parts = new List<string>();
         var usualResting = baseline.AvgRestingHeartRate;
@@ -194,6 +240,41 @@ public static class DigestInterpretationSignals
         {
             parts.Add(string.Create(
                 CultureInfo.InvariantCulture, $"breathing {breathing:0.#} breaths/min"));
+        }
+
+        // The overnight figure, not the daily one — see StatisticalAlertRules.OvernightBreathingUp
+        // for why a whole-day average moves for reasons that are not about health.
+        if (StatisticalAlertRules.OvernightBreathingUp(baseline, log) is not null
+            && log.OvernightBreathingRate is { } overnightBreathing
+            && baseline.AvgOvernightBreathingRate is { } usualBreathing)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"breathing {overnightBreathing:0.#} a minute asleep, above their usual {usualBreathing:0.#}"));
+        }
+
+        // Named here even though the still-day pairing below would also catch it, because the
+        // pairing reads "quiet day" from steps alone: a heart that worked while the steps stayed
+        // low is the case where a quiet day is not a restful one. Finished days only — see the
+        // `complete` parameter.
+        if (complete
+            && StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, log) is not null
+            && BaselineCalculator.ElevatedZoneMinutes(log) is { } elevated)
+        {
+            parts.Add($"{elevated} minutes with their heart rate raised, on a day of little movement");
+        }
+
+        // The other half of the same day: not how much they moved in total, but how long they went
+        // without moving at all. The daybook carries the raw figure, but a figure in a table is not
+        // the finding the model is told to lead with — and a quiet day broken into errands is not
+        // the day this names. Finished days only, like the pairing above: the stretch accumulates.
+        if (complete
+            && StatisticalAlertRules.DaytimeInactivityBlock(baseline, log) is not null
+            && log.LongestSedentaryStretchMinutes is { } stretch)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"{stretch / 60.0:F1} hours in one stretch without moving"));
         }
 
         return parts;

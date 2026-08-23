@@ -7,9 +7,18 @@ namespace CardiTrack.Mobile.Core.Devices;
 /// pulls from that device, for the pills on the M1-15 device card.
 /// </summary>
 /// <remarks>
-/// A scope is a permission, not a promise: <c>health_metrics_and_measurements</c> also covers HRV,
-/// which <c>GoogleHealthApiClient</c> does not fetch, so it gets no pill. The pills say what the card can
-/// show, not what Google would let us ask for.
+/// A scope is a permission, not a promise: a bundle earns a name here only where
+/// <c>GoogleHealthApiClient</c> actually reads it, so the pills say what the card can show rather
+/// than what Google would let us ask for.
+/// <para>
+/// HRV and overnight breathing joined <c>health_metrics_and_measurements</c> in the 2026-08 sweep,
+/// and heart-rate zones and activity-level intervals joined <c>activity_and_fitness</c>. HRV
+/// therefore now gets a pill where the remark below once said it could not: the test has not
+/// changed, the client has. Overnight breathing shares the <c>Breathing Rate</c> name the daily
+/// figure already carries — one pill for one reading a caregiver would not distinguish at a
+/// glance — and the activity-level intervals ride the <c>Active Minutes</c> name for the same
+/// reason.
+/// </para>
 /// <para>
 /// SpO2, VO2 max, breathing rate and body temperature are named here because
 /// <c>GoogleHealthApiClient</c> now ingests all four under <c>health_metrics_and_measurements</c>, which
@@ -29,6 +38,8 @@ public static class DeviceDatasets
     private const string Calories = "Calories";
     private const string HeartRate = "Heart Rate";
     private const string RestingHeartRate = "Resting HR";
+    private const string HeartRateVariability = "HRV";
+    private const string HeartRateZones = "HR Zones";
     private const string Weight = "Weight";
     private const string Spo2 = "SpO2";
     private const string Vo2Max = "VO2 Max";
@@ -53,6 +64,8 @@ public static class DeviceDatasets
         new(Calories, DatasetFamily.Activity),
         new(HeartRate, DatasetFamily.Heart),
         new(RestingHeartRate, DatasetFamily.Heart),
+        new(HeartRateVariability, DatasetFamily.Heart),
+        new(HeartRateZones, DatasetFamily.Heart),
         new(Sleep, DatasetFamily.Sleep),
         new(SleepStages, DatasetFamily.Sleep),
         new(Weight, DatasetFamily.Body),
@@ -71,9 +84,10 @@ public static class DeviceDatasets
     private static readonly Dictionary<string, string[]> DatasetsByScope = new(StringComparer.Ordinal)
     {
         // Google Health API (https://www.googleapis.com/auth/googlehealth.<bundle>.readonly)
-        ["activity_and_fitness"] = [Steps, Distance, ActiveMinutes, Floors, Calories],
+        ["activity_and_fitness"] = [Steps, Distance, ActiveMinutes, Floors, Calories, HeartRateZones],
         ["health_metrics_and_measurements"] =
-            [HeartRate, RestingHeartRate, Spo2, Vo2Max, BreathingRate, Temperature],
+            [HeartRate, RestingHeartRate, HeartRateVariability, Spo2, Vo2Max, BreathingRate,
+             Temperature],
         ["sleep"] = [Sleep, SleepStages],
 
         // Legacy Fitbit Web API

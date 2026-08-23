@@ -1315,6 +1315,18 @@ public partial class DigestGenerationService : IDigestGenerationService
             usuals.Add(string.Create(CultureInfo.InvariantCulture, $"a resting heart rate around {restingHr} bpm"));
         if (baseline.AvgSleepMinutes is { } sleepMinutes)
             usuals.Add($"about {Hours(sleepMinutes)} hours of sleep a night");
+        if (baseline.AvgHeartRateVariabilityMs is { } hrv)
+        {
+            usuals.Add(string.Create(
+                CultureInfo.InvariantCulture, $"overnight heart rate variability around {hrv:0.#} ms"));
+        }
+        if (baseline.AvgOvernightBreathingRate is { } breathing)
+        {
+            usuals.Add(string.Create(
+                CultureInfo.InvariantCulture, $"breathing around {breathing:0.#} a minute asleep"));
+        }
+        if (baseline.AvgLongestSedentaryStretchMinutes is { } stretch)
+            usuals.Add($"a longest unbroken still stretch of about {Hours(stretch)} hours");
         if (usuals.Count == 0)
             return string.Empty;
 

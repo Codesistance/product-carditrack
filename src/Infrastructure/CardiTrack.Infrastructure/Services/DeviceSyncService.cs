@@ -400,7 +400,20 @@ public class DeviceSyncService : IDeviceSyncService
             BreathingRate = snapshot.BreathingRate,
             Temperature = snapshot.Temperature,
             TemperatureBaseline = snapshot.TemperatureBaseline,
-            TemperatureVariation = snapshot.TemperatureVariation
+            TemperatureVariation = snapshot.TemperatureVariation,
+
+            // Overnight readings
+            HeartRateVariabilityMs = snapshot.HeartRateVariabilityMs,
+            OvernightBreathingRate = snapshot.OvernightBreathingRate,
+
+            // Effort and rest
+            LightZoneMinutes = snapshot.LightZoneMinutes,
+            ModerateZoneMinutes = snapshot.ModerateZoneMinutes,
+            VigorousZoneMinutes = snapshot.VigorousZoneMinutes,
+            PeakZoneMinutes = snapshot.PeakZoneMinutes,
+            ModerateZoneFloorBpm = snapshot.ModerateZoneFloorBpm,
+            LongestSedentaryStretchMinutes = snapshot.LongestSedentaryStretchMinutes,
+            LongestSedentaryStretchStartUtc = snapshot.LongestSedentaryStretchStartUtc
         };
 
         // Save the raw row first — the merge reads every device's stored row for the day,

@@ -196,6 +196,28 @@ public static class MemberInsightsCalculator
             series: BuildSeries(byDate, today, l => l.BreathingRate),
             reference: HealthReferenceRanges.BreathingRate);
 
+        // HRV does compare against a learned baseline, unlike the two above: there is no published
+        // adult band to draw instead (see HealthReferenceRanges), so the member's own overnight
+        // usual is the only honest comparison — and it is a good one, which is why the drop rule
+        // alerts on it. BuildMetric's shared percent thresholds suit it: a fall of a third from
+        // someone's own overnight usual is a real change at any absolute level.
+        var latestHrv = LatestWith(newestFirst, l => l.HeartRateVariabilityMs);
+        var heartRateVariability = BuildMetric(
+            value: latestHrv?.HeartRateVariabilityMs,
+            baselineValue: baseline?.AvgHeartRateVariabilityMs,
+            unit: "ms",
+            series: BuildSeries(byDate, today, l => l.HeartRateVariabilityMs));
+
+        // The overnight figure gets its own card rather than replacing the daily one: they are
+        // different measurements, and this is the one with a learned baseline behind it.
+        var latestOvernightBreathing = LatestWith(newestFirst, l => l.OvernightBreathingRate);
+        var overnightBreathingRate = BuildMetric(
+            value: latestOvernightBreathing?.OvernightBreathingRate,
+            baselineValue: baseline?.AvgOvernightBreathingRate,
+            unit: "brpm",
+            series: BuildSeries(byDate, today, l => l.OvernightBreathingRate),
+            reference: HealthReferenceRanges.BreathingRate);
+
         return new DashboardMetrics
         {
             Steps = steps,
@@ -204,6 +226,8 @@ public static class MemberInsightsCalculator
             Temperature = temperature,
             SpO2 = spO2,
             BreathingRate = breathingRate,
+            HeartRateVariability = heartRateVariability,
+            OvernightBreathingRate = overnightBreathingRate,
         };
     }
 

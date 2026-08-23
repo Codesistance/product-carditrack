@@ -32,7 +32,9 @@ public class DigestInterpretationSignalsTests
         int? avgHr = null,
         decimal? spo2 = null,
         decimal? breathing = null,
-        int? sleepMinutes = null) => new()
+        int? sleepMinutes = null,
+        int? moderateZoneMinutes = null,
+        decimal? hrv = null) => new()
     {
         Date = date,
         Steps = steps,
@@ -41,7 +43,95 @@ public class DigestInterpretationSignalsTests
         SpO2Average = spo2,
         BreathingRate = breathing,
         SleepMinutes = sleepMinutes,
+        ModerateZoneMinutes = moderateZoneMinutes,
+        HeartRateVariabilityMs = hrv,
     };
+
+    /// <summary>
+    /// The other half of the still-day picture: not how little they moved in total, but how long
+    /// they went without moving at all. A quiet day broken into errands is not the day this names,
+    /// and the daybook's raw figure is not the explicit finding the model is told to lead with.
+    /// </summary>
+    [Fact]
+    public void ALongUnbrokenStillStretch_IsAComputedObservation()
+    {
+        var yesterday = Log(Yesterday, steps: 6100);
+        yesterday.LongestSedentaryStretchMinutes = 300;
+
+        var section = DigestInterpretationSignals.Section(
+            Baseline(), today: null, yesterday, Afternoon);
+
+        Assert.Contains("5.0 hours in one stretch without moving", section);
+    }
+
+    /// <summary>
+    /// Finished days only, like the elevated-zone pairing: the stretch accumulates, so a morning's
+    /// worth is not a day's.
+    /// </summary>
+    [Fact]
+    public void ALongStillStretch_IsNotObserved_OnADayStillInProgress()
+    {
+        var today = Log(Today, steps: 2000);
+        today.LongestSedentaryStretchMinutes = 300;
+
+        var section = DigestInterpretationSignals.Section(
+            Baseline(), today, yesterday: null, Afternoon);
+
+        Assert.DoesNotContain("without moving", section);
+    }
+
+    private static PatternBaseline BaselineWithHrv()
+    {
+        var baseline = Baseline();
+        baseline.AvgHeartRateVariabilityMs = 40m;
+        baseline.StdDevHeartRateVariability = 2m;
+        return baseline;
+    }
+
+    /// <summary>
+    /// The digest borrows the alert rule's evidence as well as its threshold: two consecutive low
+    /// nights, not one. A single low night is ordinary night-to-night variation, and this is the
+    /// block the prompt tells the model to lead with — a finding tomorrow's reading would withdraw
+    /// must not be the sentence a caregiver reads first.
+    /// </summary>
+    [Fact]
+    public void LowOvernightHrv_IsObserved_OnlyAfterTwoNights()
+    {
+        var oneNight = DigestInterpretationSignals.Section(
+            BaselineWithHrv(),
+            today: Log(Today, hrv: 25m),
+            yesterday: Log(Yesterday, hrv: 41m),
+            Afternoon);
+
+        Assert.DoesNotContain("variability", oneNight, StringComparison.OrdinalIgnoreCase);
+
+        var twoNights = DigestInterpretationSignals.Section(
+            BaselineWithHrv(),
+            today: Log(Today, hrv: 25m),
+            yesterday: Log(Yesterday, hrv: 26m),
+            Afternoon);
+
+        Assert.Contains("heart rate variability 25 ms overnight", twoNights);
+        Assert.Contains("usual 40 ms", twoNights);
+        Assert.Contains("low the night before", twoNights);
+    }
+
+    /// <summary>
+    /// Stated once, on its own line. It is measured across a night and filed under the day that
+    /// night ended on, so per-day lines would name the same pair of nights twice.
+    /// </summary>
+    [Fact]
+    public void LowOvernightHrv_IsStatedOnce_NotUnderEachDay()
+    {
+        var section = DigestInterpretationSignals.Section(
+            BaselineWithHrv(),
+            today: Log(Today, hrv: 25m),
+            yesterday: Log(Yesterday, hrv: 26m),
+            Afternoon);
+
+        var mentions = section.Split("variability").Length - 1;
+        Assert.Equal(1, mentions);
+    }
 
     /// <summary>
     /// A night well short of this member's own usual is a computed observation, so it lands in the
@@ -296,5 +386,37 @@ public class DigestInterpretationSignalsTests
         {
             CultureInfo.CurrentCulture = original;
         }
+    }
+
+    /// <summary>
+    /// The elevated-zone finding weighs raised minutes against the day's steps, and both are
+    /// running totals — so on a day still in progress it would read a morning walk against a
+    /// morning's step count and call it effort without movement. It is stated for finished days
+    /// only, the same line <see cref="DigestInterpretationSignals.IsQuiet"/> draws.
+    /// </summary>
+    [Fact]
+    public void TheElevatedZoneFinding_IsHeldBack_WhileTheDayIsStillRunning()
+    {
+        var partial = Log(Today, steps: 900, moderateZoneMinutes: 30);
+
+        var duringTheDay = DigestInterpretationSignals.RaisedVitals(Baseline(), partial, complete: false);
+        var onceFinished = DigestInterpretationSignals.RaisedVitals(Baseline(), partial, complete: true);
+
+        Assert.DoesNotContain(duringTheDay, line => line.Contains("heart rate raised"));
+        Assert.Contains(onceFinished, line => line.Contains("heart rate raised"));
+    }
+
+    // The whole section, as the digest builds it: a morning with a walk behind it must not tell a
+    // family their heart worked on a day of little movement — the day has barely started.
+    [Fact]
+    public void Section_SaysNothingAboutEffortWithoutMovement_InTheMorning()
+    {
+        var section = DigestInterpretationSignals.Section(
+            Baseline(),
+            today: Log(Today, steps: 900, moderateZoneMinutes: 30),
+            yesterday: Log(Yesterday, steps: 6100),
+            localNow: Morning);
+
+        Assert.DoesNotContain("heart rate raised", section);
     }
 }

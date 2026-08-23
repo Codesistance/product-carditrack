@@ -39,10 +39,12 @@ public sealed record PublishedBand(ChartMetricKind Metric, string Line);
 /// router and its validator.
 /// </para>
 /// <para>
-/// <b>The bands are deliberately incomplete.</b> Resting heart rate and sleep have published,
-/// attributable typical ranges; steps do not — no accredited body publishes a universal daily-step
-/// band — so a steps question is benchmarked against the member's own baseline alone, and the
-/// prompt says so rather than letting a model invent "10,000 steps" as if it were guidance.
+/// <b>The bands are deliberately incomplete.</b> Resting heart rate, sleep and breathing rate
+/// have published, attributable typical ranges; steps and overnight HRV do not — no accredited
+/// body publishes a universal daily-step band, and HRV varies too much person to person for a
+/// general band to be honest — so those are benchmarked against the member's own baseline alone,
+/// and the prompt says so rather than letting a model invent "10,000 steps" as if it were
+/// guidance.
 /// </para>
 /// </remarks>
 public static class ChatDataRegistry
@@ -53,9 +55,9 @@ public static class ChatDataRegistry
         Array.AsReadOnly(new ChatDataRegistryEntry[]
         {
             new(DataQueryKind.RecentActivity,
-                "RecentActivity — daily steps, resting heart rate and sleep over the last several "
-                + "days; each figure is a finished day's total or nightly figure, never a live "
-                + "reading"),
+                "RecentActivity — daily steps, resting heart rate, sleep, overnight heart rate "
+                + "variability and overnight breathing rate over the last several days; each "
+                + "figure is a finished day's total or nightly figure, never a live reading"),
             new(DataQueryKind.Baseline,
                 "Baseline — the member's own established pattern (typical steps, resting heart "
                 + "rate, sleep), the reference for whether a reading is usual for them"),
@@ -86,6 +88,9 @@ public static class ChatDataRegistry
             new(ChartMetricKind.Sleep,
                 "Sleep: 7–9 hours a night is the recommendation for adults, 7–8 hours for adults "
                 + "65 and over (National Sleep Foundation)"),
+            new(ChartMetricKind.OvernightBreathingRate,
+                "Breathing rate: 12–20 breaths per minute is the typical adult resting range "
+                + "(WHO); overnight averages sit toward its lower half"),
         });
 
     /// <summary>
@@ -96,8 +101,10 @@ public static class ChatDataRegistry
     public static string BandsBlock { get; } =
         "--- Published typical ranges ---\n"
         + string.Join("\n", Bands.Select(b => $"  {b.Line}"))
-        + "\n  Steps has no published typical range — compare steps against this member's own "
-        + "baseline only, and say so if asked whether a step count is \"good\"."
+        + "\n  Steps and overnight heart rate variability have no published typical range — "
+        + "compare them against this member's own baseline only, and say so if asked whether "
+        + "such a figure is \"good\"; HRV in particular varies too much person to person for any "
+        + "general band to be honest."
         + "\n  A reading outside a published range is not by itself abnormal for this person; "
         + "their own baseline says what is usual for them. Attribute any published range you cite.";
 }

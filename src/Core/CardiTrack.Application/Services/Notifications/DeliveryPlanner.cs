@@ -49,6 +49,11 @@ public static class DeliveryPlanner
             // overridesQuietHours below) — but it must reach the family, so unlike a Nudge it does
             // push.
             DeliveryCategory.Questionnaire => true,
+            // Reassurance pushes for the one reason the whole category exists: a caregiver who
+            // only ever hears from CardiTrack when something is wrong reads every silent week as
+            // either good news or a broken app, and cannot tell which. In-app only would reach
+            // exactly the people who were already looking.
+            DeliveryCategory.Reassurance => true,
             _ => false
         };
 
@@ -60,17 +65,27 @@ public static class DeliveryPlanner
         DateTime? scheduledFor = null;
         if (pushes && !overridesQuietHours && context.IsWithinQuietHours)
         {
-            // Orange Health and Questionnaire defer to the end of quiet hours; nothing else
-            // reaches this branch, since Safety and red Health already overrode above, and Nudge
-            // never pushes at all.
+            // Orange Health, Questionnaire and Reassurance defer to the end of quiet hours;
+            // nothing else reaches this branch, since Safety and red Health already overrode
+            // above, and Nudge never pushes at all. Waking someone at 3am to tell them nothing is
+            // wrong would be the single fastest way to teach a family to mute this app.
             scheduledFor = context.QuietHoursEndUtc;
         }
 
         var critical = pushes && AllowsCritical(context.Category, context.Severity);
 
-        var ttl = context.Category == DeliveryCategory.Safety || context.Severity == AlertSeverity.Red
-            ? TimeSpan.FromMinutes(30)
-            : TimeSpan.FromMinutes(5);
+        var ttl = context.Category switch
+        {
+            // An anomaly teaser goes stale fast: five minutes late is a push about a situation
+            // that has moved on, and thirty is the most even a red one is worth chasing.
+            DeliveryCategory.Safety => TimeSpan.FromMinutes(30),
+            // "Nothing has come up in three weeks" is just as true six hours later, and the phone
+            // this is worth reaching is precisely the one that was off overnight. A five-minute
+            // TTL would quietly drop the reassurance for every caregiver not already holding
+            // their phone, which is most of them.
+            DeliveryCategory.Reassurance => TimeSpan.FromHours(6),
+            _ => context.Severity == AlertSeverity.Red ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5),
+        };
 
         return new DeliveryPlan(
             Channel: channel,

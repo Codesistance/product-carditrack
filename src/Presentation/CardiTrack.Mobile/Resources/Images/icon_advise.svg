@@ -1,0 +1,18 @@
+<!-- Sparkles: a suggestion generated for this member from their own readings, which is what Advise
+     is and what a star-and-glint mark has come to mean. Same 24-unit box and #939DAA stroke as
+     icon_tab_journal.svg and icon_tab_qa.svg, so the row of buttons reads as one set. Deliberately
+     not a lightbulb — the Detail page's Tips card owns that glyph, and this button opens the
+     Advise card beside it, not Tips.
+
+     Two stars, not a star plus crosses and not three: rendered at the 20dp this is actually drawn
+     at, crosses close up into blobs and a third glint mushes out entirely. The waist is pinched
+     hard — the quadratic controls sit 0.6 and 0.4 from their centres — because a shallower one
+     fattens each star until its middle fills in at this size. The smaller star is stroked 1.7
+     rather than 2 so it stays open at half the first one's width, and both are held off the
+     corners of the box: at 20dp inside a 36 circle, a glint in the corner reads as off-centre. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M10 7.3 Q10.6 13.2 16.5 13.8 Q10.6 14.4 10 20.3 Q9.4 14.4 3.5 13.8 Q9.4 13.2 10 7.3 Z"
+        stroke="#939DAA" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M18 3.1 Q18.4 6.2 21.5 6.6 Q18.4 7 18 10.1 Q17.6 7 14.5 6.6 Q17.6 6.2 18 3.1 Z"
+        stroke="#939DAA" stroke-width="1.7" stroke-linejoin="round"/>
+</svg>

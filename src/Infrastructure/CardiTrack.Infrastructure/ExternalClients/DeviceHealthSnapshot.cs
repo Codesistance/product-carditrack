@@ -38,7 +38,19 @@ public record DeviceHealthSnapshot(
     decimal? BreathingRate = null,
     decimal? Temperature = null,
     decimal? TemperatureBaseline = null,
-    decimal? TemperatureVariation = null
+    decimal? TemperatureVariation = null,
+    // Overnight readings, measured over hours of stillness rather than across the whole day.
+    decimal? HeartRateVariabilityMs = null,
+    decimal? OvernightBreathingRate = null,
+    // Effort and rest: where the day's heart rate sat against this wearer's own zones, and the
+    // longest unbroken stretch their device recorded them as sedentary.
+    int? LightZoneMinutes = null,
+    int? ModerateZoneMinutes = null,
+    int? VigorousZoneMinutes = null,
+    int? PeakZoneMinutes = null,
+    int? ModerateZoneFloorBpm = null,
+    int? LongestSedentaryStretchMinutes = null,
+    DateTime? LongestSedentaryStretchStartUtc = null
 )
 {
     /// <summary>
@@ -46,6 +58,12 @@ public record DeviceHealthSnapshot(
     /// this before storing: an all-null row would still count as a "data day" to the baseline
     /// coverage gate and the dashboard's days-captured figure, letting an empty history fake its
     /// way past both.
+    /// <para>
+    /// <see cref="ModerateZoneFloorBpm"/> is deliberately not in the list. It is a threshold the
+    /// device holds about the wearer, not a measurement of their day — it reads the same on a day
+    /// spent in hospital as on a day spent walking, and a day whose only "reading" is that figure
+    /// is precisely the empty day this property exists to catch.
+    /// </para>
     /// </summary>
     public bool HasAnyData =>
         Steps is not null || DistanceKm is not null || ActiveMinutes is not null ||
@@ -56,5 +74,9 @@ public record DeviceHealthSnapshot(
         LightSleepMinutes is not null || RemSleepMinutes is not null || AwakeMinutes is not null ||
         SpO2Average is not null || SpO2Min is not null || SpO2Max is not null ||
         VO2Max is not null || StressScore is not null || BreathingRate is not null ||
-        Temperature is not null || TemperatureBaseline is not null || TemperatureVariation is not null;
+        Temperature is not null || TemperatureBaseline is not null || TemperatureVariation is not null ||
+        HeartRateVariabilityMs is not null || OvernightBreathingRate is not null ||
+        LightZoneMinutes is not null || ModerateZoneMinutes is not null ||
+        VigorousZoneMinutes is not null || PeakZoneMinutes is not null ||
+        LongestSedentaryStretchMinutes is not null;
 }

@@ -113,6 +113,12 @@ public static class BaselineCalculator
         var steps = Samples(days, l => l.Steps);
         var restingHeartRate = Samples(days, l => l.RestingHeartRate);
         var sleepMinutes = Samples(days, l => l.SleepMinutes);
+        var heartRateVariability = Samples(days, l => l.HeartRateVariabilityMs);
+        var overnightBreathing = Samples(days, l => l.OvernightBreathingRate);
+        // The three zones that mean the heart was working, summed per day before averaging: a day
+        // is elevated or it is not, and averaging the zones separately would let a member who
+        // splits their effort across zones look calmer than one who spends it all in moderate.
+        var elevatedZoneMinutes = Samples(days, l => ElevatedZoneMinutes(l));
 
         return new PatternBaseline
         {
@@ -133,6 +139,21 @@ public static class BaselineCalculator
             // readings exist instead of being gated on a sample count.
             MaxHeartRateObserved = days.Select(l => l.MaxHeartRate).Where(v => v.HasValue).Max(),
 
+            // Kept as decimals, unlike the heart-rate figures beside them: overnight RMSSD is
+            // routinely under 20 ms in this cohort, where rounding to whole milliseconds would
+            // throw away a tenth of the very spread the drop rule measures against.
+            AvgHeartRateVariabilityMs = MeanRounded(heartRateVariability, minimumSamples),
+            StdDevHeartRateVariability = StandardDeviation(heartRateVariability, minimumSamples),
+            MedianHeartRateVariabilityMs = MedianRounded(heartRateVariability, minimumSamples, stats),
+            MadHeartRateVariability = MedianAbsoluteDeviation(heartRateVariability, minimumSamples, stats),
+
+            AvgOvernightBreathingRate = MeanRounded(overnightBreathing, minimumSamples),
+            StdDevOvernightBreathingRate = StandardDeviation(overnightBreathing, minimumSamples),
+
+            AvgElevatedZoneMinutes = MeanAsInt(elevatedZoneMinutes, minimumSamples),
+            AvgLongestSedentaryStretchMinutes = MeanAsInt(
+                Samples(days, l => l.LongestSedentaryStretchMinutes), minimumSamples),
+
             AvgSleepMinutes = MeanAsInt(sleepMinutes, minimumSamples),
             MedianSleepMinutes = MedianAsInt(sleepMinutes, minimumSamples, stats),
             MadSleepMinutes = MedianAbsoluteDeviation(sleepMinutes, minimumSamples, stats),
@@ -144,6 +165,19 @@ public static class BaselineCalculator
         };
     }
 
+    /// <summary>
+    /// The day's minutes above the light zone, or null when the day carries no zone reading at
+    /// all. A zone the wearer never reached is a measured zero and counts as one; a day the device
+    /// never reported zones for is absent, and must not enter the average as a day of rest.
+    /// </summary>
+    public static int? ElevatedZoneMinutes(ActivityLog log)
+    {
+        if (log.ModerateZoneMinutes is null && log.VigorousZoneMinutes is null && log.PeakZoneMinutes is null)
+            return null;
+
+        return (log.ModerateZoneMinutes ?? 0) + (log.VigorousZoneMinutes ?? 0) + (log.PeakZoneMinutes ?? 0);
+    }
+
     private static List<decimal> Samples(IEnumerable<ActivityLog> logs, Func<ActivityLog, decimal?> selector) =>
         logs.Select(selector).Where(v => v.HasValue).Select(v => v!.Value).ToList();
 
@@ -152,6 +186,15 @@ public static class BaselineCalculator
 
     private static int? MeanAsInt(IReadOnlyList<decimal> samples, int minimumSamples) =>
         Mean(samples, minimumSamples) is decimal mean ? (int)Math.Round(mean, MidpointRounding.AwayFromZero) : null;
+
+    /// <summary>
+    /// The mean to two decimals, for a metric whose whole-number form would lose real signal:
+    /// millisecond HRV, which is read as differences of a unit or two.
+    /// </summary>
+    private static decimal? MeanRounded(IReadOnlyList<decimal> samples, int minimumSamples) =>
+        Mean(samples, minimumSamples) is decimal mean
+            ? Math.Round(mean, 2, MidpointRounding.AwayFromZero)
+            : null;
 
     /// <summary>
     /// Sample standard deviation (n−1). The dashboard turns this into the member's "normal range"
@@ -165,6 +208,17 @@ public static class BaselineCalculator
         var mean = samples.Average();
         var variance = samples.Sum(v => (v - mean) * (v - mean)) / (samples.Count - 1);
         return Math.Round((decimal)Math.Sqrt((double)variance), 2, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>The median to two decimals — the <see cref="MeanRounded"/> counterpart, for the
+    /// same metric and the same reason.</summary>
+    private static decimal? MedianRounded(
+        IReadOnlyList<decimal> samples, int minimumSamples, IDescriptiveStatistics stats)
+    {
+        if (samples.Count < minimumSamples)
+            return null;
+
+        return Math.Round((decimal)stats.Median(ToDoubles(samples)), 2, MidpointRounding.AwayFromZero);
     }
 
     private static int? MedianAsInt(

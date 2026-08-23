@@ -146,7 +146,7 @@ internal static class DaybookPrompt
 
         AppendSleep(sb, log, baseline, ageYears);
         AppendHeart(sb, log, baseline);
-        AppendOxygenAndBreathing(sb, log);
+        AppendOxygenAndBreathing(sb, log, baseline);
         AppendMovement(sb, log, baseline);
         AppendBody(sb, log);
 
@@ -225,11 +225,48 @@ internal static class DaybookPrompt
             span.Add($"highest={max}bpm");
         if (span.Count > 0)
             sb.Append("  across the day: ").AppendLine(string.Join(", ", span));
+
+        if (log.HeartRateVariabilityMs is { } hrv)
+        {
+            // No published band, so no Band() clause — their own usual is the only yardstick HRV
+            // has (see HealthReferenceRanges.NoHeartRateVariabilityBand).
+            sb.Append("  overnightVariability=")
+              .Append(Decimal1(hrv)).Append("ms")
+              .Append(UsualDecimal(baseline?.AvgHeartRateVariabilityMs, v => Decimal1(v) + "ms"))
+              .AppendLine();
+        }
+
+        AppendEffortZones(sb, log, baseline);
     }
 
-    private static void AppendOxygenAndBreathing(StringBuilder sb, ActivityLog log)
+    /// <summary>
+    /// How much of the day the heart spent working, in the wearer's own zones.
+    /// </summary>
+    /// <remarks>
+    /// Stated as minutes above the light zone rather than zone by zone: four numbers invite a
+    /// paragraph about training load, which is not what this reading is for in a member of this
+    /// cohort. What it is for is the pairing with movement — the model is told the threshold in
+    /// bpm where their own watch puts the start of effort, so it can say "their heart worked" in
+    /// terms that mean something for this person rather than in a general one.
+    /// </remarks>
+    private static void AppendEffortZones(StringBuilder sb, ActivityLog log, PatternBaseline? baseline)
     {
-        if (log.SpO2Average is null && log.BreathingRate is null)
+        if (BaselineCalculator.ElevatedZoneMinutes(log) is not { } elevated)
+            return;
+
+        sb.Append("  minutesWithHeartRateRaised=").Append(elevated)
+          .Append(Usual(baseline?.AvgElevatedZoneMinutes, v => v + "min"));
+
+        if (log.ModerateZoneFloorBpm is { } floor)
+            sb.Append(" [their watch puts the start of real effort at ").Append(floor).Append("bpm]");
+
+        sb.AppendLine();
+    }
+
+    private static void AppendOxygenAndBreathing(
+        StringBuilder sb, ActivityLog log, PatternBaseline? baseline)
+    {
+        if (log.SpO2Average is null && log.BreathingRate is null && log.OvernightBreathingRate is null)
             return;
 
         sb.AppendLine("Oxygen and breathing:");
@@ -247,6 +284,18 @@ internal static class DaybookPrompt
         {
             var band = HealthReferenceRanges.BreathingRate;
             sb.Append("  breathingRate=").Append(Decimal1(breathing)).Append("/min")
+              .Append(Band(band.Low, band.High, "/min", band.Source))
+              .AppendLine();
+        }
+
+        // The overnight figure carries its own label rather than replacing the daily one: they are
+        // different measurements — a whole day including stairs and naps, against hours of
+        // stillness — and a reader who saw one number labelled "breathing" could not tell which.
+        if (log.OvernightBreathingRate is { } overnight)
+        {
+            var band = HealthReferenceRanges.BreathingRate;
+            sb.Append("  breathingRateWhileAsleep=").Append(Decimal1(overnight)).Append("/min")
+              .Append(UsualDecimal(baseline?.AvgOvernightBreathingRate, v => Decimal1(v) + "/min"))
               .Append(Band(band.Low, band.High, "/min", band.Source))
               .AppendLine();
         }
@@ -271,6 +320,10 @@ internal static class DaybookPrompt
         var rest = new List<string>();
         if (log.SedentaryMinutes is { } sedentary)
             rest.Add($"stillMinutes={sedentary}");
+        // The shape of the stillness, beside its total: the same six hours broken into half-hours
+        // and taken in one stretch are different days, and only the line below can tell them apart.
+        if (log.LongestSedentaryStretchMinutes is { } stretch)
+            rest.Add($"longestUnbrokenStillStretch={stretch}min");
         if (log.Distance is { } distance)
             rest.Add(string.Create(CultureInfo.InvariantCulture, $"distance={distance:0.#}km"));
         if (log.Floors is { } floors)
@@ -324,6 +377,13 @@ internal static class DaybookPrompt
     /// yardstick, not an empty one the model will try to fill.
     /// </summary>
     private static string Usual(int? average, Func<int, string> format) =>
+        average is { } value ? $" (their usual {format(value)})" : string.Empty;
+
+    /// <summary>
+    /// The decimal counterpart of <see cref="Usual(int?, Func{int, string})"/>, for the baseline
+    /// stored to two places — HRV in milliseconds, which is read as differences of a unit or less.
+    /// </summary>
+    private static string UsualDecimal(decimal? average, Func<decimal, string> format) =>
         average is { } value ? $" (their usual {format(value)})" : string.Empty;
 
     private static string UsualTime(string label, TimeOnly? time) =>

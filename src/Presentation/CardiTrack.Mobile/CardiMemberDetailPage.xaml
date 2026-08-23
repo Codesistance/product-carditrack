@@ -308,9 +308,14 @@
                                 Style="{StaticResource ElevatedCard}"
                                 IsVisible="False">
                             <VerticalStackLayout Spacing="10">
+                                <!-- Sparkles, matching icon_advise.svg on the Dashboard card's
+                                     button that leads here — the button and the card it opens have
+                                     to be the same symbol, or the pulse points at nothing
+                                     recognisable. The bulb next door is Tips', which is the one
+                                     glyph this can't borrow. -->
                                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                     <Label Grid.Column="0"
-                                           Text="&#x1F331;"
+                                           Text="&#x2728;"
                                            FontSize="16"
                                            VerticalOptions="Start"
                                            Margin="0,2,0,0"

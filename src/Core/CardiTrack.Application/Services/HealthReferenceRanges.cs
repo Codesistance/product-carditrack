@@ -83,4 +83,13 @@ public static class HealthReferenceRanges
     /// age-dependent thresholds for this one are paediatric, and a CardiMember is an adult.
     /// </summary>
     public static MetricReference BreathingRate => new() { Low = 12m, High = 20m, Source = "WHO" };
+
+    /// <summary>
+    /// There is deliberately no heart-rate-variability range here. Overnight RMSSD spans an order
+    /// of magnitude between healthy adults and falls steeply with age, and no body publishes an
+    /// adult band for it — so HRV is drawn against the member's own learned baseline alone
+    /// (<c>PatternBaseline.AvgHeartRateVariabilityMs</c>), the same stance skin temperature takes.
+    /// </summary>
+    public const string NoHeartRateVariabilityBand =
+        "HRV is compared against the member's own baseline; no published adult band exists.";
 }

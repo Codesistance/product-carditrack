@@ -76,12 +76,14 @@ public class DataQueryPlannerService : IDataQueryPlanner
             hours back is relevant (default 24, at most 72).
 
             Always answer metrics, naming which specific daily readings the question is about: any
-            of Steps, RestingHeartRate, Sleep. Name every one the question asks about and no
-            others — "how many steps has he done?" is ["Steps"], "how did he sleep and what was his
-            heart rate?" is ["Sleep","RestingHeartRate"]. Only a question about how the person is
-            doing overall, naming no particular reading, gets an empty list. These become the
-            charts drawn under the answer, so an empty list where the question named a reading puts
-            charts in front of the caregiver that they did not ask for.
+            of Steps, RestingHeartRate, Sleep, HeartRateVariability, OvernightBreathingRate. Name
+            every one the question
+            asks about and no others — "how many steps has he done?" is ["Steps"], "how did he
+            sleep and what was his heart rate?" is ["Sleep","RestingHeartRate"]. Only a question
+            about how the person is doing overall, naming no particular reading, gets an empty
+            list. These become the charts drawn under the answer, so an empty list where the
+            question named a reading puts charts in front of the caregiver that they did not ask
+            for.
             """ + MedicalPromptBlocks.ChatMessageGuardrail;
     }
 
@@ -165,9 +167,10 @@ public class DataQueryPlannerService : IDataQueryPlanner
         /// named its metric perfectly clearly.
         /// </summary>
         [Description(
-            "Which daily metrics the question asks about: any of Steps, RestingHeartRate, Sleep. "
-            + "Name every metric the question is about and no others — a question about steps is "
-            + "[\"Steps\"]. Empty only when the question is about how the person is doing overall.")]
+            "Which daily metrics the question asks about: any of Steps, RestingHeartRate, Sleep, "
+            + "HeartRateVariability, OvernightBreathingRate. Name every metric the question is "
+            + "about and no others — a question about steps is [\"Steps\"]. Empty only when the "
+            + "question is about how the person is doing overall.")]
         public required IReadOnlyList<string> Metrics { get; init; }
     }
 }

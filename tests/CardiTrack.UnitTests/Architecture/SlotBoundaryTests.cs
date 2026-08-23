@@ -109,13 +109,14 @@ public class SlotBoundaryTests
     [Fact]
     public void PublishedBands_CoverExactlyTheMetricsWithAnAccreditedRange()
     {
-        // Heart rate and sleep have published, attributable ranges; steps deliberately has none —
-        // the absence is load-bearing (see ChatDataRegistry's remarks), so a well-meaning addition
-        // of a "10,000 steps" band must fail here and cite a source in review.
+        // Heart rate, sleep and breathing rate have published, attributable ranges; steps and
+        // HRV deliberately have none — the absence is load-bearing (see ChatDataRegistry's
+        // remarks), so a well-meaning addition of a "10,000 steps" band must fail here and cite
+        // a source in review.
         Assert.Equal(
-            new[] { ChartMetricKind.RestingHeartRate, ChartMetricKind.Sleep },
+            new[] { ChartMetricKind.RestingHeartRate, ChartMetricKind.Sleep, ChartMetricKind.OvernightBreathingRate },
             ChatDataRegistry.Bands.Select(b => b.Metric).OrderBy(m => m));
 
-        Assert.Contains("Steps has no published typical range", ChatDataRegistry.BandsBlock);
+        Assert.Contains("no published typical range", ChatDataRegistry.BandsBlock);
     }
 }

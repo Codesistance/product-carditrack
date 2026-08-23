@@ -3,7 +3,6 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Worker.Workers;
@@ -27,7 +26,8 @@ public class DataCompletenessWorker : CronBackgroundService
 {
     /// <summary>
     /// Arbitrary but fixed — the key identifies this job across instances. Postgres advisory locks
-    /// are namespaced only by the number, so it must not collide with another job's.
+    /// are namespaced only by the number, so it must not collide with another job's; see
+    /// <see cref="AdvisoryLock"/> for the keys already spoken for.
     /// </summary>
     private const long AdvisoryLockKey = 8_472_100_001;
 
@@ -49,34 +49,13 @@ public class DataCompletenessWorker : CronBackgroundService
 
     protected override async Task ExecuteJobAsync(CancellationToken stoppingToken)
     {
-        using var lockScope = _scopeFactory.CreateScope();
-        var lockContext = lockScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var ran = await AdvisoryLock.TryRunAsync(
+            _scopeFactory, AdvisoryLockKey, () => RunAsync(stoppingToken), stoppingToken);
 
-        // Session-scoped and non-blocking: a second instance that cannot take the lock skips the
-        // run entirely rather than queueing behind it and doing the work again afterwards.
-        var connection = lockContext.Database.GetDbConnection();
-        await connection.OpenAsync(stoppingToken);
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT pg_try_advisory_lock({AdvisoryLockKey});";
-        var acquired = (bool?)await command.ExecuteScalarAsync(stoppingToken) ?? false;
-
-        if (!acquired)
+        if (!ran)
         {
             _logger.LogInformation(
                 "DataCompleteness skipped — another instance holds the advisory lock.");
-            return;
-        }
-
-        try
-        {
-            await RunAsync(stoppingToken);
-        }
-        finally
-        {
-            await using var unlock = connection.CreateCommand();
-            unlock.CommandText = $"SELECT pg_advisory_unlock({AdvisoryLockKey});";
-            await unlock.ExecuteScalarAsync(CancellationToken.None);
         }
     }
 

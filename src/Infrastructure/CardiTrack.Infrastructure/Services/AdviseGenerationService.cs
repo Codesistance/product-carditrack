@@ -283,7 +283,12 @@ public class AdviseGenerationService
             ? "No baseline established yet — this member is still being learned."
             : $"{baseline.PeriodDays}-day — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
               $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
-              $"Sleep: {baseline.AvgSleepMinutes} min";
+              $"Sleep: {baseline.AvgSleepMinutes} min" +
+              // Only where the member's device reports it: an "HRV: ± " with nothing either side
+              // is a yardstick the model would try to use.
+              (baseline.AvgHeartRateVariabilityMs is { } hrv
+                  ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
+                  : string.Empty);
 
         return $"""
             {AdviseInstructions}

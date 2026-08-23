@@ -90,7 +90,11 @@ public class StatisticalAlertService : IStatisticalAlertService
             && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule)
-            && !rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule))
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.HeartRateVariabilityDropRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.OvernightBreathingUpRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule))
         {
             return 0;
         }
@@ -115,6 +119,24 @@ public class StatisticalAlertService : IStatisticalAlertService
         // dedup below is what keeps that fallback from re-judging a night that already alerted.
         var lastNightLog = todayLog?.SleepMinutes is not null ? todayLog : yesterdayLog;
 
+        // Same attribution, judged on its own presence rather than on sleep's. HRV and overnight
+        // breathing are measured across the night like sleep is, but they do not always arrive with
+        // it: a device can post the night's vitals while its sleep session is still syncing, and
+        // gating on SleepMinutes would send these two rules a day back to a night they have already
+        // judged. Whichever reading is there decides which row is "last night" for that reading.
+        var overnightVitalsLog =
+            todayLog?.HeartRateVariabilityMs is not null
+            || todayLog?.OvernightBreathingRate is not null
+            || todayLog?.SleepMinutes is not null
+                ? todayLog
+                : yesterdayLog;
+
+        // The night before last night, for the HRV rule — one low night is noise, two is a signal.
+        // Sleep-derived readings follow the same "ended on this day" attribution as sleep itself,
+        // so the night before last night lives on the row before last night's.
+        var previousNightLog = logsByDate.GetValueOrDefault(
+            overnightVitalsLog?.Date.AddDays(-1) ?? yesterday);
+
         // Off = do not evaluate at all (not merely suppress the raise). Absence of a preference
         // row means every rule is on.
         var candidates = new List<StatisticalAlertCandidate>();
@@ -133,6 +155,21 @@ public class StatisticalAlertService : IStatisticalAlertService
             AddIfPresent(candidates, StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow));
         if (rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule))
             AddIfPresent(candidates, StatisticalAlertRules.LongTermTrend(logsByDate, yesterday));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.HeartRateVariabilityDropRule))
+        {
+            AddIfPresent(candidates, StatisticalAlertRules.HeartRateVariabilityDrop(
+                baseline, overnightVitalsLog, previousNightLog));
+        }
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.OvernightBreathingUpRule))
+        {
+            // Last night's row, like sleep and HRV: the reading is derived from the night and is
+            // filed under the civil day it ended on.
+            AddIfPresent(candidates, StatisticalAlertRules.OvernightBreathingUp(baseline, overnightVitalsLog));
+        }
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule))
+            AddIfPresent(candidates, StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, yesterdayLog));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule))
+            AddIfPresent(candidates, StatisticalAlertRules.DaytimeInactivityBlock(baseline, yesterdayLog));
 
         // NOTE: this engine's alerts are not auto-resolved, and so still latch — see
         // AlertResolution for what that costs. Closing them needs each rule to say whether it was

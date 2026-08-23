@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using CardiTrack.Infrastructure.ExternalClients;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.ExternalClients;
@@ -138,7 +139,10 @@ public class GoogleHealthApiClientTests
         // (see GoogleHealthApiClient's PageRequestDelay), but most of these tests assert request count
         // and content, not wall-clock timing, and a real delay would make every multi-page test
         // slow. Tests that specifically exercise pacing pass their own (short) delay.
-        return (new GoogleHealthApiClient(factory, pageRequestDelay ?? TimeSpan.Zero), handler);
+        return (
+            new GoogleHealthApiClient(
+                factory, Substitute.For<ILogger<GoogleHealthApiClient>>(), pageRequestDelay ?? TimeSpan.Zero),
+            handler);
     }
 
     /// <summary>
@@ -153,7 +157,8 @@ public class GoogleHealthApiClientTests
         factory.CreateClient("GoogleHealthClient").Returns(new HttpClient());
 
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new GoogleHealthApiClient(factory, TimeSpan.FromMilliseconds(-1)));
+            () => new GoogleHealthApiClient(
+                factory, Substitute.For<ILogger<GoogleHealthApiClient>>(), TimeSpan.FromMilliseconds(-1)));
     }
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
@@ -1583,6 +1588,494 @@ public class GoogleHealthApiClientTests
         Assert.Equal(2, timestamps.Count);
         var gap = timestamps[1] - timestamps[0];
         Assert.True(gap >= pacing, $"Expected the second page to wait at least {pacing}, gap was {gap}.");
+    }
+
+    // ── Heart rate variability ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// HRV is a Daily record, so it is listed on its own `date` rather than rolled up — and its
+    /// value is a `double`, not one of the quoted int64s the counts around it use.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_ReadsOvernightRmssd_FromTheDailyRecord()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-heart-rate-variability/", """
+                {
+                  "dataPoints": [
+                    {
+                      "dailyHeartRateVariability": {
+                        "date": { "year": 2026, "month": 8, "day": 5 },
+                        "averageHeartRateVariabilityMilliseconds": 27.4
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(27.4m, result.HeartRateVariabilityMs);
+    }
+
+    /// <summary>
+    /// A great many wearables derive no HRV at all. That is a fact about the device: null, never a
+    /// substituted figure, and never a failed snapshot.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_ReturnsNullRmssd_WhenTheDeviceDerivesNone()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-heart-rate-variability/", """{ "dataPoints": [] }""");
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Null(result.HeartRateVariabilityMs);
+    }
+
+    // ── Overnight breathing, effort zones and unbroken rest ──────────────────────
+
+    /// <summary>
+    /// The overnight figure comes off `respiratory-rate-sleep-summary`, not the daily respiratory
+    /// record this client already reads: one averages hours of stillness, the other a whole day
+    /// with stairs in it, and the alert that fires on a rise only means anything for the first.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_ReadsOvernightBreathing_FromTheSleepSummary()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/respiratory-rate-sleep-summary/", """
+                {
+                  "dataPoints": [
+                    {
+                      "respiratoryRateSleepSummary": {
+                        "sampleTime": { "physicalTime": "2026-08-05T06:30:00Z" },
+                        "fullSleepStats": { "breathsPerMinute": 15.4, "standardDeviation": 0.8 },
+                        "deepSleepStats": { "breathsPerMinute": 14.9 }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(15.4m, result.OvernightBreathingRate);
+    }
+
+    /// <summary>
+    /// A nap and a night both produce a summary on the same civil day. The night is the earlier
+    /// stamp — a sleep session is stamped when it ended, in the morning — and the API returns the
+    /// list newest-first, so taking the first element takes the nap. Ordering is compared here
+    /// rather than trusted.
+    /// </summary>
+    [Fact]
+    public async Task GetAdditionalMetricsAsync_TakesTheNightsSummary_NotTheAfternoonNaps()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/respiratory-rate-sleep-summary/", """
+                {
+                  "dataPoints": [
+                    {
+                      "respiratoryRateSleepSummary": {
+                        "sampleTime": { "physicalTime": "2026-08-05T15:10:00Z" },
+                        "fullSleepStats": { "breathsPerMinute": 18.9 }
+                      }
+                    },
+                    {
+                      "respiratoryRateSleepSummary": {
+                        "sampleTime": { "physicalTime": "2026-08-05T06:30:00Z" },
+                        "fullSleepStats": { "breathsPerMinute": 14.2 }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetAdditionalMetricsAsync("token", Today);
+
+        Assert.Equal(14.2m, result.OvernightBreathingRate);
+    }
+
+    /// <summary>
+    /// Zone durations are protobuf Durations ("1800s"), like sedentary-period — parsing them as
+    /// bare numbers returns null on every wearer, which is indistinguishable from a still day.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReadsZoneMinutes_FromDurationStrings()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/time-in-heart-rate-zone/", Rollup("timeInHeartRateZone", """
+                {
+                  "timeInHeartRateZones": [
+                    { "heartRateZone": "LIGHT",    "duration": "3600s" },
+                    { "heartRateZone": "MODERATE", "duration": "1500s" },
+                    { "heartRateZone": "VIGOROUS", "duration": "300s"  }
+                  ]
+                }
+                """));
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", Today);
+
+        Assert.Equal(60, result.LightZoneMinutes);
+        Assert.Equal(25, result.ModerateZoneMinutes);
+        Assert.Equal(5, result.VigorousZoneMinutes);
+        // Present rollup, absent zone: the wearer was measured and never reached peak. A real zero,
+        // not a gap — which is what lets the elevated-minutes sum mean something.
+        Assert.Equal(0, result.PeakZoneMinutes);
+    }
+
+    /// <summary>
+    /// The moderate-zone floor is the wearer's own Karvonen figure, read rather than re-derived so
+    /// CardiTrack's copy and their watch cannot disagree about where effort starts for them.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReadsTheModerateZoneFloor_FromTheDailyZonesRecord()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-heart-rate-zones/", """
+                {
+                  "dataPoints": [
+                    {
+                      "dailyHeartRateZones": {
+                        "date": { "year": 2026, "month": 8, "day": 5 },
+                        "heartRateZones": [
+                          { "heartRateZoneType": "LIGHT",    "minBeatsPerMinute": "78",  "maxBeatsPerMinute": "95"  },
+                          { "heartRateZoneType": "MODERATE", "minBeatsPerMinute": "96",  "maxBeatsPerMinute": "112" }
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", Today);
+
+        Assert.Equal(96, result.ModerateZoneFloorBpm);
+    }
+
+    private static string ActivityLevelPoint(string level, string start, string end) => $$"""
+        {
+          "activityLevel": {
+            "activityLevelType": "{{level}}",
+            "interval": { "startTime": "{{start}}", "endTime": "{{end}}" }
+          }
+        }
+        """;
+
+    /// <summary>
+    /// The same point with a civil end time, in the structured shape the API actually returns —
+    /// <c>{ date: {year,month,day}, time: {hours,minutes} }</c>, not the RFC-3339 string this
+    /// fixture originally assumed (the assumption that shipped the 2026-08-23 outage's second,
+    /// non-crashing bug: this method's own day-end clip silently never fired).
+    /// </summary>
+    private static string ActivityLevelPointWithCivil(
+        string level, string start, string end, int civilEndYear, int civilEndMonth,
+        int civilEndDay, int civilEndHour, int civilEndMinute) => $$"""
+        {
+          "activityLevel": {
+            "activityLevelType": "{{level}}",
+            "interval": {
+              "startTime": "{{start}}", "endTime": "{{end}}",
+              "civilEndTime": {
+                "date": { "year": {{civilEndYear}}, "month": {{civilEndMonth}}, "day": {{civilEndDay}} },
+                "time": { "hours": {{civilEndHour}}, "minutes": {{civilEndMinute}} }
+              }
+            }
+          }
+        }
+        """;
+
+    /// <summary>
+    /// The list filter selects on civil START time, so an interval that begins before local
+    /// midnight and runs into the small hours arrives whole. Left whole it is counted as this
+    /// day's stillness — an early bedtime would hand `daytime_inactivity_block` a night's sleep
+    /// wearing a daytime rule's name, which is the failure the sleep-window clip prevents at the
+    /// other end of the day.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ClipsAStretchThatRunsPastMidnight_AtTheDaysEnd()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPointWithCivil(
+                        "SEDENTARY", "2026-08-05T21:00:00Z", "2026-08-06T06:00:00Z",
+                        2026, 8, 6, 6, 0)}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        // Nine hours reported, three of them before midnight — only those three are this day's.
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 21, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// `civilEndTime` is optional on `ObservationTimeInterval`. Without it the interval is left
+    /// alone — a clip we cannot size is worse than no clip.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_LeavesAnIntervalAlone_WhenItCarriesNoCivilEnd()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T13:00:00Z", "2026-08-05T16:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+    }
+
+    /// <summary>
+    /// The reading that cannot be derived from a daily total: touching sedentary intervals are one
+    /// unbroken stretch, and a device that emits level-per-minute emits a run of them. A strict
+    /// equality test on the boundaries would report the longest stretch as a single interval.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_JoinsTouchingSedentaryIntervals_IntoOneStretch()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T13:00:00Z", "2026-08-05T14:00:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T14:00:00Z", "2026-08-05T15:30:00Z")}},
+                    {{ActivityLevelPoint("LIGHTLY_ACTIVE", "2026-08-05T15:30:00Z", "2026-08-05T15:45:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T15:45:00Z", "2026-08-05T16:15:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        // 13:00-15:30 is one stretch of 150 minutes; the 30-minute stretch after the walk is not it.
+        Assert.Equal(150, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 13, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// The night that ended on the fifth, for the tests whose subject is the joining rather than
+    /// the clipping — it sits clear of every interval they use.
+    /// </summary>
+    private static readonly (DateTime Start, DateTime End) NightOfTheFifth = (
+        new DateTime(2026, 8, 4, 23, 0, 0, DateTimeKind.Utc),
+        new DateTime(2026, 8, 5, 6, 30, 0, DateTimeKind.Utc));
+
+    /// <summary>
+    /// No sleep window, no stretch. Measuring the whole civil day would make the small hours the
+    /// longest unbroken sedentary run on almost every day, and `daytime_inactivity_block` — whose
+    /// floor is three hours — a rule that pages a family about an ordinary night's sleep. The
+    /// zone readings are unaffected: only the stretch cannot be told from a night.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ReportsNoStretch_WhenTheNightIsUnknown()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T00:00:00Z", "2026-08-05T07:00:00Z")}}
+                  ]
+                }
+                """)
+            .Map("/dataTypes/daily-heart-rate-zones/", """
+                {
+                  "dataPoints": [
+                    { "dailyHeartRateZones": { "heartRateZones": [
+                        { "heartRateZoneType": "MODERATE", "minBeatsPerMinute": 97 } ] } }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleepWindow: null);
+
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.Null(result.LongestSedentaryStretchStartUtc);
+        Assert.Equal(97, result.ModerateZoneFloorBpm);
+    }
+
+    /// <summary>
+    /// A sleeping wearer is a sedentary wearer and the civil day opens at midnight, so without the
+    /// sleep window the small hours are the longest unbroken sedentary run on almost every day —
+    /// and "Long daytime rest" becomes a rule about sleep.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ExcludesTheNightsSleep_FromTheLongestStretch()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T00:00:00Z", "2026-08-05T07:00:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T13:00:00Z", "2026-08-05T15:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var sleep = (
+            new DateTime(2026, 8, 4, 23, 15, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 5, 7, 0, 0, DateTimeKind.Utc));
+
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleep);
+
+        // The seven-hour run is the night; the afternoon's two hours is the day's longest rest.
+        Assert.Equal(120, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 13, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// An interval that spans the whole night keeps both of its daytime ends rather than being
+    /// dropped or collapsed to the longer one — an evening in a chair and a morning in one are
+    /// separate rests.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_KeepsBothDaytimeEnds_OfAnIntervalSpanningTheNight()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T19:00:00Z", "2026-08-06T09:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var sleep = (
+            new DateTime(2026, 8, 5, 22, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 6, 7, 0, 0, DateTimeKind.Utc));
+
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleep);
+
+        // Three hours before the night and two after it. The evening end is reported — which it
+        // could not be if the split dropped everything before the sleep window — and the nine
+        // hours in between are gone.
+        Assert.Equal(180, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 19, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// A gap wider than the join tolerance is a real interruption — the wearer got up — and breaks
+    /// the run, which is the entire point of measuring an unbroken stretch.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_BreaksTheStretch_WhenTheWearerMovedInBetween()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T09:00:00Z", "2026-08-05T10:00:00Z")}},
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T10:20:00Z", "2026-08-05T11:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(60, result.LongestSedentaryStretchMinutes);
+    }
+
+    [Fact]
+    public async Task GetExertionAsync_ReturnsNulls_WhenTheDeviceRecordsNoneOfIt()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/daily-heart-rate-zones/", """{ "dataPoints": [] }""")
+            .Map("/dataTypes/activity-level/", """{ "dataPoints": [] }""");
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", Today);
+
+        Assert.Null(result.LightZoneMinutes);
+        Assert.Null(result.ModerateZoneFloorBpm);
+        Assert.Null(result.LongestSedentaryStretchMinutes);
+        Assert.Null(result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// Regression for the 2026-08-23 sync outage: a live wearer's <c>activity-level</c> feed
+    /// returned a point whose <c>activityLevelType</c> was itself a nested object instead of the
+    /// documented enum string. <c>JToken.Value&lt;string&gt;</c> throws
+    /// <see cref="InvalidCastException"/> on a shape mismatch like that rather than returning null,
+    /// and that exception was uncaught here — it failed the whole <c>Task.WhenAll</c> in
+    /// <see cref="GoogleHealthApiClient.GetHealthSnapshotAsync"/>, so every metric for the day was
+    /// lost, not just this one. The malformed point must be skipped, and a well-formed point beside
+    /// it must still be read.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_SkipsAMalformedPoint_RatherThanThrowing()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", """
+                {
+                  "dataPoints": [
+                    {
+                      "activityLevel": {
+                        "activityLevelType": { "unexpected": "object" },
+                        "interval": {
+                          "startTime": "2026-08-05T08:00:00Z", "endTime": "2026-08-05T09:00:00Z"
+                        }
+                      }
+                    },
+                    {
+                      "activityLevel": {
+                        "activityLevelType": "SEDENTARY",
+                        "interval": {
+                          "startTime": "2026-08-05T13:00:00Z", "endTime": "2026-08-05T14:00:00Z"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(60, result.LongestSedentaryStretchMinutes);
+    }
+
+    /// <summary>
+    /// The minute series and the nightly record report the same quantity at two grains, so the
+    /// granular read takes RMSSD rather than the record's standard-deviation sibling.
+    /// </summary>
+    [Fact]
+    public async Task GetGranularDayAsync_ReadsHeartRateVariabilitySamples()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/heart-rate-variability/", SamplePage(
+                "heartRateVariability", "rootMeanSquareOfSuccessiveDifferencesMilliseconds", null,
+                "31.5", "28.25"));
+
+        var (sut, _) = CreateSut(handler);
+        var day = await ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+
+        Assert.Equal([31.5f, 28.25f], day.HeartRateVariability.Select(s => s.Value));
     }
 
     private static string SamplePage(

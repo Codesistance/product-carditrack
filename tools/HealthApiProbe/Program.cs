@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using CardiTrack.Infrastructure.ExternalClients;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 // Probes the Google Health API with a real access token and reports the JSON
 // *shape* of each response, then runs the real GoogleHealthApiClient over the same
@@ -197,8 +198,13 @@ services.AddHttpClient("GoogleHealthClient", c =>
     c.BaseAddress = new Uri(BaseUrl);
     c.DefaultRequestHeaders.Add("Accept", "application/json");
 });
+// Console, so GoogleHealthApiClient's warning/debug shape-mismatch logs — the whole point of
+// injecting a logger here — actually show up, rather than going to a provider-less no-op sink.
+services.AddLogging(b => b.AddSimpleConsole().SetMinimumLevel(LogLevel.Debug));
 using var provider = services.BuildServiceProvider();
-var client = new GoogleHealthApiClient(provider.GetRequiredService<IHttpClientFactory>());
+var client = new GoogleHealthApiClient(
+    provider.GetRequiredService<IHttpClientFactory>(),
+    provider.GetRequiredService<ILogger<GoogleHealthApiClient>>());
 
 try
 {

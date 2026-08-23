@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Xml.Linq;
 using CardiTrack.Shared.Json;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -90,16 +91,29 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// </summary>
     private static readonly TimeSpan PageRequestDelay = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>
+    /// The largest gap between two sedentary intervals that still counts as one unbroken stretch.
+    /// A minute-grained device emits touching intervals rather than one long one, and clocks
+    /// between them are not exact; two minutes is short enough that a real interruption — standing
+    /// up, walking to the kitchen — still breaks the run, which is the whole point of measuring it.
+    /// </summary>
+    private const int SedentaryJoinToleranceMinutes = 2;
+
     private readonly HttpClient _httpClient;
     private readonly TimeSpan _pageRequestDelay;
+    private readonly ILogger<GoogleHealthApiClient> _logger;
 
-    public GoogleHealthApiClient(IHttpClientFactory httpClientFactory, TimeSpan? pageRequestDelay = null)
+    public GoogleHealthApiClient(
+        IHttpClientFactory httpClientFactory,
+        ILogger<GoogleHealthApiClient> logger,
+        TimeSpan? pageRequestDelay = null)
     {
         if (pageRequestDelay < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(
                 nameof(pageRequestDelay), pageRequestDelay, "Page request delay cannot be negative.");
 
         _httpClient = httpClientFactory.CreateClient("GoogleHealthClient");
+        _logger = logger;
         _pageRequestDelay = pageRequestDelay ?? PageRequestDelay;
     }
 
@@ -204,8 +218,8 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var root = await ParseBodyAsync(response, "sleep");
         var sleep = (root["dataPoints"] as JArray)?.OfType<JObject>().FirstOrDefault()?["sleep"];
 
-        var startTime = ParseInstantUtc(sleep?["interval"]?.Value<string>("startTime"));
-        var endTime = ParseInstantUtc(sleep?["interval"]?.Value<string>("endTime"));
+        var startTime = ParseInstantUtc(ReadString(sleep?["interval"], "startTime"));
+        var endTime = ParseInstantUtc(ReadString(sleep?["interval"], "endTime"));
 
         var summary = sleep?["summary"];
 
@@ -248,11 +262,24 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     public async Task<GoogleHealthAdditionalMetricsResult> GetAdditionalMetricsAsync(
         string accessToken, DateOnly date)
     {
+        // Sample series, both of them: SpO2 is read for its min/max as well as its mean, and the
+        // overnight breathing rate has to pick the night's own summary out of the day's.
         var spO2Task = GetSpO2Async(accessToken, date);
-        // Each of the three is a Daily record read through `list`, so each is filtered on its own
+        var overnightBreathingTask = OptionalOvernightBreathingRateAsync(accessToken, date);
+
+        // The four below are Daily records read through `list`, so each is filtered on its own
         // `date` field rather than rolled up.
         var vo2MaxTask = OptionalDailyValueAsync(
             accessToken, "daily-vo2-max", "dailyVo2Max", "vo2Max", date);
+        // RMSSD rather than the record's deep-sleep or entropy siblings: it is the figure the
+        // design's SSA mapping names (docs/llm_design.md), and the one every published HRV
+        // yardstick is written in.
+        var heartRateVariabilityTask = OptionalDailyValueAsync(
+            accessToken,
+            "daily-heart-rate-variability",
+            "dailyHeartRateVariability",
+            "averageHeartRateVariabilityMilliseconds",
+            date);
         var breathingRateTask = OptionalDailyValueAsync(
             accessToken, "daily-respiratory-rate", "dailyRespiratoryRate", "breathsPerMinute", date);
         // Wrist wearables do not measure core body temperature; what Fitbit and Pixel Watch derive
@@ -260,7 +287,9 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         // wearer's own baseline, so the record's baseline and 30-day variation are read alongside
         // the nightly value in a single fetch rather than three.
         var temperatureTask = OptionalDailyTemperatureAsync(accessToken, date);
-        await Task.WhenAll(spO2Task, vo2MaxTask, breathingRateTask, temperatureTask);
+        await Task.WhenAll(
+            spO2Task, vo2MaxTask, breathingRateTask, temperatureTask, heartRateVariabilityTask,
+            overnightBreathingTask);
 
         var (spO2Average, spO2Min, spO2Max) = spO2Task.Result;
         var (nightlyTemperature, temperatureBaseline, temperatureVariation) = temperatureTask.Result;
@@ -273,7 +302,288 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             breathingRateTask.Result,
             nightlyTemperature,
             temperatureBaseline,
-            temperatureVariation);
+            temperatureVariation,
+            heartRateVariabilityTask.Result is { } hrv ? decimal.Round(hrv, 1) : null,
+            overnightBreathingTask.Result);
+    }
+
+    /// <summary>
+    /// The night's average respiratory rate, from the <c>respiratory-rate-sleep-summary</c> Sample
+    /// record's whole-sleep statistics.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <c>daily-respiratory-rate</c>, which this client already reads: that one
+    /// averages the whole day, where a stair climb and a nap pull in opposite directions. The
+    /// overnight figure is measured over hours of stillness, which is what makes a rise across
+    /// nights legible at all — it is the form every clinical rule of thumb about breathing rate is
+    /// written in.
+    /// <para>
+    /// The record also carries per-stage statistics (deep, light, REM) and a signal-to-noise
+    /// figure. Only the whole-sleep average is stored: the stage split is a sleep-architecture
+    /// question this product does not ask, and a confidence figure with no reader is a column that
+    /// would only ever be written. The stage records stay available on the same fetch if a later
+    /// pass wants them.
+    /// </para>
+    /// </remarks>
+    private async Task<decimal?> OptionalOvernightBreathingRateAsync(string accessToken, DateOnly date)
+    {
+        const string dataType = "respiratory-rate-sleep-summary";
+        try
+        {
+            var points = await ListDataPointsAsync(
+                accessToken, dataType, SampleDayFilter(dataType, date), date);
+
+            // The *earliest* summary stamped on this civil day, which is the night: a night is
+            // stamped when its sleep session ended, in the morning, while a nap later the same day
+            // is stamped in the afternoon. Selected by comparing the timestamps rather than by
+            // taking an end of the list — the API documents its ordering as descending, so the
+            // first element is the nap, which is what this read took until it was corrected.
+            var summaries = points
+                .Select(point => point["respiratoryRateSleepSummary"])
+                .Where(summary => summary?["fullSleepStats"] is not null)
+                .Select(summary => (
+                    Summary: summary,
+                    At: ParseInstantUtc(ReadString(summary?["sampleTime"], "physicalTime"))))
+                .ToList();
+
+            var stats = (summaries.Any(x => x.At.HasValue)
+                    ? summaries.Where(x => x.At.HasValue).MinBy(x => x.At!.Value).Summary
+                    // No parsable timestamps: fall back to the last element, which under the
+                    // documented descending order is the earliest — the same answer, less safely.
+                    : summaries.LastOrDefault().Summary)
+                ?["fullSleepStats"];
+
+            return ReadDecimal(stats, "breathsPerMinute") is { } breaths
+                ? decimal.Round(breaths, 1)
+                : null;
+        }
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// How the day's heart rate was distributed across the wearer's own effort zones, the bpm at
+    /// which their moderate zone starts, and the longest unbroken stretch their device recorded
+    /// them as sedentary.
+    /// </summary>
+    /// <remarks>
+    /// Three reads that answer one question the daily totals cannot: not how much the wearer moved,
+    /// but how hard their heart worked and how long it went unbroken between movements. Steps say
+    /// a day was quiet; zone minutes say whether the heart agreed.
+    /// <para>
+    /// The zone thresholds come from <c>daily-heart-rate-zones</c> rather than being derived here.
+    /// They are Karvonen figures computed against the wearer's own resting rate and age, so
+    /// re-deriving them would put CardiTrack's arithmetic behind a number the wearer's watch
+    /// already shows them — and the two would disagree the moment either changed its formula.
+    /// </para>
+    /// </remarks>
+    /// <param name="sleepWindow">
+    /// The night's sleep session, when the caller has read it. Sedentary intervals overlapping it
+    /// are excluded before the longest stretch is measured — without that, the post-midnight half
+    /// of the night is the longest unbroken sedentary run on almost every day, and the reading
+    /// would describe the member asleep while calling itself a daytime rest. Null leaves the whole
+    /// civil day in scope, which is only correct for a caller that has no sleep session to give.
+    /// </param>
+    public async Task<GoogleHealthExertionResult> GetExertionAsync(
+        string accessToken, DateOnly date, (DateTime Start, DateTime End)? sleepWindow = null)
+    {
+        var zoneMinutesTask = OptionalZoneMinutesAsync(accessToken, date);
+        var zoneFloorTask = OptionalModerateZoneFloorAsync(accessToken, date);
+        var sedentaryStretchTask = OptionalLongestSedentaryStretchAsync(accessToken, date, sleepWindow);
+        await Task.WhenAll(zoneMinutesTask, zoneFloorTask, sedentaryStretchTask);
+
+        var (light, moderate, vigorous, peak) = zoneMinutesTask.Result;
+        var (stretchMinutes, stretchStart) = sedentaryStretchTask.Result;
+
+        return new GoogleHealthExertionResult(
+            light, moderate, vigorous, peak, zoneFloorTask.Result, stretchMinutes, stretchStart);
+    }
+
+    /// <summary>
+    /// Minutes in each heart-rate zone, from the <c>time-in-heart-rate-zone</c> rollup. Every zone
+    /// is null when the day has no rollup at all, and a zone absent from a rollup that does exist
+    /// is a real zero — the wearer was measured and never reached it.
+    /// </summary>
+    private async Task<(int? Light, int? Moderate, int? Vigorous, int? Peak)> OptionalZoneMinutesAsync(
+        string accessToken, DateOnly date)
+    {
+        try
+        {
+            var rollup = await DailyRollupValueAsync(accessToken, "time-in-heart-rate-zone", date);
+            if (rollup?["timeInHeartRateZones"] is not JArray zones)
+                return (null, null, null, null);
+
+            int? MinutesIn(string zone)
+            {
+                var entry = zones
+                    .OfType<JObject>()
+                    .FirstOrDefault(z => string.Equals(
+                        ReadString(z, "heartRateZone"), zone, StringComparison.Ordinal));
+
+                // A zone the day never reached is absent from the list rather than present at
+                // zero, and the wearer was measured either way — so a present rollup means 0, not
+                // "not measured". `duration` is a protobuf Duration ("1800s"), like sedentary-period.
+                var seconds = ReadDurationSeconds(entry, "duration") ?? 0m;
+                return (int)decimal.Round(seconds / 60m);
+            }
+
+            return (MinutesIn("LIGHT"), MinutesIn("MODERATE"), MinutesIn("VIGOROUS"), MinutesIn("PEAK"));
+        }
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
+        {
+            return (null, null, null, null);
+        }
+    }
+
+    /// <summary>
+    /// The bpm at which this wearer's <c>MODERATE</c> zone begins — the one threshold of the four
+    /// that a caregiver's copy needs, because it is the line between "moving about" and "their
+    /// heart is working".
+    /// </summary>
+    private async Task<int?> OptionalModerateZoneFloorAsync(string accessToken, DateOnly date)
+    {
+        try
+        {
+            var record = await DailyRecordAsync(
+                accessToken, "daily-heart-rate-zones", "dailyHeartRateZones", date);
+            if (record?["heartRateZones"] is not JArray zones)
+                return null;
+
+            var moderate = zones
+                .OfType<JObject>()
+                .FirstOrDefault(z => string.Equals(
+                    ReadString(z, "heartRateZoneType"), "MODERATE", StringComparison.Ordinal));
+
+            return ReadInt(moderate, "minBeatsPerMinute");
+        }
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The longest unbroken sedentary stretch of the day and when it started, from the
+    /// <c>activity-level</c> interval series.
+    /// </summary>
+    /// <remarks>
+    /// This is the one reading here that cannot be derived from a daily total. CardiTrack already
+    /// stores <c>SedentaryMinutes</c> from the <c>sedentary-period</c> rollup, but a day of
+    /// six hours' stillness broken into twelve half-hours and a day with one unbroken six-hour
+    /// stretch sum to the same number and are not the same day — only the second is the shape a
+    /// family would want to hear about. Reading the intervals rather than the rollup is what makes
+    /// the difference visible.
+    /// <para>
+    /// Adjacent intervals are joined across gaps up to <see cref="SedentaryJoinToleranceMinutes"/>,
+    /// because a device that records level per minute emits a run of touching intervals rather than
+    /// one long one, and a strict equality test would report the longest stretch as one minute.
+    /// </para>
+    /// <para>
+    /// <b>No sleep window, no reading.</b> A sleeping wearer is a sedentary wearer and the civil
+    /// day opens at midnight, so measuring the whole day would make the small hours the longest
+    /// unbroken run on almost every day — and <c>daytime_inactivity_block</c>, whose floor is three
+    /// hours, a rule that pages a family about an ordinary night's sleep. Rather than report a
+    /// figure we cannot tell from a night, we report none: the alert rule already treats a missing
+    /// reading as "could not judge", which is exactly what this is.
+    /// </para>
+    /// <para>
+    /// One bound remains, and it is deliberate. The night that <em>begins</em> on this day belongs
+    /// to tomorrow's row and is not fetched here, so an early bedtime leaves a tail of stillness
+    /// between it and midnight inside the day's own intervals. It is capped by definition — at most
+    /// bedtime to midnight — and unlike the small hours it is time the wearer spent settled while
+    /// the day was still theirs, which is nearer what the reading is for than it is to sleep.
+    /// </para>
+    /// </remarks>
+    private async Task<(int? Minutes, DateTime? StartUtc)> OptionalLongestSedentaryStretchAsync(
+        string accessToken, DateOnly date, (DateTime Start, DateTime End)? sleepWindow)
+    {
+        if (sleepWindow is null)
+            return (null, null);
+
+        const string dataType = "activity-level";
+        try
+        {
+            var points = await ListDataPointsAsync(
+                accessToken, dataType, IntervalDayFilter(dataType, date), date);
+
+            var sedentary = points
+                .Select(point => point["activityLevel"])
+                .Where(level => string.Equals(
+                    ReadString(level, "activityLevelType"), "SEDENTARY", StringComparison.Ordinal))
+                .Select(level => (
+                    Start: ParseInstantUtc(ReadString(level?["interval"], "startTime")),
+                    End: ClipToCivilDayEnd(
+                        ParseInstantUtc(ReadString(level?["interval"], "endTime")),
+                        level?["interval"]?["civilEndTime"],
+                        date)))
+                .Where(i => i.Start.HasValue && i.End.HasValue && i.End > i.Start)
+                .Select(i => (Start: i.Start!.Value, End: i.End!.Value))
+                .SelectMany(i => OutsideSleep(i, sleepWindow.Value))
+                .OrderBy(i => i.Start)
+                .ToList();
+
+            if (sedentary.Count == 0)
+                return (null, null);
+
+            var tolerance = TimeSpan.FromMinutes(SedentaryJoinToleranceMinutes);
+            var runStart = sedentary[0].Start;
+            var runEnd = sedentary[0].End;
+            var longest = (Start: runStart, Length: runEnd - runStart);
+
+            foreach (var (start, end) in sedentary.Skip(1))
+            {
+                if (start - runEnd <= tolerance)
+                {
+                    // Overlapping or touching: extend, never shorten — an interval wholly inside
+                    // the run must not pull its end backwards.
+                    runEnd = end > runEnd ? end : runEnd;
+                }
+                else
+                {
+                    runStart = start;
+                    runEnd = end;
+                }
+
+                if (runEnd - runStart > longest.Length)
+                    longest = (runStart, runEnd - runStart);
+            }
+
+            return ((int)Math.Round(longest.Length.TotalMinutes), longest.Start);
+        }
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex))
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// The parts of a sedentary interval that fall outside the night's sleep: none where it sits
+    /// wholly inside, one where it overlaps an edge, and two where it spans the whole night.
+    /// </summary>
+    /// <remarks>
+    /// A sleeping wearer is a sedentary wearer, and the civil day opens at midnight, so without
+    /// this the longest unbroken sedentary run is the small hours on essentially every day —
+    /// making "Long daytime rest" a rule about sleep, and its baseline a seven-hour figure nothing
+    /// could ever exceed. Both fragments of a spanning interval are kept rather than the longer
+    /// one: an evening in a chair and a morning in one are separate rests, and picking between
+    /// them here would silently discard whichever the wearer had less of.
+    /// </remarks>
+    private static IEnumerable<(DateTime Start, DateTime End)> OutsideSleep(
+        (DateTime Start, DateTime End) interval, (DateTime Start, DateTime End) sleep)
+    {
+        if (interval.End <= sleep.Start || interval.Start >= sleep.End)
+        {
+            yield return interval;
+            yield break;
+        }
+
+        if (interval.Start < sleep.Start)
+            yield return (interval.Start, sleep.Start);
+
+        if (interval.End > sleep.End)
+            yield return (sleep.End, interval.End);
     }
 
     public async Task<DeviceHealthSnapshot> GetHealthSnapshotAsync(string accessToken, DateOnly date)
@@ -282,12 +592,22 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var heartRateTask = GetHeartRateAsync(accessToken, date);
         var sleepTask = GetSleepAsync(accessToken, date);
         var additionalTask = GetAdditionalMetricsAsync(accessToken, date);
-        await Task.WhenAll(activitiesTask, heartRateTask, sleepTask, additionalTask);
+
+        // Exertion is the one read that depends on another: the longest sedentary stretch is a
+        // *daytime* figure, and only the sleep session says which hours were the night. Awaited
+        // here rather than fetched twice, and everything else stays concurrent around it.
+        var sleep = await sleepTask;
+        var sleepWindow = sleep.SleepStartTime is { } sleepStart && sleep.SleepEndTime is { } sleepEnd
+            ? (sleepStart, sleepEnd)
+            : ((DateTime Start, DateTime End)?)null;
+        var exertionTask = GetExertionAsync(accessToken, date, sleepWindow);
+
+        await Task.WhenAll(activitiesTask, heartRateTask, additionalTask, exertionTask);
 
         var activities = activitiesTask.Result;
         var heartRate = heartRateTask.Result;
-        var sleep = sleepTask.Result;
         var additional = additionalTask.Result;
+        var exertion = exertionTask.Result;
 
         return new DeviceHealthSnapshot(
             activities.Steps,
@@ -317,12 +637,22 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             BreathingRate: additional.BreathingRate,
             Temperature: additional.Temperature,
             TemperatureBaseline: additional.TemperatureBaseline,
-            TemperatureVariation: additional.TemperatureVariation);
+            TemperatureVariation: additional.TemperatureVariation,
+            HeartRateVariabilityMs: additional.HeartRateVariabilityMs,
+            OvernightBreathingRate: additional.OvernightBreathingRate,
+            LightZoneMinutes: exertion.LightZoneMinutes,
+            ModerateZoneMinutes: exertion.ModerateZoneMinutes,
+            VigorousZoneMinutes: exertion.VigorousZoneMinutes,
+            PeakZoneMinutes: exertion.PeakZoneMinutes,
+            ModerateZoneFloorBpm: exertion.ModerateZoneFloorBpm,
+            LongestSedentaryStretchMinutes: exertion.LongestSedentaryStretchMinutes,
+            LongestSedentaryStretchStartUtc: exertion.LongestSedentaryStretchStartUtc);
     }
 
     /// <summary>
-    /// The sub-daily series for one civil day: heart rate and SpO2 as timestamped samples, steps
-    /// and active-zone-minutes as intervals stamped at their start. Four list calls, sequential —
+    /// The sub-daily series for one civil day: heart rate, SpO2 and heart-rate variability as
+    /// timestamped samples, steps and active-zone-minutes as intervals stamped at their start.
+    /// Five list calls, sequential —
     /// each can independently page up to <see cref="SampleSeriesCap"/> parsed points for a
     /// high-cadence wearer, and fetching all four concurrently let those buffers stack in memory
     /// at once (root cause of the 2026-08-11 dev worker OOM). This is a background sync, not a
@@ -354,8 +684,17 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             IntervalSamplesAsync(accessToken, "active-zone-minutes", "activeZoneMinutes", "activeZoneMinutes", date));
         var spO2 = await OptionalSeriesAsync(() =>
             TimestampedSamplesAsync(accessToken, "oxygen-saturation", "oxygenSaturation", "percentage", date));
+        // RMSSD, the same measure the daily record reports, so the minute series and the nightly
+        // figure are the same quantity at two grains rather than two different ones.
+        var heartRateVariability = await OptionalSeriesAsync(() =>
+            TimestampedSamplesAsync(
+                accessToken,
+                "heart-rate-variability",
+                "heartRateVariability",
+                "rootMeanSquareOfSuccessiveDifferencesMilliseconds",
+                date));
 
-        var day = new DeviceGranularDay(heartRate, steps, activeZoneMinutes, spO2);
+        var day = new DeviceGranularDay(heartRate, steps, activeZoneMinutes, spO2, heartRateVariability);
 
         // The shared Empty instance, as the interface contract promises — a record's list
         // properties compare by reference, so distinct "empty" instances would not even be
@@ -402,7 +741,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         }
 
         var root = await ParseBodyAsync(response, "identity");
-        var healthUserId = root.Value<string>("healthUserId");
+        var healthUserId = ReadString(root, "healthUserId");
         return string.IsNullOrWhiteSpace(healthUserId) ? null : healthUserId;
     }
 
@@ -451,11 +790,11 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
 
         return devices
             .Select(device => new PairedDeviceInfo(
-                DeviceType: device.Value<string>("deviceType"),
+                DeviceType: ReadString(device, "deviceType"),
                 BatteryLevel: ReadInt(device, "batteryLevel"),
-                BatteryStatus: device.Value<string>("batteryStatus"),
-                DeviceVersion: device.Value<string>("deviceVersion"),
-                LastSyncTimeUtc: ParseInstantUtc(device.Value<string>("lastSyncTime"))))
+                BatteryStatus: ReadString(device, "batteryStatus"),
+                DeviceVersion: ReadString(device, "deviceVersion"),
+                LastSyncTimeUtc: ParseInstantUtc(ReadString(device, "lastSyncTime"))))
             .ToList();
     }
 
@@ -495,10 +834,10 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         foreach (var point in points)
         {
             var exercise = point["exercise"];
-            var sessionId = point.Value<string>("dataPointId");
-            var startTime = ParseInstantUtc(exercise?["interval"]?.Value<string>("startTime"));
-            var endTime = ParseInstantUtc(exercise?["interval"]?.Value<string>("endTime"));
-            var hasGps = exercise?.Value<bool?>("hasLocationData") ?? false;
+            var sessionId = ReadString(point, "dataPointId");
+            var startTime = ParseInstantUtc(ReadString(exercise?["interval"], "startTime"));
+            var endTime = ParseInstantUtc(ReadString(exercise?["interval"], "endTime"));
+            var hasGps = ReadBool(exercise, "hasLocationData") ?? false;
 
             if (sessionId is null || !startTime.HasValue || !endTime.HasValue)
                 continue;
@@ -759,7 +1098,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var points = await ListDataPointsAsync(accessToken, dataType, SampleDayFilter(dataType, date), date);
         return points
             .Select(point => ToSample(
-                ParseInstantUtc(point[unionMember]?["sampleTime"]?.Value<string>("physicalTime")),
+                ParseInstantUtc(ReadString(point[unionMember]?["sampleTime"], "physicalTime")),
                 ReadDecimal(point[unionMember], field)))
             .OfType<GranularSample>()
             .ToList();
@@ -777,7 +1116,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var points = await ListDataPointsAsync(accessToken, dataType, IntervalDayFilter(dataType, date), date);
         return points
             .Select(point => ToSample(
-                ParseInstantUtc(point[unionMember]?["interval"]?.Value<string>("startTime")),
+                ParseInstantUtc(ReadString(point[unionMember]?["interval"], "startTime")),
                 ReadDecimal(point[unionMember], field)))
             .OfType<GranularSample>()
             .ToList();
@@ -848,7 +1187,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             var root = await ParseBodyAsync(response, dataType);
             points.AddRange((root["dataPoints"] as JArray)?.OfType<JObject>() ?? []);
 
-            pageToken = root.Value<string>("nextPageToken");
+            pageToken = ReadString(root, "nextPageToken");
 
             if (!string.IsNullOrEmpty(pageToken) && points.Count >= SampleSeriesCap)
             {
@@ -901,14 +1240,14 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// null: an unworn device is not a still one. A breakdown that exists but lists only LIGHT is a
     /// different matter — the wearer was measured and did nothing qualifying — so that is a real 0.
     /// </remarks>
-    private static int? SumActiveMinutes(JToken? value)
+    private int? SumActiveMinutes(JToken? value)
     {
         if (value?["activeMinutesRollupByActivityLevel"] is not JArray levels)
             return null;
 
         var minutes = levels
             .OfType<JObject>()
-            .Where(level => ActiveActivityLevels.Contains(level.Value<string>("activityLevel")))
+            .Where(level => ActiveActivityLevels.Contains(ReadString(level, "activityLevel")))
             .Sum(level => ReadDecimal(level, "activeMinutesSum") ?? 0);
         return (int)decimal.Round(minutes);
     }
@@ -918,11 +1257,11 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// than an object with a field per stage, so a stage the device never recorded is an absent
     /// entry — null, not zero.
     /// </summary>
-    private static int? StageMinutes(JToken? summary, string stageType)
+    private int? StageMinutes(JToken? summary, string stageType)
     {
         var stage = (summary?["stagesSummary"] as JArray)?
             .OfType<JObject>()
-            .FirstOrDefault(s => string.Equals(s.Value<string>("type"), stageType, StringComparison.Ordinal));
+            .FirstOrDefault(s => string.Equals(ReadString(s, "type"), stageType, StringComparison.Ordinal));
         return ReadInt(stage, "minutes");
     }
 
@@ -940,6 +1279,75 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// parse returns <c>Kind=Utc</c> whatever the provider sends, and the instant itself is
     /// unchanged.
     /// </remarks>
+    /// <summary>
+    /// Trims an interval's physical end back to the end of the requested civil day.
+    /// </summary>
+    /// <remarks>
+    /// The list filter selects on civil <em>start</em> time, so an interval that begins before local
+    /// midnight and runs past it arrives whole. Left whole it counts as this day's own stillness,
+    /// and a device that emits one long run from an early bedtime into the small hours would hand
+    /// <c>daytime_inactivity_block</c> a night's sleep wearing a daytime rule's name — the same
+    /// failure the sleep-window clip prevents, at the other end of the day.
+    /// <para>
+    /// The overshoot is measured in civil time and subtracted from the UTC instant, because civil
+    /// time is the only place the wearer's own midnight is named: this client is never told their
+    /// zone. <c>civilEndTime</c> is optional on <c>ObservationTimeInterval</c>; without it the
+    /// interval is left alone, since a clip we cannot size is worse than no clip. An interval
+    /// spanning a DST change is off by the shift, which is smaller than the tolerance the joining
+    /// below already allows for.
+    /// </para>
+    /// </remarks>
+    private DateTime? ClipToCivilDayEnd(DateTime? endUtc, JToken? civilEndTime, DateOnly date)
+    {
+        if (endUtc is not { } end || ParseCivilDateTime(civilEndTime) is not { } civilEnd)
+            return endUtc;
+
+        var dayEnd = date.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        return civilEnd > dayEnd ? end - (civilEnd - dayEnd) : end;
+    }
+
+    /// <summary>
+    /// Reads a civil timestamp off <c>civilStartTime</c>/<c>civilEndTime</c> on
+    /// <c>ObservationTimeInterval</c> — <c>{ date: {year,month,day}, time: {hours,minutes[,
+    /// seconds]} }</c>, confirmed against a live payload on 2026-08-23. Not the RFC-3339 string
+    /// this client originally assumed the field held: that assumption shipped in the same PR as
+    /// the rest of this method and only surfaced once <see cref="ReadString"/>'s shape-mismatch
+    /// logging existed to catch it — every point in the sweep was hitting it, silently defeating
+    /// the day-end clip this exists for (a clip that can't parse its own field falls back to no
+    /// clip, per <see cref="ClipToCivilDayEnd"/>'s own remarks — the same fallback an out-of-range
+    /// hour or minute here still gets, via the catch below).
+    /// </summary>
+    private DateTime? ParseCivilDateTime(JToken? civilDateTime)
+    {
+        if (civilDateTime is not JObject o)
+            return null;
+
+        var dateFields = o["date"];
+        var timeFields = o["time"];
+        if (ReadInt(dateFields, "year") is not { } year
+            || ReadInt(dateFields, "month") is not { } month
+            || ReadInt(dateFields, "day") is not { } day
+            // hours/minutes are required on google.type.TimeOfDay; treating an absent one as 0
+            // would silently misread an incomplete or differently-shaped object as midnight and
+            // clip against a time nobody sent. seconds alone is legitimately omitted when zero.
+            || ReadInt(timeFields, "hours") is not { } hours
+            || ReadInt(timeFields, "minutes") is not { } minutes)
+        {
+            return null;
+        }
+
+        try
+        {
+            var civilDate = new DateOnly(year, month, day);
+            var civilTime = new TimeOnly(hours, minutes, ReadInt(timeFields, "seconds") ?? 0);
+            return civilDate.ToDateTime(civilTime);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
     private static DateTime? ParseInstantUtc(string? value) =>
         DateTime.TryParse(
             value,
@@ -949,31 +1357,66 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             ? parsed
             : null;
 
-    private static int? ReadInt(JToken? obj, string name)
+    private int? ReadInt(JToken? obj, string name)
     {
         var value = ReadDecimal(obj, name);
         return value.HasValue ? (int)decimal.Round(value.Value) : null;
     }
 
-    private static decimal? ReadDecimal(JToken? obj, string name)
+    private decimal? ReadDecimal(JToken? obj, string name)
     {
         if (obj is not JObject o)
             return null;
 
-        return o[name] switch
+        switch (o[name])
         {
-            JValue { Type: JTokenType.Integer or JTokenType.Float } v => v.Value<decimal>(),
+            case JValue { Type: JTokenType.Integer or JTokenType.Float } v:
+                return v.Value<decimal>();
 
             // int64 fields cross the wire as JSON *strings* under proto3 JSON — every count, sum
             // and stage duration here is one. A numeric-only check reads them all as absent, which
             // looks exactly like a wearer with no data.
-            JValue { Type: JTokenType.String } s
+            case JValue { Type: JTokenType.String } s
                 when decimal.TryParse(
-                    s.Value<string>(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
-                => parsed,
+                    s.Value<string>(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed):
+                return parsed;
 
-            _ => null,
-        };
+            case var unexpected:
+                LogShapeMismatch(o, name, unexpected);
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads a string field off a JSON object, or null when the field is absent, not a plain
+    /// string, or <paramref name="obj"/> itself is not an object. <c>JToken.Value&lt;string&gt;</c>
+    /// throws <see cref="InvalidCastException"/> rather than returning null when the field turns
+    /// out to hold something other than a string (an unexpected nested object, say) — a live
+    /// wearer's <c>activity-level</c> feed hit exactly that on 2026-08-23, taking the whole sync
+    /// down. This mirrors <see cref="ReadDecimal"/>'s pattern-match-and-fall-through shape so a
+    /// field that does not match the shape we expect reads as absent instead of crashing the sync.
+    /// </summary>
+    private string? ReadString(JToken? obj, string name)
+    {
+        if (obj is not JObject o)
+            return null;
+        if (o[name] is JValue { Type: JTokenType.String } v)
+            return v.Value<string>();
+
+        LogShapeMismatch(o, name, o[name]);
+        return null;
+    }
+
+    /// <summary>Same shape-safety as <see cref="ReadString"/>, for a boolean field.</summary>
+    private bool? ReadBool(JToken? obj, string name)
+    {
+        if (obj is not JObject o)
+            return null;
+        if (o[name] is JValue { Type: JTokenType.Boolean } v)
+            return v.Value<bool>();
+
+        LogShapeMismatch(o, name, o[name]);
+        return null;
     }
 
     /// <summary>
@@ -988,10 +1431,15 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// suffix is required rather than optional: a bare number is not a valid Duration, so
     /// accepting one would only mask a field that is not the type we think it is.
     /// </remarks>
-    private static decimal? ReadDurationSeconds(JToken? obj, string name)
+    private decimal? ReadDurationSeconds(JToken? obj, string name)
     {
-        if (obj is not JObject o || o[name] is not JValue { Type: JTokenType.String } value)
+        if (obj is not JObject o)
             return null;
+        if (o[name] is not JValue { Type: JTokenType.String } value)
+        {
+            LogShapeMismatch(o, name, o[name]);
+            return null;
+        }
 
         var text = value.Value<string>();
         if (text is null || !text.EndsWith('s'))
@@ -1006,6 +1454,36 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             : null;
     }
 
+    /// <summary>
+    /// Logs a field whose value is present but not the JSON kind this client expects — a nested
+    /// object where a scalar was documented, say. A missing key or a literal JSON <c>null</c> is
+    /// not this: that is the ordinary "device does not report this field" case every Read* helper
+    /// already treats as absent, and warning on it would fire on nearly every sync. This is the
+    /// other case — <c>2026-08-23</c>'s outage was exactly one of these, an
+    /// <c>activityLevelType</c> that came back as an object, uncaught, all the way through
+    /// <c>Task.WhenAll</c> in <see cref="GetHealthSnapshotAsync"/>. The one-line warning names what
+    /// broke at whatever level ships today; the full payload — which can carry health data, so it
+    /// is not something every environment should log — only follows at Debug, which only dev turns
+    /// on.
+    /// </summary>
+    private void LogShapeMismatch(JObject container, string field, JToken? actual)
+    {
+        if (actual is null or JValue { Type: JTokenType.Null })
+            return;
+
+        _logger.LogWarning(
+            "Google Health API field {Field} was {ActualType}, not the shape this client expects; " +
+            "treating it as absent.",
+            field, actual.Type);
+
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug(
+                "Google Health API field {Field} had an unexpected shape. Payload: {Payload}",
+                field, container.ToString(Formatting.None));
+        }
+    }
+
     private static async Task<JToken> ParseBodyAsync(HttpResponseMessage response, string what)
     {
         var body = await response.Content.ReadAsStringAsync();
@@ -1015,7 +1493,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         return root!;
     }
 
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response)
+    private async Task EnsureSuccessAsync(HttpResponseMessage response)
     {
         if (!response.IsSuccessStatusCode)
         {
@@ -1032,7 +1510,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// from "this account has no such data", which some callers tolerate. Parsed best-effort: an
     /// unparseable or differently-shaped error body is not treated as a request bug.
     /// </summary>
-    private static bool IsMalformedRequest(int statusCode, string body)
+    private bool IsMalformedRequest(int statusCode, string body)
     {
         if (statusCode != 400 || !JsonUtility.TryParse(body, out var root, out _))
             return false;
@@ -1040,7 +1518,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         return (root?["error"]?["details"] as JArray)?
             .OfType<JObject>()
             .Any(detail =>
-                detail.Value<string>("@type")?.EndsWith("google.rpc.BadRequest", StringComparison.Ordinal) == true
+                ReadString(detail, "@type")?.EndsWith("google.rpc.BadRequest", StringComparison.Ordinal) == true
                 && detail["fieldViolations"] is JArray { Count: > 0 }) == true;
     }
 }

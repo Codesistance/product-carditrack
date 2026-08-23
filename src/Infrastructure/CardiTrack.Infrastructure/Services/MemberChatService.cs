@@ -1082,20 +1082,64 @@ public class MemberChatService : IMemberChatService
         if (withTurns is null)
             return null;
 
-        return new MemberChatHistoryResponse
+        return ToHistoryResponse(withTurns);
+    }
+
+    public async Task<MemberChatSessionListResponse> GetSessionsAsync(
+        Guid userId, Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        var listings = await _unitOfWork.MemberChatSessions.ListForMemberAsync(userId, cardiMemberId, ct);
+
+        return new MemberChatSessionListResponse
         {
-            SessionId = withTurns.Id,
-            Turns = withTurns.Turns
-                .Select(t => new MemberChatTurnResponse
+            // A session with no caregiver turn has nothing a list row can be recognised by. It
+            // exists only when a send failed before its first turn persisted, and showing it
+            // would put an unlabelled, empty conversation at the top of the list.
+            Sessions = listings
+                .Where(l => l.FirstQuestionContent is not null)
+                .Select(l => new MemberChatSessionSummaryResponse
                 {
-                    Role = t.Role.ToString(),
-                    Content = Reveal(t.Content),
-                    Charts = RevealCharts(t.Charts),
-                    CreatedAtUtc = t.CreatedAtUtc,
+                    SessionId = l.Session.Id,
+                    StartedAtUtc = l.Session.StartedAtUtc,
+                    LastTurnAtUtc = l.Session.LastTurnAtUtc,
+                    FirstQuestion = Reveal(l.FirstQuestionContent),
+                    QuestionCount = l.QuestionCount,
                 })
                 .ToList(),
         };
     }
+
+    public async Task<MemberChatHistoryResponse> GetSessionAsync(
+        Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        var session = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);
+
+        // Ownership is both halves, checked after the member gate: a session id that exists but
+        // belongs to another caregiver — or to the same caregiver about a different member — gets
+        // the same 404 as one that never existed, so a guessed id learns nothing.
+        if (session is null || session.UserId != userId || session.CardiMemberId != cardiMemberId)
+            throw new KeyNotFoundException("We couldn't find that conversation.");
+
+        return ToHistoryResponse(session);
+    }
+
+    private MemberChatHistoryResponse ToHistoryResponse(MemberChatSession withTurns) => new()
+    {
+        SessionId = withTurns.Id,
+        Turns = withTurns.Turns
+            .Select(t => new MemberChatTurnResponse
+            {
+                Role = t.Role.ToString(),
+                Content = Reveal(t.Content),
+                Charts = RevealCharts(t.Charts),
+                CreatedAtUtc = t.CreatedAtUtc,
+            })
+            .ToList(),
+    };
 
     private async Task<MemberChatSession> GetOrCreateSessionAsync(
         Guid userId, Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
@@ -1257,11 +1301,34 @@ public class MemberChatService : IMemberChatService
 
         if (data.Baseline is { } baseline)
         {
+            // The usual for every series the reply can chart, not only the first three. A chart
+            // without its usual beside it in the prompt is a question the model cannot answer:
+            // asked whether their heart rate variability is down, it would have the nightly
+            // figures and nothing to call low. Overnight readings are named as overnight, because
+            // the daily breathing rate is in the readings block above under a similar word.
+            var usual = new List<string>
+            {
+                $"Avg steps: {baseline.AvgSteps?.ToString() ?? "n/a"}",
+                $"Avg resting HR: {baseline.AvgRestingHeartRate?.ToString() ?? "n/a"} bpm",
+                $"Avg sleep: {MedicalPromptBlocks.SleepFigure((int?)baseline.AvgSleepMinutes)}",
+            };
+
+            // Omitted rather than written "n/a" when the member has no learned figure: unlike the
+            // three above, these two are absent for whole classes of device, and a baseline block
+            // listing what a member's watch cannot measure invites the reply to mention it.
+            if (baseline.AvgHeartRateVariabilityMs is { } avgHrv)
+                usual.Add($"Avg overnight HRV: {MedicalPromptBlocks.OvernightFigure(avgHrv, "ms")}");
+
+            if (baseline.AvgOvernightBreathingRate is { } avgBreathingAsleep)
+            {
+                usual.Add(
+                    "Avg breathing asleep: "
+                    + MedicalPromptBlocks.OvernightFigure(avgBreathingAsleep, "/min"));
+            }
+
             sections.Add(
                 $"--- {baseline.PeriodDays}-day baseline ---\n"
-                + $"  Avg steps: {baseline.AvgSteps?.ToString() ?? "n/a"}, "
-                + $"Avg resting HR: {baseline.AvgRestingHeartRate?.ToString() ?? "n/a"} bpm, "
-                + $"Avg sleep: {MedicalPromptBlocks.SleepFigure((int?)baseline.AvgSleepMinutes)}");
+                + $"  {string.Join(", ", usual)}");
         }
 
         if (data.UnresolvedAlerts.Count > 0)
@@ -1329,6 +1396,26 @@ public class MemberChatService : IMemberChatService
                 .Select(l => new ChartPoint(l.Date, l.SleepMinutes!.Value))
                 .ToList()));
         }
+        if (Wanted(ChartMetricKind.HeartRateVariability))
+        {
+            charts.Add(new ChartSeries("Heart rate variability", data.RecentActivity
+                .Where(l => l.HeartRateVariabilityMs.HasValue)
+                .Select(l => new ChartPoint(l.Date, (double)l.HeartRateVariabilityMs!.Value))
+                .ToList()));
+        }
+
+        if (Wanted(ChartMetricKind.OvernightBreathingRate))
+        {
+            charts.Add(new ChartSeries("Breathing while asleep", data.RecentActivity
+                .Where(l => l.OvernightBreathingRate.HasValue)
+                .Select(l => new ChartPoint(l.Date, (double)l.OvernightBreathingRate!.Value))
+                .ToList()));
+        }
+
+        // A series the member has no readings for charts as an empty line, which draws as an empty
+        // panel under the answer. The overnight readings are sparse by nature — a device that
+        // derives none never has a point — so an empty series is dropped rather than rendered.
+        charts.RemoveAll(c => c.Points.Count == 0);
 
         return charts;
     }

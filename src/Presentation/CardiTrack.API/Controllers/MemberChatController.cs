@@ -157,6 +157,58 @@ public class MemberChatController : BaseApiController
         }
     }
 
+    /// <summary>Every conversation the caregiver has had about this member, newest activity
+    /// first — the chat sheet's history list. Always 200 on a viewable member: an empty list is a
+    /// caregiver who hasn't chatted yet, not an error.</summary>
+    [HttpGet("members/{cardiMemberId:guid}/sessions")]
+    [ProducesResponseType(typeof(ApiResponse<MemberChatSessionListResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MemberChatSessionListResponse>>> GetSessions(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _chat.GetSessionsAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>One conversation and its turns, read back for the history list. 404 covers the
+    /// member and the session alike — a session that exists but is not this caregiver's own
+    /// conversation about this member is indistinguishable from one that never existed.</summary>
+    [HttpGet("members/{cardiMemberId:guid}/sessions/{sessionId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<MemberChatHistoryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MemberChatHistoryResponse>>> GetSession(
+        Guid cardiMemberId, Guid sessionId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _chat.GetSessionAsync(UserContext.UserId, cardiMemberId, sessionId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
     /// <summary>The caregiver's active session for this member and its turns, for app-relaunch
     /// resume. 200 with a null <c>data</c> when no active session exists — not a 404, since the
     /// member itself may well exist and be viewable.</summary>

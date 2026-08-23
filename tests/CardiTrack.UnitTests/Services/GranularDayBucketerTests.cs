@@ -19,8 +19,9 @@ public class GranularDayBucketerTests
         IReadOnlyList<GranularSample>? heartRate = null,
         IReadOnlyList<GranularSample>? steps = null,
         IReadOnlyList<GranularSample>? azm = null,
-        IReadOnlyList<GranularSample>? spO2 = null) =>
-        new(heartRate ?? [], steps ?? [], azm ?? [], spO2 ?? []);
+        IReadOnlyList<GranularSample>? spO2 = null,
+        IReadOnlyList<GranularSample>? hrv = null) =>
+        new(heartRate ?? [], steps ?? [], azm ?? [], spO2 ?? [], hrv ?? []);
 
     [Fact]
     public void Bucket_PlacesEachSampleInItsMinuteSlot()

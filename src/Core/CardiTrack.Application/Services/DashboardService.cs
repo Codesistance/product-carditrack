@@ -73,6 +73,11 @@ public class DashboardService : IDashboardService
         // alerts still use the tracked GetByCardiMemberAsync.
         var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId);
 
+        // One aggregate, not a second history load: the quiet stretch only needs the newest
+        // TriggeredDate, and it counts resolved and deleted rows the read above deliberately
+        // filters out — see IAlertRepository.GetLastTriggeredDateAsync.
+        var lastAlertAt = await _unitOfWork.Alerts.GetLastTriggeredDateAsync(cardiMemberId, ct);
+
         // The established 30-day baseline specifically, not the provisional 14/7-day one that
         // may have won the fallback search above. StatisticalAlertService will not raise a single
         // alert until that same 30 days exists — showing a confident "All steady" any earlier
@@ -91,6 +96,21 @@ public class DashboardService : IDashboardService
         var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(cardiMemberId, ct);
         var (freshnessTier, freshnessMessage) = MemberInsightsCalculator.ComputeDataFreshness(
             lastSyncedAt, latestAssessment?.GeneratedAtUtc, now, FirstNameOf(member.Name));
+
+        // Everything the verdict needs is already resolved above — no extra read but the one
+        // aggregate. Evaluated here rather than in the response initialiser because the response
+        // is where it is *shown*, and the decision about whether we are entitled to say it at all
+        // is worth reading on its own line.
+        var quiet = QuietStretch.Evaluate(new QuietStretchContext
+        {
+            UtcNow = now,
+            IsMonitoringPaused = isPaused,
+            HasEstablishedBaseline = !isLearning,
+            HasUnresolvedAlerts = unresolvedAlerts.Count > 0,
+            DataFreshnessTier = freshnessTier,
+            LastAlertAtUtc = lastAlertAt,
+            MonitoringSinceUtc = member.CreatedDate,
+        });
 
         // Consent checked before the query, not after — same stance as EnvironmentalContextSource:
         // only a consented member can ever have a row, so the common case skips the roundtrip.
@@ -169,6 +189,14 @@ public class DashboardService : IDashboardService
                     Status = AlertLifecycle.StatusLabel(a),
                 })
                 .ToList(),
+            Reassurance = quiet.IsQuiet
+                ? new ReassuranceResponse
+                {
+                    QuietDays = quiet.Days,
+                    QuietSince = quiet.SinceUtc,
+                    FollowsAnAlert = lastAlertAt is not null,
+                }
+                : null,
             GeneratedAt = DateTime.UtcNow,
         };
     }

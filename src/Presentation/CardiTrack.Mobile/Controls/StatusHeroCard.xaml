@@ -24,7 +24,7 @@
              cluster (42) is showing beside the 36 buttons, so the card doesn't jolt when a
              question arrives — but it still grows if a larger system font needs it to. -->
         <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-              ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="8"
+              ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
               MinimumHeightRequest="42">
             <Label x:Name="NameLabel"
                    Grid.Column="0"
@@ -54,102 +54,160 @@
                  alerts. Buttons here rather than links at the card's foot — the foot is where
                  the card's own content ends, not where journeys start. Their taps must win over
                  the card's own M1-13 tap, which they do the same way the weather chip's does. -->
-            <Border Grid.Column="2"
-                    WidthRequest="36" HeightRequest="36"
-                    StrokeThickness="0"
-                    BackgroundColor="{StaticResource SelectedOptionBackground}"
-                    VerticalOptions="Center"
-                    SemanticProperties.Description="CardiJournal"
-                    SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="18"/>
-                </Border.StrokeShape>
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnDaybookTapped"/>
-                </Border.GestureRecognizers>
-                <Image Source="icon_tab_journal.svg"
-                       WidthRequest="20" HeightRequest="20"
-                       HorizontalOptions="Center" VerticalOptions="Center"/>
-            </Border>
+            <!-- The buttons stack rather than each taking a Grid column, because a Grid charges
+                 ColumnSpacing on both sides of a column even when the column measured to nothing.
+                 With the Q&amp;A cluster hidden — which is most of the time — its empty column still
+                 cost 8 either side, so CardiJournal sat 16 from Alerts while Alerts sat 8 from
+                 Advise. A HorizontalStackLayout skips a collapsed child and its spacing with it,
+                 so the gap is 8 between whichever buttons are actually showing. -->
+            <HorizontalStackLayout Grid.Column="2"
+                                    Spacing="8"
+                                    VerticalOptions="Center">
 
-            <!-- Beside the Daybook button, only while a question is waiting on this family (see
-                 Apply/ApplyPendingQuestionnaire). Button, pulse ring and count badge share one
-                 42x42 cell so the badge can sit proud of the button's top-right corner without
-                 any of it crossing this control's own top edge — a superscript hung outside the
-                 layout with a negative translation was drawn half-cut, because the row it sits in
-                 is the first thing in the card and there is nothing above it to overflow into.
-                 The ring, likewise, pulses behind the icon rather than growing past it, the way
-                 PendingBotIndicator's does — Alerts sits right beside this, with no room to
-                 spill into. -->
-            <Grid x:Name="QaCluster"
-                  Grid.Column="3"
-                  WidthRequest="42" HeightRequest="42"
-                  VerticalOptions="Center"
-                  IsVisible="False">
-                <Ellipse x:Name="QaPulseRing"
-                         WidthRequest="34" HeightRequest="34"
-                         HorizontalOptions="Center" VerticalOptions="Center"
-                         Stroke="{StaticResource Primary}"
-                         StrokeThickness="2"
-                         Opacity="0"
-                         InputTransparent="True"/>
-
-                <Border x:Name="QaBorder"
-                        WidthRequest="36" HeightRequest="36"
+                <Border WidthRequest="36" HeightRequest="36"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource SelectedOptionBackground}"
-                        HorizontalOptions="Center" VerticalOptions="Center"
-                        SemanticProperties.Description="Questions"
-                        SemanticProperties.Hint="Opens the question waiting on this CardiMember">
+                        VerticalOptions="Center"
+                        SemanticProperties.Description="CardiJournal"
+                        SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="18"/>
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnQaTapped"/>
+                        <TapGestureRecognizer Tapped="OnDaybookTapped"/>
                     </Border.GestureRecognizers>
-                    <Image Source="icon_tab_qa.svg"
+                    <Image Source="icon_tab_journal.svg"
                            WidthRequest="20" HeightRequest="20"
                            HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Border>
 
-                <!-- Superscript count, same construction as DashboardHeader's BellBadge, but
-                     placed inside the cell rather than translated out of it. Always "1" today —
-                     at most one pending question per member — but a number rather than a dot so
-                     it reads the same way if that ever stops being true. -->
-                <Border x:Name="QaBadge"
-                        BackgroundColor="{StaticResource StatusRed}"
+                <!-- Beside the Daybook button, only while a question is waiting on this family (see
+                     Apply/ApplyPendingQuestionnaire). Button, pulse ring and count badge share one
+                     42x42 cell so the badge can sit proud of the button's top-right corner without
+                     any of it crossing this control's own top edge — a superscript hung outside the
+                     layout with a negative translation was drawn half-cut, because the row it sits in
+                     is the first thing in the card and there is nothing above it to overflow into.
+                     The ring, likewise, pulses behind the icon rather than growing past it, the way
+                     PendingBotIndicator's does — Alerts sits right beside this, with no room to
+                     spill into.
+                     The -3 margin is that 42 paying for itself: the cell is 3 wider than the 36
+                     face on each side, so without it this button's face would sit 11 from its
+                     neighbours where every other pair sits 8. The badge has 5 of the gap left to
+                     hang into, which is more than it uses. -->
+                <Grid x:Name="QaCluster"
+                      WidthRequest="42" HeightRequest="42"
+                      Margin="-3,0"
+                      VerticalOptions="Center"
+                      IsVisible="False">
+                    <Ellipse x:Name="QaPulseRing"
+                             WidthRequest="34" HeightRequest="34"
+                             HorizontalOptions="Center" VerticalOptions="Center"
+                             Stroke="{StaticResource Primary}"
+                             StrokeThickness="2"
+                             Opacity="0"
+                             InputTransparent="True"/>
+
+                    <Border x:Name="QaBorder"
+                            WidthRequest="36" HeightRequest="36"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                            HorizontalOptions="Center" VerticalOptions="Center"
+                            SemanticProperties.Description="Questions"
+                            SemanticProperties.Hint="Opens the question waiting on this CardiMember">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="18"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnQaTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_tab_qa.svg"
+                               WidthRequest="20" HeightRequest="20"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+
+                    <!-- Superscript count, same construction as DashboardHeader's BellBadge, but
+                         placed inside the cell rather than translated out of it. Always "1" today —
+                         at most one pending question per member — but a number rather than a dot so
+                         it reads the same way if that ever stops being true. -->
+                    <Border x:Name="QaBadge"
+                            BackgroundColor="{StaticResource StatusRed}"
+                            StrokeThickness="0"
+                            WidthRequest="18" HeightRequest="18"
+                            HorizontalOptions="End" VerticalOptions="Start"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="9"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="QaBadgeLabel"
+                               FontSize="10"
+                               FontFamily="QuicksandSemiBold"
+                               TextColor="{StaticResource White}"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+                </Grid>
+
+                <Border WidthRequest="36" HeightRequest="36"
                         StrokeThickness="0"
-                        WidthRequest="18" HeightRequest="18"
-                        HorizontalOptions="End" VerticalOptions="Start"
-                        InputTransparent="True">
+                        BackgroundColor="{StaticResource SelectedOptionBackground}"
+                        VerticalOptions="Center"
+                        SemanticProperties.Description="Alerts"
+                        SemanticProperties.Hint="Opens the alerts list">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="9"/>
+                        <RoundRectangle CornerRadius="18"/>
                     </Border.StrokeShape>
-                    <Label x:Name="QaBadgeLabel"
-                           FontSize="10"
-                           FontFamily="QuicksandSemiBold"
-                           TextColor="{StaticResource White}"
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnAlertsTapped"/>
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_tab_alerts.svg"
+                           WidthRequest="20" HeightRequest="20"
                            HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Border>
-            </Grid>
 
-            <Border Grid.Column="4"
-                    WidthRequest="36" HeightRequest="36"
-                    StrokeThickness="0"
-                    BackgroundColor="{StaticResource SelectedOptionBackground}"
-                    VerticalOptions="Center"
-                    SemanticProperties.Description="Alerts"
-                    SemanticProperties.Hint="Opens the alerts list">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="18"/>
-                </Border.StrokeShape>
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnAlertsTapped"/>
-                </Border.GestureRecognizers>
-                <Image Source="icon_tab_alerts.svg"
-                       WidthRequest="20" HeightRequest="20"
-                       HorizontalOptions="Center" VerticalOptions="Center"/>
-            </Border>
+                <!-- Advise: last in the row, only while this member has a fresh wellness suggestion
+                     waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
+                     now — a dot that pulsed at something without saying what, and with nothing to tap.
+                     As a button it says both: the same 36 face and 20 glyph as CardiJournal and Alerts
+                     beside it, and a tap that lands on the suggestion itself.
+
+                     The cell is 36, the face's own size — there is no badge to hang, so it needs
+                     no margin of its own to sit 8 from Alerts and flush with the card's right
+                     edge. The ring pulses *over* the button face rather than behind it,
+                     because a 36 face is opaque: QaCluster's ring is 34 behind a 36 border and only
+                     its outer sliver ever shows. Blooming outward from the glyph keeps the whole
+                     animation inside those 36 and still reads. -->
+                <Grid x:Name="AdviseCluster"
+                      WidthRequest="36" HeightRequest="36"
+                      VerticalOptions="Center"
+                      IsVisible="False"
+                      SemanticProperties.Description="Wellness suggestion"
+                      SemanticProperties.Hint="Opens this CardiMember's wellness suggestion">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnAdviseTapped"/>
+                    </Grid.GestureRecognizers>
+
+                    <Border WidthRequest="36" HeightRequest="36"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                            HorizontalOptions="Center" VerticalOptions="Center"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="18"/>
+                        </Border.StrokeShape>
+                        <Image Source="icon_advise.svg"
+                               WidthRequest="20" HeightRequest="20"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+
+                    <Ellipse x:Name="AdvisePulseRing"
+                             WidthRequest="32" HeightRequest="32"
+                             HorizontalOptions="Center" VerticalOptions="Center"
+                             Stroke="{StaticResource Primary}"
+                             StrokeThickness="2"
+                             Opacity="0"
+                             InputTransparent="True"/>
+                </Grid>
+
+            </HorizontalStackLayout>
         </Grid>
 
         <!-- Member Detail's display image box, not one of this card's own: the same person must
@@ -157,21 +215,10 @@
              block now that the name no longer shares this row — bottom-aligning it against a
              sentence that wraps to two or three lines floated the box away from the text it
              belongs to. -->
-        <Grid Grid.Row="1" Grid.Column="0" HorizontalOptions="Start" VerticalOptions="Start">
-            <controls:MemberAvatar x:Name="Avatar"
-                                   BoxWidth="76"
-                                   VerticalOptions="Start"/>
-
-            <!-- Advise's corner badge: pulses only while this member has a fresh wellness
-                 suggestion waiting on CardiMember Details (DashboardResponse.HasAdvise). No count,
-                 same "something's here" language as DashboardHeader's NudgeDot, but animated
-                 because this is worth noticing rather than merely present. -->
-            <controls:PulseDot x:Name="AdvisePulseDot"
-                                IsVisible="False"
-                                HorizontalOptions="End" VerticalOptions="Start"
-                                Margin="0,-6,-6,0"
-                                InputTransparent="True"/>
-        </Grid>
+        <controls:MemberAvatar x:Name="Avatar"
+                               Grid.Row="1" Grid.Column="0"
+                               BoxWidth="76"
+                               HorizontalOptions="Start" VerticalOptions="Start"/>
 
         <!-- Two lines, not one: the headline is the note a caregiver reads at a glance — short
              enough to land in one beat — and the sentence under it is the context they read

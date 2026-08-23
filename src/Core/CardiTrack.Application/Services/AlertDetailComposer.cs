@@ -77,6 +77,10 @@ public static class AlertDetailComposer
         StatisticalAlertRules.IrregularSleepRule => SleepDays,
         StatisticalAlertRules.ActivityDeclineRule => ActivityDays,
         StatisticalAlertRules.NoMorningActivityRule => ActivityDays,
+        StatisticalAlertRules.HeartRateVariabilityDropRule => HeartRateDays,
+        StatisticalAlertRules.OvernightBreathingUpRule => HeartRateDays,
+        StatisticalAlertRules.ElevatedZoneWithoutMovementRule => ActivityDays,
+        StatisticalAlertRules.DaytimeInactivityBlockRule => ActivityDays,
         DeviceSilenceRule => 0,
         RealtimeHeartRateRule => 0,
         // A markerless Inactivity row is the old device-silence producer; don't fetch steps.
@@ -323,7 +327,15 @@ public static class AlertDetailComposer
         StatisticalAlertRules.ActivityDeclineRule
             or StatisticalAlertRules.NoMorningActivityRule
             or StatisticalAlertRules.LongTermTrendRule => AlertReasons.Activity,
-        StatisticalAlertRules.ElevatedHeartRateRule or RealtimeHeartRateRule => AlertReasons.Heart,
+        StatisticalAlertRules.ElevatedHeartRateRule
+            or RealtimeHeartRateRule
+            or StatisticalAlertRules.HeartRateVariabilityDropRule
+            or StatisticalAlertRules.ElevatedZoneWithoutMovementRule => AlertReasons.Heart,
+        // Overnight breathing takes the monitoring icon rather than the heart one: the detail
+        // screen's icons are hand-authored and there is no lungs artwork, and filing a breathing
+        // finding under a heart icon would tell a caregiver the wrong organ at a glance.
+        StatisticalAlertRules.OvernightBreathingUpRule => AlertReasons.Monitoring,
+        StatisticalAlertRules.DaytimeInactivityBlockRule => AlertReasons.Activity,
         StatisticalAlertRules.IrregularSleepRule => AlertReasons.Sleep,
         DeviceSilenceRule => AlertReasons.Device,
         _ => type switch
@@ -349,7 +361,102 @@ public static class AlertDetailComposer
             StatisticalAlertRules.IrregularSleepRule => SleepComparison(metrics, baseline),
             StatisticalAlertRules.NoMorningActivityRule => NoMorningComparison(metrics, baseline),
             RealtimeHeartRateRule => RealtimeHeartComparison(metrics, baseline),
+            StatisticalAlertRules.HeartRateVariabilityDropRule
+                => HeartRateVariabilityComparison(metrics, baseline, today, aboutDate),
+            StatisticalAlertRules.OvernightBreathingUpRule
+                => OvernightBreathingComparison(metrics, baseline, today, aboutDate),
+            StatisticalAlertRules.ElevatedZoneWithoutMovementRule
+                => ElevatedZoneComparison(metrics, baseline, today, aboutDate),
+            StatisticalAlertRules.DaytimeInactivityBlockRule
+                => SedentaryStretchComparison(metrics, baseline, today, aboutDate),
             _ => null,
+        };
+    }
+
+    private static AlertComparisonResponse? HeartRateVariabilityComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
+    {
+        var current = ReadDecimal(metrics, "heartRateVariabilityMs");
+        var usual = ReadDecimal(metrics, "baselineAvgHeartRateVariabilityMs")
+            ?? baseline?.AvgHeartRateVariabilityMs;
+        if (current is null && usual is null)
+            return null;
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Last night",
+            CurrentValue = current is { } hrv ? $"{hrv:0.#} ms" : "—",
+            NormalLabel = "Usual night",
+            NormalValue = usual is { } avg ? $"{avg:0.#} ms" : "—",
+            ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
+        };
+    }
+
+    private static AlertComparisonResponse? OvernightBreathingComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
+    {
+        var current = ReadDecimal(metrics, "overnightBreathingRate");
+        var usual = ReadDecimal(metrics, "baselineAvgOvernightBreathingRate")
+            ?? baseline?.AvgOvernightBreathingRate;
+        if (current is null && usual is null)
+            return null;
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Last night",
+            CurrentValue = current is { } breathing ? $"{breathing:0.#}/min" : "—",
+            NormalLabel = "Usual night",
+            NormalValue = usual is { } avg ? $"{avg:0.#}/min" : "—",
+            ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
+        };
+    }
+
+    /// <summary>
+    /// Zone minutes against the member's own usual — the half of this alert that is unusual. The
+    /// step count is the other half and is already in the copy; putting both in a two-column
+    /// comparison would leave a reader deciding which number the alert is about.
+    /// </summary>
+    private static AlertComparisonResponse? ElevatedZoneComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
+    {
+        var current = ReadDecimal(metrics, "elevatedZoneMinutes");
+        var usual = ReadDecimal(metrics, "baselineAvgElevatedZoneMinutes")
+            ?? baseline?.AvgElevatedZoneMinutes;
+        if (current is null)
+            return null;
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Yesterday",
+            CurrentValue = $"{current:0} min raised",
+            NormalLabel = "Usual day",
+            NormalValue = usual is { } avg ? $"{avg:0} min" : "—",
+            ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
+        };
+    }
+
+    private static AlertComparisonResponse? SedentaryStretchComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
+    {
+        var current = ReadDecimal(metrics, "longestSedentaryStretchMinutes");
+        var usual = ReadDecimal(metrics, "baselineAvgLongestSedentaryStretchMinutes")
+            ?? baseline?.AvgLongestSedentaryStretchMinutes;
+        if (current is null)
+            return null;
+
+        static string Span(decimal minutes) => $"{minutes / 60m:0.#} h";
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = DayLabel(aboutDate, today) ?? "Yesterday",
+            CurrentValue = Span(current.Value),
+            NormalLabel = "Usual longest",
+            NormalValue = usual is { } avg ? Span(avg) : "—",
+            ChangeLabel = ChangeLabel(current, usual, "usual"),
+            ChangePercent = ChangePercent(current, usual),
         };
     }
 
@@ -510,6 +617,35 @@ public static class AlertDetailComposer
                     l => Hours(l.SleepMinutes),
                     Hours(baseline?.AvgSleepMinutes) ?? Hours(ReadDecimal(metrics, "baselineAvgSleepMinutes")),
                     reference: SleepReference(metrics, member, today)),
+
+            StatisticalAlertRules.OvernightBreathingUpRule
+                => DailyChart(
+                    "overnightBreathingRate", "Overnight Breathing", "brpm", HeartRateDays, today, logs,
+                    l => l.OvernightBreathingRate,
+                    baseline?.AvgOvernightBreathingRate
+                        ?? ReadDecimal(metrics, "baselineAvgOvernightBreathingRate"),
+                    reference: HealthReferenceRanges.BreathingRate),
+
+            StatisticalAlertRules.ElevatedZoneWithoutMovementRule
+                => DailyChart(
+                    "elevatedZoneMinutes", "Raised Heart-Rate Minutes", "minutes", ActivityDays, today, logs,
+                    l => BaselineCalculator.ElevatedZoneMinutes(l),
+                    baseline?.AvgElevatedZoneMinutes),
+
+            StatisticalAlertRules.DaytimeInactivityBlockRule
+                => DailyChart(
+                    "longestSedentaryStretch", "Longest Still Stretch", "hours", ActivityDays, today, logs,
+                    l => l.LongestSedentaryStretchMinutes is { } m ? Math.Round(m / 60m, 1) : null,
+                    baseline?.AvgLongestSedentaryStretchMinutes is { } avg
+                        ? Math.Round(avg / 60m, 1)
+                        : null),
+
+            StatisticalAlertRules.HeartRateVariabilityDropRule
+                => DailyChart(
+                    "heartRateVariability", "Heart Rate Variability", "ms", HeartRateDays, today, logs,
+                    l => l.HeartRateVariabilityMs,
+                    baseline?.AvgHeartRateVariabilityMs
+                        ?? ReadDecimal(metrics, "baselineAvgHeartRateVariabilityMs")),
 
             RealtimeHeartRateRule => GranularHeartChart(granular, baseline?.AvgRestingHeartRate),
 

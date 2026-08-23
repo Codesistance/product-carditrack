@@ -71,13 +71,37 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<int?>("Floors")
                         .HasColumnType("integer");
 
+                    b.Property<decimal?>("HeartRateVariabilityMs")
+                        .HasColumnType("decimal(6,1)");
+
                     b.Property<int?>("LightSleepMinutes")
                         .HasColumnType("integer");
+
+                    b.Property<int?>("LightZoneMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("LongestSedentaryStretchMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LongestSedentaryStretchStartUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("MaxHeartRate")
                         .HasColumnType("integer");
 
                     b.Property<int?>("MinHeartRate")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ModerateZoneFloorBpm")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ModerateZoneMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("OvernightBreathingRate")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int?>("PeakZoneMinutes")
                         .HasColumnType("integer");
 
                     b.Property<int?>("RemSleepMinutes")
@@ -130,6 +154,9 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<decimal?>("VO2Max")
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<int?>("VigorousZoneMinutes")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -677,13 +704,37 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<int?>("Floors")
                         .HasColumnType("integer");
 
+                    b.Property<decimal?>("HeartRateVariabilityMs")
+                        .HasColumnType("decimal(6,1)");
+
                     b.Property<int?>("LightSleepMinutes")
                         .HasColumnType("integer");
+
+                    b.Property<int?>("LightZoneMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("LongestSedentaryStretchMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LongestSedentaryStretchStartUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int?>("MaxHeartRate")
                         .HasColumnType("integer");
 
                     b.Property<int?>("MinHeartRate")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ModerateZoneFloorBpm")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ModerateZoneMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("OvernightBreathingRate")
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<int?>("PeakZoneMinutes")
                         .HasColumnType("integer");
 
                     b.Property<int?>("RemSleepMinutes")
@@ -736,6 +787,9 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<decimal?>("VO2Max")
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<int?>("VigorousZoneMinutes")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -1827,6 +1881,18 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<int?>("AvgActiveMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("AvgElevatedZoneMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("AvgHeartRateVariabilityMs")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<int?>("AvgLongestSedentaryStretchMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("AvgOvernightBreathingRate")
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<int?>("AvgRestingHeartRate")
                         .HasColumnType("integer");
 
@@ -1855,6 +1921,9 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<decimal?>("MadHeartRate")
                         .HasColumnType("decimal(10,2)");
 
+                    b.Property<decimal?>("MadHeartRateVariability")
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<decimal?>("MadSleepMinutes")
                         .HasColumnType("decimal(10,2)");
 
@@ -1863,6 +1932,9 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<int?>("MaxHeartRateObserved")
                         .HasColumnType("integer");
+
+                    b.Property<decimal?>("MedianHeartRateVariabilityMs")
+                        .HasColumnType("decimal(10,2)");
 
                     b.Property<int?>("MedianRestingHeartRate")
                         .HasColumnType("integer");
@@ -1877,6 +1949,12 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<decimal?>("StdDevHeartRate")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal?>("StdDevHeartRateVariability")
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<decimal?>("StdDevOvernightBreathingRate")
                         .HasColumnType("decimal(10,2)");
 
                     b.Property<decimal?>("StdDevSteps")

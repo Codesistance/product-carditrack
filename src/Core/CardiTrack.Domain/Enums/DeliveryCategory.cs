@@ -36,5 +36,15 @@ public enum DeliveryCategory
     /// quiet hours like orange Health; never escalates — QuestionnaireAlertWorker's own reminder
     /// cadence is what re-alerts an unanswered one, not the escalation ladder.</summary>
     [Display(Name = "Questionnaire")]
-    Questionnaire = 4
+    Questionnaire = 4,
+
+    /// <summary>
+    /// Good news: nothing has been raised about a member for long enough that the silence itself
+    /// is worth reporting. The only category whose whole point is that nothing is wrong, which is
+    /// exactly why it is a category rather than a quiet <see cref="Health"/> row — it must never
+    /// borrow Health's escalation, its alert chime, or its power to override quiet hours. It
+    /// pushes, defers to quiet hours in full, and never escalates.
+    /// </summary>
+    [Display(Name = "Reassurance")]
+    Reassurance = 5
 }

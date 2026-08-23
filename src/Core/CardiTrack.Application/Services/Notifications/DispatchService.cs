@@ -50,6 +50,28 @@ public interface IDispatchService
         Guid questionnaireId, int occurrence, CancellationToken ct = default);
 
     /// <summary>
+    /// Enqueues one all-clear per caregiver with <c>ReceiveAlerts</c> — the same fan-out
+    /// <see cref="EnqueueForAlertAsync"/> does, for the opposite news. Called by
+    /// <c>QuietReassuranceWorker</c>'s daily sweep once a member's silence has lasted long enough
+    /// to be worth reporting.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the two above there is no row to resolve: nothing wrote down that nothing happened,
+    /// so <see cref="EnqueueRequest.SourceId"/> carries the CardiMember's id and this method takes
+    /// the caller's word that the stretch is real. That judgement is <c>QuietStretch</c>'s and the
+    /// sweep's — re-deriving it here would put a second opinion about whether a family may be told
+    /// they are fine in a type whose job is delivery.
+    /// </remarks>
+    /// <param name="weeklyOccurrence">
+    /// Which weekly all-clear this is — 1 at seven quiet days, 2 at fourteen. Namespaces the
+    /// <see cref="EnqueueRequest.DedupKey"/>, which is the whole of what paces this to one push a
+    /// week per caregiver: a sweep that runs again the same day recomputes the same key and is
+    /// deduped, and next week's cannot collide with it.
+    /// </param>
+    Task<IReadOnlyList<NotificationDelivery>> EnqueueForReassuranceAsync(
+        Guid cardiMemberId, int weeklyOccurrence, CancellationToken ct = default);
+
+    /// <summary>
     /// Re-attempts a row <c>NotificationDispatchWorker</c> claimed off the outbox. If the row
     /// already targets a specific device (a prior attempt fanned out to it), only that device is
     /// retried. If it never got that far — the original enqueue found zero live tokens — this
@@ -235,6 +257,46 @@ public class DispatchService : IDispatchService
                 // Constant across occurrences, unlike the dedup key: a reminder should replace the
                 // original push on the device rather than stack beneath it.
                 CollapseKey: $"questionnaire-{questionnaire.Id}");
+
+            results.Add(await EnqueueAsync(request, ct));
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<NotificationDelivery>> EnqueueForReassuranceAsync(
+        Guid cardiMemberId, int weeklyOccurrence, CancellationToken ct = default)
+    {
+        // The only re-check worth making here, and the same silent-empty stance the two methods
+        // above take on a missing row: a member removed between the sweep reading them and this
+        // call must not have their family told they are fine. Everything else about the verdict
+        // is the caller's — see the interface.
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        if (member is null || !member.IsActive)
+            return [];
+
+        var links = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId);
+        // ReceiveAlerts, the same flag the bad news honours: a caregiver who asked not to hear
+        // about this member did not ask to hear about them weekly instead.
+        var recipients = links.Where(l => l.IsActive && l.ReceiveAlerts).Select(l => l.UserId).Distinct().ToList();
+
+        var results = new List<NotificationDelivery>(recipients.Count);
+        foreach (var userId in recipients)
+        {
+            var request = new EnqueueRequest(
+                SourceType: DeliverySourceType.Reassurance,
+                // No row exists, so the member is the subject — which is also what the FCM deep
+                // link needs to open, so nothing has to be looked up at send time.
+                SourceId: cardiMemberId,
+                UserId: userId,
+                CardiMemberId: cardiMemberId,
+                Category: DeliveryCategory.Reassurance,
+                Severity: null,
+                DedupKey: $"reassurance:{cardiMemberId}:{userId}:{weeklyOccurrence}",
+                // Constant across weeks, unlike the dedup key: this week's all-clear should
+                // replace last week's on the device rather than stack a pile of identical good
+                // news in the shade.
+                CollapseKey: $"reassurance-{cardiMemberId}");
 
             results.Add(await EnqueueAsync(request, ct));
         }
