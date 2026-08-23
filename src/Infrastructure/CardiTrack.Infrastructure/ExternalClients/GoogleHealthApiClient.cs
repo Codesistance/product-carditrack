@@ -1326,7 +1326,12 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var timeFields = o["time"];
         if (ReadInt(dateFields, "year") is not { } year
             || ReadInt(dateFields, "month") is not { } month
-            || ReadInt(dateFields, "day") is not { } day)
+            || ReadInt(dateFields, "day") is not { } day
+            // hours/minutes are required on google.type.TimeOfDay; treating an absent one as 0
+            // would silently misread an incomplete or differently-shaped object as midnight and
+            // clip against a time nobody sent. seconds alone is legitimately omitted when zero.
+            || ReadInt(timeFields, "hours") is not { } hours
+            || ReadInt(timeFields, "minutes") is not { } minutes)
         {
             return null;
         }
@@ -1334,9 +1339,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         try
         {
             var civilDate = new DateOnly(year, month, day);
-            var civilTime = new TimeOnly(
-                ReadInt(timeFields, "hours") ?? 0, ReadInt(timeFields, "minutes") ?? 0,
-                ReadInt(timeFields, "seconds") ?? 0);
+            var civilTime = new TimeOnly(hours, minutes, ReadInt(timeFields, "seconds") ?? 0);
             return civilDate.ToDateTime(civilTime);
         }
         catch (ArgumentOutOfRangeException)
