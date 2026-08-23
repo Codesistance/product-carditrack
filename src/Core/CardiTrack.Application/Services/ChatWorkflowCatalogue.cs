@@ -117,16 +117,13 @@ public static class ChatWorkflowCatalogue
                 ChatClaimClass.Judgement,
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.UnresolvedAlerts, DataQueryKind.RealtimeAssessments]),
 
-            // Reserved ahead of its handler: the two-pass fetch, the consent gate and the
-            // co-occurrence rule are not built, and §10's off-ramp decides whether they will be.
             new(MemberChatWorkflow.Investigation,
                 "investigation",
                 "Why something changed, and what co-occurred with it. Choose this only when the "
                 + "question asks to explain a change and answering would mean looking at things "
                 + "the question did not name.",
                 ChatClaimClass.Judgement,
-                [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.UnresolvedAlerts, DataQueryKind.RealtimeAssessments],
-                IsImplemented: false),
+                [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.UnresolvedAlerts, DataQueryKind.RealtimeAssessments]),
 
             new(MemberChatWorkflow.Advise,
                 "advise",

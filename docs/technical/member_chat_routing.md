@@ -35,7 +35,7 @@ This is the design's main claim and the thing to falsify first (§11). A router 
 
 ## 3. The routing call
 
-One structured call on `AI:Rewrite` (Vertex), and it does **one job: classify**. It does not choose data, windows or metrics. The rendered purpose lines — six today, see §4 — are the only vocabulary it carries.
+One structured call on `AI:Rewrite` (Vertex), and it does **one job: classify**. It does not choose data, windows or metrics. The rendered purpose lines — seven now that `investigation` has its handler, see §4 — are the only vocabulary it carries.
 
 ```
 // in
@@ -86,7 +86,7 @@ Entry fields: `id`, `purpose`, `allowedDatasets`, `claimClass`, `isImplemented`.
 
 ### Draft purpose lines
 
-These lines *are* the routing prompt — the rendered ones, at least; `clarify` never renders and `investigation` waits on its handler. Everything else in this document is scaffolding around them, and they will be rewritten against the eval set more than once.
+These lines *are* the routing prompt — the rendered ones, at least; `clarify` never renders. Everything else in this document is scaffolding around them, and they will be rewritten against the eval set more than once.
 
 | id | claim | purpose line (draft) |
 |---|---|---|
@@ -195,17 +195,17 @@ No datasets, no window, no metrics. Those belong to the workflow's own planning 
 
 ### Three counts, not one
 
-The catalogue holds **eight entries**, of which **six render today**, behind **eight handlers**. They differ for two independent reasons, and conflating them is how a doc drifts from its implementation:
+The catalogue holds **eight entries**, of which **seven render**, behind **eight handlers**. They differ for two independent reasons, and conflating them is how a doc drifts from its implementation:
 
 | | Count | Why |
 |---|---|---|
 | `All` | 8 | Every entry, including the unroutable and the unimplemented |
-| `Routable` — what the prompt renders | 6 | `clarify` is `IsRoutable: false`; `investigation` is `IsImplemented: false` |
+| `Routable` — what the prompt renders | 7 | `clarify` is `IsRoutable: false` |
 | Handlers | 8 | One per entry, whether or not the router can pick it |
 
 `clarify` **is** a catalogue entry — it carries a purpose line, a claim class and an empty dataset list like any other — but it is flagged unroutable and so is never rendered into the prompt and never returned by the model. It is what the app does when the routing answer shows a non-adjacent runner-up or an unrunnable pair.
 
-`investigation` is reserved but unimplemented, so it is filtered out of the rendering too. It rejoins the prompt when its handler ships — if §10's off-ramp says it should.
+`investigation`'s handler shipped with rollout step 10 (two-pass fetch, the co-occurrence rule; the consent gate waits on questionnaire answers entering the dataset vocabulary at all), so its `IsImplemented` flag turned and it renders. §10's off-ramp — dropping it if step 4's traffic shows nobody asks why — remains open: turning the flag back off un-renders it without touching the router.
 
 The parity test therefore asserts three things, not two:
 
@@ -227,7 +227,7 @@ The cost: the router can route to a dead end. The mitigation is a property of th
 
 Each entry's purpose line (§4) is what the router reads. What follows is what the handler must do — the discriminator a reviewer adjudicates against, the data it may touch, the rules it is bound by, and what it says when it has nothing.
 
-Eight catalogue entries, eight handlers — six of the entries render into the routing prompt today (§4). `clarify` is a catalogue entry but an unroutable one: app-triggered, never returned by the router.
+Eight catalogue entries, eight handlers — seven of the entries render into the routing prompt (§4). `clarify` is a catalogue entry but an unroutable one: app-triggered, never returned by the router.
 
 **Where the handlers live.** Prompt-building handlers go in `Infrastructure/Services/`, beside `MemberChatService` and the existing `DaybookPrompt` / `WeekbookPrompt` / `PublicChatPrompt`. The **pure reply assembly moves to `Application/Services/`** — `LiveStatusReply` and `AdviseReply` are `internal static` string builders today and belong beside `AlertDetailComposer`, `AdviseServability` and `AdviseStaleness`, which are exactly this: reply-composition policy with no I/O. That makes the two zero-model-call rungs testable without a host, which is what the zero-package invariant on `src/Core` exists to buy. Model-response records stay `internal sealed record` inside the owning service, following `MaliciousCheckAiResponse` — not `Application/DTOs`, which is the public API contract.
 
@@ -560,7 +560,7 @@ Hand-labelled caregiver phrasings, expected entry, and what each case guards. Se
 Closed by the review:
 
 - ~~Whether the malicious check becomes a routed outcome.~~ **No.** One prompt doing safety *and* dispatch means a jailbreak that defeats the classification defeats the refusal in the same step, and the refusal stops being independently testable. Two saved calls do not buy that.
-- ~~Whether the routing call needs prompt caching.~~ **No.** Six rendered purpose lines and a turn will not clear Vertex's explicit-caching minimum, and per-member filtering has already left this prompt. Revisit only if it grows.
+- ~~Whether the routing call needs prompt caching.~~ **No.** Seven rendered purpose lines and a turn will not clear Vertex's explicit-caching minimum, and per-member filtering has already left this prompt. Revisit only if it grows.
 
 Still open, with an owner:
 

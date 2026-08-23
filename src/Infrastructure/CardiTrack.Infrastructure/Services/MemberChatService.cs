@@ -222,6 +222,33 @@ public class MemberChatService : IMemberChatService
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
     /// <summary>
+    /// The explanation rung's clinical read. Its defining rule is co-occurrence: with several
+    /// nights and a handful of candidate factors, something always lines up, and coincidence
+    /// presented as pattern is this rung's default failure — so a factor may be named only when
+    /// it is itself unusual against its own normal, not merely present.
+    /// </summary>
+    private const string InvestigationClinicalInstructions =
+        MedicalPromptBlocks.ToneSafetyOnly + MedicalPromptBlocks.Pronouns + """
+        A family caregiver asked why something in this member's readings changed. Answer from the
+        data below only — this is an internal clinical read, not the final reply, so write
+        precisely rather than in caregiver language.
+
+        Two data sections follow: the readings the question is about, and separately what else was
+        recorded around the same time. Look for what co-occurred with the change — but name a
+        factor as possibly related ONLY if that factor is itself unusual against its own normal in
+        the data shown. Something merely present at the same time is coincidence until the data
+        says otherwise, and if nothing qualifies, say plainly that nothing in the data stands out
+        as related — that is a complete and correct answer. Rank anything you do name by how
+        strongly the data supports it, most supported first, and say what would help tell the
+        candidates apart. Possibility language only — "lines up with", never "caused". Never
+        diagnose, and never recommend an action.
+
+        Respond with:
+        - analysis: what changed, what if anything co-occurred and qualifies, ranked, and what
+          remains unexplained.
+        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+
+    /// <summary>
     /// Turns the clinical read into the sentence the caregiver actually receives.
     /// </summary>
     /// <remarks>
@@ -498,6 +525,75 @@ public class MemberChatService : IMemberChatService
     }
 
     /// <summary>
+    /// The explanation rung — the only entry that fetches twice. The first fetch is the anchor:
+    /// what the planner says the question's change is about. The second is the surroundings:
+    /// every remaining source this entry is allowed, at the widest windows the whitelist clamps
+    /// to — co-occurrence needs what else was happening, not just what was asked about. Breadth
+    /// widens; the clamps do not: the 7-day/72-hour ceilings are a security control this rung
+    /// respects rather than a limit it negotiates.
+    /// </summary>
+    /// <remarks>
+    /// The design's consent gate concerns questionnaire answers, which are not in the
+    /// <see cref="DataQueryKind"/> vocabulary — nothing here can fetch them, so the gate has
+    /// nothing to guard yet. It arrives with the source, if that source is ever registered.
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult> InvestigateAsync(
+        string flattened,
+        AiUsage triageUsage,
+        Guid cardiMemberId,
+        CardiMember? member,
+        ChatHistory history,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        var allowed = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Investigation)!.AllowedDatasets;
+        var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
+        var anchor = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
+
+        // The second fetch: what the first did not cover, as wide as the clamps go.
+        var surroundingsPlan = new DataQueryPlan
+        {
+            Sources = allowed.Except(plan.Result.Sources).ToList(),
+            RecentActivityDays = 7,
+            RealtimeAssessmentHours = 72,
+        };
+        var surroundings = await DataQueryWhitelist.ExecuteAsync(
+            surroundingsPlan, cardiMemberId, _unitOfWork, utcNow, ct);
+
+        var today = DateOnly.FromDateTime(utcNow);
+        var memberContext = await _memberContext.ComposeAsync(
+            new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
+
+        var clinicalOnly = ClinicalOnlyData.Wrap(
+            $"{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today)}"
+            + $"\n\n--- What else was happening around the same time ---\n{FormatFetchedData(surroundings, today)}"
+            + $"\n\n{ChatDataRegistry.BandsBlock}");
+        var clinicalPrompt = BuildClinicalPrompt(
+            flattened, clinicalOnly, history.QuestionsOnly, InvestigationClinicalInstructions);
+        var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
+
+        var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
+        var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
+
+        var name = NamePlaceholder.FirstName(member?.Name);
+        var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
+
+        return new MemberChatWorkflowResult
+        {
+            Workflow = MemberChatWorkflow.Investigation,
+            Reply = reply,
+            Charts = BuildCharts(anchor, plan.Result.ChartMetrics),
+            Calls =
+            [
+                new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
+                new AiCallRecord(AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
+                new AiCallRecord(AiCallStep.ClinicalAnalysis, AiProviderSlot.Private, clinical.Usage),
+                new AiCallRecord(AiCallStep.Rewrite, AiProviderSlot.Rewrite, rewrite.Usage),
+            ],
+        };
+    }
+
+    /// <summary>
     /// The cutover path — the router's answer selects the workflow. Clarify is decided here, not
     /// by the model: a non-adjacent runner-up asks once which rung was meant, and a second
     /// unroutable answer in a row runs analysis instead of asking again (the once-per-message
@@ -534,6 +630,8 @@ public class MemberChatService : IMemberChatService
                 await SteerAsync(flattened, triageUsage, casual: false, member?.Name, ct),
             MemberChatWorkflow.Inference =>
                 await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+            MemberChatWorkflow.Investigation =>
+                await InvestigateAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
             _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
         };
     }
