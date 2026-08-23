@@ -19,4 +19,10 @@
     <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The console provider, so GoogleHealthApiClient's warning/debug shape-mismatch logs are
+         actually visible in this tool's output rather than going to a logger with no sink. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
+  </ItemGroup>
+
 </Project>

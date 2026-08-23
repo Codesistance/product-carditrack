@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using CardiTrack.Infrastructure.ExternalClients;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.ExternalClients;
@@ -138,7 +139,10 @@ public class GoogleHealthApiClientTests
         // (see GoogleHealthApiClient's PageRequestDelay), but most of these tests assert request count
         // and content, not wall-clock timing, and a real delay would make every multi-page test
         // slow. Tests that specifically exercise pacing pass their own (short) delay.
-        return (new GoogleHealthApiClient(factory, pageRequestDelay ?? TimeSpan.Zero), handler);
+        return (
+            new GoogleHealthApiClient(
+                factory, Substitute.For<ILogger<GoogleHealthApiClient>>(), pageRequestDelay ?? TimeSpan.Zero),
+            handler);
     }
 
     /// <summary>
@@ -153,7 +157,8 @@ public class GoogleHealthApiClientTests
         factory.CreateClient("GoogleHealthClient").Returns(new HttpClient());
 
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => new GoogleHealthApiClient(factory, TimeSpan.FromMilliseconds(-1)));
+            () => new GoogleHealthApiClient(
+                factory, Substitute.For<ILogger<GoogleHealthApiClient>>(), TimeSpan.FromMilliseconds(-1)));
     }
 
     private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
@@ -2000,6 +2005,49 @@ public class GoogleHealthApiClientTests
         Assert.Null(result.ModerateZoneFloorBpm);
         Assert.Null(result.LongestSedentaryStretchMinutes);
         Assert.Null(result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// Regression for the 2026-08-23 sync outage: a live wearer's <c>activity-level</c> feed
+    /// returned a point whose <c>activityLevelType</c> was itself a nested object instead of the
+    /// documented enum string. <c>JToken.Value&lt;string&gt;</c> throws
+    /// <see cref="InvalidCastException"/> on a shape mismatch like that rather than returning null,
+    /// and that exception was uncaught here — it failed the whole <c>Task.WhenAll</c> in
+    /// <see cref="GoogleHealthApiClient.GetHealthSnapshotAsync"/>, so every metric for the day was
+    /// lost, not just this one. The malformed point must be skipped, and a well-formed point beside
+    /// it must still be read.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_SkipsAMalformedPoint_RatherThanThrowing()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", """
+                {
+                  "dataPoints": [
+                    {
+                      "activityLevel": {
+                        "activityLevelType": { "unexpected": "object" },
+                        "interval": {
+                          "startTime": "2026-08-05T08:00:00Z", "endTime": "2026-08-05T09:00:00Z"
+                        }
+                      }
+                    },
+                    {
+                      "activityLevel": {
+                        "activityLevelType": "SEDENTARY",
+                        "interval": {
+                          "startTime": "2026-08-05T13:00:00Z", "endTime": "2026-08-05T14:00:00Z"
+                        }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), NightOfTheFifth);
+
+        Assert.Equal(60, result.LongestSedentaryStretchMinutes);
     }
 
     /// <summary>

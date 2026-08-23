@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Xml.Linq;
 using CardiTrack.Shared.Json;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -100,14 +101,19 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
 
     private readonly HttpClient _httpClient;
     private readonly TimeSpan _pageRequestDelay;
+    private readonly ILogger<GoogleHealthApiClient> _logger;
 
-    public GoogleHealthApiClient(IHttpClientFactory httpClientFactory, TimeSpan? pageRequestDelay = null)
+    public GoogleHealthApiClient(
+        IHttpClientFactory httpClientFactory,
+        ILogger<GoogleHealthApiClient> logger,
+        TimeSpan? pageRequestDelay = null)
     {
         if (pageRequestDelay < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(
                 nameof(pageRequestDelay), pageRequestDelay, "Page request delay cannot be negative.");
 
         _httpClient = httpClientFactory.CreateClient("GoogleHealthClient");
+        _logger = logger;
         _pageRequestDelay = pageRequestDelay ?? PageRequestDelay;
     }
 
@@ -212,8 +218,8 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var root = await ParseBodyAsync(response, "sleep");
         var sleep = (root["dataPoints"] as JArray)?.OfType<JObject>().FirstOrDefault()?["sleep"];
 
-        var startTime = ParseInstantUtc(sleep?["interval"]?.Value<string>("startTime"));
-        var endTime = ParseInstantUtc(sleep?["interval"]?.Value<string>("endTime"));
+        var startTime = ParseInstantUtc(ReadString(sleep?["interval"], "startTime"));
+        var endTime = ParseInstantUtc(ReadString(sleep?["interval"], "endTime"));
 
         var summary = sleep?["summary"];
 
@@ -337,7 +343,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                 .Where(summary => summary?["fullSleepStats"] is not null)
                 .Select(summary => (
                     Summary: summary,
-                    At: ParseInstantUtc(summary?["sampleTime"]?.Value<string>("physicalTime"))))
+                    At: ParseInstantUtc(ReadString(summary?["sampleTime"], "physicalTime"))))
                 .ToList();
 
             var stats = (summaries.Any(x => x.At.HasValue)
@@ -414,7 +420,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                 var entry = zones
                     .OfType<JObject>()
                     .FirstOrDefault(z => string.Equals(
-                        z.Value<string>("heartRateZone"), zone, StringComparison.Ordinal));
+                        ReadString(z, "heartRateZone"), zone, StringComparison.Ordinal));
 
                 // A zone the day never reached is absent from the list rather than present at
                 // zero, and the wearer was measured either way — so a present rollup means 0, not
@@ -448,7 +454,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             var moderate = zones
                 .OfType<JObject>()
                 .FirstOrDefault(z => string.Equals(
-                    z.Value<string>("heartRateZoneType"), "MODERATE", StringComparison.Ordinal));
+                    ReadString(z, "heartRateZoneType"), "MODERATE", StringComparison.Ordinal));
 
             return ReadInt(moderate, "minBeatsPerMinute");
         }
@@ -505,12 +511,12 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             var sedentary = points
                 .Select(point => point["activityLevel"])
                 .Where(level => string.Equals(
-                    level?.Value<string>("activityLevelType"), "SEDENTARY", StringComparison.Ordinal))
+                    ReadString(level, "activityLevelType"), "SEDENTARY", StringComparison.Ordinal))
                 .Select(level => (
-                    Start: ParseInstantUtc(level?["interval"]?.Value<string>("startTime")),
+                    Start: ParseInstantUtc(ReadString(level?["interval"], "startTime")),
                     End: ClipToCivilDayEnd(
-                        ParseInstantUtc(level?["interval"]?.Value<string>("endTime")),
-                        level?["interval"]?.Value<string>("civilEndTime"),
+                        ParseInstantUtc(ReadString(level?["interval"], "endTime")),
+                        ReadString(level?["interval"], "civilEndTime"),
                         date)))
                 .Where(i => i.Start.HasValue && i.End.HasValue && i.End > i.Start)
                 .Select(i => (Start: i.Start!.Value, End: i.End!.Value))
@@ -735,7 +741,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         }
 
         var root = await ParseBodyAsync(response, "identity");
-        var healthUserId = root.Value<string>("healthUserId");
+        var healthUserId = ReadString(root, "healthUserId");
         return string.IsNullOrWhiteSpace(healthUserId) ? null : healthUserId;
     }
 
@@ -784,11 +790,11 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
 
         return devices
             .Select(device => new PairedDeviceInfo(
-                DeviceType: device.Value<string>("deviceType"),
+                DeviceType: ReadString(device, "deviceType"),
                 BatteryLevel: ReadInt(device, "batteryLevel"),
-                BatteryStatus: device.Value<string>("batteryStatus"),
-                DeviceVersion: device.Value<string>("deviceVersion"),
-                LastSyncTimeUtc: ParseInstantUtc(device.Value<string>("lastSyncTime"))))
+                BatteryStatus: ReadString(device, "batteryStatus"),
+                DeviceVersion: ReadString(device, "deviceVersion"),
+                LastSyncTimeUtc: ParseInstantUtc(ReadString(device, "lastSyncTime"))))
             .ToList();
     }
 
@@ -828,10 +834,10 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         foreach (var point in points)
         {
             var exercise = point["exercise"];
-            var sessionId = point.Value<string>("dataPointId");
-            var startTime = ParseInstantUtc(exercise?["interval"]?.Value<string>("startTime"));
-            var endTime = ParseInstantUtc(exercise?["interval"]?.Value<string>("endTime"));
-            var hasGps = exercise?.Value<bool?>("hasLocationData") ?? false;
+            var sessionId = ReadString(point, "dataPointId");
+            var startTime = ParseInstantUtc(ReadString(exercise?["interval"], "startTime"));
+            var endTime = ParseInstantUtc(ReadString(exercise?["interval"], "endTime"));
+            var hasGps = ReadBool(exercise, "hasLocationData") ?? false;
 
             if (sessionId is null || !startTime.HasValue || !endTime.HasValue)
                 continue;
@@ -1092,7 +1098,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var points = await ListDataPointsAsync(accessToken, dataType, SampleDayFilter(dataType, date), date);
         return points
             .Select(point => ToSample(
-                ParseInstantUtc(point[unionMember]?["sampleTime"]?.Value<string>("physicalTime")),
+                ParseInstantUtc(ReadString(point[unionMember]?["sampleTime"], "physicalTime")),
                 ReadDecimal(point[unionMember], field)))
             .OfType<GranularSample>()
             .ToList();
@@ -1110,7 +1116,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var points = await ListDataPointsAsync(accessToken, dataType, IntervalDayFilter(dataType, date), date);
         return points
             .Select(point => ToSample(
-                ParseInstantUtc(point[unionMember]?["interval"]?.Value<string>("startTime")),
+                ParseInstantUtc(ReadString(point[unionMember]?["interval"], "startTime")),
                 ReadDecimal(point[unionMember], field)))
             .OfType<GranularSample>()
             .ToList();
@@ -1181,7 +1187,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             var root = await ParseBodyAsync(response, dataType);
             points.AddRange((root["dataPoints"] as JArray)?.OfType<JObject>() ?? []);
 
-            pageToken = root.Value<string>("nextPageToken");
+            pageToken = ReadString(root, "nextPageToken");
 
             if (!string.IsNullOrEmpty(pageToken) && points.Count >= SampleSeriesCap)
             {
@@ -1234,14 +1240,14 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// null: an unworn device is not a still one. A breakdown that exists but lists only LIGHT is a
     /// different matter — the wearer was measured and did nothing qualifying — so that is a real 0.
     /// </remarks>
-    private static int? SumActiveMinutes(JToken? value)
+    private int? SumActiveMinutes(JToken? value)
     {
         if (value?["activeMinutesRollupByActivityLevel"] is not JArray levels)
             return null;
 
         var minutes = levels
             .OfType<JObject>()
-            .Where(level => ActiveActivityLevels.Contains(level.Value<string>("activityLevel")))
+            .Where(level => ActiveActivityLevels.Contains(ReadString(level, "activityLevel")))
             .Sum(level => ReadDecimal(level, "activeMinutesSum") ?? 0);
         return (int)decimal.Round(minutes);
     }
@@ -1251,11 +1257,11 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// than an object with a field per stage, so a stage the device never recorded is an absent
     /// entry — null, not zero.
     /// </summary>
-    private static int? StageMinutes(JToken? summary, string stageType)
+    private int? StageMinutes(JToken? summary, string stageType)
     {
         var stage = (summary?["stagesSummary"] as JArray)?
             .OfType<JObject>()
-            .FirstOrDefault(s => string.Equals(s.Value<string>("type"), stageType, StringComparison.Ordinal));
+            .FirstOrDefault(s => string.Equals(ReadString(s, "type"), stageType, StringComparison.Ordinal));
         return ReadInt(stage, "minutes");
     }
 
@@ -1313,31 +1319,66 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             ? parsed
             : null;
 
-    private static int? ReadInt(JToken? obj, string name)
+    private int? ReadInt(JToken? obj, string name)
     {
         var value = ReadDecimal(obj, name);
         return value.HasValue ? (int)decimal.Round(value.Value) : null;
     }
 
-    private static decimal? ReadDecimal(JToken? obj, string name)
+    private decimal? ReadDecimal(JToken? obj, string name)
     {
         if (obj is not JObject o)
             return null;
 
-        return o[name] switch
+        switch (o[name])
         {
-            JValue { Type: JTokenType.Integer or JTokenType.Float } v => v.Value<decimal>(),
+            case JValue { Type: JTokenType.Integer or JTokenType.Float } v:
+                return v.Value<decimal>();
 
             // int64 fields cross the wire as JSON *strings* under proto3 JSON — every count, sum
             // and stage duration here is one. A numeric-only check reads them all as absent, which
             // looks exactly like a wearer with no data.
-            JValue { Type: JTokenType.String } s
+            case JValue { Type: JTokenType.String } s
                 when decimal.TryParse(
-                    s.Value<string>(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
-                => parsed,
+                    s.Value<string>(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed):
+                return parsed;
 
-            _ => null,
-        };
+            case var unexpected:
+                LogShapeMismatch(o, name, unexpected);
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads a string field off a JSON object, or null when the field is absent, not a plain
+    /// string, or <paramref name="obj"/> itself is not an object. <c>JToken.Value&lt;string&gt;</c>
+    /// throws <see cref="InvalidCastException"/> rather than returning null when the field turns
+    /// out to hold something other than a string (an unexpected nested object, say) — a live
+    /// wearer's <c>activity-level</c> feed hit exactly that on 2026-08-23, taking the whole sync
+    /// down. This mirrors <see cref="ReadDecimal"/>'s pattern-match-and-fall-through shape so a
+    /// field that does not match the shape we expect reads as absent instead of crashing the sync.
+    /// </summary>
+    private string? ReadString(JToken? obj, string name)
+    {
+        if (obj is not JObject o)
+            return null;
+        if (o[name] is JValue { Type: JTokenType.String } v)
+            return v.Value<string>();
+
+        LogShapeMismatch(o, name, o[name]);
+        return null;
+    }
+
+    /// <summary>Same shape-safety as <see cref="ReadString"/>, for a boolean field.</summary>
+    private bool? ReadBool(JToken? obj, string name)
+    {
+        if (obj is not JObject o)
+            return null;
+        if (o[name] is JValue { Type: JTokenType.Boolean } v)
+            return v.Value<bool>();
+
+        LogShapeMismatch(o, name, o[name]);
+        return null;
     }
 
     /// <summary>
@@ -1352,10 +1393,15 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// suffix is required rather than optional: a bare number is not a valid Duration, so
     /// accepting one would only mask a field that is not the type we think it is.
     /// </remarks>
-    private static decimal? ReadDurationSeconds(JToken? obj, string name)
+    private decimal? ReadDurationSeconds(JToken? obj, string name)
     {
-        if (obj is not JObject o || o[name] is not JValue { Type: JTokenType.String } value)
+        if (obj is not JObject o)
             return null;
+        if (o[name] is not JValue { Type: JTokenType.String } value)
+        {
+            LogShapeMismatch(o, name, o[name]);
+            return null;
+        }
 
         var text = value.Value<string>();
         if (text is null || !text.EndsWith('s'))
@@ -1370,6 +1416,36 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             : null;
     }
 
+    /// <summary>
+    /// Logs a field whose value is present but not the JSON kind this client expects — a nested
+    /// object where a scalar was documented, say. A missing key or a literal JSON <c>null</c> is
+    /// not this: that is the ordinary "device does not report this field" case every Read* helper
+    /// already treats as absent, and warning on it would fire on nearly every sync. This is the
+    /// other case — <c>2026-08-23</c>'s outage was exactly one of these, an
+    /// <c>activityLevelType</c> that came back as an object, uncaught, all the way through
+    /// <c>Task.WhenAll</c> in <see cref="GetHealthSnapshotAsync"/>. The one-line warning names what
+    /// broke at whatever level ships today; the full payload — which can carry health data, so it
+    /// is not something every environment should log — only follows at Debug, which only dev turns
+    /// on.
+    /// </summary>
+    private void LogShapeMismatch(JObject container, string field, JToken? actual)
+    {
+        if (actual is null or JValue { Type: JTokenType.Null })
+            return;
+
+        _logger.LogWarning(
+            "Google Health API field {Field} was {ActualType}, not the shape this client expects; " +
+            "treating it as absent.",
+            field, actual.Type);
+
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug(
+                "Google Health API field {Field} had an unexpected shape. Payload: {Payload}",
+                field, container.ToString(Formatting.None));
+        }
+    }
+
     private static async Task<JToken> ParseBodyAsync(HttpResponseMessage response, string what)
     {
         var body = await response.Content.ReadAsStringAsync();
@@ -1379,7 +1455,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         return root!;
     }
 
-    private static async Task EnsureSuccessAsync(HttpResponseMessage response)
+    private async Task EnsureSuccessAsync(HttpResponseMessage response)
     {
         if (!response.IsSuccessStatusCode)
         {
@@ -1396,7 +1472,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// from "this account has no such data", which some callers tolerate. Parsed best-effort: an
     /// unparseable or differently-shaped error body is not treated as a request bug.
     /// </summary>
-    private static bool IsMalformedRequest(int statusCode, string body)
+    private bool IsMalformedRequest(int statusCode, string body)
     {
         if (statusCode != 400 || !JsonUtility.TryParse(body, out var root, out _))
             return false;
@@ -1404,7 +1480,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         return (root?["error"]?["details"] as JArray)?
             .OfType<JObject>()
             .Any(detail =>
-                detail.Value<string>("@type")?.EndsWith("google.rpc.BadRequest", StringComparison.Ordinal) == true
+                ReadString(detail, "@type")?.EndsWith("google.rpc.BadRequest", StringComparison.Ordinal) == true
                 && detail["fieldViolations"] is JArray { Count: > 0 }) == true;
     }
 }
