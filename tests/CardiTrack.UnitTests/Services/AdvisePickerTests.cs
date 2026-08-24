@@ -27,12 +27,19 @@ public class AdvisePickerTests
     [InlineData("what can I do about how little he's walking?", AdviseTopic.Activity)]
     [InlineData("should she be more active?", AdviseTopic.Activity)]
     [InlineData("anything to help his heart rate?", AdviseTopic.HeartRate)]
+    // The Copilot-caught misroute: "resting" contains the substring "rest", and with sleep
+    // checked first this question served the sleep suggestion. Heart words win, whole words only.
+    [InlineData("should I worry about his resting heart rate?", AdviseTopic.HeartRate)]
+    [InlineData("is he getting enough rest?", AdviseTopic.Sleep)]
+    [InlineData("I'm interested in whether he moves enough", AdviseTopic.Activity)]
     public void TopicOf_ReadsTheQuestionsOwnWords(string question, AdviseTopic expected) =>
         Assert.Equal(expected, AdvisePicker.TopicOf(question));
 
     [Theory]
     [InlineData("should I be worried about him?")]
     [InlineData("what could we try?")]
+    // "interested" and "restless" carry the letters of "rest"; whole-word matching must not bite.
+    [InlineData("she's interested in how he's doing")]
     public void TopicOf_NamesNothing_WhenTheQuestionNamesNothing(string question) =>
         Assert.Null(AdvisePicker.TopicOf(question));
 

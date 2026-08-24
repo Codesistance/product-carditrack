@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
@@ -17,24 +18,37 @@ namespace CardiTrack.Application.Services;
 /// activity suggestion rather than nothing, because <c>AdviseReply</c>'s empty case only honestly
 /// applies when there is nothing at all to serve.
 /// </remarks>
-public static class AdvisePicker
+public static partial class AdvisePicker
 {
     /// <summary>The topic a question names, or null when it names none.</summary>
+    /// <remarks>
+    /// Whole words, not substrings, and the heart terms are checked first. Both halves came from
+    /// the same failure: "should I worry about his resting heart rate?" contains the substring
+    /// "rest", and with sleep checked first it served the sleep suggestion to a heart-rate
+    /// question. Word boundaries stop "rest" firing inside "resting" or "interested", and
+    /// heart/pulse/bpm/cardiac go first because they are the unambiguous clinical words — a
+    /// question that names the heart is about the heart whatever else it mentions.
+    /// </remarks>
     public static AdviseTopic? TopicOf(string question)
     {
-        var q = question.ToLowerInvariant();
-
-        bool Any(params string[] words) => words.Any(q.Contains);
-
-        if (Any("sleep", "slept", "sleeping", "night", "nap", "rest", "bed"))
-            return AdviseTopic.Sleep;
-        if (Any("walk", "step", "activity", "active", "exercise", "moving", "move"))
-            return AdviseTopic.Activity;
-        if (Any("heart", "pulse", "bpm", "cardiac"))
+        if (HeartWords().IsMatch(question))
             return AdviseTopic.HeartRate;
+        if (SleepWords().IsMatch(question))
+            return AdviseTopic.Sleep;
+        if (ActivityWords().IsMatch(question))
+            return AdviseTopic.Activity;
 
         return null;
     }
+
+    [GeneratedRegex(@"\b(?:heart|pulse|bpm|cardiac)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex HeartWords();
+
+    [GeneratedRegex(@"\b(?:sleep\w*|slept|nights?|naps?|rest|rested|resting|bed\w*)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SleepWords();
+
+    [GeneratedRegex(@"\b(?:walk\w*|steps?|activity|active|exercis\w*|moving|moves?)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex ActivityWords();
 
     /// <summary>
     /// The row to serve: the named topic's, else the general one, else the most recent — each
