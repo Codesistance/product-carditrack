@@ -1,4 +1,4 @@
-using CardiTrack.Infrastructure.Services;
+using CardiTrack.Application.Services;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -17,7 +17,7 @@ public class SleepFigureTests
     [InlineData(59, "59m")]
     [InlineData(0, "0m")]
     public void SleepFigure_ReadsTheWayANightIsSpokenAbout(int minutes, string expected) =>
-        Assert.Equal(expected, MedicalPromptBlocks.SleepFigure(minutes));
+        Assert.Equal(expected, ReadingFigures.SleepFigure(minutes));
 
     /// <summary>
     /// A whole number of hours drops the minutes rather than writing "8h 0m", which reads as a
@@ -25,7 +25,7 @@ public class SleepFigureTests
     /// </summary>
     [Fact]
     public void AWholeNumberOfHours_DoesNotTrailAZero() =>
-        Assert.Equal("7h", MedicalPromptBlocks.SleepFigure(420));
+        Assert.Equal("7h", ReadingFigures.SleepFigure(420));
 
     /// <summary>
     /// Under an hour stays in minutes: "0h 40m" is a worse way of writing forty minutes, and this
@@ -33,7 +33,7 @@ public class SleepFigureTests
     /// </summary>
     [Fact]
     public void UnderAnHour_KeepsMinutesAlone() =>
-        Assert.Equal("40m", MedicalPromptBlocks.SleepFigure(40));
+        Assert.Equal("40m", ReadingFigures.SleepFigure(40));
 
     /// <summary>
     /// A night the device never recorded says so. Sending nothing, or a bare "0", would let the
@@ -41,5 +41,5 @@ public class SleepFigureTests
     /// </summary>
     [Fact]
     public void AnUnmeasuredNight_SaysSoRatherThanReadingAsZero() =>
-        Assert.Equal("not measured", MedicalPromptBlocks.SleepFigure(null));
+        Assert.Equal("not measured", ReadingFigures.SleepFigure(null));
 }

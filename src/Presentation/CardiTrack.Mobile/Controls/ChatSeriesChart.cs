@@ -284,7 +284,7 @@ internal static class ChatMetricFormat
     };
 
     /// <summary>
-    /// Mirrors <c>MedicalPromptBlocks.SleepFigure</c>, which the API uses for the same figure in
+    /// Mirrors <c>ReadingFigures.SleepFigure</c>, which the API uses for the same figure in
     /// prose. Duplicated rather than shared because this assembly cannot reference Infrastructure,
     /// and the two must not drift: a callout reading "8h 0m" beside a reply reading "8h" is the
     /// same night described two ways in one bubble.

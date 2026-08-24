@@ -13,7 +13,7 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// <see cref="MemberChatService.SendMessageAsync"/> driven through the advice branch end to end,
-/// rather than through <see cref="MemberChatService.AdviseReply"/> alone.
+/// rather than through <see cref="MemberChatReplies.AdviseReply"/> alone.
 /// </summary>
 /// <remarks>
 /// The helper's own tests cannot see the thing that was actually broken. An advice question

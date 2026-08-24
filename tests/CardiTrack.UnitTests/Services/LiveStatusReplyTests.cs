@@ -1,5 +1,5 @@
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
-using CardiTrack.Infrastructure.Services;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -25,7 +25,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void ItSaysWhatItCannotSee_BeforeAnythingItCan()
     {
-        var reply = MemberChatService.LiveStatusReply("Dad", [Log(Today, steps: 4200)], Today);
+        var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(Today, steps: 4200)], Today);
 
         Assert.StartsWith("I can't see what Dad is doing right now", reply, StringComparison.Ordinal);
         Assert.Contains("nothing live here to check", reply, StringComparison.Ordinal);
@@ -43,7 +43,7 @@ public class LiveStatusReplyTests
     [InlineData(0)]
     public void ItNeverSaysTheyAreAsleepOrAwake(int sleepMinutes)
     {
-        var reply = MemberChatService.LiveStatusReply("Dad", [Log(Today, sleep: sleepMinutes)], Today);
+        var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(Today, sleep: sleepMinutes)], Today);
 
         foreach (var claim in new[] { "is asleep", "is awake", "is sleeping", "is resting", "is up" })
             Assert.DoesNotContain(claim, reply, StringComparison.OrdinalIgnoreCase);
@@ -56,7 +56,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void TodaysFiguresSayTodaySoFar()
     {
-        var reply = MemberChatService.LiveStatusReply("Dad", [Log(Today, steps: 4200, hr: 62)], Today);
+        var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(Today, steps: 4200, hr: 62)], Today);
 
         Assert.Contains("today so far", reply, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("4,200 steps", reply, StringComparison.Ordinal);
@@ -66,7 +66,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void AnOlderReadingIsNamedByItsDay()
     {
-        var reply = MemberChatService.LiveStatusReply("Dad", [Log(Today.AddDays(-1), steps: 3100)], Today);
+        var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(Today.AddDays(-1), steps: 3100)], Today);
 
         Assert.Contains("yesterday", reply, StringComparison.OrdinalIgnoreCase);
     }
@@ -79,7 +79,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void AnOlderDateKeepsItsCapital()
     {
-        var reply = MemberChatService.LiveStatusReply("Dad", [Log(new DateOnly(2026, 8, 17), steps: 2200)], Today);
+        var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(new DateOnly(2026, 8, 17), steps: 2200)], Today);
 
         Assert.Contains("is Aug 17:", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("aug 17", reply, StringComparison.Ordinal);
@@ -89,8 +89,8 @@ public class LiveStatusReplyTests
     [Fact]
     public void TheRelativeWordsAreLowercaseMidSentence()
     {
-        var today = MemberChatService.LiveStatusReply("Dad", [Log(Today, steps: 100)], Today);
-        var yesterday = MemberChatService.LiveStatusReply("Dad", [Log(Today.AddDays(-1), steps: 100)], Today);
+        var today = MemberChatReplies.LiveStatusReply("Dad", [Log(Today, steps: 100)], Today);
+        var yesterday = MemberChatReplies.LiveStatusReply("Dad", [Log(Today.AddDays(-1), steps: 100)], Today);
 
         Assert.Contains("is today so far:", today, StringComparison.Ordinal);
         Assert.Contains("is yesterday:", yesterday, StringComparison.Ordinal);
@@ -100,7 +100,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void TheLatestRowIsTheOneQuoted()
     {
-        var reply = MemberChatService.LiveStatusReply(
+        var reply = MemberChatReplies.LiveStatusReply(
             "Dad",
             [Log(Today, steps: 900), Log(Today.AddDays(-2), steps: 8888), Log(Today.AddDays(-1), steps: 7777)],
             Today);
@@ -117,7 +117,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void RowsWithNoReadingsAreSkipped()
     {
-        var reply = MemberChatService.LiveStatusReply(
+        var reply = MemberChatReplies.LiveStatusReply(
             "Dad", [Log(Today.AddDays(-1), steps: 5000), Log(Today)], Today);
 
         Assert.Contains("yesterday", reply, StringComparison.OrdinalIgnoreCase);
@@ -127,7 +127,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void NoReadingsAtAll_SaysSoRatherThanTrailingOff()
     {
-        var reply = MemberChatService.LiveStatusReply("Dad", [], Today);
+        var reply = MemberChatReplies.LiveStatusReply("Dad", [], Today);
 
         Assert.Contains("don't have any recent readings", reply, StringComparison.Ordinal);
     }
@@ -136,7 +136,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void SleepIsSpokenInHours()
     {
-        var reply = MemberChatService.LiveStatusReply("Dad", [Log(Today, sleep: 372)], Today);
+        var reply = MemberChatReplies.LiveStatusReply("Dad", [Log(Today, sleep: 372)], Today);
 
         Assert.Contains("6h 12m", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("372", reply, StringComparison.Ordinal);
@@ -153,7 +153,7 @@ public class LiveStatusReplyTests
     [InlineData("   ")]
     public void AMissingNameStillReadsAsEnglish(string? name)
     {
-        var reply = MemberChatService.LiveStatusReply(name, [Log(Today, steps: 100)], Today);
+        var reply = MemberChatReplies.LiveStatusReply(name, [Log(Today, steps: 100)], Today);
 
         Assert.StartsWith("I can't see what they're doing right now", reply, StringComparison.Ordinal);
     }
@@ -161,7 +161,7 @@ public class LiveStatusReplyTests
     [Fact]
     public void SeveralReadingsAreJoinedAsASentence()
     {
-        var reply = MemberChatService.LiveStatusReply(
+        var reply = MemberChatReplies.LiveStatusReply(
             "Dad", [Log(Today, steps: 4200, hr: 62, sleep: 400)], Today);
 
         Assert.Contains("4,200 steps, a resting heart rate of 62 bpm and 6h 40m of sleep", reply,

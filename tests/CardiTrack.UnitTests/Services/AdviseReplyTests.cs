@@ -1,6 +1,5 @@
 ﻿using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
-using CardiTrack.Infrastructure.Services;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -29,7 +28,7 @@ public class AdviseReplyTests
     [Fact]
     public void ItServesTheStoredSummaryAndSuggestion()
     {
-        var reply = MemberChatService.AdviseReply("Dad", Advise(), Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
 
         Assert.Contains("His sleep has been under seven hours most nights this week.", reply,
             StringComparison.Ordinal);
@@ -44,7 +43,7 @@ public class AdviseReplyTests
     [Fact]
     public void ItMarksWhatItSaidAsASuggestion()
     {
-        var reply = MemberChatService.AdviseReply("Dad", Advise(), Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
 
         Assert.Contains("That's just an idea to consider", reply, StringComparison.Ordinal);
         Assert.Contains("their doctor is the one to ask", reply, StringComparison.Ordinal);
@@ -62,8 +61,8 @@ public class AdviseReplyTests
     {
         foreach (var reply in new[]
                  {
-                     MemberChatService.AdviseReply("Dad", Advise(), Now),
-                     MemberChatService.AdviseReply("Dad", null, Now),
+                     MemberChatReplies.AdviseReply("Dad", Advise(), Now),
+                     MemberChatReplies.AdviseReply("Dad", null, Now),
                  })
             Assert.DoesNotContain("wellness", reply, StringComparison.OrdinalIgnoreCase);
     }
@@ -76,7 +75,7 @@ public class AdviseReplyTests
     [Fact]
     public void ItDoesNotReciteTheReferenceItWasGroundedIn()
     {
-        var reply = MemberChatService.AdviseReply("Dad", Advise(), Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
 
         Assert.DoesNotContain("AASM", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("based on", reply, StringComparison.OrdinalIgnoreCase);
@@ -92,7 +91,7 @@ public class AdviseReplyTests
     [InlineData("   ")]
     public void AnUngroundedSuggestionIsWithheld(string? guideline)
     {
-        var reply = MemberChatService.AdviseReply("Dad", Advise(guideline: guideline), Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(guideline: guideline), Now);
 
         Assert.Contains("don't have a suggestion for Dad", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("steadier bedtime", reply, StringComparison.Ordinal);
@@ -108,7 +107,7 @@ public class AdviseReplyTests
     {
         var stale = Advise(age: AdviseStaleness.MaxAge + TimeSpan.FromHours(1));
 
-        var reply = MemberChatService.AdviseReply("Dad", stale, Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", stale, Now);
 
         Assert.Contains("isn't a current one", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("steadier bedtime", reply, StringComparison.Ordinal);
@@ -119,7 +118,7 @@ public class AdviseReplyTests
     {
         var borderline = Advise(age: AdviseStaleness.MaxAge - TimeSpan.FromHours(1));
 
-        var reply = MemberChatService.AdviseReply("Dad", borderline, Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", borderline, Now);
 
         Assert.Contains("steadier bedtime", reply, StringComparison.Ordinal);
     }
@@ -131,7 +130,7 @@ public class AdviseReplyTests
     [Fact]
     public void NoRowAtAll_SaysWhyAndWhatCanBeAskedInstead()
     {
-        var reply = MemberChatService.AdviseReply("Dad", null, Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", null, Now);
 
         Assert.Contains("once a day", reply, StringComparison.Ordinal);
         Assert.Contains("compare with what's usual for them", reply, StringComparison.Ordinal);
@@ -147,7 +146,7 @@ public class AdviseReplyTests
     [InlineData("   ")]
     public void AMissingNameStillReadsAsEnglish(string? name)
     {
-        var reply = MemberChatService.AdviseReply(name, null, Now);
+        var reply = MemberChatReplies.AdviseReply(name, null, Now);
 
         Assert.Contains("suggestion for them right now", reply, StringComparison.Ordinal);
     }
@@ -160,7 +159,7 @@ public class AdviseReplyTests
     [Fact]
     public void ItNeverReadsAsAClinicalInstruction()
     {
-        var reply = MemberChatService.AdviseReply("Dad", Advise(), Now);
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
 
         foreach (var claim in new[] { "you should", "you must", "diagnos", "prescri", "stop taking" })
             Assert.DoesNotContain(claim, reply, StringComparison.OrdinalIgnoreCase);

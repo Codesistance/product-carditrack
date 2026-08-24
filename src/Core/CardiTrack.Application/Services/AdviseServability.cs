@@ -6,7 +6,7 @@ namespace CardiTrack.Application.Services;
 /// <summary>
 /// Whether a persisted <see cref="MemberAdvise"/> row may be shown, in one predicate for the three
 /// readers that ask: <c>HealthInsightService.GetAdviseAsync</c> (the CardiMember Details card),
-/// <c>DashboardService</c> (the hero card's pulse indicator) and <c>MemberChatService.AdviseReply</c>
+/// <c>DashboardService</c> (the hero card's pulse indicator) and <see cref="MemberChatReplies.AdviseReply"/>
 /// (an advice question in chat).
 /// </summary>
 /// <remarks>
