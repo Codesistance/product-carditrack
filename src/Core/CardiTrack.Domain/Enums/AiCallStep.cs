@@ -24,4 +24,9 @@ public enum AiCallStep
     /// <summary>The short steer reply a casual or off-topic message gets instead of the full
     /// pipeline — one Rewrite-slot call, no clinical read.</summary>
     Steer = 5,
+
+    /// <summary>The routing classification — which catalogue entry serves the question. Runs on
+    /// every message and is billed to the turn whenever it ran; the one turn with no Route row is
+    /// one where the routing call itself failed and the triage fallback answered.</summary>
+    Route = 6,
 }

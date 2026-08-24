@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Offline labelling instrument, deliberately NOT in CardiTrack.sln and not built by CI —
+    the same convention tools/AiSplitEvaluator follows. Unlike that tool this one needs no
+    database, no model endpoint and no network: it shuffles a fixture into blind labelling
+    sheets and scores the sheets people hand back. See tools/ChatRoutingEval/README.md.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CardiTrack.Tools.ChatRoutingEval</RootNamespace>
+    <AssemblyName>CardiTrack.Tools.ChatRoutingEval</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Referenced so the labelling vocabulary is ChatWorkflowCatalogue itself rather than a
+         hand-copied list. Each entry carries its own external name in a required
+         ChatWorkflowDefinition.Label parameter, so a new entry with no name fails to compile —
+         it cannot reach a labelling sheet unnamed, and there is no map here to fall out of sync. -->
+    <ProjectReference Include="..\..\src\Core\CardiTrack.Application\CardiTrack.Application.csproj" />
+    <!-- For the `route` command only: ChatRouterService and the Rewrite-slot client it runs on.
+         sheet and score still touch no network — route is the one command that does, and it needs
+         the same appsettings a hand-run of AiSplitEvaluator does. -->
+    <ProjectReference Include="..\..\src\Infrastructure\CardiTrack.Infrastructure\CardiTrack.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="cases.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="appsettings.json" Condition="Exists('appsettings.json')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

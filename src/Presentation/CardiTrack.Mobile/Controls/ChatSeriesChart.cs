@@ -26,6 +26,12 @@ public sealed class ChatSeriesChart : ContentView
     private readonly Label _min = new();
     private readonly Label _startDate = new();
     private readonly Label _endDate = new();
+    private readonly Label _baselineKey = new();
+    private readonly Label _referenceKey = new();
+    private readonly TrendLegendSwatch _baselineSwatch = new(TrendLegendMark.Baseline);
+    private readonly HorizontalStackLayout _baselineLegend;
+    private readonly HorizontalStackLayout _referenceLegend;
+    private readonly Grid _legend;
 
     public ChatSeriesChart()
     {
@@ -85,11 +91,40 @@ public sealed class ChatSeriesChart : ContentView
         plot.Add(_chart, 1);
         plot.Add(dates, 1, 1);
 
+        // The chart now draws the same two non-reading marks the Member Detail trends do — the
+        // member's own usual and the published band — and neither carries its own label on a plot
+        // this size, so the key names them and quotes the numbers behind them, exactly as
+        // MetricTrendCard's legend does.
+        foreach (var key in new[] { _baselineKey, _referenceKey })
+        {
+            key.FontSize = AnnotationFontSize;
+            key.TextColor = muted;
+            key.VerticalTextAlignment = TextAlignment.Center;
+            key.LineBreakMode = LineBreakMode.TailTruncation;
+        }
+        _baselineLegend = BuildLegendEntry(_baselineSwatch, _baselineKey);
+        _referenceLegend = BuildLegendEntry(new TrendLegendSwatch(TrendLegendMark.Reference), _referenceKey);
+        _legend = new Grid
+        {
+            ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
+            ColumnSpacing = 12,
+        };
+        _legend.Add(_baselineLegend);
+        _legend.Add(_referenceLegend, 1);
+
         Content = new VerticalStackLayout
         {
             Spacing = 2,
-            Children = { _title, plot },
+            Children = { _title, plot, _legend },
         };
+    }
+
+    private static HorizontalStackLayout BuildLegendEntry(TrendLegendSwatch swatch, Label key)
+    {
+        var entry = new HorizontalStackLayout { Spacing = 6, IsVisible = false };
+        entry.Add(swatch);
+        entry.Add(key);
+        return entry;
     }
 
     public ChatChartItem? Item
@@ -106,7 +141,18 @@ public sealed class ChatSeriesChart : ContentView
 
         view._title.Text = item.Title;
         view._chart.ValueFormatter = item.FormatValue;
-        view._chart.Render(item.Points, item.Scale, item.Ink, showMarkers: true);
+        view._chart.Render(item.Points, item.Scale, item.Ink, showMarkers: true, item.Baseline, item.Reference);
+
+        // Same rule as MetricTrendCard: a baseline the scale could not admit is not drawn, and the
+        // key then carries its number with a plain note instead of a dash pointing at nothing.
+        view._baselineSwatch.Ink = item.Ink;
+        view._baselineSwatch.IsVisible = item.BaselineDrawn;
+        view._baselineLegend.IsVisible = item.BaselineText is not null;
+        view._baselineKey.Text = item.BaselineText ?? string.Empty;
+        view._referenceLegend.IsVisible = item.ReferenceText is not null;
+        view._referenceKey.Text = item.ReferenceText ?? string.Empty;
+        view._legend.IsVisible = item.BaselineText is not null || item.ReferenceText is not null;
+        view._legend.ColumnSpacing = item.BaselineText is not null && item.ReferenceText is not null ? 12 : 0;
 
         // The extent the chart actually plots over, not the readings' own min and max — those are
         // what TrendScale padded away from, and writing them here would put a number on the axis
@@ -132,19 +178,57 @@ public sealed class ChatSeriesChart : ContentView
 /// </summary>
 public sealed class ChatChartItem
 {
-    private ChatChartItem(string title, IReadOnlyList<MetricPoint> points, TrendScale scale, Color ink, string metric)
+    private ChatChartItem(
+        string title,
+        IReadOnlyList<MetricPoint> points,
+        TrendScale scale,
+        Color ink,
+        string metric,
+        decimal? baseline,
+        MetricReference? reference)
     {
         Title = title;
         Points = points;
         Scale = scale;
         Ink = ink;
         Metric = metric;
+        Baseline = baseline;
+        Reference = reference;
     }
 
     public string Title { get; }
     public IReadOnlyList<MetricPoint> Points { get; }
     public TrendScale Scale { get; }
     public Color Ink { get; }
+
+    /// <summary>This member's own usual for the metric, in the series' unit, as the reply carried
+    /// it — drawn as the same dashed rule the Member Detail trends draw.</summary>
+    public decimal? Baseline { get; }
+
+    /// <summary>The published typical-adult band, already in the series' unit (the API converts
+    /// sleep's hours to minutes), shaded behind the line as on the Member Detail trends.</summary>
+    public MetricReference? Reference { get; }
+
+    /// <summary>Whether the scale admitted the baseline — see <c>TrendScale.For</c>: a rule the
+    /// plot cannot make room for is left to the legend, which then says where it went.</summary>
+    public bool BaselineDrawn => Baseline is { } b && Scale.Contains((double)b);
+
+    /// <summary>The legend entry for the member's own usual, or null when the reply carried none.
+    /// "Their usual" rather than a per-metric noun: the series title directly above already names
+    /// the metric, where the Detail card's legend has a whole card of context to lean on.</summary>
+    public string? BaselineText =>
+        Baseline is { } baseline
+            ? BaselineDrawn
+                ? $"Their usual: {AxisLabel((double)baseline)}"
+                : $"Their usual: {AxisLabel((double)baseline)} (off chart)"
+            : null;
+
+    /// <summary>The legend entry for the published band, attributed — the same phrasing the
+    /// Member Detail trends use, so the two surfaces name one range one way.</summary>
+    public string? ReferenceText =>
+        Reference is { } reference
+            ? $"Typical {AxisLabel((double)reference.Low)}–{AxisLabel((double)reference.High)} ({reference.Source})"
+            : null;
 
     /// <summary>The series name, kept for the unit the callout appends — the chart draws numbers,
     /// the series knows what they are.</summary>
@@ -183,9 +267,15 @@ public sealed class ChatChartItem
             var high = reported.Max(p => p.Value!.Value);
             var latest = reported[^1];
 
+            // The comparisons reach a screen reader through the summary, as on MetricTrendCard:
+            // the canvas is one opaque element, so a rule and a band it draws are invisible to
+            // anyone the plot itself is.
+            var comparisons = string.Join(". ", new[] { BaselineText, ReferenceText }.Where(t => t is not null));
+
             return $"{Title}, {reported.Count} readings from {Points[0].Date:MMM d} to {Points[^1].Date:MMM d}. "
                 + $"Ranging {FormatValue((double)low)} to {FormatValue((double)high)}. "
-                + $"Latest {FormatValue((double)latest.Value!.Value)} on {latest.Date:MMM d}.";
+                + $"Latest {FormatValue((double)latest.Value!.Value)} on {latest.Date:MMM d}."
+                + (comparisons.Length > 0 ? $" {comparisons}." : string.Empty);
         }
     }
 
@@ -229,9 +319,20 @@ public sealed class ChatChartItem
             return null;
 
         var values = series.Points.Select(p => p.Value).ToList();
-        var scale = TrendScale.For(values.Min(), values.Max(), baseline: null, referenceLow: null, referenceHigh: null);
 
-        return new ChatChartItem(series.Metric, points, scale, InkFor(series.Metric), series.Metric);
+        // The scale admits the comparisons the reply carried, the same way the Member Detail
+        // trends' does — the axis labels then name the extent the marks are actually drawn
+        // against, not just the readings'.
+        var scale = TrendScale.For(
+            values.Min(),
+            values.Max(),
+            series.Baseline,
+            series.Reference is { } reference ? (double)reference.Low : null,
+            series.Reference is { } high ? (double)high.High : null);
+
+        return new ChatChartItem(
+            series.Metric, points, scale, InkFor(series.Metric), series.Metric,
+            series.Baseline is { } baseline ? (decimal)baseline : null, series.Reference);
     }
 
     /// <summary>
@@ -284,7 +385,7 @@ internal static class ChatMetricFormat
     };
 
     /// <summary>
-    /// Mirrors <c>MedicalPromptBlocks.SleepFigure</c>, which the API uses for the same figure in
+    /// Mirrors <c>ReadingFigures.SleepFigure</c>, which the API uses for the same figure in
     /// prose. Duplicated rather than shared because this assembly cannot reference Infrastructure,
     /// and the two must not drift: a callout reading "8h 0m" beside a reply reading "8h" is the
     /// same night described two ways in one bubble.

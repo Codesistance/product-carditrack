@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Common;
+using Microsoft.Extensions.Logging.Abstractions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -10,7 +11,7 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// <see cref="MemberChatService.SendMessageAsync"/> driven through the advice branch end to end,
-/// rather than through <see cref="MemberChatService.AdviseReply"/> alone.
+/// rather than through <see cref="MemberChatReplies.AdviseReply"/> alone.
 /// </summary>
 /// <remarks>
 /// The helper's own tests cannot see the thing that was actually broken. An advice question
@@ -25,6 +26,7 @@ public class MemberChatAdviseRoutingTests
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IDataQueryPlanner _planner = Substitute.For<IDataQueryPlanner>();
+    private readonly IChatRouter _router = Substitute.For<IChatRouter>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
 
@@ -54,19 +56,28 @@ public class MemberChatAdviseRoutingTests
         });
         _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns((MemberChatSession?)null);
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "His steps have been below his usual this week.",
             Suggestion = "A short walk after lunch is worth trying.",
             GuidelineCited = "Adult physical activity (WHO, 2020)",
             GeneratedAtUtc = DateTime.UtcNow.AddHours(-6),
-        });
+        }]);
 
         Triage(askingForAdvice: true);
+        Route(MemberChatWorkflow.Advise);
     }
 
-    /// <summary>The one call the advice path does make — the triage that routes it.</summary>
+    /// <summary>The route that selects the workflow — the dispatch reads its answer, and the
+    /// triage booleans only decide when the router fails.</summary>
+    private void Route(MemberChatWorkflow primary) =>
+        _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<ChatRouteDecision>(
+                new ChatRouteDecision { Primary = primary },
+                new AiUsage { ModelName = "test-rewrite" }));
+
+    /// <summary>The malicious pre-check every path pays for before anything else runs.</summary>
     private void Triage(bool askingForAdvice)
     {
         _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(
@@ -84,8 +95,9 @@ public class MemberChatAdviseRoutingTests
     }
 
     private MemberChatService CreateSut() =>
-        new(_medicalAi, _rewriteAi, _planner, _unitOfWork, _access,
-            PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption);
+        new(_medicalAi, _rewriteAi, _planner, _router, _unitOfWork, _access,
+            PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
+            NullLogger<MemberChatService>.Instance);
 
     [Fact]
     public async Task AnAdviceQuestion_IsAnsweredFromTheStoredRow()
@@ -106,7 +118,8 @@ public class MemberChatAdviseRoutingTests
         await CreateSut().SendMessageAsync(_userId, _memberId, "does he need help with his sleep");
 
         await _planner.DidNotReceive().PlanAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+            Arg.Any<CancellationToken>());
         await _medicalAi.DidNotReceiveWithAnyArgs()
             .GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(default!, default);
         await _rewriteAi.DidNotReceive().GenerateWithUsageAsync(
@@ -145,13 +158,14 @@ public class MemberChatAdviseRoutingTests
     [Fact]
     public async Task NoCurrentRow_StillAnswersOnThisPath()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns((MemberAdvise?)null);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
 
         var result = await CreateSut().SendMessageAsync(_userId, _memberId, "does he need help with his sleep");
 
         Assert.Contains("don't have a suggestion for Moses", result.Reply, StringComparison.Ordinal);
         await _planner.DidNotReceive().PlanAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+            Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -162,7 +176,10 @@ public class MemberChatAdviseRoutingTests
     public async Task AnOrdinaryQuestion_StillReachesThePlanner()
     {
         Triage(askingForAdvice: false);
-        _planner.PlanAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        Route(MemberChatWorkflow.Analysis);
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DataQueryPlan>(
                 new DataQueryPlan { Sources = [], RecentActivityDays = 7, RealtimeAssessmentHours = 24, ChartMetrics = [] },
                 new AiUsage()));
@@ -177,7 +194,8 @@ public class MemberChatAdviseRoutingTests
         await CreateSut().SendMessageAsync(_userId, _memberId, "how many steps has he done this week");
 
         await _planner.Received(1).PlanAsync(
-            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-        await _advises.DidNotReceive().GetByCardiMemberAsync(_memberId);
+            Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+            Arg.Any<CancellationToken>());
+        await _advises.DidNotReceive().GetAllByCardiMemberAsync(_memberId);
     }
 }

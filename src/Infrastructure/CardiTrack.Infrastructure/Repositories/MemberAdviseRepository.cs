@@ -11,8 +11,8 @@ public class MemberAdviseRepository : Repository<MemberAdvise>, IMemberAdviseRep
     {
     }
 
-    // Deliberately tracked (no AsNoTracking): the batch writer reads-then-updates the same row,
-    // and the API's read pays nothing measurable for tracking one entity per request.
-    public Task<MemberAdvise?> GetByCardiMemberAsync(Guid cardiMemberId) =>
-        _dbSet.FirstOrDefaultAsync(a => a.CardiMemberId == cardiMemberId);
+    // Deliberately tracked (no AsNoTracking): the batch writer reads-then-updates the same rows,
+    // and the API's read pays nothing measurable for tracking a handful of entities per request.
+    public async Task<IReadOnlyList<MemberAdvise>> GetAllByCardiMemberAsync(Guid cardiMemberId) =>
+        await _dbSet.Where(a => a.CardiMemberId == cardiMemberId).ToListAsync();
 }

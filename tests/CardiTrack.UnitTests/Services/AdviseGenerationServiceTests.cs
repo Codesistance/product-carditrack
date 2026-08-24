@@ -1,6 +1,7 @@
 ﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,9 +11,10 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// <see cref="AdviseGenerationService"/> — the batch writer behind the CardiMember Details Tip
-/// card's wellness suggestion. Pins the due-check that keeps this off the status line's aggressive
-/// cadence, the grounding contract (a reply with nothing to cite withholds the row rather than
-/// persisting an ungrounded suggestion), and the same not-generated-for guards
+/// card's suggestions, now one row per <see cref="AdviseTopic"/> from a single model call. Pins
+/// the due-check that keeps this off the status line's aggressive cadence, the grounding contract
+/// (an entry with nothing to cite is withheld rather than persisted ungrounded), the per-topic
+/// reconciliation (silence removes, a hiccup keeps), and the same not-generated-for guards
 /// <see cref="StatusLineGenerationServiceTests"/> pins for its own writer.
 /// </summary>
 public class AdviseGenerationServiceTests
@@ -43,46 +45,108 @@ public class AdviseGenerationServiceTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
-        _advises.GetByCardiMemberAsync(_memberId).Returns((MemberAdvise?)null);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
+        ModelAnswers(ActivityEntry());
+    }
+
+    private static AdviseGenerationService.AdviseEntryAiResponse ActivityEntry(
+        string summary = "Steps have been below her usual this week.",
+        string suggestion = "A short walk after lunch is worth trying.",
+        string? cited = "WHO adult activity guidance") => new()
+    {
+        Topic = "Activity",
+        Summary = summary,
+        Suggestion = suggestion,
+        GuidelineCited = cited,
+    };
+
+    private void ModelAnswers(params AdviseGenerationService.AdviseEntryAiResponse[] entries) =>
         _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = "Steps have been below her usual this week.",
-                Suggestion = "A short walk after lunch is worth trying.",
-                GuidelineCited = "WHO adult activity guidance",
-            });
-    }
+            .Returns(new AdviseGenerationService.AdviseAiResponse { Entries = entries });
+
+    private static MemberAdvise ExistingRow(
+        Guid memberId, AdviseTopic topic = AdviseTopic.Activity, double ageDays = 2) => new()
+    {
+        CardiMemberId = memberId,
+        Topic = topic,
+        Summary = "Old summary.",
+        Suggestion = "Old suggestion.",
+        GuidelineCited = "Old reference",
+        GeneratedAtUtc = DateTime.UtcNow.AddDays(-ageDays),
+    };
+
+    /// <summary>The shape the narrowed catch filters for: a DbUpdateException whose inner is
+    /// Postgres's unique violation — any other write failure now bubbles.</summary>
+    private static DbUpdateException UniqueViolation() => new(
+        "duplicate key value violates unique constraint",
+        new Npgsql.PostgresException(
+            "duplicate key value violates unique constraint", "ERROR", "ERROR",
+            Npgsql.PostgresErrorCodes.UniqueViolation));
 
     private AdviseGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
             NullLogger<AdviseGenerationService>.Instance);
 
     [Fact]
-    public async Task NoExistingRow_PersistsAFreshOne()
+    public async Task NoExistingRows_PersistsAFreshTopicRow()
     {
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
         await _advises.Received(1).AddAsync(Arg.Is<MemberAdvise>(a =>
             a.CardiMemberId == _memberId
+            && a.Topic == AdviseTopic.Activity
             && a.Summary == "Steps have been below her usual this week."
             && a.Suggestion == "A short walk after lunch is worth trying."
             && a.GuidelineCited == "WHO adult activity guidance"));
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
+    /// <summary>One call, several rows — the whole point of topic scoping without multiplying
+    /// MedGemma cost.</summary>
+    [Fact]
+    public async Task SeveralTopics_AllPersistFromTheOneCall()
+    {
+        ModelAnswers(
+            ActivityEntry(),
+            new AdviseGenerationService.AdviseEntryAiResponse
+            {
+                Topic = "Sleep",
+                Summary = "Her nights have been shorter than her usual.",
+                Suggestion = "A steadier bedtime could help her settle.",
+                GuidelineCited = "NSF sleep duration guidance",
+            });
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.Received(1).AddAsync(Arg.Is<MemberAdvise>(a => a.Topic == AdviseTopic.Activity));
+        await _advises.Received(1).AddAsync(Arg.Is<MemberAdvise>(a => a.Topic == AdviseTopic.Sleep));
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>An out-of-vocabulary topic is dropped like any other unrecognised model answer —
+    /// never coerced, never persisted.</summary>
+    [Fact]
+    public async Task AnUnrecognisedTopic_IsDropped()
+    {
+        ModelAnswers(new AdviseGenerationService.AdviseEntryAiResponse
+        {
+            Topic = "Nutrition",
+            Summary = "Meals look irregular.",
+            Suggestion = "A regular lunch could help.",
+            GuidelineCited = "WHO adult activity guidance",
+        });
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
+    }
+
     [Fact]
     public async Task ExistingRowPastTheInterval_IsOverwrittenInPlace()
     {
-        var existing = new MemberAdvise
-        {
-            CardiMemberId = _memberId,
-            Summary = "Old summary.",
-            Suggestion = "Old suggestion.",
-            GuidelineCited = "Old reference",
-            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
-        };
-        _advises.GetByCardiMemberAsync(_memberId).Returns(existing);
+        var existing = ExistingRow(_memberId);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -92,19 +156,14 @@ public class AdviseGenerationServiceTests
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
-    /// <summary>The whole cost discipline: a row regenerated recently is left alone rather than
-    /// spending another model call, regardless of how many times a digest pass calls this.</summary>
+    /// <summary>The whole cost discipline: rows regenerated recently are left alone rather than
+    /// spending another model call — the newest row's age gates the pass, since the batch writes
+    /// every topic together.</summary>
     [Fact]
     public async Task ExistingRowWithinTheInterval_IsNotRegenerated()
     {
-        _advises.GetByCardiMemberAsync(_memberId).Returns(new MemberAdvise
-        {
-            CardiMemberId = _memberId,
-            Summary = "Recent summary.",
-            Suggestion = "Recent suggestion.",
-            GuidelineCited = "Recent reference",
-            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
-        });
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns(
+            (IReadOnlyList<MemberAdvise>)[ExistingRow(_memberId, ageDays: 0.05)]);
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -113,64 +172,51 @@ public class AdviseGenerationServiceTests
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
+    /// <summary>A topic the model stayed silent on has its row withdrawn — the prompt makes
+    /// silence deliberate, and a suggestion the readings no longer support is worse than none.</summary>
+    [Fact]
+    public async Task ATopicTheModelStaysSilentOn_HasItsRowRemoved()
+    {
+        var sleepRow = ExistingRow(_memberId, AdviseTopic.Sleep);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[sleepRow]);
+        ModelAnswers(ActivityEntry());
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        _advises.Received(1).Remove(sleepRow);
+        await _advises.Received(1).AddAsync(Arg.Is<MemberAdvise>(a => a.Topic == AdviseTopic.Activity));
+    }
+
     // A blank summary or suggestion reads as a transient model hiccup — the previous suggestion
-    // beats no suggestion, so nothing is written.
+    // for that topic beats none, so its row is kept rather than treated as deliberate silence.
     [Theory]
     [InlineData("", "A short walk after lunch is worth trying.")]
     [InlineData("Steps have been below her usual this week.", "   ")]
-    public async Task BlankSummaryOrSuggestion_LeavesTheExistingRowUntouched(string summary, string suggestion)
+    public async Task ABlankEntry_LeavesTheExistingTopicRowUntouched(string summary, string suggestion)
     {
-        var existing = new MemberAdvise
-        {
-            CardiMemberId = _memberId,
-            Summary = "Old summary.",
-            Suggestion = "Old suggestion.",
-            GuidelineCited = "Old reference",
-            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
-        };
-        _advises.GetByCardiMemberAsync(_memberId).Returns(existing);
-        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = summary,
-                Suggestion = suggestion,
-                GuidelineCited = "WHO adult activity guidance",
-            });
+        var existing = ExistingRow(_memberId);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+        ModelAnswers(ActivityEntry(summary, suggestion));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
         Assert.Equal("Old suggestion.", existing.Suggestion);
+        _advises.DidNotReceive().Remove(Arg.Any<MemberAdvise>());
         await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
     /// <summary>
-    /// Unlike a blank field, an empty <c>guidelineCited</c> beside a well-formed summary and
-    /// suggestion is the model doing exactly what it was asked: saying there is nothing to suggest.
-    /// The honest response is to withhold the row, not to keep serving a suggestion that may no
-    /// longer apply.
+    /// Unlike a blank field, an entry citing nothing is the model declining to ground the
+    /// suggestion, and an empty entries list is it saying nothing anywhere fits — both deliberate.
+    /// The honest response is withdrawal, not serving a suggestion that may no longer apply.
     /// </summary>
     [Fact]
-    public async Task NothingToCite_RemovesAnExistingRowRatherThanKeepingIt()
+    public async Task NothingToCite_RemovesTheExistingTopicRowRatherThanKeepingIt()
     {
-        var existing = new MemberAdvise
-        {
-            CardiMemberId = _memberId,
-            Summary = "Old summary.",
-            Suggestion = "Old suggestion.",
-            GuidelineCited = "Old reference",
-            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
-        };
-        _advises.GetByCardiMemberAsync(_memberId).Returns(existing);
-        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = "Everything looks in line with her usual pattern.",
-                Suggestion = "There is nothing to suggest right now.",
-                GuidelineCited = null,
-            });
+        var existing = ExistingRow(_memberId);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+        ModelAnswers(ActivityEntry(cited: null));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -179,16 +225,9 @@ public class AdviseGenerationServiceTests
     }
 
     [Fact]
-    public async Task NothingToCite_WithNoExistingRow_WritesNothing()
+    public async Task NothingAnywhere_WithNoExistingRows_WritesNothing()
     {
-        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = "Everything looks in line with her usual pattern.",
-                Suggestion = "There is nothing to suggest right now.",
-                GuidelineCited = null,
-            });
+        ModelAnswers();
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -198,8 +237,8 @@ public class AdviseGenerationServiceTests
 
     /// <summary>
     /// The digest pass and any future second caller can regenerate the same member concurrently;
-    /// both read no-row, both insert, and the unique index fails the loser. Same recovery as
-    /// StatusLineGenerationService: detach the staged insert and write over the winner's row.
+    /// both read no-rows, both insert, and the unique (member, topic) index fails the loser. Same
+    /// recovery as the single-row version: detach the staged inserts and write over the winner's.
     /// </summary>
     [Fact]
     public async Task LosingTheInsertRace_WritesOverTheWinnersRow()
@@ -207,14 +246,16 @@ public class AdviseGenerationServiceTests
         var winner = new MemberAdvise
         {
             CardiMemberId = _memberId,
+            Topic = AdviseTopic.Activity,
             Summary = "Winner summary.",
             Suggestion = "Winner suggestion.",
             GuidelineCited = "Winner reference",
             GeneratedAtUtc = DateTime.UtcNow,
         };
-        _advises.GetByCardiMemberAsync(_memberId).Returns((MemberAdvise?)null, winner);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns(
+            (IReadOnlyList<MemberAdvise>)[], (IReadOnlyList<MemberAdvise>)[winner]);
         _unitOfWork.SaveChangesAsync().Returns(
-            _ => throw new DbUpdateException("duplicate key value violates unique constraint"),
+            _ => throw UniqueViolation(),
             _ => 1);
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
@@ -222,6 +263,59 @@ public class AdviseGenerationServiceTests
         _advises.Received(1).Remove(Arg.Is<MemberAdvise>(a => a.CardiMemberId == _memberId));
         Assert.Equal("A short walk after lunch is worth trying.", winner.Suggestion);
         await _unitOfWork.Received(2).SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The race can be on a different topic's index than the ones this pass would add: a
+    /// concurrent pass wrote Activity only, this pass wants Activity and Sleep, and the aborted
+    /// batch took the Sleep insert down with it. The recovery must re-stage the topics that have
+    /// no winner — the first version only overwrote winners and silently dropped the rest.
+    /// </summary>
+    [Fact]
+    public async Task LosingTheRace_StillWritesTheTopicsTheWinnerDidNotHave()
+    {
+        ModelAnswers(
+            ActivityEntry(),
+            new AdviseGenerationService.AdviseEntryAiResponse
+            {
+                Topic = "Sleep",
+                Summary = "Her nights have been shorter than her usual.",
+                Suggestion = "A steadier bedtime could help her settle.",
+                GuidelineCited = "NSF sleep duration guidance",
+            });
+        var winner = new MemberAdvise
+        {
+            CardiMemberId = _memberId,
+            Topic = AdviseTopic.Activity,
+            Summary = "Winner summary.",
+            Suggestion = "Winner suggestion.",
+            GuidelineCited = "Winner reference",
+            GeneratedAtUtc = DateTime.UtcNow,
+        };
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns(
+            (IReadOnlyList<MemberAdvise>)[], (IReadOnlyList<MemberAdvise>)[winner]);
+        _unitOfWork.SaveChangesAsync().Returns(
+            _ => throw UniqueViolation(),
+            _ => 1);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        Assert.Equal("A short walk after lunch is worth trying.", winner.Suggestion);
+        // Sleep staged twice: once in the aborted batch, once re-staged by the recovery.
+        await _advises.Received(2).AddAsync(Arg.Is<MemberAdvise>(a => a.Topic == AdviseTopic.Sleep));
+        await _unitOfWork.Received(2).SaveChangesAsync();
+    }
+
+    /// <summary>The recovery is for the insert race only: any other write failure bubbles rather
+    /// than being "recovered" into a second save that hides the real problem.</summary>
+    [Fact]
+    public async Task ANonRaceWriteFailure_Bubbles()
+    {
+        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(
+            _ => throw new DbUpdateException("value too long for type character varying(500)"));
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => CreateSut().RegenerateIfDueAsync(_memberId));
+        await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
     [Fact]
@@ -275,25 +369,16 @@ public class AdviseGenerationServiceTests
 
     /// <summary>
     /// A reply that crosses the one boundary this generation lives inside is withheld, not
-    /// persisted. The prompt states the boundary and cannot enforce it — the line
-    /// <c>JournalNoCondition</c>'s remark draws in one sentence — and Advise was the only
-    /// comparable generation on the platform with no check behind the asking.
+    /// persisted — per entry, exactly as it was for the single row.
     /// </summary>
     [Theory]
     [InlineData("His readings suggest a heart condition.", "A short walk after lunch is worth trying.")]
     [InlineData("Steps have been below her usual.", "She should stop taking the evening dose.")]
     [InlineData("Steps have been below her usual.", "Ask the GP for a prescription to help her sleep.")]
     [InlineData("This looks like sleep apnoea has been diagnosed.", "A steadier bedtime is worth trying.")]
-    public async Task AReplyNamingAConditionOrATreatment_IsWithheld(string summary, string suggestion)
+    public async Task AnEntryNamingAConditionOrATreatment_IsWithheld(string summary, string suggestion)
     {
-        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = summary,
-                Suggestion = suggestion,
-                GuidelineCited = "WHO adult activity guidance",
-            });
+        ModelAnswers(ActivityEntry(summary, suggestion));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -301,9 +386,8 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
-    /// An everyday suggestion is not discarded for sounding vaguely health-adjacent. The markers
-    /// are compound phrases and action shapes for exactly this reason — a false discard costs the
-    /// caregiver that day's suggestion entirely, since the row is written once a day.
+    /// An everyday suggestion is not discarded for sounding vaguely health-adjacent — a false
+    /// discard costs the caregiver that day's suggestion entirely.
     /// </summary>
     [Theory]
     [InlineData("Warm conditions this week.", "A short walk after lunch is worth trying.")]
@@ -311,14 +395,7 @@ public class AdviseGenerationServiceTests
     [InlineData("Steps are down.", "Getting outside for 15 minutes a day is worth a try.")]
     public async Task AnEverydaySuggestion_IsNotDiscarded(string summary, string suggestion)
     {
-        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = summary,
-                Suggestion = suggestion,
-                GuidelineCited = "WHO adult activity guidance",
-            });
+        ModelAnswers(ActivityEntry(summary, suggestion));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -327,8 +404,8 @@ public class AdviseGenerationServiceTests
 
     /// <summary>
     /// The traceability check the field exists for is that a reference was named, not that the
-    /// field was filled. A model that will not leave it blank writes "N/A" instead, which passed a
-    /// nonblank check and made an ungrounded suggestion look grounded to every reader of the row.
+    /// field was filled — "N/A" passed a nonblank check and made an ungrounded suggestion look
+    /// grounded to every reader of the row.
     /// </summary>
     [Theory]
     [InlineData("N/A")]
@@ -338,16 +415,9 @@ public class AdviseGenerationServiceTests
     [InlineData("Not applicable")]
     [InlineData("unknown")]
     [InlineData("-")]
-    public async Task ACitationNamingNoReference_WithholdsTheRow(string cited)
+    public async Task ACitationNamingNoReference_WithholdsTheEntry(string cited)
     {
-        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = "Steps have been below her usual this week.",
-                Suggestion = "A short walk after lunch is worth trying.",
-                GuidelineCited = cited,
-            });
+        ModelAnswers(ActivityEntry(cited: cited));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -355,20 +425,13 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
-    /// "None" inside a sentence about the references is an answer about them, not a refusal to name
-    /// one — the placeholders are matched whole for this reason.
+    /// "None" inside a sentence about the references is an answer about them, not a refusal to
+    /// name one — the placeholders are matched whole for this reason.
     /// </summary>
     [Fact]
     public async Task ACitationMentioningNoneInASentence_IsStillACitation()
     {
-        _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new AdviseGenerationService.AdviseAiResponse
-            {
-                Summary = "Steps have been below her usual this week.",
-                Suggestion = "A short walk after lunch is worth trying.",
-                GuidelineCited = "WHO adult activity, none of the sleep references",
-            });
+        ModelAnswers(ActivityEntry(cited: "WHO adult activity, none of the sleep references"));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -376,11 +439,8 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
-    /// The prompt never says "wellness", because MedGemma completes from the nearest text — the
-    /// failure <c>CaregiverRegister</c>'s remark documents at length, and the one that put "it's a
-    /// general wellness thing that can help with overall feeling" in front of a caregiver. The
-    /// words were in the tone block, twice in the instructions, and again as the reference
-    /// heading; the boundary they carried is stated in a family's words instead.
+    /// The prompt never says "wellness" — MedGemma completes from the nearest text, and the word
+    /// put "it's a general wellness thing" in front of a caregiver once already.
     /// </summary>
     [Fact]
     public async Task Prompt_NeverSaysWellness()

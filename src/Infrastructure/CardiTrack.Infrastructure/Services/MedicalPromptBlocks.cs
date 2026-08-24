@@ -744,7 +744,7 @@ internal static partial class MedicalPromptBlocks
         {
             var line = $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null)}: "
                 + $"steps={Figure(l.Steps)}, HR={Figure(l.RestingHeartRate)}, "
-                + $"sleep(night ending that morning)={SleepFigure(l.SleepMinutes)}";
+                + $"sleep(night ending that morning)={ReadingFigures.SleepFigure(l.SleepMinutes)}";
 
             if (anyHrv)
                 line += $", HRVovernight={OvernightFigure(l.HeartRateVariabilityMs, "ms")}";
@@ -766,25 +766,12 @@ internal static partial class MedicalPromptBlocks
     }
 
     /// <summary>
-    /// A night's sleep as a person says it. The minutes are how the wearable stores it and how
-    /// every table here holds it, and sending that number to a model got it repeated back
-    /// verbatim: a caregiver asking how their father slept was told "372 minutes", which is
-    /// arithmetic homework in the middle of a sentence meant to reassure. Nobody has ever asked
-    /// how many minutes someone slept.
-    /// </summary>
-    /// <remarks>
-    /// Rounded to the minute rather than to the nearest quarter-hour. "6h 12m" is no harder to
-    /// read than "about 6¼ hours" and stays true to the reading, which matters when the same
-    /// figure appears on a chart's axis beside it. Under an hour keeps minutes alone — "0h 40m"
-    /// is a worse way of writing forty minutes.
-    /// </remarks>
-    /// <summary>
-    /// One reading, or "not measured" — the same thing <see cref="SleepFigure"/> says when a night
-    /// is missing.
+    /// One reading, or "not measured" — the same thing <see cref="ReadingFigures.SleepFigure"/>
+    /// says when a night is missing.
     /// </summary>
     /// <remarks>
     /// Steps and heart rate were interpolated straight into <see cref="DailyLines"/> while sleep
-    /// went through <see cref="SleepFigure"/>, so a row the watch reported nothing for rendered
+    /// went through <see cref="ReadingFigures.SleepFigure"/>, so a row the watch reported nothing for rendered
     /// "steps=, HR=, sleep(night ending that morning)=not measured": two empty values beside one
     /// that says plainly what happened. This helper feeds the alert, baseline, provisional and
     /// learning prompts and member chat's clinical read, which between them are every prompt whose
@@ -803,13 +790,6 @@ internal static partial class MedicalPromptBlocks
         value is { } measured
             ? string.Create(CultureInfo.InvariantCulture, $"{measured:0.#}{unit}")
             : "not measured";
-
-    internal static string SleepFigure(int? minutes) => minutes switch
-    {
-        null => "not measured",
-        < 60 => $"{minutes}m",
-        _ => minutes % 60 == 0 ? $"{minutes / 60}h" : $"{minutes / 60}h {minutes % 60}m",
-    };
 
     /// <summary>
     /// The family-digest daily rows: steps first (the movement yardstick the vitals are read

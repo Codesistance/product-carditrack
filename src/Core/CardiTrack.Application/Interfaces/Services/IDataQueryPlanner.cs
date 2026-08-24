@@ -15,6 +15,15 @@ public interface IDataQueryPlanner
     /// planner shown the bare question alone picks the defaults instead of what the caregiver
     /// meant.
     /// </param>
+    /// <param name="allowedSources">
+    /// The registry slice this workflow may plan over — the catalogue entry's
+    /// <c>AllowedDatasets</c>. The prompt offers only these and the parse is intersected with
+    /// them, so the planner is never offered what the validator would refuse. Null means every
+    /// registered source, which is the pre-catalogue behaviour and what existing callers get.
+    /// </param>
     Task<AiGenerationResult<DataQueryPlan>> PlanAsync(
-        string question, string? conversationHistory = null, CancellationToken ct = default);
+        string question,
+        string? conversationHistory = null,
+        IReadOnlyList<DataQueryKind>? allowedSources = null,
+        CancellationToken ct = default);
 }

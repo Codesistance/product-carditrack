@@ -127,6 +127,7 @@ public static class AiServiceExtensions
         services.AddScoped<IHealthInsightService, HealthInsightService>();
         services.AddScoped<IReportGenerationService, ReportGenerationService>();
         services.AddScoped<IDataQueryPlanner, DataQueryPlannerService>();
+        services.AddScoped<IChatRouter, ChatRouterService>();
         services.AddScoped<IMemberChatService, MemberChatService>();
 
         return services;

@@ -38,5 +38,18 @@ public class MemberChatTurn : BaseEntity
     /// </remarks>
     public string? Charts { get; set; }
 
+    /// <summary>
+    /// Which workflow produced this turn — set on the assistant turn, null on the caregiver's own
+    /// and on every turn written before workflows were stamped.
+    /// </summary>
+    /// <remarks>
+    /// Recoverable from <see cref="MemberChatTurnUsage"/> rows only for some of them: a status
+    /// answer and an advise answer make exactly the same single call, as do a casual steer and an
+    /// off-topic one. Storing it is what makes "which rung do caregivers actually stand on?"
+    /// answerable — and that distribution is what decides whether the heaviest workflows are worth
+    /// building at all (docs/technical/member_chat_routing.md §10).
+    /// </remarks>
+    public MemberChatWorkflow? Workflow { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 }

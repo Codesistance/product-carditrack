@@ -347,10 +347,11 @@ public class HealthInsightService : IHealthInsightService
             return NoAdvise(cardiMemberId);
 
         // Shared with the Dashboard's pulse indicator and member chat's advice reply, so the three
-        // cannot answer differently for the same row — see AdviseServability, which this used to
-        // disagree with by rendering a suggestion that cited no reference.
-        var advise = await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
-        if (!AdviseServability.IsServable(advise, DateTime.UtcNow))
+        // cannot answer differently for the same rows — AdvisePicker applies AdviseServability and
+        // the same fallback order everywhere.
+        var advise = AdvisePicker.PickDefault(
+            await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), DateTime.UtcNow);
+        if (advise is null)
             return NoAdvise(cardiMemberId);
 
         return new AdviseResponse

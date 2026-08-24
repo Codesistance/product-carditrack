@@ -121,11 +121,11 @@ public class DashboardService : IDashboardService
         // Same guard HealthInsightService.GetAdviseAsync applies before serving a row: a paused
         // member's stored suggestion is withheld there, and a pulsing badge promising one the
         // details screen will never show would be worse than no badge at all.
-        var advise = isPaused ? null : await _unitOfWork.MemberAdvises.GetByCardiMemberAsync(cardiMemberId);
-        // The same predicate the details card and member chat serve on, so the dot cannot pulse for
-        // a row either of them would withhold — it used to light on age alone, including for a row
-        // citing no reference that the card is contracted not to render.
-        var hasAdvise = AdviseServability.IsServable(advise, DateTime.UtcNow);
+        // The same picker the details card and member chat serve through, so the dot cannot pulse
+        // for a row either of them would withhold — it used to light on age alone, including for a
+        // row citing no reference that the card is contracted not to render.
+        var hasAdvise = !isPaused && AdvisePicker.PickDefault(
+            await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), DateTime.UtcNow) is not null;
 
         // GetPendingAsync re-checks access on its own — a second round trip, since access was
         // already required above — but a cheap one against the caller's small set of linked
