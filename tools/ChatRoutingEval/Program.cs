@@ -118,6 +118,14 @@ int CmdSheet(string[] args)
         throw new EvalInputException("--labeller names must be distinct; they name the output files.");
     }
 
+    // Distinct names can still collide once slugged — "Alice B" and "Alice-B" both become
+    // labels-alice-b.csv — and the second sheet would silently overwrite the first.
+    if (labellers.Select(Slug).Distinct().Count() != labellers.Count)
+    {
+        throw new EvalInputException(
+            "--labeller names collide once slugged into a file name (labels-<slug>.csv); rename one.");
+    }
+
     Directory.CreateDirectory(outDir);
 
     foreach (var labeller in labellers)
@@ -304,9 +312,14 @@ async Task<int> CmdRouteAsync(string[] args)
     var results = new List<(EvalCase Case, string Got, bool Match, bool WouldClarify)>();
     foreach (var c in cases.Cases)
     {
-        // Context rows carry their prior exchange as a bare history block; cases without one
-        // route on the question alone, exactly as a first turn does.
-        var history = c.Context is null ? null : $"--- Earlier turns ---\nCaregiver: {c.Context}";
+        // Context rows carry their prior exchange as a history block; cases without one route on
+        // the question alone, exactly as a first turn does. The section label mirrors the one
+        // MemberChatService puts on the questions-only history the production router receives —
+        // MedicalPromptBlocks.ChatHistoryLabel, internal to Infrastructure, so it is matched by
+        // value here: a different header would make this a measurement of a prompt nothing ships.
+        var history = c.Context is null
+            ? null
+            : $"--- Earlier in this conversation ---\nCaregiver: {c.Context}";
         string got;
         bool clarify = false;
         try
@@ -322,9 +335,9 @@ async Task<int> CmdRouteAsync(string[] args)
             got = $"(error: {ex.GetType().Name})";
         }
 
-        // The two non-catalogue outcomes cannot be produced by the router, so a case expecting
-        // one scores by what should happen instead: inherit-prior rides the history, and a
-        // rejected-pre-router case never reaches routing in production at all.
+        // The two non-catalogue outcomes cannot be produced by the router, so their cases are
+        // reported here for the record and excluded from the score below: inherit-prior rides
+        // the history, and a rejected-pre-router case never reaches routing in production at all.
         var match = c.Key.Contains(got);
         results.Add((c, got, match, clarify));
         Console.WriteLine($"  {(match ? "ok  " : "MISS")} {c.Id}  key={string.Join(" or ", c.Key),-28} got={got}{(clarify ? "  [would clarify]" : "")}");
@@ -451,10 +464,14 @@ Sheet ReadSheet(string path, Dictionary<string, EvalCase> byId)
             continue;
         }
 
+        // Exactly four, not at least four: an extra column means the sheet's shape has drifted —
+        // most often a column inserted in Excel — and reading f[3] as the label would then score
+        // the wrong cell without any error.
         var f = ParseCsvLine(lines[i]);
-        if (f.Count < 4)
+        if (f.Count != 4)
         {
-            throw new EvalInputException($"{path} line {i + 1}: expected 4 columns, got {f.Count}.");
+            throw new EvalInputException(
+                $"{path} line {i + 1}: expected 4 columns (id,question,context,label), got {f.Count}.");
         }
 
         var (id, label) = (f[0].Trim(), f[3].Trim());
