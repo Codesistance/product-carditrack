@@ -298,8 +298,13 @@ async Task<int> CmdRouteAsync(string[] args)
     }
 
     using var _ = host;
+    // Resolved from a scope, not the root provider: IRewriteAiService is registered scoped, and
+    // a root resolution throws under scope validation (on by default in Development) besides
+    // pinning scoped dependencies for the whole command. One scope for the run is the honest
+    // lifetime — the command is one logical operation.
+    using var scope = host.Services.CreateScope();
     var router = new CardiTrack.Infrastructure.Services.ChatRouterService(
-        host.Services.GetRequiredService<IRewriteAiService>());
+        scope.ServiceProvider.GetRequiredService<IRewriteAiService>());
 
     Console.WriteLine();
     Console.WriteLine("=== What this is ===");
