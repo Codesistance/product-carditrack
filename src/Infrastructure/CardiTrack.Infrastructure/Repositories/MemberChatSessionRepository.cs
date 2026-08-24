@@ -67,11 +67,13 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
         // Tracked, not AsNoTracking: the theming job's next move is to write Theme onto these
         // rows. The user-turn requirement mirrors the history list's own rule — a session with
         // no caregiver question never becomes a row there, so labelling it buys nothing.
+        // "Newest activity" counts the explicit end as activity: an ended conversation's most
+        // recent moment is the ending, not its last message.
         return await _dbSet
             .Where(s => s.Theme == null
                         && (s.EndedAtUtc != null || s.LastTurnAtUtc < activeSinceUtc)
                         && s.Turns.Any(t => t.Role == ChatTurnRole.User))
-            .OrderByDescending(s => s.LastTurnAtUtc)
+            .OrderByDescending(s => s.EndedAtUtc ?? s.LastTurnAtUtc)
             .Take(limit)
             .ToListAsync(ct);
     }

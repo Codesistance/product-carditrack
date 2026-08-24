@@ -208,7 +208,10 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         var now = DateTime.UtcNow;
 
         var lapsedUnthemed = Session(userId, memberId, now.AddHours(-4));
-        var endedUnthemed = Session(userId, memberId, now.AddMinutes(-10));
+        // Last turn *older* than the lapsed session's, ended just now: "newest activity" counts
+        // the ending, so this must still queue first — the ordering coalesces EndedAtUtc over
+        // LastTurnAtUtc.
+        var endedUnthemed = Session(userId, memberId, now.AddHours(-8));
         endedUnthemed.EndedAtUtc = now;
         var lapsedThemed = Session(userId, memberId, now.AddHours(-5));
         lapsedThemed.Theme = "already-labelled-ciphertext";
