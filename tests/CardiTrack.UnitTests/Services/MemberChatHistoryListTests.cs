@@ -39,7 +39,8 @@ public class MemberChatHistoryListTests
     private static string Stored(string plain) => PromptContextFactory.Encryption.Encrypt(plain);
 
     private MemberChatSessionListing Listing(
-        string? storedFirstQuestion, int questionCount, DateTime lastTurnAtUtc) => new()
+        string? storedFirstQuestion, int questionCount, DateTime lastTurnAtUtc,
+        string? storedTheme = null) => new()
     {
         Session = new MemberChatSession
         {
@@ -48,6 +49,7 @@ public class MemberChatHistoryListTests
             CardiMemberId = _memberId,
             StartedAtUtc = lastTurnAtUtc.AddMinutes(-10),
             LastTurnAtUtc = lastTurnAtUtc,
+            Theme = storedTheme,
         },
         FirstQuestionContent = storedFirstQuestion,
         QuestionCount = questionCount,
@@ -57,7 +59,7 @@ public class MemberChatHistoryListTests
     public async Task GetSessions_DecryptsTheOpeningQuestion_AndKeepsTheRepositoryOrder()
     {
         var now = DateTime.UtcNow;
-        _sessions.ListForMemberAsync(_userId, _memberId, Arg.Any<CancellationToken>())
+        _sessions.ListCompletedForMemberAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns([
                 Listing(Stored("Any alerts today?"), 1, now),
                 Listing(Stored("How did he sleep?"), 3, now.AddDays(-1)),
@@ -71,13 +73,30 @@ public class MemberChatHistoryListTests
         Assert.Equal(3, result.Sessions[1].QuestionCount);
     }
 
+    /// <summary>The stored theme leaves decrypted; a session the theming job hasn't visited
+    /// carries null, and the client falls back to the opening question.</summary>
+    [Fact]
+    public async Task GetSessions_DecryptsTheTheme_AndLeavesAnUnthemedSessionNull()
+    {
+        _sessions.ListCompletedForMemberAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns([
+                Listing(Stored("How did he sleep?"), 2, DateTime.UtcNow, storedTheme: Stored("Sleep quality this week")),
+                Listing(Stored("Any alerts today?"), 1, DateTime.UtcNow.AddDays(-1)),
+            ]);
+
+        var result = await CreateSut().GetSessionsAsync(_userId, _memberId);
+
+        Assert.Equal("Sleep quality this week", result.Sessions[0].Theme);
+        Assert.Null(result.Sessions[1].Theme);
+    }
+
     /// <summary>A session that never got a caregiver question — a send that failed before its
     /// first turn persisted — has nothing a list row can be recognised by, so it never becomes
     /// one.</summary>
     [Fact]
     public async Task GetSessions_OmitsASessionWithNoOpeningQuestion()
     {
-        _sessions.ListForMemberAsync(_userId, _memberId, Arg.Any<CancellationToken>())
+        _sessions.ListCompletedForMemberAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns([
                 Listing(null, 0, DateTime.UtcNow),
                 Listing(Stored("How active was she this week?"), 1, DateTime.UtcNow.AddHours(-2)),
@@ -98,7 +117,120 @@ public class MemberChatHistoryListTests
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().GetSessionsAsync(_userId, _memberId));
 
-        await _sessions.DidNotReceiveWithAnyArgs().ListForMemberAsync(default, default, default);
+        await _sessions.DidNotReceiveWithAnyArgs().ListCompletedForMemberAsync(default, default, default, default);
+    }
+
+    [Fact]
+    public async Task EndCurrentSession_MarksTheActiveSessionEnded_AndSaysWhichItWas()
+    {
+        var active = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-30),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-5),
+        };
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(active);
+
+        var result = await CreateSut().EndCurrentSessionAsync(_userId, _memberId);
+
+        Assert.Equal(active.Id, result.EndedSessionId);
+        Assert.NotNull(active.EndedAtUtc);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>Nothing active is a fine outcome, not an error — the caregiver asked for a fresh
+    /// start and has one either way. Nothing is written.</summary>
+    [Fact]
+    public async Task EndCurrentSession_WithNothingActive_IsANoOp()
+    {
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns((MemberChatSession?)null);
+
+        var result = await CreateSut().EndCurrentSessionAsync(_userId, _memberId);
+
+        Assert.Null(result.EndedSessionId);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ContinueSession_ReopensIt_EndsTheActiveOne_AndReturnsTheTurns()
+    {
+        var sessionId = Guid.NewGuid();
+        var completed = new MemberChatSession
+        {
+            Id = sessionId,
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddDays(-2),
+            LastTurnAtUtc = DateTime.UtcNow.AddDays(-2),
+            EndedAtUtc = DateTime.UtcNow.AddDays(-2),
+        };
+        var active = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-20),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-5),
+        };
+        var withTurns = new MemberChatSession
+        {
+            Id = sessionId,
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = completed.StartedAtUtc,
+            LastTurnAtUtc = DateTime.UtcNow,
+            Turns =
+            [
+                new MemberChatTurn
+                {
+                    SessionId = sessionId, Role = ChatTurnRole.User,
+                    Content = Stored("How did he sleep?"), CreatedAtUtc = DateTime.UtcNow.AddDays(-2),
+                },
+            ],
+        };
+        _sessions.GetByIdAsync(sessionId).Returns(completed);
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(active);
+        _sessions.GetByIdWithTurnsAsync(sessionId, Arg.Any<CancellationToken>()).Returns(withTurns);
+
+        var before = DateTime.UtcNow;
+        var result = await CreateSut().ContinueSessionAsync(_userId, _memberId, sessionId);
+
+        Assert.Null(completed.EndedAtUtc);
+        Assert.True(completed.LastTurnAtUtc >= before, "continuing must bring the session back inside the active window");
+        Assert.NotNull(active.EndedAtUtc);
+        Assert.Equal(sessionId, result.SessionId);
+        var turn = Assert.Single(result.Turns);
+        Assert.Equal("How did he sleep?", turn.Content);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>Same existence-hiding 404 as reading a session: another caregiver's conversation,
+    /// or the same caregiver's about a different member, is indistinguishable from one that never
+    /// existed.</summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task ContinueSession_TreatsAForeignSessionAsNotFound(bool otherCaregiver, bool otherMember)
+    {
+        var session = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = otherCaregiver ? Guid.NewGuid() : _userId,
+            CardiMemberId = otherMember ? Guid.NewGuid() : _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddDays(-1),
+            LastTurnAtUtc = DateTime.UtcNow.AddDays(-1),
+        };
+        _sessions.GetByIdAsync(session.Id).Returns(session);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().ContinueSessionAsync(_userId, _memberId, session.Id));
+
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
     [Fact]

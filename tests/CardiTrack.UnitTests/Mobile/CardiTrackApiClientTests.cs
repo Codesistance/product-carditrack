@@ -857,20 +857,63 @@ public class CardiTrackApiClientTests
             {"success":true,"message":"ok","data":{"sessions":[
               {"sessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff",
                "startedAtUtc":"2026-08-22T10:00:00Z","lastTurnAtUtc":"2026-08-22T10:12:00Z",
-               "firstQuestion":"Any alerts today?","questionCount":1},
+               "theme":"Alerts and heart rate","firstQuestion":"Any alerts today?","questionCount":1},
               {"sessionId":"7f9619ff-8b86-d011-b42d-00c04fc964ff",
                "startedAtUtc":"2026-08-20T15:00:00Z","lastTurnAtUtc":"2026-08-20T15:06:00Z",
-               "firstQuestion":"How did Dad sleep?","questionCount":3}]},
+               "theme":null,"firstQuestion":"How did Dad sleep?","questionCount":3}]},
              "timestamp":"2026-08-22T11:00:00Z"}
             """);
 
         var response = await client.GetMemberChatSessionsAsync(memberId);
 
         Assert.Equal(2, response.Sessions.Count);
+        Assert.Equal("Alerts and heart rate", response.Sessions[0].Theme);
         Assert.Equal("Any alerts today?", response.Sessions[0].FirstQuestion);
+        Assert.Null(response.Sessions[1].Theme);
         Assert.Equal(3, response.Sessions[1].QuestionCount);
         Assert.Equal($"/api/v1/member-chat/members/{memberId}/sessions",
             http.Requests.Single().Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task EndCurrentMemberChatSession_PostsToItsRoute_AndReadsTheEndedId()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"endedSessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff"},
+             "timestamp":"2026-08-24T09:00:00Z"}
+            """);
+
+        var response = await client.EndCurrentMemberChatSessionAsync(memberId);
+
+        Assert.Equal(Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff"), response.EndedSessionId);
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/member-chat/members/{memberId}/sessions/current/end",
+            request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task ContinueMemberChatSession_PostsToItsRoute_AndReadsTheTurns()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        var sessionId = Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff");
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"sessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff",
+             "turns":[{"role":"User","content":"How did Dad sleep?","createdAtUtc":"2026-08-20T15:00:00Z"}]},
+             "timestamp":"2026-08-24T09:00:00Z"}
+            """);
+
+        var history = await client.ContinueMemberChatSessionAsync(memberId, sessionId);
+
+        Assert.Equal(sessionId, history.SessionId);
+        Assert.Single(history.Turns);
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/member-chat/members/{memberId}/sessions/{sessionId}/continue",
+            request.Uri!.AbsolutePath);
     }
 
     [Fact]

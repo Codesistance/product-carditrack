@@ -18,6 +18,12 @@ public class MemberChatSessionConfiguration : IEntityTypeConfiguration<MemberCha
         builder.Property(s => s.LastTurnAtUtc)
             .IsRequired();
 
+        // Ciphertext, not prose — see the entity's remarks. No max length for the same reason
+        // MemberChatTurn.Content has none: the encrypted form's length is not the label's.
+        builder.Property(s => s.Theme);
+
+        builder.Property(s => s.EndedAtUtc);
+
         builder.Property(s => s.CreatedDate)
             .HasDefaultValueSql("NOW()");
 

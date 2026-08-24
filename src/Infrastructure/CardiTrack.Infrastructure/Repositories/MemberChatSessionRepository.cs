@@ -20,6 +20,7 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
         return await _dbSet
             .Where(s => s.UserId == userId
                         && s.CardiMemberId == cardiMemberId
+                        && s.EndedAtUtc == null
                         && s.LastTurnAtUtc >= activeSinceUtc)
             .OrderByDescending(s => s.LastTurnAtUtc)
             .FirstOrDefaultAsync(ct);
@@ -33,16 +34,20 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
     }
 
-    public async Task<IReadOnlyList<MemberChatSessionListing>> ListForMemberAsync(
-        Guid userId, Guid cardiMemberId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MemberChatSessionListing>> ListCompletedForMemberAsync(
+        Guid userId, Guid cardiMemberId, DateTime activeSinceUtc, CancellationToken ct = default)
     {
         // Projected, not Included: the list needs one turn's content and a count per session, and
         // Include would drag every encrypted turn of every conversation across the wire to show a
-        // one-line summary of each.
+        // one-line summary of each. "Completed" is the complement of GetActiveAsync's predicate:
+        // explicitly ended, or quiet past the active window — never the conversation the chat
+        // window is still having.
         return await _dbSet
             .AsNoTracking()
-            .Where(s => s.UserId == userId && s.CardiMemberId == cardiMemberId)
-            .OrderByDescending(s => s.LastTurnAtUtc)
+            .Where(s => s.UserId == userId
+                        && s.CardiMemberId == cardiMemberId
+                        && (s.EndedAtUtc != null || s.LastTurnAtUtc < activeSinceUtc))
+            .OrderByDescending(s => s.StartedAtUtc)
             .Select(s => new MemberChatSessionListing
             {
                 Session = s,
