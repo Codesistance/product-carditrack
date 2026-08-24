@@ -96,6 +96,8 @@ builder.Services.AddMedicalAiServices(configuration);
 builder.Services.AddNumerics();
 builder.Services.AddScoped<IDigestGenerationService, DigestGenerationService>();
 builder.Services.AddScoped<IRealtimeAssessmentService, RealtimeAssessmentService>();
+// The chat theming pass — Rewrite slot only, which AddMedicalAiServices above already carries.
+builder.Services.AddScoped<IChatThemeService, ChatThemeService>();
 
 // Device provider — the aggregator's targeted sync is the same SyncCardiMemberAsync the Worker
 // runs, so this host carries the same provider wiring (incl. the Fitbit OAuth credentials the
@@ -214,8 +216,16 @@ try
             Log.Information("PipelineJobs run finished. Environmental readings written: {Enriched}.", enriched);
             return 0;
 
+        case "theme":
+            // Labels completed member-chat conversations for the history list — one Rewrite-slot
+            // call per unthemed conversation, batch-capped; see ChatThemeService.
+            var themer = scope.ServiceProvider.GetRequiredService<IChatThemeService>();
+            var themed = await themer.ThemeDueSessionsAsync(DateTime.UtcNow);
+            Log.Information("PipelineJobs run finished. Chat conversations themed: {Themed}.", themed);
+            return 0;
+
         default:
-            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess, enrich.", jobName);
+            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess, enrich, theme.", jobName);
             return 1;
     }
 }

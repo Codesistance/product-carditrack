@@ -60,4 +60,19 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
             })
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<MemberChatSession>> ListUnthemedCompletedAsync(
+        DateTime activeSinceUtc, int limit, CancellationToken ct = default)
+    {
+        // Tracked, not AsNoTracking: the theming job's next move is to write Theme onto these
+        // rows. The user-turn requirement mirrors the history list's own rule — a session with
+        // no caregiver question never becomes a row there, so labelling it buys nothing.
+        return await _dbSet
+            .Where(s => s.Theme == null
+                        && (s.EndedAtUtc != null || s.LastTurnAtUtc < activeSinceUtc)
+                        && s.Turns.Any(t => t.Role == ChatTurnRole.User))
+            .OrderByDescending(s => s.LastTurnAtUtc)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
 }

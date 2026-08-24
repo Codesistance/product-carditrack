@@ -1486,3 +1486,135 @@ resource "google_cloud_scheduler_job" "pipeline_assessor_5min" {
     google_cloud_run_v2_job.pipeline_assessor,
   ]
 }
+
+# ── Pipeline job: chat themer ─────────────────────────────────────────────────
+#
+# Labels completed member-chat conversations for the history list (ChatThemeService): one
+# Rewrite-slot call per unthemed conversation, batch-capped per pass. Runs on this host because
+# it is AI background work — CLAUDE.md bars it from the Worker — and on its own Cloud Run job,
+# like the aggregator and assessor, so its cadence and failures are its own.
+variable "pipeline_themer_schedule" {
+  description = "Cloud Scheduler cron for the chat themer job — quarter-hourly, offset from the :00/:30 digest ticks and the aggregator/assessor's five-minute grid. A theme's only consumer is a history list a caregiver may open hours later, so a quarter hour of lag is invisible; the batch cap in ChatThemeService is what this cadence drains a backlog through."
+  type        = string
+  default     = "7-59/15 * * * *"
+}
+
+resource "google_cloud_run_v2_job" "pipeline_themer" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = "${var.pipeline_jobs_name}-themer"
+  location = var.cloud_run_location
+  client   = "terraform"
+
+  template {
+    template {
+      max_retries = 1
+
+      # One bounded batch of Rewrite-slot calls per pass — minutes, not the hour the
+      # MedGemma-bound jobs budget for.
+      timeout = "900s"
+
+      service_account = google_service_account.pipeline[0].email
+
+      # Same egress posture as the sibling jobs: only the Cloud SQL private IP needs the VPC;
+      # the Rewrite slot's Vertex endpoint is public Google API space and leaves directly.
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.main.id
+          subnetwork = google_compute_subnetwork.main.id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.main.connection_name]
+        }
+      }
+
+      containers {
+        image = var.pipeline_jobs_container_image
+        args  = ["--job", "theme"]
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_env_vars
+          iterator = item
+          content {
+            name  = item.key
+            value = item.value
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_secret_env_vars
+          iterator = item
+          content {
+            name = item.key
+            value_source {
+              secret_key_ref {
+                secret  = item.value
+                version = "latest"
+              }
+            }
+          }
+        }
+
+        # No Api__BaseUrl / Pipeline__Audience here: theming writes labels, never
+        # notifications, so it has no business holding the enqueue endpoint's address.
+
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_version.db_connection_string,
+    # See the barrier's comment in service_accounts.tf.
+    time_sleep.pipeline_iam_propagation,
+  ]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "pipeline_themer_invoker" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = google_cloud_run_v2_job.pipeline_themer[0].name
+  location = google_cloud_run_v2_job.pipeline_themer[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline_scheduler[0].email}"
+}
+
+resource "google_cloud_scheduler_job" "pipeline_themer_15min" {
+  count            = var.enable_pipeline_jobs ? 1 : 0
+  name             = "${var.pipeline_jobs_name}-themer-15min"
+  region           = var.cloud_run_location
+  schedule         = var.pipeline_themer_schedule
+  time_zone        = "Etc/UTC"
+  attempt_deadline = "320s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.cloud_run_location}/jobs/${var.pipeline_jobs_name}-themer:run"
+
+    oauth_token {
+      service_account_email = google_service_account.pipeline_scheduler[0].email
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloud_run_v2_job.pipeline_themer,
+  ]
+}
