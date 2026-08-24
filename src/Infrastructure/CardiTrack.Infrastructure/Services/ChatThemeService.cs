@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -201,6 +202,11 @@ public class ChatThemeService : IChatThemeService
 
     internal sealed record ThemeAiResponse
     {
+        // Not decoration: StructuredOutputSchema copies this into the schema the model is
+        // constrained by — same rule as DataQueryPlanAiResponse's fields.
+        [Description("The label: three to six plain words in sentence case naming what the "
+            + "conversation was about, with no quotes, no trailing punctuation, and no person's "
+            + "name or placeholder in it.")]
         public required string Theme { get; init; }
     }
 }
