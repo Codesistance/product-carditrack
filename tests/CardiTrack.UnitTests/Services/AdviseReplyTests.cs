@@ -68,17 +68,45 @@ public class AdviseReplyTests
     }
 
     /// <summary>
-    /// The reference is a generation-time gate, not something the caregiver is shown. Read aloud,
-    /// "based on Adult sleep duration (AASM/CDC)" is a citation, and a citation is what made this
-    /// reply sound like a leaflet rather than an answer.
+    /// The authority is quoted at the end as a Reference line — the same convention inference
+    /// closes with (decision 2026-08-24) — and never woven into the prose, which is what made an
+    /// early version read like a leaflet. The quoted words are <see cref="WellnessGuidelines"/>'
+    /// fixed lines, mapped from the stored pick, never the model's own text.
     /// </summary>
     [Fact]
-    public void ItDoesNotReciteTheReferenceItWasGroundedIn()
+    public void ItQuotesItsAuthority_AtTheEnd_NotInTheProse()
     {
         var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
 
-        Assert.DoesNotContain("AASM", reply, StringComparison.Ordinal);
+        Assert.EndsWith(
+            "Reference: AASM/CDC consensus — adult sleep duration: 7 or more hours a night.",
+            reply, StringComparison.Ordinal);
         Assert.DoesNotContain("based on", reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A stored pick the closed set does not carry quotes nothing — never an invented authority.
+    /// The row still serves: the grounding gate ran at generation time; only the quote is
+    /// withheld.
+    /// </summary>
+    [Fact]
+    public void AnUnmappablePick_QuotesNothing()
+    {
+        var reply = MemberChatReplies.AdviseReply(
+            "Dad", Advise(guideline: "General wellbeing literature"), Now);
+
+        Assert.Contains("steadier bedtime", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Reference:", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>The honest empty case carries no Reference line either — there is nothing it
+    /// would be the authority for.</summary>
+    [Fact]
+    public void TheEmptyCase_CarriesNoReferenceLine()
+    {
+        var reply = MemberChatReplies.AdviseReply("Dad", null, Now);
+
+        Assert.DoesNotContain("Reference:", reply, StringComparison.Ordinal);
     }
 
     /// <summary>

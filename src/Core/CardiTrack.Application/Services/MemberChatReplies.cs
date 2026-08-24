@@ -82,14 +82,14 @@ public static class MemberChatReplies
     /// has neither.
     /// </para>
     /// <para>
-    /// It does not name the reference the suggestion drew on, though it still refuses to serve a
-    /// row that has none. Read aloud, "that's general wellness guidance based on Adult physical
-    /// activity" is a citation, and a citation is what made the first version of this reply sound
-    /// like a leaflet rather than an answer — the second half of the same problem that had the
-    /// model itself saying "it's a general wellness thing" (see
-    /// <c>MedicalPromptBlocks.ToneWellnessNotClinical</c>'s remark). The grounding is a
-    /// generation-time gate, not something the caregiver has to be shown to be safe; the Details
-    /// card still sets it as "Based on: …" for anyone who wants it.
+    /// The authority behind the suggestion is quoted at the end, as a References line — the same
+    /// convention the inference rung closes with (decision 2026-08-24, reversing the earlier
+    /// no-citation-in-chat choice). Not woven into the prose: "based on Adult physical activity"
+    /// mid-sentence is what made an early version read like a leaflet. The quoted text is
+    /// <see cref="WellnessGuidelines"/>' fixed lines, mapped from the stored
+    /// <see cref="MemberAdvise.GuidelineCited"/> — the model picked which reference at generation
+    /// time; code decides the words a caregiver reads, and a pick the closed set does not carry
+    /// quotes nothing rather than something invented.
     /// </para>
     /// <para>
     /// A row with no <see cref="MemberAdvise.GuidelineCited"/> is still treated as nothing to serve
@@ -117,7 +117,11 @@ public static class MemberChatReplies
                 + "sleep, activity or heart rate compare with what's usual for them, though.";
         }
 
-        return $"{advise.Summary.Trim()} {advise.Suggestion.Trim()} That's just an idea to "
+        var reply = $"{advise.Summary.Trim()} {advise.Suggestion.Trim()} That's just an idea to "
             + "consider — their doctor is the one to ask if you're unsure about it.";
+
+        return WellnessGuidelines.CitationFor(advise.GuidelineCited) is { } citation
+            ? $"{reply}\n\nReference: {citation}."
+            : reply;
     }
 }
