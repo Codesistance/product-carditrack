@@ -26,6 +26,16 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
     /// </summary>
     Task<IReadOnlyList<MemberChatSessionListing>> ListCompletedForMemberAsync(
         Guid userId, Guid cardiMemberId, DateTime activeSinceUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// The theming job's work queue, across all caregivers and members: completed sessions (same
+    /// predicate as <see cref="ListCompletedForMemberAsync"/>) that have no theme yet and at
+    /// least one caregiver turn to derive one from. Newest activity first — the sessions a
+    /// caregiver is most likely to be looking at get their labels first — and tracked, because
+    /// the caller's whole purpose is to write the theme onto these rows.
+    /// </summary>
+    Task<IReadOnlyList<MemberChatSession>> ListUnthemedCompletedAsync(
+        DateTime activeSinceUtc, int limit, CancellationToken ct = default);
 }
 
 /// <summary>One row of <see cref="IMemberChatSessionRepository.ListCompletedForMemberAsync"/>.</summary>

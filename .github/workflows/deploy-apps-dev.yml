@@ -1657,7 +1657,7 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v3
       # jobs update, not run deploy: the job resources are Terraform-owned (VPC, Cloud SQL,
       # secrets, args) and only their image is CI-owned; Cloud Scheduler drives executions.
-      # All three jobs share the image and differ by container args.
+      # All four jobs share the image and differ by container args.
       - run: |
           gcloud run jobs update carditrack-dev-pipeline-jobs \
             --image ${{ needs.push-pipeline-image.outputs.image }} \
@@ -1674,6 +1674,20 @@ jobs:
             --region ${{ needs.changes.outputs.gcp_region }} \
             --project ${{ needs.changes.outputs.gcp_project_id }} \
             --quiet
+          # Conditional while the themer rolls out: the job resource is Terraform-owned, so on
+          # an environment where the apply hasn't run yet this step would otherwise fail the
+          # whole deploy under bash -e. The skip prints, so a missing job stays visible.
+          if gcloud run jobs describe carditrack-dev-pipeline-jobs-themer \
+            --region ${{ needs.changes.outputs.gcp_region }} \
+            --project ${{ needs.changes.outputs.gcp_project_id }} >/dev/null 2>&1; then
+            gcloud run jobs update carditrack-dev-pipeline-jobs-themer \
+              --image ${{ needs.push-pipeline-image.outputs.image }} \
+              --region ${{ needs.changes.outputs.gcp_region }} \
+              --project ${{ needs.changes.outputs.gcp_project_id }} \
+              --quiet
+          else
+            echo "themer job not created yet (Terraform apply pending) — skipping its image update"
+          fi
 
   patch-tag:
     name: Create Patch Tag

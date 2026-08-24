@@ -36,9 +36,10 @@ public class MemberChatService : IMemberChatService
     /// <summary>
     /// How long since the last turn a session still counts as the one to continue. Past this, a new
     /// message starts a fresh session rather than resuming a conversation the caregiver has likely
-    /// forgotten the thread of.
+    /// forgotten the thread of. Internal because <see cref="ChatThemeService"/> must agree with it —
+    /// "completed" is this window's complement, and two copies of the number would drift.
     /// </summary>
-    private static readonly TimeSpan ActiveSessionWindow = TimeSpan.FromHours(2);
+    internal static readonly TimeSpan ActiveSessionWindow = TimeSpan.FromHours(2);
 
     /// <summary>Same order of magnitude as the one-shot ask endpoint's answer cap — long enough for
     /// a real answer, short enough that a runaway generation cannot fill the turn.</summary>

@@ -194,6 +194,50 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal(0, listing.QuestionCount);
     }
 
+    /// <summary>
+    /// The theming job's work queue. Asserted by containment rather than exact counts because
+    /// this query deliberately spans every caregiver and member — the shared test database can
+    /// hold other tests' sessions, and this job is meant to see them too.
+    /// </summary>
+    [Fact]
+    public async Task ListUnthemedCompletedAsync_QueuesCompletedUnthemedSessionsWithAQuestion_NewestFirst()
+    {
+        using var scope = fixture.CreateScope();
+        var userId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+
+        var lapsedUnthemed = Session(userId, memberId, now.AddHours(-4));
+        // Last turn *older* than the lapsed session's, ended just now: "newest activity" counts
+        // the ending, so this must still queue first — the ordering coalesces EndedAtUtc over
+        // LastTurnAtUtc.
+        var endedUnthemed = Session(userId, memberId, now.AddHours(-8));
+        endedUnthemed.EndedAtUtc = now;
+        var lapsedThemed = Session(userId, memberId, now.AddHours(-5));
+        lapsedThemed.Theme = "already-labelled-ciphertext";
+        var stillActive = Session(userId, memberId, now);
+        var lapsedNoQuestion = Session(userId, memberId, now.AddHours(-6));
+
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
+        var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();
+        foreach (var s in new[] { lapsedUnthemed, endedUnthemed, lapsedThemed, stillActive, lapsedNoQuestion })
+            await sessionRepo.AddAsync(s);
+        await turnRepo.AddAsync(Turn(lapsedUnthemed.Id, ChatTurnRole.User, "How did he sleep?", now.AddHours(-4)));
+        await turnRepo.AddAsync(Turn(endedUnthemed.Id, ChatTurnRole.User, "Any alerts today?", now.AddMinutes(-10)));
+        await turnRepo.AddAsync(Turn(lapsedThemed.Id, ChatTurnRole.User, "Already labelled", now.AddHours(-5)));
+        await turnRepo.AddAsync(Turn(stillActive.Id, ChatTurnRole.User, "Mid-conversation", now));
+        await turnRepo.AddAsync(Turn(lapsedNoQuestion.Id, ChatTurnRole.Assistant, "An orphaned reply", now.AddHours(-6)));
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
+
+        var queue = await sessionRepo.ListUnthemedCompletedAsync(now.AddHours(-2), limit: 500);
+        var mine = queue.Select(s => s.Id)
+            .Where(id => new[] { lapsedUnthemed.Id, endedUnthemed.Id, lapsedThemed.Id, stillActive.Id, lapsedNoQuestion.Id }
+                .Contains(id))
+            .ToList();
+
+        Assert.Equal(new[] { endedUnthemed.Id, lapsedUnthemed.Id }, mine);
+    }
+
     /// <summary>An explicitly ended conversation is never "the one to continue", however recent
     /// its last turn — that is the whole point of ending it.</summary>
     [Fact]
