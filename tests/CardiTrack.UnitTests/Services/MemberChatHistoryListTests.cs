@@ -3,9 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
-using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -38,7 +36,6 @@ public class MemberChatHistoryListTests
     private MemberChatService CreateSut() =>
         new(_medicalAi, _rewriteAi, _planner, Substitute.For<IChatRouter>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
-            Options.Create(new ChatRoutingSettings { Mode = ChatRoutingMode.Off }),
             NullLogger<MemberChatService>.Instance);
 
     private static string Stored(string plain) => PromptContextFactory.Encryption.Encrypt(plain);

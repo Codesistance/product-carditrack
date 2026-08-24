@@ -8,9 +8,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
-using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Services;
 
@@ -299,7 +297,6 @@ public class MemberChatService : IMemberChatService
     private readonly ICardiMemberAccessService _access;
     private readonly MemberContextComposer _memberContext;
     private readonly IEncryptionService _encryption;
-    private readonly ChatRoutingSettings _routing;
     private readonly ILogger<MemberChatService> _logger;
 
     public MemberChatService(
@@ -311,7 +308,6 @@ public class MemberChatService : IMemberChatService
         ICardiMemberAccessService access,
         MemberContextComposer memberContext,
         IEncryptionService encryption,
-        IOptions<ChatRoutingSettings> routing,
         ILogger<MemberChatService> logger)
     {
         _medicalAi = medicalAi;
@@ -322,7 +318,6 @@ public class MemberChatService : IMemberChatService
         _access = access;
         _memberContext = memberContext;
         _encryption = encryption;
-        _routing = routing.Value;
         _logger = logger;
     }
 
@@ -357,37 +352,35 @@ public class MemberChatService : IMemberChatService
                 + "alerts, or recent activity instead.");
         }
 
-        // The routing call, when the dial is past Off. In Shadow it runs and is logged but the
-        // triage still decides; On, its answer selects the workflow. Either way the malicious
-        // verdict above already ran — the pre-check is standalone on every path.
+        // The routing call — every message goes through it; the malicious verdict above already
+        // ran, so the pre-check stays a standalone hard stop ahead of it on every path.
         ChatRouteDecision? route = null;
         AiCallRecord? routeCall = null;
-        if (_routing.Mode != ChatRoutingMode.Off)
+        try
         {
-            try
-            {
-                var routed = await _router.RouteAsync(flattened, history.QuestionsOnly, ct);
-                route = routed.Result;
-                routeCall = new AiCallRecord(AiCallStep.Route, AiProviderSlot.Rewrite, routed.Usage);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                // The caller hung up — theirs to see, like everywhere else in this service.
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // A routing failure must never cost the caregiver their answer: with route left
-                // null the dispatch below falls through to the triage-decided path in every mode,
-                // which is the ladder's failure direction expressed at the call level.
-                _logger.LogWarning(ex, "Chat routing call failed; descending to the triage-decided path.");
-            }
+            var routed = await _router.RouteAsync(flattened, history.QuestionsOnly, ct);
+            route = routed.Result;
+            routeCall = new AiCallRecord(AiCallStep.Route, AiProviderSlot.Rewrite, routed.Usage);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The caller hung up — theirs to see, like everywhere else in this service.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // A routing failure must never cost the caregiver their answer: with route left
+            // null the dispatch below falls through to the triage-decided path, which is the
+            // ladder's failure direction expressed at the call level.
+            _logger.LogWarning(ex, "Chat routing call failed; descending to the triage-decided path.");
         }
 
         // One workflow answers, then one path persists, bills and responds. The branch chain
         // decides *which* workflow; it no longer decides what happens afterwards, which is what
-        // stops a future branch quietly omitting a usage row or a SaveChanges.
-        var result = _routing.Mode == ChatRoutingMode.On && route is not null
+        // stops a future branch quietly omitting a usage row or a SaveChanges. The triage switch
+        // is the router-failure fallback only — the booleans the pre-check already answered,
+        // deciding the turn the one time the router could not.
+        var result = route is not null
             ? await DispatchRoutedAsync(route, flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct)
             : triage.Result switch
             {
@@ -402,22 +395,9 @@ public class MemberChatService : IMemberChatService
 
         if (routeCall is { } billedRoute)
         {
-            // The route ran, so the turn pays for it — shadow included; a usage row that skipped
-            // it would make the shadow period look free. Inserted after the malicious check to
-            // keep the calls list in the order the calls were actually made.
+            // The route ran, so the turn pays for it. Inserted after the malicious check to keep
+            // the calls list in the order the calls were actually made.
             result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
-
-            if (_routing.Mode == ChatRoutingMode.Shadow)
-            {
-                // Step 6's whole output: the disagreement rate between the router and the triage,
-                // and how often the router would have asked to clarify. Nothing ships on it.
-                var triageWorkflow = TriageWorkflow(triage.Result);
-                _logger.LogInformation(
-                    "Chat shadow route: router={RouterWorkflow} runnerUp={RunnerUp} wouldClarify={WouldClarify} "
-                    + "triage={TriageWorkflow} agree={Agree}",
-                    route!.Primary, route.RunnerUp, route.NeedsClarify, triageWorkflow,
-                    route.Primary == triageWorkflow);
-            }
         }
 
         var (_, assistantTurn) = await PersistTurnsAsync(
@@ -609,7 +589,7 @@ public class MemberChatService : IMemberChatService
     }
 
     /// <summary>
-    /// The cutover path — the router's answer selects the workflow. Clarify is decided here, not
+    /// The routed dispatch — the router's answer selects the workflow. Clarify is decided here, not
     /// by the model: a non-adjacent runner-up asks once which rung was meant, and a second
     /// unroutable answer in a row runs analysis instead of asking again (the once-per-message
     /// rule, read from whether the previous assistant turn was itself a clarify).
@@ -685,17 +665,6 @@ public class MemberChatService : IMemberChatService
         MemberChatWorkflow.Advise => "a suggestion for what could help",
         MemberChatWorkflow.SteerCasual => "just saying hi",
         _ => "something outside their health data",
-    };
-
-    /// <summary>The workflow today's triage booleans select — the shadow comparison's other half,
-    /// and the same mapping the pre-cutover branch chain applies.</summary>
-    internal static MemberChatWorkflow TriageWorkflow(MaliciousCheckAiResponse triage) => triage switch
-    {
-        { IsAboutThisMoment: true } => MemberChatWorkflow.Status,
-        { IsAskingForAdvice: true } => MemberChatWorkflow.Advise,
-        { IsCasualOrSocial: true } => MemberChatWorkflow.SteerCasual,
-        { IsOffTopic: true } => MemberChatWorkflow.SteerOffTopic,
-        _ => MemberChatWorkflow.Analysis,
     };
 
     /// <summary>The calls list with the route inserted after the malicious check — every handler

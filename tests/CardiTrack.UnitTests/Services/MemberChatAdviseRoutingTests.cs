@@ -1,7 +1,5 @@
 using CardiTrack.Application.DTOs.Common;
-using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
-using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -28,6 +26,7 @@ public class MemberChatAdviseRoutingTests
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IDataQueryPlanner _planner = Substitute.For<IDataQueryPlanner>();
+    private readonly IChatRouter _router = Substitute.For<IChatRouter>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
 
@@ -67,9 +66,18 @@ public class MemberChatAdviseRoutingTests
         }]);
 
         Triage(askingForAdvice: true);
+        Route(MemberChatWorkflow.Advise);
     }
 
-    /// <summary>The one call the advice path does make — the triage that routes it.</summary>
+    /// <summary>The route that selects the workflow — the dispatch reads its answer, and the
+    /// triage booleans only decide when the router fails.</summary>
+    private void Route(MemberChatWorkflow primary) =>
+        _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<ChatRouteDecision>(
+                new ChatRouteDecision { Primary = primary },
+                new AiUsage { ModelName = "test-rewrite" }));
+
+    /// <summary>The malicious pre-check every path pays for before anything else runs.</summary>
     private void Triage(bool askingForAdvice)
     {
         _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(
@@ -87,12 +95,8 @@ public class MemberChatAdviseRoutingTests
     }
 
     private MemberChatService CreateSut() =>
-        new(_medicalAi, _rewriteAi, _planner, Substitute.For<IChatRouter>(), _unitOfWork, _access,
+        new(_medicalAi, _rewriteAi, _planner, _router, _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
-            // Routing Off explicitly: these tests pin the triage-decided path, which is the
-            // rollback lever and the router-failure fallback — reachable, just no longer the
-            // default now that routed is the normal pipeline.
-            Options.Create(new ChatRoutingSettings { Mode = ChatRoutingMode.Off }),
             NullLogger<MemberChatService>.Instance);
 
     [Fact]
@@ -172,6 +176,7 @@ public class MemberChatAdviseRoutingTests
     public async Task AnOrdinaryQuestion_StillReachesThePlanner()
     {
         Triage(askingForAdvice: false);
+        Route(MemberChatWorkflow.Analysis);
         _planner.PlanAsync(
                 Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
                 Arg.Any<CancellationToken>())
