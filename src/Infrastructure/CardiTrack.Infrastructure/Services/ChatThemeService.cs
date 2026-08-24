@@ -133,6 +133,10 @@ public class ChatThemeService : IChatThemeService
         var lines = turns.Select(t =>
         {
             var content = NamePlaceholder.Redact(Reveal(t.Content), member?.Name) ?? string.Empty;
+            // One turn, one line: embedded newlines would let a turn's content masquerade as
+            // extra role-prefixed lines in the transcript — and would make the per-line cap
+            // below meaningless for the lines after the first.
+            content = content.ReplaceLineEndings(" ");
             if (content.Length > MaxTranscriptLineLength)
                 content = content[..MaxTranscriptLineLength];
             return $"{(t.Role == ChatTurnRole.User ? "Caregiver" : "Assistant")}: {content}";
