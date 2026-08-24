@@ -25,8 +25,8 @@ public enum AiCallStep
     /// pipeline — one Rewrite-slot call, no clinical read.</summary>
     Steer = 5,
 
-    /// <summary>The routing classification — which catalogue entry serves the question. Billed to
-    /// the turn in shadow mode too: the call ran, and a usage row that skipped it would make the
-    /// shadow period look free.</summary>
+    /// <summary>The routing classification — which catalogue entry serves the question. Runs on
+    /// every message and is billed to the turn whenever it ran; the one turn with no Route row is
+    /// one where the routing call itself failed and the triage fallback answered.</summary>
     Route = 6,
 }
