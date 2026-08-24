@@ -647,6 +647,17 @@ public sealed class ChatTurnItem
     public bool HasCharts => Charts.Count > 0;
 
     /// <summary>
+    /// Whether the chart carousel wraps around and shows its dots — only when there is more than
+    /// one chart to swipe between. A single chart looping onto itself would peek its own edge on
+    /// both sides, and one dot announces a carousel that cannot be swiped.
+    /// </summary>
+    public bool ChartsLoop => Charts.Count > 1;
+
+    /// <summary>The sliver of the next chart shown at the edge — the same affordance the Member
+    /// Detail trends carousel gives — and none at all for a single chart, which has no next.</summary>
+    public Thickness ChartsPeek => Charts.Count > 1 ? new Thickness(12, 0) : new Thickness(0);
+
+    /// <summary>
     /// How wide this bubble may run. A charted reply takes the full sheet — the plot is the part
     /// meant to be read closely, and it was the narrowest thing on screen at the conversational
     /// measure. Everything else keeps that measure, which is what makes prose readable.

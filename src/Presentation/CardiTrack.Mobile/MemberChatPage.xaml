@@ -179,16 +179,35 @@
                                                TextColor="{Binding TextColor}"/>
                                         <!-- The supporting charts behind the reply — drawn, not
                                              summarised. ChartSummary below survives only for
-                                             series too thin to plot (fewer than two readings). -->
-                                        <VerticalStackLayout Spacing="10"
-                                                             IsVisible="{Binding HasCharts}"
-                                                             BindableLayout.ItemsSource="{Binding Charts}">
-                                            <BindableLayout.ItemTemplate>
-                                                <DataTemplate x:DataType="controls:ChatChartItem">
-                                                    <controls:ChatSeriesChart Item="{Binding .}"
-                                                                              HorizontalOptions="Fill"/>
-                                                </DataTemplate>
-                                            </BindableLayout.ItemTemplate>
+                                             series too thin to plot (fewer than two readings).
+                                             A carousel rather than a stack, matching the Member
+                                             Detail trends: charts swipe continuously (looping
+                                             past the last back to the first, like that page's
+                                             Key Metric Trends), with dots saying how many there
+                                             are. Loop only when there is something to loop to —
+                                             a single chart looping onto itself would peek its
+                                             own edge on both sides. -->
+                                        <VerticalStackLayout Spacing="4"
+                                                             IsVisible="{Binding HasCharts}">
+                                            <CarouselView ItemsSource="{Binding Charts}"
+                                                          HeightRequest="205"
+                                                          Loop="{Binding ChartsLoop}"
+                                                          IsSwipeEnabled="{Binding ChartsLoop}"
+                                                          PeekAreaInsets="{Binding ChartsPeek}"
+                                                          IndicatorView="ChartDots">
+                                                <CarouselView.ItemTemplate>
+                                                    <DataTemplate x:DataType="controls:ChatChartItem">
+                                                        <controls:ChatSeriesChart Item="{Binding .}"
+                                                                                  HorizontalOptions="Fill"/>
+                                                    </DataTemplate>
+                                                </CarouselView.ItemTemplate>
+                                            </CarouselView>
+                                            <IndicatorView x:Name="ChartDots"
+                                                           IsVisible="{Binding ChartsLoop}"
+                                                           IndicatorSize="6"
+                                                           IndicatorColor="{StaticResource MutedText}"
+                                                           SelectedIndicatorColor="{StaticResource Primary}"
+                                                           HorizontalOptions="Center"/>
                                         </VerticalStackLayout>
                                         <!-- Was 12pt at 0.75 opacity over a white bubble, which
                                              put the only figures some replies carry below what a

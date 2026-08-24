@@ -7,6 +7,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging;
 
@@ -457,7 +458,7 @@ public class MemberChatService : IMemberChatService
         {
             Workflow = MemberChatWorkflow.Analysis,
             Reply = reply,
-            Charts = BuildCharts(fetched, plan.Result.ChartMetrics),
+            Charts = BuildCharts(fetched, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
             Calls =
             [
                 new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
@@ -508,7 +509,7 @@ public class MemberChatService : IMemberChatService
         {
             Workflow = MemberChatWorkflow.Inference,
             Reply = reply,
-            Charts = BuildCharts(fetched, plan.Result.ChartMetrics),
+            Charts = BuildCharts(fetched, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
             Calls =
             [
                 new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
@@ -577,7 +578,7 @@ public class MemberChatService : IMemberChatService
         {
             Workflow = MemberChatWorkflow.Investigation,
             Reply = reply,
-            Charts = BuildCharts(anchor, plan.Result.ChartMetrics),
+            Charts = BuildCharts(anchor, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
             Calls =
             [
                 new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
@@ -1222,8 +1223,22 @@ public class MemberChatService : IMemberChatService
     /// about — a steps question gets the steps chart, not the member's whole week. An empty
     /// metric list means the question was general and every fetched series charts.
     /// </summary>
-    private static IReadOnlyList<ChartSeries> BuildCharts(
-        FetchedMemberData data, IReadOnlyList<ChartMetricKind>? metrics)
+    /// <remarks>
+    /// Each series carries the comparisons the clinical read judged against, so the client can
+    /// plot them with the values the way the CardiMember Details trends do: the member's own
+    /// baseline (the whitelist fetches it on every data question), and the published band from
+    /// <see cref="HealthReferenceRanges"/> where one exists — always in the series' own unit,
+    /// which for sleep means the published hours become minutes. Steps and overnight HRV get no
+    /// band deliberately: no accredited body publishes one, the stance
+    /// <see cref="ChatDataRegistry"/> states to the models and this repeats to the charts.
+    /// </remarks>
+    /// <param name="ageYears">
+    /// The member's age, which picks the sleep band's ceiling (7–9h for adults, 7–8h from 65 —
+    /// <see cref="HealthReferenceRanges.OlderAdultAge"/>). Null when the member row is gone, and
+    /// the sleep chart then draws no band rather than a guessed one.
+    /// </param>
+    internal static IReadOnlyList<ChartSeries> BuildCharts(
+        FetchedMemberData data, IReadOnlyList<ChartMetricKind>? metrics, int? ageYears)
     {
         if (data.RecentActivity.Count == 0)
             return [];
@@ -1232,45 +1247,67 @@ public class MemberChatService : IMemberChatService
         // everything — see DataQueryPlan.ChartMetrics for why widening is the right failure.
         bool Wanted(ChartMetricKind metric) => metrics is not { Count: > 0 } || metrics.Contains(metric);
 
+        var baseline = data.Baseline;
+        var sleepBand = ageYears is { } age ? HealthReferenceRanges.Sleep(age) : null;
+
         var charts = new List<ChartSeries>();
         if (Wanted(ChartMetricKind.Steps))
         {
             charts.Add(new ChartSeries("Steps", data.RecentActivity
                 .Where(l => l.Steps.HasValue)
                 .Select(l => new ChartPoint(l.Date, l.Steps!.Value))
-                .ToList()));
+                .ToList(),
+                Baseline: (double?)baseline?.AvgSteps));
         }
         if (Wanted(ChartMetricKind.RestingHeartRate))
         {
             charts.Add(new ChartSeries("Resting heart rate", data.RecentActivity
                 .Where(l => l.RestingHeartRate.HasValue)
                 .Select(l => new ChartPoint(l.Date, l.RestingHeartRate!.Value))
-                .ToList()));
+                .ToList(),
+                Baseline: (double?)baseline?.AvgRestingHeartRate,
+                Reference: HealthReferenceRanges.RestingHeartRate));
         }
         if (Wanted(ChartMetricKind.Sleep))
         {
             // "Sleep", not "Sleep (minutes)": minutes are how the value is stored, and naming the
             // storage unit in the title obliged every label under it to agree. The client spells
-            // the figures in hours; the series says which reading it is.
+            // the figures in hours; the series says which reading it is. The band converts to
+            // minutes for the same reason — comparisons travel in the unit the points are in.
             charts.Add(new ChartSeries("Sleep", data.RecentActivity
                 .Where(l => l.SleepMinutes.HasValue)
                 .Select(l => new ChartPoint(l.Date, l.SleepMinutes!.Value))
-                .ToList()));
+                .ToList(),
+                Baseline: (double?)baseline?.AvgSleepMinutes,
+                Reference: sleepBand is null
+                    ? null
+                    : new MetricReference
+                    {
+                        Low = sleepBand.Low * 60,
+                        High = sleepBand.High * 60,
+                        Source = sleepBand.Source,
+                    }));
         }
         if (Wanted(ChartMetricKind.HeartRateVariability))
         {
             charts.Add(new ChartSeries("Heart rate variability", data.RecentActivity
                 .Where(l => l.HeartRateVariabilityMs.HasValue)
                 .Select(l => new ChartPoint(l.Date, (double)l.HeartRateVariabilityMs!.Value))
-                .ToList()));
+                .ToList(),
+                Baseline: (double?)baseline?.AvgHeartRateVariabilityMs));
         }
 
         if (Wanted(ChartMetricKind.OvernightBreathingRate))
         {
+            // The same adult band the Details and alert charts shade behind the overnight series —
+            // WHO publishes no separate sleeping range, and overnight averages sit toward its
+            // lower half, which the clinical prompt's bands block already says in words.
             charts.Add(new ChartSeries("Breathing while asleep", data.RecentActivity
                 .Where(l => l.OvernightBreathingRate.HasValue)
                 .Select(l => new ChartPoint(l.Date, (double)l.OvernightBreathingRate!.Value))
-                .ToList()));
+                .ToList(),
+                Baseline: (double?)baseline?.AvgOvernightBreathingRate,
+                Reference: HealthReferenceRanges.BreathingRate));
         }
 
         // A series the member has no readings for charts as an empty line, which draws as an empty
