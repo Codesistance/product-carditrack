@@ -1,4 +1,5 @@
-﻿using System.Globalization;
+﻿using System.ComponentModel;
+using System.Globalization;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
@@ -218,6 +219,11 @@ public class MemberChatService : IMemberChatService
 
         Respond with:
         - analysis: the verdict, what it rests on, and the figures that carry it.
+        - referencesUsed: which of the published typical ranges below the verdict actually drew
+          on, named by publisher exactly as attributed there — for example "American Heart
+          Association". These are quoted back to the caregiver as the authorities behind the
+          verdict, so name only what the verdict genuinely used; an empty list is correct when
+          it rests on the member's own baseline alone.
         """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
     /// <summary>
@@ -497,13 +503,25 @@ public class MemberChatService : IMemberChatService
             $"{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions);
-        var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
+        var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(clinicalPrompt, ct);
 
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
+        var reply = ResolvedOrFallback(rewrite.Result, name);
+
+        // The authorities behind the verdict, quoted at the end of the reply. The model named
+        // which of the prompt's published ranges it drew on; the citation text is the registry's
+        // own fixed lines — the model picks WHICH, never writes WHAT, the same traceability
+        // pattern AdviseGenerationService earns its suggestion licence with. Unrecognised names
+        // drop, so an invented authority can never reach a caregiver; nothing used, nothing
+        // quoted.
+        var citations = ChatDataRegistry.CitationsFor(clinical.Result.ReferencesUsed);
+        if (citations.Count > 0)
+            reply += $"\n\nReferences: {string.Join("; ", citations)}.";
+
+        reply = CapReply(reply);
 
         return new MemberChatWorkflowResult
         {
@@ -1488,6 +1506,24 @@ public class MemberChatService : IMemberChatService
     internal sealed record MemberChatClinicalAiResponse
     {
         public required string Analysis { get; init; }
+    }
+
+    /// <summary>
+    /// The inference read's shape: the verdict text, plus which of the prompt's published ranges
+    /// it drew on. The names are a closed vocabulary — <see cref="ChatDataRegistry.CitationsFor"/>
+    /// maps them to the registry's own citation lines and drops anything else — so the field is
+    /// traceability, not free text: the same design as <c>AdviseAiResponse.GuidelineCited</c>.
+    /// </summary>
+    internal sealed record InferenceClinicalAiResponse
+    {
+        [Description("The verdict, what it rests on, and the figures that carry it.")]
+        public required string Analysis { get; init; }
+
+        [Description(
+            "Which published typical ranges the verdict drew on, named by publisher exactly as "
+            + "attributed in the data — e.g. \"American Heart Association\". Empty when the "
+            + "verdict rests on the member's own baseline alone.")]
+        public required IReadOnlyList<string> ReferencesUsed { get; init; }
     }
 
     internal sealed record WaitingSentencesAiResponse

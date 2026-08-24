@@ -113,6 +113,68 @@ public class MemberChatRoutedDispatchTests
         await _usages.Received().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.Route));
     }
 
+    /// <summary>
+    /// An inference reply closes by quoting the authorities the verdict drew on — the registry's
+    /// own citation lines, keyed by what the clinical read named. The model picks WHICH; the
+    /// registry writes WHAT, so an invented authority never reaches the caregiver.
+    /// </summary>
+    [Fact]
+    public async Task AnInferenceReply_QuotesItsAuthorities_AndDropsInventedOnes()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DataQueryPlan>(
+                new DataQueryPlan { Sources = [], ChartMetrics = [] }, new AiUsage()));
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.InferenceClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
+                new MemberChatService.InferenceClinicalAiResponse
+                {
+                    Analysis = "Settled. Resting HR 62 bpm sits at his usual and inside 60-100.",
+                    ReferencesUsed = ["American Heart Association", "Journal of Invented Results"],
+                },
+                new AiUsage()));
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>("Nothing there needs your attention.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "should I worry about his heart rate?");
+
+        Assert.Contains(
+            "References: American Heart Association — typical adult resting heart rate 60–100 bpm.",
+            reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Invented", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A verdict resting on the member's own baseline alone quotes nothing — no
+    /// references block at all, rather than an empty heading.</summary>
+    [Fact]
+    public async Task AnInferenceVerdict_OnBaselineAlone_QuotesNothing()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DataQueryPlan>(
+                new DataQueryPlan { Sources = [], ChartMetrics = [] }, new AiUsage()));
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.InferenceClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
+                new MemberChatService.InferenceClinicalAiResponse
+                {
+                    Analysis = "Settled against his own baseline.",
+                    ReferencesUsed = [],
+                },
+                new AiUsage()));
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>("His steps look steady for him.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "are his steps ok?");
+
+        Assert.DoesNotContain("References:", reply.Reply, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task AnUnparseableAnswer_DescendsToAnalysis()
     {
