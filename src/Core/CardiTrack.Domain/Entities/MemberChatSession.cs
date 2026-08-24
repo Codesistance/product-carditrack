@@ -28,6 +28,22 @@ public class MemberChatSession : BaseEntity
     /// </summary>
     public DateTime LastTurnAtUtc { get; set; }
 
+    /// <summary>
+    /// When the caregiver explicitly ended this conversation ("Start a new conversation"), or
+    /// null. An ended session is never the active one, whatever its <see cref="LastTurnAtUtc"/> —
+    /// but continuing it from the history list clears this, because reopening is the caregiver's
+    /// call too.
+    /// </summary>
+    public DateTime? EndedAtUtc { get; set; }
+
+    /// <summary>
+    /// A short label of what this conversation was about, generated after the fact by the Rewrite
+    /// slot and encrypted at rest exactly like <see cref="MemberChatTurn.Content"/> — a theme
+    /// derived from a health conversation is health data wherever it is written. Null until the
+    /// theming job has visited this session; the history list falls back to the opening question.
+    /// </summary>
+    public string? Theme { get; set; }
+
     /// <summary>Loaded only by <c>IMemberChatSessionRepository.GetByIdWithTurnsAsync</c> — every
     /// other read goes through <see cref="MemberChatTurn"/> directly.</summary>
     public ICollection<MemberChatTurn> Turns { get; set; } = new List<MemberChatTurn>();

@@ -750,7 +750,8 @@ public class MemberChatService : IMemberChatService
     {
         await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
 
-        var listings = await _unitOfWork.MemberChatSessions.ListForMemberAsync(userId, cardiMemberId, ct);
+        var listings = await _unitOfWork.MemberChatSessions.ListCompletedForMemberAsync(
+            userId, cardiMemberId, DateTime.UtcNow - ActiveSessionWindow, ct);
 
         return new MemberChatSessionListResponse
         {
@@ -764,11 +765,59 @@ public class MemberChatService : IMemberChatService
                     SessionId = l.Session.Id,
                     StartedAtUtc = l.Session.StartedAtUtc,
                     LastTurnAtUtc = l.Session.LastTurnAtUtc,
+                    // Null both when never themed and when the ciphertext is unreadable —
+                    // Reveal's empty-string fallback means "no theme", and the client's
+                    // opening-question fallback covers both the same way.
+                    Theme = l.Session.Theme is null ? null
+                        : Reveal(l.Session.Theme) is { Length: > 0 } theme ? theme : null,
                     FirstQuestion = Reveal(l.FirstQuestionContent),
                     QuestionCount = l.QuestionCount,
                 })
                 .ToList(),
         };
+    }
+
+    public async Task<MemberChatEndSessionResponse> EndCurrentSessionAsync(
+        Guid userId, Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        var session = await _unitOfWork.MemberChatSessions.GetActiveAsync(
+            userId, cardiMemberId, DateTime.UtcNow - ActiveSessionWindow, ct);
+        if (session is null)
+            return new MemberChatEndSessionResponse { EndedSessionId = null };
+
+        session.EndedAtUtc = DateTime.UtcNow;
+        await _unitOfWork.SaveChangesAsync();
+
+        return new MemberChatEndSessionResponse { EndedSessionId = session.Id };
+    }
+
+    public async Task<MemberChatHistoryResponse> ContinueSessionAsync(
+        Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        // Tracked — the whole point of this read is to mutate the row it returns.
+        var session = await _unitOfWork.MemberChatSessions.GetByIdAsync(sessionId);
+        if (session is null || session.UserId != userId || session.CardiMemberId != cardiMemberId)
+            throw new KeyNotFoundException("We couldn't find that conversation.");
+
+        // One live conversation per member: continuing an old one is choosing it, so whatever
+        // was active steps aside into the history list rather than lingering invisibly —
+        // neither current (this one now out-recents it) nor completed (still inside the window).
+        var utcNow = DateTime.UtcNow;
+        var active = await _unitOfWork.MemberChatSessions.GetActiveAsync(
+            userId, cardiMemberId, utcNow - ActiveSessionWindow, ct);
+        if (active is not null && active.Id != session.Id)
+            active.EndedAtUtc = utcNow;
+
+        session.EndedAtUtc = null;
+        session.LastTurnAtUtc = utcNow;
+        await _unitOfWork.SaveChangesAsync();
+
+        var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(session.Id, ct);
+        return ToHistoryResponse(withTurns ?? session);
     }
 
     public async Task<MemberChatHistoryResponse> GetSessionAsync(

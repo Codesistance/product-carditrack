@@ -7,8 +7,9 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
 {
     /// <summary>
     /// The caregiver's most recently active session for this member, if one exists — what a new
-    /// message continues rather than starting fresh. "Active" is a client/product decision (a
-    /// session-length window), not encoded here; the caller passes the cutoff.
+    /// message continues rather than starting fresh. "Active" means not explicitly ended and
+    /// last-active since the cutoff; the window itself is a client/product decision, not encoded
+    /// here — the caller passes it.
     /// </summary>
     Task<MemberChatSession?> GetActiveAsync(
         Guid userId, Guid cardiMemberId, DateTime activeSinceUtc, CancellationToken ct = default);
@@ -18,15 +19,16 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
     Task<MemberChatSession?> GetByIdWithTurnsAsync(Guid sessionId, CancellationToken ct = default);
 
     /// <summary>
-    /// Every session this caregiver has had about this member, newest activity first, each with
-    /// the two facts the conversation list renders — the opening question and how many questions
-    /// were asked — computed in SQL so listing a long history never loads whole threads.
+    /// The caregiver's completed conversations about this member — every session except the one
+    /// still active by <paramref name="activeSinceUtc"/>'s window — newest started first, each
+    /// with the facts the history list renders (opening question, question count, stored theme),
+    /// computed in SQL so listing a long history never loads whole threads.
     /// </summary>
-    Task<IReadOnlyList<MemberChatSessionListing>> ListForMemberAsync(
-        Guid userId, Guid cardiMemberId, CancellationToken ct = default);
+    Task<IReadOnlyList<MemberChatSessionListing>> ListCompletedForMemberAsync(
+        Guid userId, Guid cardiMemberId, DateTime activeSinceUtc, CancellationToken ct = default);
 }
 
-/// <summary>One row of <see cref="IMemberChatSessionRepository.ListForMemberAsync"/>.</summary>
+/// <summary>One row of <see cref="IMemberChatSessionRepository.ListCompletedForMemberAsync"/>.</summary>
 public sealed record MemberChatSessionListing
 {
     public required MemberChatSession Session { get; init; }

@@ -157,9 +157,10 @@ public class MemberChatController : BaseApiController
         }
     }
 
-    /// <summary>Every conversation the caregiver has had about this member, newest activity
-    /// first — the chat sheet's history list. Always 200 on a viewable member: an empty list is a
-    /// caregiver who hasn't chatted yet, not an error.</summary>
+    /// <summary>The caregiver's completed conversations about this member, newest started
+    /// first — the chat sheet's history list. The active conversation is never in it. Always 200
+    /// on a viewable member: an empty list is a caregiver who hasn't chatted yet, not an
+    /// error.</summary>
     [HttpGet("members/{cardiMemberId:guid}/sessions")]
     [ProducesResponseType(typeof(ApiResponse<MemberChatSessionListResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
@@ -175,6 +176,60 @@ public class MemberChatController : BaseApiController
         try
         {
             var result = await _chat.GetSessionsAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Ends the caregiver's active conversation about this member — their next message
+    /// starts fresh, and the ended conversation appears in the history list at once. 200 with a
+    /// null <c>endedSessionId</c> when nothing was active: the caregiver asked for a fresh start
+    /// and has one either way.</summary>
+    [HttpPost("members/{cardiMemberId:guid}/sessions/current/end")]
+    [ProducesResponseType(typeof(ApiResponse<MemberChatEndSessionResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MemberChatEndSessionResponse>>> EndCurrentSession(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _chat.EndCurrentSessionAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Reopens a completed conversation as the caregiver's active one and returns its
+    /// turns for the chat window to continue from. Whatever was active is ended in the same
+    /// stroke — one live conversation per member. 404 under the same existence-hiding rule as
+    /// reading a session.</summary>
+    [HttpPost("members/{cardiMemberId:guid}/sessions/{sessionId:guid}/continue")]
+    [ProducesResponseType(typeof(ApiResponse<MemberChatHistoryResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MemberChatHistoryResponse>>> ContinueSession(
+        Guid cardiMemberId, Guid sessionId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _chat.ContinueSessionAsync(UserContext.UserId, cardiMemberId, sessionId, ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)

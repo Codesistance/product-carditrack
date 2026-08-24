@@ -93,17 +93,18 @@
             </Grid>
         </controls:HeaderBand>
 
-        <!-- Rows: conversation, pending reply, suggestion chips, input bar. -->
-        <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto,Auto">
+        <!-- Rows: conversation, pending reply, suggestion chips, input bar, new-conversation
+             action. -->
+        <Grid Grid.Row="1" RowDefinitions="*,Auto,Auto,Auto,Auto">
 
-            <VerticalStackLayout x:Name="SkeletonPanel" Grid.Row="0" Grid.RowSpan="4"
+            <VerticalStackLayout x:Name="SkeletonPanel" Grid.Row="0" Grid.RowSpan="5"
                                   Spacing="14" Padding="20,20" IsVisible="False">
                 <controls:SkeletonView HeightRequest="60"/>
                 <controls:SkeletonView HeightRequest="60"/>
                 <controls:SkeletonView HeightRequest="60"/>
             </VerticalStackLayout>
 
-            <VerticalStackLayout x:Name="ErrorPanel" Grid.Row="0" Grid.RowSpan="4"
+            <VerticalStackLayout x:Name="ErrorPanel" Grid.Row="0" Grid.RowSpan="5"
                                   Spacing="12" Padding="20,60,20,20" IsVisible="False">
                 <Label Text="We couldn't load this"
                        Style="{StaticResource Heading3}"
@@ -219,10 +220,11 @@
                 </CollectionView>
             </RefreshView>
 
-            <!-- The history list: every conversation the caregiver has had about this member,
-                 newest first, each row named by its opening question — which is how a past
-                 conversation is recognised. Shares row 0 with the thread; the code-behind's
-                 mode transitions decide which of the two is showing. -->
+            <!-- The history list: the caregiver's completed conversations about this member,
+                 newest started first — never the one the window is still having. Each row is
+                 named by its generated theme, or by its opening question until the theming job
+                 has visited it. Shares row 0 with the thread; the code-behind's mode
+                 transitions decide which of the two is showing. -->
             <CollectionView x:Name="SessionsList" Grid.Row="0" SelectionMode="None" IsVisible="False">
                 <CollectionView.ItemsLayout>
                     <LinearItemsLayout Orientation="Vertical" ItemSpacing="10"/>
@@ -234,10 +236,10 @@
 
                 <CollectionView.EmptyView>
                     <VerticalStackLayout Padding="20,60,20,20" Spacing="8">
-                        <Label Text="No conversations yet"
+                        <Label Text="No past conversations yet"
                                Style="{StaticResource Heading3}"
                                HorizontalTextAlignment="Center"/>
-                        <Label Text="Conversations you have here are kept, so you can come back to an answer later."
+                        <Label Text="Conversations you finish here are kept, so you can come back to an answer later."
                                Style="{StaticResource Body2}"
                                TextColor="{StaticResource BodyText}"
                                HorizontalTextAlignment="Center"/>
@@ -252,7 +254,7 @@
                             <Border BackgroundColor="{StaticResource White}"
                                     StrokeThickness="0"
                                     Padding="16,12"
-                                    SemanticProperties.Description="{Binding FirstQuestion}"
+                                    SemanticProperties.Description="{Binding Title}"
                                     SemanticProperties.Hint="Double tap to open this conversation">
                                 <Border.StrokeShape>
                                     <RoundRectangle CornerRadius="16"/>
@@ -262,7 +264,7 @@
                                 </Border.GestureRecognizers>
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                                     <VerticalStackLayout Grid.Column="0" Spacing="3">
-                                        <Label Text="{Binding FirstQuestion}"
+                                        <Label Text="{Binding Title}"
                                                FontFamily="QuicksandSemiBold"
                                                FontSize="14"
                                                TextColor="{StaticResource HeadingText}"
@@ -372,14 +374,42 @@
                 </controls:SquareBorder>
             </Grid>
 
-            <!-- Takes the input bar's row while the caregiver is looking at history. A past
-                 conversation is read, not continued — typing under an old thread would silently
-                 send into the current session — so the one action offered here is the way back. -->
+            <!-- Takes the input bar's row while the caregiver is browsing the history list —
+                 the one action there is the way back to the live conversation. -->
             <Grid x:Name="BackToChatPanel" Grid.Row="3" Margin="16,8,16,16" IsVisible="False">
                 <Button Text="Back to conversation"
                         Style="{StaticResource SecondaryOutlineButton}"
                         Clicked="OnBackToChatClicked"/>
             </Grid>
+
+            <!-- Takes the input bar's row while a past conversation is open. Reading it is
+                 free; continuing it is a deliberate act — this button reopens it server-side as
+                 the active conversation (ending whatever was), so typing can never silently land
+                 in a thread other than the one on screen. -->
+            <Grid x:Name="ContinuePanel" Grid.Row="3" Margin="16,8,16,16" IsVisible="False">
+                <Button Text="Continue this conversation"
+                        Style="{StaticResource SecondaryOutlineButton}"
+                        Clicked="OnContinueClicked"/>
+            </Grid>
+
+            <!-- The quiet way to close the current conversation and start clean, always one
+                 glance below the composer. A text action, not a button: it must never compete
+                 with sending, which is what this row's neighbour is for. -->
+            <Label x:Name="NewConversationAction"
+                   Grid.Row="4"
+                   Text="Start a new conversation"
+                   FontFamily="QuicksandSemiBold"
+                   FontSize="13"
+                   TextColor="{StaticResource BodyText}"
+                   HorizontalOptions="Center"
+                   Padding="20,0,20,14"
+                   IsVisible="False"
+                   SemanticProperties.Description="Start a new conversation"
+                   SemanticProperties.Hint="Double tap to end this conversation and start a fresh one">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnNewConversationTapped"/>
+                </Label.GestureRecognizers>
+            </Label>
         </Grid>
     </Grid>
     </Border>

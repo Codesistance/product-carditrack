@@ -99,22 +99,22 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
     }
 
     /// <summary>
-    /// The history list's one read: newest activity first, each session carrying its opening
-    /// caregiver question and its question count — computed in SQL, so this is the projection
-    /// worth proving against the database it runs on.
+    /// The history list's one read: completed conversations only, newest started first, each
+    /// carrying its opening caregiver question and its question count — computed in SQL, so this
+    /// is the projection worth proving against the database it runs on.
     /// </summary>
     [Fact]
-    public async Task ListForMemberAsync_ReturnsNewestFirst_WithOpeningQuestionAndQuestionCount()
+    public async Task ListCompletedForMemberAsync_ReturnsNewestStartedFirst_WithOpeningQuestionAndQuestionCount()
     {
         using var scope = fixture.CreateScope();
         var userId = Guid.NewGuid();
         var memberId = Guid.NewGuid();
         var now = DateTime.UtcNow;
 
-        var older = Session(userId, memberId, now.AddDays(-1));
-        var newer = Session(userId, memberId, now);
-        var otherCaregivers = Session(Guid.NewGuid(), memberId, now);
-        var aboutSomeoneElse = Session(userId, Guid.NewGuid(), now);
+        var older = Session(userId, memberId, now.AddDays(-2));
+        var newer = Session(userId, memberId, now.AddDays(-1));
+        var otherCaregivers = Session(Guid.NewGuid(), memberId, now.AddDays(-1));
+        var aboutSomeoneElse = Session(userId, Guid.NewGuid(), now.AddDays(-1));
 
         var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
         var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();
@@ -122,15 +122,15 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
             await sessionRepo.AddAsync(s);
         // The older session: two questions with a reply between them — the count is caregiver
         // questions only, and the opening question is the earliest, not the latest.
-        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.User, "How did he sleep?", now.AddDays(-1).AddMinutes(-9)));
-        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.Assistant, "About as usual.", now.AddDays(-1).AddMinutes(-8)));
-        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.User, "And the night before?", now.AddDays(-1)));
-        await turnRepo.AddAsync(Turn(newer.Id, ChatTurnRole.User, "Any alerts today?", now));
-        await turnRepo.AddAsync(Turn(otherCaregivers.Id, ChatTurnRole.User, "Not this caregiver's", now));
-        await turnRepo.AddAsync(Turn(aboutSomeoneElse.Id, ChatTurnRole.User, "Not this member's", now));
+        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.User, "How did he sleep?", now.AddDays(-2).AddMinutes(-9)));
+        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.Assistant, "About as usual.", now.AddDays(-2).AddMinutes(-8)));
+        await turnRepo.AddAsync(Turn(older.Id, ChatTurnRole.User, "And the night before?", now.AddDays(-2)));
+        await turnRepo.AddAsync(Turn(newer.Id, ChatTurnRole.User, "Any alerts today?", now.AddDays(-1)));
+        await turnRepo.AddAsync(Turn(otherCaregivers.Id, ChatTurnRole.User, "Not this caregiver's", now.AddDays(-1)));
+        await turnRepo.AddAsync(Turn(aboutSomeoneElse.Id, ChatTurnRole.User, "Not this member's", now.AddDays(-1)));
         await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
 
-        var listings = await sessionRepo.ListForMemberAsync(userId, memberId);
+        var listings = await sessionRepo.ListCompletedForMemberAsync(userId, memberId, now.AddHours(-2));
 
         Assert.Equal(new[] { newer.Id, older.Id }, listings.Select(l => l.Session.Id));
         Assert.Equal("Any alerts today?", listings[0].FirstQuestionContent);
@@ -139,28 +139,80 @@ public class MemberChatSessionRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal(2, listings[1].QuestionCount);
     }
 
-    /// <summary>A session whose only turn is the assistant's has no opening question to be
-    /// recognised by — the projection says so with a null, and the service omits the row.</summary>
+    /// <summary>
+    /// The list is the complement of "active": a conversation still inside the window and not
+    /// ended is the one the chat window is having, and it must not double as a history row —
+    /// while an *ended* conversation belongs to history at once, however fresh its last turn.
+    /// </summary>
     [Fact]
-    public async Task ListForMemberAsync_SessionWithNoCaregiverTurn_HasNullOpeningQuestion()
+    public async Task ListCompletedForMemberAsync_ExcludesTheActiveSession_ButIncludesAnEndedOne()
     {
         using var scope = fixture.CreateScope();
         var userId = Guid.NewGuid();
         var memberId = Guid.NewGuid();
         var now = DateTime.UtcNow;
-        var session = Session(userId, memberId, now);
+
+        var active = Session(userId, memberId, now);
+        var endedJustNow = Session(userId, memberId, now.AddMinutes(-5));
+        endedJustNow.EndedAtUtc = now;
+        var lapsed = Session(userId, memberId, now.AddHours(-3));
+
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
+        foreach (var s in new[] { active, endedJustNow, lapsed })
+            await sessionRepo.AddAsync(s);
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
+
+        var listings = await sessionRepo.ListCompletedForMemberAsync(userId, memberId, now.AddHours(-2));
+
+        Assert.Equal(2, listings.Count);
+        Assert.DoesNotContain(active.Id, listings.Select(l => l.Session.Id));
+        Assert.Contains(endedJustNow.Id, listings.Select(l => l.Session.Id));
+        Assert.Contains(lapsed.Id, listings.Select(l => l.Session.Id));
+    }
+
+    /// <summary>A session whose only turn is the assistant's has no opening question to be
+    /// recognised by — the projection says so with a null, and the service omits the row.</summary>
+    [Fact]
+    public async Task ListCompletedForMemberAsync_SessionWithNoCaregiverTurn_HasNullOpeningQuestion()
+    {
+        using var scope = fixture.CreateScope();
+        var userId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var session = Session(userId, memberId, now.AddHours(-3));
 
         var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
         var turnRepo = scope.ServiceProvider.GetRequiredService<IMemberChatTurnRepository>();
         await sessionRepo.AddAsync(session);
-        await turnRepo.AddAsync(Turn(session.Id, ChatTurnRole.Assistant, "An orphaned reply", now));
+        await turnRepo.AddAsync(Turn(session.Id, ChatTurnRole.Assistant, "An orphaned reply", now.AddHours(-3)));
         await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
 
-        var listings = await sessionRepo.ListForMemberAsync(userId, memberId);
+        var listings = await sessionRepo.ListCompletedForMemberAsync(userId, memberId, now.AddHours(-2));
 
         var listing = Assert.Single(listings);
         Assert.Null(listing.FirstQuestionContent);
         Assert.Equal(0, listing.QuestionCount);
+    }
+
+    /// <summary>An explicitly ended conversation is never "the one to continue", however recent
+    /// its last turn — that is the whole point of ending it.</summary>
+    [Fact]
+    public async Task GetActiveAsync_IgnoresAnEndedSession_EvenInsideTheWindow()
+    {
+        using var scope = fixture.CreateScope();
+        var userId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var ended = Session(userId, memberId, now);
+        ended.EndedAtUtc = now;
+
+        var sessionRepo = scope.ServiceProvider.GetRequiredService<IMemberChatSessionRepository>();
+        await sessionRepo.AddAsync(ended);
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync();
+
+        var active = await sessionRepo.GetActiveAsync(userId, memberId, now.AddHours(-2));
+
+        Assert.Null(active);
     }
 
     [Fact]

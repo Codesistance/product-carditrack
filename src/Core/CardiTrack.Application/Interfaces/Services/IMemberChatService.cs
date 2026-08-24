@@ -25,13 +25,33 @@ public interface IMemberChatService
         Guid userId, Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
-    /// Every conversation this caregiver has had about this member, newest activity first — the
-    /// chat sheet's history list. Sessions that never got a caregiver question are omitted: there
-    /// is nothing to recognise them by. Throws <see cref="KeyNotFoundException"/> when the caller
-    /// may not view this member.
+    /// This caregiver's completed conversations about this member, newest started first — the
+    /// chat sheet's history list. The active conversation is never in it, and sessions that never
+    /// got a caregiver question are omitted: there is nothing to recognise them by. Throws
+    /// <see cref="KeyNotFoundException"/> when the caller may not view this member.
     /// </summary>
     Task<MemberChatSessionListResponse> GetSessionsAsync(
         Guid userId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Ends the caregiver's active conversation about this member, so their next message starts
+    /// fresh and the ended conversation moves to the history list at once. A no-op result (null
+    /// id) when nothing is active. Throws <see cref="KeyNotFoundException"/> when the caller may
+    /// not view this member.
+    /// </summary>
+    Task<MemberChatEndSessionResponse> EndCurrentSessionAsync(
+        Guid userId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Reopens a completed conversation as the active one — its ended mark cleared, its
+    /// last-activity brought to now — and returns its turns for the chat window to continue
+    /// from. Any other conversation that was active is ended in the same stroke: a caregiver has
+    /// one live conversation per member, and continuing an old one is choosing it. Throws
+    /// <see cref="KeyNotFoundException"/> under the same existence-hiding rule as
+    /// <see cref="GetSessionAsync"/>.
+    /// </summary>
+    Task<MemberChatHistoryResponse> ContinueSessionAsync(
+        Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default);
 
     /// <summary>
     /// One conversation and its turns, read back for the history list. Throws
