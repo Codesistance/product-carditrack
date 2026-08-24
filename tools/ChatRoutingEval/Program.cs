@@ -346,9 +346,14 @@ async Task<int> CmdRouteAsync(string[] args)
     var scored = results.Where(r => r.Case.Special is null).ToList();
     var hits = scored.Count(r => r.Match);
     Console.WriteLine();
-    Console.WriteLine($"Router vs seed key: {hits}/{scored.Count} " +
-        $"({(double)hits / scored.Count:P0}); would-clarify on {results.Count(r => r.WouldClarify)} case(s). " +
-        $"{results.Count - scored.Count} special-outcome case(s) reported above but not scored.");
+    // Guarded: a --cases fixture holding only special-outcome cases has nothing to score, and
+    // dividing by the empty count would print "NaN" as the accuracy after real model spend.
+    Console.WriteLine(scored.Count == 0
+        ? $"Router vs seed key: nothing to score — all {results.Count} case(s) are special-outcome. "
+          + "Reported above only."
+        : $"Router vs seed key: {hits}/{scored.Count} " +
+          $"({(double)hits / scored.Count:P0}); would-clarify on {results.Count(r => r.WouldClarify)} case(s). " +
+          $"{results.Count - scored.Count} special-outcome case(s) reported above but not scored.");
     Console.WriteLine();
     Console.WriteLine(Wrap(
         "Read misses through \u00a711's lens: analysis\u2194inference confusion is tolerable by design; "
@@ -687,6 +692,15 @@ static string Csv(string? s)
     // parse back. The bundled fixture is single-line by construction, but --cases accepts
     // arbitrary fixtures and the real eval set's caregiver phrasings may not be.
     s = (s ?? "").ReplaceLineEndings(" ");
+
+    // Excel treats a leading =, +, - or @ as a formula, and these sheets exist to be opened in
+    // Excel with untrusted caregiver text in the question and context columns. A leading
+    // apostrophe makes Excel render the cell literally. The guard costs the round trip nothing:
+    // score reads back only the id and label columns, and ids and real labels never start with
+    // one of these characters.
+    if (s.Length > 0 && s[0] is '=' or '+' or '-' or '@')
+        s = "'" + s;
+
     return s.Contains(',') || s.Contains('"')
         ? "\"" + s.Replace("\"", "\"\"") + "\""
         : s;
