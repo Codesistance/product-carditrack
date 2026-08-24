@@ -115,6 +115,19 @@ public class ChatThemeService : IChatThemeService
 
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(session.CardiMemberId);
 
+        // Fail closed on the one guarantee this job exists under: redaction needs the name to
+        // redact, so a session whose member cannot be found — or carries no name — is skipped
+        // rather than themed from an unredacted transcript. Such a session re-queues each pass
+        // and keeps its opening-question fallback; an orphaned one is the deletion pipeline's
+        // to remove (R-A17), not this job's to label.
+        if (string.IsNullOrWhiteSpace(member?.Name))
+        {
+            _logger.LogWarning(
+                "Theming skipped for chat session {SessionId}: CardiMember {CardiMemberId} not found or has no name, so the transcript cannot be redacted.",
+                session.Id, session.CardiMemberId);
+            return null;
+        }
+
         // Same framing as the chat prompts' own history block: role-labelled lines, decrypted,
         // and the member's name swapped back out before any of it leaves the estate.
         var lines = turns.Select(t =>

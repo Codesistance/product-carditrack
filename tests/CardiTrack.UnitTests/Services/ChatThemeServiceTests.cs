@@ -215,6 +215,24 @@ public class ChatThemeServiceTests
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
+    /// <summary>Fail closed: with no member (or no name) there is nothing to redact against, and
+    /// the transcript must not leave unredacted — no model call, no theme, retried by a later
+    /// pass while the row keeps its opening-question fallback.</summary>
+    [Fact]
+    public async Task AMissingMember_SkipsTheSession_WithoutCallingTheModel()
+    {
+        var session = ArrangeSession((ChatTurnRole.User, "How did Margaret sleep?"));
+        Batch(session);
+        _members.GetByIdAsync(_memberId).Returns((CardiMember?)null);
+
+        var themed = await CreateSut().ThemeDueSessionsAsync(DateTime.UtcNow);
+
+        Assert.Equal(0, themed);
+        Assert.Null(session.Theme);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<ChatThemeService.ThemeAiResponse>(default!, default);
+    }
+
     [Fact]
     public async Task AnEmptyBatch_MakesNoModelCalls()
     {
