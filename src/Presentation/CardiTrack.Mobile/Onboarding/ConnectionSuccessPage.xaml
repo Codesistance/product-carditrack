@@ -17,7 +17,7 @@
         <controls:WizardHeader Grid.Row="0"
                                Title="Device Connection"
                                IsBackVisible="False"
-                               ContentPadding="20,14,20,26"/>
+                               ContentPadding="20,14,20,16"/>
 
         <ScrollView Grid.Row="1">
             <VerticalStackLayout Padding="20,24,20,36" Spacing="0">

@@ -886,7 +886,8 @@ public sealed class ChatTurnItem
     public bool HasCharts => Charts.Count > 0;
 
     /// <summary>
-    /// Whether the chart carousel wraps around and shows its dots and edge arrows — only when
+    /// Whether the chart carousel wraps around and shows its pager row (the dots with an arrow
+    /// either side) — only when
     /// there is more than one chart to move between. One dot announces a carousel that cannot be
     /// swiped, and an arrow with nowhere to go is a control that lies.
     /// </summary>

@@ -21,7 +21,7 @@
              chip row below and is gone, leaving the chips as the single filter affordance. They
              only disappear when there is nothing to filter (an unfiltered empty list, or the
              archive), so dropping the button strands no filtered state. -->
-        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
                 <controls:SquareBorder x:Name="HeaderIcon"
