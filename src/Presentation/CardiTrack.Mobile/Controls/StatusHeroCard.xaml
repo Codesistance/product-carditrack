@@ -179,8 +179,8 @@
                       WidthRequest="36" HeightRequest="36"
                       VerticalOptions="Center"
                       IsVisible="False"
-                      SemanticProperties.Description="Wellness suggestion"
-                      SemanticProperties.Hint="Opens this CardiMember's wellness suggestion">
+                      SemanticProperties.Description="Quick actions"
+                      SemanticProperties.Hint="Opens this CardiMember's quick actions">
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnAdviseTapped"/>
                     </Grid.GestureRecognizers>

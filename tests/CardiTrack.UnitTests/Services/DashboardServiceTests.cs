@@ -748,18 +748,24 @@ public class DashboardServiceTests
     [Fact]
     public async Task HasAdvise_IsTrue_ForAFreshRow()
     {
+        var generatedAtUtc = DateTime.UtcNow.AddHours(-2);
         _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GuidelineCited = "WHO adult activity guidance",
-            GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
+            GeneratedAtUtc = generatedAtUtc,
         }]);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
         Assert.True(result.HasAdvise);
+        // The same stamp the advise endpoint serves — what the card's seen-tracking compares
+        // against, so the sparkle can stop pulsing once the suggestion has been read.
+        Assert.Equal(
+            new DateTimeOffset(DateTime.SpecifyKind(generatedAtUtc, DateTimeKind.Utc)),
+            result.AdviseGeneratedAt);
     }
 
     /// <summary>
@@ -790,6 +796,7 @@ public class DashboardServiceTests
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
         Assert.False(result.HasAdvise);
+        Assert.Null(result.AdviseGeneratedAt);
     }
 
     [Fact]

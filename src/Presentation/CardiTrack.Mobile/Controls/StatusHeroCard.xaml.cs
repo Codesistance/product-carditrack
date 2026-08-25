@@ -1,4 +1,5 @@
 ﻿using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Insights;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
@@ -55,7 +56,7 @@ public partial class StatusHeroCard : ContentView
         var firstName = NameFormatting.FirstName(data.Name);
         NameLabel.Text = $"{data.Name}, {data.Age}";
         Avatar.Apply(data.Name, data.PhotoUrl);
-        ApplyAdvise(data.HasAdvise);
+        ApplyAdvise(data);
 
         // Headline first, sentence second: the headline is the whole state in three or four
         // words, so a caregiver who reads nothing else has still read the answer.
@@ -155,16 +156,30 @@ public partial class StatusHeroCard : ContentView
 
     /// <summary>
     /// Shows or hides the Advise button at the end of the row, from
-    /// <see cref="DashboardResponse.HasAdvise"/>, and pulses it while a suggestion is waiting.
-    /// Hidden outright when there is none: the button's whole job is to open the Wellness
-    /// suggestion card, and that card is itself hidden on Details when nothing was suggested —
-    /// a button always on screen would be a dead end most days.
+    /// <see cref="DashboardResponse.HasAdvise"/>, and pulses it only while the suggestion is one
+    /// this device has not shown yet. Hidden outright when there is none: the button's whole job
+    /// is to open the Quick actions card, and that card hides its suggestion on Details when
+    /// nothing was suggested — a button always on screen would be a dead end most days.
     /// </summary>
-    private void ApplyAdvise(bool hasAdvise)
+    /// <remarks>
+    /// Seen is decided by <see cref="AdviseAttention"/> against the stamp the Details page records
+    /// when the Quick actions card shows the suggestion. A suggestion already read pulsing on
+    /// every dashboard visit is the button crying wolf; the button itself stays, quietly, because
+    /// the suggestion is still there to reopen.
+    /// </remarks>
+    private void ApplyAdvise(DashboardResponse data)
     {
-        AdviseCluster.IsVisible = hasAdvise;
+        AdviseCluster.IsVisible = data.HasAdvise;
 
-        if (!hasAdvise)
+        if (!data.HasAdvise)
+        {
+            StopAdvisePulse();
+            return;
+        }
+
+        if (!AdviseAttention.IsUnseen(
+                data.AdviseGeneratedAt,
+                Preferences.Default.Get(AdviseAttention.SeenKey(data.CardiMemberId), string.Empty)))
         {
             StopAdvisePulse();
             return;

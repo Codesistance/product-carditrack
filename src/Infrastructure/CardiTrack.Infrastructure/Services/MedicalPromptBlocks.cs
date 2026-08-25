@@ -613,6 +613,42 @@ internal static partial class MedicalPromptBlocks
     }
 
     /// <summary>
+    /// A whole sentence the text says more than once, or null when it never repeats itself. The
+    /// degenerate-generation guard: a looping model emits the same two or three sentences over and
+    /// over, sails past every content check — nothing it says is wrong, it is just said three
+    /// times — and lands on a caregiver's screen as a card that visibly is not a person writing.
+    /// An honest summary has no reason to repeat an entire sentence verbatim, so one repeat is
+    /// enough to call the generation degenerate.
+    /// </summary>
+    /// <remarks>
+    /// Sentences are compared on lowercased letter-and-digit wording, so re-punctuation cannot
+    /// sneak a loop through. Fragments under four words are ignored — too short to distinguish a
+    /// loop from ordinary prose that happens to reuse a clause.
+    /// </remarks>
+    internal static string? RepeatedSentence(string text)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var sentence in text.Split(SentenceEnds, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var chars = sentence.ToLowerInvariant()
+                .Select(c => char.IsLetterOrDigit(c) ? c : ' ')
+                .ToArray();
+            var words = new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length < 4)
+                continue;
+
+            if (!seen.Add(string.Join(' ', words)))
+                return sentence.Trim();
+        }
+
+        return null;
+    }
+
+    /// <summary>Where one sentence ends for <see cref="RepeatedSentence"/> — the same boundaries
+    /// the digest's step-figure scan uses.</summary>
+    private static readonly char[] SentenceEnds = ['.', '!', '?', '\n', ';'];
+
+    /// <summary>
     /// Cuts <paramref name="text"/> to at most <paramref name="max"/> characters without splitting
     /// a surrogate pair.
     /// </summary>

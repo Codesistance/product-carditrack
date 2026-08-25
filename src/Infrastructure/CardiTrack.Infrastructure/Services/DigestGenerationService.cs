@@ -1193,6 +1193,19 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        // A looping generation says the same sentences over and over — every one of them true,
+        // so the content checks all pass — and its headline and urgency come from the same broken
+        // decode, so the whole reply is discarded, not just the text. The sentence itself is
+        // health data and stays out of the log; the fact of the loop is what operations needs.
+        if (MedicalPromptBlocks.RepeatedSentence(text) is not null)
+        {
+            _logger.LogWarning(
+                "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: the "
+                + "model repeated a whole sentence — a degenerate generation, not a summary.",
+                memberId, describedDate);
+            return false;
+        }
+
         // Same "written but rejected" stance as the instruction-echo check: a summary that is the
         // family's own answers read back is worse than the previous card, and the prompt asking
         // the model not to retell them is a request, not a guarantee. Same questionnaire rows and

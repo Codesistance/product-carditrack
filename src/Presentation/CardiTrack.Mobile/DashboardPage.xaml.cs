@@ -614,9 +614,9 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// The card's Advise button — M1-13, opened at the Wellness suggestion rather than at the top.
-    /// The button only exists while there is one to read, so landing anywhere else would be
-    /// asking a caregiver to go and find the thing they just tapped.
+    /// The card's Advise button — M1-13, opened at the Quick actions card rather than at the top.
+    /// The button only exists while there is a suggestion to read, so landing anywhere else would
+    /// be asking a caregiver to go and find the thing they just tapped.
     /// </summary>
     private void OnHeroAdviseTapped(object? sender, EventArgs e)
     {

@@ -4,6 +4,7 @@ using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Insights;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
@@ -21,8 +22,8 @@ public partial class CardiMemberDetailPage : ContentPage
     public const string Route = "memberdetail";
 
     /// <summary>
-    /// <c>?focus=</c> value that opens this page at the Wellness suggestion card rather than at
-    /// the top — what the Dashboard card's Advise button navigates with, so the pulse a caregiver
+    /// <c>?focus=</c> value that opens this page at the Quick actions card rather than at the
+    /// top — what the Dashboard card's Advise button navigates with, so the pulse a caregiver
     /// tapped lands on the suggestion it was pulsing about instead of somewhere down a long page.
     /// </summary>
     public const string AdviseFocus = "advise";
@@ -422,27 +423,27 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Puts the Wellness suggestion card under the top of the viewport, for an arrival that asked
+    /// Puts the Quick actions card under the top of the viewport, for an arrival that asked
     /// for it — see <see cref="AdviseFocus"/>.
     /// </summary>
     /// <remarks>
-    /// A no-op while the card is still hidden, which it is until <see cref="LoadAdviseAsync"/>
-    /// lands: this runs after every section of the arriving pass, so the one that follows the
-    /// suggestion itself is the one that moves the page, and the ones after that hold it there
-    /// as the digest above rewrites itself. Unanimated for the same reason the anchor restore is
-    /// — a caregiver who tapped Advise should find themselves at the suggestion, not watch the
-    /// page travel to it.
+    /// A no-op while the wellness suggestion is still hidden, which it is until
+    /// <see cref="LoadAdviseAsync"/> lands: this runs after every section of the arriving pass,
+    /// so the one that follows the suggestion itself is the one that moves the page, and the ones
+    /// after that hold it there as the digest above rewrites itself. Unanimated for the same
+    /// reason the anchor restore is — a caregiver who tapped Advise should find themselves at the
+    /// suggestion, not watch the page travel to it.
     /// </remarks>
     private async Task FocusAdviseAsync()
     {
         await Task.Yield();
 
-        if (!AdviseCard.IsVisible)
+        if (!AdviseSection.IsVisible)
             return;
 
         try
         {
-            await DetailScroller.ScrollToAsync(AdviseCard, ScrollToPosition.Start, animated: false);
+            await DetailScroller.ScrollToAsync(QuickActionsCard, ScrollToPosition.Start, animated: false);
         }
         catch (Exception)
         {
@@ -509,9 +510,11 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryTitleLabel.Text = "Still getting to know them";
             SummaryGeneratedLabel.IsVisible = false;
             SummaryLabel.Text = $"We'll summarise how {NameFormatting.FirstName(member.Name)} is doing here as soon as there's enough data to say something useful.";
-            // Suggestions come from the same generation as the summary, so they are absent for
-            // exactly the members the placeholder is for.
-            SuggestionsCard.IsVisible = false;
+            // The tip comes from the same generation as the summary, so it is absent for exactly
+            // the members the placeholder is for. Quick actions may still stand on the wellness
+            // suggestion alone, which loads on its own round trip.
+            SuggestionLabel.IsVisible = false;
+            UpdateQuickActionsVisibility();
         }
 
         ApplyTrends(member.Metrics);
@@ -592,14 +595,21 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Shows the wellness-suggestion card, or hides it when there is nothing to suggest right now
-    /// — a blank <see cref="AdviseResponse.Suggestion"/> means exactly that, not a failed call.
+    /// Shows the wellness suggestion inside Quick actions, or hides that part of the card when
+    /// there is nothing to suggest right now — a blank <see cref="AdviseResponse.Suggestion"/>
+    /// means exactly that, not a failed call.
     /// </summary>
+    /// <remarks>
+    /// Showing the suggestion is also what marks it seen: the generation stamp is recorded so the
+    /// Dashboard card's sparkle stops pulsing for a suggestion this device has already put on
+    /// screen, and starts again only for a newer one — see <see cref="AdviseAttention"/>.
+    /// </remarks>
     private void ApplyAdvise(AdviseResponse advise)
     {
         if (string.IsNullOrWhiteSpace(advise.Suggestion))
         {
-            AdviseCard.IsVisible = false;
+            AdviseSection.IsVisible = false;
+            UpdateQuickActionsVisibility();
             return;
         }
 
@@ -609,8 +619,19 @@ public partial class CardiMemberDetailPage : ContentPage
             ? string.Empty
             : $"Based on: {advise.GuidelineCited}";
         AdviseGuidelineLabel.IsVisible = !string.IsNullOrWhiteSpace(advise.GuidelineCited);
-        AdviseCard.IsVisible = true;
+        AdviseSection.IsVisible = true;
+        UpdateQuickActionsVisibility();
+
+        Preferences.Default.Set(
+            AdviseAttention.SeenKey(advise.CardiMemberId), AdviseAttention.Stamp(advise.GeneratedAt));
     }
+
+    /// <summary>
+    /// The card stands while either of its two sources has something to say, and only then — a
+    /// titled card with nothing under the title is chrome promising content it does not have.
+    /// </summary>
+    private void UpdateQuickActionsVisibility() =>
+        QuickActionsCard.IsVisible = SuggestionLabel.IsVisible || AdviseSection.IsVisible;
 
     /// <summary>
     /// Loads the questions asked about this member: the one still waiting goes on the page, and the
@@ -745,20 +766,15 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Shows the "Tips" message under the summary, or hides the section when this generation
-    /// produced none.
+    /// Shows the digest's tip inside Quick actions, or hides that part of the card when this
+    /// generation produced none.
     /// </summary>
     private void ApplySuggestion(string? suggestion)
     {
-        if (string.IsNullOrWhiteSpace(suggestion))
-        {
-            SuggestionsCard.IsVisible = false;
-            return;
-        }
-
-        SuggestionsTitleLabel.Text = "Tips";
-        SuggestionLabel.Text = suggestion;
-        SuggestionsCard.IsVisible = true;
+        var has = !string.IsNullOrWhiteSpace(suggestion);
+        SuggestionLabel.Text = suggestion ?? string.Empty;
+        SuggestionLabel.IsVisible = has;
+        UpdateQuickActionsVisibility();
     }
 
     /// <summary>

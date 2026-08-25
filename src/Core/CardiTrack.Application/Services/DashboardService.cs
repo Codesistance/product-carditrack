@@ -124,8 +124,10 @@ public class DashboardService : IDashboardService
         // The same picker the details card and member chat serve through, so the dot cannot pulse
         // for a row either of them would withhold — it used to light on age alone, including for a
         // row citing no reference that the card is contracted not to render.
-        var hasAdvise = !isPaused && AdvisePicker.PickDefault(
-            await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), DateTime.UtcNow) is not null;
+        var advise = isPaused
+            ? null
+            : AdvisePicker.PickDefault(
+                await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), DateTime.UtcNow);
 
         // GetPendingAsync re-checks access on its own — a second round trip, since access was
         // already required above — but a cheap one against the caller's small set of linked
@@ -155,7 +157,12 @@ public class DashboardService : IDashboardService
             DataFreshness = freshnessTier,
             DataFreshnessMessage = freshnessMessage,
             UnreadAlertCount = unresolvedAlerts.Count(a => a.AcknowledgedDate is null),
-            HasAdvise = hasAdvise,
+            HasAdvise = advise is not null,
+            // The same stamp the advise endpoint serves, so the card's seen-tracking compares
+            // like with like.
+            AdviseGeneratedAt = advise is null
+                ? null
+                : new DateTimeOffset(DateTime.SpecifyKind(advise.GeneratedAtUtc, DateTimeKind.Utc)),
             Device = new DashboardDeviceState
             {
                 HasActiveConnection = connections.Count > 0,
