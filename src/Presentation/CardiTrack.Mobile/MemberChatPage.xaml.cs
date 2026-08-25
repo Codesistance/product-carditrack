@@ -183,6 +183,9 @@ public partial class MemberChatPage : ContentView
             _ => $"Delete {count} conversations",
         };
         DeleteSelectedAction.Opacity = count == 0 ? 0.5 : 1;
+        // Genuinely disabled, not just dimmed — a screen reader should hear "disabled" rather
+        // than land on a pill that silently does nothing.
+        DeleteSelectedAction.IsEnabled = count > 0;
     }
 
     /// <summary>
