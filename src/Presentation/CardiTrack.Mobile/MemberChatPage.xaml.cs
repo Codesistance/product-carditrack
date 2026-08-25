@@ -1046,8 +1046,15 @@ public sealed class ChatTurnItem
             || (block[..colon] != "Reference" && block[..colon] != "References"))
             return (content, null);
 
-        var citations = block[(colon + 2)..].TrimEnd().TrimEnd('.')
-            .Split("; ", StringSplitOptions.RemoveEmptyEntries);
+        // Only a complete block is split: the servers close every citation line with exactly one
+        // period, so a tail without one is a truncated line (the reply cap ends in an ellipsis)
+        // and stays in the prose as stored. Exactly one period comes off, and BuildReference puts
+        // exactly one back — which is what keeps the split lossless.
+        var blob = block[(colon + 2)..].TrimEnd();
+        if (!blob.EndsWith('.'))
+            return (content, null);
+
+        var citations = blob[..^1].Split("; ", StringSplitOptions.RemoveEmptyEntries);
         if (citations.Length == 0)
             return (content, null);
 
