@@ -377,6 +377,13 @@
                                             <Border.StrokeShape>
                                                 <RoundRectangle CornerRadius="99"/>
                                             </Border.StrokeShape>
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border"
+                                                             Binding="{Binding IsSelected}"
+                                                             Value="True">
+                                                    <Setter Property="IsVisible" Value="False"/>
+                                                </DataTrigger>
+                                            </Border.Triggers>
                                         </Border>
                                         <Border WidthRequest="22" HeightRequest="22"
                                                 StrokeThickness="0"

@@ -188,8 +188,9 @@ public partial class MemberChatPage : ContentView
     /// <summary>
     /// The one permanently destructive act on this sheet, so it is the one that warns first: the
     /// confirmation says plainly that deletion cannot be undone, and nothing is sent until the
-    /// caregiver agrees. On success the rows leave the list in place; a failure keeps the
-    /// selection intact so a retry is one tap, not a re-pick.
+    /// caregiver agrees. The server takes at most 100 ids per call, so a bigger selection goes
+    /// in batches, and rows leave the list as each batch lands — a failure keeps only what is
+    /// actually still on the server selected, so a retry is one tap, not a re-pick.
     /// </summary>
     private async void OnDeleteSelectedTapped(object? sender, EventArgs e)
     {
@@ -221,11 +222,15 @@ public partial class MemberChatPage : ContentView
 
         try
         {
-            await _api.DeleteMemberChatSessionsAsync(
-                _memberId, selected.Select(s => s.SessionId).ToList());
+            foreach (var batch in selected.Chunk(100))
+            {
+                await _api.DeleteMemberChatSessionsAsync(
+                    _memberId, batch.Select(s => s.SessionId).ToList());
 
-            foreach (var session in selected)
-                _sessions.Remove(session);
+                foreach (var session in batch)
+                    _sessions.Remove(session);
+            }
+
             ExitSessionSelection();
             SelectSessionsAction.IsVisible = _sessions.Count > 0;
         }
