@@ -213,10 +213,12 @@ public partial class MemberChatPage : ContentView
                     "Delete",
                     "Keep");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // async void, reached from a gesture — a confirm that will not open must not take
-            // the app down, and without an answer nothing is deleted.
+            // the app down, and without an answer nothing is deleted. Logged like the delete
+            // failure below so a broken confirm is diagnosable in the field.
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while confirming a delete");
             return;
         }
 
