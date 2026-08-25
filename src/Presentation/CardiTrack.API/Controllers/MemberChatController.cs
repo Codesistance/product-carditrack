@@ -211,6 +211,37 @@ public class MemberChatController : BaseApiController
         }
     }
 
+    /// <summary>Permanently deletes conversations from the caregiver's history about this
+    /// member — the sessions, their turns and their usage rows; the client warns that this
+    /// cannot be undone before calling. Ids that do not exist, or are not this caregiver's own
+    /// conversations about this member, are skipped rather than failing the batch, and
+    /// <c>deletedCount</c> says how many actually went. POST rather than DELETE because the ids
+    /// travel as a body — the history list offers multi-select.</summary>
+    [HttpPost("members/{cardiMemberId:guid}/sessions/delete")]
+    [ProducesResponseType(typeof(ApiResponse<MemberChatDeleteSessionsResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<MemberChatDeleteSessionsResponse>>> DeleteSessions(
+        Guid cardiMemberId, [FromBody] MemberChatDeleteSessionsRequest request, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _chat.DeleteSessionsAsync(
+                UserContext.UserId, cardiMemberId, request.SessionIds, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
     /// <summary>Reopens a completed conversation as the caregiver's active one and returns its
     /// turns for the chat window to continue from. Whatever was active is ended in the same
     /// stroke — one live conversation per member. 404 under the same existence-hiding rule as

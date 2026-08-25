@@ -135,7 +135,126 @@ public partial class MemberChatPage : ContentView
         if ((sender as BindableObject)?.BindingContext is not ChatSessionItem item)
             return;
 
+        // In selection mode a tap picks rather than opens — the checkmark is the whole answer,
+        // and accidentally opening a conversation mid-selection would throw the selection away.
+        if (item.IsSelecting)
+        {
+            item.IsSelected = !item.IsSelected;
+            UpdateDeleteSelectedLabel();
+            return;
+        }
+
         await ShowPastSessionAsync(item);
+    }
+
+    private void OnSelectSessionsTapped(object? sender, EventArgs e)
+    {
+        if (_sessions.Count == 0)
+            return;
+
+        foreach (var session in _sessions)
+            session.IsSelecting = true;
+        HistoryActions.IsVisible = false;
+        SelectionActions.IsVisible = true;
+        UpdateDeleteSelectedLabel();
+    }
+
+    private void OnCancelSelectTapped(object? sender, EventArgs e) => ExitSessionSelection();
+
+    /// <summary>Back out of selection mode, dropping any selection — reached by Cancel, by
+    /// leaving the history list, and by finishing a delete.</summary>
+    private void ExitSessionSelection()
+    {
+        foreach (var session in _sessions)
+            session.IsSelecting = false;
+        SelectionActions.IsVisible = false;
+        HistoryActions.IsVisible = true;
+    }
+
+    /// <summary>The delete pill always states the count it would act on — a caregiver deletes a
+    /// number they have read, never a selection they have lost track of. With nothing picked it
+    /// reads plain "Delete" and sits half-faded, and the tap handler declines.</summary>
+    private void UpdateDeleteSelectedLabel()
+    {
+        var count = _sessions.Count(s => s.IsSelected);
+        DeleteSelectedLabel.Text = count switch
+        {
+            0 => "Delete",
+            1 => "Delete 1 conversation",
+            _ => $"Delete {count} conversations",
+        };
+        DeleteSelectedAction.Opacity = count == 0 ? 0.5 : 1;
+        // Genuinely disabled, not just dimmed — a screen reader should hear "disabled" rather
+        // than land on a pill that silently does nothing.
+        DeleteSelectedAction.IsEnabled = count > 0;
+    }
+
+    /// <summary>
+    /// The one permanently destructive act on this sheet, so it is the one that warns first: the
+    /// confirmation says plainly that deletion cannot be undone, and nothing is sent until the
+    /// caregiver agrees. The server takes at most 100 ids per call, so a bigger selection goes
+    /// in batches, and rows leave the list as each batch lands — a failure keeps only what is
+    /// actually still on the server selected, so a retry is one tap, not a re-pick.
+    /// </summary>
+    private async void OnDeleteSelectedTapped(object? sender, EventArgs e)
+    {
+        var selected = _sessions.Where(s => s.IsSelected).ToList();
+        if (selected.Count == 0)
+            return;
+
+        var noun = selected.Count == 1 ? "this conversation" : $"these {selected.Count} conversations";
+        bool confirmed;
+        try
+        {
+            confirmed = await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
+                .ConfirmWarningAsync(
+                    $"This permanently deletes {noun}, including every answer and chart in "
+                    + "them. This can't be undone.",
+                    "Delete forever?",
+                    "Delete",
+                    "Keep");
+        }
+        catch (Exception ex)
+        {
+            // async void, reached from a gesture — a confirm that will not open must not take
+            // the app down, and without an answer nothing is deleted. Logged like the delete
+            // failure below so a broken confirm is diagnosable in the field.
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while confirming a delete");
+            return;
+        }
+
+        if (!confirmed)
+            return;
+
+        try
+        {
+            foreach (var batch in selected.Chunk(MemberChatDeleteSessionsRequest.MaxBatchSize))
+            {
+                await _api.DeleteMemberChatSessionsAsync(
+                    _memberId, batch.Select(s => s.SessionId).ToList());
+
+                foreach (var session in batch)
+                    _sessions.Remove(session);
+
+                // Keep the pill honest between batches: if a later one fails, the count it
+                // shows for the retry is what is actually still selected.
+                UpdateDeleteSelectedLabel();
+            }
+
+            ExitSessionSelection();
+            SelectSessionsAction.IsVisible = _sessions.Count > 0;
+        }
+        catch (ApiException ex)
+        {
+            await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
+                .ShowErrorAsync(ex.Message, "Couldn't delete");
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while deleting conversations");
+            await Services.ServiceHelper.GetRequiredService<Services.IPopupService>()
+                .ShowErrorAsync("Something went wrong while deleting.", "Couldn't delete");
+        }
     }
 
     /// <summary>
@@ -182,6 +301,32 @@ public partial class MemberChatPage : ContentView
     }
 
     /// <summary>
+    /// A chart carousel's edge arrow: advance one chart the way a swipe would, wrap-around
+    /// included. The carousel is found by walking up from the tapped disc to the Grid that
+    /// holds them both rather than by name — the pair live inside a DataTemplate, whose
+    /// namescope is per-bubble, so there is no field for the code-behind to hold.
+    /// </summary>
+    private static void MoveChartCarousel(object? sender, int direction)
+    {
+        CarouselView? carousel = null;
+        for (var element = sender as Element; element is not null; element = element.Parent)
+        {
+            if (element is Grid grid &&
+                (carousel = grid.Children.OfType<CarouselView>().FirstOrDefault()) is not null)
+                break;
+        }
+
+        if (carousel?.ItemsSource is not IReadOnlyList<ChatChartItem> items || items.Count < 2)
+            return;
+
+        carousel.Position = (carousel.Position + direction + items.Count) % items.Count;
+    }
+
+    private void OnChartPrevTapped(object? sender, TappedEventArgs e) => MoveChartCarousel(sender, -1);
+
+    private void OnChartNextTapped(object? sender, TappedEventArgs e) => MoveChartCarousel(sender, +1);
+
+    /// <summary>
     /// Ends the current conversation and clears the window for a fresh one. The ended
     /// conversation appears in the history list immediately — nothing is lost, it has just
     /// finished.
@@ -223,6 +368,7 @@ public partial class MemberChatPage : ContentView
     private void ShowThread()
     {
         _mode = ChatViewMode.Thread;
+        ExitSessionSelection();
         SubtitleLabel.Text = _threadSubtitle;
         TurnsList.ItemsSource = _turns;
         InputBar.IsVisible = true;
@@ -246,6 +392,7 @@ public partial class MemberChatPage : ContentView
     private async Task ShowHistoryListAsync()
     {
         _mode = ChatViewMode.HistoryList;
+        ExitSessionSelection();
         SubtitleLabel.Text = "Past conversations";
         SuggestionsPanel.IsVisible = false;
         InputBar.IsVisible = false;
@@ -253,6 +400,7 @@ public partial class MemberChatPage : ContentView
         BackToChatPanel.IsVisible = true;
         ContinuePanel.IsVisible = false;
         SessionsList.IsVisible = false;
+        SelectSessionsAction.IsVisible = false;
         SetState(loading: true);
 
         try
@@ -270,6 +418,9 @@ public partial class MemberChatPage : ContentView
 
             SetState();
             SessionsList.IsVisible = true;
+            // Nothing to select in an empty history, and a Select pill over an empty list is an
+            // affordance for an act that cannot happen.
+            SelectSessionsAction.IsVisible = _sessions.Count > 0;
         }
         catch (ApiException ex)
         {
@@ -735,15 +886,16 @@ public sealed class ChatTurnItem
     public bool HasCharts => Charts.Count > 0;
 
     /// <summary>
-    /// Whether the chart carousel wraps around and shows its dots — only when there is more than
-    /// one chart to swipe between. A single chart looping onto itself would peek its own edge on
-    /// both sides, and one dot announces a carousel that cannot be swiped.
+    /// Whether the chart carousel wraps around and shows its dots and edge arrows — only when
+    /// there is more than one chart to move between. One dot announces a carousel that cannot be
+    /// swiped, and an arrow with nowhere to go is a control that lies.
     /// </summary>
+    /// <remarks>
+    /// There is deliberately no peek inset: a sliver of the neighbouring chart bled into this
+    /// one's own axis figures and legend at bubble width, which read as one broken chart rather
+    /// than two adjacent ones. The arrows are the "there are more" affordance instead.
+    /// </remarks>
     public bool ChartsLoop => Charts.Count > 1;
-
-    /// <summary>The sliver of the next chart shown at the edge — the same affordance the Member
-    /// Detail trends carousel gives — and none at all for a single chart, which has no next.</summary>
-    public Thickness ChartsPeek => Charts.Count > 1 ? new Thickness(12, 0) : new Thickness(0);
 
     /// <summary>
     /// How wide this bubble may run. A charted reply takes the full sheet — the plot is the part
@@ -992,8 +1144,52 @@ public sealed class ChatTurnItem
 /// One row of the history list, display values pre-computed at construction — the same
 /// converter-free convention as <see cref="ChatTurnItem"/>.
 /// </summary>
-public sealed class ChatSessionItem
+public sealed class ChatSessionItem : System.ComponentModel.INotifyPropertyChanged
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    private bool _isSelecting;
+    private bool _isSelected;
+
+    /// <summary>
+    /// Whether the history list is in selection mode — set on every row together, because the
+    /// mode belongs to the list and the row only wears it: the checkmark ring appears, the
+    /// chevron steps aside, and a tap picks instead of opening. Leaving the mode drops any
+    /// selection with it, so a cancelled pick can never resurface later as a surprise delete.
+    /// </summary>
+    public bool IsSelecting
+    {
+        get => _isSelecting;
+        set
+        {
+            if (_isSelecting == value)
+                return;
+            _isSelecting = value;
+            if (!value)
+                IsSelected = false;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelecting)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ShowChevron)));
+        }
+    }
+
+    /// <summary>Whether this conversation is picked for deletion. Meaningful only while
+    /// <see cref="IsSelecting"/>, which clears it on the way out.</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value)
+                return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsSelected)));
+        }
+    }
+
+    /// <summary>The open-me chevron, hidden while selecting — a tap no longer opens, and the
+    /// glyph would promise exactly that.</summary>
+    public bool ShowChevron => !_isSelecting;
+
     public required Guid SessionId { get; init; }
 
     /// <summary>What names the row: the conversation's generated theme, or — until the theming

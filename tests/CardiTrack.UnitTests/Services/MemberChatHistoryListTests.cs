@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -300,5 +301,81 @@ public class MemberChatHistoryListTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().GetSessionAsync(_userId, _memberId, Guid.NewGuid()));
+    }
+
+    /// <summary>
+    /// The permanent delete removes exactly what the fetch returned and reports the count. The
+    /// fetch predicate is the security boundary — ownership is part of the query, not a check
+    /// after it — so the predicate itself is evaluated here against an owned session, another
+    /// caregiver's, and another member's.
+    /// </summary>
+    [Fact]
+    public async Task DeleteSessions_RemovesOwnedRows_AndTheFetchPredicateIsTheOwnershipCheck()
+    {
+        var owned = new MemberChatSession { Id = Guid.NewGuid(), UserId = _userId, CardiMemberId = _memberId };
+        System.Linq.Expressions.Expression<Func<MemberChatSession, bool>>? predicate = null;
+        _sessions.FindAsync(Arg.Do<System.Linq.Expressions.Expression<Func<MemberChatSession, bool>>>(p => predicate = p))
+            .Returns([owned]);
+
+        var result = await CreateSut().DeleteSessionsAsync(_userId, _memberId, [owned.Id, Guid.NewGuid()]);
+
+        Assert.Equal(1, result.DeletedCount);
+        _sessions.Received(1).RemoveRange(Arg.Is<IEnumerable<MemberChatSession>>(s => s.Single() == owned));
+        await _unitOfWork.Received(1).SaveChangesAsync();
+
+        var matches = predicate!.Compile();
+        Assert.True(matches(owned));
+        Assert.False(matches(new MemberChatSession { Id = owned.Id, UserId = Guid.NewGuid(), CardiMemberId = _memberId }));
+        Assert.False(matches(new MemberChatSession { Id = owned.Id, UserId = _userId, CardiMemberId = Guid.NewGuid() }));
+    }
+
+    /// <summary>Nothing owned matches — a guessed id, or a list refreshed elsewhere — and the
+    /// batch is a quiet zero: nothing removed, nothing saved, nothing learned.</summary>
+    [Fact]
+    public async Task DeleteSessions_WithNothingOwned_DeletesNothingAndSaysZero()
+    {
+        _sessions.FindAsync(Arg.Any<System.Linq.Expressions.Expression<Func<MemberChatSession, bool>>>())
+            .Returns([]);
+
+        var result = await CreateSut().DeleteSessionsAsync(_userId, _memberId, [Guid.NewGuid()]);
+
+        Assert.Equal(0, result.DeletedCount);
+        _sessions.DidNotReceiveWithAnyArgs().RemoveRange(default!);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task DeleteSessions_WithAnEmptyRequest_TouchesNothing()
+    {
+        var result = await CreateSut().DeleteSessionsAsync(_userId, _memberId, []);
+
+        Assert.Equal(0, result.DeletedCount);
+        await _sessions.DidNotReceiveWithAnyArgs().FindAsync(default!);
+    }
+
+    /// <summary>The service holds the HTTP boundary's batch cap for callers that skip HTTP —
+    /// no path builds an unbounded IN (...) query.</summary>
+    [Fact]
+    public async Task DeleteSessions_PastTheBatchCap_Throws()
+    {
+        var tooMany = Enumerable.Range(0, MemberChatDeleteSessionsRequest.MaxBatchSize + 1)
+            .Select(_ => Guid.NewGuid()).ToList();
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => CreateSut().DeleteSessionsAsync(_userId, _memberId, tooMany));
+        await _sessions.DidNotReceiveWithAnyArgs().FindAsync(default!);
+    }
+
+    /// <summary>The member-level access check still gates the whole call — a caregiver who may
+    /// not view the member deletes nothing about them.</summary>
+    [Fact]
+    public async Task DeleteSessions_WithoutViewAccess_Throws()
+    {
+        _access.RequireViewAccessAsync(_userId, _memberId, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new KeyNotFoundException("We couldn't find that member."));
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().DeleteSessionsAsync(_userId, _memberId, [Guid.NewGuid()]));
+        _sessions.DidNotReceiveWithAnyArgs().RemoveRange(default!);
     }
 }

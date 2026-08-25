@@ -170,6 +170,12 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         SendAsync<MemberChatHistoryResponse>(
             HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/sessions/{sessionId}/continue", ct);
 
+    public Task<MemberChatDeleteSessionsResponse> DeleteMemberChatSessionsAsync(
+        Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default) =>
+        SendAsync<MemberChatDeleteSessionsRequest, MemberChatDeleteSessionsResponse>(
+            HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/sessions/delete",
+            new MemberChatDeleteSessionsRequest { SessionIds = [.. sessionIds] }, ct);
+
     public Task<MemberChatWaitingResponse> GetMemberChatWaitingSentencesAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
         SendAsync<MemberChatMessageRequest, MemberChatWaitingResponse>(
