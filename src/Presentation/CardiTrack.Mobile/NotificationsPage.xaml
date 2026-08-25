@@ -11,7 +11,7 @@
          edges and the radius lives on the cards inside. -->
     <Grid RowDefinitions="Auto,*">
 
-        <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,26">
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,16">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"

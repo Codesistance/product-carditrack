@@ -16,7 +16,7 @@
 
     <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
-        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,26">
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
                 <controls:SquareBorder x:Name="HeaderIcon"
