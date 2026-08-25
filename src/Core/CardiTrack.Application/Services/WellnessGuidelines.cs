@@ -17,7 +17,13 @@ namespace CardiTrack.Application.Services;
 /// free text in a few words ("Adult physical activity (WHO, 2020)"), and rows written before
 /// this class existed must map too.
 /// </param>
-public sealed record WellnessReference(string Authority, string Citation, Regex Match);
+/// <param name="Url">
+/// Where the cited guidance is actually published, so a caregiver who wants to read the source
+/// can be taken to it — the client renders the authority in a served Reference line as a link to
+/// this. Fixed here beside the citation text it substantiates, and for the same reason: a URL a
+/// model composed would sound right and lead nowhere.
+/// </param>
+public sealed record WellnessReference(string Authority, string Citation, Regex Match, string Url);
 
 /// <summary>
 /// The closed set of wellness authorities Advise suggestions are grounded in — the structured
@@ -35,14 +41,17 @@ public static partial class WellnessGuidelines
             new("World Health Organization",
                 "World Health Organization (2020) — adult physical activity: at least 150-300 "
                 + "minutes a week of moderate aerobic activity, or 75-150 minutes vigorous",
-                ActivityMarkers()),
+                ActivityMarkers(),
+                "https://www.who.int/publications/i/item/9789240015128"),
             new("AASM/CDC consensus",
                 "AASM/CDC consensus — adult sleep duration: 7 or more hours a night",
-                SleepMarkers()),
+                SleepMarkers(),
+                "https://doi.org/10.5664/jcsm.4758"),
             new("American Heart Association",
                 "American Heart Association — typical adult resting heart rate 60-100 bpm at "
                 + "rest, lower in well-conditioned adults",
-                HeartMarkers()),
+                HeartMarkers(),
+                "https://www.heart.org/en/health-topics/high-blood-pressure/the-facts-about-high-blood-pressure/all-about-heart-rate-pulse"),
         });
 
     /// <summary>

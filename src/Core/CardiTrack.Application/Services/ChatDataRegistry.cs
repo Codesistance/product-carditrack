@@ -31,7 +31,15 @@ public sealed record ChatDataRegistryEntry(DataQueryKind Kind, string Line);
 /// than model output for the reason every guard on this platform exists: a small model asked to
 /// cite writes citations that sound right, and the one thing a quoted authority must be is real.
 /// </param>
-public sealed record PublishedBand(ChartMetricKind Metric, string Line, string Authority, string Citation);
+/// <param name="Url">
+/// Where the band is actually published, when the authority has a canonical page for it — the
+/// client renders the authority in a quoted Reference line as a link to this. Null when there is
+/// no page to stand behind the figure (the WHO breathing band is textbook consensus rather than a
+/// single publication), and the citation then renders as plain text: no link beats a link that
+/// substantiates nothing.
+/// </param>
+public sealed record PublishedBand(
+    ChartMetricKind Metric, string Line, string Authority, string Citation, string? Url = null);
 
 /// <summary>
 /// The dataset registry: every data source a member-chat planning call may be offered, and the
@@ -96,13 +104,15 @@ public static class ChatDataRegistry
                 "Resting heart rate: 60–100 bpm is the typical adult range (American Heart "
                 + "Association); athletes and some medications sit legitimately below it",
                 Authority: "American Heart Association",
-                Citation: "American Heart Association — typical adult resting heart rate 60–100 bpm"),
+                Citation: "American Heart Association — typical adult resting heart rate 60–100 bpm",
+                Url: "https://www.heart.org/en/health-topics/high-blood-pressure/the-facts-about-high-blood-pressure/all-about-heart-rate-pulse"),
             new(ChartMetricKind.Sleep,
                 "Sleep: 7–9 hours a night is the recommendation for adults, 7–8 hours for adults "
                 + "65 and over (National Sleep Foundation)",
                 Authority: "National Sleep Foundation",
                 Citation: "National Sleep Foundation — recommended nightly sleep 7–9 hours for "
-                + "adults, 7–8 hours from 65"),
+                + "adults, 7–8 hours from 65",
+                Url: "https://doi.org/10.1016/j.sleh.2014.12.010"),
             new(ChartMetricKind.OvernightBreathingRate,
                 "Breathing rate: 12–20 breaths per minute is the typical adult resting range "
                 + "(WHO); overnight averages sit toward its lower half",
