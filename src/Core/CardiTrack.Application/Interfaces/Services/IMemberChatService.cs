@@ -1,3 +1,4 @@
+﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 
 namespace CardiTrack.Application.Interfaces.Services;
@@ -69,7 +70,9 @@ public interface IMemberChatService
     /// are skipped rather than failing the batch — the same existence-hiding stance as
     /// <see cref="GetSessionAsync"/>, expressed as idempotence: a guessed id deletes nothing and
     /// learns nothing. Throws <see cref="KeyNotFoundException"/> only when the caller may not
-    /// view this member at all.
+    /// view this member at all, and <see cref="ArgumentException"/> when the batch exceeds
+    /// <see cref="MemberChatDeleteSessionsRequest.MaxBatchSize"/> ids — the same cap the HTTP
+    /// boundary enforces by validation.
     /// </summary>
     Task<MemberChatDeleteSessionsResponse> DeleteSessionsAsync(
         Guid userId, Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default);

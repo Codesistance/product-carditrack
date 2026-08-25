@@ -9,6 +9,10 @@ namespace CardiTrack.Application.DTOs.Requests;
 /// </summary>
 public class MemberChatDeleteSessionsRequest
 {
+    /// <summary>The most sessions one call may delete — the model-validation cap here, the
+    /// service's own guard, and the app's batching all share this number.</summary>
+    public const int MaxBatchSize = 100;
+
     /// <summary>The sessions to delete. Ids that do not exist, or belong to another caregiver or
     /// member, are skipped rather than failing the batch — deleting is idempotent, and a stale id
     /// from a list refreshed elsewhere should not strand the rest of the selection. An empty list
@@ -17,6 +21,6 @@ public class MemberChatDeleteSessionsRequest
     /// while the service keeps its own empty no-op as defence for non-HTTP callers.</summary>
     [Required]
     [MinLength(1)]
-    [MaxLength(100)]
+    [MaxLength(MaxBatchSize)]
     public List<Guid> SessionIds { get; init; } = [];
 }

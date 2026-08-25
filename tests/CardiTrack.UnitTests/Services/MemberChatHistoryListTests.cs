@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -349,6 +350,19 @@ public class MemberChatHistoryListTests
         var result = await CreateSut().DeleteSessionsAsync(_userId, _memberId, []);
 
         Assert.Equal(0, result.DeletedCount);
+        await _sessions.DidNotReceiveWithAnyArgs().FindAsync(default!);
+    }
+
+    /// <summary>The service holds the HTTP boundary's batch cap for callers that skip HTTP —
+    /// no path builds an unbounded IN (...) query.</summary>
+    [Fact]
+    public async Task DeleteSessions_PastTheBatchCap_Throws()
+    {
+        var tooMany = Enumerable.Range(0, MemberChatDeleteSessionsRequest.MaxBatchSize + 1)
+            .Select(_ => Guid.NewGuid()).ToList();
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => CreateSut().DeleteSessionsAsync(_userId, _memberId, tooMany));
         await _sessions.DidNotReceiveWithAnyArgs().FindAsync(default!);
     }
 

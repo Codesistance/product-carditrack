@@ -225,13 +225,17 @@ public partial class MemberChatPage : ContentView
 
         try
         {
-            foreach (var batch in selected.Chunk(100))
+            foreach (var batch in selected.Chunk(MemberChatDeleteSessionsRequest.MaxBatchSize))
             {
                 await _api.DeleteMemberChatSessionsAsync(
                     _memberId, batch.Select(s => s.SessionId).ToList());
 
                 foreach (var session in batch)
                     _sessions.Remove(session);
+
+                // Keep the pill honest between batches: if a later one fails, the count it
+                // shows for the retry is what is actually still selected.
+                UpdateDeleteSelectedLabel();
             }
 
             ExitSessionSelection();

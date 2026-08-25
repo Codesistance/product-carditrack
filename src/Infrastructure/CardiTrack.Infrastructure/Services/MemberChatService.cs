@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Globalization;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
@@ -1026,6 +1027,14 @@ public class MemberChatService : IMemberChatService
         Guid userId, Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        // The HTTP boundary already rejects oversized batches via model validation; this guard
+        // holds the same cap for callers that skip HTTP, so no path builds an unbounded IN (...)
+        // query.
+        if (sessionIds.Count > MemberChatDeleteSessionsRequest.MaxBatchSize)
+            throw new ArgumentException(
+                $"At most {MemberChatDeleteSessionsRequest.MaxBatchSize} sessions can be deleted per call.",
+                nameof(sessionIds));
 
         var ids = sessionIds.Distinct().ToList();
         if (ids.Count == 0)
