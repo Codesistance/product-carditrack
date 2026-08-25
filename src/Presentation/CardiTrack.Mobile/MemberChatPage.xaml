@@ -25,7 +25,9 @@
         <Style x:Key="ActionPill" TargetType="Border">
             <Setter Property="BackgroundColor" Value="{StaticResource SelectedOptionBackground}"/>
             <Setter Property="StrokeThickness" Value="0"/>
-            <Setter Property="StrokeShape" Value="RoundRectangle 99"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="99"/>
+            </Setter>
             <Setter Property="Padding" Value="18,10"/>
             <Setter Property="MinimumHeightRequest" Value="44"/>
         </Style>
@@ -371,13 +373,18 @@
                                         <Border WidthRequest="22" HeightRequest="22"
                                                 StrokeThickness="1.5"
                                                 Stroke="{StaticResource MutedText}"
-                                                BackgroundColor="Transparent"
-                                                StrokeShape="RoundRectangle 99"/>
+                                                BackgroundColor="Transparent">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="99"/>
+                                            </Border.StrokeShape>
+                                        </Border>
                                         <Border WidthRequest="22" HeightRequest="22"
                                                 StrokeThickness="0"
                                                 BackgroundColor="{StaticResource Primary}"
-                                                StrokeShape="RoundRectangle 99"
                                                 IsVisible="{Binding IsSelected}">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="99"/>
+                                            </Border.StrokeShape>
                                             <Label Text="✓"
                                                    FontFamily="QuicksandSemiBold"
                                                    FontSize="13"

@@ -286,22 +286,21 @@ public partial class MemberChatPage : ContentView
     }
 
     /// <summary>
-    /// Ends the current conversation and clears the window for a fresh one. The ended
-    /// conversation appears in the history list immediately — nothing is lost, it has just
-    /// finished.
-    /// </summary>
-    /// <summary>
     /// A chart carousel's edge arrow: advance one chart the way a swipe would, wrap-around
-    /// included. The carousel is found from the tapped disc's own parent Grid rather than by
-    /// name — the pair live inside a DataTemplate, whose namescope is per-bubble, so there is
-    /// no field for the code-behind to hold.
+    /// included. The carousel is found by walking up from the tapped disc to the Grid that
+    /// holds them both rather than by name — the pair live inside a DataTemplate, whose
+    /// namescope is per-bubble, so there is no field for the code-behind to hold.
     /// </summary>
     private static void MoveChartCarousel(object? sender, int direction)
     {
-        if (sender is not Element element || element.Parent is not Grid grid)
-            return;
+        CarouselView? carousel = null;
+        for (var element = sender as Element; element is not null; element = element.Parent)
+        {
+            if (element is Grid grid &&
+                (carousel = grid.Children.OfType<CarouselView>().FirstOrDefault()) is not null)
+                break;
+        }
 
-        var carousel = grid.Children.OfType<CarouselView>().FirstOrDefault();
         if (carousel?.ItemsSource is not IReadOnlyList<ChatChartItem> items || items.Count < 2)
             return;
 
@@ -312,6 +311,11 @@ public partial class MemberChatPage : ContentView
 
     private void OnChartNextTapped(object? sender, TappedEventArgs e) => MoveChartCarousel(sender, +1);
 
+    /// <summary>
+    /// Ends the current conversation and clears the window for a fresh one. The ended
+    /// conversation appears in the history list immediately — nothing is lost, it has just
+    /// finished.
+    /// </summary>
     private async void OnNewConversationTapped(object? sender, EventArgs e)
     {
         if (_mode != ChatViewMode.Thread || _isSending || _turns.Count == 0)
