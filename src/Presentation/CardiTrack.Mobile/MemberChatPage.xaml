@@ -17,6 +17,28 @@
          visible above it, and its own tap recognizer to swallow taps so they don't fall through
          to the scrim's dismiss handler. -->
 
+    <ContentView.Resources>
+        <!-- The sheet's quiet actions — "Start a new conversation", "Back to conversation",
+             the selection controls — share one tonal-pill language: unmistakably controls,
+             with real 44dp targets, but tinted rather than elevated so none of them ever
+             competes with Send. -->
+        <Style x:Key="ActionPill" TargetType="Border">
+            <Setter Property="BackgroundColor" Value="{StaticResource SelectedOptionBackground}"/>
+            <Setter Property="StrokeThickness" Value="0"/>
+            <Setter Property="StrokeShape">
+                <RoundRectangle CornerRadius="99"/>
+            </Setter>
+            <Setter Property="Padding" Value="18,10"/>
+            <Setter Property="MinimumHeightRequest" Value="44"/>
+        </Style>
+        <Style x:Key="ActionPillText" TargetType="Label">
+            <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="TextColor" Value="{StaticResource Primary}"/>
+            <Setter Property="VerticalOptions" Value="Center"/>
+        </Style>
+    </ContentView.Resources>
+
     <Grid x:Name="Scrim" BackgroundColor="#80343434">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
@@ -185,24 +207,83 @@
                                              Detail trends: charts swipe continuously (looping
                                              past the last back to the first, like that page's
                                              Key Metric Trends), with dots saying how many there
-                                             are. Loop only when there is something to loop to —
-                                             a single chart looping onto itself would peek its
-                                             own edge on both sides. -->
+                                             are. No peek: a sliver of the neighbouring chart
+                                             blended into this one's own axis and legend at
+                                             bubble width, so the "there are more" affordance is
+                                             the pair of edge arrows instead — tappable, and
+                                             shown only when there is somewhere to go. -->
                                         <VerticalStackLayout Spacing="4"
                                                              IsVisible="{Binding HasCharts}">
-                                            <CarouselView ItemsSource="{Binding Charts}"
-                                                          HeightRequest="205"
-                                                          Loop="{Binding ChartsLoop}"
-                                                          IsSwipeEnabled="{Binding ChartsLoop}"
-                                                          PeekAreaInsets="{Binding ChartsPeek}"
-                                                          IndicatorView="ChartDots">
-                                                <CarouselView.ItemTemplate>
-                                                    <DataTemplate x:DataType="controls:ChatChartItem">
-                                                        <controls:ChatSeriesChart Item="{Binding .}"
-                                                                                  HorizontalOptions="Fill"/>
-                                                    </DataTemplate>
-                                                </CarouselView.ItemTemplate>
-                                            </CarouselView>
+                                            <Grid>
+                                                <CarouselView ItemsSource="{Binding Charts}"
+                                                              HeightRequest="205"
+                                                              Loop="{Binding ChartsLoop}"
+                                                              IsSwipeEnabled="{Binding ChartsLoop}"
+                                                              IndicatorView="ChartDots">
+                                                    <CarouselView.ItemTemplate>
+                                                        <DataTemplate x:DataType="controls:ChatChartItem">
+                                                            <controls:ChatSeriesChart Item="{Binding .}"
+                                                                                      HorizontalOptions="Fill"/>
+                                                        </DataTemplate>
+                                                    </CarouselView.ItemTemplate>
+                                                </CarouselView>
+
+                                                <!-- The edge arrows: white discs at the plot's
+                                                     vertical centre, where the axis writes its
+                                                     max at the top and min at the bottom and
+                                                     leaves the middle clear. Slightly
+                                                     translucent so the line survives passing
+                                                     under one; a tap advances the carousel the
+                                                     way a swipe would, wrap-around included. -->
+                                                <Border IsVisible="{Binding ChartsLoop}"
+                                                        WidthRequest="32" HeightRequest="32"
+                                                        StrokeThickness="0"
+                                                        BackgroundColor="{StaticResource White}"
+                                                        Opacity="0.92"
+                                                        HorizontalOptions="Start" VerticalOptions="Center"
+                                                        Margin="2,0,0,26"
+                                                        SemanticProperties.Description="Previous chart">
+                                                    <Border.StrokeShape>
+                                                        <RoundRectangle CornerRadius="99"/>
+                                                    </Border.StrokeShape>
+                                                    <Border.Shadow>
+                                                        <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.25" Radius="6" Offset="0,2"/>
+                                                    </Border.Shadow>
+                                                    <Border.GestureRecognizers>
+                                                        <TapGestureRecognizer Tapped="OnChartPrevTapped"/>
+                                                    </Border.GestureRecognizers>
+                                                    <Label Text="‹"
+                                                           FontFamily="QuicksandSemiBold"
+                                                           FontSize="22"
+                                                           TextColor="{StaticResource Primary}"
+                                                           HorizontalOptions="Center" VerticalOptions="Center"
+                                                           Margin="0,0,0,3"/>
+                                                </Border>
+                                                <Border IsVisible="{Binding ChartsLoop}"
+                                                        WidthRequest="32" HeightRequest="32"
+                                                        StrokeThickness="0"
+                                                        BackgroundColor="{StaticResource White}"
+                                                        Opacity="0.92"
+                                                        HorizontalOptions="End" VerticalOptions="Center"
+                                                        Margin="0,0,2,26"
+                                                        SemanticProperties.Description="Next chart">
+                                                    <Border.StrokeShape>
+                                                        <RoundRectangle CornerRadius="99"/>
+                                                    </Border.StrokeShape>
+                                                    <Border.Shadow>
+                                                        <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.25" Radius="6" Offset="0,2"/>
+                                                    </Border.Shadow>
+                                                    <Border.GestureRecognizers>
+                                                        <TapGestureRecognizer Tapped="OnChartNextTapped"/>
+                                                    </Border.GestureRecognizers>
+                                                    <Label Text="›"
+                                                           FontFamily="QuicksandSemiBold"
+                                                           FontSize="22"
+                                                           TextColor="{StaticResource Primary}"
+                                                           HorizontalOptions="Center" VerticalOptions="Center"
+                                                           Margin="0,0,0,3"/>
+                                                </Border>
+                                            </Grid>
                                             <IndicatorView x:Name="ChartDots"
                                                            IsVisible="{Binding ChartsLoop}"
                                                            IndicatorSize="6"
@@ -281,8 +362,44 @@
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnSessionTapped"/>
                                 </Border.GestureRecognizers>
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                    <VerticalStackLayout Grid.Column="0" Spacing="3">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                    <!-- Selection mode's checkmark: an empty ring until tapped,
+                                         a filled tick after. Two stacked Borders rather than one
+                                         restyled — the template stays converter-free, and each
+                                         state is plainly its own element. -->
+                                    <Grid Grid.Column="0" WidthRequest="24"
+                                          VerticalOptions="Center"
+                                          IsVisible="{Binding IsSelecting}">
+                                        <Border WidthRequest="22" HeightRequest="22"
+                                                StrokeThickness="1.5"
+                                                Stroke="{StaticResource MutedText}"
+                                                BackgroundColor="Transparent">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="99"/>
+                                            </Border.StrokeShape>
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border"
+                                                             Binding="{Binding IsSelected}"
+                                                             Value="True">
+                                                    <Setter Property="IsVisible" Value="False"/>
+                                                </DataTrigger>
+                                            </Border.Triggers>
+                                        </Border>
+                                        <Border WidthRequest="22" HeightRequest="22"
+                                                StrokeThickness="0"
+                                                BackgroundColor="{StaticResource Primary}"
+                                                IsVisible="{Binding IsSelected}">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="99"/>
+                                            </Border.StrokeShape>
+                                            <Label Text="✓"
+                                                   FontFamily="QuicksandSemiBold"
+                                                   FontSize="13"
+                                                   TextColor="{StaticResource White}"
+                                                   HorizontalOptions="Center" VerticalOptions="Center"/>
+                                        </Border>
+                                    </Grid>
+                                    <VerticalStackLayout Grid.Column="1" Spacing="3">
                                         <Label Text="{Binding Title}"
                                                FontFamily="QuicksandSemiBold"
                                                FontSize="14"
@@ -294,9 +411,10 @@
                                                FontSize="12"
                                                TextColor="{StaticResource MutedText}"/>
                                     </VerticalStackLayout>
-                                    <Image Grid.Column="1" Source="icon_chevron.svg"
+                                    <Image Grid.Column="2" Source="icon_chevron.svg"
                                            WidthRequest="16" HeightRequest="16"
-                                           VerticalOptions="Center"/>
+                                           VerticalOptions="Center"
+                                           IsVisible="{Binding ShowChevron}"/>
                                 </Grid>
                             </Border>
                         </Grid>
@@ -393,12 +511,66 @@
                 </controls:SquareBorder>
             </Grid>
 
-            <!-- Takes the input bar's row while the caregiver is browsing the history list —
-                 the one action there is the way back to the live conversation. -->
+            <!-- Takes the input bar's row while the caregiver is browsing the history list.
+                 Two states: browsing offers the way back plus the door into selection mode, and
+                 selection mode swaps them for the delete (with its live count) and the way out.
+                 The same tonal-pill language as "Start a new conversation" — these are quiet
+                 actions, not the sheet's main event. -->
             <Grid x:Name="BackToChatPanel" Grid.Row="3" Margin="16,8,16,16" IsVisible="False">
-                <Button Text="Back to conversation"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        Clicked="OnBackToChatClicked"/>
+                <HorizontalStackLayout x:Name="HistoryActions" Spacing="10" HorizontalOptions="Center">
+                    <Border Style="{StaticResource ActionPill}"
+                            SemanticProperties.Description="Back to conversation"
+                            SemanticProperties.Hint="Double tap to return to the live conversation">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnBackToChatClicked"/>
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                            <Label Text="‹"
+                                   Style="{StaticResource ActionPillText}"
+                                   FontSize="17"
+                                   Margin="0,0,0,1"/>
+                            <Label Text="Back to conversation" Style="{StaticResource ActionPillText}"/>
+                        </HorizontalStackLayout>
+                    </Border>
+                    <Border x:Name="SelectSessionsAction"
+                            Style="{StaticResource ActionPill}"
+                            IsVisible="False"
+                            SemanticProperties.Description="Select conversations"
+                            SemanticProperties.Hint="Double tap to select conversations to delete">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSelectSessionsTapped"/>
+                        </Border.GestureRecognizers>
+                        <Label Text="Select" Style="{StaticResource ActionPillText}"/>
+                    </Border>
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout x:Name="SelectionActions" Spacing="10" HorizontalOptions="Center"
+                                       IsVisible="False">
+                    <!-- Red for what it is: the one permanently destructive act on this sheet.
+                         The confirmation popup carries the "can't be undone" warning; this pill
+                         carries the count, so the caregiver always deletes a number they've
+                         read, never a selection they've lost track of. -->
+                    <Border x:Name="DeleteSelectedAction"
+                            Style="{StaticResource ActionPill}"
+                            BackgroundColor="{StaticResource PillRedBackground}"
+                            SemanticProperties.Description="Delete selected conversations"
+                            SemanticProperties.Hint="Double tap to permanently delete the selected conversations">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnDeleteSelectedTapped"/>
+                        </Border.GestureRecognizers>
+                        <Label x:Name="DeleteSelectedLabel"
+                               Text="Delete"
+                               Style="{StaticResource ActionPillText}"
+                               TextColor="{StaticResource ErrorRed}"/>
+                    </Border>
+                    <Border Style="{StaticResource ActionPill}"
+                            SemanticProperties.Description="Cancel selection">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCancelSelectTapped"/>
+                        </Border.GestureRecognizers>
+                        <Label Text="Cancel" Style="{StaticResource ActionPillText}"/>
+                    </Border>
+                </HorizontalStackLayout>
             </Grid>
 
             <!-- Takes the input bar's row while a past conversation is open. Reading it is
@@ -411,24 +583,32 @@
                         Clicked="OnContinueClicked"/>
             </Grid>
 
-            <!-- The quiet way to close the current conversation and start clean, always one
-                 glance below the composer. A text action, not a button: it must never compete
-                 with sending, which is what this row's neighbour is for. -->
-            <Label x:Name="NewConversationAction"
-                   Grid.Row="4"
-                   Text="Start a new conversation"
-                   FontFamily="QuicksandSemiBold"
-                   FontSize="13"
-                   TextColor="{StaticResource BodyText}"
-                   HorizontalOptions="Center"
-                   Padding="20,0,20,14"
-                   IsVisible="False"
-                   SemanticProperties.Description="Start a new conversation"
-                   SemanticProperties.Hint="Double tap to end this conversation and start a fresh one">
-                <Label.GestureRecognizers>
+            <!-- The way to close the current conversation and start clean, one glance below the
+                 composer. Was a bare muted text line, which read as a caption and was routinely
+                 missed — now a tonal pill: unmistakably a control, with a real 44dp target, but
+                 tinted rather than elevated so it still never competes with sending, which is
+                 what this row's neighbour is for. -->
+            <Border x:Name="NewConversationAction"
+                    Grid.Row="4"
+                    Style="{StaticResource ActionPill}"
+                    HorizontalOptions="Center"
+                    Margin="20,0,20,14"
+                    IsVisible="False"
+                    SemanticProperties.Description="Start a new conversation"
+                    SemanticProperties.Hint="Double tap to end this conversation and start a fresh one">
+                <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnNewConversationTapped"/>
-                </Label.GestureRecognizers>
-            </Label>
+                </Border.GestureRecognizers>
+                <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                    <!-- A plus, not a broom: the action starts something, and the glyph should
+                         promise the fresh thread rather than dwell on discarding this one. -->
+                    <Label Text="+"
+                           Style="{StaticResource ActionPillText}"
+                           FontSize="17"
+                           Margin="0,0,0,1"/>
+                    <Label Text="Start a new conversation" Style="{StaticResource ActionPillText}"/>
+                </HorizontalStackLayout>
+            </Border>
         </Grid>
     </Grid>
     </Border>

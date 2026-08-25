@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Globalization;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
@@ -1012,6 +1013,42 @@ public class MemberChatService : IMemberChatService
         await _unitOfWork.SaveChangesAsync();
 
         return new MemberChatEndSessionResponse { EndedSessionId = session.Id };
+    }
+
+    /// <summary>
+    /// The permanent delete behind the history list's selection mode. Ownership is part of the
+    /// fetch predicate, not a check after it — an id that is not this caregiver's own
+    /// conversation about this member simply matches nothing, which is the existence-hiding 404
+    /// stance expressed as idempotence. The database cascades take the turns and their usage
+    /// rows with each session (see <c>MemberChatSessionConfiguration</c>), so one RemoveRange is
+    /// the whole deletion.
+    /// </summary>
+    public async Task<MemberChatDeleteSessionsResponse> DeleteSessionsAsync(
+        Guid userId, Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(userId, cardiMemberId, ct);
+
+        // The HTTP boundary already rejects oversized batches via model validation; this guard
+        // holds the same cap for callers that skip HTTP, so no path builds an unbounded IN (...)
+        // query.
+        if (sessionIds.Count > MemberChatDeleteSessionsRequest.MaxBatchSize)
+            throw new ArgumentException(
+                $"At most {MemberChatDeleteSessionsRequest.MaxBatchSize} sessions can be deleted per call.",
+                nameof(sessionIds));
+
+        var ids = sessionIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new MemberChatDeleteSessionsResponse { DeletedCount = 0 };
+
+        var owned = (await _unitOfWork.MemberChatSessions.FindAsync(s =>
+            ids.Contains(s.Id) && s.UserId == userId && s.CardiMemberId == cardiMemberId)).ToList();
+        if (owned.Count == 0)
+            return new MemberChatDeleteSessionsResponse { DeletedCount = 0 };
+
+        _unitOfWork.MemberChatSessions.RemoveRange(owned);
+        await _unitOfWork.SaveChangesAsync();
+
+        return new MemberChatDeleteSessionsResponse { DeletedCount = owned.Count };
     }
 
     public async Task<MemberChatHistoryResponse> ContinueSessionAsync(

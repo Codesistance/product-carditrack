@@ -224,6 +224,12 @@ public interface ICardiTrackApiClient
     Task<MemberChatHistoryResponse> ContinueMemberChatSessionAsync(
         Guid cardiMemberId, Guid sessionId, CancellationToken ct = default);
 
+    /// <summary>Permanently deletes conversations from the caregiver's history about this
+    /// member. The caller has already warned that this cannot be undone; ids that no longer
+    /// exist are skipped server-side, and <c>DeletedCount</c> says how many actually went.</summary>
+    Task<MemberChatDeleteSessionsResponse> DeleteMemberChatSessionsAsync(
+        Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default);
+
     /// <summary>Short lines to cycle in the pending reply bubble while the send for the same
     /// message is in flight — fired alongside <see cref="SendMemberChatMessageAsync"/>, never
     /// instead of it. The caller falls back to its own canned lines if this fails or loses the
