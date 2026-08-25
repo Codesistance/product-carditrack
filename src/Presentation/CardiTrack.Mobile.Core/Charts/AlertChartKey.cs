@@ -53,9 +53,33 @@ public static class AlertChartKey
     /// How a figure is written when it names a level rather than a reading — no unit, because the
     /// entry it sits in has already said which chart this is.
     /// </summary>
+    /// <remarks>
+    /// The fractional metrics are the ones a whole number misstates: the hour-denominated charts
+    /// (a usual night of 3.8, a usual longest stretch of 2.4) and the per-minute overnight rates.
+    /// Rounding the 2.4-hour usual to "2" put the dashed rule's own key visibly at odds with the
+    /// comparison card's "2.4 h" on the same screen.
+    /// </remarks>
     public static string AxisFormat(string metric) => metric switch
     {
-        "sleep" => "{0:0.#}",
+        "sleep" or "longestSedentaryStretch" or "overnightBreathingRate" or "heartRateVariability"
+            => "{0:0.#}",
         _ => "{0:N0}",
     };
+
+    /// <summary>
+    /// The chart card's headline figure, unit and all — "6.2 hours", "1,477 steps", "68 bpm".
+    /// </summary>
+    /// <remarks>
+    /// The unit is the response's own <see cref="AlertChartResponse.Unit"/>, never guessed from
+    /// the metric name: the page used to hold its own metric→unit switch whose fallback was
+    /// "bpm", and the first chart the server added that the app had not heard of — the
+    /// hours-denominated still stretch — was captioned "1 bpm" under a heart icon, which read as
+    /// heart-rate-derived inactivity detection. An unknown metric now formats as a whole number
+    /// in whatever unit the server named, and no unit at all when it named none.
+    /// </remarks>
+    public static string Value(AlertChartResponse chart, decimal value)
+    {
+        var figure = string.Format(AxisFormat(chart.Metric), value);
+        return string.IsNullOrWhiteSpace(chart.Unit) ? figure : $"{figure} {chart.Unit}";
+    }
 }

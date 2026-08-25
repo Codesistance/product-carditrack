@@ -267,6 +267,44 @@ public class AlertDetailComposerTests
         Assert.Equal(new DateTime(2026, 8, 14, 8, 0, 0, DateTimeKind.Utc), detail.LastDataAt);
     }
 
+    /// <summary>
+    /// The rule's copy names no clock time on purpose — the detail screen is where the stored
+    /// instant becomes one, so a caregiver can tell an afternoon in a chair from a reading that
+    /// plainly describes the night. Losing it here left the screen unable to answer the first
+    /// question a long still stretch raises: when was this?
+    /// </summary>
+    [Fact]
+    public void DaytimeInactivityBlock_CarriesWhenTheStretchBegan()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """
+            {"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":372,
+             "baselineAvgLongestSedentaryStretchMinutes":145,
+             "startedAtUtc":"2026-08-13T13:48:00Z"}
+            """);
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, [Log(_today, steps: 4000)], _today, null, null);
+
+        Assert.Equal(
+            new DateTime(2026, 8, 13, 13, 48, 0, DateTimeKind.Utc), detail.StretchStartedAt);
+    }
+
+    /// <summary>Rows raised before the instant was stored stay composable, with nothing invented.</summary>
+    [Fact]
+    public void DaytimeInactivityBlock_LeavesTheStartUnknown_WhenTheRowNeverStoredIt()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":372}""");
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, [Log(_today, steps: 4000)], _today, null, null);
+
+        Assert.Null(detail.StretchStartedAt);
+    }
+
     [Fact]
     public void RealtimeHeartRate_UsesTheGranularHourNotDailyLogs()
     {

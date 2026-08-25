@@ -91,6 +91,14 @@ public class AlertDetailResponse
 
     /// <summary>When the device last produced a reading, for <c>device_silence</c>.</summary>
     public DateTime? LastDataAt { get; set; }
+
+    /// <summary>
+    /// When the still stretch began (UTC), for <c>daytime_inactivity_block</c>. The rule's own copy
+    /// deliberately names no clock time — this is the field the detail screen turns into one, so a
+    /// caregiver can tell an afternoon in a chair from an episode that needs a second look. Null on
+    /// other rules and on rows raised before the instant was stored.
+    /// </summary>
+    public DateTime? StretchStartedAt { get; set; }
 }
 
 public class AlertComparisonResponse

@@ -206,23 +206,28 @@ public partial class AlertDetailPage : ContentPage
         ChartNameLabel.Text = chart.Name;
         ChartWindowLabel.Text = chart.WindowLabel;
         ChartValueLabel.Text = chart.Value is { } value
-            ? string.Format(ValueFormat(chart.Metric), value)
+            ? AlertChartKey.Value(chart, value)
             : "—";
         ChartValueDayLabel.Text = chart.ValueLabel ?? string.Empty;
         ChartValueDayLabel.IsVisible = !string.IsNullOrWhiteSpace(chart.ValueLabel);
         ChartPartialDayLabel.Text = chart.PartialDayLabel ?? string.Empty;
         ChartPartialDayLabel.IsVisible = !string.IsNullOrWhiteSpace(chart.PartialDayLabel);
+        // The still stretch is a movement reading and breathing is a lungs one; giving either the
+        // heart fallback told a caregiver the wrong organ — and under the mislabelled "bpm"
+        // headline, read as heart-rate-deduced inactivity detection.
         ChartIcon.Source = chart.Metric switch
         {
-            "steps" => "icon_metric_steps.svg",
+            "steps" or "longestSedentaryStretch" => "icon_metric_steps.svg",
             "sleep" => "icon_metric_sleep.svg",
+            "overnightBreathingRate" => "icon_metric_breathing.svg",
             _ => "icon_metric_heart.svg",
         };
 
         var inkKey = chart.Metric switch
         {
-            "steps" => "MetricStepsInk",
+            "steps" or "longestSedentaryStretch" => "MetricStepsInk",
             "sleep" => "MetricSleepInk",
+            "overnightBreathingRate" => "MetricBreathingInk",
             _ => "MetricHeartInk",
         };
         var ink = MetricStatus.Resource(inkKey, Colors.Gray);
@@ -327,6 +332,11 @@ public partial class AlertDetailPage : ContentPage
                 $"{who} usually wakes around {alert.TypicalWakeTime ?? "this time"}. Last movement we saw was {last:d MMM}.",
             "device_silence" when alert.LastDataAt is { } at =>
                 $"The device last sent a reading {RelativeTime.Format(at)}. It may need charging, or a check that it is being worn.",
+            // The rule's message names no clock time on purpose; this is where the stored instant
+            // becomes one, so a caregiver can tell an afternoon in a chair from an episode worth a
+            // second look — or spot a reading that plainly describes the night.
+            "daytime_inactivity_block" when alert.StretchStartedAt is { } startedAt =>
+                $"The still stretch began around {DateTime.SpecifyKind(startedAt, DateTimeKind.Utc).ToLocalTime():h:mm tt}.",
             _ => null,
         };
 
@@ -392,13 +402,6 @@ public partial class AlertDetailPage : ContentPage
 
         return local.ToString("d MMMM yyyy 'at' h:mm tt");
     }
-
-    private static string ValueFormat(string metric) => metric switch
-    {
-        "steps" => "{0:N0} steps",
-        "sleep" => "{0:0.#} hours",
-        _ => "{0:N0} bpm",
-    };
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)
     {
