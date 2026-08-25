@@ -313,6 +313,7 @@ public static class AlertDetailComposer
             TypicalWakeTime = ReadString(metrics, "typicalWakeTime")
                 ?? baseline?.TypicalWakeTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
             LastDataAt = ReadDateTime(metrics, "lastDataUtc"),
+            StretchStartedAt = ReadDateTime(metrics, "startedAtUtc"),
         };
     }
 

@@ -61,15 +61,50 @@ public class AlertChartKeyTests
         Assert.Null(AlertChartKey.For(Sleep(null, null)));
     }
 
-    /// <summary>Sleep keeps its tenth of an hour; the whole-number metrics do not grow a false one.</summary>
+    /// <summary>
+    /// The fractional metrics keep their tenth; the whole-number metrics do not grow a false one.
+    /// The hour-denominated stretch is the regression: its 2.4-hour usual rounded to a whole
+    /// number put the key visibly at odds with the comparison card's "2.4 h" on the same screen.
+    /// </summary>
     [Theory]
     [InlineData("sleep", "3.8")]
+    [InlineData("longestSedentaryStretch", "3.8")]
+    [InlineData("overnightBreathingRate", "3.8")]
+    [InlineData("heartRateVariability", "3.8")]
     [InlineData("steps", "4")]
     [InlineData("restingHeartRate", "4")]
+    [InlineData("elevatedZoneMinutes", "4")]
     public void FormatsEachMetricAtItsOwnPrecision(string metric, string expected)
     {
         var chart = new AlertChartResponse { Metric = metric, Baseline = 3.8m };
 
         Assert.Contains(expected, AlertChartKey.For(chart));
+    }
+
+    /// <summary>
+    /// The headline takes the unit the response names, never one guessed from the metric: the
+    /// page's own metric→unit table fell back to "bpm", and the first chart the server added that
+    /// the app had not heard of — the hours-denominated still stretch — was captioned "1 bpm",
+    /// which read as heart-rate-deduced inactivity detection.
+    /// </summary>
+    [Theory]
+    [InlineData("longestSedentaryStretch", "hours", 6.2, "6.2 hours")]
+    [InlineData("steps", "steps", 1477, "1,477 steps")]
+    [InlineData("restingHeartRate", "bpm", 68, "68 bpm")]
+    [InlineData("brandNewMetric", "widgets", 1477, "1,477 widgets")]
+    public void HeadlinesTheServersOwnUnit(string metric, string unit, double value, string expected)
+    {
+        var chart = new AlertChartResponse { Metric = metric, Unit = unit };
+
+        Assert.Equal(expected, AlertChartKey.Value(chart, (decimal)value));
+    }
+
+    /// <summary>A chart whose response names no unit gets a bare figure, not an invented one.</summary>
+    [Fact]
+    public void HeadlinesNoUnit_WhenTheResponseNamesNone()
+    {
+        var chart = new AlertChartResponse { Metric = "brandNewMetric", Unit = "" };
+
+        Assert.Equal("42", AlertChartKey.Value(chart, 42m));
     }
 }

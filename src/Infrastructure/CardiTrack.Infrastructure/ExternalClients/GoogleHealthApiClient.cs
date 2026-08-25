@@ -216,10 +216,34 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         await EnsureSuccessAsync(response);
 
         var root = await ParseBodyAsync(response, "sleep");
-        var sleep = (root["dataPoints"] as JArray)?.OfType<JObject>().FirstOrDefault()?["sleep"];
+        var sessions = ((root["dataPoints"] as JArray)?
+                .OfType<JObject>()
+                .Select(point => point["sleep"])
+                .Where(session => session is not null)
+            ?? Enumerable.Empty<JToken?>())
+            .ToList();
+
+        // A civil day can carry more than one session — an afternoon nap ends on the same day as
+        // the night before it — and the order dataPoints arrive in is not a contract. The fields
+        // below describe the *night*, so the main session is the one with the most time asleep
+        // (falling back to the longest span when no summary says). Taking dataPoints[0] here made
+        // both the sleep figures and the sedentary-stretch exclusion window describe a forty-minute
+        // nap whenever the API happened to list it first — which is how a wearer's ordinary night
+        // was reported as a six-hour daytime still stretch.
+        var sleep = sessions.OrderByDescending(SessionRankMinutes).FirstOrDefault();
 
         var startTime = ParseInstantUtc(ReadString(sleep?["interval"], "startTime"));
         var endTime = ParseInstantUtc(ReadString(sleep?["interval"], "endTime"));
+
+        // Every bounded session, naps included: the sedentary exclusion has to subtract them all,
+        // because any sleep left in scope is an unbroken "rest" by definition.
+        var sessionWindows = sessions
+            .Select(session => (
+                Start: ParseInstantUtc(ReadString(session?["interval"], "startTime")),
+                End: ParseInstantUtc(ReadString(session?["interval"], "endTime"))))
+            .Where(w => w.Start.HasValue && w.End.HasValue && w.End > w.Start)
+            .Select(w => (w.Start!.Value, w.End!.Value))
+            .ToList();
 
         var summary = sleep?["summary"];
 
@@ -256,7 +280,30 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             ? Math.Clamp((int)decimal.Round(asleepMinutes.Value * 100m / sleepPeriodMinutes.Value), 0, 100)
             : (int?)null;
 
-        return new GoogleHealthSleepResult(totalMinutes, efficiency, startTime, endTime, deep, light, rem, awake);
+        return new GoogleHealthSleepResult(totalMinutes, efficiency, startTime, endTime, deep, light, rem, awake)
+        {
+            SessionWindows = sessionWindows,
+        };
+    }
+
+    /// <summary>
+    /// How much of the day a sleep session accounts for, for choosing the main one: minutes asleep
+    /// where the summary reports them, the sleep-period span where only that is known, and the
+    /// physical interval's own length as the last resort. Zero for a session with no usable figure,
+    /// which can never outrank a measured one.
+    /// </summary>
+    private int SessionRankMinutes(JToken? session)
+    {
+        if (ReadInt(session?["summary"], "minutesAsleep") is { } asleep)
+            return asleep;
+        if (ReadInt(session?["summary"], "minutesInSleepPeriod") is { } period)
+            return period;
+
+        var start = ParseInstantUtc(ReadString(session?["interval"], "startTime"));
+        var end = ParseInstantUtc(ReadString(session?["interval"], "endTime"));
+        return start.HasValue && end.HasValue && end > start
+            ? (int)(end.Value - start.Value).TotalMinutes
+            : 0;
     }
 
     public async Task<GoogleHealthAdditionalMetricsResult> GetAdditionalMetricsAsync(
@@ -379,19 +426,22 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// already shows them — and the two would disagree the moment either changed its formula.
     /// </para>
     /// </remarks>
-    /// <param name="sleepWindow">
-    /// The night's sleep session, when the caller has read it. Sedentary intervals overlapping it
-    /// are excluded before the longest stretch is measured — without that, the post-midnight half
-    /// of the night is the longest unbroken sedentary run on almost every day, and the reading
-    /// would describe the member asleep while calling itself a daytime rest. Null leaves the whole
-    /// civil day in scope, which is only correct for a caller that has no sleep session to give.
+    /// <param name="sleepWindows">
+    /// Every sleep session the caller has read for the day — the night, and any nap that ended on
+    /// it. Sedentary intervals overlapping any of them are excluded before the longest stretch is
+    /// measured — without that, the post-midnight half of the night is the longest unbroken
+    /// sedentary run on almost every day, and the reading would describe the member asleep while
+    /// calling itself a daytime rest. Null or empty leaves no reading at all rather than the whole
+    /// civil day in scope — see the implementation's remarks.
     /// </param>
     public async Task<GoogleHealthExertionResult> GetExertionAsync(
-        string accessToken, DateOnly date, (DateTime Start, DateTime End)? sleepWindow = null)
+        string accessToken,
+        DateOnly date,
+        IReadOnlyCollection<(DateTime Start, DateTime End)>? sleepWindows = null)
     {
         var zoneMinutesTask = OptionalZoneMinutesAsync(accessToken, date);
         var zoneFloorTask = OptionalModerateZoneFloorAsync(accessToken, date);
-        var sedentaryStretchTask = OptionalLongestSedentaryStretchAsync(accessToken, date, sleepWindow);
+        var sedentaryStretchTask = OptionalLongestSedentaryStretchAsync(accessToken, date, sleepWindows);
         await Task.WhenAll(zoneMinutesTask, zoneFloorTask, sedentaryStretchTask);
 
         var (light, moderate, vigorous, peak) = zoneMinutesTask.Result;
@@ -497,9 +547,9 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// </para>
     /// </remarks>
     private async Task<(int? Minutes, DateTime? StartUtc)> OptionalLongestSedentaryStretchAsync(
-        string accessToken, DateOnly date, (DateTime Start, DateTime End)? sleepWindow)
+        string accessToken, DateOnly date, IReadOnlyCollection<(DateTime Start, DateTime End)>? sleepWindows)
     {
-        if (sleepWindow is null)
+        if (sleepWindows is not { Count: > 0 })
             return (null, null);
 
         const string dataType = "activity-level";
@@ -520,7 +570,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                         date)))
                 .Where(i => i.Start.HasValue && i.End.HasValue && i.End > i.Start)
                 .Select(i => (Start: i.Start!.Value, End: i.End!.Value))
-                .SelectMany(i => OutsideSleep(i, sleepWindow.Value))
+                .SelectMany(i => OutsideSleep(i, sleepWindows))
                 .OrderBy(i => i.Start)
                 .ToList();
 
@@ -559,7 +609,22 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     }
 
     /// <summary>
-    /// The parts of a sedentary interval that fall outside the night's sleep: none where it sits
+    /// The parts of a sedentary interval that fall outside every one of the day's sleep sessions —
+    /// the night and any nap alike. Each window is subtracted in turn, so an interval spanning two
+    /// sessions loses both.
+    /// </summary>
+    private static IEnumerable<(DateTime Start, DateTime End)> OutsideSleep(
+        (DateTime Start, DateTime End) interval,
+        IReadOnlyCollection<(DateTime Start, DateTime End)> sleeps)
+    {
+        IEnumerable<(DateTime Start, DateTime End)> fragments = new[] { interval };
+        foreach (var sleep in sleeps)
+            fragments = fragments.SelectMany(f => OutsideSleep(f, sleep)).ToList();
+        return fragments;
+    }
+
+    /// <summary>
+    /// The parts of a sedentary interval that fall outside one sleep session: none where it sits
     /// wholly inside, one where it overlaps an edge, and two where it spans the whole night.
     /// </summary>
     /// <remarks>
@@ -594,13 +659,12 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var additionalTask = GetAdditionalMetricsAsync(accessToken, date);
 
         // Exertion is the one read that depends on another: the longest sedentary stretch is a
-        // *daytime* figure, and only the sleep session says which hours were the night. Awaited
-        // here rather than fetched twice, and everything else stays concurrent around it.
+        // *daytime* figure, and only the sleep sessions say which hours were slept. Awaited
+        // here rather than fetched twice, and everything else stays concurrent around it. Every
+        // session is handed over, not just the night — a nap left in scope is an unbroken "rest"
+        // by definition.
         var sleep = await sleepTask;
-        var sleepWindow = sleep.SleepStartTime is { } sleepStart && sleep.SleepEndTime is { } sleepEnd
-            ? (sleepStart, sleepEnd)
-            : ((DateTime Start, DateTime End)?)null;
-        var exertionTask = GetExertionAsync(accessToken, date, sleepWindow);
+        var exertionTask = GetExertionAsync(accessToken, date, sleep.SessionWindows);
 
         await Task.WhenAll(activitiesTask, heartRateTask, additionalTask, exertionTask);
 

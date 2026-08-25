@@ -866,6 +866,60 @@ public class GoogleHealthApiClientTests
         Assert.Null(result.SleepStartTime);
     }
 
+    /// <summary>
+    /// A civil day can carry more than one session — an afternoon nap ends on the same day as the
+    /// night before it — and the order dataPoints arrive in is not a contract. The named fields
+    /// must describe the night whichever session is listed first: taking dataPoints[0] made the
+    /// sleep figures describe a forty-minute nap, and handed the sedentary exclusion the nap's
+    /// window — which is how a wearer's ordinary night was reported as a six-hour daytime still
+    /// stretch by <c>daytime_inactivity_block</c>.
+    /// </summary>
+    [Fact]
+    public async Task GetSleepAsync_DescribesTheMainSession_WhenANapIsListedFirst()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/sleep/", """
+                {
+                  "dataPoints": [
+                    {
+                      "sleep": {
+                        "interval": {
+                          "startTime": "2026-08-05T14:30:00Z",
+                          "endTime":   "2026-08-05T15:10:00Z"
+                        },
+                        "summary": { "minutesAsleep": "40" }
+                      }
+                    },
+                    {
+                      "sleep": {
+                        "interval": {
+                          "startTime": "2026-08-04T22:30:00Z",
+                          "endTime":   "2026-08-05T06:30:00Z"
+                        },
+                        "summary": { "minutesAsleep": "395" }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var result = await sut.GetSleepAsync("token", Today);
+
+        Assert.Equal(395, result.TotalSleepMinutes);
+        Assert.Equal(new DateTime(2026, 8, 4, 22, 30, 0, DateTimeKind.Utc), result.SleepStartTime);
+        Assert.Equal(new DateTime(2026, 8, 5, 6, 30, 0, DateTimeKind.Utc), result.SleepEndTime);
+
+        // Both sessions' bounds are kept for the sedentary exclusion — the nap is sleep too.
+        Assert.Equal(2, result.SessionWindows.Count);
+        Assert.Contains((
+            new DateTime(2026, 8, 5, 14, 30, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 5, 15, 10, 0, DateTimeKind.Utc)), result.SessionWindows);
+        Assert.Contains((
+            new DateTime(2026, 8, 4, 22, 30, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 5, 6, 30, 0, DateTimeKind.Utc)), result.SessionWindows);
+    }
+
     [Fact]
     public async Task GetSleepAsync_ThrowsGoogleHealthApiException_OnNon2xxResponse()
     {
@@ -1874,12 +1928,14 @@ public class GoogleHealthApiClientTests
     }
 
     /// <summary>
-    /// The night that ended on the fifth, for the tests whose subject is the joining rather than
-    /// the clipping — it sits clear of every interval they use.
+    /// The night that ended on the fifth — the day's only sleep session — for the tests whose
+    /// subject is the joining rather than the clipping: it sits clear of every interval they use.
     /// </summary>
-    private static readonly (DateTime Start, DateTime End) NightOfTheFifth = (
-        new DateTime(2026, 8, 4, 23, 0, 0, DateTimeKind.Utc),
-        new DateTime(2026, 8, 5, 6, 30, 0, DateTimeKind.Utc));
+    private static readonly (DateTime Start, DateTime End)[] NightOfTheFifth =
+    {
+        (new DateTime(2026, 8, 4, 23, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 8, 5, 6, 30, 0, DateTimeKind.Utc)),
+    };
 
     /// <summary>
     /// No sleep window, no stretch. Measuring the whole civil day would make the small hours the
@@ -1908,7 +1964,7 @@ public class GoogleHealthApiClientTests
                 """);
 
         var (sut, _) = CreateSut(handler);
-        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleepWindow: null);
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleepWindows: null);
 
         Assert.Null(result.LongestSedentaryStretchMinutes);
         Assert.Null(result.LongestSedentaryStretchStartUtc);
@@ -1934,9 +1990,11 @@ public class GoogleHealthApiClientTests
                 """);
 
         var (sut, _) = CreateSut(handler);
-        var sleep = (
-            new DateTime(2026, 8, 4, 23, 15, 0, DateTimeKind.Utc),
-            new DateTime(2026, 8, 5, 7, 0, 0, DateTimeKind.Utc));
+        var sleep = new[]
+        {
+            (new DateTime(2026, 8, 4, 23, 15, 0, DateTimeKind.Utc),
+                new DateTime(2026, 8, 5, 7, 0, 0, DateTimeKind.Utc)),
+        };
 
         var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleep);
 
@@ -1944,6 +2002,39 @@ public class GoogleHealthApiClientTests
         Assert.Equal(120, result.LongestSedentaryStretchMinutes);
         Assert.Equal(
             new DateTime(2026, 8, 5, 13, 0, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
+    }
+
+    /// <summary>
+    /// Every session the day carries is subtracted, not just the night: an afternoon nap is sleep
+    /// too, and left in scope it welds the stillness on either side of it into one long "rest"
+    /// the wearer never took awake.
+    /// </summary>
+    [Fact]
+    public async Task GetExertionAsync_ExcludesEverySleepSession_NapsIncluded()
+    {
+        var handler = new RoutedFakeHttpHandler()
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T13:00:00Z", "2026-08-05T16:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var windows = NightOfTheFifth
+            .Append((
+                new DateTime(2026, 8, 5, 13, 30, 0, DateTimeKind.Utc),
+                new DateTime(2026, 8, 5, 14, 30, 0, DateTimeKind.Utc)))
+            .ToArray();
+
+        var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), windows);
+
+        // Three sedentary hours minus the hour asleep in the middle leaves two fragments; the
+        // ninety minutes after the nap is the longer, and the nap does not bridge them.
+        Assert.Equal(90, result.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 14, 30, 0, DateTimeKind.Utc), result.LongestSedentaryStretchStartUtc);
     }
 
     /// <summary>
@@ -1964,9 +2055,11 @@ public class GoogleHealthApiClientTests
                 """);
 
         var (sut, _) = CreateSut(handler);
-        var sleep = (
-            new DateTime(2026, 8, 5, 22, 0, 0, DateTimeKind.Utc),
-            new DateTime(2026, 8, 6, 7, 0, 0, DateTimeKind.Utc));
+        var sleep = new[]
+        {
+            (new DateTime(2026, 8, 5, 22, 0, 0, DateTimeKind.Utc),
+                new DateTime(2026, 8, 6, 7, 0, 0, DateTimeKind.Utc)),
+        };
 
         var result = await sut.GetExertionAsync("token", new DateOnly(2026, 8, 5), sleep);
 
