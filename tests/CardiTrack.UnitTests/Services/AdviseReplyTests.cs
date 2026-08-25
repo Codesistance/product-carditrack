@@ -73,6 +73,8 @@ public class AdviseReplyTests
     [InlineData("It's just a thought, worth mentioning to his doctor.")]
     [InlineData("Something to run past his GP when convenient.")]
     [InlineData("Worth asking their physician about.")]
+    [InlineData("His doctors would know if this suits him.")]
+    [InlineData("One for his clinicians next visit.")]
     public void ARowThatAlreadyRoutesToTheDoctor_IsNotToldTwice(string doctorTail)
     {
         var reply = MemberChatReplies.AdviseReply(

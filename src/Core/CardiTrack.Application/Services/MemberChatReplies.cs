@@ -143,6 +143,6 @@ public static partial class MemberChatReplies
 
     /// <summary>The stored row already routes to a clinician, in whichever word the model chose —
     /// what makes the appended framing line redundant rather than required.</summary>
-    [GeneratedRegex(@"\b(?:doctor|GP|physician|clinician)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?:doctors?|GPs?|physicians?|clinicians?)\b", RegexOptions.IgnoreCase)]
     private static partial Regex DoctorMention();
 }
