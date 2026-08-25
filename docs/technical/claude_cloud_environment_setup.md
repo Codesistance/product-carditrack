@@ -75,7 +75,7 @@ ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=carditrac
 ConnectionStrings__Redis=localhost:6379
 Encryption__Key=W2iqrS4VgOXDgwZQWCGj716pKcu2nLs1tk5j66oNzBY=
 AI__Public__Kind=Gemini
-AI__Public__Model=gemini-2.0-flash
+AI__Public__Model=gemini-2.5-flash
 AI__Public__ApiKey=unset-local-placeholder
 AI__Public__TimeoutSeconds=60
 AI__Private__BaseUrl=http://localhost:11434

@@ -597,10 +597,14 @@ variable "public_ai_kind" {
   }
 }
 
+# Both live environments override this in their tfvars; the default only catches a new
+# environment that forgets to. gemini-2.0-flash was retired 2026-06-01 (Gemini API; earlier on
+# Vertex) and must not come back — gemini-2.5-flash works on both the Gemini and VertexGemini
+# kinds until the 2.5 family's own retirement (~2026-10-16).
 variable "public_ai_model" {
   description = "Model identifier passed to the public AI provider"
   type        = string
-  default     = "gemini-2.0-flash"
+  default     = "gemini-2.5-flash"
 }
 
 # Null keeps the provider's documented default endpoint, which is what dev and prod use.
@@ -660,6 +664,12 @@ variable "public_ai_api_key_secret_id" {
 # Verify a new model against the probe in docs/technical/vertex_ai_setup.md §3 before changing
 # this: regional availability, responseJsonSchema support and thinkingBudget 0 are the three
 # assumptions the client makes of it.
+#
+# Hard deadline: gemini-2.5-flash-lite retires with the 2.5 family ~2026-10-16. Its successor
+# gemini-3.1-flash-lite was not served from ANY allowlisted EU region as of 2026-08-25 (§3
+# matrix), which is why this slot has not moved yet. Re-probe for it periodically; if it is
+# still absent from the EU as the date nears, gemini-3.5-flash (europe-west2) is the fallback —
+# either way the candidate goes through the AiSplitEvaluator comparison before the swap.
 variable "rewrite_ai_model" {
   description = "Model identifier for the rewrite slot's VertexGemini kind"
   type        = string
