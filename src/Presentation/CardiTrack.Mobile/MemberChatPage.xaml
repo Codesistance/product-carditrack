@@ -220,6 +220,15 @@
                                                FontSize="13"
                                                TextColor="{StaticResource MutedText}"
                                                IsVisible="{Binding HasChartSummary}"/>
+                                        <!-- The reply's citation line, split out of the prose so
+                                             each authority can be a link to where its guidance is
+                                             published (see ChatTurnItem.SplitReference). Quiet
+                                             like ChartSummary: the citation supports the answer,
+                                             it is not part of it. -->
+                                        <Label FormattedText="{Binding ReferenceText}"
+                                               Style="{StaticResource Body2}"
+                                               FontSize="13"
+                                               IsVisible="{Binding HasReference}"/>
                                         <!-- When this was said. Quiet and trailing: a returning
                                              caregiver needs to know whether "steady today" was
                                              this morning, without the time competing with the

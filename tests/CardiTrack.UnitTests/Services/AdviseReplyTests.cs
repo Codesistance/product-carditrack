@@ -37,6 +37,20 @@ public class AdviseReplyTests
     }
 
     /// <summary>
+    /// The suggestion leads. The question this rung answers is "what could I do?", and a reply
+    /// that opened with three sentences of readings before the one actionable sentence read as
+    /// not answering it — a caregiver said so. The summary still travels, as grounding after.
+    /// </summary>
+    [Fact]
+    public void ItLeadsWithTheSuggestion_NotTheSummary()
+    {
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
+
+        Assert.StartsWith("A steadier bedtime could help him settle earlier.", reply,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// It closes by marking what it just said as a suggestion. A chat bubble has no heading and no
     /// layout to do that, where the Details card has both.
     /// </summary>
@@ -47,6 +61,36 @@ public class AdviseReplyTests
 
         Assert.Contains("That's just an idea to consider", reply, StringComparison.Ordinal);
         Assert.Contains("their doctor is the one to ask", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// One doctor line, never two. The generation prompt asks the model for "worth mentioning to
+    /// their doctor", so most stored rows already carry that route — and appending the framing
+    /// line on top told a caregiver to see the doctor twice in three sentences (their words: only
+    /// one line of the see-your-doctor message was needed).
+    /// </summary>
+    [Theory]
+    [InlineData("It's just a thought, worth mentioning to his doctor.")]
+    [InlineData("Something to run past his GP when convenient.")]
+    [InlineData("Worth asking their physician about.")]
+    public void ARowThatAlreadyRoutesToTheDoctor_IsNotToldTwice(string doctorTail)
+    {
+        var reply = MemberChatReplies.AdviseReply(
+            "Dad", Advise(suggestion: $"A short stroll could help. {doctorTail}"), Now);
+
+        Assert.DoesNotContain("That's just an idea to consider", reply, StringComparison.Ordinal);
+        Assert.Contains(doctorTail, reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>The word alone is not the route — "doctorate" or "bedside" must not swallow the
+    /// framing line. Whole words only.</summary>
+    [Fact]
+    public void ADoctorLookalikeWord_DoesNotSuppressTheFramingLine()
+    {
+        var reply = MemberChatReplies.AdviseReply(
+            "Dad", Advise(suggestion: "His doctorate routine of evening reading could resume."), Now);
+
+        Assert.Contains("That's just an idea to consider", reply, StringComparison.Ordinal);
     }
 
     /// <summary>

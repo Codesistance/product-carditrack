@@ -3,6 +3,7 @@ using System.Globalization;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Services;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
@@ -719,6 +720,14 @@ public sealed class ChatTurnItem
     public string ChartSummary { get; init; } = string.Empty;
     public bool HasChartSummary => !string.IsNullOrEmpty(ChartSummary);
 
+    /// <summary>
+    /// The reply's trailing "Reference:" / "References:" line, split out of <see cref="Content"/>
+    /// and rebuilt with each cited authority as a tappable link to where the guidance is actually
+    /// published — see <see cref="SplitReference"/>. Null when the reply quotes nothing.
+    /// </summary>
+    public FormattedString? ReferenceText { get; init; }
+    public bool HasReference => ReferenceText is not null;
+
     /// <summary>The reply's supporting series, pre-shaped for drawing — see
     /// <see cref="ChatChartItem.From"/>. Empty for user turns and errors; a resumed or refreshed
     /// reply draws the series stored with its turn.</summary>
@@ -813,10 +822,12 @@ public sealed class ChatTurnItem
     public static ChatTurnItem FromReply(MemberChatMessageResponse response, string? memberFirstName)
     {
         var (drawable, summarised) = SplitCharts(response.Charts);
+        var (body, reference) = SplitReference(response.Reply);
 
         return new ChatTurnItem
         {
-            Content = response.Reply,
+            Content = body,
+            ReferenceText = reference,
             IsUser = false,
             RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
             ShowRoleLabel = true,
@@ -846,10 +857,12 @@ public sealed class ChatTurnItem
             return FromUserMessage(turn.Content, turn.CreatedAtUtc);
 
         var (drawable, summarised) = SplitCharts(turn.Charts);
+        var (body, reference) = SplitReference(turn.Content);
 
         return new ChatTurnItem
         {
-            Content = turn.Content,
+            Content = body,
+            ReferenceText = reference,
             IsUser = false,
             RoleLabel = memberFirstName is { Length: > 0 } name ? $"About {name}" : "Reply",
             ShowRoleLabel = true,
@@ -860,6 +873,98 @@ public sealed class ChatTurnItem
             ChartSummary = Summarize(summarised),
             Timestamp = FormatTimestamp(turn.CreatedAtUtc),
         };
+    }
+
+    /// <summary>
+    /// Splits a reply into its prose and the trailing citation block the advise and inference
+    /// rungs close with ("Reference: …" / "References: …; …."), so the citations can be rendered
+    /// as their own quiet line with each authority tappable. Anything that is not exactly that
+    /// trailing block — a "Reference" mid-prose, a truncated line — stays in the prose untouched:
+    /// losing a caregiver's answer to a parse is the one failure this split must not have.
+    /// </summary>
+    private static (string Body, FormattedString? Reference) SplitReference(string content)
+    {
+        var idx = content.LastIndexOf("\n\nReference", StringComparison.Ordinal);
+        if (idx < 0)
+            return (content, null);
+
+        var block = content[(idx + 2)..];
+        var colon = block.IndexOf(": ", StringComparison.Ordinal);
+        if (colon < 0 || block.Contains('\n')
+            || (block[..colon] != "Reference" && block[..colon] != "References"))
+            return (content, null);
+
+        var citations = block[(colon + 2)..].TrimEnd().TrimEnd('.')
+            .Split("; ", StringSplitOptions.RemoveEmptyEntries);
+        if (citations.Length == 0)
+            return (content, null);
+
+        return (content[..idx].TrimEnd(), BuildReference(block[..(colon + 2)], citations));
+    }
+
+    /// <summary>
+    /// The citation block as spans: the label and citation text quiet, each authority whose
+    /// guidance has a published page (<see cref="CitationLinks"/>) underlined, in the link colour,
+    /// and tappable — opening the source in the browser. A citation the closed sets don't carry a
+    /// URL for renders as plain text: no link beats a link that leads nowhere.
+    /// </summary>
+    private static FormattedString BuildReference(string label, IReadOnlyList<string> citations)
+    {
+        var quiet = Microsoft.Maui.Controls.Application.Current?.Resources["MutedText"] as Color
+            ?? Colors.Gray;
+        var linked = Microsoft.Maui.Controls.Application.Current?.Resources["Primary"] as Color
+            ?? Colors.Blue;
+
+        var reference = new FormattedString();
+        reference.Spans.Add(new Span { Text = label, TextColor = quiet });
+
+        for (var i = 0; i < citations.Count; i++)
+        {
+            if (i > 0)
+                reference.Spans.Add(new Span { Text = "; ", TextColor = quiet });
+
+            var citation = citations[i];
+            var url = CitationLinks.UrlFor(citation);
+            if (url is null)
+            {
+                reference.Spans.Add(new Span { Text = citation, TextColor = quiet });
+                continue;
+            }
+
+            // The authority name is the link — the part a caregiver recognises — and the figures
+            // after the dash stay plain, so the line doesn't read as one long underline.
+            var dash = citation.IndexOf(" — ", StringComparison.Ordinal);
+            var authority = dash > 0 ? citation[..dash] : citation;
+
+            var authoritySpan = new Span
+            {
+                Text = authority,
+                TextColor = linked,
+                TextDecorations = TextDecorations.Underline,
+            };
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += async (_, _) =>
+            {
+                try
+                {
+                    await Launcher.Default.OpenAsync(new Uri(url));
+                }
+                catch (Exception ex)
+                {
+                    // A device with no handler for the URL, or a launcher that refuses — the
+                    // citation is still on screen, which is what it was before it was a link.
+                    ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while opening a reference");
+                }
+            };
+            authoritySpan.GestureRecognizers.Add(tap);
+            reference.Spans.Add(authoritySpan);
+
+            if (dash > 0)
+                reference.Spans.Add(new Span { Text = citation[dash..], TextColor = quiet });
+        }
+
+        reference.Spans.Add(new Span { Text = ".", TextColor = quiet });
+        return reference;
     }
 
     /// <summary>

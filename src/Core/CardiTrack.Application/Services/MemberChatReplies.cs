@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Services;
@@ -11,7 +12,7 @@ namespace CardiTrack.Application.Services;
 /// policy with no I/O, testable without a host. <c>MemberChatService</c> fetches the rows and
 /// resolves the first name; everything after that is a pure function of what it passes in.
 /// </summary>
-public static class MemberChatReplies
+public static partial class MemberChatReplies
 {
     /// <summary>
     /// The answer to "is he asleep now?" — the limit first, then the most recent thing actually
@@ -75,7 +76,17 @@ public static class MemberChatReplies
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Closes by marking what it just said as a suggestion, every time. A suggestion arriving in
+    /// Opens with the suggestion, not the summary. The question this rung answers is "what could
+    /// I do?", and a reply that led with three sentences of readings before getting to the one
+    /// actionable sentence read as not answering it — the summary still travels, as the grounding
+    /// after the answer rather than a preamble before it.
+    /// </para>
+    /// <para>
+    /// Closes by marking what it just said as a suggestion — but only when the stored suggestion
+    /// has not already done so itself. The generation prompt's <c>ToneWellnessNotClinical</c> asks
+    /// for "worth mentioning to their doctor", so most rows arrive with a doctor line of their
+    /// own, and appending this one unconditionally told the caregiver to see the doctor twice in
+    /// three sentences. One line is the framing; two is a nag. A suggestion arriving in
     /// the same voice that answered "how did he sleep" a moment earlier is the one place on this
     /// platform where a caregiver could most easily read guidance as an instruction, and the card
     /// on CardiMember Details has a heading and a layout to carry that framing where a chat bubble
@@ -117,11 +128,21 @@ public static class MemberChatReplies
                 + "sleep, activity or heart rate compare with what's usual for them, though.";
         }
 
-        var reply = $"{advise.Summary.Trim()} {advise.Suggestion.Trim()} That's just an idea to "
-            + "consider — their doctor is the one to ask if you're unsure about it.";
+        var reply = $"{advise.Suggestion.Trim()} {advise.Summary.Trim()}";
+
+        if (!DoctorMention().IsMatch(reply))
+        {
+            reply += " That's just an idea to consider — their doctor is the one to ask if "
+                + "you're unsure about it.";
+        }
 
         return WellnessGuidelines.CitationFor(advise.GuidelineCited) is { } citation
             ? $"{reply}\n\nReference: {citation}."
             : reply;
     }
+
+    /// <summary>The stored row already routes to a clinician, in whichever word the model chose —
+    /// what makes the appended framing line redundant rather than required.</summary>
+    [GeneratedRegex(@"\b(?:doctor|GP|physician|clinician)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex DoctorMention();
 }
