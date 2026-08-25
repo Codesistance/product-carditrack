@@ -117,6 +117,20 @@ This is why `rewrite_ai_location` defaults to `europe-west1` (flash-lite is not 
 while `public_ai_location` stays `europe-west2` (flash is). Re-measure before any model change
 — availability moves.
 
+### Retirement clock (checked 2026-08-25)
+
+Availability has a second axis: Google retires Gemini models on a schedule, and a retired model
+fails exactly like an unavailable one — after having worked for months.
+
+| Model | Retirement | Consequence for us |
+|---|---|---|
+| gemini-2.0-flash (+ -lite, -001) | **Retired** — 2026-03-03 on Vertex, 2026-06-01 on the Gemini API | Was the `public_ai_model` fallback default; prod's public slot ran it via the API-key kind and has been calling a dead model since 2026-06-01. Fixed 2026-08-25: prod tfvars now pin the Vertex flip + gemini-2.5-flash, and the Terraform default is bumped so the dead model cannot come back. |
+| gemini-2.5-flash / -flash-lite / -pro | **~2026-10-16** (release notes say the 16th, the lifecycle page the 20th — plan for the 16th) | Public slot: dev soaks gemini-3.5-flash from 2026-08-25, prod follows once soaked. Rewrite slot: must move off gemini-2.5-flash-lite by this date. |
+| gemini-3.1-flash-lite | n/a (successor) | Intended rewrite-slot target, but **not served from any allowlisted EU region** as of the matrix above. Re-probe periodically; fallback is gemini-3.5-flash (europe-west2) if the EU gap persists as the date nears. |
+
+Sources: the Gemini API deprecations page and the Vertex AI model lifecycle page — re-check both
+whenever this table is consulted, and re-date the heading when re-checked.
+
 ## 4. Changing models — the whole point of the design
 
 The model is a tfvar, not code:

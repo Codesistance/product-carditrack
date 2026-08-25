@@ -144,6 +144,22 @@ enable_pipeline_jobs = false
 # nothing consumes it in prod and the endpoint is untested against live Google delivery).
 enable_webhook_receiver = false
 
+# Public slot on Vertex — same D6 flip dev made 2026-08-21 (IAM auth via the api SA's
+# unconditional aiplatform.user grant, EU regional endpoint; the gemini-api-key secret stays
+# mounted only for pre-Vertex images). Not optional and not "dev leads" material any more:
+# the defaults this file used to fall back to were Kind=Gemini + gemini-2.0-flash, and Google
+# retired gemini-2.0-flash on 2026-06-01 (Gemini API; 2026-03-03 on Vertex), so the fallback
+# config has been a dead model since then. gemini-2.5-flash on europe-west2 (the
+# public_ai_location default) is the pairing dev proved between its 2026-08-21 flip and
+# 2026-08-25, when dev moved on to soak gemini-3.5-flash — so prod pins the soaked config, not
+# dev's current one. gemini-2.5-flash is itself retired ~2026-10-16 with the rest of the 2.5
+# family; prod follows dev to gemini-3.5-flash once that soak is done — see
+# docs/technical/vertex_ai_setup.md §3. Same rollback coupling
+# as dev: a pre-#416 image cannot parse Kind=VertexGemini, so rolling back past that flip is
+# image + tfvars together.
+public_ai_kind  = "VertexGemini"
+public_ai_model = "gemini-2.5-flash"
+
 # The same shared GPU service dev uses — one instance serves every environment. Prod has no
 # MedGemma consumers wired yet (enable_pipeline_jobs is off and medgemma_image is empty), so this
 # seeds a secret nothing currently reads; it is set because the variable is required and a

@@ -161,7 +161,9 @@ module "deployments" {
       "AI__Providers__0__TimeoutSeconds" = tostring(var.medgemma_timeout_seconds)
       "AI__Providers__1__Name"           = "Gemini"
       "AI__Providers__1__BaseUrl"        = "https://generativelanguage.googleapis.com"
-      "AI__Providers__1__Model"          = "gemini-2.0-flash"
+      # gemini-2.0-flash was retired 2026-06-01; 2.5-flash is the closest live model this
+      # legacy API-key path can still address.
+      "AI__Providers__1__Model" = "gemini-2.5-flash"
     },
     # Omitted unless overridden, so each provider keeps its own documented endpoint. Never
     # emitted for VertexGemini: that kind's endpoint derives from the validated Location, and a

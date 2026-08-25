@@ -79,13 +79,18 @@ enable_pipeline_jobs = true
 # Public slot on Vertex (D6, 2026-08-21) — IAM auth via the api SA's aiplatform.user grant, EU
 # regional endpoint, no API key read for this kind (the gemini-api-key secret stays mounted only
 # so pre-Vertex images can still boot; delete it once every environment runs the Vertex kinds).
-# gemini-2.0-flash is NOT served on any EU regional Vertex endpoint (publisher-model 404 in
-# west2/west1, measured 2026-08-21 — matrix in docs/technical/vertex_ai_setup.md §3), so the
-# flip carries a model bump to gemini-2.5-flash, which IS served from europe-west2 (the
-# public_ai_location default). Rollback past this flip is image + tfvars together: a pre-#416
-# image cannot parse Kind=VertexGemini and refuses to boot, by design.
+# Rollback past the Vertex flip is image + tfvars together: a pre-#416 image cannot parse
+# Kind=VertexGemini and refuses to boot, by design.
+#
+# Model bumped gemini-2.5-flash → gemini-3.5-flash (2026-08-25): the whole 2.5 family retires
+# ~2026-10-16 (Google's pages disagree between the 16th and the 20th; plan for the 16th), so dev
+# leads the 3.x migration and prod follows once it has soaked — prod runs gemini-2.5-flash, the
+# pairing dev just vacated, until then. gemini-3.5-flash is served from europe-west2 (the
+# public_ai_location default) per the §3 matrix in docs/technical/vertex_ai_setup.md, but that
+# measurement is availability metadata only: run the full §3 generateContent probe
+# (responseJsonSchema + thinkingBudget 0) against it before applying.
 public_ai_kind  = "VertexGemini"
-public_ai_model = "gemini-2.5-flash"
+public_ai_model = "gemini-3.5-flash"
 
 # Cloud SQL
 cloud_sql_tier                = "db-f1-micro" # Shared-core for dev
