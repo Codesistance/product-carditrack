@@ -63,6 +63,18 @@ public interface IMemberChatService
         Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default);
 
     /// <summary>
+    /// Permanently deletes conversations from this caregiver's history about this member — the
+    /// sessions, their turns and their usage rows, gone for good; the client warns before asking.
+    /// Ids that do not exist, or are not this caregiver's own conversations about this member,
+    /// are skipped rather than failing the batch — the same existence-hiding stance as
+    /// <see cref="GetSessionAsync"/>, expressed as idempotence: a guessed id deletes nothing and
+    /// learns nothing. Throws <see cref="KeyNotFoundException"/> only when the caller may not
+    /// view this member at all.
+    /// </summary>
+    Task<MemberChatDeleteSessionsResponse> DeleteSessionsAsync(
+        Guid userId, Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default);
+
+    /// <summary>
     /// Short lines for the app to cycle in the reply slot while <see cref="SendMessageAsync"/>
     /// runs — generated from the question by the Rewrite slot so the wait narrates the actual
     /// checking. Never throws for a generation failure: canned lines come back instead, because
