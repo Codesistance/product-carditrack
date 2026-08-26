@@ -1599,7 +1599,7 @@ public class MemberChatService : IMemberChatService
     /// The inference read's shape: the verdict text, plus which of the prompt's published ranges
     /// it drew on. The names are a closed vocabulary — <see cref="ChatDataRegistry.CitationsFor"/>
     /// maps them to the registry's own citation lines and drops anything else — so the field is
-    /// traceability, not free text: the same design as <c>AdviseAiResponse.GuidelineCited</c>.
+    /// traceability, not free text: the same design as <c>AdviseClinicalEntryAiResponse.GuidelineCited</c>.
     /// </summary>
     internal sealed record InferenceClinicalAiResponse
     {

@@ -40,4 +40,12 @@ public class MemberAdvise : BaseEntity
     /// <summary>When the batch generated this suggestion. The API withholds a row older than its
     /// staleness ceiling rather than serving stale guidance as if it were current.</summary>
     public DateTime GeneratedAtUtc { get; set; }
+
+    /// <summary>
+    /// Which version of the generation briefs wrote this row — see
+    /// <c>AdviseGenerationService.CurrentPromptVersion</c>. A row from an older version is due for
+    /// regeneration whatever its age, so a prompt change reaches every member within one digest
+    /// pass instead of hiding behind the daily interval. Rows from before the column exist at 0.
+    /// </summary>
+    public int PromptVersion { get; set; }
 }

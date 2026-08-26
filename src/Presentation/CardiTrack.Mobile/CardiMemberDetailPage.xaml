@@ -285,7 +285,7 @@
                                      the words match what the card holds — one everyday thing the
                                      family could help with — where "wellness" claimed a category
                                      the product is careful not to speak for. -->
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                     <Label Grid.Column="0"
                                            Text="&#x2728;"
                                            FontSize="16"
@@ -297,6 +297,20 @@
                                            Style="{StaticResource DashboardSectionTitle}"
                                            Text="Something to try"
                                            LineBreakMode="WordWrap"/>
+                                    <!-- Same "when" the summary card carries, and here it is
+                                         load-bearing: this card regenerates daily where the
+                                         summary above it moves hourly, and on the one day the two
+                                         disagree, the age is what tells a caregiver they are
+                                         reading yesterday's suggestion beside today's summary. -->
+                                    <Label x:Name="AdviseGeneratedLabel"
+                                           Grid.Column="2"
+                                           FontFamily="Quicksand"
+                                           FontSize="12"
+                                           TextColor="{StaticResource BodyText}"
+                                           VerticalOptions="Start"
+                                           Margin="0,2,0,0"
+                                           LineBreakMode="TailTruncation"
+                                           IsVisible="False"/>
                                 </Grid>
                                 <Label x:Name="AdviseSummaryLabel"
                                        Style="{StaticResource Body2Dark}"
@@ -306,6 +320,14 @@
                                        FontAttributes="Bold"
                                        LineBreakMode="WordWrap"/>
                                 <Label x:Name="AdviseGuidelineLabel"
+                                       FontSize="12"
+                                       TextColor="{StaticResource MutedText}"
+                                       LineBreakMode="WordWrap"/>
+                                <!-- Fixed copy, not model output: the safety framing must always
+                                     be present and identically worded, so it lives in the chrome —
+                                     the generation guards reject a suggestion that spends its own
+                                     words restating it. -->
+                                <Label Text="Just a suggestion, never medical advice — worth mentioning to their doctor."
                                        FontSize="12"
                                        TextColor="{StaticResource MutedText}"
                                        LineBreakMode="WordWrap"/>

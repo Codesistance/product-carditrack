@@ -87,7 +87,7 @@ public class StructuredSchemaGrammarTests
     public void Schema_DeclaresObjectsInsideArrays_NotObjectOrNull()
     {
         var schemaText = SchemaTextFor(
-            typeof(CardiTrack.Infrastructure.Services.AdviseGenerationService.AdviseAiResponse));
+            typeof(CardiTrack.Infrastructure.Services.AdviseGenerationService.AdviseClinicalAiResponse));
 
         Assert.Contains("\"items\":{\"type\":\"object\"", schemaText);
         Assert.DoesNotContain("\"type\":[\"object\",\"null\"]", schemaText);

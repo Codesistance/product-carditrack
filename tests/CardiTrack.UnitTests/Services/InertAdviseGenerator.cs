@@ -21,6 +21,7 @@ internal static class InertAdviseGenerator
         return new AdviseGenerationService(
             unitOfWork,
             Substitute.For<IMedicalAiService>(),
+            Substitute.For<IRewriteAiService>(),
             PromptContextFactory.Composer(unitOfWork),
             NullLogger<AdviseGenerationService>.Instance);
     }
