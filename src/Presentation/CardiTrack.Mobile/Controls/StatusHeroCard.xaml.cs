@@ -156,8 +156,8 @@ public partial class StatusHeroCard : ContentView
     /// <summary>
     /// Shows or hides the Advise button at the end of the row, from
     /// <see cref="DashboardResponse.HasAdvise"/>, and pulses it while a suggestion is waiting.
-    /// Hidden outright when there is none: the button's whole job is to open the Wellness
-    /// suggestion card, and that card is itself hidden on Details when nothing was suggested —
+    /// Hidden outright when there is none: the button's whole job is to open the "Something to try"
+    /// card, and that card is itself hidden on Details when nothing was suggested —
     /// a button always on screen would be a dead end most days.
     /// </summary>
     private void ApplyAdvise(bool hasAdvise)
@@ -240,7 +240,7 @@ public partial class StatusHeroCard : ContentView
     private void OnQaTapped(object? sender, TappedEventArgs e) =>
         QaTapped?.Invoke(this, EventArgs.Empty);
 
-    /// <summary>Raised by the Advise button, only visible while a wellness suggestion is waiting.
+    /// <summary>Raised by the Advise button, only visible while a suggestion is waiting.
     /// The page decides the journey — see <see cref="CardiMemberDetailPage.AdviseFocus"/>.</summary>
     public event EventHandler? AdviseTapped;
 

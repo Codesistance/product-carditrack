@@ -21,7 +21,7 @@ public partial class CardiMemberDetailPage : ContentPage
     public const string Route = "memberdetail";
 
     /// <summary>
-    /// <c>?focus=</c> value that opens this page at the Wellness suggestion card rather than at
+    /// <c>?focus=</c> value that opens this page at the "Something to try" (Advise) card rather than at
     /// the top — what the Dashboard card's Advise button navigates with, so the pulse a caregiver
     /// tapped lands on the suggestion it was pulsing about instead of somewhere down a long page.
     /// </summary>
@@ -422,7 +422,7 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Puts the Wellness suggestion card under the top of the viewport, for an arrival that asked
+    /// Puts the "Something to try" (Advise) card under the top of the viewport, for an arrival that asked
     /// for it — see <see cref="AdviseFocus"/>.
     /// </summary>
     /// <remarks>
@@ -509,9 +509,6 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryTitleLabel.Text = "Still getting to know them";
             SummaryGeneratedLabel.IsVisible = false;
             SummaryLabel.Text = $"We'll summarise how {NameFormatting.FirstName(member.Name)} is doing here as soon as there's enough data to say something useful.";
-            // Suggestions come from the same generation as the summary, so they are absent for
-            // exactly the members the placeholder is for.
-            SuggestionsCard.IsVisible = false;
         }
 
         ApplyTrends(member.Metrics);
@@ -549,7 +546,6 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryGeneratedLabel.IsVisible = true;
             _digestRendered = true;
 
-            ApplySuggestion(digest.Suggestion);
             ApplyUrgency(digest.Urgency);
 
             if (unchanged)
@@ -592,7 +588,7 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Shows the wellness-suggestion card, or hides it when there is nothing to suggest right now
+    /// Shows the "Something to try" (Advise) card, or hides it when there is nothing to suggest right now
     /// — a blank <see cref="AdviseResponse.Suggestion"/> means exactly that, not a failed call.
     /// </summary>
     private void ApplyAdvise(AdviseResponse advise)
@@ -742,23 +738,6 @@ public partial class CardiMemberDetailPage : ContentPage
             _isBusy = false;
             PendingQuestionCard.SetBusy(false);
         }
-    }
-
-    /// <summary>
-    /// Shows the "Tips" message under the summary, or hides the section when this generation
-    /// produced none.
-    /// </summary>
-    private void ApplySuggestion(string? suggestion)
-    {
-        if (string.IsNullOrWhiteSpace(suggestion))
-        {
-            SuggestionsCard.IsVisible = false;
-            return;
-        }
-
-        SuggestionsTitleLabel.Text = "Tips";
-        SuggestionLabel.Text = suggestion;
-        SuggestionsCard.IsVisible = true;
     }
 
     /// <summary>

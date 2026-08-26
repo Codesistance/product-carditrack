@@ -163,8 +163,8 @@
                            HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Border>
 
-                <!-- Advise: last in the row, only while this member has a fresh wellness suggestion
-                     waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
+                <!-- Advise: last in the row, only while this member has a fresh "Something to try"
+                     suggestion waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
                      now — a dot that pulsed at something without saying what, and with nothing to tap.
                      As a button it says both: the same 36 face and 20 glyph as CardiJournal and Alerts
                      beside it, and a tap that lands on the suggestion itself.
@@ -179,8 +179,8 @@
                       WidthRequest="36" HeightRequest="36"
                       VerticalOptions="Center"
                       IsVisible="False"
-                      SemanticProperties.Description="Wellness suggestion"
-                      SemanticProperties.Hint="Opens this CardiMember's wellness suggestion">
+                      SemanticProperties.Description="Something to try"
+                      SemanticProperties.Hint="Opens a suggestion the family could try with this CardiMember">
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnAdviseTapped"/>
                     </Grid.GestureRecognizers>

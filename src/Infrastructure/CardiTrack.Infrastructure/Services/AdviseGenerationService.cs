@@ -10,8 +10,8 @@ using Microsoft.Extensions.Logging;
 namespace CardiTrack.Infrastructure.Services;
 
 /// <summary>
-/// Generates the wellness suggestion shown as a Tip on CardiMember Details, and persists it as the
-/// member's <see cref="MemberAdvise"/> row — the batch half of "serve Advise from the last batch
+/// Generates the suggestion shown as "Something to try" on CardiMember Details, and persists it as
+/// the member's <see cref="MemberAdvise"/> row — the batch half of "serve Advise from the last batch
 /// output", the same shape as <see cref="StatusLineGenerationService"/>. The digest pass calls this
 /// after it changes what there is to say; the API only ever reads the row
 /// (<see cref="HealthInsightService.GetAdviseAsync"/>), and the Dashboard card's pulse indicator
@@ -38,7 +38,10 @@ public class AdviseGenerationService
     private static readonly TimeSpan RegenerationInterval = TimeSpan.FromDays(1);
 
     /// <summary>
-    /// <c>CARDITRACK_ADVISE_PROMPT</c> — the wellness suggestion shown as a Tip. Register is
+    /// <c>CARDITRACK_ADVISE_PROMPT</c> — the suggestion shown as "Something to try". Written to
+    /// the family about the member, third person throughout: the first generation shipped
+    /// "Perhaps try taking a short walk after dinner", which on a caregiver's phone reads as the
+    /// app telling the caregiver to walk — the readings are not the reader's. Register is
     /// <see cref="MedicalPromptBlocks.CaregiverRegister"/>, opened by
     /// <see cref="MedicalPromptBlocks.ToneWellness"/> rather than <see cref="MedicalPromptBlocks.Tone"/>:
     /// this is the one generation on this platform whose whole job is to suggest something, so the
@@ -51,6 +54,10 @@ public class AdviseGenerationService
         MedicalPromptBlocks.ToneWellness + MedicalPromptBlocks.Pronouns + """
         Suggest one everyday thing the family could try for this person, grounded in the
         reference below and their own recent readings and baseline.
+        You are writing to the family about the person being monitored, never to that person:
+        every suggestion says what the family could encourage or help the person do, with the
+        person named in it in the third person. Never write a bare instruction like an app
+        talking to its user — the reader is not the one the readings are about.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with entries — one per area of wellbeing where the readings genuinely support a
@@ -58,9 +65,10 @@ public class AdviseGenerationService
         suggestion that spans areas. Include an area only when something in the readings calls for
         it; an empty list is the correct answer when nothing does. Each entry:
         - topic: Sleep, Activity, HeartRate or General, exactly as written.
-        - summary: what in the readings prompted this suggestion.
-        - suggestion: one everyday thing the family could try, grounded in the reference below —
-          never a diagnosis, a prescription, or a change to medication or treatment.
+        - summary: what in the readings this suggestion answers.
+        - suggestion: one everyday thing the family could encourage or help this person do,
+          grounded in the reference below — never a diagnosis, a prescription, or a change to
+          medication or treatment.
         - guidelineCited: which reference below the suggestion draws on, in a few words.
 
         """ + MedicalPromptBlocks.ContextGuardrail;
