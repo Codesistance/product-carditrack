@@ -659,7 +659,7 @@ internal static partial class MedicalPromptBlocks
     /// keeps Advise on the wellness side of that line.
     /// </para>
     /// <para>
-    /// The closing rule is the traceability check: <c>AdviseGenerationService.AdviseAiResponse</c>
+    /// The closing rule is the traceability check: <c>AdviseGenerationService.AdviseClinicalAiResponse</c>
     /// asks the model which of these it drew from, so a reply that doesn't fit any of them is a
     /// reply the code can tell was not actually grounded here.
     /// </para>

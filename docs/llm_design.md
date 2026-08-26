@@ -622,6 +622,42 @@ the first of the next one.
   the same — and `DigestRetentionMonths` was raised 3 → 7 so the entries themselves survive the
   180-day history the top plan is sold on (see the DPIA, open item OI-14).
 
+### Advise — "Something to try" (built today)
+
+`CARDITRACK_ADVISE_PROMPT` — the suggestion card on CardiMember Details, one row per topic
+(`Sleep`, `Activity`, `HeartRate`, `General`), served read-only from `MemberAdvises` by the API
+and pulsed at by the Dashboard hero card. Two slots, the same split member chat runs, and stated
+here because the first build collapsed them into one prompt and shipped the predictable failure
+("Perhaps try taking a short walk after dinner" — addressed to nobody, on a day the steps were
+already up):
+
+- **Clinical (AI:Private, MedGemma).** Data only: where the readings fall short of the
+  public-health reference (`WellnessGuidelineReference` — WHO activity, AASM/CDC sleep, AHA
+  heart-rate, the wearable caveat) or the member's own 30-day baseline, and one everyday action
+  that would close that specific shortfall. Direction is part of the brief: a met or beaten
+  reference is a reason for **no entry**, never for "more of the same". No audience, no name —
+  MedGemma is not aware of who; just data. Guarded per entry: a condition or treatment, or a
+  citation naming no reference, is withheld (`AdviseRegisterGuards`).
+- **Rewrite (AI:Rewrite, Gemini).** Translation and addressing: the caregiver register, written
+  to the family about the member, who is named only through the `CardiTrackCardiMember`
+  placeholder — resolved to the real first name in code afterwards, so no model ever sees it.
+  Receives the clinical entries as `DeidentifiedFindings` and nothing else (DPIA row A20's
+  compile-time boundary). Guarded as copy: brief echoes ("just a suggestion", "worth mentioning
+  to their doctor" — the doctor line is fixed UI copy on the card now), figures in the summary,
+  and an unresolved name token all keep the previous row rather than serving the bad copy.
+- **Cadence and freshness.** Regenerates on the half-hourly `--job digest` pass behind its own
+  due-gate: at most daily, **or immediately when the stored rows carry an older
+  `PromptVersion`** — so a deployed brief change reaches every member within one pass instead of
+  hiding behind the interval. Rows serve for at most 3 days (`AdviseStaleness.MaxAge`); the card
+  shows its own "Updated N ago" so a day-old suggestion cannot masquerade as an answer to today.
+- **Failure posture.** A blank clinical field, a failed rewrite call, or rejected copy keeps the
+  previous row (a hiccup); clinical silence on a topic removes its row (deliberate); a guard-
+  tripped clinical entry is withheld and its row withdrawn.
+
+> **Known divergence:** the family digest above is still a single-pass MedGemma generation that
+> writes caregiver prose directly (with the same name placeholder). Under the two-slot contract
+> that is a misassignment at larger scale; migrating it is tracked as separate work.
+
 ---
 
 ## Family Sharing: When and How to Push Data

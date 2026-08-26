@@ -80,6 +80,31 @@ internal static class AdviseRegisterGuards
     ];
 
     /// <summary>
+    /// Phrases that are the briefs talking rather than a suggestion — the same backstop the
+    /// digest's <c>InstructionEchoes</c> is, for the same model behaviour: MedGemma and the
+    /// rewrite slot alike complete from the nearest text, and "It's just a suggestion, worth
+    /// mentioning to their doctor" reached a caregiver's screen verbatim before this list
+    /// existed. Each phrase sits wholly inside one line of the briefs so a reply that re-wraps
+    /// the text still matches; matched case-insensitively against the flattened copy.
+    /// </summary>
+    /// <remarks>
+    /// "Worth mentioning to their doctor" is deliberately here even though it is the register's
+    /// own boundary line: the card renders that framing as fixed UI copy now, so a generation
+    /// carrying it is burning its 25 words restating the chrome around it.
+    /// </remarks>
+    private static readonly string[] BriefEchoes =
+    [
+        "just a suggestion",
+        "worth mentioning to their doctor",
+        "grounded in the reference",
+        "close that shortfall",
+        "falls short of the reference",
+        "an empty list",
+        "clinical note",
+        "everyday words",
+    ];
+
+    /// <summary>
     /// True when the text names a condition or proposes a treatment — either way, a reply the
     /// caller must withhold rather than serve.
     /// </summary>
@@ -92,6 +117,28 @@ internal static class AdviseRegisterGuards
         return ConditionMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase))
             || TreatmentMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// True when the rewritten copy is the brief restating itself rather than this member's
+    /// suggestion — see <see cref="BriefEchoes"/>.
+    /// </summary>
+    internal static bool EchoesTheBrief(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var flattened = MedicalPromptBlocks.Flatten(text);
+        return BriefEchoes.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// True when a rewritten summary quotes a figure. The summary's job is what has been noticed
+    /// in everyday words — "steps rose from 3949 to 9099" is a lab note, and the figures already
+    /// live on the trend cards below it. Applied to the summary only: a suggestion may honestly
+    /// carry "15-20 minutes".
+    /// </summary>
+    internal static bool QuotesAFigure(string? summary) =>
+        !string.IsNullOrWhiteSpace(summary) && summary.Any(char.IsDigit);
 
     /// <summary>
     /// True when the cited reference names nothing — a blank field, or one of the placeholders a

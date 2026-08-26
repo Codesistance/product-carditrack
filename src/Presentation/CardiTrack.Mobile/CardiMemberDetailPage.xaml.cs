@@ -605,6 +605,10 @@ public partial class CardiMemberDetailPage : ContentPage
             ? string.Empty
             : $"Based on: {advise.GuidelineCited}";
         AdviseGuidelineLabel.IsVisible = !string.IsNullOrWhiteSpace(advise.GuidelineCited);
+        // Load-bearing next to a daily regeneration cadence: without it, yesterday's suggestion
+        // beside today's hourly summary reads as the two disagreeing about today.
+        AdviseGeneratedLabel.Text = $"Updated {RelativeTime.Format(advise.GeneratedAt.UtcDateTime)}";
+        AdviseGeneratedLabel.IsVisible = true;
         AdviseCard.IsVisible = true;
     }
 
