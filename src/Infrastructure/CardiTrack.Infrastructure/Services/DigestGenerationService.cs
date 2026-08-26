@@ -58,13 +58,15 @@ public partial class DigestGenerationService : IDigestGenerationService
         + "\n" + """
         When a reading is off the usual, say so plainly and let at least one suggestion respond to it.
         If a computed observation is present, lead with it; do not recap every listed figure. An ordinary day can be short.
+        The summary is what you conclude from the readings taken together, not the readings read back one by one: name only the reading or two that carry the conclusion, say in everyday words what the whole pattern suggests about how the day is going, and what that is worth to the family.
         If "Recent monitoring context" shows an unresolved alert or an observation that is suspicious, say so plainly in your own words and let the suggestion answer it; when that section is absent, never mention monitoring, alerts or observations at all.
         When family answers are present, use them to make sense of the readings; never retell them.
         A family answer marked with when it was told explains that day only — never carry it forward as though it were about today.
 
         Respond with:
         - summary: 2-5 sentences written to the family member about what the readings mean for CardiTrackCardiMember today, naming
-          the person as CardiTrackCardiMember — never a relationship stand-in. Interpret against the usual pattern and against how much they moved. Say plainly
+          the person as CardiTrackCardiMember — never a relationship stand-in. Interpret against the usual pattern and against how much they moved,
+          and end on the conclusion the readings add up to — a sentence a family could act on, not another figure. Say plainly
           when a reading is missing instead of padding with reassurance.
         - headline: a three-to-six-word label for the summary you just wrote — sentence case, no
           full stop, no name and no CardiTrackCardiMember, not a sentence.
@@ -123,6 +125,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         "account for a harder-working heart",
         "never mention weather at all",
         "do not recap every listed figure",
+        "read back one by one",
+        "carry the conclusion",
+        "what that is worth to the family",
+        "a sentence a family could act on",
         "never retell them",
         "never carry it forward as though it were about today",
         "recent monitoring context",
@@ -1974,7 +1980,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         /// </remarks>
         [Description(
             "2-5 sentences interpreting what today's readings mean for CardiTrackCardiMember, against the "
-            + "usual pattern and against how much they moved. Use family answers to read those "
+            + "usual pattern and against how much they moved, ending on the conclusion they add "
+            + "up to. Use family answers to read those "
             + "readings; never retell them. Not a recap of every figure. "
             + "Not a restatement of the instructions.")]
         public required string Summary { get; init; }

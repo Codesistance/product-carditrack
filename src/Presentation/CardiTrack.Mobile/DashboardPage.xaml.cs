@@ -127,7 +127,18 @@ public partial class DashboardPage : ContentPage
 
     private void OnDashboardExitArmed(object? sender, EventArgs e)
     {
-        ExitHintBanner.IsVisible = true;
+        // A quick fade rather than a pop — the popup scrims' timing. Skipped when the hint is
+        // already up (a third swipe inside the window) so re-arming doesn't blink it.
+        if (!ExitHintBanner.IsVisible)
+        {
+            ExitHintScrim.Opacity = 0;
+            ExitHintBanner.Opacity = 0;
+            ExitHintScrim.IsVisible = true;
+            ExitHintBanner.IsVisible = true;
+            _ = ExitHintScrim.FadeToAsync(1, 140);
+            _ = ExitHintBanner.FadeToAsync(1, 140);
+        }
+
         _exitHintCts?.Cancel();
         _exitHintCts = new CancellationTokenSource();
         var ct = _exitHintCts.Token;
@@ -152,6 +163,7 @@ public partial class DashboardPage : ContentPage
     {
         _exitHintCts?.Cancel();
         ExitHintBanner.IsVisible = false;
+        ExitHintScrim.IsVisible = false;
     }
 
     // Soft email-verification capture: nudge only, never a gate. Claim comes from the
@@ -614,7 +626,7 @@ public partial class DashboardPage : ContentPage
     }
 
     /// <summary>
-    /// The card's Advise button — M1-13, opened at the Wellness suggestion rather than at the top.
+    /// The card's Advise button — M1-13, opened at the "Something to try" suggestion rather than at the top.
     /// The button only exists while there is one to read, so landing anywhere else would be
     /// asking a caregiver to go and find the thing they just tapped.
     /// </summary>
