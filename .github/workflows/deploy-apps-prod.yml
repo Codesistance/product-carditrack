@@ -68,10 +68,6 @@ jobs:
           check_image web
           check_image worker
           check_image migrator
-          # MedGemma image is optional — only check if the stable tag exists
-          gcloud artifacts docker images describe $REGISTRY/medgemma:$TAG \
-            --project ${{ needs.env.outputs.gcp_project_id }} \
-            --quiet > /dev/null 2>&1 && echo "✓ medgemma:$TAG found" || echo "⚠ medgemma:$TAG not found — skipping"
       - name: Verify mobile artifacts exist in GCS
         run: |
           TAG="${{ inputs.tag }}"
@@ -222,95 +218,6 @@ jobs:
         run: |
           echo '${{ steps.secrets.outputs.play_store_key }}' > play-store-key.json
           echo "### Android deployed @ \`${{ needs.validate-tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
-
-  # ── MedGemma ─────────────────────────────────────────────────────────────────
-  deploy-medgemma:
-    name: Deploy MedGemma → Prod
-    needs: [env, validate-tag]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.env.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Deploy MedGemma service
-        env:
-          SERVICE: carditrack-prod-medgemma
-          IMAGE: ${{ needs.env.outputs.registry }}/medgemma:${{ needs.validate-tag.outputs.tag }}
-          REGION: ${{ needs.env.outputs.gcp_region }}
-          PROJECT: ${{ needs.env.outputs.gcp_project_id }}
-        run: |
-          gcloud run deploy $SERVICE \
-            --image $IMAGE \
-            --region $REGION \
-            --project $PROJECT \
-            --quiet
-      - name: Update MedGemma URL secret
-        env:
-          SERVICE: carditrack-prod-medgemma
-          SECRET_ID: carditrack-prod-medgemma-service-url
-          REGION: ${{ needs.env.outputs.gcp_region }}
-          PROJECT: ${{ needs.env.outputs.gcp_project_id }}
-          # Active versions to retain, newest first. Every consumer binds version = "latest"
-          # (deployments/cloud_run.tf), so only the newest is ever read; the spare exists so an
-          # operator can read back the previous URL after a bad deploy.
-          KEEP_VERSIONS: "2"
-        run: |
-          URL=$(gcloud run services describe $SERVICE \
-            --region $REGION \
-            --project $PROJECT \
-            --format='value(status.url)')
-
-          # A Cloud Run service URL is stable across deploys, so writing unconditionally added a
-          # byte-identical version on every MedGemma deploy. Secret Manager bills per active
-          # version, so that was pure cost — and it also overwrote the rollback spare with a
-          # duplicate. Compare first, write only on a real change.
-          CURRENT=$(gcloud secrets versions access latest \
-            --secret=$SECRET_ID \
-            --project $PROJECT 2>/dev/null || true)
-
-          if [ "$CURRENT" = "$URL" ]; then
-            echo "MedGemma URL unchanged ($URL) — no new secret version added."
-          else
-            echo -n "$URL" | gcloud secrets versions add $SECRET_ID \
-              --data-file=- \
-              --project $PROJECT
-            echo "MedGemma URL set to $URL."
-          fi
-
-          # Destroy superseded versions. Terraform cannot do this: the version it manages carries
-          # ignore_changes = [secret_data], and versions written by this step were never in its
-          # state. Destroy is irreversible, but safe for anything past the newest — nothing pins a
-          # version number, every binding resolves "latest". Cleanup failure must not fail the
-          # deploy, so each destroy degrades to a warning.
-          #
-          # The listing is captured rather than piped straight into the loop. Piped, a failure here
-          # is invisible: the step runs under bash -e without pipefail, so the pipeline takes the
-          # exit status of the while loop, which succeeds happily over the empty input a failed
-          # list produces. The deploy would carry on — correctly — but silently, and this step's
-          # whole job is to stop versions accumulating unnoticed.
-          if ! SUPERSEDED=$(gcloud secrets versions list $SECRET_ID \
-                --project $PROJECT \
-                --filter='state=ENABLED' \
-                --sort-by=~createTime \
-                --format='value(name.basename())'); then
-            echo "::warning::Could not list versions of $SECRET_ID; skipping prune this run."
-            SUPERSEDED=""
-          fi
-
-          echo "$SUPERSEDED" \
-            | tail -n +"$((KEEP_VERSIONS + 1))" \
-            | while read -r VERSION; do
-                [ -n "$VERSION" ] || continue
-                echo "Destroying superseded version $VERSION of $SECRET_ID."
-                gcloud secrets versions destroy "$VERSION" \
-                  --secret=$SECRET_ID \
-                  --project $PROJECT \
-                  --quiet \
-                  || echo "::warning::Could not destroy version $VERSION of $SECRET_ID."
-              done
-          echo "### MedGemma deployed @ \`${{ needs.validate-tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
 
   # ── Mobile: iOS ──────────────────────────────────────────────────────────────
   deploy-mobile-ios:

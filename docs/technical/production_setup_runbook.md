@@ -111,12 +111,16 @@ Apple account.
 
 ### 5. MedGemma service
 
-Prod has **no MedGemma**: `medgemma_image` is empty in `prod.tfvars`, and the pipeline-job
-and webhook-receiver flags are off because of it (Pub/Sub itself is already provisioned in
-prod). Enabling: build/push the image (CI lane exists), set
-`medgemma_image` in prod.tfvars, apply. Same `Q4_K_M` tag as dev — an assessment made in one
-environment must mean the same in another, and **no cheaper substitute models** in any
-environment (cost is managed by scale-to-zero, not substitution).
+MedGemma is the **shared GPU service** `carditrack-common-medgemma`
+(`infrastructure/common/cloud_run.tf`) — one instance serves every environment; there is no
+per-environment service any more. Prod is **not wired to it yet**: the pipeline-job and
+webhook-receiver flags are off (Pub/Sub itself is already provisioned in prod). Enabling: add
+prod's service-account emails to `medgemma_invoker_members` in `common.tfvars` and apply the
+common stack (the accounts must exist first — apply the prod stack before the grant). The
+`carditrack-prod-medgemma-service-url` secret is already seeded with the shared service's URL.
+Same `Q4_K_M` tag everywhere — an assessment made in one environment must mean the same in
+another, and **no cheaper substitute models** in any environment (cost is managed by
+scale-to-zero, not substitution).
 
 ### 6. Pipeline enablement flags (Terraform, listed here for ordering)
 

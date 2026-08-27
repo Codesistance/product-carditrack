@@ -207,7 +207,7 @@ Health data is ingested by the Worker's 10-minute polling sync (`WearableSyncWor
 
 ## 🌐 Deployment
 
-All infrastructure runs on **Google Cloud** (project `carditrack-490120`, region `europe-west2`): Cloud Run services (api, web, worker, medgemma, webhook-receiver) plus Cloud Run Jobs (the migrator and the three AI-pipeline jobs — digest, aggregator, assessor), Cloud SQL PostgreSQL 16, Secret Manager, GCS, Pub/Sub (both environments), and an optional domain-gated Load Balancer with Cloud Armor.
+All infrastructure runs on **Google Cloud** (project `carditrack-490120`, region `europe-west2`): Cloud Run services (api, web, worker, webhook-receiver per environment, plus the shared `carditrack-common-medgemma` GPU service in `europe-west1`) and Cloud Run Jobs (the migrator and the three AI-pipeline jobs — digest, aggregator, assessor), Cloud SQL PostgreSQL 16, Secret Manager, GCS, Pub/Sub (both environments), and an optional domain-gated Load Balancer with Cloud Armor.
 
 ### Infrastructure Setup (Terraform)
 

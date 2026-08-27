@@ -136,8 +136,9 @@ additional_labels = {
   audit       = "platform"
 }
 
-# AI pipeline job (digest generation): off — prod has no MedGemma service yet (medgemma_image
-# unset). Enable together with the MedGemma deploy.
+# AI pipeline job (digest generation): off — prod is not wired to the shared MedGemma GPU
+# service yet (its service accounts have no invoker grants in common.tfvars). Enable together
+# with that wiring.
 enable_pipeline_jobs = false
 
 # Webhook receiver: off - enable together with the AI pipeline rollout (the topic exists, but
@@ -163,7 +164,7 @@ public_ai_kind  = "VertexGemini"
 public_ai_model = "gemini-3.5-flash"
 
 # The same shared GPU service dev uses — one instance serves every environment. Prod has no
-# MedGemma consumers wired yet (enable_pipeline_jobs is off and medgemma_image is empty), so this
+# MedGemma consumers wired yet (enable_pipeline_jobs is off, no invoker grants), so this
 # seeds a secret nothing currently reads; it is set because the variable is required and a
 # placeholder here would be the very thing the seed's own note warns about.
 medgemma_service_url = "https://carditrack-common-medgemma-zhsd62wx5a-ew.a.run.app"

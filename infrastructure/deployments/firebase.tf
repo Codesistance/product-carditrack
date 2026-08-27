@@ -54,7 +54,7 @@ resource "google_firebase_android_app" "mobile" {
 # ADC on Cloud Run supplies the credential.
 #
 # Deliberately broad for now: this SA is shared by every Cloud Run resource in this
-# deployment that doesn't set its own template.service_account (api, web, worker, medgemma,
+# deployment that doesn't set its own template.service_account (api, web, worker,
 # and all three pipeline jobs — see the pipeline_aggregator_subscriber comment in
 # cloud_run.tf), so all of them gain FCM-send rights, not just the eventual sender.
 # Narrowing this to a dedicated SA now would mean guessing which service Phase 3 picks as
