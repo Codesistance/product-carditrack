@@ -16,6 +16,10 @@ public static class Auth0Extensions
         var domain = loader.GetRequired(ConfigurationKeys.Auth0.Domain);
         var audience = loader.GetRequired(ConfigurationKeys.Auth0.Audience);
 
+        // ForContext gives these events a SourceContext so the per-class
+        // Serilog MinimumLevel.Override in appsettings can target them.
+        var logger = Log.ForContext(typeof(Auth0Extensions));
+
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
@@ -39,13 +43,13 @@ public static class Auth0Extensions
                 {
                     OnAuthenticationFailed = context =>
                     {
-                        Log.Warning("JWT Authentication failed: {Error}", context.Exception.Message);
+                        logger.Warning(context.Exception, "JWT Authentication failed");
                         return Task.CompletedTask;
                     },
                     OnTokenValidated = context =>
                     {
                         var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                        Log.Debug("JWT validated for user: {UserId}", userId);
+                        logger.Debug("JWT validated for user: {UserId}", userId);
                         return Task.CompletedTask;
                     }
                 };
