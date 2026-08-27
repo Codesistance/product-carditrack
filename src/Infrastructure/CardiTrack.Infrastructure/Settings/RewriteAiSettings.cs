@@ -45,10 +45,27 @@ public class RewriteAiSettings : IMedGemmaModelSettings
     /// kind, and must stay an EU region — the DPIA excludes US processing and the global endpoint.</summary>
     public string? Location { get; set; }
 
-    /// <summary>VertexGemini kind: upper bound on a single completion. Rewrite-slot replies are
-    /// short (a chat reply, a query plan, three waiting sentences), so the default is far below
-    /// <see cref="PublicAiSettings.MaxOutputTokens"/>.</summary>
+    /// <summary>
+    /// Upper bound on a single completion, on both kinds — Vertex's <c>maxOutputTokens</c> and
+    /// Ollama's <c>num_predict</c> mean the same thing. Rewrite-slot replies are short (a chat
+    /// reply, a query plan, three waiting sentences), so the default is far below
+    /// <see cref="PublicAiSettings.MaxOutputTokens"/>.
+    /// </summary>
     public int MaxOutputTokens { get; set; } = 8192;
+
+    /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.ContextTokens" path="/summary"/>
+    /// Ollama kind only — the Vertex kind's window is a property of the model, not a request
+    /// parameter.
+    /// </summary>
+    /// <remarks>
+    /// Larger than <see cref="MaxOutputTokens"/> by more than a rewrite prompt is ever likely to
+    /// be: the two are not alternatives, and a window that only just fits the output ceiling
+    /// leaves nothing for the prompt. Startup refuses a pair that gets this backwards
+    /// (<c>AiServiceExtensions.RequireOutputFitsContext</c>), which is why the default is the
+    /// output ceiling plus a prompt's worth rather than a round number that happens to match it.
+    /// </remarks>
+    public int ContextTokens { get; set; } = 12288;
 
     /// <summary>
     /// VertexGemini kind: endpoint override for test doubles. Deliberately a separate key from

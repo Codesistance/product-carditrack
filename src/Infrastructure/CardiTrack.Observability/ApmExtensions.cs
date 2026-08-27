@@ -143,6 +143,13 @@ public static class ApmExtensions
         // subscribes to by default. Provider-agnostic so any engine gets this, not just Datadog.
         builder.Services.AddHostedService<OtlpExportDiagnostics>();
 
+        // ...and the export failures it surfaced turned out to be stale pooled connections to the
+        // intake, dropped with no retry behind them. Both halves are fixed in one place, engine-
+        // independently, for the same reason the diagnostics listener is: every backend here
+        // ships over the same OTLP/HTTP transport.
+        builder.Services.AddOtlpExportResilience();
+        OtlpExportResilience.EnableExportRetry(builder.Configuration);
+
         // Re-logs a failed span's exception as a normal structured log line, so it's searchable
         // in Datadog Logs like any other error instead of only visible inside span data.
         builder.Services.AddSingleton<ExceptionLoggingSpanProcessor>();

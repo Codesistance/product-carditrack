@@ -361,6 +361,15 @@ from `ApplicationDisplayVersion`, which the signed CI builds set from the releas
   raises what ships to Datadog too — the sink inherits the Serilog root level — so
   treat it as an ingest-spend change; set `Apm__MinimumLogLevel` by hand only to hold
   the sink **stricter** than the root.
+- `[OTel:.../FailedToReachCollector] ... The response ended prematurely (ResponseEnded)` is a
+  stale pooled connection, not a broken endpoint: an export is one request every few seconds
+  to a single host, which keeps a keep-alive connection alive right up to the intake's own
+  idle timer, and the pool then hands that dying connection to the next export.
+  `OtlpExportResilience` (wired from `AddApmTracing`) retires pooled connections after 20s
+  and turns on the SDK's in-memory retry, so losing that race is survivable. If these
+  warnings return, check them against the intake's idle timeout before suspecting the
+  network — and note that while they fire, logs still ship (Serilog's sink is a separate
+  transport), so the visible symptom is log records arriving with no trace ID on them.
 - One-shot job hosts must flush before exit or every span is dropped silently:
   `ApmExtensions.ForceFlushTraces` is called by `CardiTrack.PipelineJobs` before
   `FlushLogsAsync` — any future one-shot host needs the same.

@@ -15,4 +15,20 @@ public interface IMedGemmaModelSettings
 {
     string Model { get; }
     int TimeoutSeconds { get; }
+
+    /// <summary>
+    /// Ollama's <c>num_ctx</c> — the window prompt and completion share. Sent explicitly because
+    /// the alternative is not "no limit", it is whatever the server happens to default to: a
+    /// window sized for a chat turn silently truncates a long structured reply mid-token, and the
+    /// only evidence is a JSON parse error at whatever byte the cut landed on.
+    /// </summary>
+    int ContextTokens { get; }
+
+    /// <summary>
+    /// Ollama's <c>num_predict</c> — the ceiling on one completion, within
+    /// <see cref="ContextTokens"/>. Names the output budget in its own right rather than leaving
+    /// it as whatever is left over after the prompt, so a prompt that grows takes room from
+    /// nothing.
+    /// </summary>
+    int MaxOutputTokens { get; }
 }

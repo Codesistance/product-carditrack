@@ -33,6 +33,13 @@ public class MedGemmaClientTests
     private const string Prompt = "Weekly vitals prompt with MedicalNotes: chest pain at night";
     private const string ResponseText = "Trends look stable.";
 
+    /// <summary>The budget <see cref="CreateClient"/> configures — asserted against rather than
+    /// hard-coded at each call site so the two cannot drift.</summary>
+    private const int ContextTokens = 8192;
+
+    /// <inheritdoc cref="ContextTokens"/>
+    private const int MaxOutputTokens = 2048;
+
     /// <summary>Realistic non-streaming /api/generate payload; durations are nanoseconds.</summary>
     private const string GeneratePayload =
         """
@@ -511,11 +518,11 @@ public class MedGemmaClientTests
 
     /// <summary>Wraps a model reply (itself JSON) inside the Ollama envelope, matching how a real
     /// structured-output call actually arrives: <c>response</c> is a JSON *string*.</summary>
-    private static string StructuredPayload(string modelReplyJson) =>
+    private static string StructuredPayload(string modelReplyJson, string doneReason = "stop") =>
         $$"""
         {"model":"medgemma-4b","created_at":"2026-08-09T10:00:00Z",
          "response":{{JsonSerializer.Serialize(modelReplyJson)}},
-         "done":true,"done_reason":"stop","total_duration":45000000000,
+         "done":true,"done_reason":"{{doneReason}}","total_duration":45000000000,
          "prompt_eval_count":412,"eval_count":128}
         """;
 
@@ -664,6 +671,123 @@ public class MedGemmaClientTests
         }
     }
 
+    /// <summary>
+    /// The window and the output ceiling ride on every request, not just the structured ones: a
+    /// server left to its own default sizes the window for a chat turn, and the reply that gets
+    /// cut is whichever one ran longest — which is not knowable per call site.
+    /// </summary>
+    [Theory]
+    [InlineData("generate")]
+    [InlineData("chat")]
+    public async Task EveryCall_SendsTheConfiguredTokenBudget(string endpoint)
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK, endpoint == "chat" ? ChatPayload : GeneratePayload);
+        var client = CreateClient(handler, out _);
+
+        if (endpoint == "chat")
+            await client.ChatAsync([], "How did they sleep?");
+        else
+            await client.GenerateAsync(Prompt);
+
+        var body = Assert.Single(handler.Requests).Body!;
+        Assert.Contains($"\"num_ctx\":{ContextTokens}", body);
+        Assert.Contains($"\"num_predict\":{MaxOutputTokens}", body);
+    }
+
+    [Fact]
+    public async Task GenerateStructuredAsync_SendsTheConfiguredTokenBudget()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look stable."}"""));
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateStructuredAsync<TestStructuredResponse>(Prompt);
+
+        var body = Assert.Single(handler.Requests).Body!;
+        Assert.Contains($"\"num_ctx\":{ContextTokens}", body);
+        Assert.Contains($"\"num_predict\":{MaxOutputTokens}", body);
+    }
+
+    /// <summary>
+    /// The bug this pins: a structured reply cut off at the ceiling used to reach the
+    /// deserializer, which reported it as content that "could not be parsed" at whatever byte the
+    /// cut landed on — indistinguishable, in a log, from a model emitting nonsense. It is neither
+    /// unparseable nor nonsense; it is unfinished, and the fix is a number, so the error has to
+    /// say so and name the numbers.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_ReportsTruncation_RatherThanBlamingTheJson()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length"));
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        Assert.Contains("token budget", ex.Message);
+        Assert.DoesNotContain("could not be parsed", ex.Message);
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains("token budget", error.Message);
+        Assert.Contains(MaxOutputTokens.ToString(), error.Message);
+        Assert.Contains(ContextTokens.ToString(), error.Message);
+    }
+
+    /// <summary>Same DPIA invariant as every other failure path: the reply was derived from health
+    /// data, and being cut short does not make it safe to quote.</summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_TruncationReport_LeaksNeitherPromptNorReply()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK, StructuredPayload("""{"summary":"PATIENT-SECRET chest pain at ni""", doneReason: "length"));
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        Assert.DoesNotContain("PATIENT-SECRET", ex.Message);
+        Assert.All(logger.Entries, e => Assert.DoesNotContain("PATIENT-SECRET", e.Message));
+        Assert.All(logger.Entries, e => Assert.DoesNotContain("chest pain", e.Message));
+    }
+
+    [Fact]
+    public async Task GenerateStructuredAsync_TagsTheSpanAndDurationMetric_AsTruncated()
+    {
+        using var capture = new SpanCapture();
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length"));
+        var client = CreateClient(handler, out _);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        var span = Assert.Single(capture.Stopped);
+        Assert.Equal("truncated", span.GetTagItem("error.type"));
+        Assert.Equal(ActivityStatusCode.Error, span.Status);
+    }
+
+    /// <summary>
+    /// Free text takes the other branch on purpose: prose that stops early is still prose, and a
+    /// caller showing a chat reply is better served by it than by an exception. It is still
+    /// logged, because a sentence the model chose to end and a sentence the budget ended look
+    /// identical from the outside.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_WarnsButStillReturns_WhenTheReplyIsCutShort()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK, GeneratePayload.Replace("\"done_reason\":\"stop\"", "\"done_reason\":\"length\""));
+        var client = CreateClient(handler, out var logger);
+
+        var result = await client.GenerateAsync(Prompt);
+
+        Assert.Equal(ResponseText, result);
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("cut short", warning.Message);
+        Assert.DoesNotContain(ResponseText, warning.Message);
+    }
+
     private static MedGemmaClient CreateClient(FakeHttpMessageHandler handler, out ListLogger logger) =>
         CreateClient(handler, out logger, out _);
 
@@ -673,7 +797,14 @@ public class MedGemmaClientTests
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("PrivateAiClient").Returns(
             new HttpClient(handler) { BaseAddress = new Uri("http://localhost:11434") });
-        var settings = new PrivateAiSettings { Model = Model, BaseUrl = "http://localhost:11434", TimeoutSeconds = 300 };
+        var settings = new PrivateAiSettings
+        {
+            Model = Model,
+            BaseUrl = "http://localhost:11434",
+            TimeoutSeconds = 300,
+            ContextTokens = ContextTokens,
+            MaxOutputTokens = MaxOutputTokens,
+        };
         logger = new ListLogger();
         time = new InstantRetryTimeProvider();
         return new MedGemmaClient(factory, settings, "PrivateAiClient", logger, time);

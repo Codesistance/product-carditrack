@@ -487,6 +487,62 @@ public class AiServiceExtensionsTests
         return config;
     }
 
+    /// <summary>
+    /// A completion is drawn from the same window as the prompt, so a ceiling that meets or
+    /// exceeds the window describes a call with no room to ask anything. Caught at boot because
+    /// the symptom otherwise arrives per-generation and looks nothing like a config mistake: a
+    /// reply cut off mid-token, reported as JSON that would not parse.
+    /// </summary>
+    [Theory]
+    [InlineData("AI:Private")]
+    [InlineData("AI:Rewrite")]
+    public void AddAiServices_Throws_WhenTheOutputCeilingLeavesNoRoomForAPrompt(string section)
+    {
+        var config = Config();
+        config[$"{section}:ContextTokens"] = "4096";
+        config[$"{section}:MaxOutputTokens"] = "4096";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains($"{section}:MaxOutputTokens", ex.Message);
+        Assert.Contains("ContextTokens", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("AI:Private", "ContextTokens")]
+    [InlineData("AI:Private", "MaxOutputTokens")]
+    [InlineData("AI:Rewrite", "ContextTokens")]
+    [InlineData("AI:Rewrite", "MaxOutputTokens")]
+    public void AddAiServices_Throws_WhenATokenBudgetIsNotPositive(string section, string key)
+    {
+        var config = Config();
+        config[$"{section}:{key}"] = "0";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains($"{section}:{key}", ex.Message);
+    }
+
+    /// <summary>
+    /// The Vertex kind has no context window to configure — it is a property of the model, not a
+    /// request parameter — so the key is neither required nor read on that branch. Both shapes a
+    /// deployment can actually present are pinned: absent, and left behind at a value the Ollama
+    /// kind would have refused to boot on.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("0")]
+    public void AddAiServices_IgnoresTheContextWindow_ForTheVertexRewriteKind(string? contextTokens)
+    {
+        var config = VertexRewriteConfig();
+        if (contextTokens is not null)
+            config["AI:Rewrite:ContextTokens"] = contextTokens;
+
+        var client = Resolve(config).GetRequiredKeyedService<IExternalAiClient>("RewriteProvider");
+
+        Assert.IsType<VertexAiClient>(client);
+    }
+
     private static Dictionary<string, string?> Config() => new()
     {
         ["AI:Public:Kind"] = "Gemini",

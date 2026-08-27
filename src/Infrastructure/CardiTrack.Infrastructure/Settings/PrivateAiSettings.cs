@@ -22,6 +22,31 @@ public class PrivateAiSettings : IMedGemmaModelSettings
     /// <summary>Generous by default — CPU inference on a 4B model is measured in tens of seconds.</summary>
     public int TimeoutSeconds { get; set; } = 300;
 
+    /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.ContextTokens" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// 8192 rather than the 4096 an unconfigured Ollama serves: the clinical prompts on this slot
+    /// carry a day of readings, the family's questionnaire answers and the reply schema, and at
+    /// 4096 a digest ran out of window part-way through its first field. The cost is KV cache —
+    /// it scales with this number, and this model is served on CPU-backed Cloud Run — so it is a
+    /// setting, not a constant: an environment that measures memory pressure lowers it here
+    /// rather than in code.
+    /// </remarks>
+    public int ContextTokens { get; set; } = 8192;
+
+    /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.MaxOutputTokens" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// 2048 is several times what any prompt on this slot actually asks for — a digest is a few
+    /// sentences and some short fields — because this ceiling is not the place to enforce
+    /// brevity. The prompt and the reply schema ask for that, and a reply that ignores them is
+    /// rejected downstream on its merits; cutting it off here would instead produce truncated
+    /// JSON, which is unreadable rather than merely too long.
+    /// </remarks>
+    public int MaxOutputTokens { get; set; } = 2048;
+
     // CurrentStatusBudgetSeconds was removed with the batch move: the status line is generated
     // by the pipeline (StatusLineGenerationService) and served from its persisted row, so no
     // request waits on a generation and the budget has nothing left to protect.
