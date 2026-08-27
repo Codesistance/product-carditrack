@@ -87,7 +87,7 @@ MedGemma runs as **one shared Cloud Run service**, `carditrack-common-medgemma`,
 | Ingress | `INGRESS_TRAFFIC_ALL`; port 8080 — IAM (`roles/run.invoker` on named identities) is the only boundary, and `common/alerting.tf` watches for a public grant; see [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md) §9.1a |
 | Enablement | Service is created only when the `medgemma_image` tfvar (in `common.tfvars`) is non-empty |
 
-Deployment flow: `.github/workflows/deploy-medgemma-common.yml` builds and deploys the image and (when its `update_env_secrets` input is set) writes the service URL to each environment's Secret Manager secret `carditrack-<env>-medgemma-service-url`, which the hosts consume as **`AI__Private__BaseUrl`**. The retired per-environment CPU services and their `deploy-medgemma` job in `deploy-apps-prod.yml` are gone — the shared service is the only serving path.
+Deployment flow: `.github/workflows/deploy-medgemma-common.yml` builds and deploys the image and (when its `update_env_secrets` input is set) writes the service URL to the Secret Manager secret `carditrack-<env>-medgemma-service-url` of each environment in its matrix — **dev only today**; prod's secret is Terraform-seeded and joins the matrix when prod is wired to the service. The hosts consume the secret as **`AI__Private__BaseUrl`**. The retired per-environment CPU services and their `deploy-medgemma` job in `deploy-apps-prod.yml` are gone — the shared service is the only serving path.
 
 ---
 

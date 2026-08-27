@@ -237,7 +237,7 @@ The image is built from `src/Infrastructure/MedGemma/Dockerfile`, which bakes th
 
 **Region.** `europe-west1` rather than `europe-west2`, because Cloud Run offers no L4 there. Both are EU/EEA under the same Google Cloud DPA, so this is a region change and not a transfer — see the residency note in [dpia.md](./compliance/dpia.md) §4.3.
 
-**Image and URL.** The image lives in a second Artifact Registry repo in `europe-west1`: Cloud Run pulls from its own region, and cross-region pulls of a multi-GB image would dominate a cold start this service now takes by design. The service URL is written into each environment's `carditrack-<env>-medgemma-service-url` secret by `deploy-medgemma-common.yml`, which the API consumes as `AI__Private__BaseUrl`. It is set explicitly and never constructed — this project issues Cloud Run's hash URL form, so it cannot be derived from parts.
+**Image and URL.** The image lives in a second Artifact Registry repo in `europe-west1`: Cloud Run pulls from its own region, and cross-region pulls of a multi-GB image would dominate a cold start this service now takes by design. The service URL is written into an environment's `carditrack-<env>-medgemma-service-url` secret by `deploy-medgemma-common.yml` (opt-in via `update_env_secrets`; its matrix covers dev only today — prod's secret stays Terraform-seeded until prod is wired), and the API consumes it as `AI__Private__BaseUrl`. It is set explicitly and never constructed — this project issues Cloud Run's hash URL form, so it cannot be derived from parts.
 
 See [llm_design.md](./llm_design.md) for the AI architecture.
 
