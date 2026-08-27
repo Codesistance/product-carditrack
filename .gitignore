@@ -20,6 +20,9 @@ out/
 !.claude/settings.json
 # Re-include the directory (not a file below it) so checked-in skills are tracked.
 !.claude/skills/
+# Coverage log for the scheduled MedGemma/medical-AI Slack digest, so each run can dedupe
+# against what a prior run already reported instead of repeating itself.
+!.claude/medgemma-ai-digest-log.md
 *.userprefs
 *.pidb
 *.DotSettings.user
