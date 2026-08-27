@@ -525,17 +525,22 @@ public class AiServiceExtensionsTests
 
     /// <summary>
     /// The Vertex kind has no context window to configure — it is a property of the model, not a
-    /// request parameter — so a section that omits it still boots on that kind.
+    /// request parameter — so the key is neither required nor read on that branch. Both shapes a
+    /// deployment can actually present are pinned: absent, and left behind at a value the Ollama
+    /// kind would have refused to boot on.
     /// </summary>
-    [Fact]
-    public void AddAiServices_DoesNotRequireAContextWindow_ForTheVertexRewriteKind()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("0")]
+    public void AddAiServices_IgnoresTheContextWindow_ForTheVertexRewriteKind(string? contextTokens)
     {
         var config = VertexRewriteConfig();
-        config["AI:Rewrite:ContextTokens"] = "0";
+        if (contextTokens is not null)
+            config["AI:Rewrite:ContextTokens"] = contextTokens;
 
-        var provider = Resolve(config);
+        var client = Resolve(config).GetRequiredKeyedService<IExternalAiClient>("RewriteProvider");
 
-        Assert.NotNull(provider.GetRequiredKeyedService<IExternalAiClient>("RewriteProvider"));
+        Assert.IsType<VertexAiClient>(client);
     }
 
     private static Dictionary<string, string?> Config() => new()
