@@ -54,9 +54,10 @@ resource "google_firebase_android_app" "mobile" {
 # ADC on Cloud Run supplies the credential.
 #
 # Deliberately broad for now: this SA is shared by every Cloud Run resource in this
-# deployment that doesn't set its own template.service_account (api, web, worker,
-# and all three pipeline jobs — see the pipeline_aggregator_subscriber comment in
-# cloud_run.tf), so all of them gain FCM-send rights, not just the eventual sender.
+# deployment that doesn't set its own template.service_account — today the Worker and
+# the DB migrator job; api, web, the webhook receiver and the pipeline jobs all run as
+# dedicated SAs (see service_accounts.tf) — so both gain FCM-send rights, not just the
+# eventual sender.
 # Narrowing this to a dedicated SA now would mean guessing which service Phase 3 picks as
 # the sender (docs/technical/notification_engine.md §16 — likely NotificationDispatchWorker
 # per the Worker-exclusivity rule in CLAUDE.md) and rewiring Worker's existing Cloud

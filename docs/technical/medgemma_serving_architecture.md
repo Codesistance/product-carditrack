@@ -2,11 +2,13 @@
 
 **Status:** **Implemented (2026-08-21)** — option B built and serving; see §9 for what was built, what deviated from this document, and the benchmark that closes MS-3. MS-1 (real spend) needs a week of billing and stays open.
 **Scope:** Where MedGemma inference runs and what it costs. Covers the Cloud Run CPU service as deployed, the measured failure mode (HTTP 429), and the GPU options. Does **not** cover which model is served, prompt content, or the SSA contract.
-**Relationship to other docs:** [llm_design.md](../llm_design.md) owns the SSA → MedGemma contract and first sketched the GPU option. [apm_setup_runbook.md](./apm_setup_runbook.md) owns the client-side telemetry these numbers come from. [dpia.md](../compliance/dpia.md) owns residency and the US transfer surface (OI-5). The `medgemma_min_instances` comment in [cloud_run.tf](../../infrastructure/deployments/cloud_run.tf) owns the warm-instance economics and stays correct — this document changes the compute underneath it, not that reasoning.
+**Relationship to other docs:** [llm_design.md](../llm_design.md) owns the SSA → MedGemma contract and first sketched the GPU option. [apm_setup_runbook.md](./apm_setup_runbook.md) owns the client-side telemetry these numbers come from. [dpia.md](../compliance/dpia.md) owns residency and the US transfer surface (OI-5). The warm-instance economics were owned by the `medgemma_min_instances` comment on the per-environment CPU service in `deployments/cloud_run.tf` — removed with that service on 2026-08-27 (see git history); the shared service's own scaling reasoning lives in [common/cloud_run.tf](../../infrastructure/common/cloud_run.tf).
 
 ---
 
 ## 1. Context — what is actually deployed
+
+*(Historical snapshot: this section describes the per-environment CPU service as it ran before the §9 GPU move. That service and its Terraform sources — `medgemma_min_instances`, the `deployments/cloud_run.tf` service block, the dev.tfvars entries — were removed on 2026-08-27; the live shape is §9's `carditrack-common-medgemma`.)*
 
 `carditrack-dev-medgemma` serves `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` (4-bit quantised, ~3 GB) on **stock Ollama** — `ollama/ollama:latest`, `ENTRYPOINT ["ollama", "serve"]` ([Dockerfile](../../src/Infrastructure/MedGemma/Dockerfile)). Not vLLM; vLLM appears in this repo only as a future option in `llm_design.md`.
 
