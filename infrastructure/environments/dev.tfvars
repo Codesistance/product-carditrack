@@ -83,12 +83,13 @@ enable_pipeline_jobs = true
 # Kind=VertexGemini and refuses to boot, by design.
 #
 # Model bumped gemini-2.5-flash → gemini-3.5-flash (2026-08-25): the whole 2.5 family retires
-# ~2026-10-16 (Google's pages disagree between the 16th and the 20th; plan for the 16th), so dev
-# leads the 3.x migration and prod follows once it has soaked — prod runs gemini-2.5-flash, the
-# pairing dev just vacated, until then. gemini-3.5-flash is served from europe-west2 (the
-# public_ai_location default) per the §3 matrix in docs/technical/vertex_ai_setup.md, but that
-# measurement is availability metadata only: run the full §3 generateContent probe
-# (responseJsonSchema + thinkingBudget 0) against it before applying.
+# ~2026-10-16 (Google's pages disagree between the 16th and the 20th; plan for the 16th). Prod
+# pins the same model — the estate standardised on the 3.5 generation everywhere at once (owner
+# decision 2026-08-25) rather than staging it dev-first. gemini-3.5-flash is served from
+# europe-west2 (the public_ai_location default) per the §3 matrix in
+# docs/technical/vertex_ai_setup.md, but that measurement is availability metadata only: run the
+# full §3 generateContent probe (responseJsonSchema + thinkingBudget 0) against it before
+# applying.
 public_ai_kind  = "VertexGemini"
 public_ai_model = "gemini-3.5-flash"
 

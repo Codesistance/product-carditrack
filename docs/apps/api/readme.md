@@ -256,7 +256,7 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
   "AI": {
     "Public": {
       "Kind": "Gemini",
-      "Model": "gemini-2.5-flash",
+      "Model": "gemini-3.5-flash",
       "ApiKey": "unset-local-placeholder",
       "BaseUrl": "",
       "TimeoutSeconds": 60,
