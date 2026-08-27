@@ -598,13 +598,13 @@ variable "public_ai_kind" {
 }
 
 # Both live environments override this in their tfvars; the default only catches a new
-# environment that forgets to. gemini-2.0-flash was retired 2026-06-01 (Gemini API; earlier on
-# Vertex) and must not come back — gemini-2.5-flash works on both the Gemini and VertexGemini
-# kinds until the 2.5 family's own retirement (~2026-10-16).
+# environment that forgets to. Retired generations (2.0 retired 2026-06-01 on the Gemini API and
+# earlier on Vertex; 2.5 retires ~2026-10-16) must not come back — gemini-3.5-flash works on
+# both the Gemini and VertexGemini kinds.
 variable "public_ai_model" {
   description = "Model identifier passed to the public AI provider"
   type        = string
-  default     = "gemini-2.5-flash"
+  default     = "gemini-3.5-flash"
 }
 
 # Null keeps the provider's documented default endpoint, which is what dev and prod use.
@@ -665,22 +665,25 @@ variable "public_ai_api_key_secret_id" {
 # this: regional availability, responseJsonSchema support and thinkingBudget 0 are the three
 # assumptions the client makes of it.
 #
-# Hard deadline: gemini-2.5-flash-lite retires with the 2.5 family ~2026-10-16. Its successor
-# gemini-3.1-flash-lite was not served from ANY allowlisted EU region as of 2026-08-25 (§3
-# matrix), which is why this slot has not moved yet. Re-probe for it periodically; if it is
-# still absent from the EU as the date nears, gemini-3.5-flash (europe-west2) is the fallback —
-# either way the candidate goes through the AiSplitEvaluator comparison before the swap.
+# gemini-3.5-flash-lite (owner decision 2026-08-25, part of standardising the estate on the 3.5
+# generation): the outgoing gemini-2.5-flash-lite retires with the 2.5 family ~2026-10-16, and
+# the earlier candidate gemini-3.1-flash-lite never reached an allowlisted EU region. Two things
+# were NOT verifiable when this was set and MUST happen before the apply: the §3 probe (this
+# model's EU-regional availability is unmeasured — if europe-west1 404s, probe west2/west4 and
+# set rewrite_ai_location to match) and the AiSplitEvaluator comparison on the real rewrite
+# prompts. gemini-3.5-flash (europe-west2, probed for the public slot) is the fallback if the
+# lite tier fails either check.
 variable "rewrite_ai_model" {
   description = "Model identifier for the rewrite slot's VertexGemini kind"
   type        = string
-  default     = "gemini-2.5-flash-lite"
+  default     = "gemini-3.5-flash-lite"
 }
 
-# Same EU-only compliance gate as public_ai_location above. Defaults to europe-west1, not the
-# estate's europe-west2: London does not serve gemini-2.5-flash-lite (publisher-model 404,
-# measured 2026-08-21 — the availability matrix is in docs/technical/vertex_ai_setup.md §3),
-# while Belgium does, sits ~6-10ms away, and is where the MedGemma GPU move (Option B) is
-# headed. west2 stays in the allowlist for models it does serve.
+# Same EU-only compliance gate as public_ai_location above. Defaults to europe-west1, chosen
+# when the slot ran gemini-2.5-flash-lite (which London did not serve — publisher-model 404,
+# measured 2026-08-21; Belgium did, sits ~6-10ms away, and is where the MedGemma GPU move
+# (Option B) is headed). Where gemini-3.5-flash-lite is served has not been measured: the §3
+# probe before the apply decides whether this stays west1 or moves within the allowlist.
 variable "rewrite_ai_location" {
   description = "Vertex AI location for the rewrite slot's VertexGemini kind (EU regional endpoint)"
   type        = string

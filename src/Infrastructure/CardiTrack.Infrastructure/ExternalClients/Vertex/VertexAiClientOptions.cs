@@ -9,7 +9,7 @@ namespace CardiTrack.Infrastructure.ExternalClients.Vertex;
 /// </summary>
 public sealed record VertexAiClientOptions
 {
-    /// <summary>Publisher model id, e.g. <c>gemini-2.5-flash-lite</c>.</summary>
+    /// <summary>Publisher model id, e.g. <c>gemini-3.5-flash-lite</c>.</summary>
     public required string Model { get; init; }
 
     /// <summary>GCP project the call is billed to and authorised against.</summary>

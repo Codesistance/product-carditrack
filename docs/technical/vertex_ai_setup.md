@@ -113,9 +113,12 @@ signal than `generateContent`, which needs `aiplatform.user`):
 | gemini-3.1-flash-lite | ✗ | ✗ | ✗ |
 | gemini-3.5-flash | ✓ | ✗ | ✓ |
 
-This is why `rewrite_ai_location` defaults to `europe-west1` (flash-lite is not in London)
+This is why `rewrite_ai_location` defaults to `europe-west1` (2.5-flash-lite was not in London)
 while `public_ai_location` stays `europe-west2` (flash is). Re-measure before any model change
-— availability moves.
+— availability moves. **Not yet in this matrix: `gemini-3.5-flash-lite`** (registered on Vertex
+~July 2026), which the rewrite slot now targets — its EU-regional availability is unmeasured, so
+the probe above is mandatory before the apply and decides whether `rewrite_ai_location` stays
+`europe-west1`.
 
 ### Retirement clock (checked 2026-08-25)
 
@@ -124,9 +127,10 @@ fails exactly like an unavailable one — after having worked for months.
 
 | Model | Retirement | Consequence for us |
 |---|---|---|
-| gemini-2.0-flash (+ -lite, -001) | **Retired** — 2026-03-03 on Vertex, 2026-06-01 on the Gemini API | Was the `public_ai_model` fallback default; prod's public slot ran it via the API-key kind and has been calling a dead model since 2026-06-01. Fixed 2026-08-25: prod tfvars now pin the Vertex flip + gemini-2.5-flash, and the Terraform default is bumped so the dead model cannot come back. |
-| gemini-2.5-flash / -flash-lite / -pro | **~2026-10-16** (release notes say the 16th, the lifecycle page the 20th — plan for the 16th) | Public slot: dev soaks gemini-3.5-flash from 2026-08-25, prod follows once soaked. Rewrite slot: must move off gemini-2.5-flash-lite by this date. |
-| gemini-3.1-flash-lite | n/a (successor) | Intended rewrite-slot target, but **not served from any allowlisted EU region** as of the matrix above. Re-probe periodically; fallback is gemini-3.5-flash (europe-west2) if the EU gap persists as the date nears. |
+| gemini-2.0-flash (+ -lite, -001) | **Retired** — 2026-03-03 on Vertex, 2026-06-01 on the Gemini API | Was the `public_ai_model` fallback default; prod's public slot ran it via the API-key kind and had been calling a dead model since 2026-06-01. Fixed 2026-08-25: prod tfvars pin the Vertex flip, and the Terraform default is bumped so the dead model cannot come back. |
+| gemini-2.5-flash / -flash-lite / -pro | **~2026-10-16** (release notes say the 16th, the lifecycle page the 20th — plan for the 16th) | Cleared in configuration 2026-08-25 (owner decision): the estate standardised on the 3.5 generation everywhere at once — public slot `gemini-3.5-flash` in both environments, rewrite slot `gemini-3.5-flash-lite` — rather than staging dev-first, since the interim 2.5 pins never shipped an apply and the deadline stood regardless. |
+| gemini-3.1-flash-lite | n/a (skipped) | Was the intended rewrite-slot target but never reached an allowlisted EU region (matrix above); superseded by gemini-3.5-flash-lite. |
+| gemini-3.5-flash / -flash-lite | current targets | 3.5-flash: availability measured (matrix above), full §3 probe still required pre-apply. 3.5-flash-lite: **EU availability unmeasured** — §3 probe plus the AiSplitEvaluator comparison are both open pre-apply steps; fallback is gemini-3.5-flash (europe-west2) if either fails. |
 
 Sources: the Gemini API deprecations page and the Vertex AI model lifecycle page — re-check both
 whenever this table is consulted, and re-date the heading when re-checked.
