@@ -43,7 +43,7 @@ public static class Auth0Extensions
                 {
                     OnAuthenticationFailed = context =>
                     {
-                        logger.Warning("JWT Authentication failed: {Error}", context.Exception.Message);
+                        logger.Warning(context.Exception, "JWT Authentication failed: {Error}", context.Exception.Message);
                         return Task.CompletedTask;
                     },
                     OnTokenValidated = context =>
