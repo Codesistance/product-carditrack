@@ -593,6 +593,13 @@ variable "medgemma_context_tokens" {
   default     = 8192
 
   validation {
+    condition     = var.medgemma_context_tokens > 0
+    error_message = "medgemma_context_tokens must be greater than zero."
+  }
+
+  # Checked here as well as in AiServiceExtensions: the app refusing to boot is a correct
+  # outcome but a late one — by then the revision is deployed and the old one is gone.
+  validation {
     condition     = var.medgemma_context_tokens > var.medgemma_max_output_tokens
     error_message = "medgemma_context_tokens must exceed medgemma_max_output_tokens, or no room is left for a prompt."
   }
@@ -606,6 +613,11 @@ variable "medgemma_max_output_tokens" {
   description = "Upper bound on a single MedGemma completion (num_predict), within the context window"
   type        = number
   default     = 2048
+
+  validation {
+    condition     = var.medgemma_max_output_tokens > 0
+    error_message = "medgemma_max_output_tokens must be greater than zero."
+  }
 }
 
 # ── Public AI provider (reports and chat) ─────────────────────────────────────

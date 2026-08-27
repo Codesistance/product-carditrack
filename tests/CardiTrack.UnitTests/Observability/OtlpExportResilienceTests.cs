@@ -33,7 +33,7 @@ public class OtlpExportResilienceTests
     [Fact]
     public void EnableExportRetry_TurnsOnInMemoryRetry_WhenNothingHasSaidOtherwise()
     {
-        var builder = WebApplication.CreateBuilder();
+        var builder = EmptyConfigurationBuilder();
 
         OtlpExportResilience.EnableExportRetry(builder.Configuration);
 
@@ -50,7 +50,7 @@ public class OtlpExportResilienceTests
     [InlineData("none")]
     public void EnableExportRetry_LeavesAnExplicitChoiceAlone(string configured)
     {
-        var builder = WebApplication.CreateBuilder();
+        var builder = EmptyConfigurationBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             [OtlpExportResilience.RetryConfigurationKey] = configured,
@@ -59,5 +59,17 @@ public class OtlpExportResilienceTests
         OtlpExportResilience.EnableExportRetry(builder.Configuration);
 
         Assert.Equal(configured, builder.Configuration[OtlpExportResilience.RetryConfigurationKey]);
+    }
+
+    /// <summary>
+    /// A builder carrying nothing but what the test puts in it. `CreateBuilder` loads the
+    /// runner's environment variables, and the key under test is one a machine may legitimately
+    /// have set — which would decide the outcome of these tests before they ran.
+    /// </summary>
+    private static WebApplicationBuilder EmptyConfigurationBuilder()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Configuration.Sources.Clear();
+        return builder;
     }
 }
