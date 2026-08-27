@@ -1,5 +1,7 @@
 # Cloud Run Services
-# Manages API, Web, and Worker services on Google Cloud Run
+# Manages the API, Web, Worker and webhook receiver services on Google Cloud Run,
+# plus the Cloud Run jobs: the DB migrator and the pipeline jobs (digest, aggregator,
+# assessor, themer)
 
 # Variables
 variable "api_service_name" {
@@ -397,7 +399,7 @@ resource "google_cloud_run_v2_service" "web" {
 # Executed once per deploy by the CI pipeline; exits when migrations are complete.
 # The image is owned by CI (`gcloud run jobs update --image`), not Terraform — the
 # variable default only bootstraps the initial create, so image changes are ignored
-# here exactly as they are for the api/web/worker services.
+# here exactly as they are for every other Cloud Run service and job in this module.
 resource "google_cloud_run_v2_job" "migrator" {
   name     = "${var.api_service_name}-migrator"
   location = var.cloud_run_location
