@@ -310,6 +310,10 @@ public static class AiServiceExtensions
         RequireValue(settings.Model, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.Model));
         RequireValue(settings.BaseUrl, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.BaseUrl));
         RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.TimeoutSeconds));
+        RequirePositive(settings.ContextTokens, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.ContextTokens));
+        RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.MaxOutputTokens));
+        RequireOutputFitsContext(ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.MaxOutputTokens),
+            nameof(PrivateAiSettings.ContextTokens), settings.MaxOutputTokens, settings.ContextTokens);
         RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.BaseUrl));
 
         RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.PrivateSectionName, settings.BaseUrl, settings.UseIdentityToken);
@@ -354,13 +358,14 @@ public static class AiServiceExtensions
 
         RequireValue(settings.Model, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Model));
         RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.TimeoutSeconds));
+        // Out of the kind branches below: both kinds cap a completion with it.
+        RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens));
 
         if (kind == RewriteAiProviderKind.VertexGemini)
         {
             RequireValue(settings.ProjectId, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.ProjectId));
             RequireValue(settings.Location, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Location));
             RequireAllowedVertexLocation(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.Location), settings.Location!);
-            RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens));
             if (!string.IsNullOrWhiteSpace(settings.VertexBaseUrl))
                 RequireVertexEndpointOverride(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.VertexBaseUrl), settings.VertexBaseUrl);
             // BaseUrl and UseIdentityToken belong to the Ollama kind and are never read on this
@@ -373,6 +378,9 @@ public static class AiServiceExtensions
         else
         {
             RequireValue(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
+            RequirePositive(settings.ContextTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.ContextTokens));
+            RequireOutputFitsContext(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens),
+                nameof(RewriteAiSettings.ContextTokens), settings.MaxOutputTokens, settings.ContextTokens);
             RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
             RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.RewriteSectionName, settings.BaseUrl, settings.UseIdentityToken);
         }
@@ -545,6 +553,24 @@ public static class AiServiceExtensions
     {
         if (value <= 0)
             throw new InvalidOperationException(Message(section, key, $"must be greater than zero (found {value})."));
+    }
+
+    /// <summary>
+    /// The output ceiling and the context window are not independent: the completion is spent out
+    /// of the same window as the prompt, so a ceiling that meets or exceeds the window leaves the
+    /// prompt nothing and describes a call that cannot succeed. Caught at boot because the
+    /// failure it otherwise causes is a reply truncated mid-token, which reads as the model
+    /// misbehaving rather than as a number being wrong.
+    /// </summary>
+    private static void RequireOutputFitsContext(
+        string section, string outputKey, string contextKey, int maxOutputTokens, int contextTokens)
+    {
+        if (maxOutputTokens >= contextTokens)
+        {
+            throw new InvalidOperationException(Message(section, outputKey,
+                $"is {maxOutputTokens}, which leaves no room for a prompt inside {contextKey} "
+                + $"({contextTokens}). The completion is drawn from the same window as the prompt."));
+        }
     }
 
     /// <summary>

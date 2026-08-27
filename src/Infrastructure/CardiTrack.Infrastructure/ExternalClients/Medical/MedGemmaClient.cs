@@ -48,6 +48,13 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     /// <summary>Ceiling on a server-advised <c>Retry-After</c>.</summary>
     private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// Ollama's <c>done_reason</c> for a generation that hit the token ceiling instead of
+    /// stopping on its own. Its counterparts are <c>stop</c> (finished) and <c>load</c>
+    /// (<see cref="WarmUpAsync"/>'s preload, which produces no completion at all).
+    /// </summary>
+    private const string LengthDoneReason = "length";
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMedGemmaModelSettings _settings;
     private readonly string _httpClientName;
@@ -82,7 +89,7 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             .Select(m => new OllamaMessage { Role = m.Role == ChatRole.User ? "user" : "assistant", Content = m.Content })
             .Append(new OllamaMessage { Role = "user", Content = userMessage })
             .ToList();
-        var request = new OllamaChatRequest { Model = _settings.Model, Messages = messages };
+        var request = new OllamaChatRequest { Model = _settings.Model, Messages = messages, Options = TokenBudget() };
         var (result, _) = await SendInstrumentedCoreAsync<OllamaChatResponse, string>(
             operationName: "chat",
             send: (client, token) => client.PostAsJsonAsync("/api/chat", request, token),
@@ -96,7 +103,7 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     public async Task<CardiTrack.Application.DTOs.Common.AiGenerationResult<string>> GenerateWithUsageAsync(
         string prompt, CancellationToken ct = default)
     {
-        var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt };
+        var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt, Options = TokenBudget() };
         var (result, usage) = await SendInstrumentedCoreAsync<OllamaGenerateResponse, string>(
             operationName: "generate_content",
             send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
@@ -130,7 +137,7 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     /// </remarks>
     public async Task WarmUpAsync(CancellationToken ct = default)
     {
-        var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = string.Empty };
+        var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = string.Empty, Options = TokenBudget() };
         await SendInstrumentedCoreAsync<OllamaGenerateResponse, string>(
             operationName: "warm_up",
             send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
@@ -162,13 +169,15 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             Model = _settings.Model,
             Prompt = fullPrompt,
             Format = JsonNode.Parse(schemaText),
+            Options = TokenBudget(),
         };
         var (result, usage) = await SendInstrumentedCoreAsync<OllamaGenerateResponse, T>(
             operationName: "generate_structured",
             send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
             selectContent: response => response.Response,
             parseContent: content => DeserializeStructured<T>(content, "generate_structured"),
-            ct);
+            ct,
+            requireCompleteContent: true);
         return new CardiTrack.Application.DTOs.Common.AiGenerationResult<T>(result, usage);
     }
 
@@ -224,6 +233,13 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     /// How many times to send before giving up. Defaults to <see cref="MaxAttempts"/>; only
     /// <see cref="WarmUpAsync"/> lowers it, for the reason given there.
     /// </param>
+    /// <param name="requireCompleteContent">
+    /// Whether a completion cut short at the token ceiling is a failure rather than a short
+    /// answer. Set by <see cref="GenerateStructuredWithUsageAsync{T}"/> alone: prose that stops
+    /// early is still prose and the caller can judge it, but JSON that stops early is not JSON,
+    /// and letting it reach the deserializer turns a budget problem into a parse error pointing
+    /// at whatever byte the cut happened to land on.
+    /// </param>
     private async Task<(TResult Result, CardiTrack.Application.DTOs.Common.AiUsage Usage)> SendInstrumentedCoreAsync<TResponse, TResult>(
         string operationName,
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
@@ -231,7 +247,8 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         Func<string, TResult> parseContent,
         CancellationToken ct,
         bool allowEmptyContent = false,
-        int maxAttempts = MaxAttempts)
+        int maxAttempts = MaxAttempts,
+        bool requireCompleteContent = false)
         where TResponse : OllamaResponseMetadata
     {
         using var activity = AiTelemetry.Source.StartActivity(
@@ -280,6 +297,39 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             {
                 activity?.SetTag(AiTelemetry.OutputTokensTag, outputTokens);
                 AiTelemetry.TokenUsage.Record(outputTokens, TokenTags(operationName, "output"));
+            }
+
+            // Ollama reports "length" when generation stopped because the budget ran out rather
+            // than because the model was finished. What follows is the same either way — the
+            // reply is missing its tail — so this is decided here, once, before any caller's
+            // parse gets to mistake a cut-off reply for a malformed one.
+            if (string.Equals(meta.DoneReason, LengthDoneReason, StringComparison.Ordinal))
+            {
+                if (requireCompleteContent)
+                {
+                    errorType = "truncated";
+                    _logger.LogError(
+                        "MedGemma {Operation} stopped at the token budget rather than finishing "
+                        + "(done_reason {DoneReason}): {OutputTokens} output token(s) against a "
+                        + "{MaxOutputTokens} ceiling, {InputTokens} prompt token(s) in a "
+                        + "{ContextTokens}-token window. The reply is incomplete. Raise "
+                        + "MaxOutputTokens or ContextTokens for this model slot, or shorten the prompt.",
+                        operationName, meta.DoneReason, meta.EvalCount, _settings.MaxOutputTokens,
+                        meta.PromptEvalCount, _settings.ContextTokens);
+                    throw new HttpRequestException(
+                        $"MedGemma {operationName} stopped at the token budget rather than finishing "
+                        + $"({meta.EvalCount} output token(s) against a {_settings.MaxOutputTokens} "
+                        + $"ceiling in a {_settings.ContextTokens}-token window), so the reply is incomplete.");
+                }
+
+                // Free text: the caller gets what was produced, as before, but the cut is on the
+                // record — otherwise a reply that stops mid-sentence is indistinguishable from
+                // one the model chose to end there.
+                _logger.LogWarning(
+                    "MedGemma {Operation} stopped at the token budget rather than finishing "
+                    + "(done_reason {DoneReason}): {OutputTokens} output token(s) against a "
+                    + "{MaxOutputTokens} ceiling. The reply is cut short.",
+                    operationName, meta.DoneReason, meta.EvalCount, _settings.MaxOutputTokens);
             }
 
             if (string.IsNullOrEmpty(content) && !allowEmptyContent)
@@ -485,6 +535,16 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         return tags;
     }
 
+    /// <summary>
+    /// The token budget every request carries. Read per call rather than cached so a settings
+    /// object that can be re-read stays authoritative, the same way <c>Model</c> is.
+    /// </summary>
+    private OllamaOptions TokenBudget() => new()
+    {
+        NumCtx = _settings.ContextTokens,
+        NumPredict = _settings.MaxOutputTokens,
+    };
+
     private TagList TokenlessTags(string operationName) => new()
     {
         { AiTelemetry.OperationNameTag, operationName },
@@ -506,6 +566,9 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         [JsonPropertyName("model")] public required string Model { get; init; }
         [JsonPropertyName("prompt")] public required string Prompt { get; init; }
         [JsonPropertyName("stream")] public bool Stream { get; init; } = false;
+
+        /// <summary>The token budget — see <see cref="OllamaOptions"/>.</summary>
+        [JsonPropertyName("options")] public required OllamaOptions Options { get; init; }
 
         /// <summary>
         /// Always off: on a thinking-family model (e.g. Qwen), Ollama's default routes the whole
@@ -530,6 +593,23 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         /// <summary>Same reason as <see cref="OllamaGenerateRequest.Think"/> — both endpoints
         /// route a thinking model's output away from the field this client reads.</summary>
         [JsonPropertyName("think")] public bool Think { get; init; } = false;
+
+        /// <summary>The token budget — see <see cref="OllamaOptions"/>.</summary>
+        [JsonPropertyName("options")] public required OllamaOptions Options { get; init; }
+    }
+
+    /// <summary>
+    /// Ollama's per-request model parameters. Only the two that decide whether a reply can finish
+    /// are set: everything else (temperature, top_p, the sampler) belongs to the model tag's own
+    /// Modelfile, where it is versioned with the weights rather than with this client.
+    /// </summary>
+    private record OllamaOptions
+    {
+        /// <summary>Prompt and completion share this window.</summary>
+        [JsonPropertyName("num_ctx")] public required int NumCtx { get; init; }
+
+        /// <summary>Ceiling on the completion alone.</summary>
+        [JsonPropertyName("num_predict")] public required int NumPredict { get; init; }
     }
 
     private record OllamaMessage

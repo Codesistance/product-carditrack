@@ -581,6 +581,33 @@ variable "medgemma_timeout_seconds" {
   default     = 900
 }
 
+# The window a MedGemma call has to work in — prompt and completion are spent out of the same one.
+# Sized here rather than left to Ollama's own default (4096), which is a chat-turn window: the
+# clinical prompts carry a day of readings, the family's questionnaire answers and the reply schema,
+# and at 4096 a digest ran out of room part-way through writing its first field, arriving as JSON
+# cut mid-token. The cost of raising it is KV cache, which scales with this number on a CPU-served
+# model, so it stays a variable — an environment under memory pressure lowers it here.
+variable "medgemma_context_tokens" {
+  description = "Context window (num_ctx) for MedGemma calls — prompt and completion share it"
+  type        = number
+  default     = 8192
+
+  validation {
+    condition     = var.medgemma_context_tokens > var.medgemma_max_output_tokens
+    error_message = "medgemma_context_tokens must exceed medgemma_max_output_tokens, or no room is left for a prompt."
+  }
+}
+
+# Several times what any clinical prompt actually asks for — a digest is a few sentences and some
+# short fields. Deliberately generous: this ceiling is not where brevity is enforced (the prompt and
+# the reply schema do that, and an over-long reply is rejected downstream on its merits), and a
+# ceiling that bites produces truncated JSON, which is unreadable rather than merely too long.
+variable "medgemma_max_output_tokens" {
+  description = "Upper bound on a single MedGemma completion (num_predict), within the context window"
+  type        = number
+  default     = 2048
+}
+
 # ── Public AI provider (reports and chat) ─────────────────────────────────────
 # Off-estate by definition, and swappable: changing kind + model + the key secret moves
 # reports and chat to another provider without a code change. The medical path is not

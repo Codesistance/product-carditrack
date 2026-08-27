@@ -487,6 +487,57 @@ public class AiServiceExtensionsTests
         return config;
     }
 
+    /// <summary>
+    /// A completion is drawn from the same window as the prompt, so a ceiling that meets or
+    /// exceeds the window describes a call with no room to ask anything. Caught at boot because
+    /// the symptom otherwise arrives per-generation and looks nothing like a config mistake: a
+    /// reply cut off mid-token, reported as JSON that would not parse.
+    /// </summary>
+    [Theory]
+    [InlineData("AI:Private")]
+    [InlineData("AI:Rewrite")]
+    public void AddAiServices_Throws_WhenTheOutputCeilingLeavesNoRoomForAPrompt(string section)
+    {
+        var config = Config();
+        config[$"{section}:ContextTokens"] = "4096";
+        config[$"{section}:MaxOutputTokens"] = "4096";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains($"{section}:MaxOutputTokens", ex.Message);
+        Assert.Contains("ContextTokens", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("AI:Private", "ContextTokens")]
+    [InlineData("AI:Private", "MaxOutputTokens")]
+    [InlineData("AI:Rewrite", "ContextTokens")]
+    [InlineData("AI:Rewrite", "MaxOutputTokens")]
+    public void AddAiServices_Throws_WhenATokenBudgetIsNotPositive(string section, string key)
+    {
+        var config = Config();
+        config[$"{section}:{key}"] = "0";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains($"{section}:{key}", ex.Message);
+    }
+
+    /// <summary>
+    /// The Vertex kind has no context window to configure — it is a property of the model, not a
+    /// request parameter — so a section that omits it still boots on that kind.
+    /// </summary>
+    [Fact]
+    public void AddAiServices_DoesNotRequireAContextWindow_ForTheVertexRewriteKind()
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:ContextTokens"] = "0";
+
+        var provider = Resolve(config);
+
+        Assert.NotNull(provider.GetRequiredKeyedService<IExternalAiClient>("RewriteProvider"));
+    }
+
     private static Dictionary<string, string?> Config() => new()
     {
         ["AI:Public:Kind"] = "Gemini",
