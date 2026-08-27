@@ -111,11 +111,11 @@ variable "cloud_sql_public_ip_enabled" {
   default     = false
 }
 
-# The AI pipeline's scheduled job (digest generation). Off by default — it calls MedGemma, so
-# it belongs only in environments where the model is deployed (dev today; prod's medgemma_image
-# is empty).
+# The AI pipeline's scheduled job (digest generation). Off by default — it calls the shared
+# MedGemma service, so it belongs only in environments wired to it: invoker grants in
+# common.tfvars plus a real URL secret (dev today; prod is not wired yet).
 variable "enable_pipeline_jobs" {
-  description = "Create the AI pipeline Cloud Run job + its hourly Cloud Scheduler trigger. Enable only where MedGemma is deployed"
+  description = "Create the AI pipeline Cloud Run job + its hourly Cloud Scheduler trigger. Enable only where the environment is wired to the shared MedGemma service"
   type        = bool
   default     = false
 }
@@ -473,12 +473,6 @@ variable "cert_expiry_alert_days" {
   default     = 20
 }
 
-variable "enable_medgemma_iam_alerting" {
-  description = "Alert when MedGemma's IAM policy is changed to grant allUsers or allAuthenticatedUsers. No-op where medgemma_image is empty"
-  type        = bool
-  default     = true
-}
-
 variable "alert_notification_emails" {
   description = "Email addresses notified when a Cloud Run container is OOM-killed"
   type        = list(string)
@@ -511,53 +505,13 @@ variable "subnet_cidr" {
   default     = "10.0.0.0/24"
 }
 
-# MedGemma (Ollama)
-variable "medgemma_image" {
-  description = "Container image for MedGemma (empty string disables the service)"
-  type        = string
-  default     = ""
-}
-
-# 4, down from 8 — this default is the effective one (main.tf passes it into the deployments
-# module). See the rationale on the module's own medgemma_cpu in deployments/cloud_run.tf:
-# cpu_idle = false bills the full allocation for the whole instance lifetime, much of which is
-# IO-bound cold start, and 4 is the floor while medgemma_memory is 16Gi.
-variable "medgemma_cpu" {
-  description = "CPU allocation for the MedGemma Cloud Run service. Billed for the full instance lifetime (cpu_idle = false), so this is a direct multiplier on MedGemma spend"
-  type        = string
-  default     = "4"
-}
-
-variable "medgemma_memory" {
-  description = "Memory allocation for the MedGemma Cloud Run service"
-  type        = string
-  default     = "16Gi"
-}
-
-# Kept separate from cloud_run_min_instances so prod can keep a warm API/Web/Worker without
-# also paying for a warm 4 vCPU / 16 Gi inference box. The default stays 0: an environment that
-# has not decided to spend that should not start doing so by inheriting it. dev.tfvars opts in,
-# because MedGemma is on a latency-sensitive path there — the Dashboard status line generates
-# inside the caregiver's request. What that buys is narrower than it sounds — see the measured note
-# on this variable in deployments/cloud_run.tf: it saves the image pull, the startup probe and the
-# ~59s model load, but the prompt prefix is re-read on every call either way.
-#
-# Where the default still applies, 0 is not automatically the cheaper option either. A cold start
-# bills the full allocation for the ~150s the startup probe allows, so past a few hundred wakes a
-# day scaling to zero costs more than staying warm, not less. Read this variable together with the
-# scheduler cadences — see the crossover note in deployments/cloud_run.tf.
-variable "medgemma_min_instances" {
-  description = "Minimum number of MedGemma instances (0 scales to zero between requests)"
-  type        = number
-  default     = 0
-}
-
 # Ceiling for a MedGemma call from the API, worker and pipeline jobs alike
-# (AI__Private__TimeoutSeconds / AI__Providers__0__TimeoutSeconds in main.tf) — and, derived from
-# this same number, the MedGemma Cloud Run service's own request timeout
-# (deployments/cloud_run.tf). Nothing else derives from it now: this was shared with the rewrite
-# Cloud Run service until that service was deleted, and the rewrite slot's client budget comes
-# from rewrite_ai_timeout_seconds, which is its Vertex kind's own much shorter number.
+# (AI__Private__TimeoutSeconds / AI__Providers__0__TimeoutSeconds in main.tf). The shared GPU
+# service's own request timeout is derived from its equivalent variable in common/variables.tf,
+# which must stay longer than this client-side ceiling. Nothing else derives from it now: this
+# was shared with the rewrite Cloud Run service until that service was deleted, and the rewrite
+# slot's client budget comes from rewrite_ai_timeout_seconds, which is its Vertex kind's own much
+# shorter number.
 #
 # Raised from 300s to 900s on 2026-08-21. Datadog logs from pipeline-jobs (dev, 2026-08-21
 # 16:02-16:27 UTC) showed the 300s ceiling routinely hit under real load — not because a single
@@ -585,8 +539,8 @@ variable "medgemma_timeout_seconds" {
 # Sized here rather than left to Ollama's own default (4096), which is a chat-turn window: the
 # clinical prompts carry a day of readings, the family's questionnaire answers and the reply schema,
 # and at 4096 a digest ran out of room part-way through writing its first field, arriving as JSON
-# cut mid-token. The cost of raising it is KV cache, which scales with this number on a CPU-served
-# model, so it stays a variable — an environment under memory pressure lowers it here.
+# cut mid-token. The cost of raising it is KV cache, which scales with this number, so it stays
+# a variable — an environment under memory pressure lowers it here.
 variable "medgemma_context_tokens" {
   description = "Context window (num_ctx) for MedGemma calls — prompt and completion share it"
   type        = number

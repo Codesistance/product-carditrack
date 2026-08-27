@@ -65,7 +65,8 @@ resource "google_cloud_run_v2_service" "medgemma" {
       max_instance_count = var.medgemma_max_instances
     }
 
-    # One at a time, for the reason the CPU service documents at length: Ollama admits every
+    # One at a time, for the reason the retired per-env CPU service documented at length
+    # (deployments/cloud_run.tf pre-removal — see git history): Ollama admits every
     # request it is offered and splits the accelerator between them, so a second concurrent
     # caller does not get served sooner — it makes the first one slower. A 429 refused in 0ms is
     # the honest answer, and MedGemmaClient already treats it as saturation and backs off.
@@ -101,9 +102,9 @@ resource "google_cloud_run_v2_service" "medgemma" {
         value = "-1"
       }
 
-      # llama.cpp's host-side prompt cache, disabled — see the CPU service's own note for the
-      # measurements. Gemma 3's sliding-window attention means the cache is written and never
-      # read, costing ~336ms and ~508 MiB per request. The GPU does not change that: SWA is a
+      # llama.cpp's host-side prompt cache, disabled. Gemma 3's sliding-window attention means
+      # the cache is written and never read, costing ~336ms and ~508 MiB per request (measured
+      # on the retired CPU service, dev 2026-08-13). The GPU does not change that: SWA is a
       # property of the model, not the hardware.
       env {
         name  = "LLAMA_ARG_CACHE_RAM"

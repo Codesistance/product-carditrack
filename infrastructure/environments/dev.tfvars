@@ -29,51 +29,8 @@ cloud_run_memory = "512Mi"
 # ceiling almost immediately. Matches what prod already runs.
 worker_cloud_run_memory = "1Gi"
 
-# MedGemma — dev runs the real model, not a stand-in, so that an assessment made here means
-# the same thing it will mean in prod. The value below is only the create seed: it gates
-# whether the service exists at all, and deploy-apps-dev.yml re-points the image on every
-# MedGemma build (the resource ignores image changes). Terraform has to create the service
-# first, because `gcloud run deploy` would otherwise create it at Cloud Run's 1 CPU /
-# 512 Mi default with no VPC attachment, and Terraform would then collide with it.
-# Empty destroys this environment's own MedGemma service, its invoker bindings and its
-# public-exposure alert — the count gate every one of them shares. Dev calls the shared GPU
-# service in europe-west1 now (medgemma_service_url above); this CPU instance has served nothing
-# since that flip and was billing 4 vCPU / 16 GiB around the clock to do it, because cpu_idle is
-# false and it could not scale to zero.
-#
-# The alert moved rather than went: infrastructure/common/alerting.tf watches the shared service,
-# where the exposure it detects is now larger — one instance behind every environment.
-medgemma_image = ""
-
-# Kept warm, which the default (0) does not do. The original justification — the Dashboard's
-# status line generating inside the request a caregiver is waiting on — ended with the batch
-# move (StatusLineGenerationService, 2026-08-21): that line is now a persisted row the pipeline
-# regenerates. What remains latency-sensitive is the on-demand alert/baseline insight
-# endpoints (~13 calls/day), and scaling to zero makes them pay a cold start: the image pull
-# plus the ~59s model load. Candidate to drop with the Option B GPU move.
-#
-# It buys nothing beyond that, and the second half of this comment used to claim otherwise: that
-# a dead instance "takes its prefix cache with it". There is no prefix cache to lose. Gemma 3
-# uses sliding-window attention and llama.cpp will not restore a KV checkpoint under SWA, so the
-# fixed instruction block is reprocessed from token zero on every call, warm or cold
-# (`cached n_tokens = 0` measured on every generation, 2026-08-13; the container now sets
-# LLAMA_ARG_CACHE_RAM=0 because the cache could only ever cost). See the rationale on
-# medgemma_min_instances in deployments/cloud_run.tf, which has the measurements.
-#
-# What warmth actually protects, measured over 24h on 2026-08-16/17: 13 API calls a day. The
-# other ~276 were background generation (assessor and digest jobs), which waits happily. That
-# is the trade to weigh when the digest cadence question is settled — at today's arrival rate
-# of roughly one call every five minutes there is no idle window for min=0 to exploit anyway,
-# so this stays 1 until a quiet window exists. Revisit it and the scheduler cadences together,
-# never one alone.
-#
-# Set here rather than on the variable's default so prod, which has no MedGemma service yet,
-# does not silently inherit a warm 4 vCPU / 16 Gi instance the day it gets one — with
-# cpu_idle = false that bills continuously and is the largest single line item on this estate.
-medgemma_min_instances = 1
-
-# The AI pipeline's scheduled job (digest generation) — on in dev, where MedGemma runs.
-# Same seed-image mechanics as the medgemma service above.
+# The AI pipeline's scheduled job (digest generation) — on in dev, which is wired to the shared
+# MedGemma GPU service (medgemma_service_url below; invoker grants in common.tfvars).
 enable_pipeline_jobs = true
 
 # Public slot on Vertex (D6, 2026-08-21) — IAM auth via the api SA's aiplatform.user grant, EU

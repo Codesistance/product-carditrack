@@ -1,5 +1,7 @@
 # Cloud Run Services
-# Manages API, Web, Worker, and MedGemma services on Google Cloud Run
+# Manages the API, Web, Worker and webhook receiver services on Google Cloud Run,
+# plus the Cloud Run jobs: the DB migrator and the pipeline jobs (digest, aggregator,
+# assessor, themer)
 
 # Variables
 variable "api_service_name" {
@@ -17,17 +19,12 @@ variable "worker_service_name" {
   type        = string
 }
 
-variable "medgemma_service_name" {
-  description = "Name of the MedGemma Cloud Run service"
-  type        = string
-}
-
 variable "cloud_run_location" {
   description = "GCP region for Cloud Run services"
   type        = string
 }
 
-# The four image variables below seed the initial create only. Each resource sets
+# The image variables below seed the initial create only. Each resource sets
 # lifecycle.ignore_changes on its image because the deploy workflows re-point them
 # per release, so a later change here is a no-op against an existing resource.
 variable "api_container_image" {
@@ -52,15 +49,6 @@ variable "migrator_container_image" {
   description = "Bootstrap image seeding the DB migrator Job's initial create; CI/CD owns it thereafter"
   type        = string
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
-}
-
-# Unlike the four above this one is load-bearing after create: it gates whether the
-# service exists at all, so emptying it destroys the service. Only the image value
-# is CI/CD-owned once the service exists.
-variable "medgemma_image" {
-  description = "MedGemma container image — empty disables the service, non-empty enables it; the image value itself seeds the initial create only (CI/CD owns it thereafter)"
-  type        = string
-  default     = ""
 }
 
 variable "api_env_vars" {
@@ -157,81 +145,6 @@ variable "webhook_custom_domain" {
   description = "Custom domain for the health webhook receiver (e.g. webhook.carditrack.com). When set, the receiver is fronted by the same GCLB + Cloud Armor WAF as api/web instead of taking traffic directly."
   type        = string
   default     = ""
-}
-
-# 4, down from 8. With cpu_idle = false the service is billed for its whole instance lifetime at
-# this allocation, and a large share of that lifetime is cold start — image pull and Ollama model
-# load, which are IO-bound rather than CPU-bound, so the second four vCPU were being paid for
-# without shortening the expensive part much. Halving the allocation halves the per-second rate
-# for every second the instance is alive.
-#
-# Inference itself does get slower. The headroom for that is in the timeouts, not here:
-# medgemma_timeout_seconds is 900s per attempt against the pipeline_assessor job's own 3600s
-# execution timeout (see the job below — 1800s belongs to the aggregator job, which does not call
-# MedGemma), and per-member inference failures are swallowed rather than failing the run. If
-# assessment throughput becomes the constraint, raise this back before raising cadence — a bigger
-# instance for a shorter time beats a smaller one woken more often.
-#
-# 4 is the floor while medgemma_memory is 16Gi: Cloud Run requires at least 4 vCPU for more than
-# 8 GiB and caps 4 vCPU at 16 GiB, so this pair sits on both limits at once. Cutting CPU further
-# means cutting memory too, and the model has to fit in memory.
-variable "medgemma_cpu" {
-  description = "CPU allocation for the MedGemma Cloud Run service. Billed for the full instance lifetime (cpu_idle = false), so this is a direct multiplier on MedGemma spend"
-  type        = string
-  default     = "4"
-}
-
-variable "medgemma_memory" {
-  description = "Memory allocation for the MedGemma Cloud Run service"
-  type        = string
-  default     = "16Gi"
-}
-
-variable "medgemma_max_instances" {
-  description = "Maximum number of MedGemma instances (Ollama cannot safely multi-instance)"
-  type        = number
-  default     = 1
-}
-
-# Deliberately not cloud_run_min_instances: at 4 vCPU / 16 Gi with cpu_idle = false a warm
-# MedGemma instance is the largest line item on the bill, and prod sets that shared variable
-# to 1. Scaling to zero trades a cold start (image pull + model load) for paying only while
-# an instance is alive. Worth paying for where a request waits on the model — the Dashboard status
-# line, which dev opts into via its own tfvars; the caller decides, and the default here does not.
-#
-# Be precise about what warming buys, because the obvious guess is wrong. It does not make the
-# prompt cheap, and nothing will: Gemma 3 uses sliding-window attention, llama.cpp will not restore
-# a KV checkpoint under SWA, and so every call reprocesses the whole prompt from token zero however
-# long the instance has been up. Measured against dev on 2026-08-13 with min_instances = 1 applied,
-# on a warm instance with the model resident: `forcing full prompt re-processing due to lack of
-# cache data ... n_swa = 1024`, `cached n_tokens = 0`, on every generation. Shorter prompts are the
-# only lever on inference latency here — see the prefix caching note in docs/llm_design.md.
-#
-# What it does buy is the image pull, the startup probe, and (since OLLAMA_KEEP_ALIVE is set on the
-# container below) the ~59s model load. Without that env var the model unloads on Ollama's
-# 5-minute idle timer and a warm instance still pays the load between most calls, which is the
-# shape this variable had when it was first raised to 1.
-#
-# The trade is not unconditional in the other direction either, which is the trap worth naming: a
-# cold start costs the full allocation for the ~150s the startup probe allows, so N wakes a day
-# cost roughly N x 150s of instance time before any inference happens. Past a few hundred wakes a
-# day that exceeds what a single always-warm instance would have cost, and scaling to zero becomes
-# the more expensive option. At the */5 assessor cadence this variable was on the wrong side of
-# that crossover. Revisit it and the scheduler cadences together, never one alone.
-variable "medgemma_min_instances" {
-  description = "Minimum number of MedGemma instances (0 scales to zero between requests)"
-  type        = number
-  default     = 0
-}
-
-# The caller's deadline, mirrored into this module so the service's own request timeout can be
-# derived from it rather than restated. The root owns the value and hands it to the .NET hosts as
-# AI__Private__TimeoutSeconds (main.tf); the service timeout below has to stay strictly greater, and
-# two independently-edited numbers do not stay in a relationship.
-variable "medgemma_timeout_seconds" {
-  description = "HTTP client timeout the callers apply to MedGemma calls. The service's own request timeout is derived from this and must remain longer — see the timeout in the medgemma service"
-  type        = number
-  default     = 900
 }
 
 # Resources
@@ -448,9 +361,8 @@ resource "google_cloud_run_v2_service" "web" {
       # Explicit, not the GCP default (tcp_socket, 240s timeout, failure_threshold 1 — a single
       # 4-minute attempt with no retries). That default turned one transient cold-start blip
       # (five services deploying against the same Cloud SQL instance within seconds of each
-      # other) into an outright deploy failure on 2026-08-10. Same period as medgemma's probe
-      # below, higher failure_threshold: many short retries recover from a blip that a single
-      # long one can't.
+      # other) into an outright deploy failure on 2026-08-10. High failure_threshold on
+      # purpose: many short retries recover from a blip that a single long one can't.
       startup_probe {
         tcp_socket {}
         period_seconds    = 10
@@ -487,7 +399,7 @@ resource "google_cloud_run_v2_service" "web" {
 # Executed once per deploy by the CI pipeline; exits when migrations are complete.
 # The image is owned by CI (`gcloud run jobs update --image`), not Terraform — the
 # variable default only bootstraps the initial create, so image changes are ignored
-# here exactly as they are for the api/web/worker/medgemma services.
+# here exactly as they are for every other Cloud Run service and job in this module.
 resource "google_cloud_run_v2_job" "migrator" {
   name     = "${var.api_service_name}-migrator"
   location = var.cloud_run_location
@@ -659,184 +571,6 @@ resource "google_cloud_run_v2_service" "worker" {
   ]
 }
 
-# ── MedGemma (Ollama) ─────────────────────────────────────────────────────────
-# Authorised by IAM, not by network position. URL written to Secret Manager by CI/CD after each
-# deployment.
-#
-# This was INGRESS_TRAFFIC_INTERNAL_ONLY with an allUsers invoker, which made the *route* the only
-# control: no caller authenticated, so anything that could reach the VPC could run inference. The
-# swap to INGRESS_TRAFFIC_ALL plus a named-identity invoker binding means callers now present a
-# Google-signed OIDC token (MedGemmaIdentityTokenHandler) whose audience is this service's URL.
-#
-# Routable does not mean reachable. Cloud Run enforces run.invoker at the Google front end, so an
-# unauthenticated request is rejected before it is dispatched to a container — it cannot trigger a
-# cold start, and with cpu_idle = false a cold start is the expensive thing here. Internet
-# scanning therefore costs nothing.
-#
-# What this gave up: internal-only ingress used to contain an IAM mistake. Now IAM is the only
-# boundary, so re-adding allUsers — or allAuthenticatedUsers, which reads as restrictive but means
-# any Google account anywhere — would expose the model with no network backstop.
-#
-# This comment used to say the control making that impossible was the
-# constraints/iam.allowedPolicyMemberDomains org policy, pending as a follow-up. It is not pending:
-# it cannot exist. There is no organization above this project, and Domain Restricted Sharing
-# allow-lists Cloud Identity customer IDs — with no organization there is no directory to name, so
-# the constraint is meaningless rather than merely unset. VPC Service Controls, the other network
-# backstop worth considering, needs an organization too.
-#
-# So this is an accepted risk, recorded rather than deferred: no platform control prevents the
-# grant. What exists instead is detection — see the MedGemma section of alerting.tf, which fires
-# on the audit-log entry within minutes. Prevention would need either a Cloud Identity organization
-# (which would also unlock VPC-SC and SCC) or, possibly, a project-level IAM deny policy on
-# run.services.setIamPolicy. Do not reinstate the org-policy claim above without checking that an
-# organization now exists.
-resource "google_cloud_run_v2_service" "medgemma" {
-  count = var.medgemma_image != "" ? 1 : 0
-
-  # Cleared ahead of this service's removal. The provider defaults it to true and refuses to
-  # destroy while it is, and it cannot be cleared in the same apply that deletes the resource —
-  # deleting the resource deletes the place the flag is set. The rewrite teardown learned that by
-  # failing an apply; this one pays the ordering up front instead.
-  deletion_protection = false
-
-  name     = var.medgemma_service_name
-  location = var.cloud_run_location
-  ingress  = "INGRESS_TRAFFIC_ALL"
-  client   = "terraform"
-
-  template {
-    scaling {
-      min_instance_count = var.medgemma_min_instances
-      max_instance_count = var.medgemma_max_instances
-    }
-
-    # One request at a time, deliberately. The platform default here was 640 — not a chosen
-    # number, just what Cloud Run applies when Terraform stays silent, and a nonsense one for
-    # a service that can serve exactly one instance and cannot scale out.
-    #
-    # 640 does not mean 640 get served; it means 640 get *admitted*. Ollama accepts them,
-    # splits the 4 vCPU across however many parallel slots it auto-selected, and every one of
-    # them slows down together. That is the shape the measurements show: p50 inference was
-    # 15-19s to 08-13, and reached 124s by 08-19 while the container image never changed
-    # (same digest since 08-10) and prompt sizes stayed flat. What changed in between is the
-    # arrival rate. Requests that then overrun the 300s ceiling die as 504s having consumed
-    # five minutes of the one instance — 16 of them on 08-18 alone.
-    #
-    # At 1, a second concurrent caller is refused in 0ms instead of being let in to make the
-    # first one slower. That refusal is not a regression: MedGemmaClient already treats 429 as
-    # saturation and backs off in 15s steps honouring Retry-After (PR #383), which is the
-    # correct response to "busy" and cannot be the response to a 300s timeout — by then the
-    # work is done and thrown away. Trading slow shared failure for fast honest rejection is
-    # the whole change.
-    #
-    # This is a hypothesis with a measurement attached, not a certainty: it predicts p50
-    # returns toward ~20s and 504s go to zero, while 429 counts rise and are absorbed by the
-    # client's backoff. If p50 does not move, the contention theory is wrong and this reverts
-    # to a single number with no other consequence. Raise it only alongside an explicit
-    # OLLAMA_NUM_PARALLEL on the container, so the two agree instead of one silently
-    # oversubscribing the other.
-    max_instance_request_concurrency = 1
-
-    # One minute longer than the caller's deadline, so the client is always the one that gives up
-    # first. They were previously both exactly 300s, which made the loser of every timeout
-    # arbitrary and cost a real diagnosis: the same failure surfaced as a client
-    # TaskCanceledException or a server 504 depending on which side won the race. The client owns
-    # the retry decision, so the client must own the deadline.
-    #
-    # Derived, not restated. The caller's value is medgemma_timeout_seconds, applied as
-    # HttpClient.Timeout in AiServiceExtensions; writing a literal here would hold the ordering
-    # only until someone changed one of the two numbers.
-    timeout = "${var.medgemma_timeout_seconds + 60}s"
-
-    vpc_access {
-      network_interfaces {
-        network    = google_compute_network.main.id
-        subnetwork = google_compute_subnetwork.main.id
-      }
-      egress = "PRIVATE_RANGES_ONLY"
-    }
-
-    containers {
-      image = var.medgemma_image
-
-      # Keep the model resident for the instance's whole life. Ollama's default unloads it after
-      # 5 minutes idle, which at the scheduler cadences above is between most calls — and a reload
-      # is not cheap: measured in dev on 2026-08-13, 58.6s from `llama_model_loader: loaded meta
-      # data` to `srv llama_server: model loaded`. (Not to be confused with the sub-second
-      # `load_duration` Ollama reports when the model was already resident.)
-      #
-      # That reload is billed like everything else here, because cpu_idle = false means the
-      # instance bills its full allocation whether it is inferring, loading, or idle. So unloading
-      # saves nothing while an instance is alive; it only adds a minute of paid-for latency to the
-      # next caller. On the request path — the Dashboard status line — that minute lands far past
-      # both the 25s generation budget and the mobile client's 30s timeout, so the first call after
-      # any quiet spell returns no live line at all.
-      #
-      # Costs memory, not money: 16Gi is reserved for the instance regardless of what is in it.
-      env {
-        name  = "OLLAMA_KEEP_ALIVE"
-        value = "-1"
-      }
-
-      # Turn off llama.cpp's host-side prompt cache, which on this model can only ever cost.
-      # Gemma 3 uses sliding-window attention and llama.cpp will not restore a KV checkpoint under
-      # SWA, so every generation reprocesses the prompt from token zero (docs/llm_design.md). The
-      # cache still does all the work of trying: it matches the common prefix by LCP similarity,
-      # saves the state, then discards it. Measured in dev on 2026-08-13, per request:
-      #
-      #   srv  get_availabl: updating prompt cache
-      #   srv   prompt_save:  - saving prompt with length 538, total state size = 71.466 MiB
-      #   srv        update:  - cache state: 2 prompts, 507.974 MiB (limits: 8192.000 MiB, ...)
-      #   srv  get_availabl: prompt cache update took 335.74 ms
-      #   slot   operator(): forcing full prompt re-processing due to lack of cache data
-      #
-      # ~336 ms of every request and ~508 MiB of resident state, for a cache that is never read.
-      # LLAMA_ARG_CACHE_RAM is llama.cpp's env equivalent of --cache-ram (0 disables); Ollama
-      # passes its own environment through to the llama-server it spawns. The 8192 MiB default in
-      # the log above is that flag's, which is what confirms this build honours it.
-      #
-      # Revisit alongside the SWA note: if the model changes or llama.cpp learns to restore SWA
-      # checkpoints, this becomes the wrong setting and the prompt trim stops being the only lever.
-      #
-      # Verify by absence, not by the boot log — llama.cpp still prints "prompt cache is enabled,
-      # size limit: 8192 MiB" even when disabled (ggml-org/llama.cpp#22127). The real signal is
-      # that the `prompt_save` and `prompt cache update took` lines stop appearing per request.
-      env {
-        name  = "LLAMA_ARG_CACHE_RAM"
-        value = "0"
-      }
-
-      resources {
-        limits = {
-          cpu    = var.medgemma_cpu
-          memory = var.medgemma_memory
-        }
-        cpu_idle          = false
-        startup_cpu_boost = true
-      }
-
-      ports {
-        container_port = 8080
-      }
-
-      startup_probe {
-        http_get {
-          path = "/"
-        }
-        initial_delay_seconds = 30
-        period_seconds        = 10
-        failure_threshold     = 12
-      }
-    }
-  }
-
-  labels = var.cloud_run_labels
-  lifecycle {
-    ignore_changes = [template[0].containers[0].image, client, client_version]
-  }
-  depends_on = [google_project_service.run]
-}
-
 # Allow unauthenticated access (traffic enters via GCLB + Cloud Armor)
 resource "google_cloud_run_v2_service_iam_member" "api_public" {
   name     = google_cloud_run_v2_service.api.name
@@ -852,36 +586,14 @@ resource "google_cloud_run_v2_service_iam_member" "web_public" {
   member   = "allUsers"
 }
 
-# MedGemma invokers — the named identities that replaced allUsers. Exactly the callers that have a
-# MedGemma code path: the API (InsightsController) and the digest/assessor jobs. Deliberately not
-# the aggregator: it carries AI__Private__* env because it shares the pipeline image, but no code
-# path in it constructs the client (NotificationDrainService only drains Pub/Sub and runs syncs).
-# Deliberately not the default compute SA either — web, worker and the migrator run as that
-# identity and none of them call MedGemma. See service_accounts.tf.
-resource "google_cloud_run_v2_service_iam_member" "medgemma_api_invoker" {
-  count    = var.medgemma_image != "" ? 1 : 0
-  name     = google_cloud_run_v2_service.medgemma[0].name
-  location = google_cloud_run_v2_service.medgemma[0].location
-  role     = "roles/run.invoker"
-  member   = local.api_sa
-}
-
-resource "google_cloud_run_v2_service_iam_member" "medgemma_pipeline_invoker" {
-  count    = var.medgemma_image != "" && var.enable_pipeline_jobs ? 1 : 0
-  name     = google_cloud_run_v2_service.medgemma[0].name
-  location = google_cloud_run_v2_service.medgemma[0].location
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.pipeline[0].email}"
-}
-
 # ── Pipeline jobs (AI pipeline — summary generation) ─────────────────────────────────────────
 # The AI pipeline's scheduled work runs as a Cloud Run *job*, triggered every quarter hour by
 # Cloud Scheduler: each execution regenerates the summaries of whichever members' data has moved
-# since their last one, then exits. Gated on enable_pipeline_jobs — the job calls MedGemma, so
-# it only exists in environments where the model is deployed.
+# since their last one, then exits. Gated on enable_pipeline_jobs — the job calls the shared
+# MedGemma service, so it only exists in environments wired to it.
 
 variable "enable_pipeline_jobs" {
-  description = "Create the AI pipeline job + its scheduler. Enable only where MedGemma is deployed"
+  description = "Create the AI pipeline job + its scheduler. Enable only where the environment is wired to the shared MedGemma service"
   type        = bool
   default     = false
 }
@@ -917,17 +629,17 @@ variable "pipeline_jobs_secret_env_vars" {
 # Deliberately not moved to hourly in the same change. The floor is not the only thing this
 # cadence answers to — the waivers (a problem window, a jump, a baseline divergence, an alert)
 # cut through it, and this job is the fallback path that catches them for a member the */5
-# assessor has not. Slowing it trades waiver latency for instance cost, and that trade belongs
-# with the medgemma_min_instances crossover, which the comment on that variable says to revisit
-# alongside the scheduler cadences, never one alone.
+# assessor has not. Slowing it trades waiver latency for instance cost — revisit it and the
+# shared MedGemma service's min_instances (infrastructure/common/variables.tf) together, never
+# one alone.
 #
 # The cadence does not multiply *inference* cost — the job skips members whose data has not
 # moved (DigestGenerationService's dataChangedAtUtc gate). It does multiply *instance* cost,
 # which is the part the previous rationale here missed: any pass that finds even one member to
-# regenerate wakes MedGemma, and a cold start pays a multi-GB image pull plus model load
-# against a startup probe that allows ~150s (see the medgemma service below), all billed at
-# the full CPU allocation. The number of passes per hour is therefore a direct cost lever
-# whatever the per-member gating does.
+# regenerate wakes the shared MedGemma service, whose cold start pays a multi-GB image pull
+# plus model load (measured ~54s — medgemma_serving_architecture.md §9.1a), all billed at the
+# full allocation. The number of passes per hour is therefore a direct cost lever whatever the
+# per-member gating does.
 variable "pipeline_jobs_schedule" {
   description = "Cloud Scheduler cron for the digest job. Half-hourly: faster than the hourly regeneration floor on purpose, so a waiver (problem window, jump, baseline divergence, alert) is caught for members the */5 assessor pass has not, without paying a MedGemma cold start every quarter hour"
   type        = string
@@ -950,7 +662,7 @@ resource "google_cloud_run_v2_job" "pipeline_jobs" {
     template {
       max_retries = 1
 
-      # A digest pass is ~one CPU-served MedGemma call per due member; the generous timeout
+      # A digest pass is ~one MedGemma call per due member; the generous timeout
       # covers a large timezone bucket without the execution being killed mid-generation.
       timeout = "3600s"
 
@@ -1364,7 +1076,7 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
       max_retries = 1
 
       # Assessment plus the digest refresh that follows it on this job (see Program.cs): one
-      # CPU-served MedGemma call per member whose window moved, then another per member whose
+      # MedGemma call per member whose window moved, then another per member whose
       # summary is now due. The timeout matches the digest job so a busy pass of both stages
       # is not killed mid-generation.
       timeout = "3600s"
