@@ -340,6 +340,34 @@ public static class ApmExtensions
     }
 
     /// <summary>
+    /// Builds the telemetry providers now — the mirror of <see cref="ForceFlushTelemetry"/> at
+    /// the other end of a job's life, and required by exactly the same hosts: the ones that never
+    /// call <c>Run()</c>/<c>RunAsync()</c>.
+    /// <para>
+    /// <c>AddOpenTelemetry</c> constructs its providers from an <c>IHostedService</c>, so a host
+    /// that never starts never builds them. That is not a shipping problem but an instrumentation
+    /// one, and it is total rather than partial: until a <see cref="TracerProvider"/> exists there
+    /// is no <see cref="System.Diagnostics.ActivityListener"/> in the process, so every
+    /// <c>ActivitySource.StartActivity</c> returns <see langword="null"/> — the job records no
+    /// spans at all, and none of its log lines carry a trace_id either, because
+    /// <see cref="ActivityLogEnricher"/> reads <see cref="System.Diagnostics.Activity.Current"/>
+    /// and finds nothing there. Resolving a provider is what registers the listener; this is the
+    /// same resolution the hosted service would have done.
+    /// </para>
+    /// <para>
+    /// Call it immediately after <c>Build()</c> and before any work. It has to be explicit rather
+    /// than folded into <see cref="AddApmTracing"/>, which runs against the builder while no
+    /// service provider exists yet. <see cref="ForceFlushTelemetry"/> does resolve both providers,
+    /// but a job calls that in its finally — which builds a tracer with nothing left to trace.
+    /// </para>
+    /// </summary>
+    public static void StartTelemetry(this IServiceProvider services)
+    {
+        services.GetService<TracerProvider>();
+        services.GetService<MeterProvider>();
+    }
+
+    /// <summary>
     /// Says why nothing will ship. An entirely empty Apm section is the intended local
     /// setup and logs as Information; anything half-set is a misconfiguration worth a
     /// Warning naming the missing piece.

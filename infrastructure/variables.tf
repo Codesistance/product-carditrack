@@ -231,13 +231,17 @@ variable "traces_sample_ratio" {
     api    = optional(number, 1.0)
     web    = optional(number, 1.0)
     worker = optional(number, 1.0)
+    # The pipeline tier (jobs + aggregator). Absent until now, which did not mean "unsampled" —
+    # it meant those services fell through to ApmOptions.TracesSampleRatio's 0.2 default and
+    # quietly dropped four traces in five while every other service ran at 1.0.
+    pipeline = optional(number, 1.0)
   })
   default = {}
 
   validation {
     # The apps clamp out-of-range values; fail the plan instead of deploying a silent clamp.
     condition = alltrue([
-      for ratio in [var.traces_sample_ratio.api, var.traces_sample_ratio.web, var.traces_sample_ratio.worker] :
+      for ratio in [var.traces_sample_ratio.api, var.traces_sample_ratio.web, var.traces_sample_ratio.worker, var.traces_sample_ratio.pipeline] :
       ratio >= 0.0 && ratio <= 1.0
     ])
     error_message = "traces_sample_ratio values must be between 0.0 and 1.0 inclusive."

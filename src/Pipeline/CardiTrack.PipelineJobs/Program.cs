@@ -148,6 +148,18 @@ var app = builder.Build();
 // No app.Run(): a job executes one pass and exits, and never listens.
 try
 {
+    // Nothing starts the host, and AddOpenTelemetry builds its providers from a hosted service —
+    // so without this the tracer is first constructed by ForceFlushTelemetry in the finally
+    // below, after the work it existed to trace. A process with no provider has no
+    // ActivityListener, which makes every StartActivity return null: no spans from this service
+    // at all, and no trace_id on any of its log lines. Both ends of the job's telemetry life are
+    // explicit for that reason.
+    //
+    // Inside the try, and first: building a provider runs the exporter configuration, which can
+    // throw on a malformed endpoint. Outside, that would be an unhandled exception on a path
+    // whose whole purpose is to exit non-zero with a fatal log explaining why.
+    app.Services.StartTelemetry();
+
     Log.Information("PipelineJobs run starting: {Job}.", jobName);
 
     using var scope = app.Services.CreateScope();
@@ -237,6 +249,18 @@ catch (Exception ex)
 }
 finally
 {
-    app.Services.ForceFlushTelemetry();
+    // Guarded, and first, so the two flushes cannot take each other down. Both resolve providers
+    // that may be the very thing that failed above, and an exception thrown here would replace
+    // the outcome the catch just recorded — losing the fatal log that explains the run, which is
+    // the one thing this block exists to deliver.
+    try
+    {
+        app.Services.ForceFlushTelemetry();
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "PipelineJobs could not flush telemetry on exit; logs still follow.");
+    }
+
     await ApmExtensions.FlushLogsAsync();
 }

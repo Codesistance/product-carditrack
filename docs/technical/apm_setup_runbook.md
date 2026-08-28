@@ -370,9 +370,20 @@ from `ApplicationDisplayVersion`, which the signed CI builds set from the releas
   warnings return, check them against the intake's idle timeout before suspecting the
   network — and note that while they fire, logs still ship (Serilog's sink is a separate
   transport), so the visible symptom is log records arriving with no trace ID on them.
-- One-shot job hosts must flush before exit or every span is dropped silently:
-  `ApmExtensions.ForceFlushTraces` is called by `CardiTrack.PipelineJobs` before
-  `FlushLogsAsync` — any future one-shot host needs the same.
+- One-shot job hosts must also *start* telemetry, not just flush it. `AddOpenTelemetry` builds
+  its providers from an `IHostedService`, so a host that never calls `Run()` never builds one —
+  and with no `TracerProvider` there is no `ActivityListener` in the process, which makes every
+  `StartActivity` return null rather than merely unsampled. Such a host records no spans at all
+  and no log line carries a `trace_id` either (the enricher reads `Activity.Current`).
+  `CardiTrack.PipelineJobs` is the only host of this shape; it calls
+  `app.Services.StartTelemetry()` right after `Build()`. Symptom to recognise: a service with
+  healthy logs and *zero* spans, where `{TraceId}` renders as unset.
+- One-shot job hosts must also flush before exit, or every span and metric is dropped
+  silently: `app.Services.ForceFlushTelemetry()` is called by `CardiTrack.PipelineJobs` in its
+  `finally`, before `FlushLogsAsync` — any future one-shot host needs both halves, the
+  `StartTelemetry` above and this. (It flushes traces *and* metrics; the earlier
+  `ForceFlushTraces` name flushed spans only and left a job's metrics to a disposal that never
+  came.)
 - Monitors and log pipelines live in `infrastructure/datadog/` — see its README for the
   applied monitor IDs (uk1: 33845 worker-host-faulted, 33846 worker-job-failing,
   34150 webhook-notifications-unparseable).
