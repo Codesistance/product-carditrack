@@ -17,7 +17,7 @@ What code **cannot** guarantee is Google's server-side handling. Three project-l
 configured and evidenced manually — they are the zero-data-retention (ZDR) posture the DPIA and
 the §9 register cite:
 
-## 2. ZDR configuration — cache disable DONE (2026-08-21); abuse-monitoring opt-out still open
+## 2. ZDR configuration — COMPLETE: cache disable DONE (2026-08-21); abuse-monitoring exception APPROVED (2026-08-28)
 
 These steps require `aiplatform.cacheConfigs.get/update` and billing-account visibility, which
 no automation identity in this project holds — they are owner actions, evidenced here as they
@@ -49,11 +49,19 @@ close.
    does not exist — the project-scoped path above is the real one, and it needs
    `aiplatform.cacheConfigs.*`, which only owner identities hold.)
 
-2. **Abuse-monitoring prompt logging opt-out — ⚠ EXCEPTION FILED 2026-08-21, pending Google
-   approval.** The owner submitted the exception form on 2026-08-21 (project number
-   `206164751924`, project `carditrack-490120`, contact `cloudoperations@codesistance.com`,
-   GDPR/DPIA justification). Record the approval here when Google's email lands; until then the
-   posture below still holds.
+2. **Abuse-monitoring prompt logging opt-out — ✅ EXCEPTION APPROVED 2026-08-28.** The owner
+   submitted the exception form on 2026-08-21 (project number `206164751924`, project
+   `carditrack-490120`, contact `cloudoperations@codesistance.com`, GDPR/DPIA justification).
+
+   **Evidence (2026-08-28):** approval email received at
+   `cloudoperations@codesistance.com` from
+   `google-cloud-trusted-tester-administrator@google.com`, subject *"[Codesistance]: Your
+   request for the exception to the prompt logging is approved"*, body: "The Generative AI
+   Services team has approved Codesistance for the exception to the prompt logging policy as
+   outlined in the Abuse Monitoring documentation for Google Cloud project number(s)
+   [206164751924]." With item 1's cache disable, the ZDR posture this section exists to
+   evidence is now fully in place: cache disabled, prompts/responses/identifiable metadata
+   cleared prior to abuse-monitoring logging, no-training terms per item 3.
 
    Original determination and route, kept for the record:
    Google may log prompts for abuse monitoring for customers **without** invoiced billing.
