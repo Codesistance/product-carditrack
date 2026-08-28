@@ -87,11 +87,23 @@ public class JobHostTelemetryTests
     }
 
     /// <summary>
-    /// Built the way <c>CardiTrack.PipelineJobs</c> builds it — fully configured APM, and no
-    /// <c>Run()</c>. Sampling is pinned to 1.0 because the assertions are about whether an
-    /// activity exists at all: at the 0.2 default, a dropped span is also a null one, and the
-    /// test would fail four times in five for the wrong reason.
+    /// Built the way <c>CardiTrack.PipelineJobs</c> builds it — APM configured, and no
+    /// <c>Run()</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sampling is pinned to 1.0 because the assertions are about whether an activity exists at
+    /// all: at the 0.2 default a dropped span is also a null one, and the tests would fail four
+    /// times in five for the wrong reason.
+    /// </para>
+    /// <para>
+    /// No TraceEndpoint, deliberately. It is what registers an OTLP exporter, and an exporter
+    /// attached to a real intake URL would have these tests reaching the network when the
+    /// provider is disposed — slow, flaky, and pointed at someone's production endpoint. What is
+    /// under test is the <see cref="System.Diagnostics.ActivityListener"/> a provider brings with
+    /// it, which exists whether or not anything is shipping.
+    /// </para>
+    /// </remarks>
     private static WebApplication JobHostApp()
     {
         var builder = WebApplication.CreateBuilder();
@@ -101,7 +113,6 @@ public class JobHostTelemetryTests
             ["Apm:Engine"] = "Datadog",
             ["Apm:Data:IngestUrl"] = "uk1.datadoghq.com",
             ["Apm:Data:IngestToken"] = "token-123",
-            ["Apm:Data:Extra:TraceEndpoint"] = "https://otlp.uk1.datadoghq.com/v1/traces",
             ["Apm:TracesSampleRatio"] = "1.0",
         });
         builder.AddApmTracing(ApmServiceNames.PipelineJobs);
