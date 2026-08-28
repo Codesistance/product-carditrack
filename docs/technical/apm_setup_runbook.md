@@ -370,6 +370,14 @@ from `ApplicationDisplayVersion`, which the signed CI builds set from the releas
   warnings return, check them against the intake's idle timeout before suspecting the
   network — and note that while they fire, logs still ship (Serilog's sink is a separate
   transport), so the visible symptom is log records arriving with no trace ID on them.
+- One-shot job hosts must also *start* telemetry, not just flush it. `AddOpenTelemetry` builds
+  its providers from an `IHostedService`, so a host that never calls `Run()` never builds one —
+  and with no `TracerProvider` there is no `ActivityListener` in the process, which makes every
+  `StartActivity` return null rather than merely unsampled. Such a host records no spans at all
+  and no log line carries a `trace_id` either (the enricher reads `Activity.Current`).
+  `CardiTrack.PipelineJobs` is the only host of this shape; it calls
+  `app.Services.StartTelemetry()` right after `Build()`. Symptom to recognise: a service with
+  healthy logs and *zero* spans, where `{TraceId}` renders as unset.
 - One-shot job hosts must flush before exit or every span is dropped silently:
   `ApmExtensions.ForceFlushTraces` is called by `CardiTrack.PipelineJobs` before
   `FlushLogsAsync` — any future one-shot host needs the same.

@@ -286,6 +286,7 @@ module "deployments" {
     "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
     "Apm__Engine"                    = var.apm_engine
     "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+    "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.pipeline)
     "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
   }
   pipeline_jobs_secret_env_vars = {
@@ -318,6 +319,7 @@ module "deployments" {
       "AI__Rewrite__MaxOutputTokens"   = tostring(var.rewrite_ai_max_output_tokens)
       "Apm__Engine"                    = var.apm_engine
       "Apm__MetricsEnabled"            = tostring(var.apm_metrics_enabled)
+      "Apm__TracesSampleRatio"         = tostring(var.traces_sample_ratio.pipeline)
       "Serilog__MinimumLevel__Default" = var.log_minimum_level.worker
       # See the matching comment on the API block above — this filter runs ahead of Serilog.
       # This aggregator runs the Worker's own device sync path, so it needs the same pairing.

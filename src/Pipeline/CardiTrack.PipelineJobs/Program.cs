@@ -145,7 +145,14 @@ if (jobName == "assess")
 
 var app = builder.Build();
 
-// No app.Run(): a job executes one pass and exits, and never listens.
+// No app.Run(): a job executes one pass and exits, and never listens. Nothing therefore starts
+// the host, and AddOpenTelemetry builds its providers from a hosted service — so without this
+// line the tracer is first constructed by ForceFlushTelemetry in the finally below, after the
+// work it existed to trace. A process with no provider has no ActivityListener, which makes
+// every StartActivity return null: no spans from this service at all, and no trace_id on any of
+// its log lines. Both ends of the job's telemetry life are explicit here for that reason.
+app.Services.StartTelemetry();
+
 try
 {
     Log.Information("PipelineJobs run starting: {Job}.", jobName);
