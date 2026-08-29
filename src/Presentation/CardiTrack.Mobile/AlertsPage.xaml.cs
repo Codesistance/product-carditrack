@@ -32,6 +32,12 @@ public partial class AlertsPage : ContentPage
     private const double EmptyTopWithoutChips = 182;
     private const double EmptyTopWithChips = 124;
 
+    /// <summary>
+    /// What the member chip says when the route narrowed the list but carried no name — a member
+    /// whose profile has none, or a deep link that omitted it.
+    /// </summary>
+    private const string UnnamedMemberChipLabel = "This CardiMember";
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
 
@@ -117,11 +123,18 @@ public partial class AlertsPage : ContentPage
         // A member filter arriving on the route is the caregiver asking for a different list, so
         // it is spent before the load below rather than after it — and it forces that load, which
         // the unattended gap would otherwise swallow if they had just been here.
-        if (_pendingMemberFilterId is { } pendingId)
+        //
+        // Both fields are spent whether or not an id came with them. Shell sets the two query
+        // properties in whatever order the query string happens to be in, so a name arriving
+        // after an unusable id outlives the id's own guard below; clearing here is what stops it
+        // surviving this navigation and captioning whichever member the next one names.
+        var pendingId = _pendingMemberFilterId;
+        var pendingName = _pendingMemberFilterName;
+        (_pendingMemberFilterId, _pendingMemberFilterName) = (null, null);
+
+        if (pendingId is { } memberId)
         {
-            var pendingName = _pendingMemberFilterName;
-            (_pendingMemberFilterId, _pendingMemberFilterName) = (null, null);
-            ApplyMemberFilter(pendingId, pendingName);
+            ApplyMemberFilter(memberId, pendingName);
             return;
         }
 
@@ -135,11 +148,25 @@ public partial class AlertsPage : ContentPage
     /// Either way the cached page is dropped first: it answers a different question, and leaving
     /// it under a chip that has just changed is the same stale-rows bug the filter chips had (#308).
     /// </summary>
+    /// <remarks>
+    /// A narrowing always gets a chip, even when no name came with it — the chip is the only way
+    /// to undo one, so hiding it for want of a label would leave a caregiver on a list quietly
+    /// missing most of their alerts with nothing to tap. The stand-in is the one
+    /// <see cref="Controls.StatusHeroCard"/> already uses for a member it cannot name.
+    /// </remarks>
     private void ApplyMemberFilter(Guid? memberId, string? memberName)
     {
         _memberFilterId = memberId;
-        _memberFilterName = memberId is null ? null : memberName;
-        Filters.SetMemberFilter(_memberFilterName);
+
+        // The name stays null when none came with the id, so the copy that speaks it — the empty
+        // state below — falls back to wording that names nobody rather than addressing the
+        // caregiver about "This CardiMember". Only the chip, which must exist either way, wears
+        // the stand-in.
+        _memberFilterName = memberId is null || string.IsNullOrWhiteSpace(memberName)
+            ? null
+            : memberName;
+        Filters.SetMemberFilter(
+            memberId is null ? null : _memberFilterName ?? UnnamedMemberChipLabel);
 
         _lastData = null;
         SetState(AlertsState.Loading);
