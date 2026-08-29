@@ -1,6 +1,8 @@
 ﻿using System.Globalization;
+using System.Numerics;
 using System.Text;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
@@ -52,7 +54,9 @@ internal static class DaybookPrompt
         Cover the day's sleep, heart, oxygen and breathing, movement, and body — in that order, and only where each was measured.
         The hour-by-hour readings are the day's own record: use them to say when in the day things happened, and quote only figures that appear in them.
         Where a reading was not measured, say so plainly and move on; never let a missing reading read as a reassuring one.
-        Where their own usual is given, say where the reading sat against it. Where a published band is given, say where the reading sat against that too, and name who publishes it.
+        Where their own usual is given, the direction and distance from it are worked out beside the reading: say them as they are given and never work a comparison out yourself. Where a published band is given, where the reading sat against it is worked out beside it too — say that as given, and name who publishes the band.
+        Clock times are already on the member's own local clock: read them as the household's evening and morning, and never convert or relabel them.
+        Where a time is given as far off their usual with no direction, say that it was far off and do not decide for yourself whether it was earlier or later.
         Read the day as a whole before concluding: the readings are one person's day and are explained by each other more often than one at a time.
         If "The day's monitoring" is present, account for what the monitoring made of the day in your own words; when it is absent, never mention monitoring, alerts or observations at all.
         If "Conditions during the day" is present, weigh the temperature, humidity and air of those hours against the readings around them; when it is absent, never mention weather at all.
@@ -134,27 +138,50 @@ internal static class DaybookPrompt
     /// read as complete rather than as one with a hole in it.
     /// </param>
     /// <param name="ageYears">The member's age on that day, for the age-split sleep band.</param>
-    internal static string ReadingsSection(ActivityLog log, PatternBaseline? baseline, int ageYears)
+    /// <param name="timeZone">
+    /// The member's anchor zone, for the clock times in this block. Both the night's own
+    /// falling-asleep and waking instants and the two learned times of day are stored in UTC, and
+    /// a family reads an account of their father's evening on his clock, not Greenwich's — an
+    /// unlabelled "22:40" invited the model to reason about a local evening it could not see, the
+    /// same trap <c>HealthInsightService.SleepWindow</c> avoided by saying "UTC" out loud.
+    /// </param>
+    /// <param name="tolerances">
+    /// How far a reading has to sit from the member's own usual before this block names a
+    /// direction for it — the member's own settings, defaulted. See <see cref="JournalComparison"/>.
+    /// </param>
+    internal static string ReadingsSection(
+        ActivityLog log,
+        PatternBaseline? baseline,
+        int ageYears,
+        TimeZoneInfo? timeZone = null,
+        JournalComparisonTolerances? tolerances = null)
     {
+        var bands = tolerances ?? JournalComparison.Defaults;
+
         var sb = new StringBuilder();
         sb.Append("--- The day in full: ")
           .Append(log.Date.ToString("dddd d MMMM yyyy", CultureInfo.InvariantCulture))
           .AppendLine(" ---");
         sb.AppendLine(
             "This day is over. Every figure below is a whole-day total or a whole-night reading; "
-            + "none of it is still accumulating.");
+            + "none of it is still accumulating. Clock times are the member's own local time.");
 
-        AppendSleep(sb, log, baseline, ageYears);
-        AppendHeart(sb, log, baseline);
-        AppendOxygenAndBreathing(sb, log, baseline);
-        AppendMovement(sb, log, baseline);
+        AppendSleep(sb, log, baseline, ageYears, timeZone, bands);
+        AppendHeart(sb, log, baseline, bands);
+        AppendOxygenAndBreathing(sb, log, baseline, bands);
+        AppendMovement(sb, log, baseline, bands);
         AppendBody(sb, log);
 
         return sb.ToString().TrimEnd();
     }
 
     private static void AppendSleep(
-        StringBuilder sb, ActivityLog log, PatternBaseline? baseline, int ageYears)
+        StringBuilder sb,
+        ActivityLog log,
+        PatternBaseline? baseline,
+        int ageYears,
+        TimeZoneInfo? timeZone,
+        JournalComparisonTolerances tolerances)
     {
         sb.AppendLine("Sleep (the night that ended that morning):");
 
@@ -166,14 +193,14 @@ internal static class DaybookPrompt
 
         var band = HealthReferenceRanges.Sleep(ageYears);
         sb.Append("  total=").Append(Hours(sleep))
-          .Append(Usual(baseline?.AvgSleepMinutes, Hours))
-          .Append(Band(band.Low, band.High, "h", band.Source))
+          .Append(Usual(sleep, baseline?.AvgSleepMinutes, Hours, tolerances))
+          .Append(Band(sleep / 60m, band.Low, band.High, "h", band.Source))
           .AppendLine();
 
         if (log.SleepEfficiency is { } efficiency)
         {
             sb.Append("  efficiency=").Append(efficiency).Append('%')
-              .Append(Usual(baseline?.AvgSleepEfficiency, v => v + "%"))
+              .Append(Usual(efficiency, baseline?.AvgSleepEfficiency, v => v + "%", tolerances))
               .AppendLine();
         }
 
@@ -189,17 +216,43 @@ internal static class DaybookPrompt
         if (stages.Count > 0)
             sb.Append("  stages: ").AppendLine(string.Join(", ", stages));
 
-        if (log.SleepStartTime is { } start && log.SleepEndTime is { } end)
+        if (log.SleepStartTime is { } startedAt && log.SleepEndTime is { } endedAt
+            && BaselineClock.Local(startedAt, timeZone) is { } start
+            && BaselineClock.Local(endedAt, timeZone) is { } end)
         {
+            // The night's own times and the learned ones are both put on the member's wall clock
+            // before either is printed or compared. Read on the same clock they are compared on:
+            // a bedtime stated in one frame beside a usual stated in another is a comparison of
+            // two different questions, and the difference only shows up for members far enough
+            // from Greenwich that nobody testing near it would see it.
+            //
+            // Each usual is anchored to the UTC date of the instant it is being compared against,
+            // not to the log's own date. The log's date is the member's local civil day, and
+            // BaselineClock pins the stored face to a UTC one — passing the local day is off by up
+            // to a day, which is nothing except across a daylight-saving change, where it picks the
+            // wrong side of the shift and moves the usual bedtime an hour. Anchoring each to its
+            // own instant also keeps a night that straddles the change honest: the bedtime is read
+            // on the evening's offset and the wake on the morning's.
+            var bedtime = BaselineClock.Local(
+                baseline?.TypicalBedtime, DateOnly.FromDateTime(startedAt), timeZone);
+            var wake = BaselineClock.Local(
+                baseline?.TypicalWakeTime, DateOnly.FromDateTime(endedAt), timeZone);
+
             sb.Append("  asleep=").Append(start.ToString("HH:mm", CultureInfo.InvariantCulture))
               .Append(" to ").Append(end.ToString("HH:mm", CultureInfo.InvariantCulture))
-              .Append(UsualTime("usual bedtime", baseline?.TypicalBedtime))
-              .Append(UsualTime("usual wake", baseline?.TypicalWakeTime))
+              .Append(UsualTime(
+                  "usual bedtime", bedtime, start, "went to bed",
+                  tolerances.BedtimeToleranceMinutes, tolerances.DirectionBoundMinutes))
+              .Append(UsualTime(
+                  "usual wake", wake, end, "woke",
+                  tolerances.WakeToleranceMinutes, tolerances.DirectionBoundMinutes))
               .AppendLine();
         }
     }
 
-    private static void AppendHeart(StringBuilder sb, ActivityLog log, PatternBaseline? baseline)
+    private static void AppendHeart(
+        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+        JournalComparisonTolerances tolerances)
     {
         sb.AppendLine("Heart:");
 
@@ -207,8 +260,8 @@ internal static class DaybookPrompt
         {
             var band = HealthReferenceRanges.RestingHeartRate;
             sb.Append("  resting=").Append(resting).Append("bpm")
-              .Append(Usual(baseline?.AvgRestingHeartRate, v => v + "bpm"))
-              .Append(Band(band.Low, band.High, "bpm", band.Source))
+              .Append(Usual(resting, baseline?.AvgRestingHeartRate, v => v + "bpm", tolerances))
+              .Append(Band(resting, band.Low, band.High, "bpm", band.Source))
               .AppendLine();
         }
         else
@@ -232,11 +285,11 @@ internal static class DaybookPrompt
             // has (see HealthReferenceRanges.NoHeartRateVariabilityBand).
             sb.Append("  overnightVariability=")
               .Append(Decimal1(hrv)).Append("ms")
-              .Append(UsualDecimal(baseline?.AvgHeartRateVariabilityMs, v => Decimal1(v) + "ms"))
+              .Append(UsualDecimal(hrv, baseline?.AvgHeartRateVariabilityMs, v => Decimal1(v) + "ms", tolerances))
               .AppendLine();
         }
 
-        AppendEffortZones(sb, log, baseline);
+        AppendEffortZones(sb, log, baseline, tolerances);
     }
 
     /// <summary>
@@ -249,13 +302,15 @@ internal static class DaybookPrompt
     /// bpm where their own watch puts the start of effort, so it can say "their heart worked" in
     /// terms that mean something for this person rather than in a general one.
     /// </remarks>
-    private static void AppendEffortZones(StringBuilder sb, ActivityLog log, PatternBaseline? baseline)
+    private static void AppendEffortZones(
+        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+        JournalComparisonTolerances tolerances)
     {
         if (BaselineCalculator.ElevatedZoneMinutes(log) is not { } elevated)
             return;
 
         sb.Append("  minutesWithHeartRateRaised=").Append(elevated)
-          .Append(Usual(baseline?.AvgElevatedZoneMinutes, v => v + "min"));
+          .Append(Usual(elevated, baseline?.AvgElevatedZoneMinutes, v => v + "min", tolerances));
 
         if (log.ModerateZoneFloorBpm is { } floor)
             sb.Append(" [their watch puts the start of real effort at ").Append(floor).Append("bpm]");
@@ -264,7 +319,8 @@ internal static class DaybookPrompt
     }
 
     private static void AppendOxygenAndBreathing(
-        StringBuilder sb, ActivityLog log, PatternBaseline? baseline)
+        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+        JournalComparisonTolerances tolerances)
     {
         if (log.SpO2Average is null && log.BreathingRate is null && log.OvernightBreathingRate is null)
             return;
@@ -277,14 +333,14 @@ internal static class DaybookPrompt
             sb.Append("  bloodOxygen=").Append(Decimal1(spo2)).Append('%');
             if (log.SpO2Min is { } low && log.SpO2Max is { } high)
                 sb.Append(" (ranged ").Append(Decimal1(low)).Append('-').Append(Decimal1(high)).Append("%)");
-            sb.Append(Band(band.Low, band.High, "%", band.Source)).AppendLine();
+            sb.Append(Band(spo2, band.Low, band.High, "%", band.Source)).AppendLine();
         }
 
         if (log.BreathingRate is { } breathing)
         {
             var band = HealthReferenceRanges.BreathingRate;
             sb.Append("  breathingRate=").Append(Decimal1(breathing)).Append("/min")
-              .Append(Band(band.Low, band.High, "/min", band.Source))
+              .Append(Band(breathing, band.Low, band.High, "/min", band.Source))
               .AppendLine();
         }
 
@@ -295,25 +351,29 @@ internal static class DaybookPrompt
         {
             var band = HealthReferenceRanges.BreathingRate;
             sb.Append("  breathingRateWhileAsleep=").Append(Decimal1(overnight)).Append("/min")
-              .Append(UsualDecimal(baseline?.AvgOvernightBreathingRate, v => Decimal1(v) + "/min"))
-              .Append(Band(band.Low, band.High, "/min", band.Source))
+              .Append(UsualDecimal(overnight, baseline?.AvgOvernightBreathingRate, v => Decimal1(v) + "/min", tolerances))
+              .Append(Band(overnight, band.Low, band.High, "/min", band.Source))
               .AppendLine();
         }
     }
 
-    private static void AppendMovement(StringBuilder sb, ActivityLog log, PatternBaseline? baseline)
+    private static void AppendMovement(
+        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+        JournalComparisonTolerances tolerances)
     {
         sb.AppendLine("Movement:");
 
         sb.Append("  steps=")
           .Append(log.Steps is { } steps ? steps.ToString(CultureInfo.InvariantCulture) : "not measured")
-          .Append(log.Steps is null ? string.Empty : Usual(baseline?.AvgSteps, v => v.ToString(CultureInfo.InvariantCulture)))
+          .Append(log.Steps is { } measured
+              ? Usual(measured, baseline?.AvgSteps, v => v.ToString(CultureInfo.InvariantCulture), tolerances)
+              : string.Empty)
           .AppendLine();
 
         if (log.ActiveMinutes is { } active)
         {
             sb.Append("  activeMinutes=").Append(active)
-              .Append(Usual(baseline?.AvgActiveMinutes, v => v + "min"))
+              .Append(Usual(active, baseline?.AvgActiveMinutes, v => v + "min", tolerances))
               .AppendLine();
         }
 
@@ -376,23 +436,162 @@ internal static class DaybookPrompt
     /// Nothing rather than a blank: a member whose device never reported sleep should get no sleep
     /// yardstick, not an empty one the model will try to fill.
     /// </summary>
-    private static string Usual(int? average, Func<int, string> format) =>
-        average is { } value ? $" (their usual {format(value)})" : string.Empty;
-
-    /// <summary>
-    /// The decimal counterpart of <see cref="Usual(int?, Func{int, string})"/>, for the baseline
-    /// stored to two places — HRV in milliseconds, which is read as differences of a unit or less.
-    /// </summary>
-    private static string UsualDecimal(decimal? average, Func<decimal, string> format) =>
-        average is { } value ? $" (their usual {format(value)})" : string.Empty;
-
-    private static string UsualTime(string label, TimeOnly? time) =>
-        time is { } value
-            ? $" ({label} {value.ToString("HH:mm", CultureInfo.InvariantCulture)})"
+    /// <remarks>
+    /// The clause names which side of the usual the reading landed on and by how far, rather than
+    /// printing two figures and leaving the subtraction to the model. That is the correction
+    /// <see cref="JournalPeriodSections.AppendMetric"/> already carries for the Weekbook and the
+    /// Monthbook, made here for the same reason it was made there: a model given two close figures
+    /// will sometimes compare them the wrong way round, and a day's account that called 7.1h of
+    /// sleep "less than their usual 6.3h" is undetectable by reading, because every figure in the
+    /// sentence is correct and nothing else on the page contradicts the direction.
+    /// </remarks>
+    private static string Usual(
+        int reading, int? average, Func<int, string> format, JournalComparisonTolerances tolerances) =>
+        average is { } value
+            ? $" (their usual {format(value)}, {Distance(reading - value, value, format, tolerances)})"
             : string.Empty;
 
-    private static string Band(decimal low, decimal high, string unit, string source) =>
-        string.Create(CultureInfo.InvariantCulture, $" [{source} recommend {low:0.#}-{high:0.#}{unit}]");
+    /// <summary>
+    /// The decimal counterpart of <see cref="Usual(int, int?, Func{int, string})"/>, for the
+    /// baseline stored to two places — HRV in milliseconds, which is read as differences of a unit
+    /// or less.
+    /// </summary>
+    private static string UsualDecimal(
+        decimal reading,
+        decimal? average,
+        Func<decimal, string> format,
+        JournalComparisonTolerances tolerances) =>
+        average is { } value
+            ? $" (their usual {format(value)}, {Distance(reading - value, value, format, tolerances)})"
+            : string.Empty;
+
+    /// <summary>
+    /// Which side of a yardstick the reading landed on and how far, written in the yardstick's own
+    /// format so the distance is read in the unit the two figures beside it are.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A difference the format itself would print as nothing is stated as level rather than as
+    /// "0h above it" — below a format's own resolution there is no movement to name, and a
+    /// direction word attached to a zero is a claim the figures do not support. Comparing the two
+    /// rendered forms is what makes that test the format's, whatever unit it prints in, and it is
+    /// a floor no setting can lower.
+    /// </para>
+    /// <para>
+    /// <see cref="JournalComparisonTolerances.LevelTolerancePercent"/> widens that floor and only
+    /// ever widens it. It is a percentage rather than an amount because this one helper serves
+    /// hours, bpm, milliseconds, steps and percent: a single number of units would mean something
+    /// different in each, and a caregiver setting "5" would be setting five different tolerances.
+    /// Zero — the default — leaves the format's own resolution as the whole test.
+    /// </para>
+    /// </remarks>
+    private static string Distance<T>(
+        T difference, T usual, Func<T, string> format, JournalComparisonTolerances tolerances)
+        where T : INumber<T>
+    {
+        var size = T.Abs(difference);
+
+        if (format(size) == format(T.Zero) || WithinLevelBand(size, usual, tolerances))
+            return "level with it";
+
+        return $"{format(size)} {(difference > T.Zero ? "above" : "below")} it";
+    }
+
+    /// <summary>
+    /// Whether a difference falls inside the member's level band — a share of their own usual, so
+    /// the same setting means the same thing on a resting heart rate and on a step count.
+    /// </summary>
+    /// <remarks>
+    /// Compared in <see cref="decimal"/> rather than in <typeparamref name="T"/>: the integer
+    /// metrics would take a percentage of an int down to zero on every reading, which is a band
+    /// that silently does nothing rather than one that is switched off.
+    /// </remarks>
+    private static bool WithinLevelBand<T>(T size, T usual, JournalComparisonTolerances tolerances)
+        where T : INumber<T>
+    {
+        if (tolerances.LevelTolerancePercent <= 0m)
+            return false;
+
+        var sizeValue = decimal.CreateChecked(size);
+        var usualValue = Math.Abs(decimal.CreateChecked(usual));
+
+        return sizeValue <= usualValue * tolerances.LevelTolerancePercent / 100m;
+    }
+
+    /// <summary>
+    /// The "usual bedtime" clause, with how that night's own time sat against it — said as the
+    /// sentence a family would, because unlike the quantities above these are two clock faces and
+    /// "22:30 above it" is not a thing anyone says.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The comparison is made the short way round the clock (<see cref="BaselineClock.MinutesFrom"/>),
+    /// which is the only reading that makes sense of a night: a member who fell asleep at 23:50
+    /// against a usual of 00:10 went to bed twenty minutes early, not twenty-three hours and forty
+    /// minutes late. A day-of-week's worth of naive subtraction would have said the latter.
+    /// </para>
+    /// <para>
+    /// Two distances bound what the clause will claim, both the member's own (see
+    /// <see cref="JournalComparison"/>). Inside <paramref name="toleranceMinutes"/> it says the
+    /// time was about their usual: a wearable's sleep-onset detection is accurate to minutes and
+    /// the usual is a thirty-day circular mean, so a difference smaller than that is arithmetic
+    /// rather than a finding. At or past <paramref name="directionBoundMinutes"/> it names no
+    /// direction at all, because that far round the circle earlier and later stop being different
+    /// claims — and a book confidently calling a misfiled afternoon sleep "an early night" is
+    /// wrong about the one line a family would query.
+    /// </para>
+    /// </remarks>
+    /// <param name="verb">How the sentence says the act — "went to bed", "woke".</param>
+    private static string UsualTime(
+        string label,
+        TimeOnly? usual,
+        TimeOnly actual,
+        string verb,
+        int toleranceMinutes,
+        int directionBoundMinutes)
+    {
+        if (usual is not { } value)
+            return string.Empty;
+
+        var face = value.ToString("HH:mm", CultureInfo.InvariantCulture);
+        var minutes = BaselineClock.MinutesFrom(actual, value);
+        var size = Math.Abs(minutes);
+
+        if (size <= toleranceMinutes)
+            return $" ({label} {face}, about their usual time)";
+
+        if (size >= directionBoundMinutes)
+            return $" ({label} {face}, far off their usual — too far round the clock to call it earlier or later)";
+
+        return $" ({label} {face}, {verb} {ClockGap(size)} {(minutes > 0 ? "later" : "earlier")} than usual)";
+    }
+
+    /// <summary>
+    /// A gap between two clock times, said the way the sleep figures beside it are — hours and
+    /// minutes, never a bare count of minutes, because "95m later than usual" is a subtraction
+    /// left on the page.
+    /// </summary>
+    private static string ClockGap(int minutes) => ReadingFigures.SleepFigure(minutes);
+
+    /// <summary>
+    /// The published band, with where the reading sat against it — computed here for the same
+    /// reason <see cref="Distance"/> is, since "inside the recommended range" is a comparison the
+    /// model would otherwise be making itself.
+    /// </summary>
+    /// <remarks>
+    /// Judged on the exact reading, never the rounded one the line prints: 418 minutes is 6.97
+    /// hours and renders as "7h", which reads as clearing a floor it is three minutes short of.
+    /// That is the trap <c>MemberInsightsCalculator</c> documents and
+    /// <c>StatisticalAlertRules.IrregularSleep</c> restates, and a band edge is exactly the kind of
+    /// threshold it was written about.
+    /// </remarks>
+    private static string Band(decimal reading, decimal low, decimal high, string unit, string source) =>
+        string.Create(
+            CultureInfo.InvariantCulture,
+            $" [{source} recommend {low:0.#}-{high:0.#}{unit}; the reading sat {BandSide(reading, low, high)}]");
+
+    private static string BandSide(decimal reading, decimal low, decimal high) =>
+        reading < low ? "below that" : reading > high ? "above that" : "inside that";
 
     /// <summary>
     /// One line naming the devices whose readings this day is built from, or an empty string when

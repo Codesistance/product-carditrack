@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -63,6 +63,10 @@
                                    Margin="0,24"/>
 
                 <VerticalStackLayout x:Name="SettingsPanel" IsVisible="False" Spacing="12">
+
+                    <Label Text="Timing"
+                           Style="{StaticResource DashboardSectionTitle}"
+                           Margin="4,0,4,0"/>
 
                     <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                         <Grid x:Name="DaybookRow" ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
@@ -137,6 +141,100 @@
                     </Border>
 
                     <Label x:Name="FootnoteLabel"
+                           Style="{StaticResource Body2}"
+                           Margin="4,4,4,0"/>
+
+                    <!-- The second question this screen answers, and a different one from the
+                         timings above: not when a book is written, but how far a reading has to
+                         sit from this member's own usual before the book names a direction for it.
+                         A direction is a claim, and both ends of it are bounded — under the
+                         tolerance the book says the reading was about their usual, and past the
+                         far bound it refuses to say earlier or later at all, because that far
+                         round the clock the two stop being different answers.
+
+                         Called "What counts as a change" rather than triggers or rules: those
+                         words already belong to the alert catalogue, and nothing here fires
+                         anything. -->
+
+                    <Label Text="What counts as a change"
+                           Style="{StaticResource DashboardSectionTitle}"
+                           Margin="4,12,4,0"/>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Bedtime change"
+                              SemanticProperties.Hint="Choose how far their bedtime has to move before a book calls it earlier or later">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnBedtimeToleranceTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Bedtime" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="BedtimeToleranceSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="BedtimeToleranceValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Wake time change"
+                              SemanticProperties.Hint="Choose how far their waking time has to move before a book calls it earlier or later">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnWakeToleranceTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Waking time" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="WakeToleranceSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="WakeToleranceValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Far off their usual"
+                              SemanticProperties.Hint="Choose how far apart two times have to be before a book stops saying earlier or later">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnDirectionBoundTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Far off their usual" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="DirectionBoundSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="DirectionBoundValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Small differences"
+                              SemanticProperties.Hint="Choose how close to their usual a reading has to be before a book calls it level">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnLevelToleranceTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Small differences" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="LevelToleranceSubtitle" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="LevelToleranceValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   VerticalTextAlignment="Center"
+                                   LineBreakMode="TailTruncation"
+                                   MaximumWidthRequest="170"/>
+                        </Grid>
+                    </Border>
+
+                    <Label x:Name="ComparisonFootnoteLabel"
                            Style="{StaticResource Body2}"
                            Margin="4,4,4,0"/>
                 </VerticalStackLayout>

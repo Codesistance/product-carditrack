@@ -324,8 +324,34 @@ public class HealthInsightServicePromptTests
         await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, 7);
     }
 
+    /// <summary>
+    /// Resolving the member's clock walks their caregiver links and reads a row per link, and only
+    /// the two baseline prompts carry a sleep window to put on it. A member still being learned has
+    /// none — and the learning path is the one every new member takes for their first month, so
+    /// those are queries run to be thrown away.
+    /// </summary>
     [Fact]
-    public async Task Baseline_ReportsTheSleepWindowAsUtc()
+    public async Task Baseline_DoesNotResolveTheClock_WhileTheMemberIsStillBeingLearned()
+    {
+        // The fixture holds no baseline for any period, which is the learning prompt.
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        await _links.DidNotReceive().GetByCardiMemberIdAsync(_memberId);
+    }
+
+    /// <summary>And it is resolved as soon as there is a window to put on it.</summary>
+    [Fact]
+    public async Task Baseline_ResolvesTheClock_OnceThereIsAWindowToPutOnIt()
+    {
+        SetupBaseline(periodDays: 30);
+
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        await _links.Received().GetByCardiMemberIdAsync(_memberId);
+    }
+
+    [Fact]
+    public async Task Baseline_ReportsTheSleepWindowOnTheMembersOwnClock()
     {
         SetupBaseline(baseline: new PatternBaseline
         {
@@ -337,8 +363,12 @@ public class HealthInsightServicePromptTests
 
         await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
-        // Unlabelled, the model would reason about a local evening it cannot see.
-        Assert.Contains("Typical sleep window: 22:40–06:15 UTC", CapturedPrompt());
+        // Unlabelled, the model would reason about a local evening it cannot see. The window is
+        // now put on the member's own clock rather than handed over as UTC, so it agrees with the
+        // Daybook's account of the same two baseline fields; this member anchors to UTC (no
+        // caregiver timezone is stubbed), so the faces are unchanged and only the label moves.
+        Assert.Contains("Typical sleep window: 22:40–06:15 local", CapturedPrompt());
+        Assert.DoesNotContain("UTC", CapturedPrompt());
     }
 
     // ── Cacheable prefix ────────────────────────────────────────────────────────

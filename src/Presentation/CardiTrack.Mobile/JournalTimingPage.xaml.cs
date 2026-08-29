@@ -1,7 +1,8 @@
-using System.Globalization;
+﻿using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Journal;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -117,6 +118,40 @@ public partial class JournalTimingPage : ContentPage
             $"Times are {(string.IsNullOrWhiteSpace(settings.TimeZoneId) ? "in their own local time" : $"in their own local time ({settings.TimeZoneId})")}, "
             + $"between {Format(settings.EarliestSelectableTime)} and {Format(settings.LatestSelectableTime)}. "
             + "A book is written once and never rewritten, so it waits for the last readings of the period to arrive.";
+
+        RenderComparison(settings);
+    }
+
+    /// <summary>
+    /// The second group: how far a reading has to sit from this member's own usual before a book
+    /// names a direction for it. Every value is said back in the same words the picker offered, so
+    /// a row and the sheet behind it can never describe the same setting differently.
+    /// </summary>
+    private void RenderComparison(JournalSettingsResponse settings)
+    {
+        BedtimeToleranceValue.Text =
+            JournalComparisonChoices.ToleranceLabel(settings.EffectiveBedtimeToleranceMinutes);
+        BedtimeToleranceSubtitle.Text = "Move by less and a book says it was about their usual";
+
+        WakeToleranceValue.Text =
+            JournalComparisonChoices.ToleranceLabel(settings.EffectiveWakeToleranceMinutes);
+        WakeToleranceSubtitle.Text = "Usually tighter than bedtime — waking is the steadier of the two";
+
+        DirectionBoundValue.Text =
+            JournalComparisonChoices.DirectionBoundLabel(settings.EffectiveDirectionBoundMinutes);
+        DirectionBoundSubtitle.Text = "Further apart than this and a book will not say earlier or later";
+
+        LevelToleranceValue.Text =
+            JournalComparisonChoices.LevelToleranceLabel(settings.EffectiveLevelTolerancePercent);
+        LevelToleranceSubtitle.Text = "How close to their usual still counts as the same";
+
+        // Says what the far bound is for, which is the one row whose reason is not obvious from
+        // its own words: a time far enough round the clock is not an early night, and a book that
+        // guessed at one would be confidently wrong about the line a family would query.
+        ComparisonFootnoteLabel.Text =
+            "These decide when a book says a reading moved, not what it measures. A time far "
+            + "enough from their usual is left as “far off” rather than guessed at: past half a "
+            + "day round the clock, earlier and later stop being different answers.";
     }
 
     private static string Format(TimeOnly time) => time.ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -125,19 +160,100 @@ public partial class JournalTimingPage : ContentPage
         await ChooseTimeAsync(
             "When to write the Daybook",
             _settings?.EffectiveDaybookLocalTime,
-            picked => BuildRequest(_settings!) with { DaybookLocalTime = picked });
+            picked => JournalSettingsDraft.From(_settings!) with { DaybookLocalTime = picked });
 
     private async void OnWeekbookTimeTapped(object? sender, TappedEventArgs e) =>
         await ChooseTimeAsync(
             "When to write the Weekbook",
             _settings?.EffectiveWeekbookLocalTime,
-            picked => BuildRequest(_settings!) with { WeekbookLocalTime = picked });
+            picked => JournalSettingsDraft.From(_settings!) with { WeekbookLocalTime = picked });
 
     private async void OnMonthbookTimeTapped(object? sender, TappedEventArgs e) =>
         await ChooseTimeAsync(
             "When to write the Monthbook",
             _settings?.EffectiveMonthbookLocalTime,
-            picked => BuildRequest(_settings!) with { MonthbookLocalTime = picked });
+            picked => JournalSettingsDraft.From(_settings!) with { MonthbookLocalTime = picked });
+
+    private async void OnBedtimeToleranceTapped(object? sender, TappedEventArgs e) =>
+        await ChooseAsync(
+            "How far a bedtime has to move",
+            JournalComparisonChoices.ToleranceOptions,
+            (settings, choice) =>
+            {
+                if (JournalComparisonChoices.ToleranceFor(settings, choice) is not { } picked
+                    || picked == settings.EffectiveBedtimeToleranceMinutes)
+                {
+                    return null;
+                }
+
+                return JournalSettingsDraft.From(settings) with { BedtimeToleranceMinutes = picked };
+            });
+
+    private async void OnWakeToleranceTapped(object? sender, TappedEventArgs e) =>
+        await ChooseAsync(
+            "How far a waking time has to move",
+            JournalComparisonChoices.ToleranceOptions,
+            (settings, choice) =>
+            {
+                if (JournalComparisonChoices.ToleranceFor(settings, choice) is not { } picked
+                    || picked == settings.EffectiveWakeToleranceMinutes)
+                {
+                    return null;
+                }
+
+                return JournalSettingsDraft.From(settings) with { WakeToleranceMinutes = picked };
+            });
+
+    private async void OnDirectionBoundTapped(object? sender, TappedEventArgs e) =>
+        await ChooseAsync(
+            "When to stop saying earlier or later",
+            JournalComparisonChoices.DirectionBoundOptions,
+            (settings, choice) =>
+            {
+                if (JournalComparisonChoices.DirectionBoundFor(settings, choice) is not { } picked
+                    || picked == settings.EffectiveDirectionBoundMinutes)
+                {
+                    return null;
+                }
+
+                return JournalSettingsDraft.From(settings) with { DirectionBoundMinutes = picked };
+            });
+
+    private async void OnLevelToleranceTapped(object? sender, TappedEventArgs e) =>
+        await ChooseAsync(
+            "Small differences",
+            JournalComparisonChoices.LevelToleranceOptions,
+            (settings, choice) =>
+            {
+                if (JournalComparisonChoices.LevelToleranceFor(settings, choice) is not { } picked
+                    || picked == settings.EffectiveLevelTolerancePercent)
+                {
+                    return null;
+                }
+
+                return JournalSettingsDraft.From(settings) with { LevelTolerancePercent = picked };
+            });
+
+    /// <summary>
+    /// One sheet, one save, for the rows whose options are a published ladder rather than a time
+    /// window. <paramref name="apply"/> returns null for a choice that changes nothing — a
+    /// cancelled sheet, a re-pick of the current value, or a label this build does not recognise —
+    /// so the page never spends a round trip saying what the server already holds.
+    /// </summary>
+    private async Task ChooseAsync(
+        string title,
+        Func<JournalSettingsResponse, IReadOnlyList<string>> options,
+        Func<JournalSettingsResponse, string?, JournalSettingsDraft?> apply)
+    {
+        if (_settings is null || _saving)
+            return;
+
+        var choice = await _popups.ChooseAsync(title, "Cancel", [.. options(_settings)]);
+        if (apply(_settings, choice) is not { } draft)
+            return;
+
+        await SaveAsync(draft);
+    }
 
     private async Task ChooseTimeAsync(
         string title, TimeOnly? current, Func<TimeOnly, JournalSettingsDraft> apply)
@@ -173,7 +289,7 @@ public partial class JournalTimingPage : ContentPage
         if (_settings.EffectiveWeekStartsOn == picked)
             return;
 
-        await SaveAsync(BuildRequest(_settings) with { WeekStartsOn = picked });
+        await SaveAsync(JournalSettingsDraft.From(_settings) with { WeekStartsOn = picked });
     }
 
     private async Task SaveAsync(JournalSettingsDraft draft)
@@ -198,17 +314,6 @@ public partial class JournalTimingPage : ContentPage
         }
     }
 
-    /// <summary>
-    /// The PUT is a full replacement of all four values, so every save resends the three the
-    /// caregiver did not touch. Read from the last response rather than from the labels — a
-    /// label is formatted text, and parsing it back would be a second source of truth.
-    /// </summary>
-    private static JournalSettingsDraft BuildRequest(JournalSettingsResponse settings) =>
-        new(settings.EffectiveDaybookLocalTime,
-            settings.EffectiveWeekbookLocalTime,
-            settings.EffectiveMonthbookLocalTime,
-            settings.EffectiveWeekStartsOn);
-
     private static IEnumerable<TimeOnly> SelectableTimes(JournalSettingsResponse settings)
     {
         var step = settings.StepMinutes > 0 ? settings.StepMinutes : 30;
@@ -228,19 +333,4 @@ public partial class JournalTimingPage : ContentPage
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(
             $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
-
-    private readonly record struct JournalSettingsDraft(
-        TimeOnly DaybookLocalTime,
-        TimeOnly WeekbookLocalTime,
-        TimeOnly MonthbookLocalTime,
-        DayOfWeek WeekStartsOn)
-    {
-        public UpdateJournalSettingsRequest ToRequest() => new()
-        {
-            DaybookLocalTime = DaybookLocalTime,
-            WeekbookLocalTime = WeekbookLocalTime,
-            MonthbookLocalTime = MonthbookLocalTime,
-            WeekStartsOn = WeekStartsOn,
-        };
-    }
 }

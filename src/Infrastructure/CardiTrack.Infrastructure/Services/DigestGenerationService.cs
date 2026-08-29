@@ -980,7 +980,16 @@ public partial class DigestGenerationService : IDigestGenerationService
             {DaybookPrompt.Instructions}
 
             {memberContext}
-            {DaybookPrompt.ReadingsSection(log, baseline, member.DateOfBirth.ToAgeInYears(reviewedDate))}
+            {DaybookPrompt.ReadingsSection(
+                log,
+                baseline,
+                member.DateOfBirth.ToAgeInYears(reviewedDate),
+                timeZone,
+                JournalComparison.Effective(
+                    member.DaybookBedtimeToleranceMinutes,
+                    member.DaybookWakeToleranceMinutes,
+                    member.DaybookDirectionBoundMinutes,
+                    member.DaybookLevelTolerancePercent))}
             {DaybookPrompt.DevicesLine(deviceLogs)}
             {DaybookPrompt.IntradaySection(rollups, dayStartUtc, dayEndUtc, timeZone)}
             {DaybookPrompt.MonitoringSection(dayAlerts, assessments, timeZone)}

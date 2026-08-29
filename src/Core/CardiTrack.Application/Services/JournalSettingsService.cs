@@ -45,6 +45,26 @@ public class JournalSettingsService : IJournalSettingsService
         if (request.WeekStartsOn is { } day && !Enum.IsDefined(day))
             throw new ArgumentException("Choose a day of the week.", nameof(request.WeekStartsOn));
 
+        ValidateTolerance(request.BedtimeToleranceMinutes, nameof(request.BedtimeToleranceMinutes));
+        ValidateTolerance(request.WakeToleranceMinutes, nameof(request.WakeToleranceMinutes));
+
+        if (!JournalComparison.IsSelectableDirectionBound(request.DirectionBoundMinutes))
+        {
+            throw new ArgumentException(
+                $"Choose between {JournalComparison.MinimumDirectionBoundMinutes} and "
+                + $"{JournalComparison.MaximumDirectionBoundMinutes} minutes. Past half a day, "
+                + "earlier and later stop being different answers.",
+                nameof(request.DirectionBoundMinutes));
+        }
+
+        if (!JournalComparison.IsSelectableLevelTolerance(request.LevelTolerancePercent))
+        {
+            throw new ArgumentException(
+                $"Choose between 0 and {JournalComparison.MaximumLevelTolerancePercent}%, "
+                + "to at most one decimal place.",
+                nameof(request.LevelTolerancePercent));
+        }
+
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId)
             ?? throw new KeyNotFoundException("CardiMember not found");
 
@@ -54,6 +74,10 @@ public class JournalSettingsService : IJournalSettingsService
         member.WeekbookLocalTime = request.WeekbookLocalTime;
         member.MonthbookLocalTime = request.MonthbookLocalTime;
         member.JournalWeekStartsOn = request.WeekStartsOn;
+        member.DaybookBedtimeToleranceMinutes = request.BedtimeToleranceMinutes;
+        member.DaybookWakeToleranceMinutes = request.WakeToleranceMinutes;
+        member.DaybookDirectionBoundMinutes = request.DirectionBoundMinutes;
+        member.DaybookLevelTolerancePercent = request.LevelTolerancePercent;
 
         _unitOfWork.CardiMembers.Update(member);
         await _unitOfWork.SaveChangesAsync();
@@ -76,9 +100,28 @@ public class JournalSettingsService : IJournalSettingsService
             field);
     }
 
+    /// <remarks>
+    /// Rejects rather than clamps, for the reason <see cref="Validate"/> gives: a tolerance
+    /// silently narrowed to the maximum is one the caregiver never chose, shown back as though
+    /// they had.
+    /// </remarks>
+    private static void ValidateTolerance(int? minutes, string field)
+    {
+        if (JournalComparison.IsSelectableTolerance(minutes))
+            return;
+
+        throw new ArgumentException(
+            $"Choose between 0 and {JournalComparison.MaximumToleranceMinutes} minutes.", field);
+    }
+
     private async Task<JournalSettingsResponse> MapAsync(CardiMember member)
     {
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, member.Id);
+        var tolerances = JournalComparison.Effective(
+            member.DaybookBedtimeToleranceMinutes,
+            member.DaybookWakeToleranceMinutes,
+            member.DaybookDirectionBoundMinutes,
+            member.DaybookLevelTolerancePercent);
 
         return new JournalSettingsResponse
         {
@@ -99,6 +142,25 @@ public class JournalSettingsService : IJournalSettingsService
             EarliestSelectableTime = JournalSchedule.EarliestLocalTime,
             LatestSelectableTime = JournalSchedule.LatestLocalTime,
             StepMinutes = JournalSchedule.StepMinutes,
+
+            BedtimeToleranceMinutes = member.DaybookBedtimeToleranceMinutes,
+            WakeToleranceMinutes = member.DaybookWakeToleranceMinutes,
+            DirectionBoundMinutes = member.DaybookDirectionBoundMinutes,
+            LevelTolerancePercent = member.DaybookLevelTolerancePercent,
+
+            EffectiveBedtimeToleranceMinutes = tolerances.BedtimeToleranceMinutes,
+            EffectiveWakeToleranceMinutes = tolerances.WakeToleranceMinutes,
+            EffectiveDirectionBoundMinutes = tolerances.DirectionBoundMinutes,
+            EffectiveLevelTolerancePercent = tolerances.LevelTolerancePercent,
+
+            MaximumToleranceMinutes = JournalComparison.MaximumToleranceMinutes,
+            MinimumDirectionBoundMinutes = JournalComparison.MinimumDirectionBoundMinutes,
+            MaximumDirectionBoundMinutes = JournalComparison.MaximumDirectionBoundMinutes,
+            MaximumLevelTolerancePercent = JournalComparison.MaximumLevelTolerancePercent,
+
+            SelectableToleranceMinutes = JournalComparison.SelectableToleranceMinutes,
+            SelectableDirectionBoundMinutes = JournalComparison.SelectableDirectionBoundMinutes,
+            SelectableLevelTolerancePercents = JournalComparison.SelectableLevelTolerancePercents,
 
             // Every book's generator now exists, so every timing on this screen governs something
             // that actually runs.
