@@ -20,6 +20,9 @@ public partial class DashboardPage : ContentPage
 
     /// <summary>The member the dashboard currently shows — what the Daybook link filters to.</summary>
     private Guid _memberId;
+
+    /// <summary>Their full name, kept so the Alerts jump can label the chip it filters by.</summary>
+    private string? _memberName;
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
@@ -192,8 +195,22 @@ public partial class DashboardPage : ContentPage
         SleepConcernBanner.IsVisible = false;
     }
 
-    private async void OnSleepConcernTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
+    /// <summary>
+    /// The banner is about one particular Sleep alert — the real one
+    /// <c>StatisticalAlertWorker</c> raised, which is where <see cref="_currentSleepAlertId"/>
+    /// comes from — so "Tap to view" opens that alert, not the list it is one of. Landing on the
+    /// list made the caregiver find again the thing the banner had just handed them, and on a
+    /// screen where the banner names the concern in words, an alert list is a step backwards.
+    /// The list is the fallback for the case that cannot happen while the banner is showing: it
+    /// is only visible when there is an id.
+    /// </summary>
+    private async void OnSleepConcernTapped(object? sender, TappedEventArgs e)
+    {
+        if (_currentSleepAlertId is { } alertId)
+            await Shell.Current.GoToAsync($"{AlertDetailPage.Route}?alertId={alertId}");
+        else
+            await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
+    }
 
     /// <summary>
     /// Short, quiet time-of-day line under the caregiver's own name — describes the caregiver's
@@ -411,6 +428,7 @@ public partial class DashboardPage : ContentPage
     private void Apply(DashboardResponse data)
     {
         _memberId = data.CardiMemberId;
+        _memberName = data.Name;
         ChatBot.MemberId = data.CardiMemberId;
         ChatBot.MemberFirstName = NameFormatting.FirstName(data.Name);
         HeroCard.Apply(data);
@@ -557,9 +575,11 @@ public partial class DashboardPage : ContentPage
     /// <summary>
     /// Shows the "all quiet" card, or hides it. Reads the server's verdict rather than inferring
     /// one from an empty <see cref="DashboardResponse.RecentAlerts"/>: that list is equally empty
-    /// for a paused member, for one whose watch stopped syncing a fortnight ago, and for one
-    /// signed up yesterday, and telling any of those three families that nothing has come up
-    /// would be telling them the one thing this app must never get wrong.
+    /// for a paused member, for one whose watch stopped syncing a fortnight ago, for one signed
+    /// up yesterday, and — since the strip dropped acknowledged alerts — for one in the middle of
+    /// an episode a caregiver has seen but nobody has closed. Telling any of those four families
+    /// that nothing has come up would be telling them the one thing this app must never get
+    /// wrong. The server withholds the verdict in every one of them (see QuietStretch).
     /// </summary>
     private void ApplyReassurance(DashboardResponse data, string firstName)
     {
@@ -653,9 +673,28 @@ public partial class DashboardPage : ContentPage
     /// placeholder is the more honest signal that alerting is not finished.
     /// </summary>
 
-    /// <summary>The hero card's Alerts button — the same origin-remembering jump as View All.</summary>
-    private async void OnHeroAlertsTapped(object? sender, EventArgs e) =>
-        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
+    /// <summary>
+    /// The member card's Alerts button — the same origin-remembering jump as View All, but
+    /// narrowed to this CardiMember. It is on their card, under their name, beside a ring
+    /// pulsing about their alerts; handing back a list of everyone else's as well would make the
+    /// caregiver re-find what they had just pointed at. The name travels with the id purely so
+    /// the chip on the other side can say whose list this is (see <see cref="AlertsPage"/>).
+    /// </summary>
+    private async void OnHeroAlertsTapped(object? sender, EventArgs e)
+    {
+        if (_memberId == Guid.Empty)
+        {
+            await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);
+            return;
+        }
+
+        var name = NameFormatting.FirstName(_memberName ?? string.Empty);
+        var route = $"{AppShell.AlertsRoute}?memberId={_memberId}";
+        if (!string.IsNullOrWhiteSpace(name))
+            route += $"&memberName={Uri.EscapeDataString(name)}";
+
+        await Shell.Current.GoToTabAsync(route);
+    }
 
     private async void OnViewAllAlertsTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToTabAsync(AppShell.AlertsRoute);

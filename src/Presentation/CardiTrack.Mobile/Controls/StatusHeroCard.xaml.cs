@@ -7,6 +7,7 @@ public partial class StatusHeroCard : ContentView
 {
     private const string QaPulseAnimation = "qa-pulse";
     private const string AdvisePulseAnimation = "advise-pulse";
+    private const string AlertsPulseAnimation = "alerts-pulse";
 
     /// <summary>Raised when the card body is tapped — the dashboard's route into M1-13.</summary>
     public event EventHandler? MemberTapped;
@@ -15,6 +16,14 @@ public partial class StatusHeroCard : ContentView
     public event EventHandler<WeatherSnapshotResponse>? WeatherTapped;
 
     private WeatherSnapshotResponse? _weather;
+
+    /// <summary>
+    /// Whether this member has an alert nobody has answered yet — read by the alerts pulse's
+    /// repeat predicate. A field rather than the button's visibility, which is what the Q&amp;A and
+    /// Advise loops ask: the Alerts button is always on the card, so its visibility says nothing
+    /// about whether the ring should still be going round.
+    /// </summary>
+    private bool _hasOpenAlerts;
 
     /// <summary>
     /// Who and which tier <see cref="Apply"/> last rendered, so a late-arriving
@@ -47,6 +56,7 @@ public partial class StatusHeroCard : ContentView
         {
             StopQaPulse();
             StopAdvisePulse();
+            StopAlertsPulse();
         };
     }
 
@@ -56,6 +66,7 @@ public partial class StatusHeroCard : ContentView
         NameLabel.Text = $"{data.Name}, {data.Age}";
         Avatar.Apply(data.Name, data.PhotoUrl);
         ApplyAdvise(data.HasAdvise);
+        ApplyOpenAlerts(data.UnreadAlertCount);
 
         // Headline first, sentence second: the headline is the whole state in three or four
         // words, so a caregiver who reads nothing else has still read the answer.
@@ -204,6 +215,69 @@ public partial class StatusHeroCard : ContentView
     {
         this.AbortAnimation(AdvisePulseAnimation);
         AdvisePulseRing.Opacity = 0;
+    }
+
+    /// <summary>
+    /// Pulses the Alerts button while this CardiMember has an alert nobody has answered yet —
+    /// <see cref="DashboardResponse.UnreadAlertCount"/>, which is this member's own count, and the
+    /// same set the Recent Alerts strip below shows and the header bell's badge counts. The button
+    /// itself never hides: it is how a caregiver reaches this member's alerts either way.
+    /// </summary>
+    /// <remarks>
+    /// Acknowledging is what stops it, not resolving. The pulse is a request for attention, and
+    /// acknowledging is the caregiver answering it — leaving the ring going afterwards would be
+    /// asking again for something they have already done.
+    /// </remarks>
+    private void ApplyOpenAlerts(int unreadCount)
+    {
+        _hasOpenAlerts = unreadCount > 0;
+
+        // The count lives on the header's badge, not here — but a screen reader gets no ring at
+        // all, so this is the only place it can hear that this member is the reason it is moving.
+        SemanticProperties.SetDescription(AlertsCluster, unreadCount switch
+        {
+            <= 0 => "Alerts",
+            1 => "Alerts, 1 unread",
+            _ => $"Alerts, {unreadCount} unread",
+        });
+
+        if (!_hasOpenAlerts)
+        {
+            StopAlertsPulse();
+            return;
+        }
+
+        // Started only when one isn't already running, for the same reason ApplyAdvise does it:
+        // the dashboard reloads every thirty seconds and each restart would snap the ring back to
+        // its first frame.
+        if (!this.AnimationIsRunning(AlertsPulseAnimation))
+            StartAlertsPulse();
+    }
+
+    /// <summary>
+    /// The same bloom as <see cref="StartAdvisePulse"/> and bounded the same way — 32 at 1.06 plus
+    /// a 2 stroke is the widest ring these 36 will hold — but red rather than Primary, and slower.
+    /// Advise is an offer and this is an unanswered alert, so the two must not read as the same
+    /// invitation sitting twice in one row.
+    /// </summary>
+    private void StartAlertsPulse()
+    {
+        this.AbortAnimation(AlertsPulseAnimation);
+
+        var pulse = new Animation
+        {
+            { 0.00, 0.75, new Animation(v => AlertsPulseRing.Scale = v, 0.6, 1.06) },
+            { 0.00, 0.15, new Animation(v => AlertsPulseRing.Opacity = v, 0.0, 0.7) },
+            { 0.15, 0.75, new Animation(v => AlertsPulseRing.Opacity = v, 0.7, 0.0) },
+        };
+        pulse.Commit(this, AlertsPulseAnimation, length: 1800,
+            repeat: () => IsLoaded && _hasOpenAlerts);
+    }
+
+    private void StopAlertsPulse()
+    {
+        this.AbortAnimation(AlertsPulseAnimation);
+        AlertsPulseRing.Opacity = 0;
     }
 
     /// <summary>Icon-and-temperature chip beside the name. Hidden outright rather than shown

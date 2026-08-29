@@ -7,6 +7,22 @@ using CardiTrack.Mobile.Services;
 namespace CardiTrack.Mobile;
 
 /// <summary>M1-10 Alerts List — every alert across the CardiMembers this caregiver watches.</summary>
+/// <remarks>
+/// <para>
+/// Opened with a <c>memberId</c> it narrows to that one CardiMember — the journey off the
+/// dashboard card's Alerts button, so a caregiver who tapped a particular relative's card is not
+/// handed the whole household's alerts to sift back through.
+/// </para>
+/// <para>
+/// That narrowing stays until the caregiver clears it on the chip, rather than lapsing on the next
+/// visit. It is deliberately not self-clearing: this screen is reached from a tab, a bell and a
+/// card, and a filter that quietly dropped itself somewhere between them would leave a caregiver
+/// unsure which set they were looking at. The chip is on screen for exactly as long as the filter
+/// is, and one tap ends both.
+/// </para>
+/// </remarks>
+[QueryProperty(nameof(FilterMemberId), "memberId")]
+[QueryProperty(nameof(FilterMemberName), "memberName")]
 public partial class AlertsPage : ContentPage
 {
     /// <summary>
@@ -34,12 +50,57 @@ public partial class AlertsPage : ContentPage
     private AlertListResponse? _lastData;
     private readonly HashSet<Guid> _pendingDeletes = [];
 
+    /// <summary>Which CardiMember the list is narrowed to, and the name the chip wears.</summary>
+    private Guid? _memberFilterId;
+    private string? _memberFilterName;
+
+    /// <summary>
+    /// Set by the query properties during navigation and spent on the next <c>OnAppearing</c>.
+    /// Two steps rather than one because Shell hands these over before the page appears, and the
+    /// chip has to be painted alongside the load that reads it, not a frame apart from it. Held as
+    /// two fields rather than a pair, because Shell sets the two properties in whatever order the
+    /// query string happens to be in and neither may depend on the other having arrived.
+    /// </summary>
+    private Guid? _pendingMemberFilterId;
+    private string? _pendingMemberFilterName;
+
+    /// <summary>
+    /// The CardiMember to narrow to, from <c>//alerts?memberId=…</c>. An unparseable or empty id
+    /// is no filter at all rather than a filter matching nobody — a stale deep link should show
+    /// the whole list, not an empty one.
+    /// </summary>
+    public string FilterMemberId
+    {
+        set
+        {
+            _pendingMemberFilterId =
+                Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id) && id != Guid.Empty
+                    ? id
+                    : null;
+
+            // A name with no id to belong to is not a filter, and leaving it behind would let it
+            // caption whichever member a later navigation does name.
+            if (_pendingMemberFilterId is null)
+                _pendingMemberFilterName = null;
+        }
+    }
+
+    /// <summary>
+    /// What the chip says. Only ever a label: the id above is what the query is built from, so a
+    /// missing or mangled name costs the chip its wording, never the filter its meaning.
+    /// </summary>
+    public string FilterMemberName
+    {
+        set => _pendingMemberFilterName = Uri.UnescapeDataString(value ?? string.Empty);
+    }
+
     public AlertsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
         Filters.FilterChanged += OnFilterChanged;
+        Filters.MemberFilterCleared += OnMemberFilterCleared;
         ApplyArchiveButtonText();
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
@@ -53,10 +114,40 @@ public partial class AlertsPage : ContentPage
     {
         base.OnAppearing();
 
+        // A member filter arriving on the route is the caregiver asking for a different list, so
+        // it is spent before the load below rather than after it — and it forces that load, which
+        // the unattended gap would otherwise swallow if they had just been here.
+        if (_pendingMemberFilterId is { } pendingId)
+        {
+            var pendingName = _pendingMemberFilterName;
+            (_pendingMemberFilterId, _pendingMemberFilterName) = (null, null);
+            ApplyMemberFilter(pendingId, pendingName);
+            return;
+        }
+
         // Opening the list is a pull. It used to skip the load for two minutes after the last
         // one — on the screen whose whole job is telling a caregiver what has been raised.
         _ = RefreshUnattendedAsync();
     }
+
+    /// <summary>
+    /// Narrows the list to one CardiMember, or — with a null id — widens it back to all of them.
+    /// Either way the cached page is dropped first: it answers a different question, and leaving
+    /// it under a chip that has just changed is the same stale-rows bug the filter chips had (#308).
+    /// </summary>
+    private void ApplyMemberFilter(Guid? memberId, string? memberName)
+    {
+        _memberFilterId = memberId;
+        _memberFilterName = memberId is null ? null : memberName;
+        Filters.SetMemberFilter(_memberFilterName);
+
+        _lastData = null;
+        SetState(AlertsState.Loading);
+        _ = LoadAsync(force: true);
+    }
+
+    private void OnMemberFilterCleared(object? sender, EventArgs e) =>
+        ApplyMemberFilter(null, null);
 
     /// <summary>
     /// The quiet reload behind all three unattended paths — arriving on the screen, the app
@@ -108,7 +199,8 @@ public partial class AlertsPage : ContentPage
         var loadNudges = false;
         try
         {
-            var call = _api.GetAlertsAsync(severity, status, from, ct: cts.Token);
+            var call = _api.GetAlertsAsync(
+                severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
             var data = await call;
             if (IsStale(generation, cts))
                 return;
@@ -249,17 +341,31 @@ public partial class AlertsPage : ContentPage
         ArchiveButton.IsVisible = hasAlerts || _showArchived;
 
         // Nothing to filter when the unfiltered list is genuinely empty — Figma's M1-10b drops
-        // the chip row entirely, and an archive listing isn't chip-filtered at all.
-        var isUnfiltered = Filters.Selected == AlertFilter.All && !_showArchived;
-        Filters.IsVisible = !_showArchived && !(isUnfiltered && !hasAlerts);
+        // the chip row entirely, and an archive listing isn't chip-filtered at all. A member
+        // filter is the exception on both counts: it is the one filter that survives into the
+        // archive, so the row stays for its chip alone (StandardChipsVisible) rather than leaving
+        // the archive quietly narrowed to one person with nothing on screen saying so.
+        var isUnfiltered = Filters.Selected == AlertFilter.All
+            && !_showArchived
+            && _memberFilterId is null;
+        Filters.StandardChipsVisible = !_showArchived;
+        Filters.IsVisible = (!_showArchived || _memberFilterId is not null)
+            && !(isUnfiltered && !hasAlerts);
 
         if (!hasAlerts)
         {
-            var (title, detail) = isUnfiltered
-                ? ("Nothing to worry about",
-                   "CardiTrack is keeping an eye on things — we'll let you know if anything comes up")
-                : ("No alerts match this filter",
-                   "Try selecting a different filter to see more alerts");
+            var (title, detail) = (isUnfiltered, _memberFilterName) switch
+            {
+                (true, _) => ("Nothing to worry about",
+                    "CardiTrack is keeping an eye on things — we'll let you know if anything comes up"),
+                // Naming them is the difference between "there is nothing" and "there is nothing
+                // for this one person", and a caregiver who narrowed the list by tapping a card
+                // may not remember they did.
+                (false, { } name) => ($"Nothing for {name} here",
+                    "Tap their name above to see everyone's alerts, or try a different filter"),
+                _ => ("No alerts match this filter",
+                    "Try selecting a different filter to see more alerts"),
+            };
 
             EmptyTitleLabel.Text = title;
             EmptyDetailLabel.Text = detail;
@@ -330,9 +436,16 @@ public partial class AlertsPage : ContentPage
         ErrorPanel.IsVisible = state == AlertsState.Error;
         ContentPanel.IsVisible = state == AlertsState.Loaded;
 
-        // The chip row belongs to the list, not to the error or the first load.
+        // The chip row belongs to the list, not to the error or the first load — except for the
+        // member chip, which says what the load about to land is even a list of. The five behind
+        // it follow the archive the same way Render has them do, so a load into the archive does
+        // not flash chips that will be gone the moment it lands.
         if (state != AlertsState.Loaded)
-            Filters.IsVisible = state == AlertsState.Loading && !_showArchived;
+        {
+            Filters.StandardChipsVisible = !_showArchived;
+            Filters.IsVisible = state == AlertsState.Loading
+                && (!_showArchived || _memberFilterId is not null);
+        }
     }
 
     private void OnFilterChanged(object? sender, AlertFilter filter)

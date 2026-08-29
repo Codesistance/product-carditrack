@@ -329,15 +329,17 @@ public class DashboardAlertSummary
     public DateTime TriggeredAt { get; set; }
 
     /// <summary>
-    /// new/acknowledged, the same lowercase vocabulary
-    /// <see cref="AlertSummaryResponse.Status"/> uses — both come from
-    /// <see cref="CardiTrack.Application.Services.AlertLifecycle"/>, so the dashboard strip and
-    /// the alerts list can never describe one alert two ways.
+    /// The same lowercase vocabulary <see cref="AlertSummaryResponse.Status"/> uses — both come
+    /// from <see cref="CardiTrack.Application.Services.AlertLifecycle"/>, so the dashboard strip
+    /// and the alerts list can never describe one alert two ways.
     /// </summary>
     /// <remarks>
-    /// "resolved" is absent by construction rather than by omission: this strip is what is going
-    /// on now, and <see cref="DashboardResponse.RecentAlerts"/> only ever carries unresolved
-    /// alerts. A resolved one is a closed episode, and it stays readable on the alerts list.
+    /// Always "new" today, by construction rather than by omission: this strip is what still
+    /// wants the caregiver's attention, and <see cref="DashboardResponse.RecentAlerts"/> only
+    /// carries alerts that are neither acknowledged nor resolved. Both of the other two are
+    /// answers someone has already given — one says it has been seen, the other that the episode
+    /// is over — and both stay readable on the alerts list. Kept as a field rather than dropped
+    /// so a client never has to infer the lifecycle from the strip it happens to be reading.
     /// </remarks>
     public string Status { get; set; } = "new";
 }

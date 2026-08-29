@@ -56,10 +56,14 @@
                     </Border.Shadow>
                     <!-- Description is rewritten by SetUnreadCount: the badge carries the
                          count visually, so without that a screen reader loses it. -->
+                    <!-- AnchorY 0 so the shake (SetUnreadCount) swings the bell from its
+                         crown the way a real one hangs, rather than spinning it about its
+                         middle. -->
                     <ImageButton x:Name="BellButton"
                                  Source="icon_bell.svg"
                                  WidthRequest="24" HeightRequest="24"
                                  BackgroundColor="Transparent"
+                                 AnchorY="0"
                                  SemanticProperties.Description="Alerts"
                                  Clicked="OnBellClicked"/>
                 </Border>

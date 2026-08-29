@@ -168,16 +168,22 @@ public interface ICardiTrackApiClient
 
     /// <summary>
     /// One page of alerts for the Alerts List (M1-10), newest first, across every CardiMember
-    /// the signed-in user may read.
+    /// the signed-in user may read — or one of them, with <paramref name="cardiMemberId"/>.
     /// </summary>
     /// <param name="severity">green/yellow/orange/red, or null for any.</param>
     /// <param name="status">new/acknowledged/resolved, or null for any.</param>
+    /// <param name="cardiMemberId">
+    /// Narrows the page to one CardiMember — what the dashboard card's Alerts button asks for, so
+    /// a caregiver arriving from a member's card is not handed everyone's alerts to sift. Null
+    /// for every member they may read.
+    /// </param>
     Task<AlertListResponse> GetAlertsAsync(
         string? severity = null,
         string? status = null,
         DateTime? from = null,
         DateTime? to = null,
         int? limit = null,
+        Guid? cardiMemberId = null,
         CancellationToken ct = default);
 
     /// <summary>Marks one alert as handled (M1-10 card action).</summary>
