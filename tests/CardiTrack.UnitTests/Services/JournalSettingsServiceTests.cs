@@ -195,6 +195,27 @@ public class JournalSettingsServiceTests
         Assert.Equal(25m, settings.MaximumLevelTolerancePercent);
     }
 
+    /// <summary>
+    /// The rungs a client offers ride down with the bounds, so an app cannot invent its own ladder
+    /// and drift from the server the day either changes — the same stance the book timings take on
+    /// their window and step.
+    /// </summary>
+    [Fact]
+    public async Task The_offerable_rungs_are_published_alongside_the_bounds()
+    {
+        var settings = await CreateService().GetAsync(_userId, _memberId);
+
+        Assert.Contains(20, settings.SelectableToleranceMinutes);
+        Assert.Contains(360, settings.SelectableDirectionBoundMinutes);
+        Assert.Contains(0m, settings.SelectableLevelTolerancePercents);
+
+        // Offerable, not enforced: every rung has to be a value validation would in fact accept.
+        Assert.All(settings.SelectableToleranceMinutes, m => Assert.InRange(m, 0, settings.MaximumToleranceMinutes));
+        Assert.All(
+            settings.SelectableDirectionBoundMinutes,
+            m => Assert.InRange(m, settings.MinimumDirectionBoundMinutes, settings.MaximumDirectionBoundMinutes));
+    }
+
     [Fact]
     public async Task Chosen_tolerances_are_stored_and_reported_as_effective()
     {

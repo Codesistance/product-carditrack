@@ -157,6 +157,10 @@ public class JournalSettingsService : IJournalSettingsService
             MaximumDirectionBoundMinutes = JournalComparison.MaximumDirectionBoundMinutes,
             MaximumLevelTolerancePercent = JournalComparison.MaximumLevelTolerancePercent,
 
+            SelectableToleranceMinutes = JournalComparison.SelectableToleranceMinutes,
+            SelectableDirectionBoundMinutes = JournalComparison.SelectableDirectionBoundMinutes,
+            SelectableLevelTolerancePercents = JournalComparison.SelectableLevelTolerancePercents,
+
             // Every book's generator now exists, so every timing on this screen governs something
             // that actually runs.
             WeekbookAvailable = true,

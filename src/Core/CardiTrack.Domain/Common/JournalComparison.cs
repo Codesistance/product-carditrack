@@ -1,4 +1,4 @@
-namespace CardiTrack.Domain.Common;
+﻿namespace CardiTrack.Domain.Common;
 
 /// <summary>
 /// How far a reading has to sit from the member's own usual before a CardiJournal book names a
@@ -90,6 +90,40 @@ public static class JournalComparison
 
     /// <summary>The widest level band a caregiver may set.</summary>
     public const decimal MaximumLevelTolerancePercent = 25m;
+
+    /// <summary>
+    /// The clock tolerances a client offers, in minutes. A ladder rather than every minute in the
+    /// range: the values a caregiver is actually choosing between are a quarter of an hour apart,
+    /// and a control offering 121 of them asks them to pick a number rather than a judgement.
+    /// </summary>
+    /// <remarks>
+    /// Offerable, not enforceable — unlike <see cref="JournalSchedule.StepMinutes"/>, which is a
+    /// real capability limit because the generator only runs on the half hour and could not honour
+    /// 02:17. Thirty-seven minutes is a perfectly honourable tolerance; it is simply not one worth
+    /// a rung on a picker. So the ladder rides in the response to keep the app from inventing its
+    /// own, and validation stays the range — a value off the ladder is unusual, not invalid.
+    /// </remarks>
+    public static IReadOnlyList<int> SelectableToleranceMinutes { get; } =
+        Array.AsReadOnly(new[] { 0, 5, 10, 15, 20, 30, 45, 60, 90, 120 });
+
+    /// <summary>
+    /// The direction bounds a client offers, in minutes. Coarser than the tolerances above,
+    /// because this one is answering "how far round the clock before the question stops making
+    /// sense" — an hour either way does not change that answer.
+    /// </summary>
+    /// <inheritdoc cref="SelectableToleranceMinutes" path="/remarks"/>
+    public static IReadOnlyList<int> SelectableDirectionBoundMinutes { get; } =
+        Array.AsReadOnly(new[] { 60, 90, 120, 180, 240, 360, 480, 720 });
+
+    /// <summary>
+    /// The level bands a client offers, as percentages of the member's own usual. Four rungs
+    /// rather than a range, because this is the setting a caregiver has the least vocabulary for:
+    /// a client is expected to show these in plain words — none, slight, moderate, large — and
+    /// keep the percentage behind them.
+    /// </summary>
+    /// <inheritdoc cref="SelectableToleranceMinutes" path="/remarks"/>
+    public static IReadOnlyList<decimal> SelectableLevelTolerancePercents { get; } =
+        Array.AsReadOnly(new[] { 0m, 1m, 2m, 5m });
 
     /// <summary>Whether a chosen clock tolerance is one a book can honour. Null is always valid.</summary>
     public static bool IsSelectableTolerance(int? minutes) =>

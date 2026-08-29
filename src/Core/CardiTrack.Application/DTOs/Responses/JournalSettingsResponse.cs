@@ -55,6 +55,16 @@ public class JournalSettingsResponse
     public decimal MaximumLevelTolerancePercent { get; set; }
 
     /// <summary>
+    /// The rungs a client offers for each of the three, so the ladder lives in one place rather
+    /// than being reinvented per client. Offerable rather than enforced — see
+    /// <see cref="Domain.Common.JournalComparison.SelectableToleranceMinutes"/>: anything inside
+    /// the bounds above is accepted, these are simply the values worth a rung.
+    /// </summary>
+    public IReadOnlyList<int> SelectableToleranceMinutes { get; set; } = [];
+    public IReadOnlyList<int> SelectableDirectionBoundMinutes { get; set; } = [];
+    public IReadOnlyList<decimal> SelectableLevelTolerancePercents { get; set; } = [];
+
+    /// <summary>
     /// False while a book's generator does not exist yet (Weekbook and Monthbook, R2). The
     /// setting stores and returns fine; a client shows it as coming rather than as live, so the
     /// app never implies a book is being written when nothing writes it.
