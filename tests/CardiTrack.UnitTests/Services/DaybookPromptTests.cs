@@ -86,9 +86,85 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(sleepMinutes: 372, restingHr: 64, spo2: 95.4m), Baseline(), AdultAge);
 
-        Assert.Contains("total=6.2h (their usual 4.1h) [NSF recommend 7-9h]", section);
-        Assert.Contains("resting=64bpm (their usual 58bpm) [AHA recommend 60-100bpm]", section);
-        Assert.Contains("bloodOxygen=95.4% [WHO recommend 94-100%]", section);
+        Assert.Contains(
+            "total=6.2h (their usual 4.1h, 2.1h above it) [NSF recommend 7-9h; the reading sat below that]",
+            section);
+        Assert.Contains(
+            "resting=64bpm (their usual 58bpm, 6bpm above it) [AHA recommend 60-100bpm; the reading sat inside that]",
+            section);
+        Assert.Contains(
+            "bloodOxygen=95.4% [WHO recommend 94-100%; the reading sat inside that]", section);
+    }
+
+    /// <summary>
+    /// The direction of every comparison is stated, not implied by two figures sitting beside
+    /// each other. Issue #492: a day's account described 7.1 hours of sleep as less than a usual
+    /// of 6.3, and 74 bpm as lower than a usual of 73 — both figures quoted correctly, both
+    /// comparisons the wrong way round. The subtraction was the model's to make, and on figures
+    /// this close it made it backwards; nothing else on the page contradicted it, so the entry
+    /// read as an ordinary one.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_SaysAReadingAboveTheirUsual_SatAboveIt()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 378;
+        baseline.AvgRestingHeartRate = 73;
+
+        var section = DaybookPrompt.ReadingsSection(
+            Log(sleepMinutes: 426, restingHr: 74), baseline, AdultAge);
+
+        Assert.Contains("total=7.1h (their usual 6.3h, 0.8h above it)", section);
+        Assert.Contains("resting=74bpm (their usual 73bpm, 1bpm above it)", section);
+    }
+
+    /// <summary>The other direction, on the same two readings.</summary>
+    [Fact]
+    public void ReadingsSection_SaysAReadingBelowTheirUsual_SatBelowIt()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 426;
+        baseline.AvgRestingHeartRate = 74;
+
+        var section = DaybookPrompt.ReadingsSection(
+            Log(sleepMinutes: 378, restingHr: 73), baseline, AdultAge);
+
+        Assert.Contains("total=6.3h (their usual 7.1h, 0.8h below it)", section);
+        Assert.Contains("resting=73bpm (their usual 74bpm, 1bpm below it)", section);
+    }
+
+    /// <summary>
+    /// A gap too small for the line's own format to print is stated as level rather than as "0h
+    /// above it" — a direction word attached to a zero is a claim the two figures do not support,
+    /// and it is the reading a family would query.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_CallsADifferenceBelowItsOwnResolution_Level()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 424;
+
+        var section = DaybookPrompt.ReadingsSection(Log(sleepMinutes: 426), baseline, AdultAge);
+
+        Assert.Contains("total=7.1h (their usual 7.1h, level with it)", section);
+    }
+
+    /// <summary>
+    /// Where the reading sat against the published band is computed too, on the exact reading
+    /// rather than the rounded one the line prints: 418 minutes renders as "7.0h" and is three
+    /// minutes short of the floor it appears to clear.
+    /// </summary>
+    [Theory]
+    [InlineData(418, "7h", "below that")]
+    [InlineData(420, "7h", "inside that")]
+    [InlineData(570, "9.5h", "above that")]
+    public void ReadingsSection_PlacesTheNight_AgainstThePublishedBand(
+        int sleepMinutes, string printed, string side)
+    {
+        var section = DaybookPrompt.ReadingsSection(Log(sleepMinutes: sleepMinutes), Baseline(), AdultAge);
+
+        Assert.Contains($"total={printed} ", section);
+        Assert.Contains($"[NSF recommend 7-9h; the reading sat {side}]", section);
     }
 
     /// <summary>
@@ -117,7 +193,7 @@ public class DaybookPromptTests
 
         Assert.DoesNotContain("their usual", section);
         Assert.Contains("total=6.2h", section);
-        Assert.Contains("[NSF recommend 7-9h]", section);
+        Assert.Contains("[NSF recommend 7-9h; the reading sat below that]", section);
     }
 
     /// <summary>
@@ -611,7 +687,7 @@ public class DaybookPromptTests
     {
         var section = DaybookPrompt.ReadingsSection(Log(hrv: 26.4m), Baseline(), AdultAge);
 
-        Assert.Contains("overnightVariability=26.4ms (their usual 38.5ms)", section);
+        Assert.Contains("overnightVariability=26.4ms (their usual 38.5ms, 12.1ms below it)", section);
         Assert.DoesNotContain("recommend", section.Split("overnightVariability")[1].Split('\n')[0]);
     }
 
@@ -628,9 +704,11 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(breathing: 17.1m, overnightBreathing: 15.4m), Baseline(), AdultAge);
 
-        Assert.Contains("breathingRate=17.1/min [WHO recommend 12-20/min]", section);
         Assert.Contains(
-            "breathingRateWhileAsleep=15.4/min (their usual 14.2/min) [WHO recommend 12-20/min]",
+            "breathingRate=17.1/min [WHO recommend 12-20/min; the reading sat inside that]", section);
+        Assert.Contains(
+            "breathingRateWhileAsleep=15.4/min (their usual 14.2/min, 1.2/min above it) "
+            + "[WHO recommend 12-20/min; the reading sat inside that]",
             section);
     }
 
@@ -647,7 +725,7 @@ public class DaybookPromptTests
             Baseline(),
             AdultAge);
 
-        Assert.Contains("minutesWithHeartRateRaised=30 (their usual 18min)", section);
+        Assert.Contains("minutesWithHeartRateRaised=30 (their usual 18min, 12min above it)", section);
         Assert.Contains("start of real effort at 96bpm", section);
     }
 
