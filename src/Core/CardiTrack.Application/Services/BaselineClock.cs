@@ -23,7 +23,7 @@ namespace CardiTrack.Application.Services;
 public static class BaselineClock
 {
     /// <summary>
-    /// A baseline's UTC time of day, as the member's local wall clock on a given date.
+    /// A baseline's UTC time of day, as the member's local wall clock on a given day.
     /// </summary>
     /// <remarks>
     /// Anchored to a date rather than converted with a fixed offset, so a night either side of a
@@ -31,7 +31,14 @@ public static class BaselineClock
     /// stays null; without a zone the stored face is returned unchanged, so fixtures that already
     /// speak in local hours keep working.
     /// </remarks>
-    public static TimeOnly? Local(TimeOnly? utcTimeOfDay, DateOnly onDate, TimeZoneInfo? timeZone)
+    /// <param name="onUtcDate">
+    /// The <b>UTC</b> date the stored face is anchored to — it is pinned to that date and read
+    /// back on the member's clock, so a local civil date passed here is off by up to a day and
+    /// picks the wrong side of a daylight-saving change. Named for the frame rather than left as
+    /// "date" because a caller holding both had no way to tell from the signature which one this
+    /// wanted, and picked the wrong one.
+    /// </param>
+    public static TimeOnly? Local(TimeOnly? utcTimeOfDay, DateOnly onUtcDate, TimeZoneInfo? timeZone)
     {
         if (utcTimeOfDay is not { } utcClock)
             return null;
@@ -39,7 +46,7 @@ public static class BaselineClock
             return utcClock;
 
         var utcInstant = DateTime.SpecifyKind(
-            onDate.ToDateTime(TimeOnly.MinValue).Add(utcClock.ToTimeSpan()), DateTimeKind.Utc);
+            onUtcDate.ToDateTime(TimeOnly.MinValue).Add(utcClock.ToTimeSpan()), DateTimeKind.Utc);
         return TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcInstant, timeZone));
     }
 

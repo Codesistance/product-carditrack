@@ -216,16 +216,27 @@ internal static class DaybookPrompt
         if (stages.Count > 0)
             sb.Append("  stages: ").AppendLine(string.Join(", ", stages));
 
-        if (BaselineClock.Local(log.SleepStartTime, timeZone) is { } start
-            && BaselineClock.Local(log.SleepEndTime, timeZone) is { } end)
+        if (log.SleepStartTime is { } startedAt && log.SleepEndTime is { } endedAt
+            && BaselineClock.Local(startedAt, timeZone) is { } start
+            && BaselineClock.Local(endedAt, timeZone) is { } end)
         {
             // The night's own times and the learned ones are both put on the member's wall clock
             // before either is printed or compared. Read on the same clock they are compared on:
             // a bedtime stated in one frame beside a usual stated in another is a comparison of
             // two different questions, and the difference only shows up for members far enough
             // from Greenwich that nobody testing near it would see it.
-            var bedtime = BaselineClock.Local(baseline?.TypicalBedtime, log.Date, timeZone);
-            var wake = BaselineClock.Local(baseline?.TypicalWakeTime, log.Date, timeZone);
+            //
+            // Each usual is anchored to the UTC date of the instant it is being compared against,
+            // not to the log's own date. The log's date is the member's local civil day, and
+            // BaselineClock pins the stored face to a UTC one — passing the local day is off by up
+            // to a day, which is nothing except across a daylight-saving change, where it picks the
+            // wrong side of the shift and moves the usual bedtime an hour. Anchoring each to its
+            // own instant also keeps a night that straddles the change honest: the bedtime is read
+            // on the evening's offset and the wake on the morning's.
+            var bedtime = BaselineClock.Local(
+                baseline?.TypicalBedtime, DateOnly.FromDateTime(startedAt), timeZone);
+            var wake = BaselineClock.Local(
+                baseline?.TypicalWakeTime, DateOnly.FromDateTime(endedAt), timeZone);
 
             sb.Append("  asleep=").Append(start.ToString("HH:mm", CultureInfo.InvariantCulture))
               .Append(" to ").Append(end.ToString("HH:mm", CultureInfo.InvariantCulture))

@@ -317,6 +317,42 @@ public class DaybookPromptTests
         Assert.Contains("Clock times are the member's own local time.", section);
     }
 
+    /// <summary>
+    /// Each usual is anchored to the UTC date of the instant it is compared against, not to the
+    /// log's own date — the log's date is the member's local civil day, and BaselineClock pins the
+    /// stored face to a UTC one. The two differ by up to a day, which is nothing except across a
+    /// daylight-saving change, where the wrong side of the shift moves the usual bedtime an hour
+    /// and the book reports a drift the member did not have.
+    /// </summary>
+    /// <remarks>
+    /// Sydney on the night the clocks go back (5 April 2026, 03:00 → 02:00 local). The night's own
+    /// instants sit either side of it, and the log's local date is a day ahead of their UTC one.
+    /// </remarks>
+    [Fact]
+    public void ReadingsSection_AnchorsEachUsual_ToTheInstantItIsComparedAgainst()
+    {
+        var sydney = TimeZoneInfo.FindSystemTimeZoneById("Australia/Sydney");
+
+        var log = Log(
+            sleepMinutes: 400,
+            // 2026-04-04 12:00 UTC is 23:00 on the 4th in Sydney, before the change.
+            sleepStart: new DateTime(2026, 4, 4, 12, 0, 0, DateTimeKind.Utc),
+            // 2026-04-04 20:00 UTC is 06:00 on the 5th, after it.
+            sleepEnd: new DateTime(2026, 4, 4, 20, 0, 0, DateTimeKind.Utc));
+        log.Date = new DateOnly(2026, 4, 5);
+
+        var baseline = SleepingBaseline(new TimeOnly(12, 0), new TimeOnly(20, 0));
+
+        var section = DaybookPrompt.ReadingsSection(log, baseline, AdultAge, sydney);
+
+        // Each usual lands on the same face as the reading it is measured against, because both
+        // are read on the offset in force at that instant. Anchored to the log's local date, the
+        // evening's usual would have been read on the morning's offset and come back an hour out.
+        Assert.Contains("asleep=23:00 to 06:00", section);
+        Assert.Contains("usual bedtime 23:00, about their usual time", section);
+        Assert.Contains("usual wake 06:00, about their usual time", section);
+    }
+
     /// <summary>A member still being learned gets no clock yardstick invented for them.</summary>
     [Fact]
     public void ReadingsSection_OmitsTheClockClauses_WhileThereIsNoBaseline()

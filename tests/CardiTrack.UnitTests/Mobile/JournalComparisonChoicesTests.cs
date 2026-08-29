@@ -97,6 +97,20 @@ public class JournalComparisonChoicesTests
         Assert.Equal("Ignore anything under 5%", JournalComparisonChoices.LevelToleranceLabel(5m));
     }
 
+    /// <summary>
+    /// The named rungs match exactly, not by range. The server takes any value inside the bounds
+    /// at one decimal place, so a range would have read a stored 1.5% back as "small ones (2%)"
+    /// and shown the caregiver a figure that is not their setting.
+    /// </summary>
+    [Theory]
+    [InlineData(0.5, "Ignore anything under 0.5%")]
+    [InlineData(1.5, "Ignore anything under 1.5%")]
+    [InlineData(2.5, "Ignore anything under 2.5%")]
+    public void LevelToleranceLabel_SaysAnOffLadderValue_InFull(decimal percent, string expected)
+    {
+        Assert.Equal(expected, JournalComparisonChoices.LevelToleranceLabel(percent));
+    }
+
     // ── Reading the tapped label back ───────────────────────────────────────────
 
     /// <summary>

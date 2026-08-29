@@ -86,8 +86,15 @@ public static class JournalComparisonChoices
     public static string LevelToleranceLabel(decimal percent) => percent switch
     {
         <= 0m => "Mention every difference",
-        <= 1m => "Ignore slight ones (1%)",
-        <= 2m => "Ignore small ones (2%)",
+
+        // The two named rungs match exactly, not by range. The ladder is offerable rather than
+        // enforced — the server takes any value inside the bounds at one decimal place — so a
+        // range would have read a stored 1.5% back as "Ignore small ones (2%)" and shown the
+        // caregiver a figure that is not their setting. Anything off the ladder falls through and
+        // is said in full.
+        1m => "Ignore slight ones (1%)",
+        2m => "Ignore small ones (2%)",
+
         _ => string.Create(CultureInfo.CurrentCulture, $"Ignore anything under {percent:0.#}%"),
     };
 
