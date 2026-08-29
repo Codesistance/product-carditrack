@@ -254,7 +254,14 @@ public class HealthInsightService : IHealthInsightService
         // honest but leaves the model reading a household's bedtime off Greenwich's clock; the
         // Daybook now speaks the member's own local time, and two prompts showing two different
         // faces for the same baseline field is the drift MemberAnchorTimeZone exists to prevent.
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        //
+        // Only the two baseline prompts carry that window, and resolving the zone walks the
+        // member's caregiver links and then reads a row per link. A member still being learned has
+        // no window to put on a clock, so on that path the walk would be queries run to be thrown
+        // away — and the learning path is the one every new member takes for their first month.
+        var timeZone = isLearning
+            ? null
+            : await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
 
         var prompt = (primaryBaseline, provisionalBaseline) switch
         {

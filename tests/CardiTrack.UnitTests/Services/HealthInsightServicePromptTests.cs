@@ -324,6 +324,32 @@ public class HealthInsightServicePromptTests
         await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, 7);
     }
 
+    /// <summary>
+    /// Resolving the member's clock walks their caregiver links and reads a row per link, and only
+    /// the two baseline prompts carry a sleep window to put on it. A member still being learned has
+    /// none — and the learning path is the one every new member takes for their first month, so
+    /// those are queries run to be thrown away.
+    /// </summary>
+    [Fact]
+    public async Task Baseline_DoesNotResolveTheClock_WhileTheMemberIsStillBeingLearned()
+    {
+        // The fixture holds no baseline for any period, which is the learning prompt.
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        await _links.DidNotReceive().GetByCardiMemberIdAsync(_memberId);
+    }
+
+    /// <summary>And it is resolved as soon as there is a window to put on it.</summary>
+    [Fact]
+    public async Task Baseline_ResolvesTheClock_OnceThereIsAWindowToPutOnIt()
+    {
+        SetupBaseline(periodDays: 30);
+
+        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        await _links.Received().GetByCardiMemberIdAsync(_memberId);
+    }
+
     [Fact]
     public async Task Baseline_ReportsTheSleepWindowOnTheMembersOwnClock()
     {
