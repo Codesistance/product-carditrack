@@ -19,7 +19,9 @@ public enum AlertFilter
 /// <remarks>
 /// The chip set is 101:6525's (All · Unread · Critical · Today · This Week), drawn in
 /// 101:6206's style — rounded pill with a trailing caret, gradient fill when selected,
-/// hairline #174E86 outline when not.
+/// hairline #174E86 outline when not. A named member chip can lead the row (see
+/// <see cref="SetMemberFilter"/>); it is a second axis rather than a sixth option, so it sits
+/// permanently selected beside whichever of the five is, and clears on its own tap.
 /// </remarks>
 public sealed class FilterChipBar : ContentView
 {
@@ -34,14 +36,46 @@ public sealed class FilterChipBar : ContentView
 
     private readonly Dictionary<AlertFilter, (Border Chip, Label Text, Image Caret)> _chips = new();
 
+    /// <summary>
+    /// The leading "whose alerts" chip. Built once and shown or hidden, rather than added to and
+    /// removed from the row, so the five behind it never re-layout under a caregiver's thumb.
+    /// </summary>
+    private readonly Border _memberChip;
+    private readonly Label _memberChipText;
+
     /// <summary>Raised only when the selection actually changes — re-tapping a chip is a no-op.</summary>
     public event EventHandler<AlertFilter>? FilterChanged;
 
+    /// <summary>Raised when the member chip is tapped, which is the only way to clear it.</summary>
+    public event EventHandler? MemberFilterCleared;
+
     public AlertFilter Selected { get; private set; } = AlertFilter.All;
+
+    /// <summary>
+    /// Hides the five standard chips while leaving a member chip showing — for the archive
+    /// listing, which none of the five apply to but which is still narrowed to one member. Without
+    /// this the page would have to hide the whole row, and the archive would be quietly filtered
+    /// to somebody with nothing on screen saying so.
+    /// </summary>
+    public bool StandardChipsVisible
+    {
+        get => _standardChipsVisible;
+        set
+        {
+            _standardChipsVisible = value;
+            foreach (var (chip, _, _) in _chips.Values)
+                chip.IsVisible = value;
+        }
+    }
+
+    private bool _standardChipsVisible = true;
 
     public FilterChipBar()
     {
         var row = new HorizontalStackLayout { Spacing = 9, Padding = new Thickness(20, 0) };
+
+        (_memberChip, _memberChipText) = BuildMemberChip();
+        row.Add(_memberChip);
 
         foreach (var (filter, label) in Chips)
         {
@@ -95,6 +129,78 @@ public sealed class FilterChipBar : ContentView
         };
 
         Paint();
+    }
+
+    /// <summary>
+    /// Drawn in the selected style and never in the unselected one: it is only ever on screen
+    /// while it is doing something. A ✕ where the five carry a caret, because the caret means
+    /// "there are choices behind this" and this chip's only other state is gone.
+    /// </summary>
+    private (Border Chip, Label Text) BuildMemberChip()
+    {
+        var text = new Label
+        {
+            FontFamily = "QuicksandSemiBold",
+            FontSize = 16,
+            TextColor = Resource<Color>("White"),
+            VerticalTextAlignment = TextAlignment.Center,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            // A long name must not push the five off the row entirely.
+            MaximumWidthRequest = 160,
+        };
+
+        var clear = new Label
+        {
+            Text = "✕",
+            FontFamily = "QuicksandSemiBold",
+            FontSize = 14,
+            TextColor = Resource<Color>("White"),
+            VerticalTextAlignment = TextAlignment.Center,
+        };
+
+        var chip = new Border
+        {
+            IsVisible = false,
+            Padding = new Thickness(20, 9, 14, 9),
+            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            Background = Resource<Brush>("GradientButtonBrush"),
+            StrokeThickness = 0,
+            Content = new HorizontalStackLayout
+            {
+                Spacing = 8,
+                Children = { text, clear },
+            },
+            Shadow = new Shadow
+            {
+                Brush = Resource<Brush>("CardShadowBrush"),
+                Opacity = 0.15f,
+                Radius = 7,
+                Offset = new Point(0, 4),
+            },
+        };
+
+        chip.GestureRecognizers.Add(new TapGestureRecognizer
+        {
+            Command = new Command(() => MemberFilterCleared?.Invoke(this, EventArgs.Empty)),
+        });
+
+        return (chip, text);
+    }
+
+    /// <summary>
+    /// Shows the member chip under <paramref name="memberName"/>, or hides it when that is null.
+    /// Announces nothing either way — the page owns the reload, since it is the one that knows
+    /// whether the filter it is applying came from a tap or from the route it was opened on.
+    /// </summary>
+    public void SetMemberFilter(string? memberName)
+    {
+        _memberChip.IsVisible = !string.IsNullOrWhiteSpace(memberName);
+        if (!_memberChip.IsVisible)
+            return;
+
+        _memberChipText.Text = memberName;
+        SemanticProperties.SetDescription(_memberChip, $"Showing {memberName}'s alerts only");
+        SemanticProperties.SetHint(_memberChip, "Tap to show every CardiMember's alerts");
     }
 
     public void Select(AlertFilter filter)

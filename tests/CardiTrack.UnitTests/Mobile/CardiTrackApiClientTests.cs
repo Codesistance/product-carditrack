@@ -408,6 +408,44 @@ public class CardiTrackApiClientTests
         Assert.Contains("limit=25", query);
     }
 
+    /// <summary>
+    /// The member-scoped route rather than a <c>cardiMemberId</c> query on the collection: both
+    /// exist on the API and apply the same access check, but the path is what the audit trail
+    /// records as whose alerts were read.
+    /// </summary>
+    [Fact]
+    public async Task GetAlerts_ForOneMember_UsesTheMemberScopedRoute()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, EmptyAlertPage);
+        var memberId = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+
+        await client.GetAlertsAsync(cardiMemberId: memberId);
+
+        var request = http.Requests.Single();
+        Assert.Equal($"/api/v1/cardimembers/{memberId}/alerts", request.Uri!.AbsolutePath);
+        Assert.Equal(string.Empty, request.Uri.Query);
+    }
+
+    /// <summary>
+    /// Narrowing to one member is a second axis, not a replacement for the chips: the Alerts
+    /// list keeps All/Unread/Critical/Today usable while a member chip is showing, so both have
+    /// to survive onto the wire together.
+    /// </summary>
+    [Fact]
+    public async Task GetAlerts_ForOneMember_KeepsTheOtherFilters()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, EmptyAlertPage);
+        var memberId = Guid.Parse("3fa85f64-5717-4562-b3fc-2c963f66afa6");
+
+        await client.GetAlertsAsync(status: "new", cardiMemberId: memberId);
+
+        var request = http.Requests.Single();
+        Assert.Equal($"/api/v1/cardimembers/{memberId}/alerts", request.Uri!.AbsolutePath);
+        Assert.Contains("status=new", Uri.UnescapeDataString(request.Uri.Query));
+    }
+
     [Fact]
     public async Task GetAlerts_UnwrapsTheAlertPage()
     {

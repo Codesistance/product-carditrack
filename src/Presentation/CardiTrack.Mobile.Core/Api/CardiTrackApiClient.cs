@@ -255,6 +255,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         DateTime? from = null,
         DateTime? to = null,
         int? limit = null,
+        Guid? cardiMemberId = null,
         CancellationToken ct = default)
     {
         var filters = new List<string>();
@@ -266,7 +267,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         if (to is { } t) filters.Add($"to={Uri.EscapeDataString(t.ToString("O"))}");
         if (limit is { } l) filters.Add($"limit={l}");
 
-        var path = filters.Count == 0 ? "api/v1/alerts" : $"api/v1/alerts?{string.Join("&", filters)}";
+        // The member-scoped route rather than a cardiMemberId query on the collection: both exist
+        // and both apply the same access check (AlertsController.ListAsync), but the route says in
+        // the path whose alerts these are, which is what the audit trail records.
+        var basePath = cardiMemberId is { } memberId
+            ? $"api/v1/cardimembers/{memberId}/alerts"
+            : "api/v1/alerts";
+        var path = filters.Count == 0 ? basePath : $"{basePath}?{string.Join("&", filters)}";
         return GetAsync<AlertListResponse>(path, ct);
     }
 

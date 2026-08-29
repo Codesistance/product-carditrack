@@ -169,14 +169,20 @@ public class DashboardService : IDashboardService
             Weather = WeatherSnapshotMapper.From(
                 member.EnvironmentalContextConsentGranted, environmentalReading),
             PendingQuestionnaire = pendingQuestionnaire,
-            // Unresolved only, newest first. This strip used to be built from every alert whose
-            // row was still IsActive — which is the soft-delete flag, and nothing about an
-            // episode ending touches it. Acknowledging records who looked and resolution closes
-            // the episode; neither deactivated the row, so an alert the producer had already
-            // called over sat here until five newer ones pushed it out, on the same screen whose
-            // status colour had long since moved on. Same read HealthStatus and UnreadAlertCount
-            // above already made, and the same one HealthInsightService makes for the hero line.
+            // Unacknowledged only, newest first. This strip used to be built from every alert
+            // whose row was still IsActive — which is the soft-delete flag, and nothing about an
+            // episode ending touches it — then from every unresolved one, which still kept an
+            // alert on the dashboard after a caregiver had said they had seen it. Acknowledging
+            // is that answer: it is the caregiver telling us this one no longer needs their
+            // attention, and the strip is what still does. So the strip and the bell's badge now
+            // read the same set (UnreadAlertCount above), and an acknowledged alert stays
+            // readable where it belongs — on the alerts list, until it resolves.
+            //
+            // HealthStatus and Reassurance deliberately keep reading the wider unresolved set:
+            // an episode nobody has closed is still an open episode, and acknowledging it must
+            // not turn the card green or earn a "all quiet" card.
             RecentAlerts = unresolvedAlerts
+                .Where(a => a.AcknowledgedDate is null)
                 .Take(RecentAlertCount)
                 .Select(a => new DashboardAlertSummary
                 {

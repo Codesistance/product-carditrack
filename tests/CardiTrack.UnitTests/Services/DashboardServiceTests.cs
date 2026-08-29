@@ -535,15 +535,45 @@ public class DashboardServiceTests
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
+        // Acknowledged is not resolved: the episode is still open, so it still colours the
+        // status — but it is no longer unread, and no longer on the strip.
         Assert.Equal("red", result.HealthStatus);
         Assert.Equal(1, result.UnreadAlertCount);
-        Assert.Equal(2, result.RecentAlerts.Count);
+        Assert.Single(result.RecentAlerts);
         Assert.Equal("red", result.RecentAlerts[0].Severity);
-        // Acknowledged is not resolved: the episode is still open, and the strip has to say
-        // which of the two it is rather than calling both "Resolved".
         Assert.Equal("new", result.RecentAlerts[0].Status);
-        Assert.Equal("acknowledged", result.RecentAlerts[1].Status);
         await _alerts.Received(1).GetUnresolvedByCardiMemberAsync(_memberId);
+    }
+
+    /// <summary>
+    /// Acknowledging is the caregiver saying they have seen it. The strip is what still wants
+    /// their attention, so an acknowledged alert leaves it — it used to sit there afterwards,
+    /// beside a bell badge that had already stopped counting it.
+    /// </summary>
+    [Fact]
+    public async Task RecentAlerts_ExcludeAcknowledgedAlerts()
+    {
+        SetupActivityLogs(days: 30);
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.Sleep,
+                Severity = AlertSeverity.Yellow,
+                Title = "Restless night",
+                IsResolved = false,
+                AcknowledgedDate = DateTime.UtcNow,
+            },
+        ]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Empty(result.RecentAlerts);
+        Assert.Equal(0, result.UnreadAlertCount);
+
+        // The episode is still open, though — acknowledging must not turn the card green.
+        Assert.Equal("yellow", result.HealthStatus);
     }
 
     /// <summary>

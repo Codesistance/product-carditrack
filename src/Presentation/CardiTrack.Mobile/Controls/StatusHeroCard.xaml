@@ -146,22 +146,43 @@
                     </Border>
                 </Grid>
 
-                <Border WidthRequest="36" HeightRequest="36"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                        VerticalOptions="Center"
-                        SemanticProperties.Description="Alerts"
-                        SemanticProperties.Hint="Opens the alerts list">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="18"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
+                <!-- Alerts, pulsing while this CardiMember has one nobody has answered yet (see
+                     ApplyOpenAlerts). Same construction and same bounds as AdviseCluster below —
+                     the ring blooms over the button's own 36 rather than behind it, because a
+                     36 face is opaque and there is a neighbour on either side with nothing to
+                     spare. Unlike Advise and Q&amp;A this button is always here: it is the way to
+                     this member's alerts whether or not any are open, so only the ring comes and
+                     goes. A tap opens the list filtered to this member. -->
+                <Grid x:Name="AlertsCluster"
+                      WidthRequest="36" HeightRequest="36"
+                      VerticalOptions="Center"
+                      SemanticProperties.Description="Alerts"
+                      SemanticProperties.Hint="Opens the alerts list for this CardiMember">
+                    <Grid.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnAlertsTapped"/>
-                    </Border.GestureRecognizers>
-                    <Image Source="icon_tab_alerts.svg"
-                           WidthRequest="20" HeightRequest="20"
-                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Border>
+                    </Grid.GestureRecognizers>
+
+                    <Border WidthRequest="36" HeightRequest="36"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                            HorizontalOptions="Center" VerticalOptions="Center"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="18"/>
+                        </Border.StrokeShape>
+                        <Image Source="icon_tab_alerts.svg"
+                               WidthRequest="20" HeightRequest="20"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+
+                    <Ellipse x:Name="AlertsPulseRing"
+                             WidthRequest="32" HeightRequest="32"
+                             HorizontalOptions="Center" VerticalOptions="Center"
+                             Stroke="{StaticResource StatusRed}"
+                             StrokeThickness="2"
+                             Opacity="0"
+                             InputTransparent="True"/>
+                </Grid>
 
                 <!-- Advise: last in the row, only while this member has a fresh "Something to try"
                      suggestion waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
