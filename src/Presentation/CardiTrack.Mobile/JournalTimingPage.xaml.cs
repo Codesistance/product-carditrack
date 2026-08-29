@@ -160,19 +160,19 @@ public partial class JournalTimingPage : ContentPage
         await ChooseTimeAsync(
             "When to write the Daybook",
             _settings?.EffectiveDaybookLocalTime,
-            picked => BuildRequest(_settings!) with { DaybookLocalTime = picked });
+            picked => JournalSettingsDraft.From(_settings!) with { DaybookLocalTime = picked });
 
     private async void OnWeekbookTimeTapped(object? sender, TappedEventArgs e) =>
         await ChooseTimeAsync(
             "When to write the Weekbook",
             _settings?.EffectiveWeekbookLocalTime,
-            picked => BuildRequest(_settings!) with { WeekbookLocalTime = picked });
+            picked => JournalSettingsDraft.From(_settings!) with { WeekbookLocalTime = picked });
 
     private async void OnMonthbookTimeTapped(object? sender, TappedEventArgs e) =>
         await ChooseTimeAsync(
             "When to write the Monthbook",
             _settings?.EffectiveMonthbookLocalTime,
-            picked => BuildRequest(_settings!) with { MonthbookLocalTime = picked });
+            picked => JournalSettingsDraft.From(_settings!) with { MonthbookLocalTime = picked });
 
     private async void OnBedtimeToleranceTapped(object? sender, TappedEventArgs e) =>
         await ChooseAsync(
@@ -186,7 +186,7 @@ public partial class JournalTimingPage : ContentPage
                     return null;
                 }
 
-                return BuildRequest(settings) with { BedtimeToleranceMinutes = picked };
+                return JournalSettingsDraft.From(settings) with { BedtimeToleranceMinutes = picked };
             });
 
     private async void OnWakeToleranceTapped(object? sender, TappedEventArgs e) =>
@@ -201,7 +201,7 @@ public partial class JournalTimingPage : ContentPage
                     return null;
                 }
 
-                return BuildRequest(settings) with { WakeToleranceMinutes = picked };
+                return JournalSettingsDraft.From(settings) with { WakeToleranceMinutes = picked };
             });
 
     private async void OnDirectionBoundTapped(object? sender, TappedEventArgs e) =>
@@ -216,7 +216,7 @@ public partial class JournalTimingPage : ContentPage
                     return null;
                 }
 
-                return BuildRequest(settings) with { DirectionBoundMinutes = picked };
+                return JournalSettingsDraft.From(settings) with { DirectionBoundMinutes = picked };
             });
 
     private async void OnLevelToleranceTapped(object? sender, TappedEventArgs e) =>
@@ -231,7 +231,7 @@ public partial class JournalTimingPage : ContentPage
                     return null;
                 }
 
-                return BuildRequest(settings) with { LevelTolerancePercent = picked };
+                return JournalSettingsDraft.From(settings) with { LevelTolerancePercent = picked };
             });
 
     /// <summary>
@@ -289,7 +289,7 @@ public partial class JournalTimingPage : ContentPage
         if (_settings.EffectiveWeekStartsOn == picked)
             return;
 
-        await SaveAsync(BuildRequest(_settings) with { WeekStartsOn = picked });
+        await SaveAsync(JournalSettingsDraft.From(_settings) with { WeekStartsOn = picked });
     }
 
     private async Task SaveAsync(JournalSettingsDraft draft)
@@ -314,27 +314,6 @@ public partial class JournalTimingPage : ContentPage
         }
     }
 
-    /// <summary>
-    /// The PUT is a full replacement of every value on this screen, so each save resends the ones
-    /// the caregiver did not touch. Read from the last response rather than from the labels — a
-    /// label is formatted text, and parsing it back would be a second source of truth.
-    /// </summary>
-    /// <remarks>
-    /// Every field of the request, not just the timings. Null on this request means "back to the
-    /// default" rather than "not sent", so a draft that carried only the four timings would clear
-    /// a caregiver's bedtime tolerance the next time they moved their Daybook — a setting lost to
-    /// a save about something else, with nothing on screen to show it had gone.
-    /// </remarks>
-    private static JournalSettingsDraft BuildRequest(JournalSettingsResponse settings) =>
-        new(settings.EffectiveDaybookLocalTime,
-            settings.EffectiveWeekbookLocalTime,
-            settings.EffectiveMonthbookLocalTime,
-            settings.EffectiveWeekStartsOn,
-            settings.EffectiveBedtimeToleranceMinutes,
-            settings.EffectiveWakeToleranceMinutes,
-            settings.EffectiveDirectionBoundMinutes,
-            settings.EffectiveLevelTolerancePercent);
-
     private static IEnumerable<TimeOnly> SelectableTimes(JournalSettingsResponse settings)
     {
         var step = settings.StepMinutes > 0 ? settings.StepMinutes : 30;
@@ -354,27 +333,4 @@ public partial class JournalTimingPage : ContentPage
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(
             $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
-
-    private readonly record struct JournalSettingsDraft(
-        TimeOnly DaybookLocalTime,
-        TimeOnly WeekbookLocalTime,
-        TimeOnly MonthbookLocalTime,
-        DayOfWeek WeekStartsOn,
-        int BedtimeToleranceMinutes,
-        int WakeToleranceMinutes,
-        int DirectionBoundMinutes,
-        decimal LevelTolerancePercent)
-    {
-        public UpdateJournalSettingsRequest ToRequest() => new()
-        {
-            DaybookLocalTime = DaybookLocalTime,
-            WeekbookLocalTime = WeekbookLocalTime,
-            MonthbookLocalTime = MonthbookLocalTime,
-            WeekStartsOn = WeekStartsOn,
-            BedtimeToleranceMinutes = BedtimeToleranceMinutes,
-            WakeToleranceMinutes = WakeToleranceMinutes,
-            DirectionBoundMinutes = DirectionBoundMinutes,
-            LevelTolerancePercent = LevelTolerancePercent,
-        };
-    }
 }

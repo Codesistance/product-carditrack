@@ -60,7 +60,8 @@ public class JournalSettingsService : IJournalSettingsService
         if (!JournalComparison.IsSelectableLevelTolerance(request.LevelTolerancePercent))
         {
             throw new ArgumentException(
-                $"Choose between 0 and {JournalComparison.MaximumLevelTolerancePercent}%.",
+                $"Choose between 0 and {JournalComparison.MaximumLevelTolerancePercent}%, "
+                + "to at most one decimal place.",
                 nameof(request.LevelTolerancePercent));
         }
 

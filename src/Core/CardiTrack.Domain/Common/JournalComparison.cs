@@ -92,6 +92,18 @@ public static class JournalComparison
     public const decimal MaximumLevelTolerancePercent = 25m;
 
     /// <summary>
+    /// The granularity a chosen level band must land on. The column stores one decimal place, so
+    /// a finer value is not a finer setting — it is one the database rounds on the way in and
+    /// hands back as a number the caregiver never chose.
+    /// </summary>
+    /// <remarks>
+    /// The same stance <see cref="JournalSchedule.StepMinutes"/> takes, and for the same reason
+    /// its validator gives: a value is refused rather than rounded, because silently moving 2.55
+    /// to 2.6 saves a setting nobody picked and then shows it back to them as though they had.
+    /// </remarks>
+    public const int LevelTolerancePercentDecimals = 1;
+
+    /// <summary>
     /// The clock tolerances a client offers, in minutes. A ladder rather than every minute in the
     /// range: the values a caregiver is actually choosing between are a quarter of an hour apart,
     /// and a control offering 121 of them asks them to pick a number rather than a judgement.
@@ -134,9 +146,20 @@ public static class JournalComparison
         minutes is null
         || (minutes >= MinimumDirectionBoundMinutes && minutes <= MaximumDirectionBoundMinutes);
 
-    /// <summary>Whether a chosen level band is inside the range a reading stays readable across.</summary>
-    public static bool IsSelectableLevelTolerance(decimal? percent) =>
-        percent is null || (percent >= 0m && percent <= MaximumLevelTolerancePercent);
+    /// <summary>
+    /// Whether a chosen level band is inside the range a reading stays readable across, and lands
+    /// on a value the column can actually hold. Null is always valid.
+    /// </summary>
+    public static bool IsSelectableLevelTolerance(decimal? percent)
+    {
+        if (percent is not { } value)
+            return true;
+
+        if (value < 0m || value > MaximumLevelTolerancePercent)
+            return false;
+
+        return decimal.Round(value, LevelTolerancePercentDecimals) == value;
+    }
 
     /// <summary>The stored tolerances, each defaulted where the caregiver has chosen nothing.</summary>
     public static JournalComparisonTolerances Effective(

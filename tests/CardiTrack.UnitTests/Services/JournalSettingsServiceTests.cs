@@ -288,6 +288,36 @@ public class JournalSettingsServiceTests
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
+    /// <summary>
+    /// The column holds one decimal place, so a finer value is not a finer setting — it is one the
+    /// database rounds on the way in and hands back as a number the caregiver never chose. Refused
+    /// rather than rounded, the same stance the book timings take on their half-hour step.
+    /// </summary>
+    [Theory]
+    [InlineData(2.55)]
+    [InlineData(0.01)]
+    public async Task A_level_band_finer_than_the_column_holds_is_refused(decimal percent)
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.UpdateAsync(_userId, _memberId, Request(levelTolerance: percent)));
+
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>One decimal place is fine, and trailing zeros are the same number.</summary>
+    [Theory]
+    [InlineData(2.5)]
+    [InlineData(2.50)]
+    [InlineData(3)]
+    public async Task A_level_band_the_column_can_hold_is_accepted(decimal percent)
+    {
+        await CreateService().UpdateAsync(_userId, _memberId, Request(levelTolerance: percent));
+
+        Assert.Equal(percent, _member.DaybookLevelTolerancePercent);
+    }
+
     [Theory]
     [InlineData(-0.5)]
     [InlineData(25.1)]
