@@ -1,4 +1,4 @@
-namespace CardiTrack.Application.DTOs.Responses;
+﻿namespace CardiTrack.Application.DTOs.Responses;
 
 /// <summary>
 /// When this member's CardiJournal books are written, and the bounds a client may offer.
@@ -32,6 +32,27 @@ public class JournalSettingsResponse
     public TimeOnly EarliestSelectableTime { get; set; }
     public TimeOnly LatestSelectableTime { get; set; }
     public int StepMinutes { get; set; }
+
+    /// <summary>
+    /// How far a reading has to sit from the member's own usual before a book names a direction
+    /// for it. Null where the caregiver has never chosen one.
+    /// </summary>
+    public int? BedtimeToleranceMinutes { get; set; }
+    public int? WakeToleranceMinutes { get; set; }
+    public int? DirectionBoundMinutes { get; set; }
+    public decimal? LevelTolerancePercent { get; set; }
+
+    /// <summary>What the books will actually use, chosen or defaulted.</summary>
+    public int EffectiveBedtimeToleranceMinutes { get; set; }
+    public int EffectiveWakeToleranceMinutes { get; set; }
+    public int EffectiveDirectionBoundMinutes { get; set; }
+    public decimal EffectiveLevelTolerancePercent { get; set; }
+
+    /// <summary>The bounds a client must keep the four above inside.</summary>
+    public int MaximumToleranceMinutes { get; set; }
+    public int MinimumDirectionBoundMinutes { get; set; }
+    public int MaximumDirectionBoundMinutes { get; set; }
+    public decimal MaximumLevelTolerancePercent { get; set; }
 
     /// <summary>
     /// False while a book's generator does not exist yet (Weekbook and Monthbook, R2). The

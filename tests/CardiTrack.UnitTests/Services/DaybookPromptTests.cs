@@ -1,4 +1,5 @@
-﻿using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Common;
+using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 
@@ -34,9 +35,13 @@ public class DaybookPromptTests
         int? moderateZoneMinutes = null,
         int? vigorousZoneMinutes = null,
         int? moderateZoneFloorBpm = null,
-        int? longestSedentaryStretch = null) => new()
+        int? longestSedentaryStretch = null,
+        DateTime? sleepStart = null,
+        DateTime? sleepEnd = null) => new()
     {
         Date = Reviewed,
+        SleepStartTime = sleepStart,
+        SleepEndTime = sleepEnd,
         Steps = steps,
         ActiveMinutes = activeMinutes,
         RestingHeartRate = restingHr,
@@ -165,6 +170,212 @@ public class DaybookPromptTests
 
         Assert.Contains($"total={printed} ", section);
         Assert.Contains($"[NSF recommend 7-9h; the reading sat {side}]", section);
+    }
+
+    // ── The sleep window: clock arithmetic across midnight ──────────────────────
+
+    private static ActivityLog Night(int startHour, int startMinute, int endHour, int endMinute) =>
+        Log(
+            sleepMinutes: 400,
+            sleepStart: new DateTime(2026, 8, 16, startHour, startMinute, 0, DateTimeKind.Utc)
+                .AddDays(startHour < 12 ? 1 : 0),
+            sleepEnd: new DateTime(2026, 8, 17, endHour, endMinute, 0, DateTimeKind.Utc));
+
+    private static PatternBaseline SleepingBaseline(TimeOnly bedtime, TimeOnly wake)
+    {
+        var baseline = Baseline();
+        baseline.TypicalBedtime = bedtime;
+        baseline.TypicalWakeTime = wake;
+        return baseline;
+    }
+
+    /// <summary>
+    /// The bug this file's usual clauses were written for, in its clock form. A night that crosses
+    /// midnight is the ordinary case, not the edge one, and naive subtraction calls 23:50 against a
+    /// usual of 00:10 twenty-three hours and forty minutes late. It is twenty minutes early — and
+    /// inside the default tolerance, so the book says neither.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_ReadsANightAcrossMidnight_TheShortWayRoundTheClock()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Night(23, 50, 7, 0),
+            SleepingBaseline(new TimeOnly(0, 10), new TimeOnly(7, 0)),
+            AdultAge);
+
+        Assert.Contains("usual bedtime 00:10, about their usual time", section);
+        Assert.DoesNotContain("23h", section);
+        Assert.DoesNotContain("later than usual", section);
+    }
+
+    /// <summary>
+    /// Past the tolerance the direction is named, as the sentence a family would say rather than
+    /// as an "above it" that means nothing about two clock faces.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_NamesTheDirection_OnceTheGapClearsTheTolerance()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Night(23, 14, 7, 2),
+            SleepingBaseline(new TimeOnly(22, 30), new TimeOnly(6, 45)),
+            AdultAge);
+
+        Assert.Contains("usual bedtime 22:30, went to bed 44m later than usual", section);
+        Assert.Contains("usual wake 06:45, woke 17m later than usual", section);
+    }
+
+    /// <summary>An earlier night, and a gap said in hours and minutes rather than as raw minutes.</summary>
+    [Fact]
+    public void ReadingsSection_SaysAnEarlierNight_Earlier()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Night(20, 55, 6, 45),
+            SleepingBaseline(new TimeOnly(22, 30), new TimeOnly(6, 45)),
+            AdultAge);
+
+        Assert.Contains("usual bedtime 22:30, went to bed 1h 35m earlier than usual", section);
+    }
+
+    /// <summary>
+    /// The two tolerances are the member's own, and bedtime's is the wider of the two: the same
+    /// fifteen-minute gap is silence on a bedtime and a named direction on a wake.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_HoldsBedtimeAndWake_ToTheirOwnTolerances()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Night(22, 45, 7, 0),
+            SleepingBaseline(new TimeOnly(22, 30), new TimeOnly(6, 45)),
+            AdultAge,
+            timeZone: null,
+            JournalComparison.Defaults);
+
+        // 15m on each side: inside bedtime's 20m default, past wake's 10m.
+        Assert.Contains("usual bedtime 22:30, about their usual time", section);
+        Assert.Contains("usual wake 06:45, woke 15m later than usual", section);
+    }
+
+    /// <summary>
+    /// A caregiver's own tolerance governs, not the default: a member whose bedtime wanders makes
+    /// forty minutes ordinary.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_HonoursAMembersOwnTolerance()
+    {
+        var tolerances = JournalComparison.Effective(
+            bedtimeToleranceMinutes: 60, wakeToleranceMinutes: null,
+            directionBoundMinutes: null, levelTolerancePercent: null);
+
+        var section = DaybookPrompt.ReadingsSection(
+            Night(23, 14, 6, 45),
+            SleepingBaseline(new TimeOnly(22, 30), new TimeOnly(6, 45)),
+            AdultAge,
+            timeZone: null,
+            tolerances);
+
+        Assert.Contains("usual bedtime 22:30, about their usual time", section);
+    }
+
+    /// <summary>
+    /// Far enough round the circle and the direction stops being decidable — a bedtime eight hours
+    /// "earlier" than usual is an afternoon sleep filed as a night, and a book that called it early
+    /// would be confidently wrong about the one line a family would query.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_RefusesADirection_PastTheBound()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Night(14, 30, 20, 0),
+            SleepingBaseline(new TimeOnly(22, 30), new TimeOnly(6, 45)),
+            AdultAge);
+
+        Assert.Contains("usual bedtime 22:30, far off their usual", section);
+        Assert.Contains("too far round the clock to call it earlier or later", section);
+        Assert.DoesNotContain("went to bed", section);
+    }
+
+    /// <summary>
+    /// Both the night's own times and the learned ones go onto the member's wall clock, and the
+    /// block says so. Read on one clock and compared on another, a bedtime and its usual are a
+    /// comparison of two different questions — invisible to anyone testing near Greenwich.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_PutsEveryClockTime_OnTheMembersOwnClock()
+    {
+        var newYork = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+
+        var section = DaybookPrompt.ReadingsSection(
+            Night(2, 40, 11, 0),
+            SleepingBaseline(new TimeOnly(2, 10), new TimeOnly(11, 0)),
+            AdultAge,
+            newYork);
+
+        // 02:40 UTC is 22:40 the evening before in New York; the usual 02:10 is 22:10 there. Both
+        // faces move, so the 30-minute gap between them survives the conversion.
+        Assert.Contains("asleep=22:40 to 07:00", section);
+        Assert.Contains("usual bedtime 22:10, went to bed 30m later than usual", section);
+        Assert.Contains("Clock times are the member's own local time.", section);
+    }
+
+    /// <summary>A member still being learned gets no clock yardstick invented for them.</summary>
+    [Fact]
+    public void ReadingsSection_OmitsTheClockClauses_WhileThereIsNoBaseline()
+    {
+        var section = DaybookPrompt.ReadingsSection(
+            Night(23, 14, 7, 2), baseline: null, AdultAge);
+
+        Assert.Contains("asleep=23:14 to 07:02", section);
+        Assert.DoesNotContain("usual bedtime", section);
+    }
+
+    // ── The level band on the numeric clauses ───────────────────────────────────
+
+    /// <summary>
+    /// The band is a share of the member's own usual, so one setting means the same thing on a
+    /// resting heart rate and on a step count. 74 against 73 is 1.4% — inside a 2% band.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_CallsAReadingInsideTheLevelBand_Level()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 73;
+
+        var tolerances = JournalComparison.Effective(null, null, null, levelTolerancePercent: 2m);
+
+        var section = DaybookPrompt.ReadingsSection(
+            Log(restingHr: 74), baseline, AdultAge, timeZone: null, tolerances);
+
+        Assert.Contains("resting=74bpm (their usual 73bpm, level with it)", section);
+    }
+
+    /// <summary>Zero — the default — leaves each format's own resolution as the whole test.</summary>
+    [Fact]
+    public void ReadingsSection_LeavesTheDirectionStanding_WithTheDefaultBand()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 73;
+
+        var section = DaybookPrompt.ReadingsSection(Log(restingHr: 74), baseline, AdultAge);
+
+        Assert.Contains("resting=74bpm (their usual 73bpm, 1bpm above it)", section);
+    }
+
+    /// <summary>
+    /// The floor no setting can lower: a difference the format itself prints as nothing stays
+    /// level whatever the band is, because "0h above it" is never a thing to say.
+    /// </summary>
+    [Fact]
+    public void ReadingsSection_KeepsTheFormatsOwnFloor_WhateverTheBand()
+    {
+        var baseline = Baseline();
+        baseline.AvgSleepMinutes = 424;
+
+        var tolerances = JournalComparison.Effective(null, null, null, levelTolerancePercent: 0m);
+
+        var section = DaybookPrompt.ReadingsSection(
+            Log(sleepMinutes: 426), baseline, AdultAge, timeZone: null, tolerances);
+
+        Assert.Contains("total=7.1h (their usual 7.1h, level with it)", section);
     }
 
     /// <summary>

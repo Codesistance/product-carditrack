@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Entities;
+﻿using CardiTrack.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -43,6 +43,16 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
         builder.Property(c => c.JournalWeekStartsOn)
             .HasConversion<string>()
             .HasMaxLength(20);
+
+        // CardiJournal comparison tolerances, nullable for the same reason the timings are. The
+        // percentage is stored to one decimal: the band is read as "one percent" or "half a
+        // percent", and a wider scale would offer a precision no caregiver is choosing between.
+        builder.Property(c => c.DaybookBedtimeToleranceMinutes);
+        builder.Property(c => c.DaybookWakeToleranceMinutes);
+        builder.Property(c => c.DaybookDirectionBoundMinutes);
+
+        builder.Property(c => c.DaybookLevelTolerancePercent)
+            .HasPrecision(4, 1);
 
         builder.Property(c => c.EmergencyContactName)
             .HasMaxLength(200);

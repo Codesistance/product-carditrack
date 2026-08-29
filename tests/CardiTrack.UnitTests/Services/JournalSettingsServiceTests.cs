@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Requests;
+﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -41,13 +41,21 @@ public class JournalSettingsServiceTests
         TimeOnly? daybook = null,
         TimeOnly? weekbook = null,
         TimeOnly? monthbook = null,
-        DayOfWeek? weekStartsOn = null)
+        DayOfWeek? weekStartsOn = null,
+        int? bedtimeTolerance = null,
+        int? wakeTolerance = null,
+        int? directionBound = null,
+        decimal? levelTolerance = null)
         => new()
         {
             DaybookLocalTime = daybook,
             WeekbookLocalTime = weekbook,
             MonthbookLocalTime = monthbook,
             WeekStartsOn = weekStartsOn,
+            BedtimeToleranceMinutes = bedtimeTolerance,
+            WakeToleranceMinutes = wakeTolerance,
+            DirectionBoundMinutes = directionBound,
+            LevelTolerancePercent = levelTolerance,
         };
 
     [Fact]
@@ -149,6 +157,126 @@ public class JournalSettingsServiceTests
             _userId, _memberId, Request(daybook: new TimeOnly(6, 0), weekbook: new TimeOnly(22, 0))));
 
         Assert.Null(_member.DaybookLocalTime);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    // ── Comparison tolerances ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// A member nobody has tuned reads exactly as they did before the setting existed — the same
+    /// stance the timings take, and what makes the four columns need no backfill.
+    /// </summary>
+    [Fact]
+    public async Task An_untuned_member_reports_the_default_tolerances_as_effective()
+    {
+        var settings = await CreateService().GetAsync(_userId, _memberId);
+
+        Assert.Null(settings.BedtimeToleranceMinutes);
+        Assert.Null(settings.WakeToleranceMinutes);
+
+        Assert.Equal(20, settings.EffectiveBedtimeToleranceMinutes);
+        Assert.Equal(10, settings.EffectiveWakeToleranceMinutes);
+        Assert.Equal(360, settings.EffectiveDirectionBoundMinutes);
+        Assert.Equal(0m, settings.EffectiveLevelTolerancePercent);
+    }
+
+    /// <summary>
+    /// The bounds ride in the response for the same reason the time window does: a client that
+    /// has to guess them can offer a setting the books would refuse.
+    /// </summary>
+    [Fact]
+    public async Task The_tolerance_bounds_are_published_so_a_client_cannot_offer_an_unreachable_one()
+    {
+        var settings = await CreateService().GetAsync(_userId, _memberId);
+
+        Assert.Equal(120, settings.MaximumToleranceMinutes);
+        Assert.Equal(60, settings.MinimumDirectionBoundMinutes);
+        Assert.Equal(720, settings.MaximumDirectionBoundMinutes);
+        Assert.Equal(25m, settings.MaximumLevelTolerancePercent);
+    }
+
+    [Fact]
+    public async Task Chosen_tolerances_are_stored_and_reported_as_effective()
+    {
+        var settings = await CreateService().UpdateAsync(
+            _userId,
+            _memberId,
+            Request(bedtimeTolerance: 45, wakeTolerance: 5, directionBound: 240, levelTolerance: 2.5m));
+
+        Assert.Equal(45, _member.DaybookBedtimeToleranceMinutes);
+        Assert.Equal(5, _member.DaybookWakeToleranceMinutes);
+        Assert.Equal(240, _member.DaybookDirectionBoundMinutes);
+        Assert.Equal(2.5m, _member.DaybookLevelTolerancePercent);
+
+        Assert.Equal(45, settings.EffectiveBedtimeToleranceMinutes);
+        Assert.Equal(2.5m, settings.EffectiveLevelTolerancePercent);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task A_null_tolerance_clears_the_choice_back_to_the_default()
+    {
+        _member.DaybookBedtimeToleranceMinutes = 45;
+
+        var settings = await CreateService().UpdateAsync(_userId, _memberId, Request());
+
+        Assert.Null(_member.DaybookBedtimeToleranceMinutes);
+        Assert.Equal(20, settings.EffectiveBedtimeToleranceMinutes);
+    }
+
+    /// <summary>
+    /// Zero is a real choice, not an absent one: a caregiver who wants every minute of drift named
+    /// is asking for the format's own resolution and nothing wider.
+    /// </summary>
+    [Fact]
+    public async Task A_zero_tolerance_is_a_choice_rather_than_a_clear()
+    {
+        await CreateService().UpdateAsync(_userId, _memberId, Request(bedtimeTolerance: 0));
+
+        Assert.Equal(0, _member.DaybookBedtimeToleranceMinutes);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(121)]
+    public async Task An_out_of_range_tolerance_is_refused_and_nothing_is_saved(int minutes)
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.UpdateAsync(_userId, _memberId, Request(bedtimeTolerance: minutes)));
+
+        Assert.Null(_member.DaybookBedtimeToleranceMinutes);
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Past half a day, earlier and later stop being different answers — a bound above it could
+    /// never be reached, so it is refused rather than stored as a setting that does nothing.
+    /// </summary>
+    [Theory]
+    [InlineData(30)]
+    [InlineData(721)]
+    public async Task A_direction_bound_the_clock_cannot_reach_is_refused(int minutes)
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.UpdateAsync(_userId, _memberId, Request(directionBound: minutes)));
+
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(-0.5)]
+    [InlineData(25.1)]
+    public async Task An_out_of_range_level_band_is_refused(decimal percent)
+    {
+        var service = CreateService();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.UpdateAsync(_userId, _memberId, Request(levelTolerance: percent)));
+
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 

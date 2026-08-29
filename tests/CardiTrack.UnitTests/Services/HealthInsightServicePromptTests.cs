@@ -325,7 +325,7 @@ public class HealthInsightServicePromptTests
     }
 
     [Fact]
-    public async Task Baseline_ReportsTheSleepWindowAsUtc()
+    public async Task Baseline_ReportsTheSleepWindowOnTheMembersOwnClock()
     {
         SetupBaseline(baseline: new PatternBaseline
         {
@@ -337,8 +337,12 @@ public class HealthInsightServicePromptTests
 
         await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
-        // Unlabelled, the model would reason about a local evening it cannot see.
-        Assert.Contains("Typical sleep window: 22:40–06:15 UTC", CapturedPrompt());
+        // Unlabelled, the model would reason about a local evening it cannot see. The window is
+        // now put on the member's own clock rather than handed over as UTC, so it agrees with the
+        // Daybook's account of the same two baseline fields; this member anchors to UTC (no
+        // caregiver timezone is stubbed), so the faces are unchanged and only the label moves.
+        Assert.Contains("Typical sleep window: 22:40–06:15 local", CapturedPrompt());
+        Assert.DoesNotContain("UTC", CapturedPrompt());
     }
 
     // ── Cacheable prefix ────────────────────────────────────────────────────────

@@ -249,10 +249,18 @@ public class HealthInsightService : IHealthInsightService
         var memberContext = await ComposeMemberContextAsync(
             member, cardiMemberId, to, PromptPurpose.BaselineInsight, ct);
 
+        // The sleep window below is two learned times of day, and a time of day means nothing
+        // until it says whose clock it is on. It used to be handed over labelled UTC, which is
+        // honest but leaves the model reading a household's bedtime off Greenwich's clock; the
+        // Daybook now speaks the member's own local time, and two prompts showing two different
+        // faces for the same baseline field is the drift MemberAnchorTimeZone exists to prevent.
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+
         var prompt = (primaryBaseline, provisionalBaseline) switch
         {
-            (not null, _) => BuildBaselinePrompt(memberContext, baselines, recentLogs, to),
-            (null, not null) => BuildProvisionalPrompt(memberContext, provisionalBaseline, recentLogs, to),
+            (not null, _) => BuildBaselinePrompt(memberContext, baselines, recentLogs, to, timeZone),
+            (null, not null) => BuildProvisionalPrompt(
+                memberContext, provisionalBaseline, recentLogs, to, timeZone),
             _ => BuildLearningPrompt(memberContext, recentLogs, to),
         };
 
@@ -439,7 +447,8 @@ public class HealthInsightService : IHealthInsightService
         string memberContext,
         IEnumerable<PatternBaseline> baselines,
         IEnumerable<ActivityLog> recentLogs,
-        DateOnly today)
+        DateOnly today,
+        TimeZoneInfo? timeZone)
     {
         var baselineLines = baselines.Select(b =>
             $"{b.PeriodDays}-day — Steps: {b.AvgSteps}±{b.StdDevSteps}, " +
@@ -447,7 +456,7 @@ public class HealthInsightService : IHealthInsightService
             (b.AvgHeartRateVariabilityMs is { } hrv
                 ? $", HRV: {hrv}±{b.StdDevHeartRateVariability} ms overnight"
                 : string.Empty) +
-            SleepWindow(b));
+            SleepWindow(b, today, timeZone));
 
         return $"""
             {BaselineInstructions}
@@ -466,7 +475,8 @@ public class HealthInsightService : IHealthInsightService
         string memberContext,
         PatternBaseline baseline,
         IEnumerable<ActivityLog> recentLogs,
-        DateOnly today)
+        DateOnly today,
+        TimeZoneInfo? timeZone)
     {
         return $"""
             {ProvisionalInstructions}
@@ -474,7 +484,7 @@ public class HealthInsightService : IHealthInsightService
             {memberContext}
 
             --- Provisional baseline ---
-            {baseline.PeriodDays}-day (provisional) — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, Sleep: {baseline.AvgSleepMinutes} min{SleepWindow(baseline)}
+            {baseline.PeriodDays}-day (provisional) — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, Sleep: {baseline.AvgSleepMinutes} min{SleepWindow(baseline, today, timeZone)}
 
             --- Recent readings (the most recent days that carried any, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
@@ -505,12 +515,21 @@ public class HealthInsightService : IHealthInsightService
     // drift between the private model's callers.
 
     /// <summary>
-    /// Typical bedtime and wake time, when the baseline has settled on them. Stored in UTC, and said
-    /// so — an unlabelled "22:40" invites the model to reason about a local evening it cannot see.
+    /// Typical bedtime and wake time, when the baseline has settled on them — put on the member's
+    /// own local clock, and said so.
     /// </summary>
-    private static string SleepWindow(PatternBaseline baseline) =>
-        baseline.TypicalBedtime is TimeOnly bedtime && baseline.TypicalWakeTime is TimeOnly wake
-            ? $", Typical sleep window: {bedtime:HH\\:mm}–{wake:HH\\:mm} UTC"
+    /// <remarks>
+    /// Stored in UTC and formerly handed over labelled that way, which was honest but left the
+    /// model reasoning about a household's evening on Greenwich's clock. Converting is the better
+    /// half of that trade now that a zone is resolvable here: the label stays, because an
+    /// unlabelled "22:40" is the failure either way. Anchored to <paramref name="today"/> so a
+    /// baseline read either side of a daylight-saving change lands on the clock the household
+    /// actually keeps.
+    /// </remarks>
+    private static string SleepWindow(PatternBaseline baseline, DateOnly today, TimeZoneInfo? timeZone) =>
+        BaselineClock.Local(baseline.TypicalBedtime, today, timeZone) is { } bedtime
+        && BaselineClock.Local(baseline.TypicalWakeTime, today, timeZone) is { } wake
+            ? $", Typical sleep window: {bedtime:HH\\:mm}–{wake:HH\\:mm} local"
             : string.Empty;
 
     // ── MedGemma response shapes ────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-namespace CardiTrack.Application.DTOs.Requests;
+﻿namespace CardiTrack.Application.DTOs.Requests;
 
 /// <summary>
 /// When this member's CardiJournal books are written, in the member's own local time.
@@ -22,4 +22,25 @@ public class UpdateJournalSettingsRequest
 
     /// <summary>The weekday a journal week begins. Null restores the default (Monday).</summary>
     public DayOfWeek? WeekStartsOn { get; set; }
+
+    /// <summary>
+    /// How far a bedtime must move before a book calls it earlier or later. Null restores the
+    /// default. See <see cref="Domain.Common.JournalComparison"/>.
+    /// </summary>
+    public int? BedtimeToleranceMinutes { get; set; }
+
+    /// <inheritdoc cref="BedtimeToleranceMinutes"/>
+    public int? WakeToleranceMinutes { get; set; }
+
+    /// <summary>
+    /// How far apart two clock times must be before a book names no direction for them at all.
+    /// Null restores the default.
+    /// </summary>
+    public int? DirectionBoundMinutes { get; set; }
+
+    /// <summary>
+    /// The band around a numeric usual, as a percentage of it, inside which a reading is called
+    /// level rather than above or below. Null restores the default.
+    /// </summary>
+    public decimal? LevelTolerancePercent { get; set; }
 }

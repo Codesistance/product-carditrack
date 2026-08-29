@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Common;
+﻿using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Interfaces;
 
@@ -76,6 +76,31 @@ public class CardiMember : BaseEntity, ISoftDeletable
     /// ending the evening before this day, and is written on it.
     /// </summary>
     public DayOfWeek? JournalWeekStartsOn { get; set; }
+
+    /// <summary>
+    /// How far this member's bedtime must move before a book calls it earlier or later, or null
+    /// for <see cref="Common.JournalComparison.DefaultBedtimeToleranceMinutes"/>. On the member
+    /// for the reason the book timings are: the distance that counts as a change is a fact about
+    /// whose nights these are, not about who is reading the account.
+    /// </summary>
+    public int? DaybookBedtimeToleranceMinutes { get; set; }
+
+    /// <inheritdoc cref="DaybookBedtimeToleranceMinutes"/>
+    public int? DaybookWakeToleranceMinutes { get; set; }
+
+    /// <summary>
+    /// How far apart two clock times must be before a book stops naming a direction for them at
+    /// all, or null for the default. See
+    /// <see cref="Common.JournalComparison.DefaultDirectionBoundMinutes"/>.
+    /// </summary>
+    public int? DaybookDirectionBoundMinutes { get; set; }
+
+    /// <summary>
+    /// The band around a numeric usual, as a percentage of it, inside which a book calls the
+    /// reading level rather than above or below — or null for the default. Widens the resolution
+    /// floor each reading's own format already imposes; it can never narrow it.
+    /// </summary>
+    public decimal? DaybookLevelTolerancePercent { get; set; }
 
     /// <summary>Paused state expires on its own — callers must never treat the pause as sticky.</summary>
     public bool IsMonitoringPaused(DateTime utcNow) => MonitoringPausedUntil > utcNow;

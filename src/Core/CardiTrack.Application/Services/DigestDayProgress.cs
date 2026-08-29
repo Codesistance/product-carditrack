@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Services;
@@ -173,16 +173,14 @@ public sealed class DigestDayProgress
     /// </summary>
     private static TimeOnly? LocalClock(TimeOnly? utcTimeOfDay, DateTime localNow, TimeZoneInfo? timeZone)
     {
-        if (utcTimeOfDay is not { } utcClock)
-            return null;
-        if (timeZone is null)
-            return utcClock;
+        if (utcTimeOfDay is null || timeZone is null)
+            return utcTimeOfDay;
 
+        // The UTC date this member's local "now" falls on, which is the date the stored face has
+        // to be anchored to before it can be read back on their wall clock.
         var utcNow = TimeZoneInfo.ConvertTimeToUtc(
             DateTime.SpecifyKind(localNow, DateTimeKind.Unspecified), timeZone);
-        var utcInstant = DateTime.SpecifyKind(
-            utcNow.Date.Add(utcClock.ToTimeSpan()), DateTimeKind.Utc);
-        return TimeOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcInstant, timeZone));
+        return BaselineClock.Local(utcTimeOfDay, DateOnly.FromDateTime(utcNow), timeZone);
     }
 
     /// <summary>
