@@ -663,28 +663,27 @@ variable "public_ai_api_key_secret_id" {
 # assumptions the client makes of it.
 #
 # gemini-3.5-flash-lite (owner decision 2026-08-25, part of standardising the estate on the 3.5
-# generation): the outgoing gemini-2.5-flash-lite retires with the 2.5 family ~2026-10-16, and
-# the earlier candidate gemini-3.1-flash-lite never reached an allowlisted EU region. Two things
-# were NOT verifiable when this was set and MUST happen before the apply: the §3 probe (this
-# model's EU-regional availability is unmeasured — if europe-west1 404s, probe west2/west4 and
-# set rewrite_ai_location to match) and the AiSplitEvaluator comparison on the real rewrite
-# prompts. gemini-3.5-flash (europe-west2, probed for the public slot) is the fallback if the
-# lite tier fails either check.
+# generation) went out on 2026-08-25 without the §3 probe the comment above required, and the
+# probe run 2026-08-30 (after pipeline-jobs started 404ing in Dev) found it 404s in all three
+# allowlisted regions — europe-west2, europe-west1 and europe-west4 — it is not served in the EU
+# at all. Reverted to the documented fallback, gemini-3.5-flash, which the §3 probe confirms
+# served in europe-west2 and europe-west4 (404 in europe-west1). The AiSplitEvaluator comparison
+# against the real rewrite prompts still has not run for either model — do that before the next
+# swap attempt.
 variable "rewrite_ai_model" {
   description = "Model identifier for the rewrite slot's VertexGemini kind"
   type        = string
-  default     = "gemini-3.5-flash-lite"
+  default     = "gemini-3.5-flash"
 }
 
-# Same EU-only compliance gate as public_ai_location above. Defaults to europe-west1, chosen
-# when the slot ran gemini-2.5-flash-lite (which London did not serve — publisher-model 404,
-# measured 2026-08-21; Belgium did, sits ~6-10ms away, and is where the MedGemma GPU move
-# (Option B) is headed). Where gemini-3.5-flash-lite is served has not been measured: the §3
-# probe before the apply decides whether this stays west1 or moves within the allowlist.
+# Same EU-only compliance gate as public_ai_location above. Moved from europe-west1 to
+# europe-west2 on 2026-08-30 alongside the gemini-3.5-flash-lite revert: gemini-3.5-flash 404s
+# in europe-west1 (§3 probe, 2026-08-30) but is served in europe-west2, which also matches
+# public_ai_location and the doc's stated region preference (§3: west2 first).
 variable "rewrite_ai_location" {
   description = "Vertex AI location for the rewrite slot's VertexGemini kind (EU regional endpoint)"
   type        = string
-  default     = "europe-west1"
+  default     = "europe-west2"
 
   validation {
     condition     = contains(["europe-west2", "europe-west1", "europe-west4"], var.rewrite_ai_location)

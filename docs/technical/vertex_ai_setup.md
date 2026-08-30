@@ -120,13 +120,17 @@ signal than `generateContent`, which needs `aiplatform.user`):
 | gemini-2.5-flash | ✓ | ✓ | ✓ |
 | gemini-3.1-flash-lite | ✗ | ✗ | ✗ |
 | gemini-3.5-flash | ✓ | ✗ | ✓ |
+| gemini-3.5-flash-lite | ✗ | ✗ | ✗ |
 
-This is why `rewrite_ai_location` defaults to `europe-west1` (2.5-flash-lite was not in London)
-while `public_ai_location` stays `europe-west2` (flash is). Re-measure before any model change
-— availability moves. **Not yet in this matrix: `gemini-3.5-flash-lite`** (registered on Vertex
-~July 2026), which the rewrite slot now targets — its EU-regional availability is unmeasured, so
-the probe above is mandatory before the apply and decides whether `rewrite_ai_location` stays
-`europe-west1`.
+`gemini-3.5-flash-lite` measured 2026-08-30 (publisher-model metadata probe), after the model
+went out on 2026-08-25 without this probe having run and 404'd in Dev's `pipeline-jobs` for
+hours (`env:dev`, HTTP 404 on `generate_structured`, ~11 errors/hour) — it is not served in any
+allowlisted EU region, so no `rewrite_ai_location` value fixes it. `rewrite_ai_model` and
+`rewrite_ai_location` are reverted to `gemini-3.5-flash` / `europe-west2`, the documented
+fallback, confirmed served there (and in `europe-west4`; 404 in `europe-west1`, so it could not
+just take over the old `europe-west1` default). Re-measure before any model change — availability
+moves. The AiSplitEvaluator comparison against the real rewrite prompts still has not run for
+either model.
 
 ### Retirement clock (checked 2026-08-25)
 
@@ -136,9 +140,10 @@ fails exactly like an unavailable one — after having worked for months.
 | Model | Retirement | Consequence for us |
 |---|---|---|
 | gemini-2.0-flash (+ -lite, -001) | **Retired** — 2026-03-03 on Vertex, 2026-06-01 on the Gemini API | Was the `public_ai_model` fallback default; prod's public slot ran it via the API-key kind and had been calling a dead model since 2026-06-01. Fixed 2026-08-25: prod tfvars pin the Vertex flip, and the Terraform default is bumped so the dead model cannot come back. |
-| gemini-2.5-flash / -flash-lite / -pro | **~2026-10-16** (release notes say the 16th, the lifecycle page the 20th — plan for the 16th) | Cleared in configuration 2026-08-25 (owner decision): the estate standardised on the 3.5 generation everywhere at once — public slot `gemini-3.5-flash` in both environments, rewrite slot `gemini-3.5-flash-lite` — rather than staging dev-first, since the interim 2.5 pins never shipped an apply and the deadline stood regardless. |
+| gemini-2.5-flash / -flash-lite / -pro | **~2026-10-16** (release notes say the 16th, the lifecycle page the 20th — plan for the 16th) | Cleared in configuration 2026-08-25 (owner decision): the estate standardised on the 3.5 generation everywhere at once — public slot `gemini-3.5-flash` in both environments, rewrite slot `gemini-3.5-flash-lite` at the time (reverted 2026-08-30, see below) — rather than staging dev-first, since the interim 2.5 pins never shipped an apply and the deadline stood regardless. |
 | gemini-3.1-flash-lite | n/a (skipped) | Was the intended rewrite-slot target but never reached an allowlisted EU region (matrix above); superseded by gemini-3.5-flash-lite. |
-| gemini-3.5-flash / -flash-lite | current targets | 3.5-flash: availability measured (matrix above), full §3 probe still required pre-apply. 3.5-flash-lite: **EU availability unmeasured** — §3 probe plus the AiSplitEvaluator comparison are both open pre-apply steps; fallback is gemini-3.5-flash (europe-west2) if either fails. |
+| gemini-3.5-flash-lite | n/a (ruled out 2026-08-30) | Shipped 2026-08-25 without the §3 probe; 404s in every allowlisted EU region (matrix above). Rewrite slot reverted to gemini-3.5-flash. |
+| gemini-3.5-flash | current target, both slots | Availability measured (matrix above) and served in europe-west2/west4. Rewrite slot now pins europe-west2. The AiSplitEvaluator comparison against real rewrite prompts is still an open step, not yet a blocker since this is a same-tier fallback rather than a new candidate. |
 
 Sources: the Gemini API deprecations page and the Vertex AI model lifecycle page — re-check both
 whenever this table is consulted, and re-date the heading when re-checked.
