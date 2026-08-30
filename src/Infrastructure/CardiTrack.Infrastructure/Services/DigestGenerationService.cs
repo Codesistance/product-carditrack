@@ -206,6 +206,30 @@ public partial class DigestGenerationService : IDigestGenerationService
     private const int MaxSuggestionLength = 260;
 
     /// <summary>
+    /// Storage cap for the account itself, matching the <c>varchar(4000)</c> the column is —
+    /// see <c>DigestEntryConfiguration</c>, which must not drift from this.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The headline and the suggestion have been guarded against their columns since they existed;
+    /// the text was not, and it is the one field with no fallback — the entry is the text. The
+    /// private model is allowed 2048 output tokens, comfortably more than this cap in characters,
+    /// so a model that answers a "6-12 sentences" brief with a page is not a hypothetical. What it
+    /// produced was a <c>22001</c> from the raw INSERT, caught by the caller's per-member handler
+    /// and logged as "generation failed" — a message that names the member and nothing about the
+    /// cause, on a path where a book is written once and never retried, so the period was gone with
+    /// no way to tell from the log why.
+    /// </para>
+    /// <para>
+    /// Discarded rather than truncated, the same stance every other guard on this path takes. A
+    /// clipped account ends mid-sentence, and the sentence it ends in the middle of may be the one
+    /// carrying the qualification — "her nights were shorter than usual, though" is a different
+    /// claim from its first half. Nothing rather than something wrong.
+    /// </para>
+    /// </remarks>
+    private const int MaxTextLength = 4000;
+
+    /// <summary>
     /// The floor between two summaries for the same member. The digest job runs half-hourly, and
     /// the assessor pass re-runs generation immediately afterwards, so a continuously-uploading
     /// device produces new readings on nearly every pass — and without a floor that would mean an
@@ -404,6 +428,85 @@ public partial class DigestGenerationService : IDigestGenerationService
         return generated;
     }
 
+    /// <summary>
+    /// What one member's turn at a book came to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The books used to answer their caller with a bool and log only when they had written
+    /// something, which made "every member was declined" and "the pass never ran" the same absence
+    /// in the log. Every decline but the coverage guard was silent, so the question a missing book
+    /// actually raises — <em>why</em> was nothing written — had no answer anywhere.
+    /// </para>
+    /// <para>
+    /// It matters more here than it would for the family summary, which is recomputed every half
+    /// hour: a book is due in a window it does not get back. A Weekbook is due on one local weekday
+    /// a week and a Monthbook on one local day a month, so a pass that quietly declined everyone is
+    /// a period the fleet has lost, and it should not take a database query to find that out.
+    /// </para>
+    /// </remarks>
+    private enum BookOutcome
+    {
+        /// <summary>The book was written.</summary>
+        Written,
+
+        /// <summary>Gone, deactivated, or monitoring paused — nothing is written about them.</summary>
+        NotMonitored,
+
+        /// <summary>Not this member's due day. The ordinary answer on six days in seven.</summary>
+        NotDueToday,
+
+        /// <summary>Their due day, but their local clock has not reached their chosen hour yet.</summary>
+        BeforeTheHour,
+
+        /// <summary>Already written for the period — the ordinary answer for the rest of that day.</summary>
+        AlreadyWritten,
+
+        /// <summary>Too few of the period's days carried readings for an account of it to be honest.</summary>
+        TooThin,
+
+        /// <summary>The reply did not survive its guards, so the period gets no book at all.</summary>
+        Discarded,
+
+        /// <summary>The attempt threw, and was caught per member so the rest of the pass ran.</summary>
+        Failed,
+    }
+
+    /// <summary>One pass's outcomes, counted for the line it logs at the end.</summary>
+    private sealed class BookOutcomeTally
+    {
+        private readonly int[] _counts = new int[Enum.GetValues<BookOutcome>().Length];
+
+        internal void Add(BookOutcome outcome) => _counts[(int)outcome]++;
+
+        internal int this[BookOutcome outcome] => _counts[(int)outcome];
+    }
+
+    /// <summary>
+    /// One line per pass, written whether or not the pass wrote anything.
+    /// </summary>
+    /// <remarks>
+    /// Unconditional, where the books used to log only when they wrote something. The digest job
+    /// runs 48 times a day and this is three more lines a pass — a price worth paying for a log
+    /// that can tell a pass which declined every member from a pass that never ran at all.
+    /// </remarks>
+    private void LogPassOutcome(string book, int candidates, BookOutcomeTally tally) =>
+        _logger.LogInformation(
+            "{Book} pass complete. Candidates: {Candidates}, written: {Written}, not due today: "
+            + "{NotDueToday}, before their hour: {BeforeTheHour}, already written: {AlreadyWritten}, "
+            + "period too thin: {TooThin}, discarded by a guard: {Discarded}, not monitored: "
+            + "{NotMonitored}, failed: {Failed}.",
+            book,
+            candidates,
+            tally[BookOutcome.Written],
+            tally[BookOutcome.NotDueToday],
+            tally[BookOutcome.BeforeTheHour],
+            tally[BookOutcome.AlreadyWritten],
+            tally[BookOutcome.TooThin],
+            tally[BookOutcome.Discarded],
+            tally[BookOutcome.NotMonitored],
+            tally[BookOutcome.Failed]);
+
     public async Task<int> GenerateDueDaybooksAsync(DateTime utcNow, CancellationToken ct = default)
     {
         // The same candidate filter as the family summary. A member with nothing in two days has
@@ -412,31 +515,25 @@ public partial class DigestGenerationService : IDigestGenerationService
         var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-2);
         var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
 
-        var generated = 0;
+        var tally = new BookOutcomeTally();
         foreach (var memberId in memberIds)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await GenerateDaybookForMemberAsync(memberId, utcNow, ct))
-                    generated++;
+                tally.Add(await GenerateDaybookForMemberAsync(memberId, utcNow, ct));
             }
             catch (Exception ex)
             {
                 // Per member, like the summary pass: one bad timezone id or one model hiccup must
                 // not cost every other family their review of the day.
+                tally.Add(BookOutcome.Failed);
                 _logger.LogError(ex, "Day review generation failed for CardiMember {CardiMemberId}.", memberId);
             }
         }
 
-        if (generated > 0)
-        {
-            _logger.LogInformation(
-                "Day review generation complete. Candidates: {Candidates}, reviews written: {Generated}.",
-                memberIds.Count, generated);
-        }
-
-        return generated;
+        LogPassOutcome("Daybook", memberIds.Count, tally);
+        return tally[BookOutcome.Written];
     }
 
     /// <summary>
@@ -500,34 +597,28 @@ public partial class DigestGenerationService : IDigestGenerationService
         var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-35);
         var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
 
-        var generated = 0;
+        var tally = new BookOutcomeTally();
         foreach (var memberId in memberIds)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await GenerateMonthbookForMemberAsync(memberId, utcNow, ct))
-                    generated++;
+                tally.Add(await GenerateMonthbookForMemberAsync(memberId, utcNow, ct));
             }
             catch (Exception ex)
             {
+                tally.Add(BookOutcome.Failed);
                 _logger.LogError(ex, "Monthbook generation failed for CardiMember {CardiMemberId}.", memberId);
             }
         }
 
-        if (generated > 0)
-        {
-            _logger.LogInformation(
-                "Monthbook generation complete. Candidates: {Candidates}, monthbooks written: {Generated}.",
-                memberIds.Count, generated);
-        }
-
-        return generated;
+        LogPassOutcome("Monthbook", memberIds.Count, tally);
+        return tally[BookOutcome.Written];
     }
 
     /// <summary>
-    /// One member's account of the calendar month just gone, or false when it is not due, not
-    /// possible, or the reply did not survive its guards.
+    /// One member's account of the calendar month just gone, or the <see cref="BookOutcome"/> saying
+    /// why it is not due, not possible, or was not kept.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -545,12 +636,12 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// the Weekbook has from the Daybooks.
     /// </para>
     /// </remarks>
-    private async Task<bool> GenerateMonthbookForMemberAsync(
+    private async Task<BookOutcome> GenerateMonthbookForMemberAsync(
         Guid memberId, DateTime utcNow, CancellationToken ct)
     {
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
-            return false;
+            return BookOutcome.NotMonitored;
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
@@ -561,10 +652,10 @@ public partial class DigestGenerationService : IDigestGenerationService
         // timezone have already been fetched above. The pass as a whole is spared entirely by the
         // offset-span guard in the caller on the days when nobody can be due.
         if (localToday.Day != 1)
-            return false;
+            return BookOutcome.NotDueToday;
 
         if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.MonthbookLocalTime))
-            return false;
+            return BookOutcome.BeforeTheHour;
 
         var monthEnd = localToday.AddDays(-1);
         var monthStart = new DateOnly(monthEnd.Year, monthEnd.Month, 1);
@@ -572,7 +663,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, monthEnd, DigestAudience.Monthbook, ct);
         if (existing is not null)
-            return false;
+            return BookOutcome.AlreadyWritten;
 
         var days = (await _unitOfWork.ActivityLogs
                 .GetByCardiMemberAndDateRangeAsync(memberId, monthStart, monthEnd))
@@ -586,7 +677,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "No Monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: only "
                 + "{DaysWithData} days carried readings, below the {Minimum}-day minimum.",
                 memberId, monthEnd, days.Count, MonthbookMinimumDaysWithData);
-            return false;
+            return BookOutcome.TooThin;
         }
 
         var baseline = await _unitOfWork.PatternBaselines
@@ -632,7 +723,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
                 + "the model returned empty text or restated its own instructions.",
                 memberId, monthEnd);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         if (MonthbookPrompt.NamesACondition(text) is { } condition)
@@ -641,7 +732,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
                 + "it names a condition or a treatment ({Marker}).",
                 memberId, monthEnd, condition);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         if (MonthbookPrompt.UnglossedTerm(text) is { } term)
@@ -650,7 +741,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
                 + "it uses '{Term}' without explaining it where it is first used.",
                 memberId, monthEnd, term);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         var name = NamePlaceholder.FirstName(member.Name);
@@ -660,8 +751,12 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
                 + "it names the member through the placeholder, but no name is on file to resolve it to.",
                 memberId, monthEnd);
-            return false;
+            return BookOutcome.Discarded;
         }
+
+        var resolved = NamePlaceholder.Resolve(text, name)!;
+        if (TooLongToStore(resolved, memberId, monthEnd, "monthbook"))
+            return BookOutcome.Discarded;
 
         await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
@@ -669,14 +764,14 @@ public partial class DigestGenerationService : IDigestGenerationService
             LocalDate = monthEnd,
             Audience = DigestAudience.Monthbook,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, monthEnd), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
+            Text = resolved,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, monthEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, monthEnd),
             GeneratedAtUtc = utcNow,
         }, ct);
 
-        return true;
+        return BookOutcome.Written;
     }
 
     public async Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default)
@@ -687,34 +782,28 @@ public partial class DigestGenerationService : IDigestGenerationService
         var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-9);
         var memberIds = (await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
 
-        var generated = 0;
+        var tally = new BookOutcomeTally();
         foreach (var memberId in memberIds)
         {
             ct.ThrowIfCancellationRequested();
             try
             {
-                if (await GenerateWeekbookForMemberAsync(memberId, utcNow, ct))
-                    generated++;
+                tally.Add(await GenerateWeekbookForMemberAsync(memberId, utcNow, ct));
             }
             catch (Exception ex)
             {
+                tally.Add(BookOutcome.Failed);
                 _logger.LogError(ex, "Weekbook generation failed for CardiMember {CardiMemberId}.", memberId);
             }
         }
 
-        if (generated > 0)
-        {
-            _logger.LogInformation(
-                "Weekbook generation complete. Candidates: {Candidates}, weekbooks written: {Generated}.",
-                memberIds.Count, generated);
-        }
-
-        return generated;
+        LogPassOutcome("Weekbook", memberIds.Count, tally);
+        return tally[BookOutcome.Written];
     }
 
     /// <summary>
-    /// One member's account of the week just gone, or false when it is not due, not possible, or
-    /// the reply did not survive its guards.
+    /// One member's account of the week just gone, or the <see cref="BookOutcome"/> saying why it
+    /// is not due, not possible, or was not kept.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -730,12 +819,12 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// than the books below it.
     /// </para>
     /// </remarks>
-    private async Task<bool> GenerateWeekbookForMemberAsync(
+    private async Task<BookOutcome> GenerateWeekbookForMemberAsync(
         Guid memberId, DateTime utcNow, CancellationToken ct)
     {
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
-            return false;
+            return BookOutcome.NotMonitored;
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
@@ -743,10 +832,10 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // Due on the day the member's week starts, and only once their chosen hour has passed.
         if (localToday.DayOfWeek != JournalSchedule.EffectiveWeekStart(member.JournalWeekStartsOn))
-            return false;
+            return BookOutcome.NotDueToday;
 
         if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.WeekbookLocalTime))
-            return false;
+            return BookOutcome.BeforeTheHour;
 
         // The week that ended last night: seven days back from yesterday inclusive. Dated by its
         // last day, so one LocalDate identifies one week and the partial unique index can hold
@@ -760,7 +849,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, weekEnd, DigestAudience.Weekbook, ct);
         if (existing is not null)
-            return false;
+            return BookOutcome.AlreadyWritten;
 
         var days = (await _unitOfWork.ActivityLogs
                 .GetByCardiMemberAndDateRangeAsync(memberId, weekStart, weekEnd))
@@ -774,7 +863,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "No Weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: only "
                 + "{DaysWithData} of 7 days carried readings, below the {Minimum}-day minimum.",
                 memberId, weekEnd, days.Count, WeekbookMinimumDaysWithData);
-            return false;
+            return BookOutcome.TooThin;
         }
 
         var baseline = await _unitOfWork.PatternBaselines
@@ -824,7 +913,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
                 + "the model returned empty text or restated its own instructions.",
                 memberId, weekEnd);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         if (WeekbookPrompt.NamesACondition(text) is { } condition)
@@ -833,7 +922,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
                 + "it names a condition or a treatment ({Marker}).",
                 memberId, weekEnd, condition);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         if (WeekbookPrompt.UnglossedTerm(text) is { } term)
@@ -842,7 +931,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
                 + "it uses '{Term}' without explaining it where it is first used.",
                 memberId, weekEnd, term);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         var name = NamePlaceholder.FirstName(member.Name);
@@ -852,8 +941,12 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
                 + "it names the member through the placeholder, but no name is on file to resolve it to.",
                 memberId, weekEnd);
-            return false;
+            return BookOutcome.Discarded;
         }
+
+        var resolved = NamePlaceholder.Resolve(text, name)!;
+        if (TooLongToStore(resolved, memberId, weekEnd, "weekbook"))
+            return BookOutcome.Discarded;
 
         await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
@@ -861,19 +954,19 @@ public partial class DigestGenerationService : IDigestGenerationService
             LocalDate = weekEnd,
             Audience = DigestAudience.Weekbook,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, weekEnd), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
+            Text = resolved,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, weekEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, weekEnd),
             GeneratedAtUtc = utcNow,
         }, ct);
 
-        return true;
+        return BookOutcome.Written;
     }
 
     /// <summary>
-    /// One member's review of yesterday, or false when it is not due, not possible, or the reply
-    /// did not survive its guards.
+    /// One member's review of yesterday, or the <see cref="BookOutcome"/> saying why it is not due,
+    /// not possible, or was not kept.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -890,12 +983,12 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// them anyway is the reading of that they would least expect.
     /// </para>
     /// </remarks>
-    private async Task<bool> GenerateDaybookForMemberAsync(
+    private async Task<BookOutcome> GenerateDaybookForMemberAsync(
         Guid memberId, DateTime utcNow, CancellationToken ct)
     {
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
-            return false;
+            return BookOutcome.NotMonitored;
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
@@ -905,7 +998,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // half hour. A time chosen after this pass has already written today's entry does not
         // rewrite it — the existence check below is still the whole due-contract.
         if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.DaybookLocalTime))
-            return false;
+            return BookOutcome.BeforeTheHour;
 
         var reviewedDate = DateOnly.FromDateTime(localNow).AddDays(-1);
 
@@ -919,7 +1012,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, reviewedDate, DigestAudience.Daybook, ct);
         if (existing is not null)
-            return false;
+            return BookOutcome.AlreadyWritten;
 
         var log = (await _unitOfWork.ActivityLogs
                 .GetByCardiMemberAndDateRangeAsync(memberId, reviewedDate, reviewedDate))
@@ -929,7 +1022,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // nothing to review. The apps show their own "no review" copy, which says that honestly
         // where a generated account of an empty day would have to invent the day.
         if (log is null)
-            return false;
+            return BookOutcome.TooThin;
 
         // Same 30-day baseline the alert engine and the summary judge by, so all three agree about
         // what this member's usual is. Absent while they are still being learned, which renders the
@@ -1009,7 +1102,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: the model "
                 + "returned empty text or restated its own instructions.",
                 memberId, reviewedDate);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         // The regulatory guard, and the reason the register can allow precise words at all: naming
@@ -1022,7 +1115,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it names a "
                 + "condition or a treatment ({Marker}).",
                 memberId, reviewedDate, condition);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         // The readability half of the same allowance. A precise term earns its place by explaining
@@ -1034,7 +1127,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it uses "
                 + "'{Term}' without explaining it where it is first used.",
                 memberId, reviewedDate, term);
-            return false;
+            return BookOutcome.Discarded;
         }
 
         var name = NamePlaceholder.FirstName(member.Name);
@@ -1044,8 +1137,12 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it names the "
                 + "member through the placeholder, but no name is on file to resolve it to.",
                 memberId, reviewedDate);
-            return false;
+            return BookOutcome.Discarded;
         }
+
+        var resolved = NamePlaceholder.Resolve(text, name)!;
+        if (TooLongToStore(resolved, memberId, reviewedDate, "daybook entry"))
+            return BookOutcome.Discarded;
 
         await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
@@ -1053,7 +1150,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             LocalDate = reviewedDate,
             Audience = DigestAudience.Daybook,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, reviewedDate), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
+            Text = resolved,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, reviewedDate), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, reviewedDate),
@@ -1063,7 +1160,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // No question is asked off a daybook entry. Questions exist to explain readings while they
         // still matter, and the answer would arrive a day after the day it was about — the same
         // reasoning that stops a time-scoped answer being carried forward.
-        return true;
+        return BookOutcome.Written;
     }
 
     private async Task<bool> GenerateForMemberAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
@@ -1248,13 +1345,17 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        var resolved = NamePlaceholder.Resolve(text, name)!;
+        if (TooLongToStore(resolved, memberId, describedDate, "summary"))
+            return false;
+
         await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
             CardiMemberId = memberId,
             LocalDate = describedDate,
             Audience = DigestAudience.Family,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, describedDate), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
+            Text = resolved,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, describedDate), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, describedDate),
@@ -1741,6 +1842,28 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// returned no headline from one whose headline was rejected here — the fallback is designed to
     /// be unremarkable, which is exactly what makes it worth a line in the log.
     /// </remarks>
+    /// <summary>
+    /// Whether this account is longer than its column can hold — the last guard before the insert,
+    /// and the only one that is about storage rather than register.
+    /// </summary>
+    /// <remarks>
+    /// Checked on the resolved text, not on what the model returned: the placeholder is longer than
+    /// most first names, so resolving it is what settles the length that actually reaches the
+    /// column. See <see cref="MaxTextLength"/> for why this is a discard and not a truncation.
+    /// </remarks>
+    /// <param name="book">The book being written, named as the log should read it.</param>
+    private bool TooLongToStore(string text, Guid memberId, DateOnly localDate, string book)
+    {
+        if (text.Length <= MaxTextLength)
+            return false;
+
+        _logger.LogWarning(
+            "Discarded the {Book} for CardiMember {CardiMemberId} for the period ending {LocalDate}: "
+            + "it ran to {Length} characters, past the {Maximum} the column holds.",
+            book, memberId, localDate, text.Length, MaxTextLength);
+        return true;
+    }
+
     private string? CleanHeadline(string? headline, Guid memberId, DateOnly describedDate)
     {
         var cleaned = (headline ?? string.Empty).Trim().Trim('"', '\'', '.', '—', '-').Trim();

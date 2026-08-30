@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
@@ -284,6 +284,28 @@ public class WeekbookGenerationTests
         SetupModelReply("A week", "   ");
 
         await AssertNothingWritten();
+    }
+
+    /// <summary>
+    /// The account is stored in a varchar(4000), and nothing above this guard bounded it. A model
+    /// answering the "6-12 sentences" brief with a page produced a 22001 from the insert, which the
+    /// pass caught as "generation failed" — the week gone, and the log naming the member but not
+    /// the cause.
+    /// </summary>
+    [Fact]
+    public async Task A_reply_too_long_for_the_column_is_discarded_rather_than_thrown()
+    {
+        SetupModelReply("A long week", new string('a', 4001));
+
+        await AssertNothingWritten();
+    }
+
+    [Fact]
+    public async Task A_reply_that_exactly_fills_the_column_is_kept()
+    {
+        SetupModelReply("A full week", new string('a', 4000));
+
+        Assert.Equal(1, await CreateSut().GenerateDueWeekbooksAsync(UtcNow));
     }
 
     // ── Defaults ────────────────────────────────────────────────────────────

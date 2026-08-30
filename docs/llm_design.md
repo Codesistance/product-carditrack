@@ -622,6 +622,30 @@ the first of the next one.
   the same — and `DigestRetentionMonths` was raised 3 → 7 so the entries themselves survive the
   180-day history the top plan is sold on (see the DPIA, open item OI-14).
 
+### What the three books share on the job (built today)
+
+The summary, the Daybook, the Weekbook and the Monthbook are four passes of one `--job digest`
+execution, and three properties of that arrangement are load-bearing:
+
+- **The passes are independent.** They were four chained awaits, so the first failure above a
+  pass's own per-member handler ended the run and every pass after it was simply never attempted.
+  What that cost was not symmetric: the summary is rewritten within half an hour and the Daybook is
+  due again tomorrow, but a skipped Weekbook is a week the member does not get back and a skipped
+  Monthbook a month. Each pass is now run and reported on its own; the execution still exits
+  non-zero if any of them failed, so Cloud Run marks it red exactly as before.
+- **Every pass says why it wrote nothing.** A book logged only when it had written something, which
+  made "declined every member" and "never ran" the same silence — and every decline but the
+  coverage guard was itself unlogged. Each pass now closes with one line counting its candidates
+  against the reason each was declined: not due today, before their hour, already written, period
+  too thin, discarded by a guard, not monitored, failed.
+- **The account is bounded by its column.** The headline and the suggestion had been checked
+  against theirs since they existed; the text had not, though it is the one field with no fallback.
+  The private model may return 2048 tokens, comfortably past the `varchar(4000)` the column is, and
+  what an over-long account produced was a `22001` from the insert — caught as "generation failed",
+  naming the member and nothing about the cause, on a path where a book is written once. It is now
+  discarded with its length logged, rather than truncated: a clipped account ends mid-sentence, and
+  that sentence may be the one carrying the qualification.
+
 ### Advise — "Something to try" (built today)
 
 `CARDITRACK_ADVISE_PROMPT` — the suggestion card on CardiMember Details, one row per topic

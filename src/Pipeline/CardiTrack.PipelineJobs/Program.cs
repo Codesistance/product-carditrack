@@ -167,7 +167,37 @@ try
     {
         case "digest":
             var digests = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
-            var generated = await digests.GenerateDueDigestsAsync(DateTime.UtcNow);
+
+            // Every pass is attempted, whatever the passes before it did. They used to be four
+            // chained awaits, which made the first unhandled failure the end of the run: a pass
+            // that threw above its own per-member try/catch — the candidate read, a connection
+            // dropped between passes — took every book after it with it, and the run's only trace
+            // was one fatal log naming the pass that threw. The books are ordered cheapest-gate
+            // last, so the ones that lose most by being skipped are the ones furthest down the
+            // chain, and what they lose is not recoverable on the next pass: the summary is
+            // rewritten every half hour and the Daybook is due again tomorrow, but the Weekbook is
+            // due on one local weekday a week and the Monthbook on one local day a month. Skipped
+            // there, silently, is that member's book gone for the period.
+            var passFailed = false;
+
+            async Task<int> RunBookPass(string book, Func<Task<int>> pass)
+            {
+                try
+                {
+                    return await pass();
+                }
+                catch (Exception ex)
+                {
+                    // Logged here and the run still marked failed below, so the execution goes red
+                    // in Cloud Run exactly as it did before — what changes is that the books after
+                    // this one are still written.
+                    passFailed = true;
+                    Log.Error(ex, "The {Book} pass failed; the remaining passes still run.", book);
+                    return 0;
+                }
+            }
+
+            var generated = await RunBookPass("summary", () => digests.GenerateDueDigestsAsync(DateTime.UtcNow));
 
             // The daybook entry rides this job rather than owning one. It is due once per member per
             // day, at 02:00 in that member's own local time — so a job of its own would need either
@@ -175,25 +205,25 @@ try
             // due-check this one already has to do, on top of a second Cloud Run job, a second
             // schedule and a second cold start. What it costs here is one indexed read per member
             // per pass, and one extra inference per member per day.
-            var reviews = await digests.GenerateDueDaybooksAsync(DateTime.UtcNow);
+            var reviews = await RunBookPass("daybook", () => digests.GenerateDueDaybooksAsync(DateTime.UtcNow));
 
             // The Weekbook rides the same pass for the same reasons, and costs less: it is due on
             // one local weekday, so on six days in seven each member is declined on a date
             // comparison, before any week-scoped read. It cannot skip the pass wholesale the way
             // the Monthbook does — members choose their own week start, so at any instant some
             // weekday somewhere is a week start.
-            var weekbooks = await digests.GenerateDueWeekbooksAsync(DateTime.UtcNow);
+            var weekbooks = await RunBookPass("weekbook", () => digests.GenerateDueWeekbooksAsync(DateTime.UtcNow));
 
             // And the Monthbook, cheapest of the three: on the days when no timezone on earth is
             // on the first of a month — about twenty-nine in thirty — it answers without reading
             // anything at all.
-            var monthbooks = await digests.GenerateDueMonthbooksAsync(DateTime.UtcNow);
+            var monthbooks = await RunBookPass("monthbook", () => digests.GenerateDueMonthbooksAsync(DateTime.UtcNow));
 
             Log.Information(
                 "PipelineJobs run finished. Digests generated: {Generated}, daybook entries written: "
                 + "{Reviews}, weekbooks written: {Weekbooks}, monthbooks written: {Monthbooks}.",
                 generated, reviews, weekbooks, monthbooks);
-            return 0;
+            return passFailed ? 1 : 0;
 
         case "aggregate":
             var drain = scope.ServiceProvider.GetRequiredService<INotificationDrainService>();
