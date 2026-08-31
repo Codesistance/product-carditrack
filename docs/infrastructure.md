@@ -163,8 +163,7 @@ CardiTrack uses AES-256-GCM (Galois/Counter Mode) for field-level encryption of 
 
 The local Compose stacks carry no production data, but they stand up services with **no
 authentication a network peer can't trivially satisfy** — dev Postgres (`postgres`/`postgres`),
-unauthenticated Redis, the auth-less Ollama model runtime, and (in the legacy stack below) SQL
-Server with a hard-coded `sa` password. So every published port is bound to the **host loopback**
+unauthenticated Redis, and the auth-less Ollama model runtime. So every published port is bound to the **host loopback**
 (`127.0.0.1`), never `0.0.0.0`. Containers reach each other by Compose **service name** over the
 internal network (`Host=db`, `redis:6379`, `http://ollama:11434`), so port publishing exists only
 for host-side access — a `psql`/`redis-cli` client, the API run via `dotnet run`, the Android
@@ -175,8 +174,9 @@ no dev benefit.
 | Compose file | Host exposure |
 |---|---|
 | `docker-compose.yml` | Loopback-only (`127.0.0.1`) on `db`, `redis`, `ollama`, `api`. The containerised `api` reaches Ollama by service name (`http://ollama:11434`), not `host.docker.internal`, so it no longer depends on the host-published port at all. |
-| `.devcontainer/docker-compose.yml` | Publishes **nothing** to the host — `db`/`redis` are reachable only from the `app` container over the Compose network. Safest of the three; nothing to bind. |
-| `carditrackapi-docker-compose.yml` | Loopback-only on `api`, `sqlserver`, `redis`. **Legacy — removal candidate:** it wires the API to SQL Server with an `sa` password and an Auth0 *client secret*, neither of which matches the current Postgres / Auth0-JWT-validator app; the connection string cannot run today's code. Kept and hardened rather than deleted pending a maintainer decision. |
+| `.devcontainer/docker-compose.yml` | Publishes **nothing** to the host — `db`/`redis` are reachable only from the `app` container over the Compose network. Nothing to bind. |
+
+A third file, `carditrackapi-docker-compose.yml`, was **removed** in this change: it wired the API to SQL Server with an `sa` password and an Auth0 *client secret*, neither of which matches the current Postgres / Auth0-JWT-validator app — the connection string could not run today's code, so it was dead config carrying its own LAN-exposed `sa` instance. See git history if you need it back.
 
 **Ollama exposure specifically.** The dev Ollama runtime (MedGemma + the rewrite model) has no
 authentication, so the loopback bind is the control that keeps it off the LAN. The
@@ -184,9 +184,9 @@ Ollama-for-Windows advisories **CVE-2026-42248 / -42249** (missing update-signat
 path-traversal RCE in the *auto-updater*, versions 0.12.10–0.17.5) do **not** apply to this
 deployment: the vulnerable component is the Windows desktop app's auto-updater, and serving here is
 stock `ollama/ollama` running `ollama serve` in a **Linux container**, which ships no auto-updater
-at all. (The image uses the floating `latest` tag, so this rests on the absent Windows updater and
-the Linux platform — not on a pinned version.) The relevant local control is network exposure,
-addressed above.
+at all. (The Linux image is pinned by digest — see `docker-compose.yml` — but the argument does not
+depend on that: it rests on the absent Windows updater and the platform, not on any given version.)
+The relevant local control is network exposure, addressed above.
 
 For the wider data-protection picture (Auth0, DPIA, ASP.NET Data Protection), see [data_protection_architecture.md](./technical/data_protection_architecture.md) and the [DPIA](./compliance/dpia.md).
 
