@@ -6,7 +6,13 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      # Bind published ports to the host loopback only. Every service here reaches its peers
+      # by compose service name over the internal network (db, redis, ollama),
+      # so publishing is purely for host-side access — a psql client, the API run via
+      # `dotnet run`, the Android emulator via 10.0.2.2 (which maps to host loopback). Binding
+      # 0.0.0.0 additionally exposed dev Postgres (postgres/postgres), unauthenticated Redis and
+      # the auth-less Ollama runtime to the whole LAN for no dev benefit.
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d carditrack"]
       interval: 5s
@@ -16,7 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -35,9 +41,13 @@ services:
     restart: "no"
 
   ollama:
-    image: ollama/ollama:latest
+    # Pinned by digest (a multi-arch index — linux/amd64 + linux/arm64) rather than the floating
+    # :latest, so a `docker compose up` is reproducible and immune to a tag re-push. This digest is
+    # Ollama 0.32.6; bump it deliberately. The init services below reuse it via the *ollama_image
+    # anchor so the digest lives in exactly one place.
+    image: &ollama_image ollama/ollama@sha256:b88c73ace3e115f8ec53dc8761ae1c0aabfa675406e3681786b98757ce050f42
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -52,7 +62,7 @@ services:
     profiles: ["full"]
 
   medgemma-init:
-    image: ollama/ollama:latest
+    image: *ollama_image
     entrypoint: ["/bin/sh", "-c", "OLLAMA_HOST=http://ollama:11434 ollama pull hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"]
     depends_on:
       ollama:
@@ -64,7 +74,7 @@ services:
   # (docs/llm_design.md). Pulled into the same local Ollama instance as MedGemma, not a second
   # container, matching how the two are packaged into one image in prod.
   rewrite-init:
-    image: ollama/ollama:latest
+    image: *ollama_image
     entrypoint: ["/bin/sh", "-c", "OLLAMA_HOST=http://ollama:11434 ollama pull gemma3:4b-it-qat"]
     depends_on:
       ollama:
@@ -95,18 +105,20 @@ services:
       AI__Public__ApiKey: "unset-local-placeholder"
       AI__Public__TimeoutSeconds: "60"
       # Private provider for medical insights — always MedGemma, in-project. Only its
-      # location and weights are configurable.
-      AI__Private__BaseUrl: "http://host.docker.internal:11434"
+      # location and weights are configurable. Reached by compose service name over the internal
+      # network (not host.docker.internal), so it no longer depends on Ollama's port being
+      # published to the host — which is now loopback-only.
+      AI__Private__BaseUrl: "http://ollama:11434"
       AI__Private__Model: "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"
       AI__Private__TimeoutSeconds: "120"
       # Rewrite provider — a plain non-medical model on the same local Ollama instance, used only
       # to rewrite MedGemma's clinical output into caregiver language. Same in-project guarantee
-      # as Private; see rewrite-init above.
-      AI__Rewrite__BaseUrl: "http://host.docker.internal:11434"
+      # as Private; see rewrite-init above. Same compose-service-name reach as Private.
+      AI__Rewrite__BaseUrl: "http://ollama:11434"
       AI__Rewrite__Model: "gemma3:4b-it-qat"
       AI__Rewrite__TimeoutSeconds: "120"
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       migrator:
         condition: service_completed_successfully

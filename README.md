@@ -84,8 +84,7 @@ CardiTrack/
 │   └── environments/                   # common.tfvars, dev.tfvars, prod.tfvars
 ├── docs/                               # Documentation (see docs/readme.md)
 ├── .github/workflows/                  # CI/CD (deploy-apps-*, deploy-infra-*)
-├── docker-compose.yml                  # Local multi-service compose
-└── carditrackapi-docker-compose.yml    # API-focused compose
+└── docker-compose.yml                  # Local multi-service compose
 ```
 
 ## 🚀 Getting Started
@@ -158,7 +157,7 @@ dotnet test  CardiTrack.Server.slnf
    dotnet run
    ```
 
-Docker Compose files (`docker-compose.yml`, `carditrackapi-docker-compose.yml`) are available for containerised local runs.
+`docker-compose.yml` is available for containerised local runs (with `--profile full` for the API, worker and Ollama). Its published ports bind to the host loopback (`127.0.0.1`) only — services talk to each other by Compose service name, so nothing is exposed to the LAN. See [Local development network exposure](docs/infrastructure.md#local-development-network-exposure).
 
 ### Running Tests
 
