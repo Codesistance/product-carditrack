@@ -182,9 +182,11 @@ no dev benefit.
 authentication, so the loopback bind is the control that keeps it off the LAN. The
 Ollama-for-Windows advisories **CVE-2026-42248 / -42249** (missing update-signature check and
 path-traversal RCE in the *auto-updater*, versions 0.12.10–0.17.5) do **not** apply to this
-deployment: serving is stock `ollama/ollama` running `ollama serve` in a **Linux container** with
-no auto-updater component, on a version outside that range. The relevant local control is network
-exposure, addressed above.
+deployment: the vulnerable component is the Windows desktop app's auto-updater, and serving here is
+stock `ollama/ollama` running `ollama serve` in a **Linux container**, which ships no auto-updater
+at all. (The image uses the floating `latest` tag, so this rests on the absent Windows updater and
+the Linux platform — not on a pinned version.) The relevant local control is network exposure,
+addressed above.
 
 For the wider data-protection picture (Auth0, DPIA, ASP.NET Data Protection), see [data_protection_architecture.md](./technical/data_protection_architecture.md) and the [DPIA](./compliance/dpia.md).
 

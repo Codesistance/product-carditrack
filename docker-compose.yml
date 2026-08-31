@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       # Bind published ports to the host loopback only. Every service here reaches its peers
-      # by compose service name over the internal network (Host=db, redis:6379, ollama:11434),
+      # by compose service name over the internal network (db, redis, ollama),
       # so publishing is purely for host-side access — a psql client, the API run via
       # `dotnet run`, the Android emulator via 10.0.2.2 (which maps to host loopback). Binding
       # 0.0.0.0 additionally exposed dev Postgres (postgres/postgres), unauthenticated Redis and
