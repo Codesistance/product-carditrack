@@ -159,6 +159,33 @@ CardiTrack uses AES-256-GCM (Galois/Counter Mode) for field-level encryption of 
 - **Rotation is not yet operational, but the envelope is rotation-ready.** The ciphertext envelope carries a key id (`v1:{keyId}:…`, with the key id derived from a SHA-256 of the key), so decrypting with the wrong key fails loudly and identifiably rather than silently corrupting. What is still missing is multi-key support — the service holds a single key, so an actual rotation (decrypt-under-old, re-encrypt-under-new) is not implemented; hence `ignore_changes = [secret_data]` on the secret version, which also means an environment that already holds a value keeps it. See §7.1 of [data_protection_architecture.md](./technical/data_protection_architecture.md) for the full versioned-envelope design.
 - **Startup validation**: the API and Worker construct the encryption service during startup and refuse to boot if the key is missing, not valid base64, or not 32 bytes — a misconfigured deployment fails the revision instead of returning 500s from device endpoints. The dev deploy workflow checks the secret before rolling a revision so the failure names the secret.
 
+### Local development network exposure
+
+The local Compose stacks carry no production data, but they stand up services with **no
+authentication a network peer can't trivially satisfy** — dev Postgres (`postgres`/`postgres`),
+unauthenticated Redis, the auth-less Ollama model runtime, and (in the legacy stack below) SQL
+Server with a hard-coded `sa` password. So every published port is bound to the **host loopback**
+(`127.0.0.1`), never `0.0.0.0`. Containers reach each other by Compose **service name** over the
+internal network (`Host=db`, `redis:6379`, `http://ollama:11434`), so port publishing exists only
+for host-side access — a `psql`/`redis-cli` client, the API run via `dotnet run`, the Android
+emulator via `10.0.2.2` (which maps to the host loopback). None of it needs to be LAN-reachable,
+and binding `0.0.0.0` put those services in front of every device on the developer's network for
+no dev benefit.
+
+| Compose file | Host exposure |
+|---|---|
+| `docker-compose.yml` | Loopback-only (`127.0.0.1`) on `db`, `redis`, `ollama`, `api`. The containerised `api` reaches Ollama by service name (`http://ollama:11434`), not `host.docker.internal`, so it no longer depends on the host-published port at all. |
+| `.devcontainer/docker-compose.yml` | Publishes **nothing** to the host — `db`/`redis` are reachable only from the `app` container over the Compose network. Safest of the three; nothing to bind. |
+| `carditrackapi-docker-compose.yml` | Loopback-only on `api`, `sqlserver`, `redis`. **Legacy — removal candidate:** it wires the API to SQL Server with an `sa` password and an Auth0 *client secret*, neither of which matches the current Postgres / Auth0-JWT-validator app; the connection string cannot run today's code. Kept and hardened rather than deleted pending a maintainer decision. |
+
+**Ollama exposure specifically.** The dev Ollama runtime (MedGemma + the rewrite model) has no
+authentication, so the loopback bind is the control that keeps it off the LAN. The
+Ollama-for-Windows advisories **CVE-2026-42248 / -42249** (missing update-signature check and
+path-traversal RCE in the *auto-updater*, versions 0.12.10–0.17.5) do **not** apply to this
+deployment: serving is stock `ollama/ollama` running `ollama serve` in a **Linux container** with
+no auto-updater component, on a version outside that range. The relevant local control is network
+exposure, addressed above.
+
 For the wider data-protection picture (Auth0, DPIA, ASP.NET Data Protection), see [data_protection_architecture.md](./technical/data_protection_architecture.md) and the [DPIA](./compliance/dpia.md).
 
 ---

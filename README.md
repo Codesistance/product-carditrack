@@ -158,7 +158,7 @@ dotnet test  CardiTrack.Server.slnf
    dotnet run
    ```
 
-Docker Compose files (`docker-compose.yml`, `carditrackapi-docker-compose.yml`) are available for containerised local runs.
+Docker Compose files (`docker-compose.yml`, `carditrackapi-docker-compose.yml`) are available for containerised local runs. Their published ports bind to the host loopback (`127.0.0.1`) only — services talk to each other by Compose service name, so nothing is exposed to the LAN. See [Local development network exposure](docs/infrastructure.md#local-development-network-exposure).
 
 ### Running Tests
 
