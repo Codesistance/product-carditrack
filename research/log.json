@@ -1,5 +1,4 @@
 {
-  "_comment": "Dedup state. Committed each run - the sandbox is destroyed between sessions, so this file is the only thing preventing repeat reporting.",
   "runs": [],
   "items": []
 }
