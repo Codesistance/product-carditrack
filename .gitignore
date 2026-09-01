@@ -20,6 +20,9 @@ out/
 !.claude/settings.json
 # Re-include the directory (not a file below it) so checked-in skills are tracked.
 !.claude/skills/
+# Likewise for slash commands — digest.md is the digest routine's prompt, and the
+# scheduled session reads it from a fresh checkout, so it has to be tracked.
+!.claude/commands/
 *.userprefs
 *.pidb
 *.DotSettings.user
@@ -163,3 +166,9 @@ Temporary Items
 
 # Developer-local mobile config overrides
 src/Presentation/CardiTrack.Mobile/Local.props
+
+# Digest routine run scratch (see .claude/commands/digest.md). The payloads
+# scripts/slack-post.sh posts and the parent ts it writes are per-run and
+# rebuilt every session; only research/ is committed.
+/items/
+/run-ts.txt
