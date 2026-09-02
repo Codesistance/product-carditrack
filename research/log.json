@@ -1,4 +1,11 @@
 {
-  "runs": [],
+  "runs": [
+    {
+      "date": "2026-09-02",
+      "slack_ts": null,
+      "item_count": 0,
+      "empty_reason": "publish failed, not a quiet morning: 13 qualifying items were researched (2 CRITICAL, 11 HIGH) with briefs written under research/queue/2026-09-02-*.md, but neither Slack delivery path worked in this sandbox — the incoming webhook URL from the routine's own task prompt returns Slack's 'no_service' 404 (dead/revoked webhook, confirmed via direct curl, not a proxy block), and scripts/slack-post.sh's SLACK_CHANNEL/SLACK_BOT_TOKEN were not present in the environment. Items were intentionally left out of items[] below since nothing was actually delivered to the user; a future run (once credentials are fixed) should re-surface this same news rather than treat it as already reported."
+    }
+  ],
   "items": []
 }
