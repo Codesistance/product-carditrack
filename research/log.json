@@ -1,4 +1,111 @@
 {
-  "runs": [],
-  "items": []
+  "runs": [
+    {
+      "date": "2026-09-03",
+      "slack_ts": null,
+      "item_count": 11,
+      "empty_reason": null
+    }
+  ],
+  "items": [
+    {
+      "date": "2026-09-03",
+      "slug": "ollama-gguf-unauthenticated-api",
+      "title": "Ollama: unauthenticated API + unvetted registry pulls + GGUF memory-safety bug (unpatched)",
+      "url": "https://github.com/ollama/ollama/issues/16236",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-03-ollama-gguf-unauthenticated-api.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "hai-def-terms-updated",
+      "title": "Health AI Developer Foundations Terms of Use \u2014 last-modified date moved to 2026-07-06",
+      "url": "https://developers.google.com/health-ai-developer-foundations/terms",
+      "severity": "HIGH",
+      "category": "models",
+      "brief": "research/queue/2026-09-03-hai-def-terms-updated.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "clinical-timeseries-llm-summary-benchmark",
+      "title": "arXiv: Benchmarking LLM Summaries of Multimodal Clinical Time Series for Remote Monitoring",
+      "url": "https://arxiv.org/abs/2603.01557",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-03-clinical-timeseries-llm-summary-benchmark.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "eit-health-innovation-uptake-2026",
+      "title": "EIT Health Innovation Uptake Call 2026 \u2014 deadline 2026-09-16",
+      "url": "https://eithealth.eu/opportunity/innovation-uptake/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-03-eit-health-innovation-uptake-2026.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "eic-accelerator-step1-rolling",
+      "title": "EIC Accelerator \u2014 Step 2 cut-off 2026-11-04, Step 1 rolling",
+      "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator_en",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-03-eic-accelerator-step1-rolling.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "google-health-api-fitbit-migration-reconsent",
+      "title": "Fitbit Web API decommission (Sept 2026) \u2014 possible mandatory re-consent for existing users",
+      "url": "https://developers.google.com/health/migration",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-03-google-health-api-fitbit-migration-reconsent.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "whoop-platform-expansion",
+      "title": "WHOOP expands into FDA-cleared ECG + on-demand clinician access + proactive AI",
+      "url": "https://www.whoop.com/us/en/press-center/whoop-expands-health-platform-with-on-demand-clinician-access-and-new-ai-features/",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-03-whoop-platform-expansion.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "samsung-smartthings-family-care",
+      "title": "Samsung SmartThings \"Family Care\" \u2014 elderly/caregiver monitoring suite",
+      "url": "https://news.samsung.com/global/ces-2026-a-care-companion-for-family-health-and-safety",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-03-samsung-smartthings-family-care.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "circular-ring-2",
+      "title": "Circular Ring 2 \u2014 FDA-cleared ECG/AFib, cloud-sync architecture",
+      "url": "https://www.circular.xyz/post/circular-ring-2-release-notes-march-2026",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-03-circular-ring-2.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "oura-ring-5",
+      "title": "Oura Ring 5 \u2014 new flagship hardware, existing cloud API",
+      "url": "https://www.businesswire.com/news/home/20260528686853/en/URA-Introduces-The-Worlds-Smallest-Smart-Ring-Oura-Ring-5",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-03-oura-ring-5.md"
+    },
+    {
+      "date": "2026-09-03",
+      "slug": "github-actions-node20-runner-removal",
+      "title": "GitHub Actions: Node 20 runner support removal (~2026-09-23)",
+      "url": "https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-03-github-actions-node20-runner-removal.md"
+    }
+  ]
 }
