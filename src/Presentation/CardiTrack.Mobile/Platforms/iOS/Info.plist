@@ -2,6 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Export compliance. false means "every use of encryption in this app is exempt", not
+	     "this app has no encryption" — it pre-answers Apple's questionnaire so no build stalls on
+	     the App Encryption Documentation prompt in App Store Connect. What we actually ship:
+	     AES-256-GCM over the offline read cache (Mobile.Core/Offline/EncryptedFileOfflineReadCache.cs),
+	     SHA-256 for PKCE (Mobile.Core/Auth/Pkce.cs), and TLS through the OS. Exempt because those are
+	     standard published algorithms and the cryptography is ancillary — it protects the app's own
+	     data rather than being a function the app offers. Revisit this key if that stops being true
+	     (e.g. we ship encryption as a user-facing feature, or roll our own algorithm).
+	     Full rationale: docs/apps/mobile/store_provisioning.md, section D. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

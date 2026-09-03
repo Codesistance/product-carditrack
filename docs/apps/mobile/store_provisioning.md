@@ -146,6 +146,28 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
    testers. Testers must be App Store Connect team users; to test on a phone signed into a
    personal Apple ID, invite that address in Users and Access with the minimal **Customer Support**
    role and add it to the group.
+4. **Export compliance** — nothing to do per build; the answer is baked into the binary.
+   `Platforms/iOS/Info.plist` sets `ITSAppUsesNonExemptEncryption` to `false`, which is why the
+   *App Encryption Documentation* panel on the app record never blocks an upload. Read `false` as
+   *"every use of encryption here is exempt"*, **not** *"this app has no encryption"* — the app
+   does encrypt:
+
+   | Where | What | Why exempt |
+   |---|---|---|
+   | `Mobile.Core/Offline/EncryptedFileOfflineReadCache.cs` | AES-256-GCM at rest over cached health payloads, DEK in Keychain/Keystore | Standard published algorithm, ancillary to the app's function |
+   | `Mobile.Core/Auth/Pkce.cs` | SHA-256 PKCE challenge | Hashing, limited to authentication |
+   | All API traffic | TLS via the OS stack | Encryption within Apple's operating system |
+
+   The exemption rests on two things: only standard, published algorithms, and cryptography that
+   protects the app's own data rather than being a capability the app offers users. **Revisit the
+   declaration** — flipping the key to `true` and answering Apple's Category 5 Part 2 questionnaire
+   per version — if either stops holding: a non-standard or in-house algorithm, or encryption
+   surfaced as a user-facing feature. `true` also brings the BIS annual self-classification report
+   and the French declaration into scope, so it is not a free "safer" default.
+
+   `Platforms/MacCatalyst/Info.plist` still has the key commented out. Harmless today —
+   `CardiTrack.Mobile.csproj` never targets `maccatalyst` — but it must be set to match iOS before
+   any Mac App Store submission.
 
 ## E. Google Play — app, first upload, service account
 
@@ -243,4 +265,4 @@ operator uses for push-notification delivery.
 
 ---
 
-**Last Updated:** August 7, 2026
+**Last Updated:** September 3, 2026
