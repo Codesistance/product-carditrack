@@ -115,7 +115,9 @@
          ink. One family (Quicksand) in three real faces — Regular, Medium, SemiBold — and no
          FontAttributes="Bold": that was a synthetic bold smeared onto the Regular face, which is
          why two 18pt titles on one page never matched. Weight carries hierarchy; ink carries
-         role (Message is the heading ink, Body and Caption are not).
+         role (Message is the heading ink, Body and Caption are not). LineHeight here is MAUI's
+         multiplier on the face's own line spacing, which already carries Quicksand's leading —
+         so 1.0 is the natural setting and 1.2 is loose; the first cut at 1.5 read as double-spaced.
 
          The target state — not yet the codebase's: a page carries Style= and nothing else, no
          inline FontSize, FontFamily or FontAttributes, and TextColor only for a semantic colour
@@ -128,7 +130,7 @@
     <Style x:Key="Display" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="28"/>
-        <Setter Property="LineHeight" Value="1.15"/>
+        <Setter Property="LineHeight" Value="1.0"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
     <Style x:Key="DisplayOnBand" TargetType="Label" BasedOn="{StaticResource Display}">
@@ -138,14 +140,14 @@
     <Style x:Key="Title" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="22"/>
-        <Setter Property="LineHeight" Value="1.2"/>
+        <Setter Property="LineHeight" Value="1.0"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
     <Style x:Key="Section" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="18"/>
-        <Setter Property="LineHeight" Value="1.3"/>
+        <Setter Property="LineHeight" Value="1.05"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
     <Style x:Key="SectionOnBand" TargetType="Label" BasedOn="{StaticResource Section}">
@@ -155,7 +157,7 @@
     <Style x:Key="RowTitle" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>
-        <Setter Property="LineHeight" Value="1.35"/>
+        <Setter Property="LineHeight" Value="1.1"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
     <Style x:Key="RowTitleOnBand" TargetType="Label" BasedOn="{StaticResource RowTitle}">
@@ -167,7 +169,7 @@
     <Style x:Key="Message" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandMedium"/>
         <Setter Property="FontSize" Value="14"/>
-        <Setter Property="LineHeight" Value="1.5"/>
+        <Setter Property="LineHeight" Value="1.2"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
@@ -175,21 +177,21 @@
     <Style x:Key="Body" TargetType="Label">
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="14"/>
-        <Setter Property="LineHeight" Value="1.5"/>
+        <Setter Property="LineHeight" Value="1.2"/>
         <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
     </Style>
 
     <!-- Body's compact sibling for dense rows — chips, pill neighbours, settings descriptions. -->
     <Style x:Key="Compact" TargetType="Label" BasedOn="{StaticResource Body}">
         <Setter Property="FontSize" Value="13"/>
-        <Setter Property="LineHeight" Value="1.4"/>
+        <Setter Property="LineHeight" Value="1.15"/>
     </Style>
 
     <!-- Dates, "Written …", sources, disclaimers, the header band's second line. -->
     <Style x:Key="Caption" TargetType="Label">
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="12"/>
-        <Setter Property="LineHeight" Value="1.4"/>
+        <Setter Property="LineHeight" Value="1.15"/>
         <Setter Property="TextColor" Value="{StaticResource MutedText}"/>
     </Style>
     <Style x:Key="CaptionOnBand" TargetType="Label" BasedOn="{StaticResource Caption}">
