@@ -180,6 +180,13 @@ public partial class LegalDocumentPage : ContentPage
     /// </summary>
     private void OnNavigated(object? sender, WebNavigatedEventArgs e)
     {
+        // A cancelled navigation is one of ours: OnNavigating cancels to re-issue the URL with
+        // the embed query, or to hand a link to the phone. Neither is a failure — the document
+        // on screen is still good, and a re-issued load is already on its way, so the spinner
+        // stays up for it rather than being replaced by "we couldn't reach carditrack.com".
+        if (e.Result == WebNavigationResult.Cancel)
+            return;
+
         LoadingPanel.IsVisible = false;
 
         if (e.Result == WebNavigationResult.Success)
