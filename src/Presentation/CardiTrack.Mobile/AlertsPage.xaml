@@ -61,10 +61,12 @@
         </controls:HeaderBand>
 
         <!-- Chips sit outside the scroller so filtering stays reachable while the list is
-             scrolled, and are hidden in the states where there is nothing to filter. -->
+             scrolled, and are hidden in the states where there is nothing to filter. The
+             bottom margin is the gap a scrolled card keeps from the chips: without it the
+             list ran straight under the row, and a card's top edge met the chips' bottom. -->
         <controls:FilterChipBar x:Name="Filters"
                                 Grid.Row="1"
-                                Margin="0,20,0,0"/>
+                                Margin="0,20,0,12"/>
 
         <RefreshView x:Name="Refresher"
                      Grid.Row="2"
