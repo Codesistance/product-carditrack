@@ -102,7 +102,7 @@ public partial class AlertListCard : ContentView
         ToolTipProperties.SetText(
             SosButton,
             hasEmergency
-                ? $"Calls {alert.EmergencyContactName ?? "the emergency contact"}."
+                ? $"Calls {(string.IsNullOrWhiteSpace(alert.EmergencyContactName) ? "the emergency contact" : alert.EmergencyContactName)}."
                 : $"No emergency contact number on file for {who} yet.");
 
         SetBusy(false);

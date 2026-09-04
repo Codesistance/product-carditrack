@@ -139,7 +139,9 @@
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
-                            VerticalOptions="Center">
+                            VerticalOptions="Center"
+                            SemanticProperties.Description="Call the CardiMember"
+                            SemanticProperties.Hint="Dials their own phone; SOS beside it dials the emergency contact">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16"/>
                         </Border.StrokeShape>
