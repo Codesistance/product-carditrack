@@ -71,7 +71,7 @@
     </Style>
 
     <Style TargetType="Picker">
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}" />
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}" />
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="14" />
     </Style>
@@ -81,7 +81,7 @@
     </Style>
 
     <Style TargetType="SearchBar">
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}" />
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}" />
         <Setter Property="PlaceholderColor" Value="{StaticResource Gray500}" />
         <Setter Property="FontFamily" Value="Quicksand" />
         <Setter Property="FontSize" Value="14" />
@@ -115,12 +115,14 @@
          ink. One family (Quicksand) in three real faces — Regular, Medium, SemiBold — and no
          FontAttributes="Bold": that was a synthetic bold smeared onto the Regular face, which is
          why two 18pt titles on one page never matched. Weight carries hierarchy; ink carries
-         role (Message is the heading ink, Body and Caption are not). Pages carry Style= and
-         nothing else — no inline FontSize, FontFamily or FontAttributes, and TextColor only for
-         a semantic colour (status, urgency, error, link), never a neutral.
+         role (Message is the heading ink, Body and Caption are not).
 
-         The older keys further down are aliases onto these roles so nothing has to move in one
-         go; each area is swept onto the roles directly and an alias retires when no page names it.
+         The target state — not yet the codebase's: a page carries Style= and nothing else, no
+         inline FontSize, FontFamily or FontAttributes, and TextColor only for a semantic colour
+         (status, urgency, error, link), never a neutral. Today ~200 inline sizes and ~130
+         unstyled labels remain; they are swept onto the roles one area at a time, and a test
+         then fails the build on a new one. The older keys further down are aliases onto these
+         roles so nothing had to move in the first change; an alias retires when no page names it.
          ════════════════════════════════════════════ -->
 
     <Style x:Key="Display" TargetType="Label">
