@@ -200,12 +200,12 @@
                                Style="{StaticResource Body1SemiBoldDark}"
                                TextColor="{StaticResource DangerRed}"/>
                         <Label Text="If you go ahead, within 30 days of your request:"
-                               Style="{StaticResource Body2}"/>
+                               Style="{StaticResource Body2Dark}"/>
                         <VerticalStackLayout Spacing="4" Margin="4,0,0,0">
-                            <Label Text="•  Your sign-in is removed and you can't get back in." Style="{StaticResource Body2}"/>
-                            <Label Text="•  Every reading, alert and journal entry for the people you watch over is deleted." Style="{StaticResource Body2}"/>
-                            <Label Text="•  Their devices are disconnected from CardiTrack." Style="{StaticResource Body2}"/>
-                            <Label Text="•  Nothing can be recovered afterwards." Style="{StaticResource Body2}"/>
+                            <Label Text="•  Your sign-in is removed and you can't get back in." Style="{StaticResource Body2Dark}"/>
+                            <Label Text="•  Every reading, alert and journal entry for the people you watch over is deleted." Style="{StaticResource Body2Dark}"/>
+                            <Label Text="•  Their devices are disconnected from CardiTrack." Style="{StaticResource Body2Dark}"/>
+                            <Label Text="•  Nothing can be recovered afterwards." Style="{StaticResource Body2Dark}"/>
                         </VerticalStackLayout>
                         <HorizontalStackLayout Spacing="8" Margin="0,4,0,0">
                             <CheckBox x:Name="DeleteConfirmCheck"
