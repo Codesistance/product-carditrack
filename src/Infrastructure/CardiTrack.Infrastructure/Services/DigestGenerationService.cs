@@ -86,8 +86,8 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         Only if something in the readings would be clearer if the family explained it, also respond with:
         - questionTopic: what the family could explain that would change how these readings are
-          read — the subject, not a question. Never something the family answers above already cover, and never
-          about medication, symptoms or a diagnosis.
+          read — the subject, not a question.
+          Never name a subject the family answers above already cover, and never one about medication, symptoms or a diagnosis.
         - questionScope: permanent if the answer would be a standing fact that stays true
           regardless of the day, time-scoped if it only explains the present moment. Most are time-scoped.
         Most days there is nothing worth asking. Leave both out unless the answer would genuinely change how the readings are read.

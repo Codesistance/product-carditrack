@@ -653,7 +653,10 @@ public class MedicalPromptToneTests
         // Both rules are about reading the family's answers, so both sit with the half that is
         // sent them — the rewrite never sees a family answer.
         Assert.Contains("never retell them", clinical, StringComparison.Ordinal);
-        Assert.Contains("Never something the family answers above already cover", clinical, StringComparison.Ordinal);
+        Assert.Contains(
+            "Never name a subject the family answers above already cover",
+            clinical,
+            StringComparison.Ordinal);
     }
 
     [Fact]

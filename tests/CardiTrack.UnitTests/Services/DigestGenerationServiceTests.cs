@@ -1472,11 +1472,11 @@ public class DigestGenerationServiceTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
     /// <summary>
     /// On the rewrite half, which is where the boundary belongs now: the clinical read may name a
     /// condition, and this is the brief that decides the family is not told one.
     /// </summary>
+    [Fact]
     public async Task AsksForASuggestionThatNeverNamesACondition()
     {
         var prompt = await CapturedRewritePrompt();
