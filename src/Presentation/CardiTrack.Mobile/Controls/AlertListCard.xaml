@@ -78,7 +78,7 @@
                 <Label x:Name="MessageLabel"
                        Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                        Margin="0,6,0,0"
-                       Style="{StaticResource Body2}"
+                       Style="{StaticResource Body2Dark}"
                        MaxLines="2"
                        LineBreakMode="TailTruncation">
                     <Label.GestureRecognizers>

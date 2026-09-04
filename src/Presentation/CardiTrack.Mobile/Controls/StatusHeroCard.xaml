@@ -271,7 +271,7 @@
                    VerticalOptions="Center"/>
             <Label x:Name="StatusDetailLabel"
                    Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                   Style="{StaticResource Body2}"
+                   Style="{StaticResource Body2Dark}"
                    LineBreakMode="WordWrap"
                    MaxLines="3"/>
         </Grid>
