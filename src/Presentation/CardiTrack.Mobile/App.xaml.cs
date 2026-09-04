@@ -13,6 +13,14 @@ public partial class App : Microsoft.Maui.Controls.Application
     public App()
     {
         InitializeComponent();
+
+        // The app has one theme. Every page paints an explicit light ground, but the MAUI
+        // template's base styles still carry AppThemeBindings that flip a Page's background to
+        // OffBlack and some text to white under a dark OS theme — half a dark mode, in which
+        // Pickers and search fields on white cards went white-on-white. Pinning the theme means
+        // those bindings never flip, and text everywhere can use the one ink the type roles
+        // define. Dark mode, if it ever comes, is a design-system job (see the Type Audit).
+        UserAppTheme = AppTheme.Light;
     }
 
     protected override Window CreateWindow(IActivationState? activationState)

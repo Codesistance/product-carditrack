@@ -71,7 +71,7 @@
     </Style>
 
     <Style TargetType="Picker">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}" />
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}" />
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="14" />
     </Style>
@@ -81,7 +81,7 @@
     </Style>
 
     <Style TargetType="SearchBar">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}" />
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}" />
         <Setter Property="PlaceholderColor" Value="{StaticResource Gray500}" />
         <Setter Property="FontFamily" Value="Quicksand" />
         <Setter Property="FontSize" Value="14" />
