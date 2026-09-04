@@ -81,7 +81,9 @@ public partial class AlertListCard : ContentView
         // Nothing left to acknowledge once it is handled — the status pill already says so.
         AcknowledgeButton.IsVisible = !isHandled;
 
+        // "them" when the list carries no name, so the tooltips below stay sentences.
         var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+        var who = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
 
         // Call reaches the member; SOS reaches their emergency contact — the dashboard's two
         // phone tiles, meaning the same things here. Each dims rather than hides when its number
@@ -90,7 +92,7 @@ public partial class AlertListCard : ContentView
         CallButton.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
         ToolTipProperties.SetText(
             CallButton,
-            hasPhone ? $"Calls {firstName}." : $"No phone number on file for {firstName} yet.");
+            hasPhone ? $"Calls {who}." : $"No phone number on file for {who} yet.");
 
         // Only the alerts that could warrant an emergency call offer one: a notice about a
         // quiet day should not put a red SOS beside itself.
@@ -101,7 +103,7 @@ public partial class AlertListCard : ContentView
             SosButton,
             hasEmergency
                 ? $"Calls {alert.EmergencyContactName ?? "the emergency contact"}."
-                : $"No emergency contact number on file for {firstName} yet.");
+                : $"No emergency contact number on file for {who} yet.");
 
         SetBusy(false);
         SetExpanded(_isExpanded);
