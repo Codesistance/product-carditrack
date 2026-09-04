@@ -319,15 +319,14 @@
                                        Style="{StaticResource Body2Dark}"
                                        FontAttributes="Bold"
                                        LineBreakMode="WordWrap"/>
+                                <!-- One footnote, not two: the guideline the suggestion rests on and
+                                     the safety framing read as a single sentence ("Based on … —
+                                     just a suggestion, never medical advice; worth mentioning to
+                                     their doctor"). The framing is fixed copy in the code-behind,
+                                     not model output: it must always be present and identically
+                                     worded, so it lives in the chrome — the generation guards
+                                     reject a suggestion that spends its own words restating it. -->
                                 <Label x:Name="AdviseGuidelineLabel"
-                                       FontSize="12"
-                                       TextColor="{StaticResource MutedText}"
-                                       LineBreakMode="WordWrap"/>
-                                <!-- Fixed copy, not model output: the safety framing must always
-                                     be present and identically worded, so it lives in the chrome —
-                                     the generation guards reject a suggestion that spends its own
-                                     words restating it. -->
-                                <Label Text="Just a suggestion, never medical advice — worth mentioning to their doctor."
                                        FontSize="12"
                                        TextColor="{StaticResource MutedText}"
                                        LineBreakMode="WordWrap"/>
