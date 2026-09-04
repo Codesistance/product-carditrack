@@ -306,7 +306,9 @@ registered for them yet.
   prod `false`; local default `false`) makes `MedGemmaClient` write every prompt and completion
   verbatim to the log under event id 4200 `ClinicalInspection`, so the clinical output can be
   read during development. It is the one exception to the client's DPIA invariant, and a host
-  whose `ASPNETCORE_ENVIRONMENT` is `Prod` refuses to start with it on.
+  whose `ASPNETCORE_ENVIRONMENT` is `Prod` refuses to start with it on. `AI__Rewrite__LogClinicalOutput`
+  is the Rewrite slot's twin — read only when `AI__Rewrite__Kind` is `Ollama`, so inert on deployed
+  hosts (VertexGemini) — with the same production refusal.
 
 Both resolve as keyed `IExternalAiClient` services ("GeneralProvider" / "MedicalProvider")
 behind `IGenerativeAiService`, `IMedicalAiService`, `IHealthInsightService`, and

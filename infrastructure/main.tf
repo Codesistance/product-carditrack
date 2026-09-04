@@ -129,6 +129,10 @@ module "deployments" {
       # the API refuses to start with this true when ASPNETCORE_ENVIRONMENT is Prod, so the
       # conditional here and that guard agree by construction rather than by discipline.
       "AI__Private__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
+      # The Rewrite slot's twin. Only read when AI__Rewrite__Kind is Ollama — deployed hosts run
+      # VertexGemini, so this is inert here — set so dev and prod carry the same answer the code
+      # and docs describe rather than leaving one slot to its default.
+      "AI__Rewrite__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
       # Rewrite slot — Gemini on an EU regional Vertex endpoint under IAM (DPIA v0.11 row A20,
       # decision D6). Hard-coded rather than a variable: the self-hosted Ollama alternative had a
       # single Cloud Run host, which this teardown removes, so there is nothing left to switch
@@ -283,6 +287,7 @@ module "deployments" {
     "AI__Private__UseIdentityToken" = "true"
     # Dev-only clinical inspection logging — same switch and same start-up guard as the API.
     "AI__Private__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
+    "AI__Rewrite__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
     # Same rewrite-slot settings as the API block above (which carries the rationale).
     "AI__Rewrite__Kind"              = "VertexGemini"
     "AI__Rewrite__Model"             = var.rewrite_ai_model

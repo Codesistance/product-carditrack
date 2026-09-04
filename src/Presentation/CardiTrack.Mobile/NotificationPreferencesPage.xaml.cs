@@ -86,9 +86,9 @@ public partial class NotificationPreferencesPage : ContentPage
                 ? $"{start:HH:mm} – {end:HH:mm}"
                 : "Off";
             LockScreenSwitch.IsToggled = _prefs.ShowDetailsOnLockScreen;
-            // A category the caregiver cannot mute renders on whatever the server holds: the
-            // API strips Safety from every update, but a stored list from before that rule
-            // could still carry it, and the switch must not contradict the copy beside it.
+            // A category the caregiver cannot mute is pinned on regardless of what the server
+            // holds: the API strips Safety from every update, but a stored list from before that
+            // rule could still carry it, and the switch must not contradict the copy beside it.
             foreach (var (wire, sw) in _categorySwitches)
             {
                 var canMute = Categories.First(c => c.Wire == wire).CanMute;

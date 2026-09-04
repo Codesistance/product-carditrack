@@ -68,6 +68,25 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     /// </summary>
     public static readonly EventId ClinicalInspectionEvent = new(4200, "ClinicalInspection");
 
+    /// <summary>
+    /// The inspection switch's one outlet. Writes <paramref name="text"/> verbatim — health data
+    /// included, which is the point of the switch — under <see cref="ClinicalInspectionEvent"/>,
+    /// and only when <see cref="IMedGemmaModelSettings.LogClinicalOutput"/> is on. The message
+    /// names the model, the operation and which side of the exchange the text is, so a log
+    /// scan can pair a completion with the prompt that produced it. Nothing else in this class
+    /// may log prompt or completion text.
+    /// </summary>
+    private void LogClinicalText(string operationName, string kind, string text)
+    {
+        if (!_settings.LogClinicalOutput)
+            return;
+
+        _logger.LogInformation(
+            ClinicalInspectionEvent,
+            "MedGemma clinical inspection — {Model} {Operation} {Kind} ({Length} chars):\n{Text}",
+            _settings.Model, operationName, kind, text.Length, text);
+    }
+
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMedGemmaModelSettings _settings;
     private readonly string _httpClientName;
@@ -264,25 +283,6 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     /// and letting it reach the deserializer turns a budget problem into a parse error pointing
     /// at whatever byte the cut happened to land on.
     /// </param>
-    /// <summary>
-    /// The inspection switch's one outlet. Writes <paramref name="text"/> verbatim — health data
-    /// included, which is the point of the switch — under <see cref="ClinicalInspectionEvent"/>,
-    /// and only when <see cref="IMedGemmaModelSettings.LogClinicalOutput"/> is on. The message
-    /// names the model, the operation and which side of the exchange the text is, so a log
-    /// scan can pair a completion with the prompt that produced it. Nothing else in this class
-    /// may log prompt or completion text.
-    /// </summary>
-    private void LogClinicalText(string operationName, string kind, string text)
-    {
-        if (!_settings.LogClinicalOutput)
-            return;
-
-        _logger.LogInformation(
-            ClinicalInspectionEvent,
-            "MedGemma clinical inspection — {Model} {Operation} {Kind} ({Length} chars):\n{Text}",
-            _settings.Model, operationName, kind, text.Length, text);
-    }
-
     private async Task<(TResult Result, CardiTrack.Application.DTOs.Common.AiUsage Usage)> SendInstrumentedCoreAsync<TResponse, TResult>(
         string operationName,
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
