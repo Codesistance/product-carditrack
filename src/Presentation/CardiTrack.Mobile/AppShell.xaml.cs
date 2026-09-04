@@ -1,4 +1,4 @@
-﻿#if ANDROID || IOS
+#if ANDROID || IOS
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Notifications;
 using CardiTrack.Mobile.Services;
@@ -40,6 +40,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(AlertDetailPage.Route, typeof(AlertDetailPage));
         Routing.RegisterRoute(JournalEntryPage.Route, typeof(JournalEntryPage));
         Routing.RegisterRoute(JournalTimingPage.Route, typeof(JournalTimingPage));
+        Routing.RegisterRoute(AlertSettingsPage.Route, typeof(AlertSettingsPage));
         Routing.RegisterRoute(NotificationPreferencesPage.Route, typeof(NotificationPreferencesPage));
 
 #if ANDROID || IOS
