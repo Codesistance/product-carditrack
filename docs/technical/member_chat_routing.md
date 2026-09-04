@@ -189,7 +189,7 @@ internal sealed record RoutingAiResponse
 }
 ```
 
-Two fields, both required. `Alternatives` is required rather than optional for the reason `DataQueryPlanAiResponse.Metrics` is: an omitted field and a deliberately empty one mean different things, and "one clearly fits" has to be *said* rather than skipped. An omitted `Alternatives` is a model that did not answer; an empty one is a model that is sure. Only the second suppresses clarify.
+Two fields, both required. `Alternatives` is required rather than optional for the reason `DataQueryPlanAiResponse.Metrics` is: an omitted field and a deliberately empty one mean different things, and "one clearly fits" has to be *said* rather than skipped. An omitted `Alternatives` is a model that did not answer; an empty one is a model that is sure. Only the second suppresses clarify on its own — a non-empty list makes clarify *possible*, not certain, since §5 then absorbs adjacent rungs and reading-rung pairs.
 
 No datasets, no window, no metrics. Those belong to the workflow's own planning call (§3), where the registry slice is short and the job is narrow.
 
