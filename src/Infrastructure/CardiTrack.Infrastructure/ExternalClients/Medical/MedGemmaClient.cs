@@ -103,7 +103,15 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             .Append(new OllamaMessage { Role = "user", Content = userMessage })
             .ToList();
         var request = new OllamaChatRequest { Model = _settings.Model, Messages = messages, Options = TokenBudget() };
-        LogClinicalText("chat", $"prompt (after {history.Count} prior turn(s))", userMessage);
+        // The whole transcript, because that is what Ollama is sent: a chat prompt is every
+        // turn so far, not the latest one. Role-prefixed so a log reader can follow it.
+        if (_settings.LogClinicalOutput)
+        {
+            var transcript = string.Join(
+                "\n\n",
+                messages.Select(m => $"[{m.Role}] {m.Content}"));
+            LogClinicalText("chat", $"prompt ({messages.Count} message(s), full transcript)", transcript);
+        }
         var (result, _) = await SendInstrumentedCoreAsync<OllamaChatResponse, string>(
             operationName: "chat",
             send: (client, token) => client.PostAsJsonAsync("/api/chat", request, token),
