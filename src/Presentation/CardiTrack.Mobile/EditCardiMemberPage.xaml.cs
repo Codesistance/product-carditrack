@@ -311,8 +311,9 @@ public partial class EditCardiMemberPage : ContentPage
             return;
 
         _isSaving = true;
-        SaveButton.Text = "Saving...";
+        SaveLabel.Text = "Saving...";
         SaveButton.IsEnabled = false;
+        SaveButton.Opacity = 0.6;
 
         try
         {
@@ -353,8 +354,9 @@ public partial class EditCardiMemberPage : ContentPage
         finally
         {
             _isSaving = false;
-            SaveButton.Text = "Save";
+            SaveLabel.Text = "Save";
             SaveButton.IsEnabled = true;
+            SaveButton.Opacity = 1;
         }
     }
 

@@ -35,7 +35,113 @@ public partial class SettingsPage : ContentPage
         base.OnAppearing();
         AccountNameLabel.Text = _authService.CurrentUserName ?? "Your account";
         AccountEmailLabel.Text = _authService.CurrentUserEmail ?? string.Empty;
+        VersionLabel.Text = $"{AppInfo.Current.VersionString} ({AppInfo.Current.BuildString})";
         _ = LoadMutesAsync();
+        _ = LoadNotificationSummaryAsync();
+    }
+
+    /// <summary>The row's one line says what is set, so the page answers before it is tapped.</summary>
+    private async Task LoadNotificationSummaryAsync()
+    {
+        try
+        {
+            var prefs = await _api.GetNotificationPreferencesAsync();
+            var quiet = prefs.QuietHoursStart is { } start && prefs.QuietHoursEnd is { } end
+                ? $"Quiet {start:HH:mm} – {end:HH:mm}"
+                : "No quiet hours";
+            // Safety cannot be muted — the API strips it on every update — so a stored list that
+            // still names it (from before that rule) must not count as a kind muted here.
+            var mutedCount = prefs.MutedCategories.Count(c =>
+                !string.Equals(c, nameof(CardiTrack.Domain.Enums.NotificationCategory.Safety), StringComparison.OrdinalIgnoreCase));
+            var muted = mutedCount switch
+            {
+                0 => "hearing about everything",
+                1 => "1 kind muted",
+                var n => $"{n} kinds muted",
+            };
+            NotificationSummary.Text = $"{quiet} · {muted}";
+        }
+        catch (ApiException)
+        {
+            NotificationSummary.Text = "Quiet hours, lock-screen detail, what to hear about";
+        }
+    }
+
+    private async void OnNotificationPreferencesTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(NotificationPreferencesPage.Route);
+
+    // The same reset-link call the signed-out Forgot Password screen makes, sent to the
+    // signed-in address without asking for it again — there is nothing else to type.
+    private async void OnChangePasswordTapped(object? sender, TappedEventArgs e)
+    {
+        var email = _authService.CurrentUserEmail;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            await _popups.ShowWarningAsync("We don't have an email address for this account.", "Can't send a link");
+            return;
+        }
+
+        var send = await _popups.ConfirmInfoAsync(
+            $"We'll email a link to {email}. Follow it to set a new password.",
+            "Change password", "Send link", "Not now");
+        if (!send)
+            return;
+
+        try
+        {
+            await _authService.RequestPasswordResetAsync(email);
+            ChangePasswordDetail.Text = $"Link sent to {email}";
+        }
+        catch (CardiTrack.Mobile.Core.Auth.AuthException ex)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't send the link");
+        }
+    }
+
+    private async void OnTermsTapped(object? sender, TappedEventArgs e) =>
+        await Navigation.PushModalAsync(new LegalDocumentPage("Terms of Service", LegalDocumentPage.TermsUrl));
+
+    private async void OnPrivacyTapped(object? sender, TappedEventArgs e) =>
+        await Navigation.PushModalAsync(new LegalDocumentPage("Privacy Policy", LegalDocumentPage.PrivacyUrl));
+
+    // Starts the erasure request the privacy policy promises (30 days), the same way the
+    // policy page itself does — a pre-addressed email — until an endpoint exists.
+    // The tick box is the confirmation: the card above it has already said what happens, so
+    // the button does not ask again. It stays off — and reads off — until the box is ticked.
+    private void OnDeleteConfirmChanged(object? sender, CheckedChangedEventArgs e)
+    {
+        DeleteAccountBtn.IsEnabled = e.Value;
+        DeleteAccountBtn.Opacity = e.Value ? 1 : 0.5;
+    }
+
+    private void OnDeleteConfirmLabelTapped(object? sender, TappedEventArgs e) =>
+        DeleteConfirmCheck.IsChecked = !DeleteConfirmCheck.IsChecked;
+
+    private async void OnDeleteAccountClicked(object? sender, EventArgs e)
+    {
+        if (!DeleteConfirmCheck.IsChecked)
+            return;
+
+        // The request has to name the account; without the address support cannot act on it.
+        var email = _authService.CurrentUserEmail;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            await _popups.ShowWarningAsync(
+                "We don't have an email address for this account. Please email support@carditrack.com from the address you sign in with.",
+                "Can't start the request");
+            return;
+        }
+
+        var subject = Uri.EscapeDataString("Delete my account");
+        var body = Uri.EscapeDataString($"Please delete the CardiTrack account for {email}.");
+        try
+        {
+            await Launcher.Default.OpenAsync(new Uri($"mailto:support@carditrack.com?subject={subject}&body={body}"));
+        }
+        catch (Exception)
+        {
+            await _popups.ShowInfoAsync("Email support@carditrack.com with the subject \"Delete my account\".", "No mail app found");
+        }
     }
 
     /// <summary>Settings is a tab root reachable by deep link (notification preferences,
@@ -183,14 +289,73 @@ public partial class SettingsPage : ContentPage
         }
     }
 
+    // Sign out asks twice the way leaving the app does: the first tap arms the same two-second
+    // window (CardiTrack.Mobile.Core.Navigation.ExitConfirmation) and raises the dashboard's
+    // deep-red banner; a second tap inside it signs out. Leaving the tab, or letting the window
+    // lapse, forgets the first tap.
+    private readonly CardiTrack.Mobile.Core.Navigation.ExitConfirmation _signOutGate = new();
+    private CancellationTokenSource? _exitHintCts;
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _signOutGate.Disarm();
+        HideExitHint();
+    }
+
+    private void ShowExitHint()
+    {
+        if (!ExitHintBanner.IsVisible)
+        {
+            ExitHintScrim.Opacity = 0;
+            ExitHintBanner.Opacity = 0;
+            ExitHintScrim.IsVisible = true;
+            ExitHintBanner.IsVisible = true;
+            _ = ExitHintScrim.FadeToAsync(1, 140);
+            _ = ExitHintBanner.FadeToAsync(1, 140);
+        }
+
+        // Every tap re-arms: the previous source is cancelled and disposed, not just replaced.
+        var previous = _exitHintCts;
+        _exitHintCts = new CancellationTokenSource();
+        previous?.Cancel();
+        previous?.Dispose();
+        _ = HideExitHintAfterAsync(_exitHintCts.Token);
+    }
+
+    private async Task HideExitHintAfterAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(CardiTrack.Mobile.Core.Navigation.ExitConfirmation.Window, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        HideExitHint();
+    }
+
+    private void HideExitHint()
+    {
+        var cts = _exitHintCts;
+        _exitHintCts = null;
+        cts?.Cancel();
+        cts?.Dispose();
+        ExitHintBanner.IsVisible = false;
+        ExitHintScrim.IsVisible = false;
+    }
+
     private async void OnSignOutClicked(object? sender, EventArgs e)
     {
-        var confirmed = await _popups.ConfirmWarningAsync(
-            "You'll need to sign back in to keep an eye on things.",
-            "Ready to sign out?", confirmText: "Sign out");
-        if (!confirmed)
+        if (!_signOutGate.Confirm())
+        {
+            ShowExitHint();
             return;
+        }
 
+        HideExitHint();
         SignOutBtn.IsEnabled = false;
         try
         {

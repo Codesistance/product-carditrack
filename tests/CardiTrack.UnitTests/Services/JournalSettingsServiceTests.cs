@@ -306,10 +306,13 @@ public class JournalSettingsServiceTests
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
-    /// <summary>One decimal place is fine, and trailing zeros are the same number.</summary>
+    /// <summary>
+    /// One decimal place is fine, and so is none. (A trailing-zero case — 2.50 — cannot be
+    /// expressed here: attribute arguments are numeric literals, and 2.50 is the same literal
+    /// as 2.5, which xUnit rightly reports as a duplicate row.)
+    /// </summary>
     [Theory]
     [InlineData(2.5)]
-    [InlineData(2.50)]
     [InlineData(3)]
     public async Task A_level_band_the_column_can_hold_is_accepted(decimal percent)
     {

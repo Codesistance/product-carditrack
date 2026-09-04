@@ -62,181 +62,198 @@
                                    HorizontalOptions="Center"
                                    Margin="0,24"/>
 
-                <VerticalStackLayout x:Name="SettingsPanel" IsVisible="False" Spacing="12">
+                <VerticalStackLayout x:Name="SettingsPanel" IsVisible="False" Spacing="14">
 
-                    <Label Text="Timing"
-                           Style="{StaticResource DashboardSectionTitle}"
-                           Margin="4,0,4,0"/>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid x:Name="DaybookRow" ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Daybook time"
-                              SemanticProperties.Hint="Choose what time each finished day is written up">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnDaybookTimeTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Daybook" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="DaybookSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="DaybookValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
+                    <!-- The same shape as Member Details' Alert Rules card: a section card that
+                         says what the group is for, and inside it an outlined card of rows parted
+                         by hairlines, each row a title, one line of what it does, and its value on
+                         the right in the accent ink — the same seat a switch takes over there, so
+                         a value reads as the control it is. -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="Timing" Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label x:Name="FootnoteLabel" Style="{StaticResource Body2}"/>
+                            <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                                <VerticalStackLayout Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Daybook time"
+                                  SemanticProperties.Hint="Choose what time each finished day is written up">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnDaybookTimeTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Daybook" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="DaybookSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="DaybookValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"/>
+                            </Grid>
+                            <BoxView Style="{StaticResource DividerLine}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Weekbook time"
+                                  SemanticProperties.Hint="Choose what time each finished week is written up">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnWeekbookTimeTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Weekbook" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="WeekbookSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="WeekbookValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"/>
+                            </Grid>
+                            <BoxView Style="{StaticResource DividerLine}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Week starts on"
+                                  SemanticProperties.Hint="Choose which day a journal week begins">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnWeekStartTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Week starts on" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="WeekStartSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="WeekStartValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"/>
+                            </Grid>
+                            <BoxView Style="{StaticResource DividerLine}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Monthbook time"
+                                  SemanticProperties.Hint="Choose what time each finished month is written up">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnMonthbookTimeTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Monthbook" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="MonthbookSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="MonthbookValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"/>
+                            </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
                     </Border>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Week starts on"
-                              SemanticProperties.Hint="Choose which day a journal week begins">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnWeekStartTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="A week starts on" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="WeekStartSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="WeekStartValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Weekbook time"
-                              SemanticProperties.Hint="Choose what time each finished week is written up">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnWeekbookTimeTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Weekbook" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="WeekbookSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="WeekbookValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Monthbook time"
-                              SemanticProperties.Hint="Choose what time each finished month is written up">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnMonthbookTimeTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Monthbook" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="MonthbookSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="MonthbookValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
-                    </Border>
-
-                    <Label x:Name="FootnoteLabel"
-                           Style="{StaticResource Body2}"
-                           Margin="4,4,4,0"/>
 
                     <!-- The second question this screen answers, and a different one from the
                          timings above: not when a book is written, but how far a reading has to
                          sit from this member's own usual before the book names a direction for it.
-                         A direction is a claim, and both ends of it are bounded — under the
-                         tolerance the book says the reading was about their usual, and past the
-                         far bound it refuses to say earlier or later at all, because that far
-                         round the clock the two stop being different answers.
-
                          Called "What counts as a change" rather than triggers or rules: those
                          words already belong to the alert catalogue, and nothing here fires
                          anything. -->
-
-                    <Label Text="What counts as a change"
-                           Style="{StaticResource DashboardSectionTitle}"
-                           Margin="4,12,4,0"/>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Bedtime change"
-                              SemanticProperties.Hint="Choose how far their bedtime has to move before a book calls it earlier or later">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnBedtimeToleranceTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Bedtime" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="BedtimeToleranceSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="BedtimeToleranceValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
+                    <!-- The same shape as Member Details' Alert Rules card: a section card that
+                         says what the group is for, and inside it an outlined card of rows parted
+                         by hairlines, each row a title, one line of what it does, and its value on
+                         the right in the accent ink — the same seat a switch takes over there, so
+                         a value reads as the control it is. -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="What counts as a change" Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label x:Name="ComparisonFootnoteLabel" Style="{StaticResource Body2}"/>
+                            <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                                <VerticalStackLayout Spacing="0">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Bedtime change"
+                                  SemanticProperties.Hint="Choose how far their bedtime has to move before a book calls it earlier or later">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnBedtimeToleranceTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Bedtime" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="BedtimeToleranceSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="BedtimeToleranceValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"/>
+                            </Grid>
+                            <BoxView Style="{StaticResource DividerLine}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Wake time change"
+                                  SemanticProperties.Hint="Choose how far their waking time has to move before a book calls it earlier or later">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnWakeToleranceTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Waking time" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="WakeToleranceSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="WakeToleranceValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"/>
+                            </Grid>
+                            <BoxView Style="{StaticResource DividerLine}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Far off their usual"
+                                  SemanticProperties.Hint="Choose how far apart two times have to be before a book stops saying earlier or later">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnDirectionBoundTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Far off their usual" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="DirectionBoundSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="DirectionBoundValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"/>
+                            </Grid>
+                            <BoxView Style="{StaticResource DividerLine}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                  SemanticProperties.Description="Small differences"
+                                  SemanticProperties.Hint="Choose how close to their usual a reading has to be before a book calls it level">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnLevelToleranceTapped"/>
+                                </Grid.GestureRecognizers>
+                                <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="Small differences" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="LevelToleranceSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="LevelToleranceValue"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
+                                       TextColor="{StaticResource Primary}"
+                                       VerticalTextAlignment="Center"
+                                       HorizontalTextAlignment="End"
+                                       LineBreakMode="WordWrap"
+                                       MaximumWidthRequest="150"/>
+                            </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
                     </Border>
 
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Wake time change"
-                              SemanticProperties.Hint="Choose how far their waking time has to move before a book calls it earlier or later">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnWakeToleranceTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Waking time" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="WakeToleranceSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="WakeToleranceValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Far off their usual"
-                              SemanticProperties.Hint="Choose how far apart two times have to be before a book stops saying earlier or later">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnDirectionBoundTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Far off their usual" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="DirectionBoundSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="DirectionBoundValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
-                    </Border>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Small differences"
-                              SemanticProperties.Hint="Choose how close to their usual a reading has to be before a book calls it level">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnLevelToleranceTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Small differences" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label x:Name="LevelToleranceSubtitle" Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="LevelToleranceValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   VerticalTextAlignment="Center"
-                                   LineBreakMode="TailTruncation"
-                                   MaximumWidthRequest="170"/>
-                        </Grid>
-                    </Border>
-
-                    <Label x:Name="ComparisonFootnoteLabel"
-                           Style="{StaticResource Body2}"
-                           Margin="4,4,4,0"/>
                 </VerticalStackLayout>
 
                 <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">

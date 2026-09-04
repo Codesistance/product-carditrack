@@ -24,6 +24,12 @@ namespace CardiTrack.Infrastructure.ExternalClients.Medical;
 /// model output and no response-body fragment may ever reach a log, span attribute, metric
 /// tag or exception message produced by this class. Token counts, durations, model names,
 /// status codes and JSON error positions are the only telemetry payload.
+///
+/// The one exception is <see cref="IMedGemmaModelSettings.LogClinicalOutput"/>: an inspection
+/// switch that writes prompts and completions verbatim to the log so the clinical output can be
+/// read during development. It is off by default, the settings loader refuses to start a
+/// production host with it on, and every line it writes is tagged
+/// <see cref="ClinicalInspectionEvent"/> so it can be found — and dropped — by event id.
 /// </summary>
 public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
 {
@@ -54,6 +60,32 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     /// (<see cref="WarmUpAsync"/>'s preload, which produces no completion at all).
     /// </summary>
     private const string LengthDoneReason = "length";
+
+    /// <summary>
+    /// Event id on every verbatim prompt or completion written under
+    /// <see cref="IMedGemmaModelSettings.LogClinicalOutput"/>, so those lines can be filtered
+    /// to — or filtered out — without a text match on health data.
+    /// </summary>
+    public static readonly EventId ClinicalInspectionEvent = new(4200, "ClinicalInspection");
+
+    /// <summary>
+    /// The inspection switch's one outlet. Writes <paramref name="text"/> verbatim — health data
+    /// included, which is the point of the switch — under <see cref="ClinicalInspectionEvent"/>,
+    /// and only when <see cref="IMedGemmaModelSettings.LogClinicalOutput"/> is on. The message
+    /// names the model, the operation and which side of the exchange the text is, so a log
+    /// scan can pair a completion with the prompt that produced it. Nothing else in this class
+    /// may log prompt or completion text.
+    /// </summary>
+    private void LogClinicalText(string operationName, string kind, string text)
+    {
+        if (!_settings.LogClinicalOutput)
+            return;
+
+        _logger.LogInformation(
+            ClinicalInspectionEvent,
+            "MedGemma clinical inspection — {Model} {Operation} {Kind} ({Length} chars):\n{Text}",
+            _settings.Model, operationName, kind, text.Length, text);
+    }
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMedGemmaModelSettings _settings;
@@ -90,6 +122,15 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             .Append(new OllamaMessage { Role = "user", Content = userMessage })
             .ToList();
         var request = new OllamaChatRequest { Model = _settings.Model, Messages = messages, Options = TokenBudget() };
+        // The whole transcript, because that is what Ollama is sent: a chat prompt is every
+        // turn so far, not the latest one. Role-prefixed so a log reader can follow it.
+        if (_settings.LogClinicalOutput)
+        {
+            var transcript = string.Join(
+                "\n\n",
+                messages.Select(m => $"[{m.Role}] {m.Content}"));
+            LogClinicalText("chat", $"prompt ({messages.Count} message(s), full transcript)", transcript);
+        }
         var (result, _) = await SendInstrumentedCoreAsync<OllamaChatResponse, string>(
             operationName: "chat",
             send: (client, token) => client.PostAsJsonAsync("/api/chat", request, token),
@@ -104,6 +145,7 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         string prompt, CancellationToken ct = default)
     {
         var request = new OllamaGenerateRequest { Model = _settings.Model, Prompt = prompt, Options = TokenBudget() };
+        LogClinicalText("generate_content", "prompt", prompt);
         var (result, usage) = await SendInstrumentedCoreAsync<OllamaGenerateResponse, string>(
             operationName: "generate_content",
             send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
@@ -171,6 +213,7 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             Format = JsonNode.Parse(schemaText),
             Options = TokenBudget(),
         };
+        LogClinicalText("generate_structured", "prompt (with reply schema appended)", fullPrompt);
         var (result, usage) = await SendInstrumentedCoreAsync<OllamaGenerateResponse, T>(
             operationName: "generate_structured",
             send: (client, token) => client.PostAsJsonAsync("/api/generate", request, token),
@@ -287,6 +330,8 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
 
             OllamaResponseMetadata meta = parsed;
             var content = selectContent(parsed);
+            if (content is not null)
+                LogClinicalText(operationName, "completion", content);
             activity?.SetTag(AiTelemetry.ResponseModelTag, meta.Model);
             if (meta.PromptEvalCount is { } inputTokens)
             {

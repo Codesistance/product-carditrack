@@ -691,6 +691,49 @@ public class CardiTrackApiClientTests
         Assert.True(cache.Items.ContainsKey("api/Onboarding/status"));
     }
 
+    [Fact]
+    public async Task PeekAlerts_ReturnsThePageTheLiveCallSaved_WithoutTouchingTheApi()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"alerts":[],"total":3,"unreadCount":1},
+             "timestamp":"2026-08-01T00:00:00Z"}
+            """);
+        await client.GetAlertsAsync(severity: "red", cardiMemberId: null);
+        var requestsAfterLiveCall = http.Requests.Count;
+
+        // Same arguments, so the same key — the peek must answer the exact question the
+        // screen is about to ask, never a neighbouring filter's page.
+        var saved = await client.PeekAlertsAsync(severity: "red", cardiMemberId: null);
+
+        Assert.NotNull(saved);
+        Assert.Equal(3, saved!.Total);
+        Assert.Equal(1, saved.UnreadCount);
+        Assert.Equal(requestsAfterLiveCall, http.Requests.Count);
+    }
+
+    [Fact]
+    public async Task PeekAlerts_ReturnsNull_ForAQueryTheDeviceHasNeverAnswered()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+
+        var saved = await client.PeekAlertsAsync(severity: "red");
+
+        Assert.Null(saved);
+        Assert.Empty(http.Requests);
+    }
+
+    [Fact]
+    public async Task PeekAlerts_ReturnsNull_WhenTheClientHasNoCache()
+    {
+        var (client, http) = CreateSut(cache: null);
+
+        Assert.Null(await client.PeekAlertsAsync());
+        Assert.Empty(http.Requests);
+    }
+
     private const string OnboardingEnvelope =
         """{"success":true,"message":"ok","data":{"hasOrganization":true,"hasUserAccount":true,"hasCardiMember":true,"currentStep":7,"totalSteps":7},"timestamp":"2026-08-01T00:00:00Z"}""";
 

@@ -115,7 +115,6 @@
             <Button x:Name="OpenButton"
                     Style="{StaticResource PrimaryGradientButton}"
                     HeightRequest="40"
-                    FontSize="14"
                     Margin="0,2,0,0"
                     Clicked="OnOpenClicked"/>
 
@@ -148,7 +147,6 @@
                                 Text="Save answer"
                                 Style="{StaticResource PrimaryGradientButton}"
                                 HeightRequest="40"
-                                FontSize="14"
                                 IsEnabled="False"
                                 Clicked="OnSaveClicked"/>
 

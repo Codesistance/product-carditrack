@@ -107,6 +107,50 @@ public class AiServiceExtensionsTests
         Assert.NotNull(Resolve(config).GetRequiredService<IAiWarmUpService>());
     }
 
+    // The clinical-inspection switch logs health data verbatim. A production host with it on
+    // must not start; a dev host, or one that never said which environment it is, may.
+    [Theory]
+    [InlineData("Prod")]
+    [InlineData("Production")]
+    [InlineData("prod")]
+    public void AddAiServices_Throws_WhenClinicalLoggingIsOnInProduction(string environment)
+    {
+        var config = Config();
+        config["AI:Private:LogClinicalOutput"] = "true";
+        config["ASPNETCORE_ENVIRONMENT"] = environment;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI:Private:LogClinicalOutput", ex.Message);
+        Assert.Contains("ASPNETCORE_ENVIRONMENT", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("Dev")]
+    [InlineData("Development")]
+    [InlineData(null)]
+    public void AddAiServices_AllowsClinicalLogging_OutsideProduction(string? environment)
+    {
+        var config = Config();
+        config["AI:Private:LogClinicalOutput"] = "true";
+        if (environment is not null)
+            config["ASPNETCORE_ENVIRONMENT"] = environment;
+
+        Assert.NotNull(Resolve(config).GetRequiredService<IAiWarmUpService>());
+    }
+
+    [Fact]
+    public void AddAiServices_Throws_WhenRewriteClinicalLoggingIsOnInProduction()
+    {
+        var config = Config();
+        config["AI:Rewrite:LogClinicalOutput"] = "true";
+        config["ASPNETCORE_ENVIRONMENT"] = "Prod";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI:Rewrite:LogClinicalOutput", ex.Message);
+    }
+
     // With no Kind configured the rewrite slot defaults to Ollama — the local-dev shape must
     // keep working with zero configuration and no GCP credentials.
     [Fact]

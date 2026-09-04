@@ -256,7 +256,24 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         DateTime? to = null,
         int? limit = null,
         Guid? cardiMemberId = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default) =>
+        GetAsync<AlertListResponse>(AlertsPath(severity, status, from, to, limit, cardiMemberId), ct);
+
+    public Task<AlertListResponse?> PeekAlertsAsync(
+        string? severity = null,
+        string? status = null,
+        DateTime? from = null,
+        DateTime? to = null,
+        int? limit = null,
+        Guid? cardiMemberId = null,
+        CancellationToken ct = default) =>
+        // The same key the live call writes under, so a peek can only ever answer the exact
+        // question the screen is about to ask the API — never a neighbouring filter's page.
+        TryReadCacheAsync<AlertListResponse>(
+            AlertsPath(severity, status, from, to, limit, cardiMemberId), new CacheOrigin(), ct);
+
+    private static string AlertsPath(
+        string? severity, string? status, DateTime? from, DateTime? to, int? limit, Guid? cardiMemberId)
     {
         var filters = new List<string>();
         if (!string.IsNullOrWhiteSpace(severity)) filters.Add($"severity={Uri.EscapeDataString(severity)}");
@@ -273,8 +290,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var basePath = cardiMemberId is { } memberId
             ? $"api/v1/cardimembers/{memberId}/alerts"
             : "api/v1/alerts";
-        var path = filters.Count == 0 ? basePath : $"{basePath}?{string.Join("&", filters)}";
-        return GetAsync<AlertListResponse>(path, ct);
+        return filters.Count == 0 ? basePath : $"{basePath}?{string.Join("&", filters)}";
     }
 
     public Task<AlertDetailResponse> GetAlertAsync(Guid alertId, CancellationToken ct = default) =>
@@ -576,6 +592,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         try
         {
             entry = await _cache.TryGetAsync(path, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The caller gave up on this read — a chip tap superseding a load, a screen going
+            // away. That is not a failed cache and must not be logged as one; the caller's own
+            // cancellation handling is the right place for it to land.
+            throw;
         }
         catch (Exception ex)
         {

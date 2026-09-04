@@ -83,14 +83,14 @@ public sealed class FilterChipBar : ContentView
             {
                 Text = label,
                 FontFamily = "QuicksandSemiBold",
-                FontSize = 16,
+                FontSize = 14,
                 VerticalTextAlignment = TextAlignment.Center,
             };
 
             var caret = new Image
             {
-                WidthRequest = 18,
-                HeightRequest = 9,
+                WidthRequest = 14,
+                HeightRequest = 7,
                 VerticalOptions = LayoutOptions.Center,
             };
 
@@ -98,19 +98,12 @@ public sealed class FilterChipBar : ContentView
             {
                 // Asymmetric by design: the caret needs less breathing room on the right
                 // than the label does on the left.
-                Padding = new Thickness(20, 9, 14, 9),
-                StrokeShape = new RoundRectangle { CornerRadius = 20 },
+                Padding = new Thickness(16, 7, 12, 7),
+                StrokeShape = new RoundRectangle { CornerRadius = 17 },
                 Content = new HorizontalStackLayout
                 {
-                    Spacing = 8,
+                    Spacing = 6,
                     Children = { text, caret },
-                },
-                Shadow = new Shadow
-                {
-                    Brush = Resource<Brush>("CardShadowBrush"),
-                    Opacity = 0.15f,
-                    Radius = 7,
-                    Offset = new Point(0, 4),
                 },
             };
 
@@ -141,7 +134,7 @@ public sealed class FilterChipBar : ContentView
         var text = new Label
         {
             FontFamily = "QuicksandSemiBold",
-            FontSize = 16,
+            FontSize = 14,
             TextColor = Resource<Color>("White"),
             VerticalTextAlignment = TextAlignment.Center,
             LineBreakMode = LineBreakMode.TailTruncation,
@@ -153,7 +146,7 @@ public sealed class FilterChipBar : ContentView
         {
             Text = "✕",
             FontFamily = "QuicksandSemiBold",
-            FontSize = 14,
+            FontSize = 12,
             TextColor = Resource<Color>("White"),
             VerticalTextAlignment = TextAlignment.Center,
         };
@@ -161,21 +154,14 @@ public sealed class FilterChipBar : ContentView
         var chip = new Border
         {
             IsVisible = false,
-            Padding = new Thickness(20, 9, 14, 9),
-            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            Padding = new Thickness(16, 7, 12, 7),
+            StrokeShape = new RoundRectangle { CornerRadius = 17 },
             Background = Resource<Brush>("GradientButtonBrush"),
             StrokeThickness = 0,
             Content = new HorizontalStackLayout
             {
-                Spacing = 8,
+                Spacing = 6,
                 Children = { text, clear },
-            },
-            Shadow = new Shadow
-            {
-                Brush = Resource<Brush>("CardShadowBrush"),
-                Opacity = 0.15f,
-                Radius = 7,
-                Offset = new Point(0, 4),
             },
         };
 

@@ -140,6 +140,7 @@ public static class MauiProgram
         builder.Services.AddTransient<JournalEntryPage>();
         builder.Services.AddTransient<JournalTimingPage>();
         builder.Services.AddTransient<SettingsPage>();
+        builder.Services.AddTransient<NotificationPreferencesPage>();
 
         // Routed pages pushed over a tab (M1-11/12/16, M1-13 / M1-14 / M1-15).
         builder.Services.AddTransient<CardiMemberDetailPage>();

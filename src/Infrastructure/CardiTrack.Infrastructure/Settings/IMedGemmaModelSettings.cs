@@ -31,4 +31,13 @@ public interface IMedGemmaModelSettings
     /// nothing.
     /// </summary>
     int MaxOutputTokens { get; }
+
+    /// <summary>
+    /// Inspection switch: when true, <see cref="ExternalClients.Medical.MedGemmaClient"/> writes
+    /// every prompt it sends and every completion it receives to the log, verbatim. This is the
+    /// one sanctioned exception to the client's privacy invariant, exists so the clinical output
+    /// can be read during development, and is refused at start-up in a production environment —
+    /// see <c>AiServiceExtensions.RequireNoClinicalLoggingInProduction</c>. Default false.
+    /// </summary>
+    bool LogClinicalOutput { get; }
 }

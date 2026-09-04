@@ -114,9 +114,10 @@
                                     <VerticalStackLayout Spacing="2">
                                         <Label x:Name="DayLabel"
                                                Style="{StaticResource Heading2}"/>
+                                        <!-- Dark like the account below it: the headline is what the day
+                                             was about, which is the message, not a caption on it. -->
                                         <Label x:Name="HeadlineLabel"
-                                               Style="{StaticResource Body2}"
-                                               TextColor="{StaticResource BodyText}"/>
+                                               Style="{StaticResource Body2Dark}"/>
                                     </VerticalStackLayout>
                                 </Grid>
 
@@ -131,8 +132,7 @@
                                        x:Name="SuggestionTitle"
                                        Style="{StaticResource DashboardSectionTitle}"/>
                                 <Label x:Name="SuggestionLabel"
-                                       Style="{StaticResource Body2}"
-                                       TextColor="{StaticResource BodyText}"/>
+                                       Style="{StaticResource Body2Dark}"/>
 
                                 <Label x:Name="GeneratedLabel"
                                        Style="{StaticResource MetricRowCaption}"

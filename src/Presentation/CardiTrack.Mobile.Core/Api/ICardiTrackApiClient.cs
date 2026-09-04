@@ -186,6 +186,22 @@ public interface ICardiTrackApiClient
         Guid? cardiMemberId = null,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// The last page the device saved for exactly these arguments, without going near the
+    /// network — or null when there is none, it has aged out, or the device cannot read it.
+    /// For a screen to put on the wall while <see cref="GetAlertsAsync"/> fetches the live one:
+    /// the alert list used to open onto a loading card on every landing, when the previous
+    /// answer was sitting encrypted on the device the whole time.
+    /// </summary>
+    Task<AlertListResponse?> PeekAlertsAsync(
+        string? severity = null,
+        string? status = null,
+        DateTime? from = null,
+        DateTime? to = null,
+        int? limit = null,
+        Guid? cardiMemberId = null,
+        CancellationToken ct = default);
+
     /// <summary>Marks one alert as handled (M1-10 card action).</summary>
     Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
 

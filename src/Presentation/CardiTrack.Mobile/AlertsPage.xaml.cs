@@ -168,8 +168,8 @@ public partial class AlertsPage : ContentPage
         Filters.SetMemberFilter(
             memberId is null ? null : _memberFilterName ?? UnnamedMemberChipLabel);
 
+        // LoadAsync decides between the saved page for the new filter and the loading card.
         _lastData = null;
-        SetState(AlertsState.Loading);
         _ = LoadAsync(force: true);
     }
 
@@ -214,9 +214,6 @@ public partial class AlertsPage : ContentPage
         var generation = ++_loadGeneration;
         _isLoading = true;
 
-        if (_lastData is null)
-            SetState(AlertsState.Loading);
-
         // Capture the chip at request start so a later tap cannot let this response paint under
         // a different filter — the generation check drops the whole load if it was superseded.
         var requestedFilter = Filters.Selected;
@@ -226,6 +223,32 @@ public partial class AlertsPage : ContentPage
         var loadNudges = false;
         try
         {
+            // Nothing on the wall yet — a cold start, or a chip or member filter that has just
+            // changed the question. Put up the page the device last saved for this exact query,
+            // if it has one, and fetch the live one behind it. The list used to open onto the
+            // loading card on every landing while the previous answer sat encrypted on the
+            // device; the loading card is now only for a query the device has never answered.
+            // The saved rows can only be the new query's, because the cache is keyed by it, so
+            // this is not the stale-rows-under-a-new-chip bug (#308) coming back.
+            if (_lastData is null)
+            {
+                // Loading first, before the peek is awaited: the previous query's rows (or its
+                // error) must not sit under the newly chosen chip for even the frame the cache
+                // read takes (#308). A saved page then replaces the skeleton within that read.
+                SetState(AlertsState.Loading);
+                var saved = await _api.PeekAlertsAsync(
+                    severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
+                if (IsStale(generation, cts))
+                    return;
+
+                if (saved is not null)
+                {
+                    _lastData = saved;
+                    Render(saved);
+                    SetState(AlertsState.Loaded);
+                }
+            }
+
             var call = _api.GetAlertsAsync(
                 severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
             var data = await call;
@@ -415,6 +438,7 @@ public partial class AlertsPage : ContentPage
                 var card = new AlertListCard();
                 card.Apply(alert);
                 card.CallRequested += OnCallRequested;
+                card.SosRequested += OnSosRequested;
                 card.AcknowledgeRequested += OnAcknowledgeRequested;
                 card.DeleteRequested += OnDeleteRequested;
                 card.OpenRequested += OnOpenRequested;
@@ -477,11 +501,11 @@ public partial class AlertsPage : ContentPage
 
     private void OnFilterChanged(object? sender, AlertFilter filter)
     {
-        // A filter change is a different query, so the cached page no longer applies —
-        // dropping it and showing the skeleton immediately rather than leaving stale rows
-        // under the newly highlighted chip while the request is in flight (#308).
+        // A filter change is a different query, so the page on screen no longer applies —
+        // it is dropped rather than left under the newly highlighted chip while the request is
+        // in flight (#308). LoadAsync then shows the device's saved page for the new query if it
+        // has one, and the skeleton only if it has not.
         _lastData = null;
-        SetState(AlertsState.Loading);
         _ = LoadAsync(force: true);
     }
 
@@ -519,25 +543,47 @@ public partial class AlertsPage : ContentPage
     /// all that is left to type — it still validates the fields the API requires (name, date of
     /// birth, relationship), which a profile saved before those rules tightened could trip.
     /// </summary>
-    private async void OnCallRequested(object? sender, AlertSummaryResponse alert)
-    {
-        if (string.IsNullOrWhiteSpace(alert.EmergencyContactPhone))
-        {
-            var firstName = NameFormatting.FirstName(alert.CardiMemberName);
-            var prompt = string.IsNullOrWhiteSpace(firstName)
-                ? "Would you like to add an emergency contact number, so you can call them from here?"
-                : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?";
+    // The card's two phone actions mean what the dashboard's do — Call reaches the member, SOS
+    // reaches their emergency contact. Call used to dial the emergency contact here, so the same
+    // phone glyph meant two different people depending on which screen a caregiver was on.
+    private async void OnCallRequested(object? sender, AlertSummaryResponse alert) =>
+        await DialAsync(
+            alert.CardiMemberPhone,
+            alert,
+            EditCardiMemberPage.FocusPhone,
+            firstName => string.IsNullOrWhiteSpace(firstName)
+                ? "Would you like to add a phone number, so you can call them from here?"
+                : $"Would you like to add a phone number for {firstName}, so you can call them from here?");
 
+    private async void OnSosRequested(object? sender, AlertSummaryResponse alert) =>
+        await DialAsync(
+            alert.EmergencyContactPhone,
+            alert,
+            EditCardiMemberPage.FocusEmergencyPhone,
+            firstName => string.IsNullOrWhiteSpace(firstName)
+                ? "Would you like to add an emergency contact number, so you can call them from here?"
+                : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?");
+
+    /// <summary>
+    /// Dials <paramref name="number"/>, or — when there is none on file — offers the edit
+    /// screen with the right field focused, in the same words the dashboard's tiles use.
+    /// </summary>
+    private async Task DialAsync(
+        string? number, AlertSummaryResponse alert, string focusField, Func<string, string> addPrompt)
+    {
+        if (string.IsNullOrWhiteSpace(number))
+        {
+            var prompt = addPrompt(NameFormatting.FirstName(alert.CardiMemberName));
             var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
             if (addNow)
                 await Shell.Current.GoToAsync(
-                    $"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}&focus={Uri.EscapeDataString(EditCardiMemberPage.FocusEmergencyPhone)}");
+                    $"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}&focus={Uri.EscapeDataString(focusField)}");
             return;
         }
 
         try
         {
-            PhoneDialer.Default.Open(alert.EmergencyContactPhone);
+            PhoneDialer.Default.Open(number);
         }
         catch (FeatureNotSupportedException)
         {

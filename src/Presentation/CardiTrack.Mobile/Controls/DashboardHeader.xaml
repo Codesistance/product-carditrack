@@ -7,9 +7,13 @@
     <!-- Figma 101:2872. Chrome comes from HeaderBand, which every header in the app shares;
          this control only supplies what is specific to the dashboard. Figma's band includes a
          simulated status bar; MAUI's ContentPage already insets for the real one, so only the
-         86pt below it is drawn here. -->
-    <controls:HeaderBand>
-        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
+         band below it is drawn here.
+
+         Same inset, spacing and glyph size as every other header (Alerts is the reference):
+         this band used to inherit HeaderBand's 26dp default bottom inset and sat 10dp taller
+         than the tab it shares a bar with. -->
+    <controls:HeaderBand ContentPadding="20,14,20,16">
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
 
             <!-- The app's mark, not a control: pull-to-refresh already owns "check now",
                  and a home glyph in the same circle every other header hangs its icon in makes
@@ -25,7 +29,7 @@
                     <RoundRectangle CornerRadius="99"/>
                 </controls:SquareBorder.StrokeShape>
                 <Image Source="icon_home_white.svg"
-                       WidthRequest="22" HeightRequest="22"
+                       WidthRequest="20" HeightRequest="20"
                        HorizontalOptions="Center" VerticalOptions="Center"/>
             </controls:SquareBorder>
 
@@ -45,15 +49,16 @@
             </VerticalStackLayout>
 
             <Grid Grid.Column="2" VerticalOptions="Start">
+                <!-- The white square every detail header uses for its trailing action
+                     (Member Details, Connected Devices, Medical Information): radius 12, no
+                     shadow. This one had its own radius and a drop shadow, so the same slot
+                     read differently on the one tab a caregiver sees most. -->
                 <Border WidthRequest="40" HeightRequest="40"
                         BackgroundColor="{StaticResource White}"
                         StrokeThickness="0">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="8"/>
+                        <RoundRectangle CornerRadius="12"/>
                     </Border.StrokeShape>
-                    <Border.Shadow>
-                        <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
-                    </Border.Shadow>
                     <!-- Description is rewritten by SetUnreadCount: the badge carries the
                          count visually, so without that a screen reader loses it. -->
                     <!-- AnchorY 0 so the shake (SetUnreadCount) swings the bell from its

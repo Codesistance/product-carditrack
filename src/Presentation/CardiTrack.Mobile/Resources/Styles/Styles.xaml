@@ -213,12 +213,15 @@
          NAMED BUTTON STYLES
          ════════════════════════════════════════════ -->
 
+    <!-- 16, not 18: at 18 the label was the largest bold text on most screens that carry one
+         of these, outweighing the Heading3 titles above it. Every gradient button takes its
+         size from here — no per-instance FontSize — so they all read as one control. -->
     <Style x:Key="PrimaryGradientButton" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource GradientButtonBrush}"/>
         <Setter Property="TextColor" Value="{StaticResource White}"/>
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontAttributes" Value="Bold"/>
-        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontSize" Value="16"/>
         <Setter Property="CornerRadius" Value="25"/>
         <Setter Property="HeightRequest" Value="52"/>
         <Setter Property="Padding" Value="24,0"/>
@@ -234,9 +237,9 @@
         <Setter Property="TextColor" Value="{StaticResource White}"/>
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontAttributes" Value="Bold"/>
-        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontSize" Value="16"/>
         <Setter Property="CornerRadius" Value="25"/>
-        <Setter Property="HeightRequest" Value="53"/>
+        <Setter Property="HeightRequest" Value="52"/>
         <Setter Property="Padding" Value="24,0"/>
         <Setter Property="BorderWidth" Value="0"/>
         <Style.Triggers>

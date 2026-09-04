@@ -601,10 +601,11 @@ public partial class CardiMemberDetailPage : ContentPage
 
         AdviseSummaryLabel.Text = advise.Summary;
         AdviseSuggestionLabel.Text = advise.Suggestion;
+        // The safety framing is always there and always worded the same; the guideline, when
+        // the model cited one, leads into it so the footnote reads as one sentence.
         AdviseGuidelineLabel.Text = string.IsNullOrWhiteSpace(advise.GuidelineCited)
-            ? string.Empty
-            : $"Based on: {advise.GuidelineCited}";
-        AdviseGuidelineLabel.IsVisible = !string.IsNullOrWhiteSpace(advise.GuidelineCited);
+            ? "Just a suggestion, never medical advice — worth mentioning to their doctor."
+            : $"Based on {advise.GuidelineCited.TrimEnd('.')} — just a suggestion, never medical advice; worth mentioning to their doctor.";
         // Load-bearing next to a daily regeneration cadence: without it, yesterday's suggestion
         // beside today's hourly summary reads as the two disagreeing about today.
         AdviseGeneratedLabel.Text = $"Updated {RelativeTime.Format(advise.GeneratedAt.UtcDateTime)}";

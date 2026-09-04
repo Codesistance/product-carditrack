@@ -13,32 +13,37 @@
          with its own way back, so the form is exactly where they left it. -->
     <Grid RowDefinitions="Auto,*">
 
-        <controls:HeaderBand Grid.Row="0" ContentPadding="20,26,20,24">
+        <!-- The same header as every signed-in screen (Alerts is the reference): this one had
+             its own inset, a fixed 44dp circle and a 14pt subtitle, so a document opened from
+             the app wore a header from a different app. -->
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                <Border Grid.Column="0"
-                        BackgroundColor="#33FFFFFF"
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
                         StrokeThickness="0"
-                        WidthRequest="44" HeightRequest="44"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="22"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnCloseTapped"/>
-                    </Border.GestureRecognizers>
+                    </controls:SquareBorder.GestureRecognizers>
                     <Image Source="icon_back_white.svg"
                            WidthRequest="20" HeightRequest="20"
                            VerticalOptions="Center" HorizontalOptions="Center"/>
-                </Border>
+                </controls:SquareBorder>
 
-                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <Label x:Name="TitleLabel"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label Text="From carditrack.com"
-                           Style="{StaticResource Body2}"
+                           FontFamily="Quicksand"
+                           FontSize="12"
                            TextColor="{StaticResource White}"
-                           Opacity="0.85"/>
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
             </Grid>
         </controls:HeaderBand>

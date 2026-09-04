@@ -317,6 +317,7 @@ public static class AiServiceExtensions
         RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.BaseUrl));
 
         RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.PrivateSectionName, settings.BaseUrl, settings.UseIdentityToken);
+        RequireNoClinicalLoggingInProduction(ConfigurationKeys.AI.PrivateSectionName, settings.LogClinicalOutput, configuration);
 
         // Only when it is on: a zero left behind in a config that has warm-up disabled describes
         // nothing and should not cost anyone a failed boot. When it is on, the value is both the
@@ -379,6 +380,7 @@ public static class AiServiceExtensions
         {
             RequireValue(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
             RequirePositive(settings.ContextTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.ContextTokens));
+            RequireNoClinicalLoggingInProduction(ConfigurationKeys.AI.RewriteSectionName, settings.LogClinicalOutput, configuration);
             RequireOutputFitsContext(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens),
                 nameof(RewriteAiSettings.ContextTokens), settings.MaxOutputTokens, settings.ContextTokens);
             RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
@@ -434,6 +436,34 @@ public static class AiServiceExtensions
     /// host — can share the check rather than duplicate it.
     /// </para>
     /// </remarks>
+
+
+    /// <summary>
+    /// The clinical-inspection switch writes prompts and completions — health data — to the log
+    /// verbatim. That is acceptable in a developer's own environment and never in production, so
+    /// a production host configured with it on does not start. Environment is read the way
+    /// <c>DeploymentInfo</c> reads it — the raw <c>ASPNETCORE_ENVIRONMENT</c>, which Terraform sets
+    /// to "Dev"/"Prod" — and not through <c>IHostEnvironment</c>, which reports Production for a
+    /// machine that never said which environment it is; that machine is a developer's, and the
+    /// switch is theirs to use.
+    /// </summary>
+    private static void RequireNoClinicalLoggingInProduction(string sectionName, bool logClinicalOutput, IConfiguration configuration)
+    {
+        if (!logClinicalOutput)
+            return;
+
+        var environment = configuration[ConfigurationKeys.Deployment.AspNetCoreEnvironment];
+        var isProduction = string.Equals(environment, "Prod", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase);
+        if (!isProduction)
+            return;
+
+        throw new InvalidOperationException(
+            Message(sectionName, nameof(IMedGemmaModelSettings.LogClinicalOutput),
+                $"is true while {ConfigurationKeys.Deployment.AspNetCoreEnvironment} is '{environment}'. "
+                + "It writes prompts and model output — health data — to the log verbatim, and is for "
+                + "development environments only. Set it to false here."));
+    }
     private static void RequireCoherentIdentityTokenMode(string sectionName, string baseUrl, bool useIdentityToken)
     {
         var baseUri = new Uri(baseUrl);

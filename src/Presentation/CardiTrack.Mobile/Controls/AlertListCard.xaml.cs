@@ -5,10 +5,12 @@ namespace CardiTrack.Mobile.Controls;
 
 public partial class AlertListCard : ContentView
 {
-    /// <summary>Dimming applied to the Call button when the member has no number on file.</summary>
+    /// <summary>Dimming applied to a phone action when its number is not on file.</summary>
     private const double UnavailableActionOpacity = 0.4;
 
     public event EventHandler<AlertSummaryResponse>? CallRequested;
+    /// <summary>The emergency contact, not the member — the dashboard's SOS, on the card.</summary>
+    public event EventHandler<AlertSummaryResponse>? SosRequested;
     public event EventHandler<AlertSummaryResponse>? AcknowledgeRequested;
     public event EventHandler<AlertSummaryResponse>? DeleteRequested;
     public event EventHandler<AlertSummaryResponse>? OpenRequested;
@@ -29,10 +31,13 @@ public partial class AlertListCard : ContentView
 
         Avatar.Apply(alert.CardiMemberName, alert.CardiMemberPhotoUrl);
         TitleLabel.Text = alert.Title;
-        MemberLabel.Text = alert.CardiMemberName;
-        MemberLabel.IsVisible = !string.IsNullOrWhiteSpace(alert.CardiMemberName);
+        // Who and when share the line under the title: "Dad, 6 days ago". An alert whose member
+        // name comes back blank (the field is never null, but it can be empty) just says when.
+        var when = RelativeTime.Format(alert.TriggeredAt);
+        MemberLabel.Text = string.IsNullOrWhiteSpace(alert.CardiMemberName)
+            ? when
+            : $"{alert.CardiMemberName}, {when}";
         MessageLabel.Text = alert.Message;
-        TimeLabel.Text = RelativeTime.Format(alert.TriggeredAt);
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
 
@@ -76,13 +81,29 @@ public partial class AlertListCard : ContentView
         // Nothing left to acknowledge once it is handled — the status pill already says so.
         AcknowledgeButton.IsVisible = !isHandled;
 
-        var hasPhone = !string.IsNullOrWhiteSpace(alert.EmergencyContactPhone);
+        // "them" when the list carries no name, so the tooltips below stay sentences.
+        var firstName = NameFormatting.FirstName(alert.CardiMemberName);
+        var who = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
+
+        // Call reaches the member; SOS reaches their emergency contact — the dashboard's two
+        // phone tiles, meaning the same things here. Each dims rather than hides when its number
+        // is missing, so the tap can explain and offer to add it.
+        var hasPhone = !string.IsNullOrWhiteSpace(alert.CardiMemberPhone);
         CallButton.Opacity = hasPhone ? 1 : UnavailableActionOpacity;
         ToolTipProperties.SetText(
             CallButton,
-            hasPhone
-                ? $"Calls {alert.EmergencyContactName ?? "the emergency contact"}."
-                : $"No number on file for {NameFormatting.FirstName(alert.CardiMemberName)} yet.");
+            hasPhone ? $"Calls {who}." : $"No phone number on file for {who} yet.");
+
+        // Only the alerts that could warrant an emergency call offer one: a notice about a
+        // quiet day should not put a red SOS beside itself.
+        SosButton.IsVisible = alert.Severity is "orange" or "red";
+        var hasEmergency = !string.IsNullOrWhiteSpace(alert.EmergencyContactPhone);
+        SosButton.Opacity = hasEmergency ? 1 : UnavailableActionOpacity;
+        ToolTipProperties.SetText(
+            SosButton,
+            hasEmergency
+                ? $"Calls {(string.IsNullOrWhiteSpace(alert.EmergencyContactName) ? "the emergency contact" : alert.EmergencyContactName)}."
+                : $"No emergency contact number on file for {who} yet.");
 
         SetBusy(false);
         SetExpanded(_isExpanded);
@@ -119,6 +140,12 @@ public partial class AlertListCard : ContentView
     {
         if (_alert is { } alert)
             CallRequested?.Invoke(this, alert);
+    }
+
+    private void OnSosTapped(object? sender, TappedEventArgs e)
+    {
+        if (_alert is { } alert)
+            SosRequested?.Invoke(this, alert);
     }
 
     private void OnAcknowledgeTapped(object? sender, TappedEventArgs e)

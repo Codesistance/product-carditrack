@@ -560,8 +560,9 @@ public partial class JournalPage : ContentPage
             // label rather than leaving the row empty: entries written before headlines existed
             // have none, and the apps have always titled themselves in that case.
             Text = string.IsNullOrWhiteSpace(review.Headline) ? FallbackHeadline(_cadence) : review.Headline,
-            Style = Styled("Body2"),
-            TextColor = Tinted("BodyText"),
+            // Dark, like the preview under it: the headline is what the day was about, which
+            // is the message, not a caption on it.
+            Style = Styled("Body2Dark"),
         });
         heading.Add(titles);
 

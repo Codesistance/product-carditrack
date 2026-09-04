@@ -27,7 +27,7 @@
                 <RoundRectangle CornerRadius="20"/>
             </Border.StrokeShape>
 
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto"
                   ColumnDefinitions="Auto,*,Auto"
                   ColumnSpacing="14"
                   RowSpacing="4">
@@ -37,50 +37,25 @@
                      do on the dashboard hero, Member Detail, and the alert's own detail screen.
                      This card used to draw its own — a pale tile with blue initials, per Figma
                      101:6525 — so the same relative changed appearance on the way from this
-                     list into the detail. Sized to match AlertDetailPage's 52, which is where
-                     the title on this row leads.
+                     list into the detail.
+
+                     Sized to the two lines beside it — title and "who, when" — rather than to
+                     AlertDetailPage's 52: the head of the row was three lines with the badge
+                     on top, and the box was sized to that; now it is two, and a taller box
+                     would stretch the rows apart to fill itself.
 
                      It also carries the photo the list already returns; the local tile was
                      initials-only and ignored it. -->
                 <controls:MemberAvatar x:Name="Avatar"
-                                       Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
-                                       BoxWidth="52"/>
+                                       Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                                       VerticalOptions="Center"
+                                       BoxWidth="46"/>
 
-                <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="8">
-                    <Border x:Name="SeverityPill"
-                            StrokeThickness="0"
-                            Padding="8,3"
-                            VerticalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12"/>
-                        </Border.StrokeShape>
-                        <Label x:Name="SeverityLabel"
-                               FontFamily="QuicksandMedium"
-                               FontSize="13"
-                               TextColor="{StaticResource White}"/>
-                    </Border>
-
-                    <Label x:Name="TimeLabel"
-                           FontFamily="QuicksandMedium"
-                           FontSize="14"
-                           TextColor="{StaticResource MutedText}"
-                           VerticalTextAlignment="Center"/>
-                </HorizontalStackLayout>
-
-                <!-- Unread dot. Hidden once the alert has been acknowledged. -->
-                <Border x:Name="UnreadDot"
-                        Grid.Row="0" Grid.Column="2"
-                        WidthRequest="12" HeightRequest="12"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource Primary}"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="6"/>
-                    </Border.StrokeShape>
-                </Border>
-
+                <!-- The title takes the whole width beside the avatar. With the badge sharing
+                     its row it had ~210dp, and most alert titles are thirty-odd characters, so
+                     they wrapped and left the avatar covering a line and a half. -->
                 <Label x:Name="TitleLabel"
-                       Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                       Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
                        Style="{StaticResource Heading3}"
                        LineBreakMode="TailTruncation"
                        MaxLines="2">
@@ -89,8 +64,10 @@
                     </Label.GestureRecognizers>
                 </Label>
 
+                <!-- "Dad, 6 days ago": who and when on one muted line under the title. -->
                 <Label x:Name="MemberLabel"
-                       Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                       Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                       VerticalOptions="Center"
                        FontFamily="QuicksandMedium"
                        FontSize="12"
                        TextColor="{StaticResource MutedText}"
@@ -99,9 +76,9 @@
                 <!-- Spans the avatar column too: the expanded message should use the card's
                      full width rather than staying in the narrow text column. -->
                 <Label x:Name="MessageLabel"
-                       Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
+                       Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                        Margin="0,6,0,0"
-                       Style="{StaticResource Body2}"
+                       Style="{StaticResource Body2Dark}"
                        MaxLines="2"
                        LineBreakMode="TailTruncation">
                     <Label.GestureRecognizers>
@@ -109,13 +86,43 @@
                     </Label.GestureRecognizers>
                 </Label>
 
-                <Grid Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                       Margin="0,10,0,0"
-                      ColumnDefinitions="Auto,Auto,Auto,*,Auto"
+                      ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto"
                       ColumnSpacing="8">
 
+                    <!-- Severity badge leads the action row, ahead of the status pill: the two
+                         pills read together as "what kind, and where it stands", and the row is
+                         where the eye already goes for the card's state. Small — it is a category
+                         stamp, not the headline; the title is. The unread dot sits beside it,
+                         since both say "this one still needs you". -->
+                    <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
+                        <Border x:Name="UnreadDot"
+                                WidthRequest="10" HeightRequest="10"
+                                StrokeThickness="0"
+                                BackgroundColor="{StaticResource Primary}"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="5"/>
+                            </Border.StrokeShape>
+                        </Border>
+                        <Border x:Name="SeverityPill"
+                                StrokeThickness="0"
+                                Padding="8,4"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="SeverityLabel"
+                                   FontFamily="QuicksandMedium"
+                                   FontSize="11"
+                                   CharacterSpacing="0.4"
+                                   TextColor="{StaticResource White}"/>
+                        </Border>
+                    </HorizontalStackLayout>
+
                     <Border x:Name="StatusPillBorder"
-                            Grid.Column="0"
+                            Grid.Column="1"
                             StrokeThickness="0"
                             Padding="10,4"
                             VerticalOptions="Center">
@@ -128,11 +135,13 @@
                     </Border>
 
                     <Border x:Name="CallButton"
-                            Grid.Column="1"
+                            Grid.Column="2"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
-                            VerticalOptions="Center">
+                            VerticalOptions="Center"
+                            SemanticProperties.Description="Call the CardiMember"
+                            SemanticProperties.Hint="Dials their own phone, not the emergency contact">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16"/>
                         </Border.StrokeShape>
@@ -142,8 +151,33 @@
                         <Image Source="icon_action_call.svg" WidthRequest="16" HeightRequest="16"/>
                     </Border>
 
+                    <!-- The same two phone actions the dashboard's quick-action row has, meaning
+                         the same things: Call reaches the member, SOS reaches their emergency
+                         contact. SOS wears the dashboard's red tint because it dials someone
+                         else, and shows only on the alerts that could warrant it — urgent and
+                         critical — so a notice about a quiet day does not offer an emergency
+                         call. Both dim rather than hide when their number is missing, so the
+                         tap can say why (the dim-not-hide pattern from issue #67). -->
+                    <Border x:Name="SosButton"
+                            Grid.Column="3"
+                            WidthRequest="28" HeightRequest="28"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource QuickActionTintRed}"
+                            VerticalOptions="Center"
+                            IsVisible="False"
+                            SemanticProperties.Description="SOS: call emergency contact"
+                            SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSosTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_action_call.svg" WidthRequest="16" HeightRequest="16"/>
+                    </Border>
+
                     <Border x:Name="AcknowledgeButton"
-                            Grid.Column="2"
+                            Grid.Column="4"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
@@ -167,7 +201,7 @@
                     </Border>
 
                     <Border x:Name="DeleteButton"
-                            Grid.Column="3"
+                            Grid.Column="5"
                             HorizontalOptions="End"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
@@ -184,7 +218,7 @@
                     </Border>
 
                     <!-- Wrapped so the tap target is a finger rather than a 20px glyph. -->
-                    <Border Grid.Column="4"
+                    <Border Grid.Column="6"
                             StrokeThickness="0"
                             BackgroundColor="Transparent"
                             Padding="6"

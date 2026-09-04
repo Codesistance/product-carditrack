@@ -7,7 +7,15 @@ using Plugin.Firebase.CloudMessaging;
 
 namespace CardiTrack.Mobile.Platforms.Android;
 
-[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, LaunchMode = LaunchMode.SingleTop, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+// SingleTask, not SingleTop: the device-connection OAuth round-trip ends with the browser
+// starting WebAuthenticationCallbackActivity, which relaunches this activity to hand the result
+// back. When the browser is running in its own task (a full Chrome tab, or a browser without
+// Custom Tabs), SingleTop resolves that launch inside the *browser's* task and creates a second
+// MainActivity there — so the wizard's "Return to dashboard" ran in a copy of the app stacked on
+// the web page, and leaving it landed on the page, while the real app task sat behind with the
+// consent tab still in it. SingleTask routes every launch to the one instance in the app's own
+// task (delivered through OnNewIntent, which the push plumbing below already handles).
+[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, LaunchMode = LaunchMode.SingleTask, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 public class MainActivity : MauiAppCompatActivity
 {
     // Required by Plugin.Firebase.CloudMessaging (see cloud_messaging.md "Android specifics") —

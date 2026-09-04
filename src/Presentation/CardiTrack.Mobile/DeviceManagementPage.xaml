@@ -10,13 +10,13 @@
     <Grid RowDefinitions="Auto,*,Auto">
 
         <!-- The app-wide gradient band (Controls/HeaderBand). -->
-        <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,16">
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
-                        BackgroundColor="#33FFFFFF"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
                         VerticalOptions="Fill">
                     <!-- Fill + width-bound-to-height: the circle runs from the title's top to
                          the description's bottom and stays square at whatever that is, so every
@@ -53,7 +53,7 @@
                         WidthRequest="40" HeightRequest="40"
                         StrokeThickness="0"
                         BackgroundColor="{StaticResource White}"
-                        VerticalOptions="Center">
+                        VerticalOptions="Start">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="12"/>
                     </Border.StrokeShape>
@@ -128,8 +128,12 @@
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleHelpTapped"/>
                                     </Grid.GestureRecognizers>
+                                    <!-- A notch under the section-title size: this is the header
+                                         of one collapsible card, not a section of the page, and at
+                                         18 it weighed the same as "Devices List" above it. -->
                                     <Label Text="Having trouble?"
                                            Style="{StaticResource DashboardSectionTitle}"
+                                           FontSize="16"
                                            VerticalTextAlignment="Center"/>
                                     <Image x:Name="HelpChevron"
                                            Grid.Column="1"
