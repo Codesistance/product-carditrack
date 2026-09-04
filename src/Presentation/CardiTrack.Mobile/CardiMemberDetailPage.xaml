@@ -252,7 +252,12 @@
                                            LineBreakMode="TailTruncation"
                                            IsVisible="False"/>
                                 </Grid>
-                                <Label x:Name="SummaryLabel" Style="{StaticResource Body2Dark}"/>
+                                <!-- Same weight as the Something-to-try paragraphs below it: both are
+                                     the message to the caregiver, and in regular type this one read
+                                     as the lighter of the two cards though the ink is the same. -->
+                                <Label x:Name="SummaryLabel"
+                                       Style="{StaticResource Body2Dark}"
+                                       FontAttributes="Bold"/>
 
                                 <!-- The model's own urgency read, alongside — never instead of —
                                      the card's dashboard-driven status colour above. Hidden when
