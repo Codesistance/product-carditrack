@@ -79,6 +79,7 @@
             </VerticalStackLayout>
 
             <WebView x:Name="DocumentView"
+                     Navigating="OnNavigating"
                      Navigated="OnNavigated"
                      IsVisible="False"/>
         </Grid>
