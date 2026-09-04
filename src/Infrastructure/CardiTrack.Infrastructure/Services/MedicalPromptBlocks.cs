@@ -186,30 +186,41 @@ internal static partial class MedicalPromptBlocks
     internal const string JournalTone = ToneOpening;
 
     /// <summary>
-    /// The tone rules that are about what the words claim, without the two that are about how they
-    /// sound. For a generation whose output is read by another model rather than by a caregiver.
+    /// The whole tone brief for a generation whose only reader is another model: one rule.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Member chat's clinical step is the only one of these. It opened with the full block — "you
-    /// are writing for a concerned family member, not a clinician", "be plain, warm and steady" —
-    /// and then said, two lines later, that this is an internal clinical read and to write
-    /// precisely rather than in caregiver language because a separate step turns it into
-    /// caregiver-facing prose. The prompt spent its opening asking for a voice its own brief then
-    /// told the model not to use.
+    /// This replaced <c>ToneSafetyOnly</c>, which kept three — distortion, blame and diagnosis —
+    /// on the reasoning that all three survive a rewrite. Two of them do not, and the third was
+    /// the throttle.
     /// </para>
     /// <para>
-    /// The three rules kept are not stylistic. Distortion, blame and diagnosis survive a rewrite:
-    /// a clinical read that has already softened the one reading that needed saying plainly hands
-    /// the rewrite step nothing to recover. The voice belongs to the prompt that produces the
-    /// voice, which is why <c>MemberChatService.RewriteInstructions</c> now carries the whole
-    /// block and this one does not.
+    /// <see cref="ToneNoBlame"/> is about the reader. "Never suggest the family has missed
+    /// something" is a rule about how a caregiver feels reading a sentence, and the clinical read
+    /// has no caregiver: it is consumed by the rewrite prompt, which carries that rule itself.
+    /// </para>
+    /// <para>
+    /// <see cref="ToneNoDiagnosis"/> was the one that cost this platform the model it is paying
+    /// for. MedGemma is medically tuned; forbidding it to name a mechanism or a condition in a
+    /// note no human reads leaves it writing wellness copy, and the rewrite can then be no more
+    /// specific than the input it was handed. The not-a-medical-device boundary is real, but it
+    /// binds what reaches a caregiver, so it belongs on the stage that produces what a caregiver
+    /// reads — where it already is, in both the rewrite briefs and the register guards that check
+    /// their output.
+    /// </para>
+    /// <para>
+    /// <see cref="ToneNoDistortion"/> is the one rule that genuinely cannot be recovered later. A
+    /// clinical read that has already softened the reading that needed saying plainly hands the
+    /// rewrite step nothing to work from; no downstream prompt can restore a finding that was
+    /// never made.
+    /// </para>
+    /// <para>
+    /// Deliberately not paired with <see cref="Pronouns"/> at any call site. Every brief carrying
+    /// this one is given no name to use — the member context sends none — so all three of that
+    /// rule's clauses were instructions about a decision the model never faces.
     /// </para>
     /// </remarks>
-    internal const string ToneSafetyOnly =
-        ToneNoDistortion + NL
-        + ToneNoBlame + NL
-        + ToneNoDiagnosis + NL;
+    internal const string ClinicalRead = ToneNoDistortion + NL;
 
     /// <summary>
     /// How to refer to the member across more than one sentence. Follows <see cref="Tone"/> in the

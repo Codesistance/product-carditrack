@@ -77,7 +77,7 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
         var questionnaires = await _unitOfWork.MemberQuestionnaires
             .GetByCardiMemberAsync(request.CardiMemberId, ct);
 
-        var lines = VisibleFacts(questionnaires, _encryption, request.UtcNow)
+        var lines = VisibleFacts(questionnaires, _encryption, request.UtcNow, request.Member?.Name)
             .Select(fact => FormatLine(fact, request.UtcNow))
             .ToList();
         if (lines.Count == 0)
@@ -92,10 +92,37 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
     /// is the fact set, not the rendered lines. The digest uses the same set to refuse a summary
     /// that recites those facts instead of reading the day against them.
     /// </summary>
+    /// <param name="memberName">
+    /// The member's stored name, so it can be swapped back out for
+    /// <see cref="NamePlaceholder.Token"/> — see the remark below on why this section needed it.
+    /// Null leaves the text as it is, which is what a caller with no member loaded gets.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Both halves go through <see cref="NamePlaceholder.Redact"/>, and the question half is why.
+    /// A question is generated with the token in it, resolved to the real name before it is stored
+    /// and shown to the family, and then read back here — so "Does CardiTrackCardiMember enjoy
+    /// gardening?" was persisted as "Does Billy enjoy gardening?" and handed straight back to a
+    /// model whose entire prompt is built around never being told who this is. The same back-door
+    /// leak <see cref="NamePlaceholder.Redact"/> was written to close for member chat's stored
+    /// turns, one source later. Observed in dev on 2026-09-04 under
+    /// <c>AI__Private__LogClinicalOutput</c>.
+    /// </para>
+    /// <para>
+    /// The answer half is redacted too. A caregiver typing "Billy has always been an early riser"
+    /// leaks the same name by a shorter route, and nothing about a free-text field stops them.
+    /// </para>
+    /// <para>
+    /// Redacting here rather than in <see cref="FormatLine"/> also puts the digest's recap check on
+    /// the same footing: it compares these facts against model output that still carries the token,
+    /// so both sides now speak the same vocabulary and a recital naming the member is caught.
+    /// </para>
+    /// </remarks>
     internal static IReadOnlyList<FamilyFact> VisibleFacts(
         IReadOnlyList<MemberQuestionnaire> questionnaires,
         IEncryptionService encryption,
-        DateTime utcNow)
+        DateTime utcNow,
+        string? memberName)
     {
         // Newest-first from the repository, which both Take calls below rely on.
         var answered = questionnaires
@@ -118,10 +145,17 @@ internal sealed class QuestionnaireAnswersContextSource : IMemberContextSource
         return permanent.Concat(timeScoped)
             .Select(q =>
             {
-                var question = MedicalPromptBlocks.Flatten(
-                    EncryptedFieldReader.Reveal(encryption, q.QuestionText) ?? string.Empty);
-                var answer = MedicalPromptBlocks.Flatten(
-                    EncryptedFieldReader.Reveal(encryption, q.AnswerText) ?? string.Empty);
+                var question = NamePlaceholder.Redact(
+                    MedicalPromptBlocks.Flatten(
+                        EncryptedFieldReader.Reveal(encryption, q.QuestionText) ?? string.Empty),
+                    memberName) ?? string.Empty;
+                var answer = NamePlaceholder.Redact(
+                    MedicalPromptBlocks.Flatten(
+                        EncryptedFieldReader.Reveal(encryption, q.AnswerText) ?? string.Empty),
+                    memberName) ?? string.Empty;
+                // Truncation runs after redaction so the cap counts the token's length, not the
+                // name's — otherwise the same answer truncates at a different point depending on
+                // how long the member's name happens to be.
                 if (answer.Length > MaxAnswerLength)
                     answer = $"{MedicalPromptBlocks.CutTo(answer, MaxAnswerLength)}…";
                 return new FamilyFact(question, answer, q.Scope, q.AnsweredAtUtc ?? q.GeneratedAtUtc);

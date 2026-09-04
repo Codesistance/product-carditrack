@@ -604,15 +604,14 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
-    /// A clinical entry that crosses the one boundary this generation lives inside is withheld,
-    /// not persisted — per entry, exactly as it was for the single row.
+    /// A clinical entry proposing a treatment is withheld before the rewrite ever sees it. That
+    /// boundary is about scope, not register: Advise suggests an everyday action, so a note about
+    /// a dose is the wrong note whatever a rewrite would do with it.
     /// </summary>
     [Theory]
-    [InlineData("The readings suggest a heart condition.", "A short daily walk would close the gap.")]
     [InlineData("Steps sit below the usual.", "Stop taking the evening dose.")]
     [InlineData("Steps sit below the usual.", "A prescription to help sleep is warranted.")]
-    [InlineData("This looks like sleep apnoea has been diagnosed.", "A steadier bedtime would help.")]
-    public async Task AClinicalEntryNamingAConditionOrATreatment_IsWithheld(string finding, string action)
+    public async Task AClinicalEntryProposingATreatment_IsWithheld(string finding, string action)
     {
         ClinicalAnswers(ActivityFinding(finding, action));
 
@@ -621,6 +620,44 @@ public class AdviseGenerationServiceTests
         await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
         await _rewriteAi.DidNotReceive().GenerateStructuredAsync<AdviseGenerationService.AdviseRewriteAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A clinical entry naming a condition now reaches the rewrite instead of being discarded.
+    /// This is the point of the split: MedGemma is medically tuned, its note is read by the
+    /// rewrite model and by nobody else, and the register boundary is held one stage later — on
+    /// the copy a caregiver reads, where <see cref="AdviseRegisterGuards.ReadsAsClinical"/> still
+    /// runs. Discarding it here was the throttle.
+    /// </summary>
+    [Theory]
+    [InlineData("The readings suggest a heart condition.", "A short daily walk would close the gap.")]
+    [InlineData("This looks like sleep apnoea has been diagnosed.", "A steadier bedtime would help.")]
+    public async Task AClinicalEntryNamingACondition_ReachesTheRewrite(string finding, string action)
+    {
+        ClinicalAnswers(ActivityFinding(finding, action));
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        var prompt = (string)_rewriteAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains(finding, prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And the boundary still holds where it matters: rewritten copy that carries the condition
+    /// name through is withheld, so unclamping the clinical read did not move the line a caregiver
+    /// sits behind — it moved which stage enforces it.
+    /// </summary>
+    [Fact]
+    public async Task RewrittenCopyNamingACondition_IsStillWithheld()
+    {
+        ClinicalAnswers(ActivityFinding(
+            "The readings suggest a heart condition.", "A short daily walk would close the gap."));
+        RewriteAnswers(ActivityCopy(
+            "There may be a heart condition behind this.", "A short walk together after lunch."));
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
     }
 
     /// <summary>

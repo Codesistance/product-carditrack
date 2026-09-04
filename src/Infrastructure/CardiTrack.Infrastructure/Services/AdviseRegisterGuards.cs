@@ -106,8 +106,13 @@ internal static class AdviseRegisterGuards
 
     /// <summary>
     /// True when the text names a condition or proposes a treatment — either way, a reply the
-    /// caller must withhold rather than serve.
+    /// caller must withhold rather than serve to a caregiver.
     /// </summary>
+    /// <remarks>
+    /// For text on its way to a person. The clinical read is checked with
+    /// <see cref="ProposesTreatment"/> instead: the condition half of this is a register boundary
+    /// and belongs where the register does, on the output.
+    /// </remarks>
     internal static bool ReadsAsClinical(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -115,7 +120,28 @@ internal static class AdviseRegisterGuards
 
         var flattened = MedicalPromptBlocks.Flatten(text);
         return ConditionMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase))
-            || TreatmentMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase));
+            || ProposesTreatment(text);
+    }
+
+    /// <summary>
+    /// True when the text proposes a treatment or a change to one — the half of
+    /// <see cref="ReadsAsClinical"/> that still applies to the clinical read.
+    /// </summary>
+    /// <remarks>
+    /// Split out when the clinical brief was unclamped, because the two markers were guarding two
+    /// different things under one name. Naming a condition is a <em>register</em> boundary: it
+    /// says what a family may be told, so it belongs on the text a family reads. Proposing a
+    /// treatment is a <em>scope</em> boundary: Advise exists to suggest an everyday action, and a
+    /// dose change is not one at any stage of the pipeline — a rewrite asked to carry a note
+    /// about stopping a medication has already been handed the wrong note.
+    /// </remarks>
+    internal static bool ProposesTreatment(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var flattened = MedicalPromptBlocks.Flatten(text);
+        return TreatmentMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

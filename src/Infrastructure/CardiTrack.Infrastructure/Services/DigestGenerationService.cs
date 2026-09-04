@@ -1215,7 +1215,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // prompt; the recap check still sees both halves).
         var familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
             await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
-            _encryption, utcNow);
+            _encryption, utcNow, member?.Name);
         if (RestatesFamilyAnswers(text, familyFacts) is { } recap)
         {
             _logger.LogWarning(
