@@ -67,7 +67,8 @@ NOISE_SUBJECT = re.compile(
 NOISE_VOCABULARY = re.compile(
     r"\b(migrations?|rollout\s+steps?|logging|registry|pipeline|workflows?|timeouts?|"
     r"exceptions?|refactor\w*|telemetry|traces?|tracer|schema|endpoints?|dto|"
-    r"namespace|application/|services?/|catalogue|prompt\s+version|copilot)\b",
+    r"namespace|catalogue|prompt\s+version|copilot)\b"
+    r"|\b(application|services?)/",  # project-path fragments end in "/", not a word boundary
     re.IGNORECASE,
 )
 
@@ -116,7 +117,9 @@ def tidy_subject(subject: str) -> str:
     if not text:
         return ""
     text = text[0].upper() + text[1:]
-    return text.rstrip(".") + "."
+    # Keep sentence-ending punctuation the author chose; add a full stop
+    # only when there is none.
+    return text if text.endswith((".", "!", "?", "…")) else text + "."
 
 
 def is_customer_facing(files: str) -> bool:
