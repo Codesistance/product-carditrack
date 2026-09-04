@@ -311,8 +311,11 @@ public partial class SettingsPage : ContentPage
             _ = ExitHintBanner.FadeToAsync(1, 140);
         }
 
-        _exitHintCts?.Cancel();
+        // Every tap re-arms: the previous source is cancelled and disposed, not just replaced.
+        var previous = _exitHintCts;
         _exitHintCts = new CancellationTokenSource();
+        previous?.Cancel();
+        previous?.Dispose();
         _ = HideExitHintAfterAsync(_exitHintCts.Token);
     }
 
@@ -332,7 +335,10 @@ public partial class SettingsPage : ContentPage
 
     private void HideExitHint()
     {
-        _exitHintCts?.Cancel();
+        var cts = _exitHintCts;
+        _exitHintCts = null;
+        cts?.Cancel();
+        cts?.Dispose();
         ExitHintBanner.IsVisible = false;
         ExitHintScrim.IsVisible = false;
     }

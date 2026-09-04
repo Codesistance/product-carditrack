@@ -141,7 +141,7 @@
                             BackgroundColor="{StaticResource AlertActionBackground}"
                             VerticalOptions="Center"
                             SemanticProperties.Description="Call the CardiMember"
-                            SemanticProperties.Hint="Dials their own phone; SOS beside it dials the emergency contact">
+                            SemanticProperties.Hint="Dials their own phone, not the emergency contact">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16"/>
                         </Border.StrokeShape>
