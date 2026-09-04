@@ -231,7 +231,7 @@ operator uses for push-notification delivery.
 2. Run *CI / Deploy Apps → Dev* (workflow_dispatch) with only **Mobile** checked. The
    `Build Mobile (Android, signed)` / `Build Mobile (iOS, device)` jobs should run instead of
    warn-skipping, and `Deploy → TestFlight` / `Deploy → Play Console (internal)` should succeed.
-3. iPhone: build appears in the TestFlight app after ~5–15 min of processing, with **What to Test** filled from commits since the last `v*` tag. Android: build appears under Internal testing with **What's new** from the same changelog (500-character cap); install via the opt-in link.
+3. iPhone: build appears in the TestFlight app after ~5–15 min of processing, with **What to Test** filled with customer-facing notes for the commits since the last `v*` tag (see [`readme.md → CI/CD Pipeline`](./readme.md#cicd-pipeline) for how a commit gets a bullet). Android: build appears under Internal testing with **What's new** from the same notes (500-character cap); install via the opt-in link.
 
 ## Related
 
