@@ -90,7 +90,6 @@
                     <Button x:Name="ConfirmBtn"
                             Grid.Column="1"
                             Style="{StaticResource PrimaryGradientButton}"
-                            FontSize="16"
                             Padding="12,0"
                             Clicked="OnConfirmClicked"/>
                 </Grid>

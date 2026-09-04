@@ -75,7 +75,6 @@
                             Grid.Column="0"
                             Style="{StaticResource PrimaryGradientButton}"
                             HeightRequest="40"
-                            FontSize="14"
                             Clicked="OnComplyClicked"/>
 
                     <Button x:Name="SnoozeButton"
