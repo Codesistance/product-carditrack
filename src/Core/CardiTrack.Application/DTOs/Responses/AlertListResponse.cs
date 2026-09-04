@@ -29,9 +29,9 @@ public class AlertSummaryResponse
     public string? CardiMemberPhotoUrl { get; set; }
 
     /// <summary>
-    /// The number behind the card's Call action. The emergency contact rather than
-    /// <c>CardiMember.Phone</c>, for the same reason the dashboard uses it — see
-    /// <see cref="DashboardResponse.EmergencyContactPhone"/>.
+    /// The number behind the card's SOS action — the emergency contact, for the same reason the
+    /// dashboard's SOS tile dials it; see <see cref="DashboardResponse.EmergencyContactPhone"/>.
+    /// The card's Call action dials <see cref="CardiMemberPhone"/>.
     /// </summary>
     public string? EmergencyContactPhone { get; set; }
     public string? EmergencyContactName { get; set; }

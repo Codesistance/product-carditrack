@@ -31,8 +31,8 @@ public partial class AlertListCard : ContentView
 
         Avatar.Apply(alert.CardiMemberName, alert.CardiMemberPhotoUrl);
         TitleLabel.Text = alert.Title;
-        // Who and when share the line under the title: "Dad, 6 days ago". An alert with no
-        // member name (none today, but the field is nullable) just says when.
+        // Who and when share the line under the title: "Dad, 6 days ago". An alert whose member
+        // name comes back blank (the field is never null, but it can be empty) just says when.
         var when = RelativeTime.Format(alert.TriggeredAt);
         MemberLabel.Text = string.IsNullOrWhiteSpace(alert.CardiMemberName)
             ? when
