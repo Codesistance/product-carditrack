@@ -131,8 +131,9 @@ public class ChatWorkflowCatalogueParityTests
 
         Assert.NotNull(clarify);
         Assert.False(clarify.IsRoutable,
-            "Clarify is triggered by the shape of the routing answer — a non-adjacent runner-up, or " +
-            "a result that cannot be run — and is never returned by the model. Rendering it into the " +
+            "Clarify is triggered by the shape of the routing answer — a runner-up that is a " +
+            "different ask, or a result that cannot be run — and is never returned by the model. " +
+            "Rendering it into the " +
             "prompt would let the router choose to ask a question instead of answering one.");
     }
 

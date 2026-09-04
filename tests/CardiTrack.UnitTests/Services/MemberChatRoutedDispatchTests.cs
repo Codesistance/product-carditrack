@@ -187,13 +187,32 @@ public class MemberChatRoutedDispatchTests
     }
 
     [Fact]
-    public async Task ANonAdjacentRunnerUp_AsksToClarify_WithNoDataFetch()
+    public async Task ARunnerUpThatIsADifferentAsk_AsksToClarify_WithNoDataFetch()
     {
         RouterAnswers(MemberChatWorkflow.Status, MemberChatWorkflow.Advise);
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "is he ok?");
 
         Assert.Contains("Which would help most?", reply.Reply);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+        await _medicalAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(default!, default);
+    }
+
+    /// <summary>
+    /// "How is dad today" — the app's most common message. The router puts `status` first with
+    /// `inference` behind it, two rungs apart, and both are reading rungs: one ask at two heights,
+    /// so the primary answers rather than the caregiver being asked which they meant (§5).
+    /// </summary>
+    [Fact]
+    public async Task ARunnerUpTwoReadingRungsAway_AnswersTheQuestion_InsteadOfAskingWhichWasMeant()
+    {
+        RouterAnswers(MemberChatWorkflow.Status, MemberChatWorkflow.Inference);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how is dad today");
+
+        Assert.DoesNotContain("Which would help most?", reply.Reply);
+        // Status is code-assembled: no plan, no clinical read, and no second model opinion.
         await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
         await _medicalAi.DidNotReceiveWithAnyArgs()
             .GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(default!, default);

@@ -65,12 +65,19 @@ public class ChatRouteDecisionTests
     [InlineData(MemberChatWorkflow.Inference, MemberChatWorkflow.Investigation, false)]
     [InlineData(MemberChatWorkflow.Investigation, MemberChatWorkflow.Advise, false)]
     [InlineData(MemberChatWorkflow.SteerCasual, MemberChatWorkflow.SteerOffTopic, false)]  // both off-ladder
+    // Two reading rungs, non-adjacent: one ask at two heights, so the tie-break serves it either
+    // way. "How is he today" routes status with inference behind it and must be answered, not asked
+    // back — clarify on that message would fire on the app's most common question.
+    [InlineData(MemberChatWorkflow.Status, MemberChatWorkflow.Inference, false)]
+    [InlineData(MemberChatWorkflow.Status, MemberChatWorkflow.Investigation, false)]
+    [InlineData(MemberChatWorkflow.Analysis, MemberChatWorkflow.Investigation, false)]
     [InlineData(MemberChatWorkflow.Status, MemberChatWorkflow.Advise, true)]     // §5's own example
     [InlineData(MemberChatWorkflow.SteerCasual, MemberChatWorkflow.Analysis, true)]  // §5's other example
     [InlineData(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Analysis, true)]
-    [InlineData(MemberChatWorkflow.Status, MemberChatWorkflow.Inference, true)]
     [InlineData(MemberChatWorkflow.Analysis, MemberChatWorkflow.Advise, true)]
-    public void Clarify_FiresOnNonAdjacentPairs_AndOnlyThose(
+    [InlineData(MemberChatWorkflow.Inference, MemberChatWorkflow.Advise, true)]
+    [InlineData(MemberChatWorkflow.SteerCasual, MemberChatWorkflow.Advise, true)]
+    public void Clarify_FiresOnlyWhenTheTwoCandidatesAreDifferentAsks(
         MemberChatWorkflow primary, MemberChatWorkflow runnerUp, bool expectClarify)
     {
         var decision = new ChatRouteDecision { Primary = primary, RunnerUp = runnerUp };

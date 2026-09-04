@@ -19,17 +19,20 @@ public sealed record ChatRouteDecision
     public MemberChatWorkflow? RunnerUp { get; init; }
 
     /// <summary>
-    /// True when the runner-up is a rung that is <em>not</em> adjacent to the primary — genuine
-    /// confusion about what is being asked, which is what clarify exists for. Adjacent ambiguity
-    /// (analysis/inference) is what the ladder's tie-break absorbs, and firing on it would fire on
-    /// precisely the cases designed to be safe to get wrong.
+    /// True when the two candidates are different <em>asks</em> — genuine confusion about what was
+    /// wanted, which is what clarify exists for. Two things absorb ambiguity rather than asking:
+    /// adjacent rungs, which the ladder's tie-break takes downward, and any pair of reading rungs,
+    /// which are one ask answered at different heights. Firing on either would fire on precisely
+    /// the cases designed to be safe to get wrong.
     /// </summary>
     public bool NeedsClarify =>
-        Primary is { } p && RunnerUp is { } r && r != p && !AreAdjacent(p, r);
+        Primary is { } p && RunnerUp is { } r && r != p
+        && !AreAdjacent(p, r)
+        && !AreBothReadings(p, r);
 
     /// <summary>
-    /// The ladder's neighbour relation. The five data rungs are ranked; the steer entries sit off
-    /// the ladder entirely, so a steer against any data rung is never adjacent — "either steer
+    /// The ladder's neighbour relation. The five ladder rungs are ranked; the steer entries sit off
+    /// the ladder entirely, so a steer against any ladder rung is never adjacent — "either steer
     /// entry against analysis" is §5's own example of what should clarify. The two steers are
     /// adjacent to each other: both answer without data, and confusing them costs a redirect
     /// where a warm reply belonged, which is an eval-set concern rather than a clarify one.
@@ -53,6 +56,28 @@ public sealed record ChatRouteDecision
         // Off-ladder entries: adjacent only to each other.
         return ra is null && rb is null;
     }
+
+    /// <summary>
+    /// The reading rungs — <c>status</c>, <c>analysis</c>, <c>inference</c>, <c>investigation</c>.
+    /// All four answer one question, "what do this person's readings say?", differing only in how
+    /// much claim the answer makes, and each returns the figures the rung below it would have. So a
+    /// runner-up drawn from this set is never confusion about what was asked, only about how far up
+    /// to go — the superset argument §5 makes for analysis against inference, which holds just as
+    /// well two rungs apart. "How is he today" is the case that forced this: <c>status</c> against
+    /// <c>inference</c> is a distance of two and a single question, and asking there fires clarify
+    /// on the most common message the app receives, against §8's rule that clarify is only worth
+    /// having while it is rare. <c>advise</c> is deliberately not in this set — it claims a
+    /// suggestion rather than a reading, which is why §5's own example, <c>status</c> against
+    /// <c>advise</c>, still clarifies.
+    /// </summary>
+    internal static bool AreBothReadings(MemberChatWorkflow a, MemberChatWorkflow b) =>
+        IsReading(a) && IsReading(b);
+
+    private static bool IsReading(MemberChatWorkflow workflow) => workflow
+        is MemberChatWorkflow.Status
+        or MemberChatWorkflow.Analysis
+        or MemberChatWorkflow.Inference
+        or MemberChatWorkflow.Investigation;
 
     /// <summary>
     /// Maps a label the model returned to the workflow it names — the catalogue's own labels, and

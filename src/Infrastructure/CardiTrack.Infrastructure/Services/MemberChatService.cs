@@ -611,7 +611,7 @@ public class MemberChatService : IMemberChatService
 
     /// <summary>
     /// The routed dispatch — the router's answer selects the workflow. Clarify is decided here, not
-    /// by the model: a non-adjacent runner-up asks once which rung was meant, and a second
+    /// by the model: a runner-up that is a different ask (§5) asks once which was meant, and a second
     /// unroutable answer in a row runs analysis instead of asking again (the once-per-message
     /// rule, read from whether the previous assistant turn was itself a clarify).
     /// </summary>
