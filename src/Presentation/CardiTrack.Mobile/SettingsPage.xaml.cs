@@ -102,8 +102,22 @@ public partial class SettingsPage : ContentPage
 
     // Starts the erasure request the privacy policy promises (30 days), the same way the
     // policy page itself does — a pre-addressed email — until an endpoint exists.
-    private async void OnDeleteAccountTapped(object? sender, TappedEventArgs e)
+    // The tick box is the confirmation: the card above it has already said what happens, so
+    // the button does not ask again. It stays off — and reads off — until the box is ticked.
+    private void OnDeleteConfirmChanged(object? sender, CheckedChangedEventArgs e)
     {
+        DeleteAccountBtn.IsEnabled = e.Value;
+        DeleteAccountBtn.Opacity = e.Value ? 1 : 0.5;
+    }
+
+    private void OnDeleteConfirmLabelTapped(object? sender, TappedEventArgs e) =>
+        DeleteConfirmCheck.IsChecked = !DeleteConfirmCheck.IsChecked;
+
+    private async void OnDeleteAccountClicked(object? sender, EventArgs e)
+    {
+        if (!DeleteConfirmCheck.IsChecked)
+            return;
+
         // The request has to name the account; without the address support cannot act on it.
         var email = _authService.CurrentUserEmail;
         if (string.IsNullOrWhiteSpace(email))
@@ -113,12 +127,6 @@ public partial class SettingsPage : ContentPage
                 "Can't start the request");
             return;
         }
-
-        var proceed = await _popups.ConfirmWarningAsync(
-            "Deleting your account removes your sign-in and everything CardiTrack holds about you and the people you watch over, within 30 days of the request. This can't be undone.\n\nWe'll open an email to our support team to start it.",
-            "Delete my account", "Start request", "Keep my account");
-        if (!proceed)
-            return;
 
         var subject = Uri.EscapeDataString("Delete my account");
         var body = Uri.EscapeDataString($"Please delete the CardiTrack account for {email}.");
@@ -277,14 +285,67 @@ public partial class SettingsPage : ContentPage
         }
     }
 
+    // Sign out asks twice the way leaving the app does: the first tap arms the same two-second
+    // window (CardiTrack.Mobile.Core.Navigation.ExitConfirmation) and raises the dashboard's
+    // deep-red banner; a second tap inside it signs out. Leaving the tab, or letting the window
+    // lapse, forgets the first tap.
+    private readonly CardiTrack.Mobile.Core.Navigation.ExitConfirmation _signOutGate = new();
+    private CancellationTokenSource? _exitHintCts;
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _signOutGate.Disarm();
+        HideExitHint();
+    }
+
+    private void ShowExitHint()
+    {
+        if (!ExitHintBanner.IsVisible)
+        {
+            ExitHintScrim.Opacity = 0;
+            ExitHintBanner.Opacity = 0;
+            ExitHintScrim.IsVisible = true;
+            ExitHintBanner.IsVisible = true;
+            _ = ExitHintScrim.FadeToAsync(1, 140);
+            _ = ExitHintBanner.FadeToAsync(1, 140);
+        }
+
+        _exitHintCts?.Cancel();
+        _exitHintCts = new CancellationTokenSource();
+        _ = HideExitHintAfterAsync(_exitHintCts.Token);
+    }
+
+    private async Task HideExitHintAfterAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(CardiTrack.Mobile.Core.Navigation.ExitConfirmation.Window, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        HideExitHint();
+    }
+
+    private void HideExitHint()
+    {
+        _exitHintCts?.Cancel();
+        ExitHintBanner.IsVisible = false;
+        ExitHintScrim.IsVisible = false;
+    }
+
     private async void OnSignOutClicked(object? sender, EventArgs e)
     {
-        var confirmed = await _popups.ConfirmWarningAsync(
-            "You'll need to sign back in to keep an eye on things.",
-            "Ready to sign out?", confirmText: "Sign out");
-        if (!confirmed)
+        if (!_signOutGate.Confirm())
+        {
+            ShowExitHint();
             return;
+        }
 
+        HideExitHint();
         SignOutBtn.IsEnabled = false;
         try
         {
