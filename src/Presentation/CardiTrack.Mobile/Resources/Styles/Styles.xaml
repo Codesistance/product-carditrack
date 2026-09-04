@@ -25,8 +25,7 @@
     <Style TargetType="Button">
         <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource White}}" />
         <Setter Property="BackgroundColor" Value="{StaticResource Primary}" />
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>
         <Setter Property="BorderWidth" Value="0"/>
         <Setter Property="CornerRadius" Value="8"/>
@@ -72,7 +71,7 @@
     </Style>
 
     <Style TargetType="Picker">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}" />
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}" />
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="14" />
     </Style>
@@ -82,7 +81,7 @@
     </Style>
 
     <Style TargetType="SearchBar">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}" />
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}" />
         <Setter Property="PlaceholderColor" Value="{StaticResource Gray500}" />
         <Setter Property="FontFamily" Value="Quicksand" />
         <Setter Property="FontSize" Value="14" />
@@ -109,33 +108,116 @@
          NAMED TYPOGRAPHY STYLES  (Figma tokens)
          ════════════════════════════════════════════ -->
 
-    <Style x:Key="Heading1" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+    <!-- ════════════════════════════════════════════
+         TYPE ROLES — the app's type system (see the Type Audit, 4 Sep 2026)
+
+         Nine roles named for what the text IS, each fixing face, size, line height and default
+         ink. One family (Quicksand) in three real faces — Regular, Medium, SemiBold — and no
+         FontAttributes="Bold": that was a synthetic bold smeared onto the Regular face, which is
+         why two 18pt titles on one page never matched. Weight carries hierarchy; ink carries
+         role (Message is the heading ink, Body and Caption are not). Pages carry Style= and
+         nothing else — no inline FontSize, FontFamily or FontAttributes, and TextColor only for
+         a semantic colour (status, urgency, error, link), never a neutral.
+
+         The older keys further down are aliases onto these roles so nothing has to move in one
+         go; each area is swept onto the roles directly and an alias retires when no page names it.
+         ════════════════════════════════════════════ -->
+
+    <Style x:Key="Display" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="28"/>
+        <Setter Property="LineHeight" Value="1.15"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
-
-    <Style x:Key="Heading1White" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
-        <Setter Property="FontSize" Value="28"/>
+    <Style x:Key="DisplayOnBand" TargetType="Label" BasedOn="{StaticResource Display}">
         <Setter Property="TextColor" Value="{StaticResource White}"/>
     </Style>
 
-    <Style x:Key="Heading2" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+    <Style x:Key="Title" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="22"/>
+        <Setter Property="LineHeight" Value="1.2"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
-    <Style x:Key="Heading3" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+    <Style x:Key="Section" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="18"/>
+        <Setter Property="LineHeight" Value="1.3"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
+    <Style x:Key="SectionOnBand" TargetType="Label" BasedOn="{StaticResource Section}">
+        <Setter Property="TextColor" Value="{StaticResource White}"/>
+    </Style>
+
+    <Style x:Key="RowTitle" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="LineHeight" Value="1.35"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+    <Style x:Key="RowTitleOnBand" TargetType="Label" BasedOn="{StaticResource RowTitle}">
+        <Setter Property="TextColor" Value="{StaticResource White}"/>
+    </Style>
+
+    <!-- Text that is the message to the caregiver — an alert's account, a summary, advice, a
+         nudge body. Medium, not bold: clearly heavier than Body, but a paragraph of bold tires. -->
+    <Style x:Key="Message" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandMedium"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="LineHeight" Value="1.5"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    </Style>
+
+    <!-- Descriptions, row subtitles, field labels: about something, not the thing itself. -->
+    <Style x:Key="Body" TargetType="Label">
+        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="LineHeight" Value="1.5"/>
+        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
+    </Style>
+
+    <!-- Body's compact sibling for dense rows — chips, pill neighbours, settings descriptions. -->
+    <Style x:Key="Compact" TargetType="Label" BasedOn="{StaticResource Body}">
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="LineHeight" Value="1.4"/>
+    </Style>
+
+    <!-- Dates, "Written …", sources, disclaimers, the header band's second line. -->
+    <Style x:Key="Caption" TargetType="Label">
+        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="LineHeight" Value="1.4"/>
+        <Setter Property="TextColor" Value="{StaticResource MutedText}"/>
+    </Style>
+    <Style x:Key="CaptionOnBand" TargetType="Label" BasedOn="{StaticResource Caption}">
+        <Setter Property="TextColor" Value="{StaticResource White}"/>
+        <Setter Property="Opacity" Value="0.85"/>
+    </Style>
+
+    <!-- Small uppercase labels: pills, "LAST SYNC", tab titles. Tracked so it reads at 11. -->
+    <Style x:Key="Overline" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="CharacterSpacing" Value="0.6"/>
+        <Setter Property="TextColor" Value="{StaticResource MutedText}"/>
+    </Style>
+
+    <!-- A tappable phrase in running text or at a row's end. -->
+    <Style x:Key="Link" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="TextColor" Value="{StaticResource Primary}"/>
+    </Style>
+
+    <!-- ── Aliases: the pre-roles keys, each pointed at its role ─────────────────────────── -->
+    <Style x:Key="Heading1" TargetType="Label" BasedOn="{StaticResource Display}"/>
+
+    <Style x:Key="Heading1White" TargetType="Label" BasedOn="{StaticResource DisplayOnBand}"/>
+
+    <Style x:Key="Heading2" TargetType="Label" BasedOn="{StaticResource Title}"/>
+
+    <Style x:Key="Heading3" TargetType="Label" BasedOn="{StaticResource Section}"/>
 
     <!-- The title on the three screens that sign a caregiver in. Half again the Heading3 those
          bands used to carry: sign-in, create-account and forgot-password each hold one title and
@@ -147,12 +229,7 @@
 
          Its own key rather than three inline overrides: they change together, and the next person
          to touch one should not have to notice the other two. -->
-    <Style x:Key="AuthHeaderTitle" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
-        <Setter Property="FontSize" Value="27"/>
-        <Setter Property="TextColor" Value="{StaticResource White}"/>
-    </Style>
+    <Style x:Key="AuthHeaderTitle" TargetType="Label" BasedOn="{StaticResource DisplayOnBand}"/>
 
     <!-- The line under an auth title. Two points down from Body1SemiBold, which these carried
          until the title grew: at 16 the longest of them — "Sign in to keep watching over your
@@ -162,51 +239,32 @@
 
          Its own key rather than editing Body1SemiBold, which is shared with screens that have no
          title above them and no mark beside them. -->
-    <Style x:Key="AuthHeaderSubtitle" TargetType="Label">
+    <Style x:Key="AuthHeaderSubtitle" TargetType="Label" BasedOn="{StaticResource CaptionOnBand}">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="14"/>
-        <Setter Property="TextColor" Value="{StaticResource White}"/>
+        <Setter Property="Opacity" Value="1"/>
     </Style>
 
-    <Style x:Key="Body1SemiBold" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="TextColor" Value="{StaticResource White}"/>
-    </Style>
+    <Style x:Key="Body1SemiBold" TargetType="Label" BasedOn="{StaticResource RowTitleOnBand}"/>
 
-    <Style x:Key="Body1SemiBoldDark" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
-    </Style>
+    <Style x:Key="Body1SemiBoldDark" TargetType="Label" BasedOn="{StaticResource RowTitle}"/>
 
-    <Style x:Key="Body2Medium" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandMedium"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
-    </Style>
+    <Style x:Key="Body2Medium" TargetType="Label" BasedOn="{StaticResource Message}"/>
 
-    <Style x:Key="Body2" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
-    </Style>
+    <Style x:Key="Body2" TargetType="Label" BasedOn="{StaticResource Body}"/>
 
     <!-- Body copy a reader came for rather than copy that annotates something else: the generated
          summary and the ways to help under it. Same face and size as Body2 in the heading ink —
          Body2's grey is right for a caption beside a number, but it made the two paragraphs that
          are the point of the screen the palest thing on it. Not Body2Medium: that darkens by
          changing the weight too, which reads as emphasis rather than as ordinary prose. -->
-    <Style x:Key="Body2Dark" TargetType="Label" BasedOn="{StaticResource Body2}">
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
-    </Style>
+    <Style x:Key="Body2Dark" TargetType="Label" BasedOn="{StaticResource Message}"/>
 
-    <Style x:Key="BodySubtitle" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontSize" Value="18"/>
-        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
+    <Style x:Key="BodySubtitle" TargetType="Label" BasedOn="{StaticResource Section}">
         <Setter Property="HorizontalTextAlignment" Value="Center"/>
         <Setter Property="LineBreakMode" Value="WordWrap"/>
+        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
     </Style>
 
     <!-- ════════════════════════════════════════════
@@ -219,8 +277,7 @@
     <Style x:Key="PrimaryGradientButton" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource GradientButtonBrush}"/>
         <Setter Property="TextColor" Value="{StaticResource White}"/>
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>
         <Setter Property="CornerRadius" Value="25"/>
         <Setter Property="HeightRequest" Value="52"/>
@@ -235,8 +292,7 @@
     <Style x:Key="AuthGradientButton" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource GradientButtonBrush}"/>
         <Setter Property="TextColor" Value="{StaticResource White}"/>
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>
         <Setter Property="CornerRadius" Value="25"/>
         <Setter Property="HeightRequest" Value="52"/>
@@ -252,9 +308,8 @@
     <Style x:Key="SecondaryOutlineButton" TargetType="Button">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
         <Setter Property="TextColor" Value="{StaticResource Primary}"/>
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
-        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="16"/>
         <Setter Property="CornerRadius" Value="25"/>
         <Setter Property="HeightRequest" Value="52"/>
         <Setter Property="BorderColor" Value="{StaticResource PrimaryDark}"/>
@@ -285,11 +340,10 @@
          AUTH FORM STYLES
          ════════════════════════════════════════════ -->
 
-    <Style x:Key="AuthFieldLabel" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandMedium"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    <Style x:Key="AuthFieldLabel" TargetType="Label" BasedOn="{StaticResource Body}">
         <Setter Property="Margin" Value="0,0,0,2"/>
+        <Setter Property="FontFamily" Value="QuicksandMedium"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
     <!-- White fill, not InputBackground: the fields sit on PageGround now, and #F2F2F4 all but
@@ -313,16 +367,11 @@
         <Setter Property="BackgroundColor" Value="Transparent"/>
     </Style>
 
-    <Style x:Key="AuthErrorLabel" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontSize" Value="12"/>
+    <Style x:Key="AuthErrorLabel" TargetType="Label" BasedOn="{StaticResource Caption}">
         <Setter Property="TextColor" Value="{StaticResource ErrorRed}"/>
     </Style>
 
-    <Style x:Key="PrimaryLink" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="14"/>
-        <Setter Property="TextColor" Value="{StaticResource Primary}"/>
+    <Style x:Key="PrimaryLink" TargetType="Label" BasedOn="{StaticResource Link}">
         <Setter Property="TextDecorations" Value="Underline"/>
     </Style>
 
@@ -402,18 +451,17 @@
         </Setter>
     </Style>
 
-    <Style x:Key="MetricRowLabel" TargetType="Label">
+    <Style x:Key="MetricRowLabel" TargetType="Label" BasedOn="{StaticResource Body}">
         <Setter Property="FontFamily" Value="QuicksandMedium"/>
-        <Setter Property="FontSize" Value="14"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
     <!-- Right-hand caption under a metric pill ("68-75 bpm typical"). -->
-    <Style x:Key="MetricRowCaption" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="10"/>
-        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
+    <Style x:Key="MetricRowCaption" TargetType="Label" BasedOn="{StaticResource Overline}">
         <Setter Property="HorizontalTextAlignment" Value="End"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="CharacterSpacing" Value="0"/>
+        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
     </Style>
 
     <Style x:Key="StatusPill" TargetType="Border">
@@ -424,43 +472,34 @@
         </Setter>
     </Style>
 
-    <Style x:Key="StatusPillText" TargetType="Label">
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="FontAttributes" Value="Bold"/>
+    <Style x:Key="StatusPillText" TargetType="Label" BasedOn="{StaticResource Overline}">
         <Setter Property="FontSize" Value="10"/>
+        <Setter Property="CharacterSpacing" Value="0"/>
     </Style>
 
-    <Style x:Key="QuickActionLabel" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandMedium"/>
-        <Setter Property="FontSize" Value="13"/>
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    <Style x:Key="QuickActionLabel" TargetType="Label" BasedOn="{StaticResource Compact}">
         <Setter Property="HorizontalTextAlignment" Value="Center"/>
+        <Setter Property="FontFamily" Value="QuicksandMedium"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
-    <Style x:Key="SectionLink" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+    <Style x:Key="SectionLink" TargetType="Label" BasedOn="{StaticResource RowTitle}">
         <Setter Property="TextDecorations" Value="Underline"/>
         <Setter Property="VerticalTextAlignment" Value="Center"/>
     </Style>
 
-    <Style x:Key="DashboardSectionTitle" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="18"/>
-        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
-    </Style>
+    <Style x:Key="DashboardSectionTitle" TargetType="Label" BasedOn="{StaticResource Section}"/>
 
     <!-- ════════════════════════════════════════════
          BOTTOM NAVIGATION (Figma "Body 3 Medium")
          ════════════════════════════════════════════ -->
 
     <!-- TextColor is set per tab by BottomNavBar (PrimaryDark selected, MutedText not). -->
-    <Style x:Key="TabBarLabel" TargetType="Label">
-        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-        <Setter Property="FontSize" Value="12"/>
+    <Style x:Key="TabBarLabel" TargetType="Label" BasedOn="{StaticResource Overline}">
         <Setter Property="HorizontalTextAlignment" Value="Center"/>
         <Setter Property="HorizontalOptions" Value="Center"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="CharacterSpacing" Value="0"/>
     </Style>
 
 </ResourceDictionary>

@@ -36,8 +36,7 @@
                         <RoundRectangle CornerRadius="28"/>
                     </Border.StrokeShape>
                     <Label x:Name="IconLabel"
-                           FontFamily="Quicksand"
-                           FontAttributes="Bold"
+                           FontFamily="QuicksandSemiBold"
                            FontSize="26"
                            HorizontalOptions="Center"
                            VerticalOptions="Center"/>

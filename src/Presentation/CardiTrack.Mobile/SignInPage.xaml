@@ -129,7 +129,7 @@
                                 <Image Source="google_icon.svg"
                                        WidthRequest="22" HeightRequest="22"
                                        VerticalOptions="Center"/>
-                                <Label Text="Google" FontFamily="Quicksand" FontAttributes="Bold"
+                                <Label Text="Google" FontFamily="QuicksandSemiBold"
                                        FontSize="18" TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"/>
                             </HorizontalStackLayout>
@@ -145,7 +145,7 @@
                                 <Image Source="apple_icon.svg"
                                        WidthRequest="22" HeightRequest="22"
                                        VerticalOptions="Center"/>
-                                <Label Text="Apple" FontFamily="Quicksand" FontAttributes="Bold"
+                                <Label Text="Apple" FontFamily="QuicksandSemiBold"
                                        FontSize="18" TextColor="{StaticResource White}"
                                        VerticalTextAlignment="Center"/>
                             </HorizontalStackLayout>

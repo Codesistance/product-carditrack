@@ -184,8 +184,7 @@
                         </Border.Background>
                     </Border>
                     <Label Text="Start Free 30-Day Trial"
-                           FontFamily="Quicksand"
-                           FontAttributes="Bold"
+                           FontFamily="QuicksandSemiBold"
                            FontSize="18"
                            TextColor="{StaticResource White}"
                            HorizontalOptions="Center"
@@ -213,9 +212,7 @@
                      from the screen that asks you to agree to both — and this is the earlier of
                      the app's two consent points. Named the same as on the account form, so a
                      caregiver who reads one and then meets the other recognises it. -->
-                <Label TextColor="{StaticResource Primary}"
-                       FontFamily="ManropeSemiBold"
-                       FontSize="14"
+                <Label Style="{StaticResource Link}"
                        TextDecorations="Underline"
                        VerticalTextAlignment="Center"
                        Text="Terms">
@@ -226,9 +223,7 @@
                 <Label Text=" &amp; "
                        Style="{StaticResource Body2}"
                        VerticalTextAlignment="Center" />
-                <Label TextColor="{StaticResource Primary}"
-                       FontFamily="ManropeSemiBold"
-                       FontSize="14"
+                <Label Style="{StaticResource Link}"
                        TextDecorations="Underline"
                        VerticalTextAlignment="Center"
                        Text="Privacy">

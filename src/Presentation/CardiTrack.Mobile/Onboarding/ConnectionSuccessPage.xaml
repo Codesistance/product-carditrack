@@ -104,8 +104,7 @@
                                WidthRequest="22" HeightRequest="22"
                                VerticalOptions="Center"/>
                         <Label Text="Add Another Device"
-                               FontFamily="Quicksand"
-                               FontAttributes="Bold"
+                               FontFamily="QuicksandSemiBold"
                                FontSize="18"
                                TextColor="{StaticResource Primary}"
                                VerticalOptions="Center"/>
