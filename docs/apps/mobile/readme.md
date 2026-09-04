@@ -277,7 +277,15 @@ Dev / internal-track mobile CI lives in `.github/workflows/deploy-apps-dev.yml` 
 
 Store versioning is stamped by CI: `ApplicationDisplayVersion` comes from the computed semver tag and `ApplicationVersion` (iOS build number / Android versionCode) from the monotonic commit count — the values in the csproj are placeholders.
 
-Each store upload includes a **changelog** generated from `git log` since the previous `v*` tag (commit subjects, no merges). Testers see it as TestFlight **What to Test** and Play internal **What's new** (Play is truncated to 500 characters). The same text is written to the Actions job summary.
+Each store upload includes **What's new** text built by `.github/scripts/mobile-build-changelog.py` from the commits since the previous `v*` tag. It is written for the person reading the store listing, not for engineers: no commit hashes, PR numbers or `feat:`-style prefixes, and only commits that touch the app or its domain (`CardiTrack.Mobile`, `CardiTrack.Mobile.Core`, `CardiTrack.Domain`, `CardiTrack.Application`) become bullets. Everything else — API, workers, infrastructure, docs, tests, CI, review-round commits — folds into one closing line, "Plus stability and performance improvements behind the scenes."
+
+To control what customers read, add a `Release-note:` trailer to the commit body:
+
+```
+Release-note: Chat replies now arrive faster and remember where you left off.
+```
+
+The trailer text becomes the bullet verbatim, whatever paths the commit touched. `Release-note: none` hides a commit that would otherwise be listed. Testers see the result as TestFlight **What to Test** and Play internal **What's new** (Play is capped at 500 characters, TestFlight at 4000; bullets are dropped from the oldest end to fit). The same text is written to the Actions job summary.
 
 Signing material and store credentials live in GCP Secret Manager (`carditrack-common-*` secrets, defined in `infrastructure/common/secret_manager.tf`):
 
