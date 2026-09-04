@@ -104,6 +104,16 @@ public partial class SettingsPage : ContentPage
     // policy page itself does — a pre-addressed email — until an endpoint exists.
     private async void OnDeleteAccountTapped(object? sender, TappedEventArgs e)
     {
+        // The request has to name the account; without the address support cannot act on it.
+        var email = _authService.CurrentUserEmail;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            await _popups.ShowWarningAsync(
+                "We don't have an email address for this account. Please email support@carditrack.com from the address you sign in with.",
+                "Can't start the request");
+            return;
+        }
+
         var proceed = await _popups.ConfirmWarningAsync(
             "Deleting your account removes your sign-in and everything CardiTrack holds about you and the people you watch over, within 30 days of the request. This can't be undone.\n\nWe'll open an email to our support team to start it.",
             "Delete my account", "Start request", "Keep my account");
@@ -111,7 +121,7 @@ public partial class SettingsPage : ContentPage
             return;
 
         var subject = Uri.EscapeDataString("Delete my account");
-        var body = Uri.EscapeDataString($"Please delete the CardiTrack account for {_authService.CurrentUserEmail}.");
+        var body = Uri.EscapeDataString($"Please delete the CardiTrack account for {email}.");
         try
         {
             await Launcher.Default.OpenAsync(new Uri($"mailto:support@carditrack.com?subject={subject}&body={body}"));

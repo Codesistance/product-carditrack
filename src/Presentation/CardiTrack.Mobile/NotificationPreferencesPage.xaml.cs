@@ -184,8 +184,16 @@ public partial class NotificationPreferencesPage : ContentPage
     /// </summary>
     private async Task SaveAsync(Action<UpdateNotificationPreferenceRequest> change)
     {
-        if (_prefs is null || _saving)
+        if (_prefs is null)
             return;
+
+        // A toggle flipped while a save is in flight has already moved on screen; snap it back
+        // to what the server holds rather than let it look saved until the other save returns.
+        if (_saving)
+        {
+            Render();
+            return;
+        }
 
         var request = new UpdateNotificationPreferenceRequest
         {
