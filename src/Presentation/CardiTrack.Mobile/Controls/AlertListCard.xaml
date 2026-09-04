@@ -64,37 +64,9 @@
                     </Label.GestureRecognizers>
                 </Label>
 
-                <!-- Severity badge at the right end of the who-and-when line, small: it is a
-                     category stamp, not the headline — the title is. The unread dot sits beside
-                     it, since both say "this one still needs you" and belong together. -->
-                <HorizontalStackLayout Grid.Row="1" Grid.Column="2" Spacing="8" VerticalOptions="Center">
-                    <Border x:Name="UnreadDot"
-                            WidthRequest="10" HeightRequest="10"
-                            StrokeThickness="0"
-                            BackgroundColor="{StaticResource Primary}"
-                            VerticalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="5"/>
-                        </Border.StrokeShape>
-                    </Border>
-                    <Border x:Name="SeverityPill"
-                            StrokeThickness="0"
-                            Padding="7,2"
-                            VerticalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="10"/>
-                        </Border.StrokeShape>
-                        <Label x:Name="SeverityLabel"
-                               FontFamily="QuicksandMedium"
-                               FontSize="10"
-                               CharacterSpacing="0.4"
-                               TextColor="{StaticResource White}"/>
-                    </Border>
-                </HorizontalStackLayout>
-
                 <!-- "Dad, 6 days ago": who and when on one muted line under the title. -->
                 <Label x:Name="MemberLabel"
-                       Grid.Row="1" Grid.Column="1"
+                       Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
                        VerticalOptions="Center"
                        FontFamily="QuicksandMedium"
                        FontSize="12"
@@ -116,11 +88,41 @@
 
                 <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                       Margin="0,10,0,0"
-                      ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
+                      ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto"
                       ColumnSpacing="8">
 
+                    <!-- Severity badge leads the action row, ahead of the status pill: the two
+                         pills read together as "what kind, and where it stands", and the row is
+                         where the eye already goes for the card's state. Small — it is a category
+                         stamp, not the headline; the title is. The unread dot sits beside it,
+                         since both say "this one still needs you". -->
+                    <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
+                        <Border x:Name="UnreadDot"
+                                WidthRequest="10" HeightRequest="10"
+                                StrokeThickness="0"
+                                BackgroundColor="{StaticResource Primary}"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="5"/>
+                            </Border.StrokeShape>
+                        </Border>
+                        <Border x:Name="SeverityPill"
+                                StrokeThickness="0"
+                                Padding="8,4"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12"/>
+                            </Border.StrokeShape>
+                            <Label x:Name="SeverityLabel"
+                                   FontFamily="QuicksandMedium"
+                                   FontSize="11"
+                                   CharacterSpacing="0.4"
+                                   TextColor="{StaticResource White}"/>
+                        </Border>
+                    </HorizontalStackLayout>
+
                     <Border x:Name="StatusPillBorder"
-                            Grid.Column="0"
+                            Grid.Column="1"
                             StrokeThickness="0"
                             Padding="10,4"
                             VerticalOptions="Center">
@@ -133,7 +135,7 @@
                     </Border>
 
                     <Border x:Name="CallButton"
-                            Grid.Column="1"
+                            Grid.Column="2"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
@@ -155,7 +157,7 @@
                          call. Both dim rather than hide when their number is missing, so the
                          tap can say why (the dim-not-hide pattern from issue #67). -->
                     <Border x:Name="SosButton"
-                            Grid.Column="2"
+                            Grid.Column="3"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource QuickActionTintRed}"
@@ -173,7 +175,7 @@
                     </Border>
 
                     <Border x:Name="AcknowledgeButton"
-                            Grid.Column="3"
+                            Grid.Column="4"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
@@ -197,7 +199,7 @@
                     </Border>
 
                     <Border x:Name="DeleteButton"
-                            Grid.Column="4"
+                            Grid.Column="5"
                             HorizontalOptions="End"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
@@ -214,7 +216,7 @@
                     </Border>
 
                     <!-- Wrapped so the tap target is a finger rather than a 20px glyph. -->
-                    <Border Grid.Column="5"
+                    <Border Grid.Column="6"
                             StrokeThickness="0"
                             BackgroundColor="Transparent"
                             Padding="6"
