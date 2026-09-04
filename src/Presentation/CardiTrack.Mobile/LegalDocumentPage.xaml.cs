@@ -89,13 +89,25 @@ public partial class LegalDocumentPage : ContentPage
 
         if (HasEmbed(uri))
         {
-            _url = e.Url;
+            EnterDocument(e.Url);
             return;
         }
 
         e.Cancel = true;
-        _url = WithEmbed(uri);
+        EnterDocument(WithEmbed(uri));
         DocumentView.Source = new UrlWebViewSource { Url = _url };
+    }
+
+    /// <summary>
+    /// Records the document the reader is on: the one Try again retries, and the one the band
+    /// above it names. Set as the navigation begins rather than when it lands, so a cross-link
+    /// that fails offline shows its own title over the error rather than the previous document's.
+    /// </summary>
+    private void EnterDocument(string url)
+    {
+        _url = url;
+        if (TitleFor(url) is { } title)
+            TitleLabel.Text = title;
     }
 
     private static bool IsLegalDocument(string url) => TitleFor(url) is not null;
@@ -127,7 +139,7 @@ public partial class LegalDocumentPage : ContentPage
     /// <summary>
     /// Which document a URL is, or null for anything that is not one of the two. Also what keeps
     /// the header honest: follow the terms' link to the privacy policy and the band above it has
-    /// to stop saying "Terms of Service".
+    /// to stop saying "Terms of Service" — see <see cref="EnterDocument"/>.
     /// </summary>
     private static string? TitleFor(string url) =>
         url.StartsWith(TermsPath, StringComparison.OrdinalIgnoreCase) ? TermsTitle
@@ -162,9 +174,6 @@ public partial class LegalDocumentPage : ContentPage
 
         if (e.Result == WebNavigationResult.Success)
         {
-            if (TitleFor(e.Url) is { } title)
-                TitleLabel.Text = title;
-
             DocumentView.IsVisible = true;
             return;
         }
