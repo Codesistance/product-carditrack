@@ -213,7 +213,8 @@
                                       WidthRequest="20" HeightRequest="20"
                                       VerticalOptions="Center"
                                       CheckedChanged="OnDeleteConfirmChanged"
-                                      SemanticProperties.Description="I understand my account and their data will be deleted"/>
+                                      SemanticProperties.Description="I understand this can't be undone"
+                                      SemanticProperties.Hint="Ticking this turns on the deletion request button"/>
                             <Label Text="I understand this can't be undone"
                                    Style="{StaticResource Body2Medium}"
                                    VerticalOptions="Center"
