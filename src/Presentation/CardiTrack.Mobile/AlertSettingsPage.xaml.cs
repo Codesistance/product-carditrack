@@ -196,7 +196,9 @@ public partial class AlertSettingsPage : ContentPage
         };
         var subtitle = new Label
         {
-            Text = rule.IsImplemented ? rule.Description : $"{rule.Description} — coming soon",
+            // The description alone: the "Soon" seat on the right says a rule is not built yet,
+            // the way the accordion this replaces had to say it in the subtitle.
+            Text = rule.Description,
             Style = (Style)resources["Body2"],
             FontSize = 13,
             LineBreakMode = LineBreakMode.WordWrap,
