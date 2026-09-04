@@ -39,7 +39,7 @@ memory. If a run does not commit it, the next morning re-reports the same news.
 | Field | Notes |
 |---|---|
 | `date` | `YYYY-MM-DD`, Europe/London, the run's own date. |
-| `slack_ts` | The parent message ts, as written to `run-ts.txt` by `scripts/slack-post.sh`. This is what threads the replies, and what lets a later run link back to a morning. |
+| `slack_ts` | The parent message ts, as written to `run-ts.txt` by `scripts/slack-post.sh`. This is what threads the replies, and what lets a later run link back to a morning. `null` when the run could not attempt the Slack post at all (e.g. `SLACK_CHANNEL`/`SLACK_BOT_TOKEN` unset in the environment) — distinct from a string ts, which means the post was actually sent. |
 | `item_count` | Number of `items[]` entries added by this run. `0` is legitimate. |
 | `empty_reason` | Short string when `item_count` is 0 and it is worth saying why (e.g. `"nothing cleared the bar"`), otherwise `null`. Distinguishes a quiet morning from a run that failed before it published. |
 
