@@ -73,21 +73,45 @@ public partial class LegalDocumentPage : ContentPage
     /// </summary>
     private void OnNavigating(object? sender, WebNavigatingEventArgs e)
     {
-        if (IsLegalDocument(e.Url))
+        if (!Uri.TryCreate(e.Url, UriKind.Absolute, out var uri) || !IsLegalDocument(e.Url))
         {
-            if (e.Url.Contains("embed", StringComparison.OrdinalIgnoreCase))
-                return;
-
             e.Cancel = true;
-            DocumentView.Source = new UrlWebViewSource { Url = e.Url + EmbedQuery };
+            OpenExternally(e.Url);
             return;
         }
 
+        if (HasEmbed(uri))
+            return;
+
         e.Cancel = true;
-        OpenExternally(e.Url);
+        DocumentView.Source = new UrlWebViewSource { Url = WithEmbed(uri) };
     }
 
     private static bool IsLegalDocument(string url) => TitleFor(url) is not null;
+
+    /// <summary>
+    /// Whether the URL already asks for the stripped document. Read from the query rather than
+    /// from the whole URL: these documents link to their own sections, and an anchor that happens
+    /// to be called "embed" is not a request for anything.
+    /// </summary>
+    private static bool HasEmbed(Uri uri) =>
+        uri.Query.TrimStart('?').Split('&').Any(part =>
+            part.Equals("embed", StringComparison.OrdinalIgnoreCase)
+            || part.StartsWith("embed=", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Adds the query the site strips its chrome for, keeping whatever the URL already carried.
+    /// Built rather than concatenated: ".../terms-of-service#retention" + "?embed" is a fragment
+    /// named "retention?embed", the site never sees the query, and a caregiver following a
+    /// cross-reference lands on the marketing page instead of the document.
+    /// </summary>
+    private static string WithEmbed(Uri uri)
+    {
+        var builder = new UriBuilder(uri);
+        var query = builder.Query.TrimStart('?');
+        builder.Query = query.Length == 0 ? "embed" : query + "&embed";
+        return builder.Uri.AbsoluteUri;
+    }
 
     /// <summary>
     /// Which document a URL is, or null for anything that is not one of the two. Also what keeps
