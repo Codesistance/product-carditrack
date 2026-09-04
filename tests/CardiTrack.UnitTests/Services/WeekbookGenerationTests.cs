@@ -113,7 +113,8 @@ public class WeekbookGenerationTests
             });
 
     private DigestGenerationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+        new(_unitOfWork, _medicalAi, Substitute.For<IRewriteAiService>(),
+            PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
             InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance);
 

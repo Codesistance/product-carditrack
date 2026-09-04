@@ -35,6 +35,7 @@ public class DigestGenerationServiceTests
     private readonly IMemberQuestionnaireRepository _questionnaires =
         Substitute.For<IMemberQuestionnaireRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -93,7 +94,11 @@ public class DigestGenerationServiceTests
             .Returns(false);
         _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((DateTime?)null);
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        // The family digest is two calls: MedGemma reads the day, the rewrite slot writes the
+        // family's copy from that read alone. Both are stubbed by default so a test that cares
+        // about neither still gets a stored summary.
+        ReturnsClinicalRead();
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -101,6 +106,27 @@ public class DigestGenerationServiceTests
                 Summary = "A settled day: steady heart rate and a good night's sleep.",
             });
     }
+
+    /// <summary>
+    /// Stubs the clinical half. Defaults to a read that carries a finding and nothing else, which
+    /// is the shape the rewrite stub above answers.
+    /// </summary>
+    private void ReturnsClinicalRead(
+        string finding = "Resting heart rate and sleep both sit within this member's usual range.",
+        string? urgency = null,
+        string? actionBasis = null,
+        string? questionTopic = null,
+        string? questionScope = null) =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestClinicalAiResponse
+            {
+                Finding = finding,
+                Urgency = urgency,
+                ActionBasis = actionBasis,
+                QuestionTopic = questionTopic,
+                QuestionScope = questionScope,
+            });
 
     private CardiMember Member() => new()
     {
@@ -168,7 +194,7 @@ public class DigestGenerationServiceTests
     }
 
     private DigestGenerationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+        new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
             InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance);
 
@@ -191,7 +217,7 @@ public class DigestGenerationServiceTests
                 Message = "Steady today.",
             });
         var sut = new DigestGenerationService(
-            _unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+            _unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption,
             new StatusLineGenerationService(
                 _unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
@@ -264,7 +290,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
         // Unmoved daily rows never need the yardstick — fetching it here would be a baseline
         // query on every mostly-skipping pass.
@@ -323,7 +349,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -387,7 +413,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(BeforeWake);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -436,7 +462,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(JustAfterWake);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -490,7 +516,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(AfterBedtime);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -597,7 +623,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -611,7 +637,7 @@ public class DigestGenerationServiceTests
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -636,14 +662,14 @@ public class DigestGenerationServiceTests
     /// a caregiver seeing the "nothing to say yet" copy.
     /// </summary>
     [Theory]
-    [InlineData("Summarise a loved one's recent readings for their family.")]
+    [InlineData("Write a loved one's family their summary of the day.")]
     // Re-wrapped: the check flattens whitespace, so a differently broken echo still matches.
     [InlineData("Use plain,\n  reassuring language.\nNever diagnose.")]
     [InlineData("Respond with: summary — the summary itself, 2-4 sentences.")]
     [InlineData("   ")]
     public async Task DiscardsTheSummary_WhenTheModelEchoesItsInstructionsOrSaysNothing(string reply)
     {
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -667,7 +693,7 @@ public class DigestGenerationServiceTests
     {
         GivenAnsweredQuestion(
             "Has anything changed at home recently?", "She moved bedrooms last week.");
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -690,7 +716,7 @@ public class DigestGenerationServiceTests
     {
         GivenAnsweredQuestion(
             "Has anything changed at home recently?", "She moved bedrooms last week.");
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -718,7 +744,7 @@ public class DigestGenerationServiceTests
             "Has anything changed at home recently?", "She moved bedrooms last week.");
 
         string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
             Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -733,7 +759,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task StoresTheModelsSummary_Trimmed()
     {
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -761,7 +787,7 @@ public class DigestGenerationServiceTests
                 + "through the evening and a full night's sleep afterwards, which is what we hoped for.")]
     public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineIsUnusable(string headline)
     {
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -788,17 +814,28 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task EveryPhraseTheEchoGuardWatchesFor_IsOnOneLineOfThePrompt()
     {
-        string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
-            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+        string? clinicalPrompt = null;
+        string? rewritePrompt = null;
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
+            Arg.Do<string>(p => clinicalPrompt = p), Arg.Any<CancellationToken>());
+        await _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Do<string>(p => rewritePrompt = p), Arg.Any<CancellationToken>());
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
-        Assert.NotNull(prompt);
+        Assert.NotNull(clinicalPrompt);
+        Assert.NotNull(rewritePrompt);
 
         var echoes = (string[])typeof(DigestGenerationService)
             .GetField("InstructionEchoes", BindingFlags.NonPublic | BindingFlags.Static)!
             .GetValue(null)!;
-        var lines = prompt.Split('\n').Select(l => l.Trim()).ToList();
+
+        // Both halves, because the guard runs on the summary and the summary is written from the
+        // clinical read — so a phrase out of either brief can reach a caregiver, the clinical one
+        // by travelling through the read the rewrite is handed.
+        var lines = clinicalPrompt.Split('\n')
+            .Concat(rewritePrompt.Split('\n'))
+            .Select(l => l.Trim())
+            .ToList();
 
         Assert.NotEmpty(echoes);
         Assert.All(echoes, echo => Assert.Contains(
@@ -833,7 +870,7 @@ public class DigestGenerationServiceTests
             ]);
 
         string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
             Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -859,7 +896,7 @@ public class DigestGenerationServiceTests
     public async Task TheReadingsAreOrderedOldestFirst_AndTheHeaderSaysSo()
     {
         string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
             Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -882,7 +919,7 @@ public class DigestGenerationServiceTests
     private async Task<string> CapturePromptAsync()
     {
         string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
             Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -1194,7 +1231,7 @@ public class DigestGenerationServiceTests
     // ---- A summary cannot credit today with steps the member has not walked ----
 
     private void ReturnsSummary(string summary) =>
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -1293,7 +1330,7 @@ public class DigestGenerationServiceTests
     // ---- Suggestion: one usable message or none at all ----
 
     private void ReturnsSuggestion(string? suggestion) =>
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -1436,17 +1473,17 @@ public class DigestGenerationServiceTests
     }
 
     [Fact]
+    /// <summary>
+    /// On the rewrite half, which is where the boundary belongs now: the clinical read may name a
+    /// condition, and this is the brief that decides the family is not told one.
+    /// </summary>
     public async Task AsksForASuggestionThatNeverNamesACondition()
     {
-        string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
-            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+        var prompt = await CapturedRewritePrompt();
 
-        await CreateSut().GenerateDueDigestsAsync(UtcNow);
-
-        Assert.NotNull(prompt);
         Assert.Contains("never name or guess at a medical condition", prompt);
         Assert.Contains("never worded as something the", prompt);
+        Assert.Contains("never carry the name of a condition into what you write", prompt);
     }
 
     /// <summary>
@@ -1457,13 +1494,15 @@ public class DigestGenerationServiceTests
     public async Task AsksForSuggestionsTheReadingsEarned_AndOffersNoExampleToCopy()
     {
         string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
             Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.NotNull(prompt);
-        Assert.Contains("must answer something in the readings or computed observations above", prompt);
+        // The specificity rule sits with the half that can see the readings — a rewrite handed
+        // only a clinical read cannot judge whether a suggestion answers them.
+        Assert.Contains("must answer something in the readings or computed observations", prompt);
         Assert.Contains("equally true for any person on any day", prompt);
         Assert.DoesNotContain("suggest checking in", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("change of routine", prompt, StringComparison.OrdinalIgnoreCase);
@@ -1630,7 +1669,7 @@ public class DigestGenerationServiceTests
             yesterdayRestingHr: 62);
 
         Assert.Equal(0, await CreateSut().GenerateDueDigestsAsync(UtcNow));
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -1749,15 +1788,42 @@ public class DigestGenerationServiceTests
         await _questionnaires.Received(expectStored ? 1 : 0).AddAsync(Arg.Any<MemberQuestionnaire>());
     }
 
+    /// <summary>
+    /// DPIA row A20 as a test: the rewrite slot leaves the estate, so it is handed the clinical
+    /// read and nothing else. No name, no age, no readings, no monitoring section, no family
+    /// answers — the <c>DeidentifiedFindings</c> parameter makes that true by construction, and
+    /// this pins it against a future edit that reaches for the member context because it was
+    /// convenient.
+    /// </summary>
+    [Fact]
+    public async Task TheRewritePrompt_CarriesTheClinicalReadAndNothingAboutTheMember()
+    {
+        GivenAnsweredQuestion("Does Margaret enjoy gardening", "Yes");
+        ReturnsClinicalRead("Overnight breathing sat above this member's usual on a still day.");
+
+        var prompt = await CapturedRewritePrompt();
+
+        Assert.Contains("--- Clinical read to write from ---", prompt);
+        Assert.Contains("Overnight breathing sat above this member's usual on a still day.", prompt);
+        Assert.DoesNotContain("Margaret", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Age:", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("--- Recent activity", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("--- Usual pattern", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            QuestionnaireAnswersContextSource.SectionLabel, prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            MonitoringContextSource.SectionLabel, prompt, StringComparison.Ordinal);
+    }
+
     /// <summary>A question is a by-product of a summary worth keeping, not of a call being made.</summary>
     [Fact]
     public async Task AsksNothing_WhenTheSummaryItselfWasDiscarded()
     {
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
-                Summary = "Here are the recent readings for their family.",
+                Summary = "Write a loved one's family their summary of the day.",
                 Headline = "A settled night",
                 Question = "Has anything changed at home recently?",
             });
@@ -2223,8 +2289,14 @@ public class DigestGenerationServiceTests
             ]);
     }
 
-    private void ReturnsQuestion(string question, string? rationale = null, string? questionScope = null) =>
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+    /// <summary>
+    /// A question needs both halves: the clinical read decides there is a topic worth asking about
+    /// and how long the answer stays true, and the rewrite puts it in a family's words.
+    /// </summary>
+    private void ReturnsQuestion(string question, string? rationale = null, string? questionScope = null)
+    {
+        ReturnsClinicalRead(questionTopic: "what their evenings usually look like", questionScope: questionScope);
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
             {
@@ -2232,23 +2304,38 @@ public class DigestGenerationServiceTests
                 Summary = "A settled day: steady heart rate and a good night's sleep.",
                 Question = question,
                 QuestionRationale = rationale,
-                QuestionScope = questionScope,
             });
+    }
 
-    private void ReturnsUrgency(string urgency) =>
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new DigestGenerationService.DigestAiResponse
-            {
-                Headline = "A settled night",
-                Summary = "A settled day: steady heart rate and a good night's sleep.",
-                Urgency = urgency,
-            });
+    /// <summary>Urgency is the clinical read's judgement — the rewrite is not shown the readings.</summary>
+    private void ReturnsUrgency(string urgency) => ReturnsClinicalRead(urgency: urgency);
 
+    /// <summary>
+    /// The prompt MedGemma is sent: member context, the usual pattern, the interpretation signals
+    /// and the readings. Every expectation about what the model is *told about the member* belongs
+    /// here — see <see cref="CapturedRewritePrompt"/> for the other half.
+    /// </summary>
     private async Task<string> CapturedPrompt()
     {
         string? prompt = null;
-        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+        await _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
+            Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        return prompt;
+    }
+
+    /// <summary>
+    /// The prompt the rewrite slot is sent: the voice, the placeholder and the clinical read — and
+    /// nothing about the member. What it must <em>not</em> contain is the point of most
+    /// expectations against it.
+    /// </summary>
+    private async Task<string> CapturedRewritePrompt()
+    {
+        string? prompt = null;
+        await _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
             Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>());
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
