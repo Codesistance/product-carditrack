@@ -142,9 +142,19 @@ public partial class LegalDocumentPage : ContentPage
     /// to stop saying "Terms of Service" — see <see cref="EnterDocument"/>.
     /// </summary>
     private static string? TitleFor(string url) =>
-        url.StartsWith(TermsPath, StringComparison.OrdinalIgnoreCase) ? TermsTitle
-        : url.StartsWith(PrivacyPath, StringComparison.OrdinalIgnoreCase) ? PrivacyTitle
+        IsPath(url, TermsPath) ? TermsTitle
+        : IsPath(url, PrivacyPath) ? PrivacyTitle
         : null;
+
+    /// <summary>
+    /// Whether the URL is that document, rather than merely starting like it. The path has to end
+    /// where the document's does — at the end of the URL, a trailing slash, a query or a fragment
+    /// — so a page added later at /privacy-policy-and-cookies opens in the phone's browser
+    /// instead of being read as the privacy policy.
+    /// </summary>
+    private static bool IsPath(string url, string path) =>
+        url.StartsWith(path, StringComparison.OrdinalIgnoreCase)
+        && (url.Length == path.Length || url[path.Length] is '/' or '?' or '#');
 
     /// <summary>
     /// Fire-and-forget by design: the navigation is already cancelled, and a phone with no app
