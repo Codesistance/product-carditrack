@@ -168,8 +168,8 @@ public partial class AlertsPage : ContentPage
         Filters.SetMemberFilter(
             memberId is null ? null : _memberFilterName ?? UnnamedMemberChipLabel);
 
+        // LoadAsync decides between the saved page for the new filter and the loading card.
         _lastData = null;
-        SetState(AlertsState.Loading);
         _ = LoadAsync(force: true);
     }
 
@@ -214,9 +214,6 @@ public partial class AlertsPage : ContentPage
         var generation = ++_loadGeneration;
         _isLoading = true;
 
-        if (_lastData is null)
-            SetState(AlertsState.Loading);
-
         // Capture the chip at request start so a later tap cannot let this response paint under
         // a different filter — the generation check drops the whole load if it was superseded.
         var requestedFilter = Filters.Selected;
@@ -226,6 +223,32 @@ public partial class AlertsPage : ContentPage
         var loadNudges = false;
         try
         {
+            // Nothing on the wall yet — a cold start, or a chip or member filter that has just
+            // changed the question. Put up the page the device last saved for this exact query,
+            // if it has one, and fetch the live one behind it. The list used to open onto the
+            // loading card on every landing while the previous answer sat encrypted on the
+            // device; the loading card is now only for a query the device has never answered.
+            // The saved rows can only be the new query's, because the cache is keyed by it, so
+            // this is not the stale-rows-under-a-new-chip bug (#308) coming back.
+            if (_lastData is null)
+            {
+                var saved = await _api.PeekAlertsAsync(
+                    severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
+                if (IsStale(generation, cts))
+                    return;
+
+                if (saved is not null)
+                {
+                    _lastData = saved;
+                    Render(saved);
+                    SetState(AlertsState.Loaded);
+                }
+                else
+                {
+                    SetState(AlertsState.Loading);
+                }
+            }
+
             var call = _api.GetAlertsAsync(
                 severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
             var data = await call;
@@ -477,11 +500,11 @@ public partial class AlertsPage : ContentPage
 
     private void OnFilterChanged(object? sender, AlertFilter filter)
     {
-        // A filter change is a different query, so the cached page no longer applies —
-        // dropping it and showing the skeleton immediately rather than leaving stale rows
-        // under the newly highlighted chip while the request is in flight (#308).
+        // A filter change is a different query, so the page on screen no longer applies —
+        // it is dropped rather than left under the newly highlighted chip while the request is
+        // in flight (#308). LoadAsync then shows the device's saved page for the new query if it
+        // has one, and the skeleton only if it has not.
         _lastData = null;
-        SetState(AlertsState.Loading);
         _ = LoadAsync(force: true);
     }
 
