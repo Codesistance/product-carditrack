@@ -436,6 +436,8 @@ public static class AiServiceExtensions
     /// host — can share the check rather than duplicate it.
     /// </para>
     /// </remarks>
+
+
     /// <summary>
     /// The clinical-inspection switch writes prompts and completions — health data — to the log
     /// verbatim. That is acceptable in a developer's own environment and never in production, so
@@ -462,7 +464,6 @@ public static class AiServiceExtensions
                 + "It writes prompts and model output — health data — to the log verbatim, and is for "
                 + "development environments only. Set it to false here."));
     }
-
     private static void RequireCoherentIdentityTokenMode(string sectionName, string baseUrl, bool useIdentityToken)
     {
         var baseUri = new Uri(baseUrl);
