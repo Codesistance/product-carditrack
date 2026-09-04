@@ -128,8 +128,12 @@
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleHelpTapped"/>
                                     </Grid.GestureRecognizers>
+                                    <!-- A notch under the section-title size: this is the header
+                                         of one collapsible card, not a section of the page, and at
+                                         18 it weighed the same as "Devices List" above it. -->
                                     <Label Text="Having trouble?"
                                            Style="{StaticResource DashboardSectionTitle}"
+                                           FontSize="16"
                                            VerticalTextAlignment="Center"/>
                                     <Image x:Name="HelpChevron"
                                            Grid.Column="1"

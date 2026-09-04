@@ -585,10 +585,20 @@
             <!-- Takes the input bar's row while a past conversation is open. Reading it is
                  free; continuing it is a deliberate act — this button reopens it server-side as
                  the active conversation (ending whatever was), so typing can never silently land
-                 in a thread other than the one on screen. -->
-            <Grid x:Name="ContinuePanel" Grid.Row="3" Margin="16,8,16,16" IsVisible="False">
+                 in a thread other than the one on screen.
+
+                 Sized to the sheet's own footer pills rather than to a page's primary button:
+                 full-bleed at 52dp it read as the point of the screen, when the point is the
+                 conversation above it. Hugging its text at pill scale keeps it plainly a
+                 control — and still the only one here — without out-shouting what it follows. -->
+            <Grid x:Name="ContinuePanel" Grid.Row="3" Margin="16,6,16,14" IsVisible="False">
                 <Button Text="Continue this conversation"
                         Style="{StaticResource SecondaryOutlineButton}"
+                        HorizontalOptions="Center"
+                        FontSize="14"
+                        HeightRequest="40"
+                        CornerRadius="20"
+                        Padding="20,0"
                         Clicked="OnContinueClicked"/>
             </Grid>
 
