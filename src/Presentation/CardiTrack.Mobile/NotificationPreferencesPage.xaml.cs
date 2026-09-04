@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
 
@@ -12,15 +13,16 @@ public partial class NotificationPreferencesPage : ContentPage
     /// <summary>
     /// The categories a caregiver may mute, in the order they appear, with the words a caregiver
     /// would use for them. Safety is listed too — pinned on — so the row says what cannot be
-    /// silenced instead of leaving that to be discovered. The wire values are the enum names
-    /// (<c>NotificationCategory</c>), which is what the API's <c>mutedCategories</c> carries.
+    /// silenced instead of leaving that to be discovered. The wire values are the
+    /// <see cref="NotificationCategory"/> names, which is what the API's <c>mutedCategories</c>
+    /// carries — taken with <c>nameof</c> so a rename cannot silently stop a mute working.
     /// </summary>
     private static readonly (string Wire, string Label, string Detail, bool CanMute)[] Categories =
     [
-        ("Safety", "Safety", "A device gone quiet, or nobody listening. Can't be muted.", false),
-        ("Blocking", "Setup reminders", "Something is stopping CardiTrack working — no device, a baseline still learning", true),
-        ("Unlock", "Tips", "Things you could add to get more from their readings", true),
-        ("Account", "Account notices", "Sign-in, trial and account changes", true),
+        (nameof(NotificationCategory.Safety), "Safety", "A device gone quiet, or nobody listening. Can't be muted.", false),
+        (nameof(NotificationCategory.Blocking), "Setup reminders", "Something is stopping CardiTrack working — no device, a baseline still learning", true),
+        (nameof(NotificationCategory.Unlock), "Tips", "Things you could add to get more from their readings", true),
+        (nameof(NotificationCategory.Account), "Account notices", "Sign-in, trial and account changes", true),
     ];
 
     private readonly ICardiTrackApiClient _api;

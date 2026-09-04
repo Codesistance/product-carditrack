@@ -232,6 +232,10 @@ public partial class AlertsPage : ContentPage
             // this is not the stale-rows-under-a-new-chip bug (#308) coming back.
             if (_lastData is null)
             {
+                // Loading first, before the peek is awaited: the previous query's rows (or its
+                // error) must not sit under the newly chosen chip for even the frame the cache
+                // read takes (#308). A saved page then replaces the skeleton within that read.
+                SetState(AlertsState.Loading);
                 var saved = await _api.PeekAlertsAsync(
                     severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
                 if (IsStale(generation, cts))
@@ -242,10 +246,6 @@ public partial class AlertsPage : ContentPage
                     _lastData = saved;
                     Render(saved);
                     SetState(AlertsState.Loaded);
-                }
-                else
-                {
-                    SetState(AlertsState.Loading);
                 }
             }
 
