@@ -593,6 +593,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         {
             entry = await _cache.TryGetAsync(path, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The caller gave up on this read — a chip tap superseding a load, a screen going
+            // away. That is not a failed cache and must not be logged as one; the caller's own
+            // cancellation handling is the right place for it to land.
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Offline cache read failed for GET {Path}", path);
