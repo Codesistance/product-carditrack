@@ -457,7 +457,7 @@ public static class AiServiceExtensions
             return;
 
         throw new InvalidOperationException(
-            Message(sectionName, nameof(PrivateAiSettings.LogClinicalOutput),
+            Message(sectionName, nameof(IMedGemmaModelSettings.LogClinicalOutput),
                 $"is true while {ConfigurationKeys.Deployment.AspNetCoreEnvironment} is '{environment}'. "
                 + "It writes prompts and model output — health data — to the log verbatim, and is for "
                 + "development environments only. Set it to false here."));

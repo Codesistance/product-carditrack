@@ -49,7 +49,11 @@ public partial class SettingsPage : ContentPage
             var quiet = prefs.QuietHoursStart is { } start && prefs.QuietHoursEnd is { } end
                 ? $"Quiet {start:HH:mm} – {end:HH:mm}"
                 : "No quiet hours";
-            var muted = prefs.MutedCategories.Count switch
+            // Safety cannot be muted — the API strips it on every update — so a stored list that
+            // still names it (from before that rule) must not count as a kind muted here.
+            var mutedCount = prefs.MutedCategories.Count(c =>
+                !string.Equals(c, nameof(CardiTrack.Domain.Enums.NotificationCategory.Safety), StringComparison.OrdinalIgnoreCase));
+            var muted = mutedCount switch
             {
                 0 => "hearing about everything",
                 1 => "1 kind muted",
