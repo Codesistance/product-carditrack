@@ -31,8 +31,8 @@ public sealed record ChatRouteDecision
         && !AreBothReadings(p, r);
 
     /// <summary>
-    /// The ladder's neighbour relation. The five data rungs are ranked; the steer entries sit off
-    /// the ladder entirely, so a steer against any data rung is never adjacent — "either steer
+    /// The ladder's neighbour relation. The five ladder rungs are ranked; the steer entries sit off
+    /// the ladder entirely, so a steer against any ladder rung is never adjacent — "either steer
     /// entry against analysis" is §5's own example of what should clarify. The two steers are
     /// adjacent to each other: both answer without data, and confusing them costs a redirect
     /// where a warm reply belonged, which is an eval-set concern rather than a clarify one.

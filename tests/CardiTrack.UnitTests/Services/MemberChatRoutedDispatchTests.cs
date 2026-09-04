@@ -205,7 +205,7 @@ public class MemberChatRoutedDispatchTests
     /// so the primary answers rather than the caregiver being asked which they meant (§5).
     /// </summary>
     [Fact]
-    public async Task TwoReadingRungsApart_AnswerTheQuestion_InsteadOfAskingWhichWasMeant()
+    public async Task ARunnerUpTwoReadingRungsAway_AnswersTheQuestion_InsteadOfAskingWhichWasMeant()
     {
         RouterAnswers(MemberChatWorkflow.Status, MemberChatWorkflow.Inference);
 
