@@ -29,10 +29,13 @@ public partial class AlertListCard : ContentView
 
         Avatar.Apply(alert.CardiMemberName, alert.CardiMemberPhotoUrl);
         TitleLabel.Text = alert.Title;
-        MemberLabel.Text = alert.CardiMemberName;
-        MemberLabel.IsVisible = !string.IsNullOrWhiteSpace(alert.CardiMemberName);
+        // Who and when share the line under the title: "Dad, 6 days ago". An alert with no
+        // member name (none today, but the field is nullable) just says when.
+        var when = RelativeTime.Format(alert.TriggeredAt);
+        MemberLabel.Text = string.IsNullOrWhiteSpace(alert.CardiMemberName)
+            ? when
+            : $"{alert.CardiMemberName}, {when}";
         MessageLabel.Text = alert.Message;
-        TimeLabel.Text = RelativeTime.Format(alert.TriggeredAt);
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
 

@@ -27,7 +27,7 @@
                 <RoundRectangle CornerRadius="20"/>
             </Border.StrokeShape>
 
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto"
                   ColumnDefinitions="Auto,*,Auto"
                   ColumnSpacing="14"
                   RowSpacing="4">
@@ -37,50 +37,21 @@
                      do on the dashboard hero, Member Detail, and the alert's own detail screen.
                      This card used to draw its own — a pale tile with blue initials, per Figma
                      101:6525 — so the same relative changed appearance on the way from this
-                     list into the detail. Sized to match AlertDetailPage's 52, which is where
-                     the title on this row leads.
+                     list into the detail.
+
+                     Sized to the two lines beside it — title and "who, when" — rather than to
+                     AlertDetailPage's 52: the head of the row was three lines with the badge
+                     on top, and the box was sized to that; now it is two, and a taller box
+                     would stretch the rows apart to fill itself.
 
                      It also carries the photo the list already returns; the local tile was
                      initials-only and ignored it. -->
                 <controls:MemberAvatar x:Name="Avatar"
-                                       Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
-                                       BoxWidth="52"/>
-
-                <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="8">
-                    <Border x:Name="SeverityPill"
-                            StrokeThickness="0"
-                            Padding="8,3"
-                            VerticalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12"/>
-                        </Border.StrokeShape>
-                        <Label x:Name="SeverityLabel"
-                               FontFamily="QuicksandMedium"
-                               FontSize="13"
-                               TextColor="{StaticResource White}"/>
-                    </Border>
-
-                    <Label x:Name="TimeLabel"
-                           FontFamily="QuicksandMedium"
-                           FontSize="14"
-                           TextColor="{StaticResource MutedText}"
-                           VerticalTextAlignment="Center"/>
-                </HorizontalStackLayout>
-
-                <!-- Unread dot. Hidden once the alert has been acknowledged. -->
-                <Border x:Name="UnreadDot"
-                        Grid.Row="0" Grid.Column="2"
-                        WidthRequest="12" HeightRequest="12"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource Primary}"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="6"/>
-                    </Border.StrokeShape>
-                </Border>
+                                       Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                                       BoxWidth="46"/>
 
                 <Label x:Name="TitleLabel"
-                       Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                       Grid.Row="0" Grid.Column="1"
                        Style="{StaticResource Heading3}"
                        LineBreakMode="TailTruncation"
                        MaxLines="2">
@@ -89,8 +60,37 @@
                     </Label.GestureRecognizers>
                 </Label>
 
+                <!-- Severity badge in the card's top-right corner, small: it is a category
+                     stamp, not the headline — the title is. The unread dot sits beside it,
+                     since both say "this one still needs you" and belong together. -->
+                <HorizontalStackLayout Grid.Row="0" Grid.Column="2" Spacing="8" VerticalOptions="Start">
+                    <Border x:Name="UnreadDot"
+                            WidthRequest="10" HeightRequest="10"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource Primary}"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="5"/>
+                        </Border.StrokeShape>
+                    </Border>
+                    <Border x:Name="SeverityPill"
+                            StrokeThickness="0"
+                            Padding="7,2"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="10"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="SeverityLabel"
+                               FontFamily="QuicksandMedium"
+                               FontSize="10"
+                               CharacterSpacing="0.4"
+                               TextColor="{StaticResource White}"/>
+                    </Border>
+                </HorizontalStackLayout>
+
+                <!-- "Dad, 6 days ago": who and when on one muted line under the title. -->
                 <Label x:Name="MemberLabel"
-                       Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+                       Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
                        FontFamily="QuicksandMedium"
                        FontSize="12"
                        TextColor="{StaticResource MutedText}"
@@ -99,7 +99,7 @@
                 <!-- Spans the avatar column too: the expanded message should use the card's
                      full width rather than staying in the narrow text column. -->
                 <Label x:Name="MessageLabel"
-                       Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
+                       Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                        Margin="0,6,0,0"
                        Style="{StaticResource Body2}"
                        MaxLines="2"
@@ -109,7 +109,7 @@
                     </Label.GestureRecognizers>
                 </Label>
 
-                <Grid Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
+                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                       Margin="0,10,0,0"
                       ColumnDefinitions="Auto,Auto,Auto,*,Auto"
                       ColumnSpacing="8">
