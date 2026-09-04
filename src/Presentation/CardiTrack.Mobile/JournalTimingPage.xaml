@@ -82,12 +82,13 @@
                                     <TapGestureRecognizer Tapped="OnDaybookTimeTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Daybook" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="DaybookSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Daybook" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="DaybookSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="DaybookValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"/>
@@ -100,12 +101,13 @@
                                     <TapGestureRecognizer Tapped="OnWeekbookTimeTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Weekbook" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="WeekbookSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Weekbook" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="WeekbookSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="WeekbookValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"/>
@@ -118,12 +120,13 @@
                                     <TapGestureRecognizer Tapped="OnWeekStartTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Week starts on" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="WeekStartSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Week starts on" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="WeekStartSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="WeekStartValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"/>
@@ -136,12 +139,13 @@
                                     <TapGestureRecognizer Tapped="OnMonthbookTimeTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Monthbook" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="MonthbookSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Monthbook" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="MonthbookSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="MonthbookValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"/>
@@ -175,12 +179,13 @@
                                     <TapGestureRecognizer Tapped="OnBedtimeToleranceTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Bedtime" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="BedtimeToleranceSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Bedtime" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="BedtimeToleranceSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="BedtimeToleranceValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"/>
@@ -193,12 +198,13 @@
                                     <TapGestureRecognizer Tapped="OnWakeToleranceTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Waking time" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="WakeToleranceSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Waking time" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="WakeToleranceSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="WakeToleranceValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"/>
@@ -211,12 +217,13 @@
                                     <TapGestureRecognizer Tapped="OnDirectionBoundTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Far off their usual" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="DirectionBoundSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Far off their usual" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="DirectionBoundSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="DirectionBoundValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"/>
@@ -229,12 +236,13 @@
                                     <TapGestureRecognizer Tapped="OnLevelToleranceTapped"/>
                                 </Grid.GestureRecognizers>
                                 <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                    <Label Text="Small differences" Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="LevelToleranceSubtitle" Style="{StaticResource Body2}"/>
+                                    <Label Text="Small differences" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                    <Label x:Name="LevelToleranceSubtitle" Style="{StaticResource Body2}" FontSize="13"/>
                                 </VerticalStackLayout>
                                 <Label x:Name="LevelToleranceValue"
                                        Grid.Column="1"
                                        Style="{StaticResource Body1SemiBoldDark}"
+                                       FontSize="15"
                                        TextColor="{StaticResource Primary}"
                                        VerticalTextAlignment="Center"
                                        HorizontalTextAlignment="End"
