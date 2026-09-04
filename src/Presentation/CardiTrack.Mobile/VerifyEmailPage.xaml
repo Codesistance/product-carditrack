@@ -12,13 +12,16 @@
         <!-- ════════════════════════════════════════
              GRADIENT HEADER
              ════════════════════════════════════════ -->
-        <controls:HeaderBand Grid.Row="0" ContentPadding="20,48,20,32">
+        <!-- Same band as the other three signed-out screens (Sign In, Create Account, Forgot
+             Password): their inset, their title and subtitle styles, their watermark. This
+             one had a 48/32 inset around an 18pt title — the tallest band in the app for two
+             lines of text, and the odd one out in the flow it sits in. -->
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,24,20,20" ShowWatermark="True">
             <VerticalStackLayout Spacing="4">
                 <Label Text="Verify your email"
-                       Style="{StaticResource Heading3}"
-                       TextColor="{StaticResource White}" />
+                       Style="{StaticResource AuthHeaderTitle}" />
                 <Label Text="Open the link we sent, then come back"
-                       Style="{StaticResource Body1SemiBold}" />
+                       Style="{StaticResource AuthHeaderSubtitle}" />
             </VerticalStackLayout>
         </controls:HeaderBand>
 

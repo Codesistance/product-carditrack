@@ -11,13 +11,13 @@
          edges and the radius lives on the cards inside. -->
     <Grid RowDefinitions="Auto,*">
 
-        <controls:HeaderBand Grid.Row="0" ContentPadding="20,16,20,16">
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
                         MinimumHeightRequest="40"
                         StrokeThickness="0"
-                        BackgroundColor="#33FFFFFF"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
                         VerticalOptions="Fill">
                     <!-- Fill + width-bound-to-height: the circle runs from the title's top to
                          the description's bottom and stays square at whatever that is, so every
@@ -32,24 +32,21 @@
                                  Clicked="OnBackClicked"/>
                 </controls:SquareBorder>
 
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                    <!-- Title with what the page is tight beneath it — one stack, top-aligned
-                         with the icon. The description is declared after the title, so screen
-                         readers announce them in reading order. -->
-                    <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                        <Label Text="Complete the picture"
-                           Style="{StaticResource Heading3}"
-                           TextColor="{StaticResource White}"/>
-                        <Label Text="Small things that make their readings say more"
-                               FontFamily="Quicksand"
-                               FontSize="12"
-                               TextColor="{StaticResource White}"
-                               Opacity="0.85"
-                               LineBreakMode="TailTruncation"/>
-                    </VerticalStackLayout>
+                <!-- Title with one line beneath it, top-aligned with the icon like every other
+                     header. The line starts as what the page is and becomes the count once the
+                     list has loaded ("3 things to look at" / "You're all set") — it used to be a
+                     third line in a second stack, centred, which no other band has. -->
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Complete the picture"
+                       Style="{StaticResource Heading3}"
+                       TextColor="{StaticResource White}"/>
                     <Label x:Name="SubtitleLabel"
-                           Style="{StaticResource Body2}"
-                           TextColor="#CCFFFFFF"/>
+                           Text="Small things that make their readings say more"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
             </Grid>
         </controls:HeaderBand>
