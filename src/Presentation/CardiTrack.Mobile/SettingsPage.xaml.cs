@@ -99,10 +99,10 @@ public partial class SettingsPage : ContentPage
     }
 
     private async void OnTermsTapped(object? sender, TappedEventArgs e) =>
-        await Navigation.PushModalAsync(new LegalDocumentPage("Terms of Service", LegalDocumentPage.TermsUrl));
+        await Navigation.PushModalAsync(new LegalDocumentPage(LegalDocumentPage.TermsTitle, LegalDocumentPage.TermsUrl));
 
     private async void OnPrivacyTapped(object? sender, TappedEventArgs e) =>
-        await Navigation.PushModalAsync(new LegalDocumentPage("Privacy Policy", LegalDocumentPage.PrivacyUrl));
+        await Navigation.PushModalAsync(new LegalDocumentPage(LegalDocumentPage.PrivacyTitle, LegalDocumentPage.PrivacyUrl));
 
     // Starts the erasure request the privacy policy promises (30 days), the same way the
     // policy page itself does — a pre-addressed email — until an endpoint exists.

@@ -11,6 +11,12 @@ namespace CardiTrack.Mobile;
 /// modal keeps the form exactly where they left it.
 /// </para>
 /// <para>
+/// Fetched with <c>?embed</c>, which the site answers with the same document minus its own
+/// header, hero and footer, set in the app's face and inks. Before that switch existed the
+/// reader showed the marketing page whole: a second sticky header under ours, a navy banner,
+/// the site footer, and justified prose hyphenated mid-word at phone width.
+/// </para>
+/// <para>
 /// Fetched from the site rather than bundled: these documents change without the app changing,
 /// and a copy compiled into a release is a copy that goes stale the first time legal edits a
 /// line — while still being the version the app claims someone agreed to.
@@ -24,10 +30,30 @@ public partial class LegalDocumentPage : ContentPage
     /// </summary>
     private const string SiteRoot = "https://carditrack.com";
 
-    internal const string TermsUrl = SiteRoot + "/terms-of-service";
-    internal const string PrivacyUrl = SiteRoot + "/privacy-policy";
+    /// <summary>
+    /// The site strips its own chrome for this query. Kept on every navigation the reader makes
+    /// — a cross-reference from the terms to the privacy policy has to arrive stripped too, or
+    /// the caregiver lands back on the marketing page one tap in.
+    /// </summary>
+    private const string EmbedParameter = "embed";
 
-    private readonly string _url;
+    private const string EmbedQuery = "?" + EmbedParameter;
+
+    private const string TermsPath = SiteRoot + "/terms-of-service";
+    private const string PrivacyPath = SiteRoot + "/privacy-policy";
+
+    internal const string TermsUrl = TermsPath + EmbedQuery;
+    internal const string PrivacyUrl = PrivacyPath + EmbedQuery;
+
+    internal const string TermsTitle = "Terms of Service";
+    internal const string PrivacyTitle = "Privacy Policy";
+
+    /// <summary>
+    /// The document on screen, not the one this page was opened with — a caregiver who followed
+    /// the terms' link to the privacy policy and then lost the network should get Try again on
+    /// the policy, not be sent back to the terms.
+    /// </summary>
+    private string _url;
 
     public LegalDocumentPage(string title, string url)
     {
@@ -46,12 +72,121 @@ public partial class LegalDocumentPage : ContentPage
     }
 
     /// <summary>
+    /// Everything the document links to is decided here. The two legal documents cross-reference
+    /// each other, so those stay in the reader — with the embed query re-attached, since the link
+    /// in the copy points at the plain URL. Everything else — the site's own nav, a mailto: to
+    /// support — belongs to the phone: a caregiver who taps "contact us" should not end up
+    /// browsing carditrack.com inside a modal with one way out.
+    /// </summary>
+    private void OnNavigating(object? sender, WebNavigatingEventArgs e)
+    {
+        if (!Uri.TryCreate(e.Url, UriKind.Absolute, out var uri) || !IsLegalDocument(e.Url))
+        {
+            e.Cancel = true;
+            OpenExternally(e.Url);
+            return;
+        }
+
+        if (HasEmbed(uri))
+        {
+            EnterDocument(e.Url);
+            return;
+        }
+
+        e.Cancel = true;
+        EnterDocument(WithEmbed(uri));
+        DocumentView.Source = new UrlWebViewSource { Url = _url };
+    }
+
+    /// <summary>
+    /// Records the document the reader is on: the one Try again retries, and the one the band
+    /// above it names. Set as the navigation begins rather than when it lands, so a cross-link
+    /// that fails offline shows its own title over the error rather than the previous document's.
+    /// </summary>
+    private void EnterDocument(string url)
+    {
+        _url = url;
+        if (TitleFor(url) is { } title)
+            TitleLabel.Text = title;
+    }
+
+    private static bool IsLegalDocument(string url) => TitleFor(url) is not null;
+
+    /// <summary>
+    /// Whether the URL already asks for the stripped document. Read from the query rather than
+    /// from the whole URL: these documents link to their own sections, and an anchor that happens
+    /// to be called "embed" is not a request for anything.
+    /// </summary>
+    private static bool HasEmbed(Uri uri) =>
+        uri.Query.TrimStart('?').Split('&').Any(part =>
+            part.Equals(EmbedParameter, StringComparison.OrdinalIgnoreCase)
+            || part.StartsWith(EmbedParameter + "=", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Adds the query the site strips its chrome for, keeping whatever the URL already carried.
+    /// Built rather than concatenated: ".../terms-of-service#retention" + "?embed" is a fragment
+    /// named "retention?embed", the site never sees the query, and a caregiver following a
+    /// cross-reference lands on the marketing page instead of the document.
+    /// </summary>
+    private static string WithEmbed(Uri uri)
+    {
+        var builder = new UriBuilder(uri);
+        var query = builder.Query.TrimStart('?');
+        builder.Query = query.Length == 0 ? EmbedParameter : query + "&" + EmbedParameter;
+        return builder.Uri.AbsoluteUri;
+    }
+
+    /// <summary>
+    /// Which document a URL is, or null for anything that is not one of the two. Also what keeps
+    /// the header honest: follow the terms' link to the privacy policy and the band above it has
+    /// to stop saying "Terms of Service" — see <see cref="EnterDocument"/>.
+    /// </summary>
+    private static string? TitleFor(string url) =>
+        IsPath(url, TermsPath) ? TermsTitle
+        : IsPath(url, PrivacyPath) ? PrivacyTitle
+        : null;
+
+    /// <summary>
+    /// Whether the URL is that document, rather than merely starting like it. The path has to end
+    /// where the document's does — at the end of the URL, a trailing slash, a query or a fragment
+    /// — so a page added later at /privacy-policy-and-cookies opens in the phone's browser
+    /// instead of being read as the privacy policy.
+    /// </summary>
+    private static bool IsPath(string url, string path) =>
+        url.StartsWith(path, StringComparison.OrdinalIgnoreCase)
+        && (url.Length == path.Length || url[path.Length] is '/' or '?' or '#');
+
+    /// <summary>
+    /// Fire-and-forget by design: the navigation is already cancelled, and a phone with no app
+    /// willing to open the link leaves the document exactly where it was, which is the right
+    /// outcome — there is nothing useful to say about a link that went nowhere.
+    /// </summary>
+    private static async void OpenExternally(string url)
+    {
+        try
+        {
+            await Launcher.Default.OpenAsync(url);
+        }
+        catch (Exception)
+        {
+            // No handler for the scheme, or the launcher refused it.
+        }
+    }
+
+    /// <summary>
     /// Success and failure both arrive here — <see cref="WebNavigatedEventArgs.Result"/> carries
     /// which. A WebView that cannot reach the network renders its own error page, so without this
     /// the caregiver would be shown Chrome's offline dinosaur inside CardiTrack.
     /// </summary>
     private void OnNavigated(object? sender, WebNavigatedEventArgs e)
     {
+        // A cancelled navigation is one of ours: OnNavigating cancels to re-issue the URL with
+        // the embed query, or to hand a link to the phone. Neither is a failure — the document
+        // on screen is still good, and a re-issued load is already on its way, so the spinner
+        // stays up for it rather than being replaced by "we couldn't reach carditrack.com".
+        if (e.Result == WebNavigationResult.Cancel)
+            return;
+
         LoadingPanel.IsVisible = false;
 
         if (e.Result == WebNavigationResult.Success)

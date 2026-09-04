@@ -5,7 +5,12 @@
              x:Class="CardiTrack.Mobile.LegalDocumentPage"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
-             BackgroundColor="{StaticResource PageGround}">
+             BackgroundColor="{StaticResource White}">
+
+    <!-- White, not the app's page ground: the document behind this is white, and the band's
+         rounded bottom corners and its drop shadow are drawn against whatever the page paints.
+         On the blue-grey ground that left two dark smudges either side of the band, floating on
+         the top of the document. There is no page ground to see here — the document fills it. -->
 
     <!-- The terms and the privacy policy, read inside the app rather than handed to the phone's
          browser. Someone part-way through creating an account is being asked to agree to these,
@@ -79,6 +84,7 @@
             </VerticalStackLayout>
 
             <WebView x:Name="DocumentView"
+                     Navigating="OnNavigating"
                      Navigated="OnNavigated"
                      IsVisible="False"/>
         </Grid>

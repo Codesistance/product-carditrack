@@ -101,10 +101,10 @@ public partial class CreateAccountPage : ContentPage
         => UpdateCreateButtonState();
 
     private void OnTermsTapped(object? sender, TappedEventArgs e)
-        => ShowDocument("Terms of Service", LegalDocumentPage.TermsUrl);
+        => ShowDocument(LegalDocumentPage.TermsTitle, LegalDocumentPage.TermsUrl);
 
     private void OnPrivacyTapped(object? sender, TappedEventArgs e)
-        => ShowDocument("Privacy Policy", LegalDocumentPage.PrivacyUrl);
+        => ShowDocument(LegalDocumentPage.PrivacyTitle, LegalDocumentPage.PrivacyUrl);
 
     /// <summary>
     /// Modal rather than a push, and deliberately not awaited into the tap handler: this form is

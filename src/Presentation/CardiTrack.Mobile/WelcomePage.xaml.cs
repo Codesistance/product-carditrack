@@ -209,10 +209,10 @@ public partial class WelcomePage : ContentPage
     }
 
     private void OnTermsTapped(object? sender, EventArgs e)
-        => ShowDocument("Terms of Service", LegalDocumentPage.TermsUrl);
+        => ShowDocument(LegalDocumentPage.TermsTitle, LegalDocumentPage.TermsUrl);
 
     private void OnPrivacyTapped(object? sender, EventArgs e)
-        => ShowDocument("Privacy Policy", LegalDocumentPage.PrivacyUrl);
+        => ShowDocument(LegalDocumentPage.PrivacyTitle, LegalDocumentPage.PrivacyUrl);
 
     /// <summary>
     /// Opens the document over the carousel. Both links used to raise a popup reading "Terms and
