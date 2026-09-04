@@ -631,10 +631,9 @@
                                    Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
 
-                        <!-- Alert rules (per-CardiMember generation toggles; instant save). In
-                             Management rather than up with the rows about the member: it is not a
-                             fact about them, it is a setting for how CardiTrack watches them,
-                             which is what this group already collects.
+                        <!-- Which alerts CardiTrack checks for. In Management rather than up with the
+                             rows about the member: it is not a fact about them, it is a setting for
+                             how CardiTrack watches them, which is what this group already collects.
 
                              It leads the group. What a caregiver comes to Management to change is
                              usually what CardiTrack watches for; the four rows under it are the
@@ -645,69 +644,39 @@
                              tidy rule and the wrong outcome. Pause and Remove keep their places at
                              the bottom, which is what that rule was really protecting.
 
-                             Still a row that opens in place rather than a page: the switches are
-                             the content, there is no reading to do, and a caregiver changing two
-                             of them should not have to travel for it. -->
+                             A page rather than a row that opens in place, like Journal Settings
+                             beside it: the catalogue has grown to more clusters than fit under a
+                             row without burying the four rows beneath, and two settings pages for
+                             two neighbouring rows should look and behave the same. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                            <VerticalStackLayout>
-                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                      SemanticProperties.Description="Alert Rules"
-                                      SemanticProperties.Hint="Shows or hides which alerts CardiTrack checks for">
-                                    <Grid.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnToggleAlertRulesTapped"/>
-                                    </Grid.GestureRecognizers>
-                                    <!-- A bell wearing a cog. The sliders it replaces said only
-                                         "settings" and could have been any row in this group; the
-                                         bell says which subject, and the cog says these are the
-                                         rules behind the alerts rather than the alerts themselves
-                                         — which is what keeps it apart from the header's plain
-                                         bell, the inbox of what CardiTrack has already found. -->
-                                    <Image Grid.Column="0"
-                                           Source="icon_bell_cog.svg"
-                                           WidthRequest="22" HeightRequest="22"
-                                           VerticalOptions="Center"/>
-                                    <Label Grid.Column="1"
-                                           Text="Alert Rules"
-                                           Style="{StaticResource Body1SemiBoldDark}"
-                                           VerticalTextAlignment="Center"/>
-                                    <!-- Rotated rather than swapped for a second glyph, so the
-                                         arrow turns to point at what it opened. Matches
-                                         AccordionSection, which every other collapsible is on. -->
-                                    <Image x:Name="AlertRulesChevron"
-                                           Grid.Column="2"
-                                           Source="icon_chevron_down.svg"
-                                           WidthRequest="20" HeightRequest="20"
-                                           VerticalOptions="Center"/>
-                                </Grid>
-
-                                <VerticalStackLayout x:Name="AlertRulesBody"
-                                                     IsVisible="False"
-                                                     Spacing="10"
-                                                     Margin="0,0,0,12">
-                                    <!-- Inside the body rather than under the header: it explains
-                                         what the switches do, so it is only worth reading once
-                                         they are on screen. -->
-                                    <Label Text="Turn a rule off and CardiTrack will not check for it"
-                                           Style="{StaticResource Body2}"/>
-
-                                    <!-- Cluster cards are built in code-behind as OutlinedCards:
-                                         they sit on this card now rather than on the page ground,
-                                         and a second elevation there reads as clutter. -->
-                                    <VerticalStackLayout x:Name="AlertRulesHost" Spacing="10"/>
-
-                                    <Border x:Name="AlertRulesSkeleton"
-                                            Style="{StaticResource OutlinedCard}"
-                                            IsVisible="False">
-                                        <controls:SkeletonView HeightRequest="120"/>
-                                    </Border>
-                                </VerticalStackLayout>
-                            </VerticalStackLayout>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Alert Settings"
+                                  SemanticProperties.Hint="Choose which alerts CardiTrack checks for">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnAlertSettingsTapped"/>
+                                </Grid.GestureRecognizers>
+                                <!-- A bell wearing a cog. The bell says which subject, and the cog
+                                     says these are the settings behind the alerts rather than the
+                                     alerts themselves — which is what keeps it apart from the
+                                     header's plain bell, the inbox of what CardiTrack has already
+                                     found. -->
+                                <Image Grid.Column="0"
+                                       Source="icon_bell_cog.svg"
+                                       WidthRequest="22" HeightRequest="22"
+                                       VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Alert Settings"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
                         </Border>
 
                         <!-- When each book is written. In Management rather than under the
                              CardiJournal row it used to sit beneath: the journal is something you
                              read, and this is a setting for how CardiTrack behaves — which is what
-                             this group collects. It follows Alert Rules for the same reason that
+                             this group collects. It follows Alert Settings for the same reason that
                              one leads: both are what CardiTrack does on its own, and neither
                              changes anything about the member.
 
@@ -721,7 +690,7 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnJournalTimingTapped"/>
                                 </Grid.GestureRecognizers>
-                                <!-- The CardiJournal row's book wearing the same cog Alert Rules
+                                <!-- The CardiJournal row's book wearing the same cog Alert Settings
                                      wears: the journal is the subject, the cog is what makes this
                                      the setting for it rather than the journal itself. -->
                                 <Image Grid.Column="0" Source="icon_book_cog.svg"

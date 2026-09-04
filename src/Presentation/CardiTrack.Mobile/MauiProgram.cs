@@ -136,6 +136,7 @@ public static class MauiProgram
         builder.Services.AddTransient<JournalPage>();
         builder.Services.AddTransient<JournalEntryPage>();
         builder.Services.AddTransient<JournalTimingPage>();
+        builder.Services.AddTransient<AlertSettingsPage>();
         builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<NotificationPreferencesPage>();
 

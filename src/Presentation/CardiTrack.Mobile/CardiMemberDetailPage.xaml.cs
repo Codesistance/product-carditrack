@@ -1,8 +1,7 @@
-﻿using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
-using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
@@ -84,17 +83,8 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private const string PauseDropdownAnimation = "pauseDropdown";
 
-    /// <summary>How long the Medical Information / Alert Rules chevrons take to turn over.</summary>
-    private const uint ChevronTurnMs = 200;
-
     private bool _pauseDurationsOpen;
     private bool _pauseDurationsAnimating;
-
-    /// <summary>Guards Switch.Toggled while we rebuild or roll back alert-rule rows.</summary>
-    private bool _applyingAlertRules;
-
-    /// <summary>Rule id currently waiting on a PATCH — blocks overlapping toggles.</summary>
-    private string? _alertRuleToggleInFlight;
 
     /// <summary>
     /// Whether the last thing to take the screen from this page was one of our own popups — see
@@ -271,7 +261,6 @@ public partial class CardiMemberDetailPage : ContentPage
             _ = LoadThenRestoreAsync(LoadDigestAsync(_memberId), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(LoadAdviseAsync(_memberId), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(_memberId), anchor, focusAdvise);
-            _ = LoadThenRestoreAsync(LoadAlertPreferencesAsync(_memberId), anchor, focusAdvise);
         }
         catch (ApiException ex)
         {
@@ -951,26 +940,17 @@ public partial class CardiMemberDetailPage : ContentPage
         await Shell.Current.GoToAsync($"{MedicalInformationPage.Route}?memberId={_memberId}");
 
     /// <summary>
-    /// The one thing on this page that still opens in place. Its content is switches rather than
-    /// reading, so there is nothing to travel for, and it is short enough not to bury the two rows
-    /// under it the way the medical notes could.
+    /// Which alerts CardiTrack checks for. The name rides along so the page's subtitle is right
+    /// from the first frame, and whether this caregiver may change a rule rides with it so the
+    /// page need not fetch the member again to find out.
     /// </summary>
-    private void OnToggleAlertRulesTapped(object? sender, TappedEventArgs e)
+    private async void OnAlertSettingsTapped(object? sender, TappedEventArgs e)
     {
-        AlertRulesBody.IsVisible = !AlertRulesBody.IsVisible;
-        TurnChevron(AlertRulesChevron, AlertRulesBody.IsVisible);
+        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        var canManage = _member?.IsPrimaryCaregiver == true;
+        await Shell.Current.GoToAsync(
+            $"{AlertSettingsPage.Route}?memberId={_memberId}&name={name}&canManage={canManage}");
     }
-
-    /// <summary>
-    /// Turns a collapsible row's chevron to point at what it opened. Same glyph rotated rather
-    /// than a swap for a second one, and the same duration and easing
-    /// <see cref="Controls.AccordionSection"/> uses, so every collapsible in the app moves alike.
-    /// </summary>
-    private static void TurnChevron(View chevron, bool isExpanded) =>
-        _ = chevron.RotateToAsync(
-            isExpanded ? 180 : 0,
-            ChevronTurnMs,
-            isExpanded ? Easing.CubicOut : Easing.CubicIn);
 
     private async void OnContactCallTapped(object? sender, TappedEventArgs e)
     {
@@ -1391,203 +1371,5 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             _isBusy = false;
         }
-    }
-
-    private async Task LoadAlertPreferencesAsync(Guid memberId)
-    {
-        AlertRulesSkeleton.IsVisible = AlertRulesHost.Children.Count == 0;
-        try
-        {
-            var prefs = await _api.GetAlertPreferencesAsync(memberId);
-            if (_memberId != memberId)
-                return;
-            RenderAlertRules(prefs);
-        }
-        catch (ApiException)
-        {
-            // Leave whatever was already rendered; a failed background load must not blank the card.
-            if (AlertRulesHost.Children.Count == 0 && _memberId == memberId)
-            {
-                AlertRulesHost.Clear();
-                AlertRulesHost.Add(new Label
-                {
-                    Text = "Couldn't load alert rules. Pull to refresh.",
-                    Style = (Style)App.Current!.Resources["Body2"],
-                });
-            }
-        }
-        finally
-        {
-            // The rules land after the page does, and the row they open into grows to them:
-            // nothing is measured or clipped here, so a caregiver who opened the row while it
-            // was still a skeleton simply watches it fill.
-            if (_memberId == memberId)
-                AlertRulesSkeleton.IsVisible = false;
-        }
-    }
-
-    private void RenderAlertRules(AlertPreferencesResponse prefs)
-    {
-        _applyingAlertRules = true;
-        try
-        {
-            AlertRulesHost.Clear();
-            var canManage = _member?.IsPrimaryCaregiver == true;
-            var resources = App.Current!.Resources;
-
-            // Ordered by availability, at both levels: rules that can actually be turned on or off
-            // come before the ones still marked "Soon", and a cluster with nothing available in it
-            // yet sinks below the clusters that have something. What the catalogue offers today is
-            // what a caregiver came here to change; the reserved ids are a roadmap, and reading
-            // past two of them to reach a switch made the list feel mostly unbuilt.
-            //
-            // Within a cluster the tie is broken by title rather than by the catalogue's order.
-            // That order was editorial — the sequence the rules were written in — which is a
-            // reasonable default for a list somebody reads through once and a poor one for a list
-            // of switches somebody returns to for a specific rule. Alphabetical is the order a
-            // reader can predict without knowing the catalogue.
-            var clusters = prefs.Clusters
-                .OrderBy(c => c.Rules.Any(r => r.IsImplemented) ? 0 : 1);
-
-            foreach (var cluster in clusters)
-            {
-                var rulesStack = new VerticalStackLayout { Spacing = 0 };
-                var first = true;
-                foreach (var rule in AlertRuleOrder.ForDisplay(cluster.Rules))
-                {
-                    if (!first)
-                        rulesStack.Add(new BoxView { Style = (Style)resources["DividerLine"] });
-                    first = false;
-                    rulesStack.Add(BuildAlertRuleRow(rule, canManage, resources));
-                }
-
-                // Outlined, not elevated: these sit inside the Alert Rules card now rather than
-                // on the page ground, and a shadow only reads as depth against the ground.
-                AlertRulesHost.Add(new Border
-                {
-                    Style = (Style)resources["OutlinedCard"],
-                    Padding = new Thickness(14, 10),
-                    Content = new VerticalStackLayout
-                    {
-                        Spacing = 8,
-                        Children =
-                        {
-                            new Label
-                            {
-                                Text = cluster.Title,
-                                Style = (Style)resources["Body1SemiBoldDark"],
-                            },
-                            new Label
-                            {
-                                Text = cluster.Description,
-                                Style = (Style)resources["Body2"],
-                            },
-                            rulesStack,
-                        },
-                    },
-                });
-            }
-        }
-        finally
-        {
-            _applyingAlertRules = false;
-        }
-    }
-
-    private View BuildAlertRuleRow(AlertRuleSettingResponse rule, bool canManage, ResourceDictionary resources)
-    {
-        var title = new Label
-        {
-            Text = rule.Title,
-            Style = (Style)resources["Body1SemiBoldDark"],
-            LineBreakMode = LineBreakMode.WordWrap,
-        };
-        var subtitle = new Label
-        {
-            Text = rule.IsImplemented ? rule.Description : $"{rule.Description} — coming soon",
-            Style = (Style)resources["Body2"],
-            LineBreakMode = LineBreakMode.WordWrap,
-        };
-
-        var textStack = new VerticalStackLayout
-        {
-            Spacing = 2,
-            VerticalOptions = LayoutOptions.Center,
-            Children = { title, subtitle },
-        };
-
-        var grid = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitionCollection
-            {
-                new(GridLength.Star),
-                new(GridLength.Auto),
-            },
-            ColumnSpacing = 12,
-            Padding = new Thickness(0, 8),
-        };
-        grid.Add(textStack, 0);
-
-        if (rule.IsImplemented)
-        {
-            var toggle = new Switch
-            {
-                IsToggled = rule.Enabled,
-                IsEnabled = canManage,
-                OnColor = (Color)resources["Primary"],
-                VerticalOptions = LayoutOptions.Center,
-            };
-            toggle.Toggled += async (_, args) =>
-            {
-                if (_applyingAlertRules || _member is null)
-                    return;
-
-                if (_alertRuleToggleInFlight is not null)
-                {
-                    // Another PATCH is in flight — put the switch back and wait.
-                    _applyingAlertRules = true;
-                    toggle.IsToggled = !args.Value;
-                    _applyingAlertRules = false;
-                    return;
-                }
-
-                var previous = !args.Value;
-                _alertRuleToggleInFlight = rule.Id;
-                toggle.IsEnabled = false;
-                try
-                {
-                    await _api.SetAlertRuleEnabledAsync(_memberId, rule.Id, args.Value);
-                }
-                catch (ApiException ex) when (!ex.IsSessionExpired)
-                {
-                    _applyingAlertRules = true;
-                    toggle.IsToggled = previous;
-                    _applyingAlertRules = false;
-                    await _popups.ShowErrorAsync(ex.Message, "Couldn't update alert rule");
-                }
-                catch (ApiException)
-                {
-                    // Session gone — the app is already on its way back to sign-in.
-                }
-                finally
-                {
-                    _alertRuleToggleInFlight = null;
-                    toggle.IsEnabled = canManage;
-                }
-            };
-            grid.Add(toggle, 1);
-        }
-        else
-        {
-            grid.Add(new Label
-            {
-                Text = "Soon",
-                Style = (Style)resources["Body2"],
-                VerticalTextAlignment = TextAlignment.Center,
-                VerticalOptions = LayoutOptions.Center,
-            }, 1);
-        }
-
-        return grid;
     }
 }
