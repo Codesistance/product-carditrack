@@ -127,7 +127,7 @@
                                            FontFamily="Quicksand"
                                            FontSize="14"
                                            Placeholder="Search your questions and answers"
-                                           TextColor="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}"
+                                           TextColor="{StaticResource HeadingText}"
                                            PlaceholderColor="{StaticResource Gray500}"
                                            ReturnType="Search"
                                            TextChanged="OnSearchTextChanged"/>
@@ -158,7 +158,7 @@
                                            HorizontalTextAlignment="Center"/>
                                     <Label x:Name="EmptyDetailLabel"
                                            Style="{StaticResource Body2}"
-                                           TextColor="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}"
+                                           TextColor="{StaticResource HeadingText}"
                                            HorizontalTextAlignment="Center"/>
                                 </VerticalStackLayout>
                             </Border>

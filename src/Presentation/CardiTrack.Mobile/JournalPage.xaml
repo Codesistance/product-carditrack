@@ -166,7 +166,7 @@
                            FontFamily="Quicksand"
                            FontSize="14"
                            Placeholder="Search the journal"
-                           TextColor="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}"
+                           TextColor="{StaticResource HeadingText}"
                            PlaceholderColor="{StaticResource Gray500}"
                            ReturnType="Search"
                            TextChanged="OnSearchTextChanged"/>
@@ -205,7 +205,7 @@
                     <Label x:Name="MemberChipLabel"
                            FontFamily="QuicksandSemiBold"
                            FontSize="14"
-                           TextColor="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}"/>
+                           TextColor="{StaticResource HeadingText}"/>
                 </Border>
 
                 <Border x:Name="UrgencyChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
@@ -219,7 +219,7 @@
                            Text="Any urgency"
                            FontFamily="QuicksandSemiBold"
                            FontSize="14"
-                           TextColor="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}"/>
+                           TextColor="{StaticResource HeadingText}"/>
                 </Border>
 
                 <Border x:Name="WindowChip" Style="{StaticResource OutlinedCard}" Padding="16,8">
@@ -233,7 +233,7 @@
                            Text="All time"
                            FontFamily="QuicksandSemiBold"
                            FontSize="14"
-                           TextColor="{AppThemeBinding Light={StaticResource HeadingText}, Dark={StaticResource White}}"/>
+                           TextColor="{StaticResource HeadingText}"/>
                 </Border>
             </HorizontalStackLayout>
         </VerticalStackLayout>

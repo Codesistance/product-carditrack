@@ -111,7 +111,7 @@
     <!-- ════════════════════════════════════════════
          TYPE ROLES — the app's type system (see the Type Audit, 4 Sep 2026)
 
-         Nine roles named for what the text IS, each fixing face, size, line height and default
+         Ten roles named for what the text IS, each fixing face, size, line height and default
          ink. One family (Quicksand) in three real faces — Regular, Medium, SemiBold — and no
          FontAttributes="Bold": that was a synthetic bold smeared onto the Regular face, which is
          why two 18pt titles on one page never matched. Weight carries hierarchy; ink carries
