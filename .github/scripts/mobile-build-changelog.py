@@ -192,7 +192,10 @@ def fit(header: str, bullets: list[str], footer: str, limit: int) -> str:
         while len(kept) > 1 and len(joined(*kept, "…")) > limit:
             kept.pop()
         if len(joined(*kept, "…")) > limit:
-            return joined(*kept)
+            # One bullet left and no room for a marker line of its own: cut the
+            # bullet itself so the note still ends in "…" rather than looking
+            # complete.
+            return joined(kept[0])[: limit - 1] + "…"
         kept.append("…")
 
     with_footer = joined(*kept, footer) if footer else ""
