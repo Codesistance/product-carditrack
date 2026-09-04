@@ -94,7 +94,11 @@ def git_commits(since_tag: str) -> list[tuple[str, str, str]]:
         cmd += ["-n", "40"]
     else:
         cmd.append(f"{since_tag}..HEAD")
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    # Decode as UTF-8 regardless of the runner locale: subjects and trailers
+    # carry curly quotes and dashes, and a C locale would choke on them.
+    result = subprocess.run(
+        cmd, check=True, capture_output=True, encoding="utf-8", errors="replace"
+    )
     commits = []
     for record in result.stdout.split(RS):
         if not record.strip():
@@ -154,31 +158,42 @@ def bullets_for(commits: list[tuple[str, str, str]]) -> tuple[list[str], bool]:
 
 
 def fit(header: str, bullets: list[str], footer: str, limit: int) -> str:
-    """Compose header + bullets + footer inside `limit`, dropping bullets from the end."""
+    """Compose header + bullets [+ "…"] [+ footer] inside `limit`.
+
+    Bullets are the content, so they are kept first, newest to oldest. When
+    any bullet is dropped a "…" marker always follows the ones kept — a note
+    that simply ends reads as complete. The footer is added last and only if
+    it still fits; it is the one line nothing is lost by omitting.
+    """
     if not bullets:
-        body = f"{header}\n{footer}"
+        body = f"{header}\n{footer}" if footer else header
         return body if len(body) <= limit else header[:limit]
+
+    def joined(*parts: str) -> str:
+        return "\n".join([header, *parts])
 
     kept: list[str] = []
     for bullet in bullets:
-        candidate = "\n".join([header, *kept, bullet] + ([footer] if footer else []))
-        if len(candidate) <= limit:
-            kept.append(bullet)
-            continue
-        if kept:
-            # Everything already in `kept` fits by construction. The footer is
-            # the first thing to give up, then the truncation marker — never a
-            # bullet that already fit.
-            for tail in (["…", footer] if footer else ["…"], [footer] if footer else [], []):
-                text = "\n".join([header, *kept, *tail])
-                if len(text) <= limit:
-                    return text
-            return "\n".join([header, *kept])
-        # Header plus the very first bullet is already too long — hard-cut.
-        hard = f"{header}\n{bullet}"
-        return hard[: limit - 1] + "…" if len(hard) > limit else hard
-    return "\n".join([header, *kept] + ([footer] if footer else []))
+        if len(joined(*kept, bullet)) > limit:
+            break
+        kept.append(bullet)
 
+    if not kept:
+        # Header plus the very first bullet is already too long — hard-cut.
+        hard = joined(bullets[0])
+        return hard[: limit - 1] + "…"
+
+    dropped = len(kept) < len(bullets)
+    if dropped:
+        # Make room for the marker, giving up the oldest kept bullet if needed.
+        while len(kept) > 1 and len(joined(*kept, "…")) > limit:
+            kept.pop()
+        if len(joined(*kept, "…")) > limit:
+            return joined(*kept)
+        kept.append("…")
+
+    with_footer = joined(*kept, footer) if footer else ""
+    return with_footer if footer and len(with_footer) <= limit else joined(*kept)
 
 def main() -> int:
     parser = argparse.ArgumentParser()
