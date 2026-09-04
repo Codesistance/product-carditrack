@@ -147,9 +147,14 @@ public partial class DigestGenerationService : IDigestGenerationService
         """;
 
     /// <summary>
-    /// Phrases that appear only in <see cref="FamilyDigestInstructions"/> — which now begins with
-    /// <see cref="MedicalPromptBlocks.Tone"/>, so the shared block's own giveaways belong here too.
-    /// Each is wholly inside one of the prompt's lines so a reply that re-wraps the text still
+    /// Phrases that appear only in the two family-digest briefs —
+    /// <see cref="FamilyDigestClinicalInstructions"/> and
+    /// <see cref="FamilyDigestRewriteInstructions"/>. Both, because the guard runs on the summary
+    /// and the summary is written from the clinical read: a phrase out of either brief can reach a
+    /// caregiver, the clinical one by travelling through the read the rewrite is handed. The
+    /// rewrite half begins with <see cref="MedicalPromptBlocks.Tone"/>, so the shared block's own
+    /// giveaways belong here too.
+    /// Each is wholly inside one of the prompts' lines so a reply that re-wraps the text still
     /// matches. A summary carrying one of these is the model restating its brief rather than
     /// summarising anything, and the fixed placeholder copy the apps render for a member with no
     /// summary is a far better thing to show a caregiver than the prompt. Matched
@@ -1373,8 +1378,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         // generation that was good enough to keep. Every discard path above has already returned,
         // so a member whose summary was rejected is never asked anything on the strength of it.
         await StoreQuestionIfWorthAskingAsync(
-            memberId, aiResponse, clinical.QuestionScope, name, utcNow, localNow, timeZone,
-            describedDate, ct);
+            memberId, aiResponse, clinical.QuestionTopic, clinical.QuestionScope, name, utcNow,
+            localNow, timeZone, describedDate, ct);
 
         // The Dashboard status line is served from its persisted row, and a stored digest is
         // exactly the moment the line's inputs changed — the model is warm from the call above,
@@ -1506,16 +1511,29 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// the same sentence can land twice.
     /// </para>
     /// </remarks>
+    /// <param name="clinicalTopic">
+    /// The subject the clinical read judged worth asking about, and the gate on asking at all.
+    /// Whether anything in the readings needs explaining is a judgement about the readings, so the
+    /// half that was shown them decides it: a rewrite that invents a question over a read that
+    /// named no topic is answering a question nobody asked, and would be stored as
+    /// <see cref="QuestionnaireScope.TimeScoped"/> by <see cref="ParseScope"/>'s default for a
+    /// null scope.
+    /// </param>
     /// <param name="clinicalScope">
-    /// The scope from the clinical read rather than the rewrite. Whether an answer stays true
-    /// regardless of the day is a fact about the readings, and the rewrite is not shown them — it
-    /// is handed a topic and asked to put it in a family's words.
+    /// The scope from the clinical read rather than the rewrite, for the same reason: whether an
+    /// answer stays true regardless of the day is a fact about the readings. The rewrite is handed
+    /// a topic and asked to put it in a family's words, nothing more.
     /// </param>
     private async Task StoreQuestionIfWorthAskingAsync(
-        Guid memberId, DigestAiResponse aiResponse, string? clinicalScope, string? name,
-        DateTime utcNow, DateTime localNow, TimeZoneInfo timeZone, DateOnly describedDate,
-        CancellationToken ct)
+        Guid memberId, DigestAiResponse aiResponse, string? clinicalTopic, string? clinicalScope,
+        string? name, DateTime utcNow, DateTime localNow, TimeZoneInfo timeZone,
+        DateOnly describedDate, CancellationToken ct)
     {
+        // The clinical read is the single source of truth for "is there anything worth asking".
+        // Most days it names no topic, and on those days a question from the rewrite is invention.
+        if (string.IsNullOrWhiteSpace(clinicalTopic))
+            return;
+
         if (CleanQuestion(aiResponse.Question, memberId, describedDate) is not { } question)
             return;
 
@@ -2088,13 +2106,13 @@ public partial class DigestGenerationService : IDigestGenerationService
         return string.Join(' ', new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
-    /// <summary>MedGemma's reply shape for this prompt. Internal, not Application/DTOs — this
-    /// describes the private model's reply, not the public API contract; internal rather than
-    /// private so IMedicalAiService.GenerateStructuredAsync&lt;T&gt; can be exercised in tests.</summary>
     /// <summary>
     /// MedGemma's clinical read of the day, which only <see cref="FamilyDigestRewriteInstructions"/>
-    /// ever reads. Never persisted: it is wrapped into a <see cref="DeidentifiedFindings"/>, sent
-    /// to the rewrite slot and dropped, so allowing it to be clinical adds no stored data class.
+    /// ever reads. Internal, not Application/DTOs — this describes the private model's reply, not
+    /// the public API contract; internal rather than private so
+    /// IMedicalAiService.GenerateStructuredAsync&lt;T&gt; can be exercised in tests. Never
+    /// persisted: it is wrapped into a <see cref="DeidentifiedFindings"/>, sent to the rewrite
+    /// slot and dropped, so allowing it to be clinical adds no stored data class.
     /// </summary>
     /// <remarks>
     /// Declaration order is generation order, as <see cref="DigestAiResponse.Headline"/> explains
@@ -2132,6 +2150,16 @@ public partial class DigestGenerationService : IDigestGenerationService
         public string? QuestionScope { get; init; }
     }
 
+    /// <summary>
+    /// The rewrite slot's reply shape — the family's summary itself, written from a
+    /// <see cref="DigestClinicalAiResponse"/> and nothing else. Internal, not Application/DTOs:
+    /// this describes a model's reply, not the public API contract; internal rather than private
+    /// so IRewriteAiService.GenerateStructuredAsync&lt;T&gt; can be exercised in tests.
+    /// </summary>
+    /// <remarks>
+    /// Carries no urgency and no question scope. Both are judgements about the readings, which
+    /// this half is never shown — they come from the clinical read instead.
+    /// </remarks>
     internal sealed record DigestAiResponse
     {
         /// <summary>Named and described rather than left as a bare "text": the description travels

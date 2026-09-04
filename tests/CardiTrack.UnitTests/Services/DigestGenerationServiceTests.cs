@@ -1815,6 +1815,31 @@ public class DigestGenerationServiceTests
             MonitoringContextSource.SectionLabel, prompt, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The clinical read decides whether there is anything worth asking. A rewrite that returns a
+    /// question over a read that named no topic is inventing one — and would otherwise be stored
+    /// as time-scoped, which is what <c>ParseScope</c> makes of a null scope.
+    /// </summary>
+    [Fact]
+    public async Task AsksNothing_WhenTheClinicalReadNamedNoTopic()
+    {
+        ReturnsClinicalRead("Everything sits within this member's usual range.");
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Summary = "A settled day: steady heart rate and a good night's sleep.",
+                Headline = "A settled night",
+                Question = "Has anything changed at home recently?",
+                QuestionRationale = "It helps to know what their days look like.",
+            });
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
     /// <summary>A question is a by-product of a summary worth keeping, not of a call being made.</summary>
     [Fact]
     public async Task AsksNothing_WhenTheSummaryItselfWasDiscarded()
