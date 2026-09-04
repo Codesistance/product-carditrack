@@ -35,7 +35,9 @@ public partial class LegalDocumentPage : ContentPage
     /// — a cross-reference from the terms to the privacy policy has to arrive stripped too, or
     /// the caregiver lands back on the marketing page one tap in.
     /// </summary>
-    private const string EmbedQuery = "?embed";
+    private const string EmbedParameter = "embed";
+
+    private const string EmbedQuery = "?" + EmbedParameter;
 
     private const string TermsPath = SiteRoot + "/terms-of-service";
     private const string PrivacyPath = SiteRoot + "/privacy-policy";
@@ -96,8 +98,8 @@ public partial class LegalDocumentPage : ContentPage
     /// </summary>
     private static bool HasEmbed(Uri uri) =>
         uri.Query.TrimStart('?').Split('&').Any(part =>
-            part.Equals("embed", StringComparison.OrdinalIgnoreCase)
-            || part.StartsWith("embed=", StringComparison.OrdinalIgnoreCase));
+            part.Equals(EmbedParameter, StringComparison.OrdinalIgnoreCase)
+            || part.StartsWith(EmbedParameter + "=", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Adds the query the site strips its chrome for, keeping whatever the URL already carried.
@@ -109,7 +111,7 @@ public partial class LegalDocumentPage : ContentPage
     {
         var builder = new UriBuilder(uri);
         var query = builder.Query.TrimStart('?');
-        builder.Query = query.Length == 0 ? "embed" : query + "&embed";
+        builder.Query = query.Length == 0 ? EmbedParameter : query + "&" + EmbedParameter;
         return builder.Uri.AbsoluteUri;
     }
 
