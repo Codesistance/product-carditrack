@@ -135,7 +135,8 @@ public class DigestInterpretationSignalsTests
 
         Assert.Contains("--- Computed observations ---", section);
         Assert.Contains(
-            "Yesterday: resting heart rate 88 bpm (usual 71) with 1,200 steps (usual 6,000) "
+            "Yesterday: resting heart rate 88 bpm (usual 71), inside the 60–100 bpm typical for "
+            + "an adult (AHA) with 1,200 steps (usual 6,000) "
             + "— these findings on a still day, not a day of walking.",
             section);
         Assert.DoesNotContain("Today so far", section);
@@ -152,7 +153,10 @@ public class DigestInterpretationSignalsTests
 
         Assert.DoesNotContain("still day", section);
         Assert.DoesNotContain("900 steps", section);
-        Assert.Contains("Today so far: resting heart rate 88 bpm (usual 71).", section);
+        Assert.Contains(
+            "Today so far: resting heart rate 88 bpm (usual 71), inside the 60–100 bpm typical "
+            + "for an adult (AHA).",
+            section);
     }
 
     [Fact]
@@ -164,7 +168,10 @@ public class DigestInterpretationSignalsTests
             yesterday: Log(Yesterday, steps: 5800, restingHr: 71),
             Afternoon);
 
-        Assert.Contains("Today so far: resting heart rate 88 bpm (usual 71) with 900 steps (usual 6,000)", section);
+        Assert.Contains(
+            "Today so far: resting heart rate 88 bpm (usual 71), inside the 60–100 bpm typical "
+            + "for an adult (AHA) with 900 steps (usual 6,000)",
+            section);
         Assert.Contains("these findings on a still day, not a day of walking.", section);
         Assert.DoesNotContain("Yesterday:", section);
     }
@@ -179,8 +186,9 @@ public class DigestInterpretationSignalsTests
             Afternoon);
 
         Assert.DoesNotContain("still day", section);
-        Assert.Contains("Yesterday: resting heart rate 88 bpm (usual 71).", section);
-        Assert.Contains("Today so far: resting heart rate 88 bpm (usual 71).", section);
+        var inBand = "resting heart rate 88 bpm (usual 71), inside the 60–100 bpm typical for an adult (AHA).";
+        Assert.Contains($"Yesterday: {inBand}", section);
+        Assert.Contains($"Today so far: {inBand}", section);
     }
 
     [Fact]
@@ -247,7 +255,10 @@ public class DigestInterpretationSignalsTests
             yesterday: null,
             Afternoon);
 
-        Assert.Contains("Today so far: resting heart rate 90 bpm (usual 71) with 0 steps (usual 6,000)", section);
+        Assert.Contains(
+            "Today so far: resting heart rate 90 bpm (usual 71), inside the 60–100 bpm typical "
+            + "for an adult (AHA) with 0 steps (usual 6,000)",
+            section);
         Assert.Contains("still day", section);
     }
 
@@ -260,8 +271,55 @@ public class DigestInterpretationSignalsTests
             yesterday: null,
             Afternoon);
 
-        Assert.Contains("Today so far: resting heart rate 90 bpm (usual 71).", section);
+        Assert.Contains(
+            "Today so far: resting heart rate 90 bpm (usual 71), inside the 60–100 bpm typical "
+            + "for an adult (AHA).",
+            section);
         Assert.DoesNotContain("still day", section);
+    }
+
+    /// <summary>
+    /// The case member-relative logic cannot reach at all: a member whose usual resting rate is
+    /// already outside the published band departs from nothing on a day they read their usual, so
+    /// no rule fires and — before this — the digest said nothing about a figure that sits above the
+    /// AHA range every day of the week.
+    /// </summary>
+    [Fact]
+    public void ARateAboveTheBand_IsSaid_EvenWhenItIsTheirUsual()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 104;
+
+        var section = DigestInterpretationSignals.Section(
+            baseline,
+            today: null,
+            yesterday: Log(Yesterday, steps: 5900, restingHr: 105),
+            Afternoon);
+
+        Assert.Contains(
+            "resting heart rate 105 bpm — close to their usual, but above the 60–100 bpm "
+            + "typical for an adult (AHA)",
+            section);
+    }
+
+    /// <summary>
+    /// One-sided on purpose — see the remarks on <c>RaisedVitals</c>. A settled rate under the AHA
+    /// floor is an ordinary state for anyone fit or rate-controlled, and saying so every day is how
+    /// a digest stops being read.
+    /// </summary>
+    [Fact]
+    public void ARateBelowTheBand_IsNotSaid_WhenItIsTheirUsual()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 48;
+
+        var section = DigestInterpretationSignals.Section(
+            baseline,
+            today: null,
+            yesterday: Log(Yesterday, steps: 5900, restingHr: 49),
+            Afternoon);
+
+        Assert.DoesNotContain("resting heart rate", section);
     }
 
     [Fact]

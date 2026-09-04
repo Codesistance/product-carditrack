@@ -497,6 +497,30 @@ public class RealtimeAssessmentServiceTests
         Assert.Contains("SpO2 this hour: not measured", prompt);
         Assert.Contains("On beta blockers.", prompt);
         Assert.DoesNotContain("Margaret", prompt);
+        // A trend around 72 bpm is inside the published band, so the clause is absent entirely —
+        // words that are not in the prompt cannot be echoed, and the bare range is never sent.
+        Assert.DoesNotContain("typical for an adult", prompt);
+        Assert.DoesNotContain("60–100", prompt);
+    }
+
+    /// <summary>
+    /// The comparison the member's own jitter cannot make, resolved in .NET and handed over as a
+    /// finished clause rather than as a range for the model to compare against itself.
+    /// </summary>
+    [Fact]
+    public async Task ThePrompt_NamesThePublishedBand_OnlyWhenTheTrendHasLeftIt()
+    {
+        SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 118));
+        string? prompt = null;
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse { Message = "Fine.", Severity = "low" });
+
+        await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.NotNull(prompt);
+        Assert.Contains(
+            "The denoised trend sits above the 60–100 bpm typical for an adult (AHA).", prompt);
     }
 
     [Fact]

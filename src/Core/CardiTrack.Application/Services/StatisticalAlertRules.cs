@@ -182,7 +182,28 @@ public static class StatisticalAlertRules
             NightOf: lastNight.Date);
     }
 
-    /// <summary>Yesterday's resting heart rate above baseline average + max(2σ, 5 bpm).</summary>
+    /// <summary>
+    /// Yesterday's resting heart rate above baseline average + max(2σ, 5 bpm).
+    /// <para>
+    /// The trigger is this member's own variability; the <b>severity is not</b>, for the same reason
+    /// <see cref="IrregularSleep"/>'s is not. A departure from someone's own usual cannot say on its
+    /// own how much of a departure it is: a member who normally rests at 52 and read 60 has cleared
+    /// the margin and landed in the middle of the published adult range, while a member who normally
+    /// rests at 96 and read 103 has cleared the same margin and left it. Grading both
+    /// <see cref="AlertSeverity.Orange"/> — a push, and a CHECK IN on the card — asks a caregiver to
+    /// treat an ordinary heart rate as an event, which is the surest way to teach them to ignore the
+    /// one that is not. So <see cref="AlertSeverity.Orange"/> is reserved for a reading that has also
+    /// left the range <see cref="HealthReferenceRanges.RestingHeartRate"/> publishes, and every other
+    /// break stays <see cref="AlertSeverity.Yellow"/> — still raised, still on the list, because a
+    /// sudden upward shift in someone's resting heart rate is a pattern break in its own right
+    /// whatever the absolute figure.
+    /// </para>
+    /// <para>
+    /// Note that the band can be cleared <em>downwards</em>: a member whose usual is 45 reading 52
+    /// has broken their pattern upward while sitting below the published floor the whole time. The
+    /// copy says so rather than rounding it to "running high", because it is not.
+    /// </para>
+    /// </summary>
     public static StatisticalAlertCandidate? ElevatedHeartRate(PatternBaseline baseline, ActivityLog? yesterday)
     {
         if (baseline.AvgRestingHeartRate is not > 0 || yesterday?.RestingHeartRate is not { } restingHr)
@@ -194,11 +215,34 @@ public static class StatisticalAlertRules
         if (restingHr <= average + margin)
             return null;
 
+        var typical = HealthReferenceRanges.RestingHeartRate;
+        var position = HealthReferenceRanges.Position(typical, restingHr);
+        var pastTheBand = position == BandPosition.Above;
+
+        // The clause that says where the reading landed against the published range, which is the
+        // fact the departure from their own usual leaves the caregiver to infer. All three branches
+        // speak: unlike the digest, this copy only exists because something already fired, so
+        // "inside the range" is the reassurance the alert itself would otherwise withhold.
+        var tail = position switch
+        {
+            BandPosition.Above =>
+                $"and past the {typical.High:0.#} bpm that tops the range typical for an adult "
+                + $"({typical.Source}). Worth checking in today.",
+            BandPosition.Below =>
+                $"though still under the {typical.Low:0.#} bpm that starts that range "
+                + $"({typical.Source}). One day is rarely a worry, but it may be worth mentioning.",
+            _ =>
+                $"though still inside the {typical.Low:0.#}–{typical.High:0.#} bpm typical for an "
+                + $"adult ({typical.Source}). One day is rarely a worry, but it may be worth "
+                + "mentioning.",
+        };
+
         return new StatisticalAlertCandidate(
-            ElevatedHeartRateRule, AlertType.HeartRate, AlertSeverity.Orange,
-            "Resting heart rate is running high",
-            $"Resting heart rate was {restingHr} bpm yesterday, clearly above the usual "
-            + $"{average} bpm. Worth checking in today.",
+            ElevatedHeartRateRule, AlertType.HeartRate,
+            pastTheBand ? AlertSeverity.Orange : AlertSeverity.Yellow,
+            pastTheBand ? "Resting heart rate is running high" : "Resting heart rate is above the usual",
+            $"Resting heart rate was {restingHr} bpm yesterday, "
+            + $"{(pastTheBand ? "clearly" : "noticeably")} above the usual {average} bpm — {tail}",
             Serialize(new
             {
                 rule = ElevatedHeartRateRule,
@@ -206,6 +250,11 @@ public static class StatisticalAlertRules
                 restingHeartRate = restingHr,
                 baselineAvgRestingHeartRate = average,
                 marginBpm = Math.Round(margin, 1),
+                // The band this reading was judged against, stored rather than re-derived later for
+                // the reason IrregularSleep stores its own: the alert's copy and the chart drawn
+                // beside it must not quote two different ranges if the published figures ever move.
+                typicalLowBpm = typical.Low,
+                typicalHighBpm = typical.High,
             }));
     }
 

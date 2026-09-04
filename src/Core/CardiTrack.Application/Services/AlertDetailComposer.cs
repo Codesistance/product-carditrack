@@ -501,7 +501,8 @@ public static class AlertDetailComposer
                 => DailyChart(
                     "restingHeartRate", "Heart Rate", "bpm", HeartRateDays, today, logs,
                     l => l.RestingHeartRate,
-                    baseline?.AvgRestingHeartRate ?? ReadDecimal(metrics, "baselineAvgRestingHeartRate")),
+                    baseline?.AvgRestingHeartRate ?? ReadDecimal(metrics, "baselineAvgRestingHeartRate"),
+                    reference: RestingHeartRateReference(metrics)),
 
             StatisticalAlertRules.IrregularSleepRule
                 => DailyChart(
@@ -510,7 +511,8 @@ public static class AlertDetailComposer
                     Hours(baseline?.AvgSleepMinutes) ?? Hours(ReadDecimal(metrics, "baselineAvgSleepMinutes")),
                     reference: SleepReference(metrics, member, today)),
 
-            RealtimeHeartRateRule => GranularHeartChart(granular, baseline?.AvgRestingHeartRate),
+            RealtimeHeartRateRule => GranularHeartChart(
+                granular, baseline?.AvgRestingHeartRate, RestingHeartRateReference(metrics)),
 
             _ => null,
         };
@@ -540,6 +542,31 @@ public static class AlertDetailComposer
         return member is null
             ? null
             : HealthReferenceRanges.Sleep(member.DateOfBirth.ToAgeInYears(today));
+    }
+
+    /// <summary>
+    /// The published band the heart-rate charts shade behind the line. Stored figures win over the
+    /// live constants for the same reason <see cref="SleepReference"/> prefers its own: the copy on
+    /// the card quotes the range the rule judged the reading against, and a card whose text and
+    /// chart disagreed about where "typical" ends would be worse than one that drew no band at all.
+    /// Rows written before the rule stored the band — and the real-time rule, which stores none
+    /// because it judges an hourly trend rather than a resting figure — fall back to the published
+    /// range as it stands today.
+    /// </summary>
+    private static MetricReference? RestingHeartRateReference(JsonElement metrics)
+    {
+        if (ReadDecimal(metrics, "typicalLowBpm") is { } low
+            && ReadDecimal(metrics, "typicalHighBpm") is { } high)
+        {
+            return new MetricReference
+            {
+                Low = low,
+                High = high,
+                Source = HealthReferenceRanges.RestingHeartRate.Source,
+            };
+        }
+
+        return HealthReferenceRanges.RestingHeartRate;
     }
 
     /// <param name="partialDay">
@@ -637,7 +664,8 @@ public static class AlertDetailComposer
         return $"{soFar}, {change} the {comparison:N0} by this time yesterday";
     }
 
-    private static AlertChartResponse? GranularHeartChart(GranularWindow? granular, decimal? baseline)
+    private static AlertChartResponse? GranularHeartChart(
+        GranularWindow? granular, decimal? baseline, MetricReference? reference)
     {
         if (granular is null
             || !granular.MinuteSeries.TryGetValue(GranularMetric.HeartRate, out var samples)
@@ -685,6 +713,7 @@ public static class AlertDetailComposer
             WindowLabel = "This hour",
             Value = latest,
             Baseline = baseline,
+            Reference = reference,
             Series = series,
         };
     }

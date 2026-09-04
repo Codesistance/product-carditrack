@@ -348,6 +348,42 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         public required string Severity { get; init; }
     }
 
+    /// <summary>
+    /// The finding — already resolved — that the hour's denoised trend has left the published adult
+    /// resting range, or null when it has not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A resolved clause, never the bare range. Putting "typical adult range: 60–100" in the prompt
+    /// alongside a trend figure hands the model the ingredients and invites it to make the
+    /// comparison — the exact failure docs/llm_design.md records for the partial-day totals, where
+    /// guarding the computed observation while leaving the raw figures side by side was no guard at
+    /// all. .NET computes, the model phrases.
+    /// </para>
+    /// <para>
+    /// Absent entirely when the trend is inside the band, on the same reasoning that
+    /// <c>DigestInterpretationSignals.Section</c> emits no heading on a calm member: words that are
+    /// not in the prompt cannot be echoed, and a reassurance printed every ordinary hour is one
+    /// nobody reads on the hour it stops.
+    /// </para>
+    /// <para>
+    /// Emitted regardless of how much the member moved this hour, which is a deliberate and
+    /// imperfect choice. An hour's denoised trend is not a resting heart rate, so during a walk this
+    /// clause reports a rate that is raised for an unremarkable reason. The prompt already carries
+    /// the hour's step count and is told to read activity before calling a rate unusual, so the
+    /// model has what it needs to discount it; the alternative — suppressing the clause on an active
+    /// hour — would have silenced it for a member whose device was logging steps through the very
+    /// episode worth seeing.
+    /// </para>
+    /// </remarks>
+    private static string? OutsideTypicalRestingRange(double trendLast)
+    {
+        var clause = HealthReferenceRanges.BandClause(
+            HealthReferenceRanges.RestingHeartRate, (decimal)trendLast, "bpm");
+
+        return clause is null ? null : $"The denoised trend sits {clause}.";
+    }
+
     private static string BuildPrompt(
         string memberContext, double trendLast, double deviationScore,
         double noiseRms, double lastReading, int coveredMinutes, double? steps, double? spo2)
@@ -362,6 +398,9 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             steps.HasValue ? $"Steps this hour: {steps:F0}" : "Steps this hour: not measured",
             spo2.HasValue ? $"Average SpO2 this hour: {spo2:F0}%" : "SpO2 this hour: not measured",
         };
+
+        if (OutsideTypicalRestingRange(trendLast) is { } outsideRange)
+            contextLines.Add(outsideRange);
 
         return $"""
             {AssessmentInstructions}

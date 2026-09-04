@@ -24,8 +24,13 @@
 
 <h2>How alerting works</h2>
 <p>
-    CardiTrack compares each person against their own recent history — not a population
-    average — and tells caregivers when today's readings sit well outside that picture.
+    CardiTrack decides <em>whether</em> to raise something by comparing each person against
+    their own recent history, not against a population average: we tell caregivers when today's
+    readings sit well outside that person's own picture. Where a published adult range exists,
+    we then use it to say <em>how much</em> a departure is worth — so a heart rate that has
+    risen but is still an ordinary adult resting rate is reported more quietly than one that has
+    left the range, and a reading that sits outside the published range every day is mentioned
+    even though it broke no pattern. We name the body that publishes any range we quote.
     A human caregiver always decides whether to check in. CardiTrack does not diagnose,
     contact emergency services, or change anyone's care.
 </p>
@@ -39,7 +44,9 @@
     A quieter day than usual is a drop of more than 30%
     below that person's average steps; sleep is flagged when it is more than 30% above or
     below their average; resting heart rate is flagged when it sits above their average by
-    at least two standard deviations, and never by less than 5 beats per minute; a
+    at least two standard deviations, and never by less than 5 beats per minute — and is
+    raised to the higher of the two urgencies only when it has also passed 100 beats per
+    minute, the top of the range the American Heart Association publishes for adults; a
     four-week run of at least 5% fewer steps each week is a longer-term trend; and a
     measured zero steps well after the usual waking time (the device is reporting; they
     have not moved) is treated as urgent. A day the device did not measure is not treated

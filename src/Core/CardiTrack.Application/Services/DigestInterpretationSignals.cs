@@ -1,4 +1,5 @@
 using System.Globalization;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Services;
@@ -166,17 +167,47 @@ public static class DigestInterpretationSignals
     /// Vitals that sit above (or, for oxygen, below) this member's usual / the published
     /// adult band, named for the prompt. Empty when nothing is off.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A finding names where the reading landed against the published adult band as well as against
+    /// the member's own usual, because the two answer different questions and a summary that gives
+    /// only the first can mislead in both directions. "84 bpm (usual 62)" reads as an event whether
+    /// 84 is an ordinary adult resting rate or not; and a member whose usual is 98 produces no
+    /// finding at all on a day they read 98, because nothing departed from anything — the reading is
+    /// outside the range the AHA publishes every day of the week, and on the strength of their own
+    /// baseline alone the digest would never say so.
+    /// </para>
+    /// <para>
+    /// That last case is the one <see cref="AtUsualButOutsideBand"/> exists for, and it is
+    /// deliberately one-sided: only a rate <em>above</em> the band earns a line at their own usual.
+    /// The AHA floor of 60 is a great many adults' settled normal — anyone fit, anyone on a
+    /// rate-controlling medication — and a digest that told those families every single day that
+    /// their person's heart rate is below the typical range would be a digest they stop reading, at
+    /// the cost of the day it says something else. A rate that sits above the band is both rarer as
+    /// a settled state and more consistently worth a mention.
+    /// </para>
+    /// </remarks>
     public static IReadOnlyList<string> RaisedVitals(PatternBaseline baseline, ActivityLog log)
     {
         var parts = new List<string>();
         var usualResting = baseline.AvgRestingHeartRate;
         var margin = HeartRateMarginBpm(baseline);
+        var typicalResting = HealthReferenceRanges.RestingHeartRate;
 
         if (StatisticalAlertRules.ElevatedHeartRate(baseline, log) is not null
             && log.RestingHeartRate is { } resting
             && usualResting is { } usual)
         {
-            parts.Add($"resting heart rate {resting} bpm (usual {usual})");
+            parts.Add($"resting heart rate {resting} bpm (usual {usual}), "
+                + HealthReferenceRanges.BandPlacement(typicalResting, resting, "bpm"));
+        }
+        else if (AtUsualButOutsideBand(typicalResting, log.RestingHeartRate))
+        {
+            // No departure to report — this is what their heart rate does — so the finding is the
+            // absolute one, and it says outright that nothing changed today. Without that clause a
+            // model handed a lone out-of-band figure writes it up as news.
+            parts.Add($"resting heart rate {log.RestingHeartRate} bpm — close to their usual, but "
+                + $"{HealthReferenceRanges.BandClause(typicalResting, log.RestingHeartRate, "bpm")}");
         }
 
         if (usualResting is > 0 && log.AvgHeartRate is { } avg
@@ -198,6 +229,13 @@ public static class DigestInterpretationSignals
 
         return parts;
     }
+
+    /// <summary>
+    /// A resting heart rate that broke no pattern but sits above the published adult band — see the
+    /// remarks on <see cref="RaisedVitals"/> for why only that direction counts.
+    /// </summary>
+    private static bool AtUsualButOutsideBand(MetricReference typical, int? restingHeartRate) =>
+        HealthReferenceRanges.Position(typical, restingHeartRate) == BandPosition.Above;
 
     private static double HeartRateMarginBpm(PatternBaseline baseline) =>
         Math.Max(

@@ -278,8 +278,97 @@ public class StatisticalAlertRulesTests
         var candidate = StatisticalAlertRules.ElevatedHeartRate(Baseline(), Log(restingHr: 68));
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.HeartRate, candidate.Type);
-        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        // 68 bpm is inside the AHA band, so the break is reported without being dressed as urgent.
+        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
         Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
+    }
+
+    /// <summary>
+    /// A baseline high enough that clearing the margin also clears the AHA ceiling — 96 + max(4, 5)
+    /// = 101, so 102 is both a pattern break and past the published band.
+    /// </summary>
+    private static PatternBaseline HighRestingBaseline()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 96;
+        return baseline;
+    }
+
+    [Fact]
+    public void ElevatedHeartRate_IsOrange_OnlyOncePastThePublishedBand()
+    {
+        var candidate = StatisticalAlertRules.ElevatedHeartRate(HighRestingBaseline(), Log(restingHr: 102));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
+        Assert.Equal("Resting heart rate is running high", candidate.Title);
+        Assert.Contains("past the 100 bpm", candidate.Message);
+        Assert.Contains("(AHA)", candidate.Message);
+    }
+
+    /// <summary>
+    /// The false-alarm shape the split exists for: a very steady member clears the 5 bpm floor and
+    /// lands in the middle of the published band. Reported, but not as a check-in.
+    /// </summary>
+    [Fact]
+    public void ElevatedHeartRate_InsideTheBand_IsYellowAndSaysSo()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 52;
+
+        var candidate = StatisticalAlertRules.ElevatedHeartRate(baseline, Log(restingHr: 60));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
+        Assert.Equal("Resting heart rate is above the usual", candidate.Title);
+        Assert.Contains("still inside the 60–100 bpm", candidate.Message);
+        Assert.DoesNotContain("Worth checking in", candidate.Message);
+    }
+
+    /// <summary>
+    /// The band is inclusive at both ends: a reading exactly on 100 is inside the recommendation,
+    /// not past it, so it must not be the thing that buys a push. The baseline is 92 rather than
+    /// <see cref="HighRestingBaseline"/>'s 96 so that both readings clear the trigger
+    /// (92 + max(4, 5) = 97) and the only thing separating them is the band.
+    /// </summary>
+    [Fact]
+    public void ElevatedHeartRate_TreatsTheBandCeilingAsInclusive()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 92;
+
+        Assert.Equal(
+            AlertSeverity.Yellow,
+            StatisticalAlertRules.ElevatedHeartRate(baseline, Log(restingHr: 100))!.Severity);
+        Assert.Equal(
+            AlertSeverity.Orange,
+            StatisticalAlertRules.ElevatedHeartRate(baseline, Log(restingHr: 101))!.Severity);
+    }
+
+    /// <summary>
+    /// A pattern broken upward while the reading sits under the published floor throughout — an
+    /// athlete or someone rate-controlled. It is not "running high", and the copy must not say so.
+    /// </summary>
+    [Fact]
+    public void ElevatedHeartRate_BelowTheBand_DoesNotCallItHigh()
+    {
+        var baseline = Baseline();
+        baseline.AvgRestingHeartRate = 45;
+
+        var candidate = StatisticalAlertRules.ElevatedHeartRate(baseline, Log(restingHr: 52));
+
+        Assert.NotNull(candidate);
+        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
+        Assert.Contains("still under the 60 bpm", candidate.Message);
+    }
+
+    [Fact]
+    public void ElevatedHeartRate_StampsTheBandItJudgedAgainst()
+    {
+        var candidate = StatisticalAlertRules.ElevatedHeartRate(Baseline(), Log(restingHr: 68));
+
+        Assert.Contains("\"typicalLowBpm\":60", candidate!.MetricValues);
+        Assert.Contains("\"typicalHighBpm\":100", candidate.MetricValues);
     }
 
     // σ = 6 → 2σ = 12 beats the floor: 62 + 12 = 74 is the boundary.

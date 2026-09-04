@@ -447,6 +447,14 @@ Both instruction blocks say the rest outright: today's steps and active minutes 
 
 The hero line also stopped anchoring "today" to UTC. `HealthInsightService` resolved a UTC civil day while the digest resolved the member's own through `MemberAnchorTimeZone`, so for a caregiver far enough east or west the two surfaces disagreed about which row was today.
 
+### Where a reading landed, not just how far it moved
+
+Every yardstick above is the member's own, which answers "did this change?" and cannot answer "is this a normal number?" — and a summary given only the first misleads in both directions. "84 bpm (usual 62)" reads as an event whether or not 84 is an ordinary adult resting rate; and a member whose usual *is* 98 generates no finding at all on a day they read 98, because nothing departed from anything, even though the reading sits outside the AHA's published range every day of the week.
+
+`HealthReferenceRanges.BandClause` resolves that comparison **in .NET and hands over the finished clause** — never the bare range. Putting "typical adult range: 60–100" in the prompt beside a trend figure would repeat the partial-day mistake exactly: ingredients side by side, and a model that makes the comparison the code declined to make. Same division of labour, same reason.
+
+Two prompts changed. `DigestInterpretationSignals.RaisedVitals` appends the clause to its resting-HR finding and emits a new one for a rate above the band on a day it matched the member's usual — one-sided, because the AHA floor of 60 is a settled normal for anyone fit or rate-controlled and saying so daily is how a digest stops being read. `RealtimeAssessmentService` adds one line when the hour's denoised trend has left the band, and nothing when it has not — a source with nothing to say produces no heading. That line is emitted regardless of movement, which is deliberate and imperfect: an hourly trend is not a resting rate, so it will fire during a walk. The prompt already carries the hour's step count and already says to read activity before calling a rate unusual, so the model can discount it; suppressing the clause on an active hour would instead have silenced it for a member whose device logged steps through the very episode worth seeing.
+
 ### Not paying for a summary the day cannot support (built today)
 
 The same value gates regeneration, because "there is not enough of this day yet" is one fact and stating it twice is how two rules drift apart.

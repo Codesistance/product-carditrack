@@ -3,11 +3,35 @@ using CardiTrack.Application.DTOs.Responses;
 namespace CardiTrack.Application.Services;
 
 /// <summary>
+/// Where a reading sits relative to a published range. <see cref="Unknown"/> is the answer when
+/// there is no range or no reading, and is deliberately not <see cref="Within"/>: "nothing to
+/// compare" and "compared and fine" must never read the same to a caller deciding what to say.
+/// </summary>
+public enum BandPosition
+{
+    Unknown,
+    Below,
+    Within,
+    Above,
+}
+
+/// <summary>
 /// The published typical-adult range for each Key Metric — the population normal a client draws
 /// behind the series next to this member's own learned baseline
 /// (<see cref="DashboardMetric.Baseline"/>).
 /// </summary>
 /// <remarks>
+/// <para>
+/// These ranges are <b>presentational by default</b>: a client draws them behind a series, and the
+/// status colouring next to them stays relative to the member's own baseline. Three call sites are
+/// allowed to read a verdict off them, and each is a place where the member's own normal provably
+/// cannot see the thing a caregiver is watching for — <see cref="StatisticalAlertRules.IrregularSleep"/>
+/// and <see cref="StatisticalAlertRules.ElevatedHeartRate"/> grading the severity of a departure
+/// they detected on their own, <c>MemberInsightsCalculator.CapAtRecommendedSleep</c> holding a
+/// rating down, and <c>DigestInterpretationSignals</c> naming where a reading landed. None of them
+/// may <em>raise</em> an assessment the member's own data did not already earn, and none of them
+/// names a reading abnormal: they quote a recommendation and say who published it.
+/// </para>
 /// <para>
 /// Every range names the body that publishes it, because they do not all come from one. WHO
 /// publishes the two it is quoted for here — the SpO2 bands in its pulse oximetry guidance and the
@@ -83,4 +107,73 @@ public static class HealthReferenceRanges
     /// age-dependent thresholds for this one are paediatric, and a CardiMember is an adult.
     /// </summary>
     public static MetricReference BreathingRate => new() { Low = 12m, High = 20m, Source = "WHO" };
+
+    /// <summary>
+    /// Where <paramref name="value"/> sits against <paramref name="reference"/>. Both bounds are
+    /// inclusive, so a reading exactly on a published figure is inside the recommendation rather
+    /// than outside it — the bands are quoted as "60 to 100", and a caregiver told 100 bpm is past
+    /// the range would be reading a boundary artefact as a finding.
+    /// </summary>
+    public static BandPosition Position(MetricReference? reference, decimal? value) =>
+        (reference, value) switch
+        {
+            (null, _) or (_, null) => BandPosition.Unknown,
+            var (band, reading) when reading < band!.Low => BandPosition.Below,
+            var (band, reading) when reading > band!.High => BandPosition.Above,
+            _ => BandPosition.Within,
+        };
+
+    /// <summary>
+    /// The clause that says where a reading landed against a published band, or null when it landed
+    /// inside one (or there was nothing to compare) — a caller appends it to copy that has already
+    /// said what the reading was and how it compares with the member's own usual.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Null for <see cref="BandPosition.Within"/> rather than a reassuring clause, and the reason is
+    /// the same one <c>DigestInterpretationSignals.Section</c> returns empty on a calm member: a
+    /// sentence saying a reading is inside the recommended range is a sentence a caregiver has to
+    /// read on every ordinary day, and the one day it is missing is the day they are least likely
+    /// to notice. Callers that need to distinguish "inside the band" from "no band at all" ask
+    /// <see cref="Position"/> directly.
+    /// </para>
+    /// <para>
+    /// Always names the publisher, for the reason <see cref="SleepSource"/> exists as a const: these
+    /// bands come from three different bodies, and copy that quotes a figure without saying whose it
+    /// is invites the reader to assume it is ours. The wording quotes a recommendation and stops
+    /// there — it never calls a reading high, low or abnormal, which is a judgement no published
+    /// range makes about one person on one day.
+    /// </para>
+    /// </remarks>
+    /// <param name="unit">
+    /// The unit as it should read in prose ("bpm", "%"), not as an axis label — this clause lands
+    /// mid-sentence in copy a family reads.
+    /// </param>
+    public static string? BandClause(MetricReference? reference, decimal? value, string unit) =>
+        Position(reference, value) is BandPosition.Unknown or BandPosition.Within
+            ? null
+            : BandPlacement(reference, value, unit);
+
+    /// <summary>
+    /// The same clause as <see cref="BandClause"/>, but spoken for a reading inside the band too —
+    /// null only when there was nothing to compare. For copy that exists <em>because</em> something
+    /// already fired, where "inside the range" is the proportion the finding would otherwise leave
+    /// a reader to guess at, rather than a reassurance printed on an ordinary day.
+    /// </summary>
+    public static string? BandPlacement(MetricReference? reference, decimal? value, string unit)
+    {
+        var position = Position(reference, value);
+        if (position is BandPosition.Unknown)
+            return null;
+
+        var span = $"the {reference!.Low:0.#}–{reference.High:0.#} {unit} typical for an adult "
+            + $"({reference.Source})";
+
+        return position switch
+        {
+            BandPosition.Above => $"above {span}",
+            BandPosition.Below => $"below {span}",
+            _ => $"inside {span}",
+        };
+    }
 }

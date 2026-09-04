@@ -940,7 +940,8 @@ public class DigestGenerationServiceTests
 
         Assert.Contains("--- Computed observations ---", prompt);
         Assert.Contains(
-            "Yesterday: resting heart rate 88 bpm (usual 71) with 1,200 steps (usual 6,000) "
+            "Yesterday: resting heart rate 88 bpm (usual 71), inside the 60–100 bpm typical for "
+            + "an adult (AHA) with 1,200 steps (usual 6,000) "
             + "— these findings on a still day, not a day of walking.",
             prompt);
         Assert.DoesNotContain("Today so far: resting heart rate", prompt);
