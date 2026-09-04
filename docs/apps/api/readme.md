@@ -302,7 +302,11 @@ registered for them yet.
   `http://localhost:11434`. `AI__Private__UseIdentityToken` (deployed `true`, local `false`)
   makes the client attach a Google-signed OIDC identity token with the service URL as its
   audience — this is what authorises calls to the IAM-protected MedGemma Cloud Run service
-  (`MedGemmaIdentityTokenHandler`).
+  (`MedGemmaIdentityTokenHandler`). `AI__Private__LogClinicalOutput` (Terraform: dev `true`,
+  prod `false`; local default `false`) makes `MedGemmaClient` write every prompt and completion
+  verbatim to the log under event id 4200 `ClinicalInspection`, so the clinical output can be
+  read during development. It is the one exception to the client's DPIA invariant, and a host
+  whose `ASPNETCORE_ENVIRONMENT` is `Prod` refuses to start with it on.
 
 Both resolve as keyed `IExternalAiClient` services ("GeneralProvider" / "MedicalProvider")
 behind `IGenerativeAiService`, `IMedicalAiService`, `IHealthInsightService`, and

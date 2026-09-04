@@ -125,6 +125,10 @@ module "deployments" {
       # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
       # Cloud Run URL while this is false, and that check runs wherever the settings are bound.
       "AI__Private__UseIdentityToken" = "true"
+      # Verbatim prompt/completion logging for reading MedGemma's clinical output. Dev only:
+      # the API refuses to start with this true when ASPNETCORE_ENVIRONMENT is Prod, so the
+      # conditional here and that guard agree by construction rather than by discipline.
+      "AI__Private__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
       # Rewrite slot — Gemini on an EU regional Vertex endpoint under IAM (DPIA v0.11 row A20,
       # decision D6). Hard-coded rather than a variable: the self-hosted Ollama alternative had a
       # single Cloud Run host, which this teardown removes, so there is nothing left to switch
@@ -277,6 +281,8 @@ module "deployments" {
     "AI__Private__ContextTokens"    = tostring(var.medgemma_context_tokens)
     "AI__Private__MaxOutputTokens"  = tostring(var.medgemma_max_output_tokens)
     "AI__Private__UseIdentityToken" = "true"
+    # Dev-only clinical inspection logging — same switch and same start-up guard as the API.
+    "AI__Private__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
     # Same rewrite-slot settings as the API block above (which carries the rationale).
     "AI__Rewrite__Kind"              = "VertexGemini"
     "AI__Rewrite__Model"             = var.rewrite_ai_model

@@ -66,6 +66,17 @@ public class PrivateAiSettings : IMedGemmaModelSettings
     public bool WarmUpEnabled { get; set; } = true;
 
     /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.LogClinicalOutput" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// <c>AI__Private__LogClinicalOutput</c>. Terraform sets it true for dev and false for prod;
+    /// locally it is whatever appsettings says. A true value in a host whose
+    /// <c>ASPNETCORE_ENVIRONMENT</c> is Prod stops that host from starting rather than being
+    /// quietly ignored — a misconfiguration that would log health data must be loud.
+    /// </remarks>
+    public bool LogClinicalOutput { get; set; }
+
+    /// <summary>
     /// Floor on how often one host will actually issue a warm-up, however many arrivals ask for
     /// one. Five minutes: long enough that a burst of morning app-opens costs a single load,
     /// short enough to stay well inside Cloud Run's idle scale-in, so a caregiver who comes back

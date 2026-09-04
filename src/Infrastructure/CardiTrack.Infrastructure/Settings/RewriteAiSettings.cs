@@ -68,6 +68,15 @@ public class RewriteAiSettings : IMedGemmaModelSettings
     public int ContextTokens { get; set; } = 12288;
 
     /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.LogClinicalOutput" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// Only read when <see cref="Kind"/> is Ollama, since only then does a
+    /// <c>MedGemmaClient</c> serve this slot. Same production refusal as the Private slot.
+    /// </remarks>
+    public bool LogClinicalOutput { get; set; }
+
+    /// <summary>
     /// VertexGemini kind: endpoint override for test doubles. Deliberately a separate key from
     /// <see cref="BaseUrl"/> — during a provider transition the deployed environment still mounts
     /// the old Ollama URL under BaseUrl, and it must never be mistaken for a Vertex endpoint.
