@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
@@ -7,7 +7,11 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <!-- Same root as the tab pages: top keeps the inset the header band is drawn against;
+         bottom releases it so BottomNavBar can claim it and run white to the screen edge.
+         Without this the page kept the bottom inset itself and the bar sat 14dp higher than on
+         the tabs, floating on a strip of page ground with the gesture pill on it. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- The app-wide gradient band (Controls/HeaderBand). -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">

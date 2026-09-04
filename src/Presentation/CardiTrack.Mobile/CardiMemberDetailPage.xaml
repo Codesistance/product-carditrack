@@ -7,7 +7,11 @@
              Shell.TabBarIsVisible="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto">
+    <!-- Same root as the tab pages: top keeps the inset the header band is drawn against;
+         bottom releases it so BottomNavBar can claim it and run white to the screen edge.
+         Without this the page kept the bottom inset itself and the bar sat 14dp higher than on
+         the tabs, floating on a strip of page ground with the gesture pill on it. -->
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <!-- ════════════════════════════════════════
              GRADIENT HEADER — the app-wide band (Controls/HeaderBand).

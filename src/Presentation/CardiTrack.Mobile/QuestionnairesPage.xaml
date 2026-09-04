@@ -18,7 +18,11 @@
          state — now lives in CollectionView.Header so it scrolls with the list instead of pinning
          above it. Delete lives on each answered QuestionCard, behind a warning confirm. -->
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <!-- Same root as the tab pages: top keeps the inset the header band is drawn against;
+         bottom releases it so BottomNavBar can claim it and run white to the screen edge.
+         Without this the page kept the bottom inset itself and the bar sat 14dp higher than on
+         the tabs, floating on a strip of page ground with the gesture pill on it. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
