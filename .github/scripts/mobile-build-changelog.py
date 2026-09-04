@@ -143,7 +143,9 @@ def bullets_for(commits: list[tuple[str, str, str]]) -> tuple[list[str], bool]:
             if note.lower() in HIDE_MARKERS:
                 folded = True
                 continue
-            text = tidy_subject(note)
+            # The trailer is customer copy the author wrote on purpose: keep
+            # its wording, capitalisation and punctuation as they are.
+            text = " ".join(note.split())
         elif (
             is_customer_facing(files)
             and not NOISE_SUBJECT.match(subject)
