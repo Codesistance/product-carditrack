@@ -27,17 +27,12 @@
                 <RoundRectangle CornerRadius="12"/>
             </Setter>
         </Style>
-        <Style x:Key="DeviceName" TargetType="Label">
-            <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+        <!-- Page-local names for two of the app's type roles: a device tile's name is a row
+             title, its model list a caption. Only the margin is this page's own. -->
+        <Style x:Key="DeviceName" TargetType="Label" BasedOn="{StaticResource RowTitle}">
             <Setter Property="Margin" Value="0,10,0,0"/>
         </Style>
-        <Style x:Key="DeviceModels" TargetType="Label">
-            <Setter Property="FontFamily" Value="Quicksand"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
-        </Style>
+        <Style x:Key="DeviceModels" TargetType="Label" BasedOn="{StaticResource Caption}"/>
         <Style x:Key="ComingSoonBadge" TargetType="Border">
             <Setter Property="BackgroundColor" Value="#E3F1FE"/>
             <Setter Property="StrokeThickness" Value="0"/>
@@ -48,9 +43,11 @@
                 <RoundRectangle CornerRadius="10"/>
             </Setter>
         </Style>
-        <Style x:Key="BadgeText" TargetType="Label">
+        <!-- Overline's size without its tracking: these badges are sentence case ("✓ Supported"),
+             and each sets its own ink at the call site. -->
+        <Style x:Key="BadgeText" TargetType="Label" BasedOn="{StaticResource Overline}">
             <Setter Property="FontFamily" Value="QuicksandMedium"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="CharacterSpacing" Value="0"/>
         </Style>
     </ContentPage.Resources>
 
@@ -108,7 +105,7 @@
                                             <RoundRectangle CornerRadius="12"/>
                                         </Border.StrokeShape>
                                         <Label Text="&#x2713;" TextColor="{StaticResource White}"
-                                               FontSize="13" FontAttributes="Bold"
+                                               FontSize="13" FontFamily="QuicksandSemiBold"
                                                HorizontalOptions="Center" VerticalOptions="Center"/>
                                     </Border>
                                 </Grid>
@@ -143,7 +140,7 @@
                                             <RoundRectangle CornerRadius="12"/>
                                         </Border.StrokeShape>
                                         <Label Text="&#x2713;" TextColor="{StaticResource White}"
-                                               FontSize="13" FontAttributes="Bold"
+                                               FontSize="13" FontFamily="QuicksandSemiBold"
                                                HorizontalOptions="Center" VerticalOptions="Center"/>
                                     </Border>
                                 </Grid>

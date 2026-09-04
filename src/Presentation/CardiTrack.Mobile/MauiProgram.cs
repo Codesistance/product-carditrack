@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
@@ -40,12 +40,9 @@ public static class MauiProgram
             .UseMauiApp<App>()
             .ConfigureFonts(fonts =>
             {
-                fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
-                fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 fonts.AddFont("Quicksand.ttf", "Quicksand");
                 fonts.AddFont("Quicksand-Medium.ttf", "QuicksandMedium");
                 fonts.AddFont("Quicksand-SemiBold.ttf", "QuicksandSemiBold");
-                fonts.AddFont("Manrope-SemiBold.ttf", "ManropeSemiBold");
             });
 
         // Crash/session monitoring — engine + data stamped by CI; unstamped builds ship nothing.
