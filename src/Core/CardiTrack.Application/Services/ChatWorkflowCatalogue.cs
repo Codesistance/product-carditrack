@@ -145,9 +145,10 @@ public static class ChatWorkflowCatalogue
                 ChatClaimClass.None,
                 []),
 
-            // Triggered by the shape of the routing answer — a non-adjacent runner-up, or a result
-            // that cannot be run — never returned by the model. Adjacent ambiguity is what the
-            // ladder's tie-break is for.
+            // Triggered by the shape of the routing answer — a runner-up that is a different ask,
+            // or a result that cannot be run — never returned by the model. Adjacent ambiguity is
+            // what the ladder's tie-break is for, and two reading rungs at any distance are one ask
+            // at two heights (ChatRouteDecision.AreBothReadings).
             new(MemberChatWorkflow.Clarify,
                 "clarify",
                 "The router could not place the question; ask which rung was meant.",

@@ -203,7 +203,7 @@ The catalogue holds **eight entries**, of which **seven render**, behind **eight
 | `Routable` — what the prompt renders | 7 | `clarify` is `IsRoutable: false` |
 | Handlers | 8 | One per entry, whether or not the router can pick it |
 
-`clarify` **is** a catalogue entry — it carries a purpose line, a claim class and an empty dataset list like any other — but it is flagged unroutable and so is never rendered into the prompt and never returned by the model. It is what the app does when the routing answer shows a non-adjacent runner-up or an unrunnable pair.
+`clarify` **is** a catalogue entry — it carries a purpose line, a claim class and an empty dataset list like any other — but it is flagged unroutable and so is never rendered into the prompt and never returned by the model. It is what the app does when the routing answer names a runner-up that is a different ask — see §5 — or an unrunnable pair.
 
 `investigation`'s handler shipped with rollout step 10 (two-pass fetch, the co-occurrence rule; the consent gate waits on questionnaire answers entering the dataset vocabulary at all), so its `IsImplemented` flag turned and it renders. §10's off-ramp — dropping it if step 4's traffic shows nobody asks why — remains open: turning the flag back off un-renders it without touching the router.
 
@@ -335,7 +335,12 @@ Two entries rather than one register decided in a handler — the router already
 
 Never returned by the router. Triggered by the shape of the routing answer.
 
-**Fires when the runner-up is *not* an adjacent rung.** Adjacent ambiguity is what the ladder's tie-break is for: take the lower and answer. `analysis` with `inference` as runner-up is not ambiguity at all under the superset rule — either serves the caregiver. Clarify is for genuine confusion about what is being asked: `status` against `advise`, or either steer entry against `analysis`. Firing on adjacent pairs would fire on precisely the cases designed to be safe to get wrong, and clarify is only worth having while it is rare.
+**Fires when the two candidates are different *asks*.** Clarify is for genuine confusion about what is being asked: `status` against `advise`, or either steer entry against `analysis`. Two things absorb ambiguity instead of asking, and both are cases designed to be safe to get wrong:
+
+- **Adjacent rungs.** The ladder's tie-break is for exactly this: take the lower and answer.
+- **Any two reading rungs** — `status`, `analysis`, `inference`, `investigation` — *however far apart*. The superset rule that makes `analysis`/`inference` a non-question holds at a distance of two as well: all four answer "what do this person's readings say?", differing only in how much claim the answer makes, and each returns the figures the rung below would have.
+
+**Why the second rule exists** (2026-09-04). The adjacency test alone was a numeric stand-in for a semantic question, and it got the app's most common message wrong: "how is dad today" routes `status` with `inference` behind it — two apart, so it clarified — and the caregiver was asked "what the latest reading shows, or whether it looks worth attention?" for what is one question. That is the §8 rarity bar failing on the first message a new caregiver sends. Distance only means something across the claim-class break; inside the reading rungs it does not. `advise` is deliberately outside the set — it claims a suggestion rather than a reading, which is why `status` against `advise` still clarifies.
 
 **Rules.**
 - **Candidates come from the routing call**, so clarifying costs nothing beyond the route that already ran.
@@ -430,8 +435,8 @@ Every workflow now receives a **resolver** rather than pre-fetched datasets, bec
 
 | Situation | Response |
 |---|---|
-| Router names a **non-adjacent** runner-up | **Clarify** — render them as tappable options; a tap re-enters the pipeline with the rung decided |
-| Router names an **adjacent** runner-up | Not a failure. The ladder tie-break applies: take the lower and answer. Clarifying here would fire on the pairs designed to be safe to get wrong |
+| Router names a runner-up that is a **different ask** — non-adjacent *and* not another reading rung | **Clarify** — render them as tappable options; a tap re-enters the pipeline with the rung decided |
+| Router names an **adjacent** runner-up, or **another reading rung** at any distance | Not a failure. The ladder tie-break applies: take the lower and answer. Clarifying here would fire on the pairs designed to be safe to get wrong — §5 |
 | Workflow/dataset pair cannot be run | **Clarify** — same situation as uncertainty |
 | Clarify answered, still does not route | Run `analysis`. Never ask twice about one message |
 | Router call fails or times out | `analysis` with a default dataset selection. A failed *route* must never surface as a failed *send* |
