@@ -1,7 +1,10 @@
 # Health AI Developer Foundations Terms of Use — revision date changed, content unverified
 
-**Severity:** FYI (flagged for manual follow-up)
+**Severity:** FYI
 **Category:** models
+
+> Flagged for manual follow-up: the revision date moved but the substantive change, if
+> any, is unconfirmed — see "Why flagged" below.
 
 ## Summary
 
