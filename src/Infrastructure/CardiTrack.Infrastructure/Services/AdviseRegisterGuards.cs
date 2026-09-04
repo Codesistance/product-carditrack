@@ -120,7 +120,7 @@ internal static class AdviseRegisterGuards
 
         var flattened = MedicalPromptBlocks.Flatten(text);
         return ConditionMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase))
-            || ProposesTreatment(text);
+            || MatchesTreatment(flattened);
     }
 
     /// <summary>
@@ -135,14 +135,16 @@ internal static class AdviseRegisterGuards
     /// dose change is not one at any stage of the pipeline — a rewrite asked to carry a note
     /// about stopping a medication has already been handed the wrong note.
     /// </remarks>
-    internal static bool ProposesTreatment(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
+    internal static bool ProposesTreatment(string? text) =>
+        !string.IsNullOrWhiteSpace(text) && MatchesTreatment(MedicalPromptBlocks.Flatten(text));
 
-        var flattened = MedicalPromptBlocks.Flatten(text);
-        return TreatmentMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase));
-    }
+    /// <summary>
+    /// The marker check itself, over text a caller has already flattened — so
+    /// <see cref="ReadsAsClinical"/>, which needs the flattened form for its own markers anyway,
+    /// does not flatten the same string a second time to reuse this rule.
+    /// </summary>
+    private static bool MatchesTreatment(string flattened) =>
+        TreatmentMarkers.Any(m => flattened.Contains(m, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// True when the rewritten copy is the brief restating itself rather than this member's
