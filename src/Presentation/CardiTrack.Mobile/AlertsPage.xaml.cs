@@ -438,6 +438,7 @@ public partial class AlertsPage : ContentPage
                 var card = new AlertListCard();
                 card.Apply(alert);
                 card.CallRequested += OnCallRequested;
+                card.SosRequested += OnSosRequested;
                 card.AcknowledgeRequested += OnAcknowledgeRequested;
                 card.DeleteRequested += OnDeleteRequested;
                 card.OpenRequested += OnOpenRequested;
@@ -542,25 +543,47 @@ public partial class AlertsPage : ContentPage
     /// all that is left to type — it still validates the fields the API requires (name, date of
     /// birth, relationship), which a profile saved before those rules tightened could trip.
     /// </summary>
-    private async void OnCallRequested(object? sender, AlertSummaryResponse alert)
-    {
-        if (string.IsNullOrWhiteSpace(alert.EmergencyContactPhone))
-        {
-            var firstName = NameFormatting.FirstName(alert.CardiMemberName);
-            var prompt = string.IsNullOrWhiteSpace(firstName)
-                ? "Would you like to add an emergency contact number, so you can call them from here?"
-                : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?";
+    // The card's two phone actions mean what the dashboard's do — Call reaches the member, SOS
+    // reaches their emergency contact. Call used to dial the emergency contact here, so the same
+    // phone glyph meant two different people depending on which screen a caregiver was on.
+    private async void OnCallRequested(object? sender, AlertSummaryResponse alert) =>
+        await DialAsync(
+            alert.CardiMemberPhone,
+            alert,
+            EditCardiMemberPage.FocusPhone,
+            firstName => string.IsNullOrWhiteSpace(firstName)
+                ? "Would you like to add a phone number, so you can call them from here?"
+                : $"Would you like to add a phone number for {firstName}, so you can call them from here?");
 
+    private async void OnSosRequested(object? sender, AlertSummaryResponse alert) =>
+        await DialAsync(
+            alert.EmergencyContactPhone,
+            alert,
+            EditCardiMemberPage.FocusEmergencyPhone,
+            firstName => string.IsNullOrWhiteSpace(firstName)
+                ? "Would you like to add an emergency contact number, so you can call them from here?"
+                : $"Would you like to add an emergency contact number for {firstName}, so you can call them from here?");
+
+    /// <summary>
+    /// Dials <paramref name="number"/>, or — when there is none on file — offers the edit
+    /// screen with the right field focused, in the same words the dashboard's tiles use.
+    /// </summary>
+    private async Task DialAsync(
+        string? number, AlertSummaryResponse alert, string focusField, Func<string, string> addPrompt)
+    {
+        if (string.IsNullOrWhiteSpace(number))
+        {
+            var prompt = addPrompt(NameFormatting.FirstName(alert.CardiMemberName));
             var addNow = await _popups.ConfirmInfoAsync(prompt, "No number yet", "Add number", "Not now");
             if (addNow)
                 await Shell.Current.GoToAsync(
-                    $"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}&focus={Uri.EscapeDataString(EditCardiMemberPage.FocusEmergencyPhone)}");
+                    $"{EditCardiMemberPage.Route}?memberId={alert.CardiMemberId}&focus={Uri.EscapeDataString(focusField)}");
             return;
         }
 
         try
         {
-            PhoneDialer.Default.Open(alert.EmergencyContactPhone);
+            PhoneDialer.Default.Open(number);
         }
         catch (FeatureNotSupportedException)
         {

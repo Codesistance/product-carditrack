@@ -48,10 +48,14 @@
                      initials-only and ignored it. -->
                 <controls:MemberAvatar x:Name="Avatar"
                                        Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                                       VerticalOptions="Center"
                                        BoxWidth="46"/>
 
+                <!-- The title takes the whole width beside the avatar. With the badge sharing
+                     its row it had ~210dp, and most alert titles are thirty-odd characters, so
+                     they wrapped and left the avatar covering a line and a half. -->
                 <Label x:Name="TitleLabel"
-                       Grid.Row="0" Grid.Column="1"
+                       Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
                        Style="{StaticResource Heading3}"
                        LineBreakMode="TailTruncation"
                        MaxLines="2">
@@ -60,10 +64,10 @@
                     </Label.GestureRecognizers>
                 </Label>
 
-                <!-- Severity badge in the card's top-right corner, small: it is a category
-                     stamp, not the headline — the title is. The unread dot sits beside it,
-                     since both say "this one still needs you" and belong together. -->
-                <HorizontalStackLayout Grid.Row="0" Grid.Column="2" Spacing="8" VerticalOptions="Start">
+                <!-- Severity badge at the right end of the who-and-when line, small: it is a
+                     category stamp, not the headline — the title is. The unread dot sits beside
+                     it, since both say "this one still needs you" and belong together. -->
+                <HorizontalStackLayout Grid.Row="1" Grid.Column="2" Spacing="8" VerticalOptions="Center">
                     <Border x:Name="UnreadDot"
                             WidthRequest="10" HeightRequest="10"
                             StrokeThickness="0"
@@ -90,7 +94,8 @@
 
                 <!-- "Dad, 6 days ago": who and when on one muted line under the title. -->
                 <Label x:Name="MemberLabel"
-                       Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                       Grid.Row="1" Grid.Column="1"
+                       VerticalOptions="Center"
                        FontFamily="QuicksandMedium"
                        FontSize="12"
                        TextColor="{StaticResource MutedText}"
@@ -111,7 +116,7 @@
 
                 <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                       Margin="0,10,0,0"
-                      ColumnDefinitions="Auto,Auto,Auto,*,Auto"
+                      ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto"
                       ColumnSpacing="8">
 
                     <Border x:Name="StatusPillBorder"
@@ -142,8 +147,33 @@
                         <Image Source="icon_action_call.svg" WidthRequest="16" HeightRequest="16"/>
                     </Border>
 
-                    <Border x:Name="AcknowledgeButton"
+                    <!-- The same two phone actions the dashboard's quick-action row has, meaning
+                         the same things: Call reaches the member, SOS reaches their emergency
+                         contact. SOS wears the dashboard's red tint because it dials someone
+                         else, and shows only on the alerts that could warrant it — urgent and
+                         critical — so a notice about a quiet day does not offer an emergency
+                         call. Both dim rather than hide when their number is missing, so the
+                         tap can say why (the dim-not-hide pattern from issue #67). -->
+                    <Border x:Name="SosButton"
                             Grid.Column="2"
+                            WidthRequest="28" HeightRequest="28"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource QuickActionTintRed}"
+                            VerticalOptions="Center"
+                            IsVisible="False"
+                            SemanticProperties.Description="SOS: call emergency contact"
+                            SemanticProperties.Hint="Dials the emergency contact number, not the CardiMember directly">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16"/>
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSosTapped"/>
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_action_call.svg" WidthRequest="16" HeightRequest="16"/>
+                    </Border>
+
+                    <Border x:Name="AcknowledgeButton"
+                            Grid.Column="3"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
                             BackgroundColor="{StaticResource AlertActionBackground}"
@@ -167,7 +197,7 @@
                     </Border>
 
                     <Border x:Name="DeleteButton"
-                            Grid.Column="3"
+                            Grid.Column="4"
                             HorizontalOptions="End"
                             WidthRequest="28" HeightRequest="28"
                             StrokeThickness="0"
@@ -184,7 +214,7 @@
                     </Border>
 
                     <!-- Wrapped so the tap target is a finger rather than a 20px glyph. -->
-                    <Border Grid.Column="4"
+                    <Border Grid.Column="5"
                             StrokeThickness="0"
                             BackgroundColor="Transparent"
                             Padding="6"

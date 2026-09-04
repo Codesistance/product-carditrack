@@ -36,6 +36,13 @@ public class AlertSummaryResponse
     public string? EmergencyContactPhone { get; set; }
     public string? EmergencyContactName { get; set; }
 
+    /// <summary>
+    /// The CardiMember's own phone, behind the card's Call action — so the card's two phone
+    /// actions mean what the dashboard's do: Call reaches the member, SOS reaches
+    /// <see cref="EmergencyContactPhone"/>. Null when they have no number on file.
+    /// </summary>
+    public string? CardiMemberPhone { get; set; }
+
     /// <summary>AlertType display name — "Inactivity", "Heart Rate", "Sleep", …</summary>
     public string Type { get; set; } = string.Empty;
 

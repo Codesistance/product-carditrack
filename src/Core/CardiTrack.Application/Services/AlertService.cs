@@ -340,6 +340,7 @@ public class AlertService : IAlertService
             CardiMemberPhotoUrl = photoUrl,
             EmergencyContactPhone = member?.EmergencyContactPhone,
             EmergencyContactName = member?.EmergencyContactName,
+            CardiMemberPhone = member?.Phone,
             Type = alert.AlertType.GetDisplayName(),
             Severity = SeverityLabel(alert.Severity),
             Status = StatusLabel(alert),
