@@ -48,7 +48,12 @@ public partial class LegalDocumentPage : ContentPage
     internal const string TermsTitle = "Terms of Service";
     internal const string PrivacyTitle = "Privacy Policy";
 
-    private readonly string _url;
+    /// <summary>
+    /// The document on screen, not the one this page was opened with — a caregiver who followed
+    /// the terms' link to the privacy policy and then lost the network should get Try again on
+    /// the policy, not be sent back to the terms.
+    /// </summary>
+    private string _url;
 
     public LegalDocumentPage(string title, string url)
     {
@@ -83,10 +88,14 @@ public partial class LegalDocumentPage : ContentPage
         }
 
         if (HasEmbed(uri))
+        {
+            _url = e.Url;
             return;
+        }
 
         e.Cancel = true;
-        DocumentView.Source = new UrlWebViewSource { Url = WithEmbed(uri) };
+        _url = WithEmbed(uri);
+        DocumentView.Source = new UrlWebViewSource { Url = _url };
     }
 
     private static bool IsLegalDocument(string url) => TitleFor(url) is not null;
