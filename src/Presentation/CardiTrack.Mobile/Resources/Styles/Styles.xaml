@@ -111,13 +111,14 @@
     <!-- ════════════════════════════════════════════
          TYPE ROLES — the app's type system (see the Type Audit, 4 Sep 2026)
 
-         Ten roles named for what the text IS, each fixing face, size, line height and default
+         Roles named for what the text IS, each fixing face, size, line height and default
          ink. One family (Quicksand) in three real faces — Regular, Medium, SemiBold — and no
          FontAttributes="Bold": that was a synthetic bold smeared onto the Regular face, which is
          why two 18pt titles on one page never matched. Weight carries hierarchy; ink carries
          role (Message is the heading ink, Body and Caption are not). LineHeight here is MAUI's
          multiplier on the face's own line spacing, which already carries Quicksand's leading —
-         so 1.0 is the natural setting and 1.2 is loose; the first cut at 1.5 read as double-spaced.
+         so 1.0 is the natural setting and anything past 1.1 reads loose; the first cut at 1.5 read
+         as double-spaced, and 1.2 still did on a card of prose.
 
          The target state — not yet the codebase's: a page carries Style= and nothing else, no
          inline FontSize, FontFamily or FontAttributes, and TextColor only for a semantic colour
@@ -147,7 +148,7 @@
     <Style x:Key="Section" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="18"/>
-        <Setter Property="LineHeight" Value="1.05"/>
+        <Setter Property="LineHeight" Value="1.0"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
     <Style x:Key="SectionOnBand" TargetType="Label" BasedOn="{StaticResource Section}">
@@ -157,7 +158,7 @@
     <Style x:Key="RowTitle" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
         <Setter Property="FontSize" Value="16"/>
-        <Setter Property="LineHeight" Value="1.1"/>
+        <Setter Property="LineHeight" Value="1.05"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
     <Style x:Key="RowTitleOnBand" TargetType="Label" BasedOn="{StaticResource RowTitle}">
@@ -169,7 +170,7 @@
     <Style x:Key="Message" TargetType="Label">
         <Setter Property="FontFamily" Value="QuicksandMedium"/>
         <Setter Property="FontSize" Value="14"/>
-        <Setter Property="LineHeight" Value="1.2"/>
+        <Setter Property="LineHeight" Value="1.1"/>
         <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
     </Style>
 
@@ -177,21 +178,21 @@
     <Style x:Key="Body" TargetType="Label">
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="14"/>
-        <Setter Property="LineHeight" Value="1.2"/>
+        <Setter Property="LineHeight" Value="1.1"/>
         <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
     </Style>
 
     <!-- Body's compact sibling for dense rows — chips, pill neighbours, settings descriptions. -->
     <Style x:Key="Compact" TargetType="Label" BasedOn="{StaticResource Body}">
         <Setter Property="FontSize" Value="13"/>
-        <Setter Property="LineHeight" Value="1.15"/>
+        <Setter Property="LineHeight" Value="1.05"/>
     </Style>
 
     <!-- Dates, "Written …", sources, disclaimers, the header band's second line. -->
     <Style x:Key="Caption" TargetType="Label">
         <Setter Property="FontFamily" Value="Quicksand"/>
         <Setter Property="FontSize" Value="12"/>
-        <Setter Property="LineHeight" Value="1.15"/>
+        <Setter Property="LineHeight" Value="1.05"/>
         <Setter Property="TextColor" Value="{StaticResource MutedText}"/>
     </Style>
     <Style x:Key="CaptionOnBand" TargetType="Label" BasedOn="{StaticResource Caption}">
@@ -264,11 +265,12 @@
          changing the weight too, which reads as emphasis rather than as ordinary prose. -->
     <Style x:Key="Body2Dark" TargetType="Label" BasedOn="{StaticResource Message}"/>
 
-    <Style x:Key="BodySubtitle" TargetType="Label" BasedOn="{StaticResource Section}">
+    <!-- Body copy at a section's size: the one-line subtitle under a Display or Title. Based on
+         Body, not Section, so it keeps body ink, face and line height and borrows only the size. -->
+    <Style x:Key="BodySubtitle" TargetType="Label" BasedOn="{StaticResource Body}">
+        <Setter Property="FontSize" Value="18"/>
         <Setter Property="HorizontalTextAlignment" Value="Center"/>
         <Setter Property="LineBreakMode" Value="WordWrap"/>
-        <Setter Property="FontFamily" Value="Quicksand"/>
-        <Setter Property="TextColor" Value="{StaticResource BodyText}"/>
     </Style>
 
     <!-- ════════════════════════════════════════════
@@ -498,7 +500,7 @@
          BOTTOM NAVIGATION (Figma "Body 3 Medium")
          ════════════════════════════════════════════ -->
 
-    <!-- TextColor is set per tab by BottomNavBar (PrimaryDark selected, MutedText not). -->
+    <!-- TextColor is set per tab by BottomNavBar: PrimaryDark when selected, MutedText otherwise. -->
     <Style x:Key="TabBarLabel" TargetType="Label" BasedOn="{StaticResource Overline}">
         <Setter Property="HorizontalTextAlignment" Value="Center"/>
         <Setter Property="HorizontalOptions" Value="Center"/>

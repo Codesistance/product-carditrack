@@ -212,8 +212,7 @@
                      from the screen that asks you to agree to both — and this is the earlier of
                      the app's two consent points. Named the same as on the account form, so a
                      caregiver who reads one and then meets the other recognises it. -->
-                <Label Style="{StaticResource Link}"
-                       TextDecorations="Underline"
+                <Label Style="{StaticResource PrimaryLink}"
                        VerticalTextAlignment="Center"
                        Text="Terms">
                     <Label.GestureRecognizers>
@@ -223,8 +222,7 @@
                 <Label Text=" &amp; "
                        Style="{StaticResource Body2}"
                        VerticalTextAlignment="Center" />
-                <Label Style="{StaticResource Link}"
-                       TextDecorations="Underline"
+                <Label Style="{StaticResource PrimaryLink}"
                        VerticalTextAlignment="Center"
                        Text="Privacy">
                     <Label.GestureRecognizers>
