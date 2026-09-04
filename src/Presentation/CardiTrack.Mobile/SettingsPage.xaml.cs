@@ -35,7 +35,91 @@ public partial class SettingsPage : ContentPage
         base.OnAppearing();
         AccountNameLabel.Text = _authService.CurrentUserName ?? "Your account";
         AccountEmailLabel.Text = _authService.CurrentUserEmail ?? string.Empty;
+        VersionLabel.Text = $"{AppInfo.Current.VersionString} ({AppInfo.Current.BuildString})";
         _ = LoadMutesAsync();
+        _ = LoadNotificationSummaryAsync();
+    }
+
+    /// <summary>The row's one line says what is set, so the page answers before it is tapped.</summary>
+    private async Task LoadNotificationSummaryAsync()
+    {
+        try
+        {
+            var prefs = await _api.GetNotificationPreferencesAsync();
+            var quiet = prefs.QuietHoursStart is { } start && prefs.QuietHoursEnd is { } end
+                ? $"Quiet {start:HH:mm} – {end:HH:mm}"
+                : "No quiet hours";
+            var muted = prefs.MutedCategories.Count switch
+            {
+                0 => "hearing about everything",
+                1 => "1 kind muted",
+                var n => $"{n} kinds muted",
+            };
+            NotificationSummary.Text = $"{quiet} · {muted}";
+        }
+        catch (ApiException)
+        {
+            NotificationSummary.Text = "Quiet hours, lock-screen detail, what to hear about";
+        }
+    }
+
+    private async void OnNotificationPreferencesTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(NotificationPreferencesPage.Route);
+
+    // The same reset-link call the signed-out Forgot Password screen makes, sent to the
+    // signed-in address without asking for it again — there is nothing else to type.
+    private async void OnChangePasswordTapped(object? sender, TappedEventArgs e)
+    {
+        var email = _authService.CurrentUserEmail;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            await _popups.ShowWarningAsync("We don't have an email address for this account.", "Can't send a link");
+            return;
+        }
+
+        var send = await _popups.ConfirmInfoAsync(
+            $"We'll email a link to {email}. Follow it to set a new password.",
+            "Change password", "Send link", "Not now");
+        if (!send)
+            return;
+
+        try
+        {
+            await _authService.RequestPasswordResetAsync(email);
+            ChangePasswordDetail.Text = $"Link sent to {email}";
+        }
+        catch (CardiTrack.Mobile.Core.Auth.AuthException ex)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't send the link");
+        }
+    }
+
+    private async void OnTermsTapped(object? sender, TappedEventArgs e) =>
+        await Navigation.PushModalAsync(new LegalDocumentPage("Terms of Service", LegalDocumentPage.TermsUrl));
+
+    private async void OnPrivacyTapped(object? sender, TappedEventArgs e) =>
+        await Navigation.PushModalAsync(new LegalDocumentPage("Privacy Policy", LegalDocumentPage.PrivacyUrl));
+
+    // Starts the erasure request the privacy policy promises (30 days), the same way the
+    // policy page itself does — a pre-addressed email — until an endpoint exists.
+    private async void OnDeleteAccountTapped(object? sender, TappedEventArgs e)
+    {
+        var proceed = await _popups.ConfirmWarningAsync(
+            "Deleting your account removes your sign-in and everything CardiTrack holds about you and the people you watch over, within 30 days of the request. This can't be undone.\n\nWe'll open an email to our support team to start it.",
+            "Delete my account", "Start request", "Keep my account");
+        if (!proceed)
+            return;
+
+        var subject = Uri.EscapeDataString("Delete my account");
+        var body = Uri.EscapeDataString($"Please delete the CardiTrack account for {_authService.CurrentUserEmail}.");
+        try
+        {
+            await Launcher.Default.OpenAsync(new Uri($"mailto:support@carditrack.com?subject={subject}&body={body}"));
+        }
+        catch (Exception)
+        {
+            await _popups.ShowInfoAsync("Email support@carditrack.com with the subject \"Delete my account\".", "No mail app found");
+        }
     }
 
     /// <summary>Settings is a tab root reachable by deep link (notification preferences,

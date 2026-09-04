@@ -90,12 +90,109 @@
                     </VerticalStackLayout>
                 </Border>
 
+                <!-- Rows follow Journal Settings' shape — title, one line of what it does, the
+                     current value or a chevron on the right — so the two settings screens read
+                     as one. Per-member settings (alert rules, journal timing, devices) stay on
+                     Member Details: this page is about the caregiver and the app. -->
+                <Label Text="Notifications"
+                       Style="{StaticResource DashboardSectionTitle}"
+                       Margin="4,8,4,-4"/>
+
+                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                          SemanticProperties.Description="Notification preferences"
+                          SemanticProperties.Hint="Quiet hours, lock-screen detail and what to hear about">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnNotificationPreferencesTapped"/>
+                        </Grid.GestureRecognizers>
+                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                            <Label Text="Quiet hours and what to hear about" Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label x:Name="NotificationSummary"
+                                   Text="Loading…"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                               VerticalTextAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <Label Text="Account"
+                       Style="{StaticResource DashboardSectionTitle}"
+                       Margin="4,8,4,-4"/>
+
+                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                          SemanticProperties.Description="Change password"
+                          SemanticProperties.Hint="Emails you a link to set a new password">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnChangePasswordTapped"/>
+                        </Grid.GestureRecognizers>
+                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                            <Label Text="Change password" Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label x:Name="ChangePasswordDetail"
+                                   Text="We'll email you a link to set a new one"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                               VerticalTextAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <Label Text="About"
+                       Style="{StaticResource DashboardSectionTitle}"
+                       Margin="4,8,4,-4"/>
+
+                <Border Style="{StaticResource ElevatedCard}" Padding="14,6">
+                    <VerticalStackLayout Spacing="0">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="48"
+                              SemanticProperties.Description="Terms of Service">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnTermsTapped"/>
+                            </Grid.GestureRecognizers>
+                            <Label Text="Terms of Service" Style="{StaticResource Body1SemiBoldDark}" VerticalTextAlignment="Center"/>
+                            <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}" VerticalTextAlignment="Center"/>
+                        </Grid>
+                        <BoxView Style="{StaticResource DividerLine}"/>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="48"
+                              SemanticProperties.Description="Privacy Policy">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnPrivacyTapped"/>
+                            </Grid.GestureRecognizers>
+                            <Label Text="Privacy Policy" Style="{StaticResource Body1SemiBoldDark}" VerticalTextAlignment="Center"/>
+                            <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}" VerticalTextAlignment="Center"/>
+                        </Grid>
+                        <BoxView Style="{StaticResource DividerLine}"/>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="48">
+                            <Label Text="Version" Style="{StaticResource Body1SemiBoldDark}" VerticalTextAlignment="Center"/>
+                            <Label x:Name="VersionLabel" Grid.Column="1" Style="{StaticResource Body2}" VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
                 <Button x:Name="SignOutBtn"
                         Text="Sign out"
                         Style="{StaticResource SecondaryOutlineButton}"
                         HorizontalOptions="Fill"
                         Margin="0,12,0,0"
                         Clicked="OnSignOutClicked"/>
+
+                <!-- The privacy policy promises erasure within 30 days of a request. No endpoint
+                     exists yet, so the row starts the request the way the policy page does — a
+                     pre-addressed email to support — rather than leaving a published promise
+                     with no path from inside the app. Last, and red: it is the one thing here
+                     that cannot be undone. -->
+                <Label Text="Delete my account"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="15"
+                       TextColor="{StaticResource ErrorRed}"
+                       HorizontalOptions="Center"
+                       Padding="12,14"
+                       SemanticProperties.Description="Delete my account"
+                       SemanticProperties.Hint="Starts an account deletion request by email">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnDeleteAccountTapped"/>
+                    </Label.GestureRecognizers>
+                </Label>
 
             </VerticalStackLayout>
         </ScrollView>

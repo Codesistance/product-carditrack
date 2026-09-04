@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.NotificationPreferencesPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- The caregiver's own notification preferences (GET/PUT /api/v1/notifications/preferences):
+         quiet hours, lock-screen detail, and which categories are muted. User-scoped, not
+         per-member — each family member sleeps their own hours — which is why this lives under
+         Settings rather than on a CardiMember. Every change saves as it is made; there is no
+         Save button to forget. -->
+    <Grid RowDefinitions="Auto,*" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Back"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Notifications"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label Text="When and how CardiTrack reaches you"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20,20,20,24" Spacing="12">
+
+                <ActivityIndicator x:Name="Loading"
+                                   IsRunning="True"
+                                   Color="{StaticResource Primary}"
+                                   HorizontalOptions="Center"
+                                   Margin="0,24"/>
+
+                <VerticalStackLayout x:Name="Panel" IsVisible="False" Spacing="12">
+
+                    <Label Text="Quiet hours"
+                           Style="{StaticResource DashboardSectionTitle}"
+                           Margin="4,0,4,0"/>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                              SemanticProperties.Description="Quiet hours"
+                              SemanticProperties.Hint="Choose the hours when non-urgent notifications wait">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnQuietHoursTapped"/>
+                            </Grid.GestureRecognizers>
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Quiet hours" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label Text="Non-urgent notifications wait until they end"
+                                       Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Label x:Name="QuietHoursValue"
+                                   Grid.Column="1"
+                                   Style="{StaticResource Body1SemiBoldDark}"
+                                   TextColor="{StaticResource Primary}"
+                                   VerticalTextAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Fixed copy, in the contract's own words: a caregiver setting quiet hours
+                         must know what will still wake them. -->
+                    <Label Text="Safety notifications — a device gone quiet, nobody listening — always come through, even in quiet hours."
+                           Style="{StaticResource Body2}"
+                           Margin="4,0,4,8"/>
+
+                    <Label Text="On the lock screen"
+                           Style="{StaticResource DashboardSectionTitle}"
+                           Margin="4,0,4,0"/>
+
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60">
+                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                                <Label Text="Show details" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label Text="Off shows only that there is something to read"
+                                       Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                            <Switch x:Name="LockScreenSwitch"
+                                    Grid.Column="1"
+                                    OnColor="{StaticResource Primary}"
+                                    VerticalOptions="Center"
+                                    Toggled="OnLockScreenToggled"
+                                    SemanticProperties.Description="Show details on the lock screen"/>
+                        </Grid>
+                    </Border>
+
+                    <Label Text="What to hear about"
+                           Style="{StaticResource DashboardSectionTitle}"
+                           Margin="4,8,4,0"/>
+
+                    <!-- One row per category the API lets a caregiver mute, with Safety shown
+                         and pinned on so the list says what can't be silenced rather than hiding it. -->
+                    <Border Style="{StaticResource ElevatedCard}" Padding="14,6">
+                        <VerticalStackLayout x:Name="CategoryRows" Spacing="0"/>
+                    </Border>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="10" Margin="0,24">
+                    <Label Text="Couldn't load your notification preferences."
+                           Style="{StaticResource Body1SemiBoldDark}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Try again"
+                            Style="{StaticResource PrimaryGradientButton}"
+                            HorizontalOptions="Center"
+                            Clicked="OnRetryClicked"/>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>
