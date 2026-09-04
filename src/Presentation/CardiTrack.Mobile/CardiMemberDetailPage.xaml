@@ -312,8 +312,14 @@
                                            LineBreakMode="TailTruncation"
                                            IsVisible="False"/>
                                 </Grid>
+                                <!-- Both paragraphs are the message to the caregiver, and both
+                                     carry the same weight: the summary used to sit in regular
+                                     type beside the bold suggestion and read as a lighter aside.
+                                     Only the time and the source-and-disclaimer footnote stay
+                                     muted — they are about the message, not the message. -->
                                 <Label x:Name="AdviseSummaryLabel"
                                        Style="{StaticResource Body2Dark}"
+                                       FontAttributes="Bold"
                                        LineBreakMode="WordWrap"/>
                                 <Label x:Name="AdviseSuggestionLabel"
                                        Style="{StaticResource Body2Dark}"
