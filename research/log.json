@@ -1,4 +1,237 @@
 {
-  "runs": [],
-  "items": []
+  "runs": [
+    {
+      "date": "2026-09-04",
+      "slack_ts": null,
+      "item_count": 25,
+      "empty_reason": null
+    }
+  ],
+  "items": [
+    {
+      "date": "2026-09-04",
+      "slug": "google-health-fitbit-legacy-sunset",
+      "title": "Legacy Fitbit Web API hard-sunsets 2026-09-30 (26 days) \u2014 no token carryover",
+      "url": "https://developers.google.com/health/migration",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-04-google-health-fitbit-legacy-sunset.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "google-health-oauth-restricted-scopes",
+      "title": "Google Health API scopes are now Restricted (`googlehealth.*`) \u2014 mandatory privacy review, queue backing up ahead of Sept 30",
+      "url": "https://developers.google.com/health/scopes",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-04-google-health-oauth-restricted-scopes.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "google-play-target-sdk-36-deadline",
+      "title": "Google Play target API level 36 deadline already passed (2026-08-31); one-time extension to 2026-11-01 available",
+      "url": "https://support.google.com/googleplay/android-developer/answer/11926878",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-04-google-play-target-sdk-36-deadline.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "auth0-native-callback-deprecation",
+      "title": "Auth0 native-app callback change already live since 2026-04-28 \u2014 extra login prompt unless migrated to HTTPS callbacks",
+      "url": "https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations/migrate-to-non-verifiable-callback-uri-end-user-confirmation",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-04-auth0-native-callback-deprecation.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "ollama-cve-2026-7482-bleeding-llama",
+      "title": "Ollama CVE-2026-7482 \"Bleeding Llama\" \u2014 unauthenticated info-disclosure, fixed in 0.17.1; MedGemma image is unpinned (`ollama/ollama:latest`)",
+      "url": "https://github.com/advisories/GHSA-x8qc-fggm-mpqg",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-04-ollama-cve-2026-7482-bleeding-llama.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "medgemma-ecg-reasoning-benchmark",
+      "title": "New benchmark: MedGemma near-zero on multi-step ECG reasoning chains \u2014 validates CardiTrack's \"MedGemma only narrates\" design",
+      "url": "https://arxiv.org/abs/2603.14326",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-04-medgemma-ecg-reasoning-benchmark.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "small-llm-cv-adjudication-benchmark",
+      "title": "Small local LLMs (Gemma 3 4B) weak at cardiovascular endpoint adjudication vs. 70B models",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13256241/",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-04-small-llm-cv-adjudication-benchmark.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "haidef-terms-revision-unverified",
+      "title": "Health AI Developer Foundations Terms of Use page shows a mid-2026 revision date \u2014 content unverified, needs manual diff",
+      "url": "https://developers.google.com/health-ai-developer-foundations/terms",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-04-haidef-terms-revision-unverified.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "fda-general-wellness-policy-2026",
+      "title": "FDA finalizes revised \"General Wellness: Policy for Low Risk Devices\" (2026-01-06)",
+      "url": "https://www.fda.gov/regulatory-information/search-fda-guidance-documents/general-wellness-policy-low-risk-devices",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-04-fda-general-wellness-policy-2026.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "eu-mdcg-borderline-manual-v5",
+      "title": "EU MDCG Manual on Borderline and Classification, Version 5 (2026-04-22)",
+      "url": "https://health.ec.europa.eu/latest-updates/update-manual-borderline-and-classification-under-regulations-eu-2017745-and-2017746-v5-2026-04-22_en",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-04-eu-mdcg-borderline-manual-v5.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "fda-cds-software-guidance-2026",
+      "title": "FDA revises Clinical Decision Support Software guidance \u2014 carve-out stays HCP-facing only",
+      "url": "https://www.fda.gov/regulatory-information/search-fda-guidance-documents/clinical-decision-support-software",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-04-fda-cds-software-guidance-2026.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "eu-ai-act-digital-omnibus-postponement",
+      "title": "EU AI Act Digital Omnibus postpones high-risk AI obligations (Annex III to Dec 2027, Annex I to Aug 2028)",
+      "url": "https://www.consilium.europa.eu/en/press/press-releases/2026/06/29/artificial-intelligence-council-gives-final-green-light-to-simplify-and-streamline-rules/",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-04-eu-ai-act-digital-omnibus-postponement.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "mhra-avt-guidance-2026",
+      "title": "MHRA Ambient Voice Technology guidance (2026-07-29) sets a precedent: automated action vs. human-reviewed output is the dividing line",
+      "url": "https://www.gov.uk/government/publications/ambient-voice-technology-enabled-products/ambient-voice-technology-enabled-products",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-04-mhra-avt-guidance-2026.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "mhra-ai-airlock-phase2",
+      "title": "MHRA AI Airlock Phase 2 complete \u2014 dedicated AI-in-medical-devices framework expected later in 2026",
+      "url": "https://www.gov.uk/government/publications/ai-airlock-sandbox-phase-2-programme-report",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-04-mhra-ai-airlock-phase2.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "nhs-productivity-challenge-sovereign-ai",
+      "title": "NHS Productivity Challenge (Sovereign AI R&D Procurement) \u2014 \u00a3100m UK scheme, first round closes 2026-10-01",
+      "url": "https://www.gov.uk/government/news/100-million-competition-to-back-british-ai-companies-to-fix-public-services",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-04-nhs-productivity-challenge-sovereign-ai.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "eit-health-transformative-healthcare-instrument",
+      "title": "EIT Health Transformative Healthcare Instrument 2026 \u2014 \u20ac300k-500k, no consortium required, deadline 2026-09-16",
+      "url": "https://eithealth.eu/opportunity/transformative-healthcare-instrument/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-04-eit-health-transformative-healthcare-instrument.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "eit-health-innovation-uptake-2026",
+      "title": "EIT Health Innovation Uptake Call 2026 \u2014 up to \u20ac650k, deadline 2026-09-16 (multi-country consortium required)",
+      "url": "https://eithealth.eu/opportunity/innovation-uptake/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-04-eit-health-innovation-uptake-2026.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "eic-accelerator-open",
+      "title": "EIC Accelerator (Open) \u2014 rolling grant up to ~\u20ac2.5m (UK: grant-only track), next cutoff 2026-10-06",
+      "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-04-eic-accelerator-open.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "google-health-api-cardiac-scopes",
+      "title": "Google Health API v4 added cardiac-relevant scopes: electrocardiogram, irregular-rhythm-notification",
+      "url": "https://developers.google.com/health/data-types",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-04-google-health-api-cardiac-scopes.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "whoop-fda-ecg-bp-cleared",
+      "title": "FDA drops enforcement against Whoop \u2014 FDA-cleared ECG/AFib + Blood Pressure Insights now live",
+      "url": "https://www.statnews.com/2026/06/23/fda-drops-enforcement-against-wearable-maker-whoop/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-04-whoop-fda-ecg-bp-cleared.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "samsung-health-bp-monitoring-us",
+      "title": "Samsung Health / Galaxy Watch blood-pressure monitoring now live in the US",
+      "url": "https://www.samsungmobilepress.com/articles/samsung-health-blood-pressure-monitoring-us-galaxy-watch",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-04-samsung-health-bp-monitoring-us.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "fitbit-air-launch",
+      "title": "Fitbit Air launched \u2014 $99 screenless tracker with AFib alerts, on CardiTrack's existing platform",
+      "url": "https://blog.google/products-and-platforms/devices/fitbit/fitbit-air/",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-04-fitbit-air-launch.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "aktiia-hilo-band-cuffless-bp",
+      "title": "Aktiia's Hilo Band \u2014 first FDA-cleared OTC cuffless blood-pressure wearable",
+      "url": "https://www.biospace.com/press-releases/aktiias-hilo-band-becomes-first-cuffless-blood-pressure-monitor-cleared-by-fda-for-over-the-counter-use",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-04-aktiia-hilo-band-cuffless-bp.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "ejenta-heart-failure-agentic-ai",
+      "title": "Ejenta \u2014 NASA-derived agentic AI for heart-failure remote monitoring, Best in Show at HIMSS26",
+      "url": "https://swaay.health/2026/03/26/best-of-show-himss26/",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-04-ejenta-heart-failure-agentic-ai.md"
+    },
+    {
+      "date": "2026-09-04",
+      "slug": "cadence-ai-proactive-care-engine",
+      "title": "Cadence AI Proactive Care Engine scales nationally for Medicare \u2014 clinical/EMR workflow, not family-caregiver-facing",
+      "url": "https://www.cadence.care/post/cadence-launches-ai-powered-proactive-care-engine-bringing-advanced-primary-care-management-to-medicare-patients-nationwide",
+      "severity": "FYI",
+      "category": "competition",
+      "brief": "research/queue/2026-09-04-cadence-ai-proactive-care-engine.md"
+    }
+  ]
 }
