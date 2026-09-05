@@ -103,14 +103,28 @@ public class MemberChatService : IMemberChatService
     /// bubble, not the hard 400 this path used to raise. The tone block's rule holds: never
     /// suggest the caregiver did something wrong.
     /// </summary>
+    /// <remarks>
+    /// Now carries what this app actually holds, because most of what reaches this entry is no
+    /// longer a poem or the weather. A caregiver asking "what of his diet" is asking a reasonable
+    /// question about their father's health that CardiTrack has no reading of, and a generic "I
+    /// can't help with that" leaves them to rediscover the boundary one topic at a time. Naming
+    /// the sources once turns a refusal into something they learn from.
+    /// </remarks>
     private const string OffTopicSteerInstructions = """
-        A family caregiver sent the request below inside a health-monitoring app that answers
-        questions about their family member's readings, alerts, sleep and activity. The request is
-        about something this assistant cannot help with. In one or two short sentences, say so
-        kindly — without scolding or lecturing — and mention what you can help with instead: their
-        family member's readings, sleep, activity, or alerts. Do not attempt the request itself.
-        Write CardiTrackCardiMember exactly as written if you name the member; it stands in for
-        their real name.
+        A family caregiver sent the request below inside a health-monitoring app. The app answers
+        questions about one family member using what their wearable records — steps, heart rate,
+        sleep, breathing rate and heart rate variability — plus the alerts and baselines computed
+        from those. It holds nothing else: not what they eat, not medication, not weight, not mood,
+        not appointments.
+
+        The request is about something this app has no readings for. In one or two short sentences,
+        say so kindly — without scolding or lecturing — and say what it does hold, so they know
+        what they can ask next. If their request is a reasonable health question that simply is not
+        measured here, acknowledge that rather than implying they asked for something odd; suggest
+        their doctor or their own notes if that is where the answer would come from. Never guess at
+        an answer from the readings that do exist, and do not attempt the request itself. Write
+        CardiTrackCardiMember exactly as written if you name the member; it stands in for their
+        real name.
 
         Respond with:
         - reply: the message to show the caregiver.
@@ -192,7 +206,28 @@ public class MemberChatService : IMemberChatService
 
         Respond with:
         - analysis: your answer, grounded only in the data provided.
-        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        """ + ReadingsDatedFields
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+
+    /// <summary>
+    /// The two date fields every clinical read answers, so the reply can be dated in code.
+    /// </summary>
+    /// <remarks>
+    /// Each rung's data heading already names the window and each row already names its day
+    /// ("Today so far (…partial)", "Yesterday (…complete day)"). What was missing was any way to
+    /// carry that forward: the rewrite step is briefed on tone and register, not on dates, and it
+    /// turned "yesterday, complete day" into "a stable day" — which read as today, beside a status
+    /// reply that had just given today's partial figures. Asking which days the answer used, and
+    /// letting code spell them, is the same split the References line already works by.
+    /// </remarks>
+    private const string ReadingsDatedFields = """
+
+        - readingsFrom: the first day the figures in your analysis come from, as yyyy-MM-dd,
+          exactly as dated in the readings heading above. Null if your analysis states no daily
+          readings.
+        - readingsTo: the last such day, as yyyy-MM-dd — the same value as readingsFrom when your
+          analysis is about a single day. Null on the same condition.
+        """;
 
     /// <summary>
     /// The judgement rung's clinical read — a superset of <see cref="ClinicalInstructions"/>: it
@@ -212,9 +247,10 @@ public class MemberChatService : IMemberChatService
 
         Open with the verdict in one sentence: settled, or worth attention. Then name exactly what
         it rests on — the readings, the comparison against this member's own baseline, and the
-        published range where one applies. A verdict that does not name its basis is not usable
-        and will be discarded. Include the figures that carry the verdict; the caregiver's reply
-        is built from this read and must be able to quote them.
+        published range where one applies. A verdict that does not name its basis is not usable,
+        and it travels to the family as written: nothing downstream can supply a basis you did not
+        give. Include the figures that carry the verdict; the caregiver's reply is built from this
+        read and must be able to quote them.
 
         Judge against both references where both exist: this member's own baseline says what is
         usual for them, and the published range says what is typical generally. When they
@@ -224,9 +260,19 @@ public class MemberChatService : IMemberChatService
         recommend an action: what to do about a finding is a different question this read must not
         answer.
 
+        When the question names no particular reading — "anything to follow up on?", "what should
+        I be watching?" — it is asking for the same verdict across everything you were given. Lead
+        with what is outstanding or has moved: any unresolved alert first, then any reading that
+        has drifted from this member's own baseline. If nothing has, say that plainly and stop.
+        Listing today's figures back is not an answer to that question, and a caregiver who has
+        just been given those figures is asking precisely because the list did not tell them
+        whether anything mattered.
+
         Every figure below describes a period that has already finished. Never state what the
         person is doing at this moment. If the data below cannot support a verdict either way,
-        say so plainly rather than manufacturing confidence.
+        say so plainly rather than manufacturing confidence. The activity data covers only the
+        dates named in its heading; if the question asks about a longer stretch, judge the dates
+        you have and say so.
 
         Respond with:
         - analysis: the verdict, what it rests on, and the figures that carry it.
@@ -235,7 +281,8 @@ public class MemberChatService : IMemberChatService
           Association". These are quoted back to the caregiver as the authorities behind the
           verdict, so name only what the verdict genuinely used; an empty list is correct when
           it rests on the member's own baseline alone.
-        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        """ + ReadingsDatedFields
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
     /// <summary>
     /// The explanation rung's clinical read. Its defining rule is co-occurrence: with several
@@ -260,10 +307,55 @@ public class MemberChatService : IMemberChatService
         limit on what the data can carry, and it holds whatever the factor is. A mechanism or a
         condition may be named under the same limit. Never recommend an action.
 
+        Both data sections cover only the dates named in their headings; if the question asks
+        about a change outside them, say which dates you can actually see.
+
         Respond with:
         - analysis: what changed, what if anything co-occurred and qualifies, ranked, and what
           remains unexplained.
-        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        """ + ReadingsDatedFields
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+
+    /// <summary>
+    /// The brief each rung's handler actually sends to a model, keyed by rung — the fixture for the
+    /// parity check <c>docs/technical/member_chat_routing.md</c> §5 says exists ("the parity test
+    /// asserts each handler's prompt carries the tone block matching its claim class") and which,
+    /// until now, did not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ChatClaimClass"/> is described in the catalogue as "the load-bearing field… the
+    /// only place that limit is written down", but nothing read it: no runtime branch, no prompt,
+    /// and no test outside the catalogue's own shape assertions. <c>AllowedDatasets</c>, the field
+    /// beside it, <em>is</em> enforced at runtime — it is passed to the planner and intersected in
+    /// the parse. The claim limit had no such teeth, which is the same "written down but not
+    /// enforced" shape as every other finding this change set came from.
+    /// </para>
+    /// <para>
+    /// The rungs absent from this map are the ones that send no brief at all: <c>status</c> and
+    /// <c>advise</c> assemble their replies in code, and <c>clarify</c> is composed from the routing
+    /// answer that already ran. <c>ChatClaimClassParityTests</c> asserts that split rather than
+    /// letting a silently unbriefed rung look intentional.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyDictionary<MemberChatWorkflow, string> HandlerBriefs { get; } =
+        new Dictionary<MemberChatWorkflow, string>
+        {
+            [MemberChatWorkflow.Analysis] = ClinicalInstructions,
+            [MemberChatWorkflow.Inference] = InferenceClinicalInstructions,
+            [MemberChatWorkflow.Investigation] = InvestigationClinicalInstructions,
+            [MemberChatWorkflow.SteerCasual] = CasualSteerInstructions,
+            [MemberChatWorkflow.SteerOffTopic] = OffTopicSteerInstructions,
+        };
+
+    /// <summary>The rungs that reach no model beyond the triage and route that selected them.</summary>
+    internal static IReadOnlySet<MemberChatWorkflow> CodeAssembledRungs { get; } =
+        new HashSet<MemberChatWorkflow>
+        {
+            MemberChatWorkflow.Status,
+            MemberChatWorkflow.Advise,
+            MemberChatWorkflow.Clarify,
+        };
 
     /// <summary>
     /// Turns the clinical read into the sentence the caregiver actually receives.
@@ -406,11 +498,13 @@ public class MemberChatService : IMemberChatService
         // is the router-failure fallback only — the booleans the pre-check already answered,
         // deciding the turn the one time the router could not.
         var result = route is not null
-            ? await DispatchRoutedAsync(route, flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct)
+            ? await DispatchRoutedAsync(
+                route, flattened, triage.Usage, triage.Result.IsAboutThisMoment,
+                cardiMemberId, member, history, utcNow, ct)
             : triage.Result switch
             {
                 { IsAboutThisMoment: true } =>
-                    await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow),
+                    await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow, ct),
                 { IsAskingForAdvice: true } =>
                     await AnswerAdviseAsync(flattened, triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
@@ -476,7 +570,9 @@ public class MemberChatService : IMemberChatService
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
+        var reply = ComposeReply(
+            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            fetched.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
         {
@@ -527,19 +623,20 @@ public class MemberChatService : IMemberChatService
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        var reply = ResolvedOrFallback(rewrite.Result, name);
+        var reply = ComposeReply(
+            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            fetched.RecentActivityWindow, today);
 
         // The authorities behind the verdict, quoted at the end of the reply. The model named
         // which of the prompt's published ranges it drew on; the citation text is the registry's
         // own fixed lines — the model picks WHICH, never writes WHAT, the same traceability
         // pattern AdviseGenerationService earns its suggestion licence with. Unrecognised names
         // drop, so an invented authority can never reach a caregiver; nothing used, nothing
-        // quoted.
+        // quoted. Appended after ComposeReply's cap, so a long verdict can no longer truncate
+        // away the citation it is required to carry.
         var citations = ChatDataRegistry.CitationsFor(clinical.Result.ReferencesUsed);
         if (citations.Count > 0)
             reply += $"\n\nReferences: {string.Join("; ", citations)}.";
-
-        reply = CapReply(reply);
 
         return new MemberChatWorkflowResult
         {
@@ -608,7 +705,11 @@ public class MemberChatService : IMemberChatService
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
+        // Exactly one of the two fetches carries activity: the second plans over what the first
+        // did not ask for, so RecentActivity lands in one or the other and never in both.
+        var reply = ComposeReply(
+            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
         {
@@ -635,25 +736,53 @@ public class MemberChatService : IMemberChatService
         ChatRouteDecision route,
         string flattened,
         AiUsage triageUsage,
+        bool aboutThisMoment,
         Guid cardiMemberId,
         CardiMember? member,
         ChatHistory history,
         DateTime utcNow,
         CancellationToken ct)
     {
-        if (route.NeedsClarify && !history.LastAssistantWasClarify)
-            return ClarifyResult(route, triageUsage, member?.Name);
-
         // Descend on failure and on repeated ambiguity alike: analysis is the rung that serves
         // the caregiver something real whichever way the confusion resolves.
         var primary = route.NeedsClarify || route.Primary is null
             ? MemberChatWorkflow.Analysis
             : route.Primary.Value;
 
+        if (route.NeedsClarify && !history.LastAssistantWasClarify)
+        {
+            var offerable = await ServableClarifyBranchesAsync(flattened, route, cardiMemberId, member, utcNow);
+            switch (offerable.Count)
+            {
+                // Both branches can be served — the ambiguity is real and worth one tap.
+                case 2:
+                    return ClarifyResult(route, triageUsage, member?.Name);
+
+                // Only one can. Answering with it beats asking a question whose other option is a
+                // dead end: "what of his diet" offered a suggestion and a readings summary when
+                // there was neither a diet suggestion nor a diet reading, and charged a turn for
+                // the menu.
+                case 1:
+                    primary = offerable[0];
+                    break;
+
+                // Neither. Analysis is the failure target for everything unsure, and it at least
+                // says plainly what it looked at.
+                default:
+                    break;
+            }
+        }
+
         return primary switch
         {
+            // §5's two status branches. The triage call already judged which is meant, and its
+            // prompt draws the line this rung kept getting wrong: "a question about a period,
+            // however recent, is not this" — so "how are they doing today" no longer opens with
+            // what cannot be seen right now.
+            MemberChatWorkflow.Status when aboutThisMoment =>
+                await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
-                await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow),
+                await AnswerStatusLineAsync(triageUsage, cardiMemberId, member, utcNow, ct),
             MemberChatWorkflow.Advise =>
                 await AnswerAdviseAsync(flattened, triageUsage, cardiMemberId, member, utcNow),
             MemberChatWorkflow.SteerCasual =>
@@ -667,6 +796,71 @@ public class MemberChatService : IMemberChatService
             _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
         };
     }
+
+    /// <summary>
+    /// Which of a clarify's two candidates actually has something behind it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §8 says clarify is only better than a guess while it is rare, and the rate is what decides
+    /// whether the behaviour stays on. An observed session spent one turn in four on a clarify
+    /// whose <em>both</em> options were unanswerable: asked about diet, the app offered "a
+    /// suggestion for what could help" — there is no diet suggestion, and the picker's fallback
+    /// would have re-served the walking row from the turn before — or "how their readings have
+    /// looked recently", of readings that do not exist. Two things it cannot do, and a tap spent
+    /// choosing between them.
+    /// </para>
+    /// <para>
+    /// Only advise can be empty in this sense. The reading rungs always have something to say, even
+    /// if it is that the window held no readings, and the steers say something by construction. So
+    /// this costs one indexed lookup, on a path that is meant to be rare, and only when advise is
+    /// one of the two candidates.
+    /// </para>
+    /// <para>
+    /// Widening <c>steer.offtopic</c>'s purpose line should stop most of these being routed here at
+    /// all. This is the backstop for the ones it does not catch, and for every no-data topic
+    /// nobody has thought of yet.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<MemberChatWorkflow>> ServableClarifyBranchesAsync(
+        string flattened,
+        ChatRouteDecision route,
+        Guid cardiMemberId,
+        CardiMember? member,
+        DateTime utcNow)
+    {
+        // NeedsClarify is only true when both are present and different, so advise appears at
+        // most once and the lookup below runs at most once.
+        MemberChatWorkflow[] candidates = [route.Primary!.Value, route.RunnerUp!.Value];
+
+        var offerable = new List<MemberChatWorkflow>(candidates.Length);
+        foreach (var candidate in candidates)
+        {
+            if (candidate is not MemberChatWorkflow.Advise
+                || await PickAdviseAsync(flattened, cardiMemberId, member, utcNow) is not null)
+            {
+                offerable.Add(candidate);
+            }
+        }
+
+        return offerable;
+    }
+
+    /// <summary>
+    /// The stored suggestion this question would be served, or null when there is none to serve.
+    /// </summary>
+    /// <remarks>
+    /// Topic-scoped: the question's own words pick which suggestion answers it — the sleep question
+    /// gets the sleep row — through the same picker the details card and the dashboard indicator
+    /// read, so the three surfaces cannot disagree. <c>AdvisePicker.Pick</c> filters to servable
+    /// rows itself, so a non-null result is already one this rung may show.
+    /// </remarks>
+    private async Task<MemberAdvise?> PickAdviseAsync(
+        string flattened, Guid cardiMemberId, CardiMember? member, DateTime utcNow) =>
+        member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
+            ? AdvisePicker.Pick(
+                flattened, await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), utcNow)
+            : null;
 
     /// <summary>
     /// The clarify turn: one code-assembled question offering both readings — no extra model
@@ -803,16 +997,116 @@ public class MemberChatService : IMemberChatService
         AiUsage triageUsage,
         Guid cardiMemberId,
         string? memberName,
-        DateTime utcNow)
+        DateTime utcNow,
+        CancellationToken ct = default)
     {
         var today = DateOnly.FromDateTime(utcNow);
-        var recent = (await _unitOfWork.ActivityLogs
-            .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-2), today)).ToList();
+        var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
 
         return new MemberChatWorkflowResult
         {
             Workflow = MemberChatWorkflow.Status,
             Reply = CapReply(MemberChatReplies.LiveStatusReply(NamePlaceholder.FirstName(memberName), recent, today)),
+            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+        };
+    }
+
+    /// <summary>How many days of readings the status rung reads back over.</summary>
+    /// <remarks>
+    /// Three, so a member whose watch has not synced today still has yesterday and the day before
+    /// to fall back to — the same reach the hardcoded read had before this went through the
+    /// whitelist, kept deliberately rather than re-derived.
+    /// </remarks>
+    private const int StatusWindowDays = 3;
+
+    /// <summary>
+    /// The status rung's readings, fetched the way every other rung fetches — through the
+    /// catalogue's allowed datasets and the whitelist's clamp.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This rung picks its sources in code rather than with a model, which is §5's design: there
+    /// is one thing status ever needs and spending a planning call to be told so would be waste.
+    /// What it must not do — and did until now — is reach past the whitelist to the repository
+    /// directly. That left status resolving "recent" by its own hardcoded arithmetic while
+    /// analysis resolved it through the clamp, and two rungs answering the same question minutes
+    /// apart could disagree about which days they meant. Same path, same clamp, one answer.
+    /// </para>
+    /// <para>
+    /// The whitelist composes the baseline in whether or not it is asked; status does not use it,
+    /// and one already-fetched row costs nothing.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<ActivityLog>> ReadStatusActivityAsync(
+        Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
+    {
+        var plan = new DataQueryPlan
+        {
+            Sources = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Status)!.AllowedDatasets,
+            RecentActivityDays = StatusWindowDays,
+            ChartMetrics = [],
+        };
+
+        var fetched = await DataQueryWhitelist.ExecuteAsync(plan, cardiMemberId, _unitOfWork, utcNow, ct);
+        return fetched.RecentActivity;
+    }
+
+    /// <summary>
+    /// The other half of the status rung: how the person is, rather than what they are doing this
+    /// instant.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §5 gives this rung two branches and only one was built, so every status-routed question got
+    /// the liveness disclaimer. A caregiver asking "how are they doing today?" was told "I can't
+    /// see what Dad is doing right now" — a refusal to a question they had not asked, in the first
+    /// forty words of the answer.
+    /// </para>
+    /// <para>
+    /// The branch is chosen by the triage call's <see cref="MaliciousCheckAiResponse.IsAboutThisMoment"/>,
+    /// which already runs on every message and whose prompt draws exactly this line: "a question
+    /// about a period, however recent, is not this", naming "how many steps today" as a no. The
+    /// signal was being paid for on every turn and read only on the pre-router fallback chain.
+    /// </para>
+    /// <para>
+    /// Serves the stored <see cref="MemberStatusLine"/> — the same row, through the same guard, as
+    /// the dashboard header the caregiver is looking at while they type. That the answer to "how
+    /// is he today" was already rendered two centimetres above the chat bubble, while chat
+    /// disclaimed it, is the whole reason this exists. Past the staleness ceiling it computes from
+    /// readings rather than declining: unlike a suggestion, there is always something to say.
+    /// </para>
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult> AnswerStatusLineAsync(
+        AiUsage triageUsage,
+        Guid cardiMemberId,
+        CardiMember? member,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        var name = NamePlaceholder.FirstName(member?.Name);
+
+        // The same member guard the dashboard reader and the batch generators apply: a paused or
+        // deactivated member's stored line describes a monitoring state that no longer exists.
+        var line = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
+            ? await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId)
+            : null;
+
+        string reply;
+        if (StatusLineServability.IsServable(line, utcNow))
+        {
+            reply = line.Message.Trim();
+        }
+        else
+        {
+            var today = DateOnly.FromDateTime(utcNow);
+            var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
+            reply = MemberChatReplies.LatestReadingsReply(name, recent, today);
+        }
+
+        return new MemberChatWorkflowResult
+        {
+            Workflow = MemberChatWorkflow.Status,
+            Reply = CapReply(reply),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
     }
@@ -855,18 +1149,13 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         DateTime utcNow)
     {
-        // Topic-scoped: the question's own words pick which suggestion answers it — the sleep
-        // question gets the sleep row — through the same picker the details card and the
-        // dashboard indicator read, so the three surfaces cannot disagree.
-        var advise = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
-            ? AdvisePicker.Pick(
-                flattened, await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), utcNow)
-            : null;
+        var advise = await PickAdviseAsync(flattened, cardiMemberId, member, utcNow);
 
         return new MemberChatWorkflowResult
         {
             Workflow = MemberChatWorkflow.Advise,
-            Reply = CapReply(MemberChatReplies.AdviseReply(NamePlaceholder.FirstName(member?.Name), advise, utcNow)),
+            Reply = CapReply(MemberChatReplies.AdviseReply(
+                NamePlaceholder.FirstName(member?.Name), advise, utcNow, flattened)),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
     }
@@ -1554,14 +1843,54 @@ public class MemberChatService : IMemberChatService
     private static string CapReply(string reply) =>
         reply.Length > MaxReplyLength ? $"{reply[..MaxReplyLength]}…" : reply;
 
+    /// <summary>What a rung says when the rewrite came back unusable — see <see cref="ResolvedOrFallback"/>.</summary>
+    internal const string CouldNotAnswerReply =
+        "I couldn't put together an answer from what's on file right now.";
+
     /// <summary>Resolves CardiTrackCardiMember, or falls back to a fixed line rather than showing a leftover
     /// placeholder or an empty reply — see <c>NamePlaceholder.IsPresentIn</c>.</summary>
     private static string ResolvedOrFallback(string text, string? name)
     {
         var resolved = NamePlaceholder.Resolve(text.Trim(), name) ?? string.Empty;
         return NamePlaceholder.IsPresentIn(resolved) || string.IsNullOrWhiteSpace(resolved)
-            ? "I couldn't put together an answer from what's on file right now."
+            ? CouldNotAnswerReply
             : resolved;
+    }
+
+    /// <summary>
+    /// One rewritten clinical read as a caregiver sees it: the model's prose resolved and capped,
+    /// then the day its figures belong to stated in code.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Caps before appending, not after.</b> Inference used to append its References line and
+    /// then cap the lot, so a long verdict could truncate away the citation it is required to
+    /// carry — the one part of the reply the model did not write and the one part that must never
+    /// be lost. Everything code owns is added after the cap, and the cap now bounds only what the
+    /// model produced.
+    /// </para>
+    /// <para>
+    /// The unusable-rewrite fallback gets nothing appended: it states no figures, so it has no day
+    /// to belong to, and dating a sentence that says "I couldn't put together an answer" would be
+    /// worse than saying nothing.
+    /// </para>
+    /// </remarks>
+    private static string ComposeReply(
+        string rewritten,
+        string? name,
+        string? readingsFrom,
+        string? readingsTo,
+        (DateOnly From, DateOnly To)? fetchedWindow,
+        DateOnly today)
+    {
+        var resolved = ResolvedOrFallback(rewritten, name);
+        if (resolved == CouldNotAnswerReply)
+            return resolved;
+
+        var reply = CapReply(resolved);
+        return MemberChatReplies.ResolveSpan(readingsFrom, readingsTo, fetchedWindow) is { } span
+            ? MemberChatReplies.WithDayAttribution(reply, span.From, span.To, today)
+            : reply;
     }
 
     // ── MedGemma / Rewrite response shapes ──────────────────────────────────────
@@ -1609,7 +1938,28 @@ public class MemberChatService : IMemberChatService
     internal sealed record MemberChatClinicalAiResponse
     {
         public required string Analysis { get; init; }
+
+        [Description(ReadingsFromDescription)]
+        public required string? ReadingsFrom { get; init; }
+
+        [Description(ReadingsToDescription)]
+        public required string? ReadingsTo { get; init; }
     }
+
+    // Required rather than optional, and described rather than left to the field name, for the
+    // lesson DataQueryPlannerService's `metrics` field records at length: an undescribed optional
+    // field comes back omitted, and an omitted field is indistinguishable from "no readings" —
+    // which is the one answer that must be said rather than assumed. Nullable so that "this answer
+    // used no daily readings" has a way to be said; MemberChatReplies.ResolveSpan drops anything
+    // it cannot use, so a null or a nonsense date costs the attribution, never the answer.
+    private const string ReadingsFromDescription =
+        "The first day the figures in your answer come from, as yyyy-MM-dd, exactly as dated in "
+        + "the readings heading above. Null if your answer states no daily readings.";
+
+    private const string ReadingsToDescription =
+        "The last day the figures in your answer come from, as yyyy-MM-dd. The same value as the "
+        + "first when the answer is about a single day. Null if your answer states no daily "
+        + "readings.";
 
     /// <summary>
     /// The inference read's shape: the verdict text, plus which of the prompt's published ranges
@@ -1627,6 +1977,12 @@ public class MemberChatService : IMemberChatService
             + "attributed in the data — e.g. \"American Heart Association\". Empty when the "
             + "verdict rests on the member's own baseline alone.")]
         public required IReadOnlyList<string> ReferencesUsed { get; init; }
+
+        [Description(ReadingsFromDescription)]
+        public required string? ReadingsFrom { get; init; }
+
+        [Description(ReadingsToDescription)]
+        public required string? ReadingsTo { get; init; }
     }
 
     internal sealed record WaitingSentencesAiResponse

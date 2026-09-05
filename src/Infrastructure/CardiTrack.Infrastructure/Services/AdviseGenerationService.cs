@@ -110,7 +110,9 @@ public class AdviseGenerationService
           the action answers, stated precisely.
         - action: one everyday thing that would close that shortfall —
           never a diagnosis, a prescription, or a change to medication or treatment.
-        - guidelineCited: which reference below the action draws on, in a few words.
+        - guidelineCited: which reference below the action draws on, in a few words — or "the
+          member's own baseline" when the shortfall is against their own usual rather than a
+          published range, which is the only honest answer for a step count.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>

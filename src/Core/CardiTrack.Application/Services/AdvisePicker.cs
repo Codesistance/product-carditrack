@@ -51,6 +51,37 @@ public static partial class AdvisePicker
     private static partial Regex ActivityWords();
 
     /// <summary>
+    /// True when the question asks <em>which</em>, <em>how much</em> or <em>how often</em> rather
+    /// than <em>whether</em> — the shapes a standing, pre-generated suggestion cannot answer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The topic match is deliberately coarse: "what kind of exercises can he do" contains
+    /// "exercis", so it picks the activity row and serves it verbatim — "add more movement, like
+    /// short walks during breaks". Every one of "what kind", "how much", "how often" and "is it
+    /// safe" collapses onto that same sentence, which answers none of them.
+    /// </para>
+    /// <para>
+    /// This does not make advise per-question, and deliberately so: the suggestion is grounded in a
+    /// published guideline at generation time and the model is made to name which, machinery no
+    /// path inside a caregiver's wait reproduces. It lets the reply say that the row is a standing
+    /// suggestion rather than an answer to the specific question, which is the difference between
+    /// being unhelpful and being misleading.
+    /// </para>
+    /// <para>
+    /// Whole words, like the topic matchers above and for the same reason — "which" inside
+    /// "sandwich" is not a caregiver asking which.
+    /// </para>
+    /// </remarks>
+    public static bool AsksForSpecifics(string question) => SpecificsWords().IsMatch(question);
+
+    [GeneratedRegex(
+        @"\b(?:what kind|what kinds|what sort|what type|which|how much|how many|how often|"
+        + @"how long|how far|how many times|is it safe|are they safe|is that safe)\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex SpecificsWords();
+
+    /// <summary>
     /// The row to serve: the named topic's, else the general one, else the most recent — each
     /// step over servable rows only, so no fallback ever serves what the details card would
     /// withhold.

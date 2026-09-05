@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -82,7 +83,10 @@ public class MemberChatRoutedDispatchTests
         _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
-                new MemberChatService.MemberChatClinicalAiResponse { Analysis = "steady week" },
+                new MemberChatService.MemberChatClinicalAiResponse
+                {
+                    Analysis = "steady week", ReadingsFrom = null, ReadingsTo = null,
+                },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<string>("The week looks steady.", new AiUsage()));
@@ -134,6 +138,8 @@ public class MemberChatRoutedDispatchTests
                 {
                     Analysis = "Settled. Resting HR 62 bpm sits at his usual and inside 60-100.",
                     ReferencesUsed = ["American Heart Association", "Journal of Invented Results"],
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
                 },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -165,6 +171,8 @@ public class MemberChatRoutedDispatchTests
                 {
                     Analysis = "Settled against his own baseline.",
                     ReferencesUsed = [],
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
                 },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -186,9 +194,24 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal("The week looks steady.", reply.Reply);
     }
 
+    /// <summary>A servable suggestion, so the advise branch of a clarify has something behind it.</summary>
+    private void AServableSuggestionExists() =>
+        _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(_memberId)
+            .Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
+            {
+                CardiMemberId = _memberId,
+                Summary = "His steps have been below his usual this week.",
+                Suggestion = "A short walk after lunch is worth trying.",
+                GuidelineCited = "Adult physical activity (WHO, 2020)",
+                GeneratedAtUtc = DateTime.UtcNow.AddHours(-6),
+            }]);
+
     [Fact]
     public async Task ARunnerUpThatIsADifferentAsk_AsksToClarify_WithNoDataFetch()
     {
+        // Both branches have to be servable for the ambiguity to be worth a tap — see
+        // ADeadBranchIsNotOffered below for what happens when one of them is not.
+        AServableSuggestionExists();
         RouterAnswers(MemberChatWorkflow.Status, MemberChatWorkflow.Advise);
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "is he ok?");
@@ -197,6 +220,49 @@ public class MemberChatRoutedDispatchTests
         await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
         await _medicalAi.DidNotReceiveWithAnyArgs()
             .GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(default!, default);
+    }
+
+    /// <summary>
+    /// The diet turn. Asked "what of his diet", the app clarified between "a suggestion for what
+    /// could help" and "how their readings have looked recently" — with no diet suggestion on file
+    /// and no diet reading anywhere in the platform. Two things it cannot do, and a caregiver's tap
+    /// spent choosing between them, against §8's rule that clarify is only worth having while it is
+    /// rare.
+    /// </summary>
+    [Fact]
+    public async Task ADeadBranchIsNotOffered_AndTheOtherRungAnswersInstead()
+    {
+        _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(_memberId)
+            .Returns((IReadOnlyList<MemberAdvise>)[]);
+        RouterAnswers(MemberChatWorkflow.Status, MemberChatWorkflow.Advise);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "what of his diet");
+
+        Assert.DoesNotContain("Which would help most?", reply.Reply);
+        Assert.DoesNotContain("a suggestion for what could help", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A stale suggestion is no more offerable than a missing one — the servability rule the
+    /// details card and the pulse dot already share decides it, not the row's mere existence.
+    /// </summary>
+    [Fact]
+    public async Task AStaleSuggestionIsADeadBranchToo()
+    {
+        _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(_memberId)
+            .Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
+            {
+                CardiMemberId = _memberId,
+                Summary = "His steps have been below his usual this week.",
+                Suggestion = "A short walk after lunch is worth trying.",
+                GuidelineCited = "Adult physical activity (WHO, 2020)",
+                GeneratedAtUtc = DateTime.UtcNow - AdviseStaleness.MaxAge - TimeSpan.FromHours(1),
+            }]);
+        RouterAnswers(MemberChatWorkflow.Status, MemberChatWorkflow.Advise);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "should he be walking more?");
+
+        Assert.DoesNotContain("Which would help most?", reply.Reply);
     }
 
     /// <summary>
