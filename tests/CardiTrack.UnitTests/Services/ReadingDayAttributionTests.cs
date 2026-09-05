@@ -182,4 +182,43 @@ public class ReadingDayAttributionTests
 
         Assert.Contains("Those figures are for today so far.", reply, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Bare "today" does not date a partial day, however natural it reads. "today so far" says the
+    /// total will still climb and "today" does not — which is why <c>DayLabel</c> spells today
+    /// differently from every other day. Suppressing on the bare word would have let a running
+    /// step count read as a finished one, the exact misreading this path exists to prevent.
+    /// <para>Copilot review, PR #510.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("Dad has walked 4,905 steps today.")]
+    [InlineData("Today he's on 4,905 steps.")]
+    public void ABareTodayDoesNotCountAsDatingAPartialDay(string original)
+    {
+        var reply = MemberChatReplies.WithDayAttribution(original, Today, Today, Today);
+
+        Assert.Contains("Those figures are for today so far.", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>But a reply that spelled it out in full is left alone, as any other dated one is.</summary>
+    [Fact]
+    public void AReplyThatSaidTodaySoFarIsLeftAlone()
+    {
+        const string original = "Dad is on 4,905 steps today so far.";
+
+        Assert.Equal(original, MemberChatReplies.WithDayAttribution(original, Today, Today, Today));
+    }
+
+    /// <summary>
+    /// The finished days keep the bare-word shortcut: "yesterday" in a reply has dated it, and a
+    /// second sentence saying so would be the stutter the conditional append exists to avoid.
+    /// </summary>
+    [Fact]
+    public void AFinishedDayStillAcceptsTheBareWord()
+    {
+        const string original = "Dad walked 4,475 steps yesterday.";
+        var yesterday = Today.AddDays(-1);
+
+        Assert.Equal(original, MemberChatReplies.WithDayAttribution(original, yesterday, yesterday, Today));
+    }
 }

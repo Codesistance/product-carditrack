@@ -189,10 +189,18 @@ public static partial class MemberChatReplies
         string reply, DateOnly from, DateOnly to, DateOnly today)
     {
         // The bare day word, because a reply saying "yesterday" has dated itself even though it
-        // did not spell the label's "today so far" in full.
-        var marker = from == to
-            ? from == today ? "today"
-                : from == today.AddDays(-1) ? "yesterday"
+        // did not spell the label in full.
+        //
+        // Today is the one day that shortcut cannot take. "today so far" says the day is
+        // unfinished and the total will still climb; bare "today" does not, and a running step
+        // count read as a finished one is precisely the misreading this path exists to prevent —
+        // it is why DayLabel spells today differently from every other day in the first place. So
+        // a reply that says only "today" has not dated a partial day, and the sentence still goes
+        // on. Erring toward appending is the safe direction here: a caregiver told twice that the
+        // day is unfinished has lost nothing, and one told once that it is finished has.
+        var marker = from == to && from != today
+            ? from == today.AddDays(-1)
+                ? "yesterday"
                 : from.ToString("MMM d", CultureInfo.InvariantCulture)
             : SpanLabel(from, to, today);
 
