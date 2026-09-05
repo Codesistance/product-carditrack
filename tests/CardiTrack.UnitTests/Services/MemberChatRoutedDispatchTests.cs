@@ -82,7 +82,10 @@ public class MemberChatRoutedDispatchTests
         _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
-                new MemberChatService.MemberChatClinicalAiResponse { Analysis = "steady week" },
+                new MemberChatService.MemberChatClinicalAiResponse
+                {
+                    Analysis = "steady week", ReadingsFrom = null, ReadingsTo = null,
+                },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<string>("The week looks steady.", new AiUsage()));
@@ -134,6 +137,8 @@ public class MemberChatRoutedDispatchTests
                 {
                     Analysis = "Settled. Resting HR 62 bpm sits at his usual and inside 60-100.",
                     ReferencesUsed = ["American Heart Association", "Journal of Invented Results"],
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
                 },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -165,6 +170,8 @@ public class MemberChatRoutedDispatchTests
                 {
                     Analysis = "Settled against his own baseline.",
                     ReferencesUsed = [],
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
                 },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())

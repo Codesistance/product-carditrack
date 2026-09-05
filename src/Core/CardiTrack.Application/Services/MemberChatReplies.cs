@@ -42,14 +42,7 @@ public static partial class MemberChatReplies
         if (latest is null)
             return opening + " I don't have any recent readings for them either.";
 
-        // Cased for the middle of a sentence as each piece needs: the two relative words are
-        // lowercase there, a month name is not. Lowercasing the lot turned "Aug 19" into
-        // "aug 19", which reads as a typo and disagrees with every date the UI draws.
-        var when = latest.Date == today
-            ? "today so far"
-            : latest.Date == today.AddDays(-1)
-                ? "yesterday"
-                : latest.Date.ToString("MMM d", CultureInfo.InvariantCulture);
+        var when = DayLabel(latest.Date, today);
 
         var parts = new List<string>();
         if (latest.Steps is { } steps)
@@ -60,6 +53,118 @@ public static partial class MemberChatReplies
             parts.Add($"{ReadingFigures.SleepFigure(sleep)} of sleep the night before");
 
         return $"{opening} The most recent I have is {when}: {Join(parts)}.";
+    }
+
+    /// <summary>
+    /// The one way this app spells the day a figure belongs to.
+    /// </summary>
+    /// <remarks>
+    /// Cased for the middle of a sentence as each piece needs: the two relative words are
+    /// lowercase there, a month name is not. Lowercasing the lot turned "Aug 19" into "aug 19",
+    /// which reads as a typo and disagrees with every date the UI draws.
+    /// <para>
+    /// Public because the generated rungs need the same spelling. <see cref="LiveStatusReply"/>
+    /// dated every figure it stated from the day this path was written; the analysis and inference
+    /// replies did not, and the two rungs answering the same question minutes apart with figures
+    /// from different days — neither named — is what this is shared to prevent.
+    /// </para>
+    /// </remarks>
+    public static string DayLabel(DateOnly date, DateOnly today) => date == today
+        ? "today so far"
+        : date == today.AddDays(-1)
+            ? "yesterday"
+            : date.ToString("MMM d", CultureInfo.InvariantCulture);
+
+    /// <summary>The stretch a set of figures covers, in <see cref="DayLabel"/>'s vocabulary.</summary>
+    /// <remarks>
+    /// The far end keeps its relative word, so a span ending today still says "today so far" and
+    /// carries the partial-day warning with it — "Aug 30 to today so far" is the honest reading of
+    /// a window whose last day has not finished.
+    /// </remarks>
+    public static string SpanLabel(DateOnly from, DateOnly to, DateOnly today) => from == to
+        ? DayLabel(from, today)
+        : $"{from.ToString("MMM d", CultureInfo.InvariantCulture)} to {DayLabel(to, today)}";
+
+    /// <summary>
+    /// The span a clinical read says its figures came from, or null when that cannot be trusted.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same closed-vocabulary discipline as every other parse of model output on this
+    /// platform: the model picks <em>which</em> dates, this decides whether they are usable, and
+    /// <see cref="DayAttribution"/> writes the words a caregiver reads. An unparseable date, or one
+    /// outside the window that was actually fetched, is dropped rather than coerced — exactly as
+    /// <c>ChatDataRegistry.CitationsFor</c> drops an authority it does not carry. Nothing claimed
+    /// beats something invented, and a wrong date is worse than no date.
+    /// </para>
+    /// <para>
+    /// Strict <c>yyyy-MM-dd</c>, not a lenient parse: a loose one accepts "Sep 4" and resolves the
+    /// year from the current culture, which is how a reply ends up dated to a year with no
+    /// readings in it.
+    /// </para>
+    /// </remarks>
+    public static (DateOnly From, DateOnly To)? ResolveSpan(
+        string? from, string? to, (DateOnly From, DateOnly To)? fetchedWindow)
+    {
+        // No activity fetched means no figures to date — an answer from member context and the
+        // baseline alone has no day to name, and naming one would invent it.
+        if (fetchedWindow is not { } window)
+            return null;
+
+        if (!DateOnly.TryParseExact(from?.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var start)
+            || !DateOnly.TryParseExact(to?.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var end))
+            return null;
+
+        // A model that returns the pair the wrong way round has still told us which two days it
+        // meant; the order is presentation, and correcting it costs nothing.
+        if (end < start)
+            (start, end) = (end, start);
+
+        return start < window.From || end > window.To ? null : (start, end);
+    }
+
+    /// <summary>
+    /// A reply with the day its figures belong to stated in code, when the reply has not already
+    /// said so itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Appended rather than woven in, for the reason <c>AdviseReply</c> quotes its authority at the
+    /// end: a sentence assembled here cannot be a sentence the rewrite model composed, and the
+    /// rewrite model is the step that dropped the day in the first place. The clinical prompt
+    /// already labels every row it is given ("Today so far (…partial)", "Yesterday (…complete
+    /// day)"); it is the rewrite that turned "yesterday, complete" into "a stable day".
+    /// </para>
+    /// <para>
+    /// Suppressed when the reply already names the day — the same conditional-append shape
+    /// <c>AdviseReply</c> uses for its doctor line, and for the same reason: one statement is the
+    /// framing, two is a stutter. The marker is derived from the <em>validated window</em>, never
+    /// from the reply, so a reply that says "today" about yesterday's figures is corrected rather
+    /// than left alone.
+    /// </para>
+    /// </remarks>
+    public static string WithDayAttribution(
+        string reply, DateOnly from, DateOnly to, DateOnly today)
+    {
+        // The bare day word, because a reply saying "yesterday" has dated itself even though it
+        // did not spell the label's "today so far" in full.
+        var marker = from == to
+            ? from == today ? "today"
+                : from == today.AddDays(-1) ? "yesterday"
+                : from.ToString("MMM d", CultureInfo.InvariantCulture)
+            : SpanLabel(from, to, today);
+
+        if (reply.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            return reply;
+
+        var label = SpanLabel(from, to, today);
+        var sentence = from == to
+            ? $"Those figures are for {label}."
+            : $"Those figures cover {label}.";
+
+        return $"{reply}\n\n{sentence}";
     }
 
     /// <summary>Oxford-less list joining — "a, b and c".</summary>

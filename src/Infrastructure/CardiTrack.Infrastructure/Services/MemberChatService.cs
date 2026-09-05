@@ -192,7 +192,28 @@ public class MemberChatService : IMemberChatService
 
         Respond with:
         - analysis: your answer, grounded only in the data provided.
-        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        """ + ReadingsDatedFields
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+
+    /// <summary>
+    /// The two date fields every clinical read answers, so the reply can be dated in code.
+    /// </summary>
+    /// <remarks>
+    /// Each rung's data heading already names the window and each row already names its day
+    /// ("Today so far (…partial)", "Yesterday (…complete day)"). What was missing was any way to
+    /// carry that forward: the rewrite step is briefed on tone and register, not on dates, and it
+    /// turned "yesterday, complete day" into "a stable day" — which read as today, beside a status
+    /// reply that had just given today's partial figures. Asking which days the answer used, and
+    /// letting code spell them, is the same split the References line already works by.
+    /// </remarks>
+    private const string ReadingsDatedFields = """
+
+        - readingsFrom: the first day the figures in your analysis come from, as yyyy-MM-dd,
+          exactly as dated in the readings heading above. Null if your analysis states no daily
+          readings.
+        - readingsTo: the last such day, as yyyy-MM-dd — the same value as readingsFrom when your
+          analysis is about a single day. Null on the same condition.
+        """;
 
     /// <summary>
     /// The judgement rung's clinical read — a superset of <see cref="ClinicalInstructions"/>: it
@@ -226,7 +247,9 @@ public class MemberChatService : IMemberChatService
 
         Every figure below describes a period that has already finished. Never state what the
         person is doing at this moment. If the data below cannot support a verdict either way,
-        say so plainly rather than manufacturing confidence.
+        say so plainly rather than manufacturing confidence. The activity data covers only the
+        dates named in its heading; if the question asks about a longer stretch, judge the dates
+        you have and say so.
 
         Respond with:
         - analysis: the verdict, what it rests on, and the figures that carry it.
@@ -235,7 +258,8 @@ public class MemberChatService : IMemberChatService
           Association". These are quoted back to the caregiver as the authorities behind the
           verdict, so name only what the verdict genuinely used; an empty list is correct when
           it rests on the member's own baseline alone.
-        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        """ + ReadingsDatedFields
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
     /// <summary>
     /// The explanation rung's clinical read. Its defining rule is co-occurrence: with several
@@ -260,10 +284,14 @@ public class MemberChatService : IMemberChatService
         limit on what the data can carry, and it holds whatever the factor is. A mechanism or a
         condition may be named under the same limit. Never recommend an action.
 
+        Both data sections cover only the dates named in their headings; if the question asks
+        about a change outside them, say which dates you can actually see.
+
         Respond with:
         - analysis: what changed, what if anything co-occurred and qualifies, ranked, and what
           remains unexplained.
-        """ + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        """ + ReadingsDatedFields
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
 
     /// <summary>
     /// Turns the clinical read into the sentence the caregiver actually receives.
@@ -476,7 +504,9 @@ public class MemberChatService : IMemberChatService
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
+        var reply = ComposeReply(
+            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            fetched.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
         {
@@ -527,19 +557,20 @@ public class MemberChatService : IMemberChatService
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        var reply = ResolvedOrFallback(rewrite.Result, name);
+        var reply = ComposeReply(
+            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            fetched.RecentActivityWindow, today);
 
         // The authorities behind the verdict, quoted at the end of the reply. The model named
         // which of the prompt's published ranges it drew on; the citation text is the registry's
         // own fixed lines — the model picks WHICH, never writes WHAT, the same traceability
         // pattern AdviseGenerationService earns its suggestion licence with. Unrecognised names
         // drop, so an invented authority can never reach a caregiver; nothing used, nothing
-        // quoted.
+        // quoted. Appended after ComposeReply's cap, so a long verdict can no longer truncate
+        // away the citation it is required to carry.
         var citations = ChatDataRegistry.CitationsFor(clinical.Result.ReferencesUsed);
         if (citations.Count > 0)
             reply += $"\n\nReferences: {string.Join("; ", citations)}.";
-
-        reply = CapReply(reply);
 
         return new MemberChatWorkflowResult
         {
@@ -608,7 +639,11 @@ public class MemberChatService : IMemberChatService
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        var reply = CapReply(ResolvedOrFallback(rewrite.Result, name));
+        // Exactly one of the two fetches carries activity: the second plans over what the first
+        // did not ask for, so RecentActivity lands in one or the other and never in both.
+        var reply = ComposeReply(
+            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
         {
@@ -1554,14 +1589,54 @@ public class MemberChatService : IMemberChatService
     private static string CapReply(string reply) =>
         reply.Length > MaxReplyLength ? $"{reply[..MaxReplyLength]}…" : reply;
 
+    /// <summary>What a rung says when the rewrite came back unusable — see <see cref="ResolvedOrFallback"/>.</summary>
+    internal const string CouldNotAnswerReply =
+        "I couldn't put together an answer from what's on file right now.";
+
     /// <summary>Resolves CardiTrackCardiMember, or falls back to a fixed line rather than showing a leftover
     /// placeholder or an empty reply — see <c>NamePlaceholder.IsPresentIn</c>.</summary>
     private static string ResolvedOrFallback(string text, string? name)
     {
         var resolved = NamePlaceholder.Resolve(text.Trim(), name) ?? string.Empty;
         return NamePlaceholder.IsPresentIn(resolved) || string.IsNullOrWhiteSpace(resolved)
-            ? "I couldn't put together an answer from what's on file right now."
+            ? CouldNotAnswerReply
             : resolved;
+    }
+
+    /// <summary>
+    /// One rewritten clinical read as a caregiver sees it: the model's prose resolved and capped,
+    /// then the day its figures belong to stated in code.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Caps before appending, not after.</b> Inference used to append its References line and
+    /// then cap the lot, so a long verdict could truncate away the citation it is required to
+    /// carry — the one part of the reply the model did not write and the one part that must never
+    /// be lost. Everything code owns is added after the cap, and the cap now bounds only what the
+    /// model produced.
+    /// </para>
+    /// <para>
+    /// The unusable-rewrite fallback gets nothing appended: it states no figures, so it has no day
+    /// to belong to, and dating a sentence that says "I couldn't put together an answer" would be
+    /// worse than saying nothing.
+    /// </para>
+    /// </remarks>
+    private static string ComposeReply(
+        string rewritten,
+        string? name,
+        string? readingsFrom,
+        string? readingsTo,
+        (DateOnly From, DateOnly To)? fetchedWindow,
+        DateOnly today)
+    {
+        var resolved = ResolvedOrFallback(rewritten, name);
+        if (resolved == CouldNotAnswerReply)
+            return resolved;
+
+        var reply = CapReply(resolved);
+        return MemberChatReplies.ResolveSpan(readingsFrom, readingsTo, fetchedWindow) is { } span
+            ? MemberChatReplies.WithDayAttribution(reply, span.From, span.To, today)
+            : reply;
     }
 
     // ── MedGemma / Rewrite response shapes ──────────────────────────────────────
@@ -1609,7 +1684,28 @@ public class MemberChatService : IMemberChatService
     internal sealed record MemberChatClinicalAiResponse
     {
         public required string Analysis { get; init; }
+
+        [Description(ReadingsFromDescription)]
+        public required string? ReadingsFrom { get; init; }
+
+        [Description(ReadingsToDescription)]
+        public required string? ReadingsTo { get; init; }
     }
+
+    // Required rather than optional, and described rather than left to the field name, for the
+    // lesson DataQueryPlannerService's `metrics` field records at length: an undescribed optional
+    // field comes back omitted, and an omitted field is indistinguishable from "no readings" —
+    // which is the one answer that must be said rather than assumed. Nullable so that "this answer
+    // used no daily readings" has a way to be said; MemberChatReplies.ResolveSpan drops anything
+    // it cannot use, so a null or a nonsense date costs the attribution, never the answer.
+    private const string ReadingsFromDescription =
+        "The first day the figures in your answer come from, as yyyy-MM-dd, exactly as dated in "
+        + "the readings heading above. Null if your answer states no daily readings.";
+
+    private const string ReadingsToDescription =
+        "The last day the figures in your answer come from, as yyyy-MM-dd. The same value as the "
+        + "first when the answer is about a single day. Null if your answer states no daily "
+        + "readings.";
 
     /// <summary>
     /// The inference read's shape: the verdict text, plus which of the prompt's published ranges
@@ -1627,6 +1723,12 @@ public class MemberChatService : IMemberChatService
             + "attributed in the data — e.g. \"American Heart Association\". Empty when the "
             + "verdict rests on the member's own baseline alone.")]
         public required IReadOnlyList<string> ReferencesUsed { get; init; }
+
+        [Description(ReadingsFromDescription)]
+        public required string? ReadingsFrom { get; init; }
+
+        [Description(ReadingsToDescription)]
+        public required string? ReadingsTo { get; init; }
     }
 
     internal sealed record WaitingSentencesAiResponse
