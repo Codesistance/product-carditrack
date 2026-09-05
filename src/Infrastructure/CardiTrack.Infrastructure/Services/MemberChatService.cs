@@ -247,9 +247,10 @@ public class MemberChatService : IMemberChatService
 
         Open with the verdict in one sentence: settled, or worth attention. Then name exactly what
         it rests on — the readings, the comparison against this member's own baseline, and the
-        published range where one applies. A verdict that does not name its basis is not usable
-        and will be discarded. Include the figures that carry the verdict; the caregiver's reply
-        is built from this read and must be able to quote them.
+        published range where one applies. A verdict that does not name its basis is not usable,
+        and it travels to the family as written: nothing downstream can supply a basis you did not
+        give. Include the figures that carry the verdict; the caregiver's reply is built from this
+        read and must be able to quote them.
 
         Judge against both references where both exist: this member's own baseline says what is
         usual for them, and the published range says what is typical generally. When they
@@ -306,6 +307,47 @@ public class MemberChatService : IMemberChatService
           remains unexplained.
         """ + ReadingsDatedFields
         + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+
+    /// <summary>
+    /// The brief each rung's handler actually sends to a model, keyed by rung — the fixture for the
+    /// parity check <c>docs/technical/member_chat_routing.md</c> §5 says exists ("the parity test
+    /// asserts each handler's prompt carries the tone block matching its claim class") and which,
+    /// until now, did not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ChatClaimClass"/> is described in the catalogue as "the load-bearing field… the
+    /// only place that limit is written down", but nothing read it: no runtime branch, no prompt,
+    /// and no test outside the catalogue's own shape assertions. <c>AllowedDatasets</c>, the field
+    /// beside it, <em>is</em> enforced at runtime — it is passed to the planner and intersected in
+    /// the parse. The claim limit had no such teeth, which is the same "written down but not
+    /// enforced" shape as every other finding this change set came from.
+    /// </para>
+    /// <para>
+    /// The rungs absent from this map are the ones that send no brief at all: <c>status</c> and
+    /// <c>advise</c> assemble their replies in code, and <c>clarify</c> is composed from the routing
+    /// answer that already ran. <c>ChatClaimClassParityTests</c> asserts that split rather than
+    /// letting a silently unbriefed rung look intentional.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyDictionary<MemberChatWorkflow, string> HandlerBriefs { get; } =
+        new Dictionary<MemberChatWorkflow, string>
+        {
+            [MemberChatWorkflow.Analysis] = ClinicalInstructions,
+            [MemberChatWorkflow.Inference] = InferenceClinicalInstructions,
+            [MemberChatWorkflow.Investigation] = InvestigationClinicalInstructions,
+            [MemberChatWorkflow.SteerCasual] = CasualSteerInstructions,
+            [MemberChatWorkflow.SteerOffTopic] = OffTopicSteerInstructions,
+        };
+
+    /// <summary>The rungs that reach no model beyond the triage and route that selected them.</summary>
+    internal static IReadOnlySet<MemberChatWorkflow> CodeAssembledRungs { get; } =
+        new HashSet<MemberChatWorkflow>
+        {
+            MemberChatWorkflow.Status,
+            MemberChatWorkflow.Advise,
+            MemberChatWorkflow.Clarify,
+        };
 
     /// <summary>
     /// Turns the clinical read into the sentence the caregiver actually receives.
