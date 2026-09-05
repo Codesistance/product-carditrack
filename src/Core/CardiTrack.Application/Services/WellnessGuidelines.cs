@@ -67,7 +67,22 @@ public static partial class WellnessGuidelines
         return All.FirstOrDefault(r => r.Match.IsMatch(guidelineCited))?.Citation;
     }
 
-    [GeneratedRegex(@"\b(?:WHO|physical activity|activity)\b", RegexOptions.IgnoreCase)]
+    /// <remarks>
+    /// The bare word "activity" used to match here, and it is why a caregiver was shown the WHO's
+    /// 150-300 minutes a week under a suggestion whose evidence was a step count. The generation
+    /// prompt invites a finding measured against "the reference below <em>or of their own usual</em>",
+    /// the reference block carries no step band — no accredited body publishes one — and
+    /// <c>guidelineCited</c> is required, so an activity shortfall found against the member's own
+    /// baseline had to name something. "Activity baseline" matched, and a minutes-per-week citation
+    /// was attached to a figure measured in steps, which a caregiver cannot check against it.
+    /// <para>
+    /// So the marker now takes the authority or the full phrase, as the sleep and heart markers
+    /// effectively do. A row naming the member's own baseline matches nothing here and quotes
+    /// nothing, which is the honest outcome and the same one <c>ChatDataRegistry.CitationsFor</c>
+    /// reaches for an inference verdict resting on the baseline alone.
+    /// </para>
+    /// </remarks>
+    [GeneratedRegex(@"\b(?:WHO|World Health Organi[sz]ation|physical activity)\b", RegexOptions.IgnoreCase)]
     private static partial Regex ActivityMarkers();
 
     [GeneratedRegex(@"\b(?:AASM|CDC|sleep)\b", RegexOptions.IgnoreCase)]

@@ -1154,7 +1154,8 @@ public class MemberChatService : IMemberChatService
         return new MemberChatWorkflowResult
         {
             Workflow = MemberChatWorkflow.Advise,
-            Reply = CapReply(MemberChatReplies.AdviseReply(NamePlaceholder.FirstName(member?.Name), advise, utcNow)),
+            Reply = CapReply(MemberChatReplies.AdviseReply(
+                NamePlaceholder.FirstName(member?.Name), advise, utcNow, flattened)),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
     }

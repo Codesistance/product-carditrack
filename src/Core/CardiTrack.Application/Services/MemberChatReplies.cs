@@ -261,19 +261,34 @@ public static partial class MemberChatReplies
     /// own is the least useful moment to be terse with them.
     /// </para>
     /// </remarks>
-    public static string AdviseReply(string? firstName, MemberAdvise? advise, DateTime utcNow)
+    public static string AdviseReply(
+        string? firstName, MemberAdvise? advise, DateTime utcNow, string? question = null)
     {
+        // "them" rather than an invented relationship word, for the reason LiveStatusReply's
+        // subject line gives at length.
+        var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
+
         if (!AdviseServability.IsServable(advise, utcNow))
         {
-            // "them" rather than an invented relationship word, for the reason LiveStatusReply's
-            // subject line gives at length.
-            var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
             return $"I don't have a suggestion for {subject} right now — those come from their "
                 + "readings once a day, and there isn't a current one. I can tell you how their "
                 + "sleep, activity or heart rate compare with what's usual for them, though.";
         }
 
         var reply = $"{advise.Suggestion.Trim()} {advise.Summary.Trim()}";
+
+        // Asked "what kind of exercises can he do", this rung served the stored activity row
+        // verbatim — "add more movement, like short walks during breaks". The caregiver asked
+        // WHICH; they were answered DO MORE, with nothing to tell them the two were different
+        // questions. The row stays as it is: advise is never generated per question, and that is
+        // what earns it the only suggestion licence on this platform. What was missing was
+        // honesty about fit.
+        if (question is not null && AdvisePicker.AsksForSpecifics(question))
+        {
+            reply += $" That's the standing suggestion for {subject} rather than an answer to "
+                + "exactly what you asked — for what specifically would suit them, their doctor "
+                + "is the one to ask.";
+        }
 
         if (!DoctorMention().IsMatch(reply))
         {

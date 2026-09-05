@@ -680,7 +680,8 @@ internal static partial class MedicalPromptBlocks
         + "- Adult sleep duration (AASM/CDC consensus): 7 or more hours a night; consistently under that is worth noting." + NL
         + "- Resting heart rate (AHA general reference): commonly 60-100 bpm at rest, lower in well-conditioned adults — a population range, not a judgement on any one reading." + NL
         + "- SpO2 and heart-rate-variability readings from a consumer wearable are not medical-grade; use them as directional context only, never as a measurement to act on." + NL
-        + "Ground the suggestion in one or more of the references above. If none of them fit what the readings show, say plainly that there is nothing to suggest right now.";
+        + "- Daily step counts have no published typical range: no accredited body publishes one, so there is no reference above to measure them against. A shortfall in steps is a shortfall against this member's own usual, and nothing else." + NL
+        + "Ground the suggestion in one or more of the references above, or — where the shortfall is against this member's own usual rather than a published range — say so by naming \"the member's own baseline\" instead. Those are the only two honest answers: naming a reference the finding did not actually use attaches a figure a family cannot check the suggestion against, and the activity reference in particular is measured in minutes a week while a step count is not. If neither fits what the readings show, say plainly that there is nothing to suggest right now.";
 
     /// <summary>
     /// The trailing daily readings, oldest first, each opening with which day it is.
