@@ -5,6 +5,12 @@
       "slack_ts": null,
       "item_count": 25,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-05",
+      "slack_ts": null,
+      "item_count": 1,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -232,6 +238,15 @@
       "severity": "FYI",
       "category": "competition",
       "brief": "research/queue/2026-09-04-cadence-ai-proactive-care-engine.md"
+    },
+    {
+      "date": "2026-09-05",
+      "slug": "fda-genai-medical-devices-discussion-paper",
+      "title": "FDA discussion paper: \"Considerations for the Regulation of Generative AI-Enabled Medical Devices\" (published 2026-08-18, missed by prior runs)",
+      "url": "https://www.fda.gov/medical-devices/digital-health-center-excellence/considerations-regulation-generative-ai-enabled-medical-devices-discussion-paper-and-request",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-05-fda-genai-medical-devices-discussion-paper.md"
     }
   ]
 }
