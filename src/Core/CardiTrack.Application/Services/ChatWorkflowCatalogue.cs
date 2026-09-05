@@ -109,11 +109,20 @@ public static class ChatWorkflowCatalogue
                 ChatClaimClass.Comparison,
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.RealtimeAssessments]),
 
+            // The second sentence is new, and a caregiver found the gap it fills on the second
+            // message of a session: "anything to followup on?". The line was framed entirely
+            // around a verdict on a named thing — "should I be concerned", "is that a real
+            // change" — so a triage question naming nothing fell to the default rung and came
+            // back as a re-read of the figures the turn before had just given. Asking what needs
+            // attention is a verdict question; it simply does not say about what.
             new(MemberChatWorkflow.Inference,
                 "inference",
                 "Whether what the readings show is settled or worth attention. Choose this when "
                 + "the question asks for a verdict rather than for figures. It returns the figures "
-                + "as well.",
+                + "as well. Choose it too when the question asks what is worth attention without "
+                + "naming any particular reading — \"anything to follow up on?\", \"what should I "
+                + "be watching?\", \"anything I've missed?\" — which asks for the same verdict "
+                + "across everything rather than about one thing.",
                 ChatClaimClass.Judgement,
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.UnresolvedAlerts, DataQueryKind.RealtimeAssessments]),
 

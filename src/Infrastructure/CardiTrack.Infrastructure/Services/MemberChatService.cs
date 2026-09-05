@@ -260,6 +260,14 @@ public class MemberChatService : IMemberChatService
         recommend an action: what to do about a finding is a different question this read must not
         answer.
 
+        When the question names no particular reading — "anything to follow up on?", "what should
+        I be watching?" — it is asking for the same verdict across everything you were given. Lead
+        with what is outstanding or has moved: any unresolved alert first, then any reading that
+        has drifted from this member's own baseline. If nothing has, say that plainly and stop.
+        Listing today's figures back is not an answer to that question, and a caregiver who has
+        just been given those figures is asking precisely because the list did not tell them
+        whether anything mattered.
+
         Every figure below describes a period that has already finished. Never state what the
         person is doing at this moment. If the data below cannot support a verdict either way,
         say so plainly rather than manufacturing confidence. The activity data covers only the
