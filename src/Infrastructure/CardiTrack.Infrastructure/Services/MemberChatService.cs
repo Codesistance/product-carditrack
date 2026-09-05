@@ -103,14 +103,28 @@ public class MemberChatService : IMemberChatService
     /// bubble, not the hard 400 this path used to raise. The tone block's rule holds: never
     /// suggest the caregiver did something wrong.
     /// </summary>
+    /// <remarks>
+    /// Now carries what this app actually holds, because most of what reaches this entry is no
+    /// longer a poem or the weather. A caregiver asking "what of his diet" is asking a reasonable
+    /// question about their father's health that CardiTrack has no reading of, and a generic "I
+    /// can't help with that" leaves them to rediscover the boundary one topic at a time. Naming
+    /// the sources once turns a refusal into something they learn from.
+    /// </remarks>
     private const string OffTopicSteerInstructions = """
-        A family caregiver sent the request below inside a health-monitoring app that answers
-        questions about their family member's readings, alerts, sleep and activity. The request is
-        about something this assistant cannot help with. In one or two short sentences, say so
-        kindly — without scolding or lecturing — and mention what you can help with instead: their
-        family member's readings, sleep, activity, or alerts. Do not attempt the request itself.
-        Write CardiTrackCardiMember exactly as written if you name the member; it stands in for
-        their real name.
+        A family caregiver sent the request below inside a health-monitoring app. The app answers
+        questions about one family member using what their wearable records — steps, heart rate,
+        sleep, breathing rate and heart rate variability — plus the alerts and baselines computed
+        from those. It holds nothing else: not what they eat, not medication, not weight, not mood,
+        not appointments.
+
+        The request is about something this app has no readings for. In one or two short sentences,
+        say so kindly — without scolding or lecturing — and say what it does hold, so they know
+        what they can ask next. If their request is a reasonable health question that simply is not
+        measured here, acknowledge that rather than implying they asked for something odd; suggest
+        their doctor or their own notes if that is where the answer would come from. Never guess at
+        an answer from the readings that do exist, and do not attempt the request itself. Write
+        CardiTrackCardiMember exactly as written if you name the member; it stands in for their
+        real name.
 
         Respond with:
         - reply: the message to show the caregiver.
@@ -679,14 +693,35 @@ public class MemberChatService : IMemberChatService
         DateTime utcNow,
         CancellationToken ct)
     {
-        if (route.NeedsClarify && !history.LastAssistantWasClarify)
-            return ClarifyResult(route, triageUsage, member?.Name);
-
         // Descend on failure and on repeated ambiguity alike: analysis is the rung that serves
         // the caregiver something real whichever way the confusion resolves.
         var primary = route.NeedsClarify || route.Primary is null
             ? MemberChatWorkflow.Analysis
             : route.Primary.Value;
+
+        if (route.NeedsClarify && !history.LastAssistantWasClarify)
+        {
+            var offerable = await ServableClarifyBranchesAsync(flattened, route, cardiMemberId, member, utcNow);
+            switch (offerable.Count)
+            {
+                // Both branches can be served — the ambiguity is real and worth one tap.
+                case 2:
+                    return ClarifyResult(route, triageUsage, member?.Name);
+
+                // Only one can. Answering with it beats asking a question whose other option is a
+                // dead end: "what of his diet" offered a suggestion and a readings summary when
+                // there was neither a diet suggestion nor a diet reading, and charged a turn for
+                // the menu.
+                case 1:
+                    primary = offerable[0];
+                    break;
+
+                // Neither. Analysis is the failure target for everything unsure, and it at least
+                // says plainly what it looked at.
+                default:
+                    break;
+            }
+        }
 
         return primary switch
         {
@@ -711,6 +746,71 @@ public class MemberChatService : IMemberChatService
             _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
         };
     }
+
+    /// <summary>
+    /// Which of a clarify's two candidates actually has something behind it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §8 says clarify is only better than a guess while it is rare, and the rate is what decides
+    /// whether the behaviour stays on. An observed session spent one turn in four on a clarify
+    /// whose <em>both</em> options were unanswerable: asked about diet, the app offered "a
+    /// suggestion for what could help" — there is no diet suggestion, and the picker's fallback
+    /// would have re-served the walking row from the turn before — or "how their readings have
+    /// looked recently", of readings that do not exist. Two things it cannot do, and a tap spent
+    /// choosing between them.
+    /// </para>
+    /// <para>
+    /// Only advise can be empty in this sense. The reading rungs always have something to say, even
+    /// if it is that the window held no readings, and the steers say something by construction. So
+    /// this costs one indexed lookup, on a path that is meant to be rare, and only when advise is
+    /// one of the two candidates.
+    /// </para>
+    /// <para>
+    /// Widening <c>steer.offtopic</c>'s purpose line should stop most of these being routed here at
+    /// all. This is the backstop for the ones it does not catch, and for every no-data topic
+    /// nobody has thought of yet.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<MemberChatWorkflow>> ServableClarifyBranchesAsync(
+        string flattened,
+        ChatRouteDecision route,
+        Guid cardiMemberId,
+        CardiMember? member,
+        DateTime utcNow)
+    {
+        // NeedsClarify is only true when both are present and different, so advise appears at
+        // most once and the lookup below runs at most once.
+        MemberChatWorkflow[] candidates = [route.Primary!.Value, route.RunnerUp!.Value];
+
+        var offerable = new List<MemberChatWorkflow>(candidates.Length);
+        foreach (var candidate in candidates)
+        {
+            if (candidate is not MemberChatWorkflow.Advise
+                || await PickAdviseAsync(flattened, cardiMemberId, member, utcNow) is not null)
+            {
+                offerable.Add(candidate);
+            }
+        }
+
+        return offerable;
+    }
+
+    /// <summary>
+    /// The stored suggestion this question would be served, or null when there is none to serve.
+    /// </summary>
+    /// <remarks>
+    /// Topic-scoped: the question's own words pick which suggestion answers it — the sleep question
+    /// gets the sleep row — through the same picker the details card and the dashboard indicator
+    /// read, so the three surfaces cannot disagree. <c>AdvisePicker.Pick</c> filters to servable
+    /// rows itself, so a non-null result is already one this rung may show.
+    /// </remarks>
+    private async Task<MemberAdvise?> PickAdviseAsync(
+        string flattened, Guid cardiMemberId, CardiMember? member, DateTime utcNow) =>
+        member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
+            ? AdvisePicker.Pick(
+                flattened, await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), utcNow)
+            : null;
 
     /// <summary>
     /// The clarify turn: one code-assembled question offering both readings — no extra model
@@ -999,13 +1099,7 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         DateTime utcNow)
     {
-        // Topic-scoped: the question's own words pick which suggestion answers it — the sleep
-        // question gets the sleep row — through the same picker the details card and the
-        // dashboard indicator read, so the three surfaces cannot disagree.
-        var advise = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
-            ? AdvisePicker.Pick(
-                flattened, await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), utcNow)
-            : null;
+        var advise = await PickAdviseAsync(flattened, cardiMemberId, member, utcNow);
 
         return new MemberChatWorkflowResult
         {
