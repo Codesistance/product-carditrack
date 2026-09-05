@@ -579,9 +579,9 @@ Each device card:
 | Fitbit | Charge, Versa, Sense series | **MVP 1** |
 | Google Pixel Watch | Pixel Watch 1–3 | **MVP 1** |
 | Garmin | Venu, Forerunner, etc. | MVP 2 (shown Coming Soon) |
-| Apple Watch | Series 4+ | Coming Soon |
-| Samsung Galaxy | All models | Coming Soon |
-| Withings | ScanWatch, Move | Coming Soon |
+| Apple Watch | Series 4+ | Via Google Health — should route to the Google Health connect flow once the brand is mapped (decided 2026-09-05; shown Coming Soon until then) |
+| Samsung Galaxy | All models | Via Google Health — same as Apple Watch |
+| Withings | ScanWatch, Move | Coming Soon (R4) |
 | Other | All models | Coming Soon |
 
 **Bottom:**

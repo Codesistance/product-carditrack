@@ -337,7 +337,7 @@ There are no UI/device automation tests yet.
 
 None of the following exists in the app today:
 
-- **HealthKit (iOS) / Health Connect (Android)** integration for on-device health data
+- ~~**HealthKit (iOS) / Health Connect (Android)** integration for on-device health data~~ — **retired 2026-09-05.** Apple Watch and Galaxy Watch data reaches CardiTrack through the wearer's own Google Health app and the server-side Google Health API engine, never through this app; the wearer is not an app user. The only mobile follow-up is routing those two brands in the device picker to the Google Health connect flow once they are mapped server-side ([devices.md](../../execution/backend/api/devices.md))
 - **SQLite offline cache** and sync queue (today the app is online-only; tokens persist in SecureStorage, and the add-member draft — including its photo — persists locally via `CardiMemberDraftStore`/`FileDraftPhotoStore`; there is still no SQLite)
 - **The iOS Notification Service Extension** — the Xcode App Extension target that would replace a content-free push with richer copy on-device. Its server side (the content-fetch endpoint) shipped; the target itself needs Mac-based verification. Push itself is not planned, it is built — see [Push notifications](#push-notifications).
 - **Widgets, Siri shortcuts, app shortcuts**

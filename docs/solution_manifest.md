@@ -22,7 +22,7 @@ To empower families with affordable, preventive health monitoring for their elde
 2. **Affordable**: 65-85% cheaper than medical alert systems
 3. **Non-Intrusive**: Uses existing devices, not new medical equipment
 4. **AI-Powered**: Learns individual baselines, reduces false alerts
-5. **Device-Agnostic**: Works with Fitbit, Apple Watch, Garmin, Samsung, and more
+5. **Device-Agnostic**: Fitbit and Pixel Watch today, Garmin and Withings next, and Apple Watch or Galaxy Watch through the wearer's Google Health app
 6. **No Hardware Lock-in**: Works with devices people already own
 
 ---
@@ -131,10 +131,9 @@ With Device Bundle:
 
 **External Integrations:**
 - Google Health API (Fitbit, Pixel Watch, connected third-party sources — replaces the Fitbit Web API, which is decommissioned September 2026)
-- Apple HealthKit *(planned)*
-- Garmin Connect API *(planned)*
-- Samsung Health SDK *(planned)*
-- Withings API *(planned)*
+- Garmin Connect API *(planned — R2; developer-program access approval-gated and unconfirmed)*
+- Withings API *(planned — R4)*
+- Apple Watch and Samsung Galaxy Watch — **via the Google Health API only**, when the wearer shares into the Google Health app; no HealthKit or Samsung Health SDK integration *(decided 2026-09-05)*
 - Auth0 (authentication)
 
 ### System Architecture
@@ -199,7 +198,7 @@ With Device Bundle:
 CardiTrack uses the **Adapter Pattern** to support multiple wearable devices:
 
 ```
-Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
+Device APIs (Google Health — Fitbit, Pixel Watch, and Apple/Samsung data the wearer shares in; Garmin; Withings)
                     ↓
         Device-Specific Adapters
         (Normalize device data formats)
@@ -228,16 +227,14 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
 - ✅ Fitbit and Google Pixel Watch, both via the Google Health API — the only providers actually connectable, since GoogleHealth is the only engine registered in DI
 
 **R2 — Q1 2027:**
-- ⬜ Garmin (Venu, Forerunner, Vivoactive) — config-only stub today; a connect attempt returns 400 "not configured for connections"
+- ⬜ Garmin (Venu, Forerunner, Vivoactive) — config-only stub today; a connect attempt returns 400 "not configured for connections". Developer-program access is approval-gated and, per mid-2026 reports, not currently taking applications — apply before scheduling
 
 **R3 — Q2 2027:**
-- ⬜ Apple Watch (Series 8+, Ultra) — on-device HealthKit bridge; HealthKit has no server-side OAuth and the batch ingestion endpoint is not built
-- ⬜ Samsung Galaxy Watch (5, 6) — stub, no config block
+- ⬜ Apple Watch (Series 8+, Ultra) and Samsung Galaxy Watch (5, 6) — **via Google Health only** (decided 2026-09-05). No HealthKit bridge, no Samsung SDK: the wearer shares the watch into the Google Health app and the live GoogleHealth engine reads it. Remaining: map both brands into the GoogleHealth `DeviceTypes` so the picker routes them to the Google connect flow, and a live-device coverage check
 
 **R4 — Q3 2027:**
-- ⬜ Withings (ScanWatch, Body+) — config-only stub
-- ⬜ Oura Ring (Gen 3) — config-only, no `provider` value, unreachable from the API
-- ⬜ Whoop (4.0) — config-only, no `provider` value, unreachable from the API
+- ⬜ Withings (ScanWatch, Body+) — config-only stub; self-serve OAuth 2.0 API, the fallback next engine if Garmin stays closed
+- ❌ Oura and Whoop — **dropped 2026-09-05** (subscription trackers for athletes); enum members and config blocks are cleanup
 
 **Device Capabilities Matrix:**
 
@@ -248,8 +245,8 @@ Device APIs (Fitbit, Apple, Garmin, Samsung, Withings, Oura, Whoop)
 | Garmin Venu     | ✅        | ✅   | ❌  | ✅    | ✅    | ✅  |
 | Samsung Watch 6 | ✅        | ✅   | ✅  | ✅    | ✅    | ✅  |
 | Withings Scan   | ✅        | ✅   | ✅  | ✅    | ✅    | ❌  |
-| Oura Ring       | ✅        | ✅   | ❌  | ✅    | ✅    | ❌  |
-| Whoop 4.0       | ✅        | ✅   | ❌  | ❌    | ✅    | ❌  |
+
+*Apple Watch and Samsung Watch rows show what the watch records; what reaches CardiTrack through Google Health depends on what each vendor shares into it, and is unverified until a live wearer is checked.*
 
 ### 2. AI-Powered Pattern Analysis
 
@@ -347,7 +344,7 @@ Prevention: Catches gradual decline before it becomes severe
 - Push notifications for critical alerts
 - Quick health overview
 - Offline support with local SQLite cache *(planned — R4)*
-- Platform-specific integrations (HealthKit on iOS) *(planned — R4)*
+- No HealthKit or Health Connect code in the app — Apple and Samsung watch data arrives server-side via Google Health *(decided 2026-09-05)*
 
 ### 5. Regulatory posture and safeguards
 
@@ -496,7 +493,7 @@ attaches.
 
 **Month 3: Apply for Device Approvals**
 - Submit Google's restricted-scope privacy & security review (Google Health API production access)
-- Apply for Apple HealthKit integration
+- Apply to the Garmin Connect Developer Program (approval-gated; access unconfirmed)
 - Refine baseline algorithms
 - Prepare for launch
 
@@ -509,7 +506,7 @@ attaches.
 
 ### Phase 3: Scale (Months 7-12)
 
-- Add Apple Watch and Garmin support
+- Add Garmin support; confirm Apple Watch and Galaxy Watch coverage through Google Health with live wearers
 - Launch device bundle option (subsidized hardware)
 - Healthcare provider referral program
 - Enterprise offering for assisted living facilities
@@ -719,8 +716,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - ⏳ Apply for device intraday access
 
 ### R3 — Q2 2027: Multi-Device Support
-- ⏳ Apple Watch integration
-- ⏳ Samsung Health integration
+- ⏳ Apple Watch and Galaxy Watch via Google Health — picker mapping plus live coverage check (no dedicated integration, decided 2026-09-05)
 - ⏳ Device bundle option
 - ⏳ Healthcare provider partnerships
 

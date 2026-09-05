@@ -35,7 +35,7 @@ CardiTrack monitors the wearable data elderly users generate every day and appli
 - Event-driven AI pipeline on **Pub/Sub + Cloud Run** — **live in dev**: SSA pre-processing over per-user baselines feeding MedGemma severity routing, plus rolling family summaries; targeting <5% false positive rate vs. 20–30% industry standard
 
 **On the roadmap (see table below):**
-- Additional wearable brands: Garmin (Q1 2027), Apple Watch and Samsung (Q2 2027), Withings/Oura/Whoop (Q3 2027)
+- Additional wearable brands: Garmin (Q1 2027) and Withings (Q3 2027); Apple Watch and Samsung Galaxy Watch reach us through the wearer's Google Health app on the existing Google Health API integration
 - Real-time alerting to the web dashboard — planned (mobile push is live)
 - FHIR R4 / HL7 v2 data exports — planned (data contracts defined)
 - Blazor Server web dashboard — in early development; mobile is the primary surface today
@@ -99,7 +99,7 @@ All dates below are the current re-baselined plan (as of August 7, 2026); nothin
 | Private beta — 20–50 families (within the 100-user cap for unverified restricted-scope apps) | Q4 2026 |
 | **Google restricted-scope verification submission** — Gate 1 Trust & Safety review + Gate 2 CASA security assessment (annual). The Google-required health-data disclosure already ships on our web app — we treat verification as diligence, not a checkbox | Q4 2026 |
 | Public launch + subscriptions/billing + Garmin support + AI pipeline (Pub/Sub + Cloud Run) — requires verification passed to exceed 100 connected users | Q1 2027 |
-| Apple Watch & Samsung support, family collaboration features | Q2 2027 |
+| Apple Watch & Galaxy Watch coverage via Google Health confirmed with live wearers, family collaboration features | Q2 2027 |
 | Offline support, expanded clinical exports; 1,000+ paying subscribers | Q3 2027 |
 | Enterprise / assisted-living tier (Guardian Plus) | Q4 2027+ |
 | UK, Canada, Australia expansion (groundwork begun: region-localized onboarding shipped Aug 2026) | 2027+ |

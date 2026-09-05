@@ -88,7 +88,7 @@ Located in `/apps/` — each application has its own README covering stack, stru
 **Blazor Web App** — current state (template shell, health-data disclosure banner, privacy page, APM/DataProtection wiring), planned dashboard features, running locally, deployment.
 
 #### [apps/mobile/](./apps/mobile/readme.md)
-**.NET MAUI Mobile App** — cross-platform architecture (iOS, Android), code-behind pages + Mobile.Core (Auth0 native login, API client), onboarding flow, APM/crash reporting, store publishing; planned platform integrations (HealthKit, Health Connect, push, offline).
+**.NET MAUI Mobile App** — cross-platform architecture (iOS, Android), code-behind pages + Mobile.Core (Auth0 native login, API client), onboarding flow, APM/crash reporting, store publishing; planned platform work (push actions, offline); no HealthKit or Health Connect — Apple and Samsung watch data arrives server-side via Google Health.
 
 #### [apps/mobile/store_provisioning.md](./apps/mobile/store_provisioning.md)
 **Store provisioning** — one-time keys, certificates, and Secret Manager secrets that let CI deliver signed builds to TestFlight and the Google Play internal testing track.

@@ -31,3 +31,14 @@ current backlog of stubbed providers (Garmin, Withings, Oura, Samsung Health) �
 Whoop's now-stronger cardiac feature set move it to the front of that queue?
 
 claude "work through @research/queue/2026-09-04-whoop-fda-ecg-bp-cleared.md"
+
+## Resolution — 2026-09-05
+
+**Dropped from the roadmap.** Whoop's API is standard OAuth 2.0 and would have fitted the
+server-side convention, and its cardiac feature set is now the strongest on the list — but it
+is a subscription band built for athletes, and that is not the wearer population CardiTrack
+serves. Decision recorded in the release matrix (decision log #9), `devices.md`, the
+solution manifest and README; removed from the public roadmap and the legal provider lists on
+carditrack.com the same day. If a wearer already shares a Whoop into Google Health, it may
+still arrive through the GoogleHealth engine; no dedicated work. The `DeviceType.Whoop`,
+`HealthApi.Whoop` and appsettings block are cleanup. Closed.
