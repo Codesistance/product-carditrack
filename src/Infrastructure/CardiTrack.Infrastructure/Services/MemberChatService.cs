@@ -434,11 +434,13 @@ public class MemberChatService : IMemberChatService
         // is the router-failure fallback only — the booleans the pre-check already answered,
         // deciding the turn the one time the router could not.
         var result = route is not null
-            ? await DispatchRoutedAsync(route, flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct)
+            ? await DispatchRoutedAsync(
+                route, flattened, triage.Usage, triage.Result.IsAboutThisMoment,
+                cardiMemberId, member, history, utcNow, ct)
             : triage.Result switch
             {
                 { IsAboutThisMoment: true } =>
-                    await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow),
+                    await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow, ct),
                 { IsAskingForAdvice: true } =>
                     await AnswerAdviseAsync(flattened, triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
@@ -670,6 +672,7 @@ public class MemberChatService : IMemberChatService
         ChatRouteDecision route,
         string flattened,
         AiUsage triageUsage,
+        bool aboutThisMoment,
         Guid cardiMemberId,
         CardiMember? member,
         ChatHistory history,
@@ -687,8 +690,14 @@ public class MemberChatService : IMemberChatService
 
         return primary switch
         {
+            // §5's two status branches. The triage call already judged which is meant, and its
+            // prompt draws the line this rung kept getting wrong: "a question about a period,
+            // however recent, is not this" — so "how are they doing today" no longer opens with
+            // what cannot be seen right now.
+            MemberChatWorkflow.Status when aboutThisMoment =>
+                await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
-                await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow),
+                await AnswerStatusLineAsync(triageUsage, cardiMemberId, member, utcNow, ct),
             MemberChatWorkflow.Advise =>
                 await AnswerAdviseAsync(flattened, triageUsage, cardiMemberId, member, utcNow),
             MemberChatWorkflow.SteerCasual =>
@@ -838,16 +847,116 @@ public class MemberChatService : IMemberChatService
         AiUsage triageUsage,
         Guid cardiMemberId,
         string? memberName,
-        DateTime utcNow)
+        DateTime utcNow,
+        CancellationToken ct = default)
     {
         var today = DateOnly.FromDateTime(utcNow);
-        var recent = (await _unitOfWork.ActivityLogs
-            .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-2), today)).ToList();
+        var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
 
         return new MemberChatWorkflowResult
         {
             Workflow = MemberChatWorkflow.Status,
             Reply = CapReply(MemberChatReplies.LiveStatusReply(NamePlaceholder.FirstName(memberName), recent, today)),
+            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+        };
+    }
+
+    /// <summary>How many days of readings the status rung reads back over.</summary>
+    /// <remarks>
+    /// Three, so a member whose watch has not synced today still has yesterday and the day before
+    /// to fall back to — the same reach the hardcoded read had before this went through the
+    /// whitelist, kept deliberately rather than re-derived.
+    /// </remarks>
+    private const int StatusWindowDays = 3;
+
+    /// <summary>
+    /// The status rung's readings, fetched the way every other rung fetches — through the
+    /// catalogue's allowed datasets and the whitelist's clamp.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This rung picks its sources in code rather than with a model, which is §5's design: there
+    /// is one thing status ever needs and spending a planning call to be told so would be waste.
+    /// What it must not do — and did until now — is reach past the whitelist to the repository
+    /// directly. That left status resolving "recent" by its own hardcoded arithmetic while
+    /// analysis resolved it through the clamp, and two rungs answering the same question minutes
+    /// apart could disagree about which days they meant. Same path, same clamp, one answer.
+    /// </para>
+    /// <para>
+    /// The whitelist composes the baseline in whether or not it is asked; status does not use it,
+    /// and one already-fetched row costs nothing.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<ActivityLog>> ReadStatusActivityAsync(
+        Guid cardiMemberId, DateTime utcNow, CancellationToken ct)
+    {
+        var plan = new DataQueryPlan
+        {
+            Sources = ChatWorkflowCatalogue.Find(MemberChatWorkflow.Status)!.AllowedDatasets,
+            RecentActivityDays = StatusWindowDays,
+            ChartMetrics = [],
+        };
+
+        var fetched = await DataQueryWhitelist.ExecuteAsync(plan, cardiMemberId, _unitOfWork, utcNow, ct);
+        return fetched.RecentActivity;
+    }
+
+    /// <summary>
+    /// The other half of the status rung: how the person is, rather than what they are doing this
+    /// instant.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §5 gives this rung two branches and only one was built, so every status-routed question got
+    /// the liveness disclaimer. A caregiver asking "how are they doing today?" was told "I can't
+    /// see what Dad is doing right now" — a refusal to a question they had not asked, in the first
+    /// forty words of the answer.
+    /// </para>
+    /// <para>
+    /// The branch is chosen by the triage call's <see cref="MaliciousCheckAiResponse.IsAboutThisMoment"/>,
+    /// which already runs on every message and whose prompt draws exactly this line: "a question
+    /// about a period, however recent, is not this", naming "how many steps today" as a no. The
+    /// signal was being paid for on every turn and read only on the pre-router fallback chain.
+    /// </para>
+    /// <para>
+    /// Serves the stored <see cref="MemberStatusLine"/> — the same row, through the same guard, as
+    /// the dashboard header the caregiver is looking at while they type. That the answer to "how
+    /// is he today" was already rendered two centimetres above the chat bubble, while chat
+    /// disclaimed it, is the whole reason this exists. Past the staleness ceiling it computes from
+    /// readings rather than declining: unlike a suggestion, there is always something to say.
+    /// </para>
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult> AnswerStatusLineAsync(
+        AiUsage triageUsage,
+        Guid cardiMemberId,
+        CardiMember? member,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        var name = NamePlaceholder.FirstName(member?.Name);
+
+        // The same member guard the dashboard reader and the batch generators apply: a paused or
+        // deactivated member's stored line describes a monitoring state that no longer exists.
+        var line = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
+            ? await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId)
+            : null;
+
+        string reply;
+        if (StatusLineServability.IsServable(line, utcNow))
+        {
+            reply = line.Message.Trim();
+        }
+        else
+        {
+            var today = DateOnly.FromDateTime(utcNow);
+            var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
+            reply = MemberChatReplies.LatestReadingsReply(name, recent, today);
+        }
+
+        return new MemberChatWorkflowResult
+        {
+            Workflow = MemberChatWorkflow.Status,
+            Reply = CapReply(reply),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
     }

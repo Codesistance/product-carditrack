@@ -34,15 +34,55 @@ public static partial class MemberChatReplies
             $"I can't see what {subject} doing right now — readings only reach me after their watch "
             + "has recorded and synced them, so there's nothing live here to check.";
 
+        return LatestFigures(recent, today) is not { } latest
+            ? opening + " I don't have any recent readings for them either."
+            : $"{opening} The most recent I have is {latest.When}: {latest.Figures}.";
+    }
+
+    /// <summary>
+    /// The readings on file, for a caregiver who asked how someone is rather than what they are
+    /// doing this instant.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same figures <see cref="LiveStatusReply"/> states, without the liveness disclaimer in
+    /// front of them. That disclaimer is the right opening for "is he asleep now?" and the wrong
+    /// one for "how is he today": it answers a question the caregiver did not ask, and spends the
+    /// first forty words of the reply doing it. Which of the two runs is decided by the triage
+    /// call's <c>isAboutThisMoment</c>, whose own prompt draws exactly this line — "a question
+    /// about a period, however recent, is not this".
+    /// </para>
+    /// <para>
+    /// Serves as the fallback when there is no current status line, rather than declining: §5's
+    /// rule for this rung is that past the staleness ceiling it computes from readings, because
+    /// unlike a suggestion there is always something to say.
+    /// </para>
+    /// </remarks>
+    public static string LatestReadingsReply(
+        string? firstName, IReadOnlyList<ActivityLog> recent, DateOnly today)
+    {
+        var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
+
+        return LatestFigures(recent, today) is not { } latest
+            ? $"I don't have any recent readings for {subject} yet — they arrive once their watch "
+              + "has recorded and synced them."
+            : $"The most recent readings I have for {subject} are {latest.When}: {latest.Figures}.";
+    }
+
+    /// <summary>
+    /// The newest day with anything recorded on it, as a dated figure list — shared by the two
+    /// status replies so they cannot state the same readings differently.
+    /// </summary>
+    private static (string When, string Figures)? LatestFigures(
+        IReadOnlyList<ActivityLog> recent, DateOnly today)
+    {
         var latest = recent
             .Where(l => l.Steps is not null || l.RestingHeartRate is not null || l.SleepMinutes is not null)
             .OrderBy(l => l.Date)
             .LastOrDefault();
 
         if (latest is null)
-            return opening + " I don't have any recent readings for them either.";
-
-        var when = DayLabel(latest.Date, today);
+            return null;
 
         var parts = new List<string>();
         if (latest.Steps is { } steps)
@@ -52,7 +92,7 @@ public static partial class MemberChatReplies
         if (latest.SleepMinutes is { } sleep)
             parts.Add($"{ReadingFigures.SleepFigure(sleep)} of sleep the night before");
 
-        return $"{opening} The most recent I have is {when}: {Join(parts)}.";
+        return (DayLabel(latest.Date, today), Join(parts));
     }
 
     /// <summary>
