@@ -354,11 +354,9 @@ Get the current calculated numeric baseline values (steps, resting heart rate, s
 
 ## POST `/api/v1/cardimembers/{id}/health-data/batch`
 
-> **Planned — not yet implemented.** No Apple Health bridge exists — there is no ingestion endpoint. Server-OAuth data arrives **notify-then-fetch** via the Google Health webhook (a provider notification triggers a targeted sync), with the Worker's 10-minute poll as the fallback — see [devices.md](devices.md).
+> **Retired — will not be built (decided 2026-09-05).** This endpoint existed on paper for an on-device Apple Health bridge: the mobile app would read HealthKit locally and upload normalized daily samples. That design is dropped — Apple Watch and Galaxy Watch data reaches CardiTrack through the wearer's Google Health app and the existing server-side Google Health API engine, so there is no on-device provider left to ingest for. All device data arrives **notify-then-fetch** via the Google Health webhook (a provider notification triggers a targeted sync), with the Worker's 10-minute poll as the fallback — see [devices.md](devices.md) "Devices that arrive via Google Health".
 
-Device-bridge ingestion for **on-device providers** (Apple Health): the mobile app would read HealthKit locally and upload normalized daily samples.
-
-**Priority:** P1 (ships with Apple Watch support — see [release matrix](../../../release_matrix.md))
+**Priority:** none — kept here only so the route name is not reused for something else without a deliberate decision.
 
 ---
 

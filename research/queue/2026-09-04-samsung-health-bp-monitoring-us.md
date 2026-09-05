@@ -28,3 +28,17 @@ access model, data-sharing partner program requirements, OAuth flow) since there
 existing config to extend, unlike Garmin/Withings/Oura/Whoop.
 
 claude "work through @research/queue/2026-09-04-samsung-health-bp-monitoring-us.md"
+
+## Resolution — 2026-09-05
+
+**No dedicated integration; via Google Health only.** Scoping confirmed there is nothing to
+integrate server-side: the Samsung Health SDK for Android was deprecated 2025-07-31 and its
+replacement, the Samsung Health Data SDK, runs only on the wearer's phone — Samsung offers no
+third-party cloud API. An on-device path would make the wearer an app user, which the product
+rules out. Galaxy Watch readings reach CardiTrack when the wearer shares Samsung Health into
+Health Connect and lets the Google Health app read it; the live GoogleHealth engine then serves
+them. Remaining work: add `GalaxyWatch` to the GoogleHealth block's `DeviceTypes` so the picker
+records the brand, and verify which metrics Samsung actually passes through (blood pressure is
+unlikely to be among them) with a live wearer. `HealthApi.SamsungHealth` and the seeded
+`api.shealth.samsung.com` endpoint describe an API that does not exist. Same decision applied
+to Apple Watch. Recorded in the release matrix (decision log #9) and `devices.md`. Closed.

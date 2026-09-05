@@ -23,7 +23,7 @@ lifecycles.
 | 4 | Apple Sign In (social) | Identity | Services ID + .p8 key **used by Auth0** | Apple Developer | Stored inside the Auth0 connection | **Credentials provisioned + Try Connection verified in dev 2026-08-10** (Services ID `com.codesistance.carditrack.mobile.signin`); **Applications → CardiTrack Mobile toggle enabled in dev 2026-08-10** — prod credentials + Try Connection + toggle still outstanding (Phase 9, below) |
 | 5 | CardiTrack Actions | Identity | Confidential (M2M, Management API: `read:users` `update:users`) | Auth0 | **Action secrets only** (never Secret Manager, never the repo) | **Created + Action deployed in dev 2026-08-10** — [runbook §8a](./auth0_setup_runbook.md); powers the account-linking Action; prod still pending |
 | 6 | Fitbit provider (Google Health API) | Device data | Confidential Web application | Google Cloud (`carditrack-devices-{env}`) | `devices-fitbit-client-id` / `devices-fitbit-client-secret` | **Provisioned 2026-08-07** — clients created, secrets loaded, API + Worker revisions rolled; field names verified against the v4 discovery document 2026-08-09; **live-wearer population check outstanding** (step 5b below) |
-| 7+ | Garmin / Withings / Oura / Whoop | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only; **only the Google Health API client is registered in DI** (`HealthApi.GoogleHealth`, serving both Fitbit and Google Pixel Watch) |
+| 7+ | Garmin / Withings | Device data | Per-vendor | Each vendor's portal | Not yet provisioned (`devices-{provider}-client-{id,secret}`) | Future — config stubs only. Garmin's developer program is business-only, approval-gated and (per mid-2026 reports) not taking new applications — apply early. **Only the Google Health API client is registered in DI** (`HealthApi.GoogleHealth`, serving Fitbit, Google Pixel Watch, and — once the brands are mapped — Apple Watch / Galaxy Watch data the wearer shares into Google Health). **Oura and Whoop dropped 2026-09-05**; no client will be provisioned. **No Apple or Samsung client either**: neither offers a server-side API, so their data only ever arrives via client #6 |
 
 Device-data secrets are namespaced `devices-{provider}-client-{id,secret}` so each
 new provider adds a matching pair rather than another bare `{vendor}-client-*`.
@@ -205,6 +205,16 @@ Fully scripted in the [Auth0 setup runbook](./auth0_setup_runbook.md); summary:
    (dev deployed 2026-08-10, prod pending).
 
 ## Provisioning steps — device-data client (Google Health API)
+
+> **Legacy Fitbit Web API (`api.fitbit.com`) — never used.** It shuts permanently on
+> 2026-09-30 and its tokens do not carry over to Google Health. Verified 2026-09-05
+> that CardiTrack has no exposure: the only `api.fitbit.com` string in the repo is
+> the informational `ApiEndpoint` on the 2026-03 seed row (rewritten to
+> `health.googleapis.com` by the 2026-08-13 Pixel Watch migration; the column is
+> never read), every `appsettings.json` and tfvars points at
+> `health.googleapis.com` + `accounts.google.com`, and every stored token was issued
+> by Google against client #6. There is no legacy-token population and no forced
+> re-consent to run.
 
 > **Provisioned 2026-08-07.** Steps 1–4 are done in both environments: projects
 > created, Google Health API enabled, consent screens configured, both

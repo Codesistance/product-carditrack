@@ -4,7 +4,7 @@ Facts a PM needs before writing anything. **Sourced from `docs/` as of August 14
 
 ## What the product is
 
-Remote health monitoring for elderly family members. A caregiver connects their relative's wearable (Fitbit via Google Health API today; Garmin/Samsung/Apple Watch later), CardiTrack learns that person's baseline, and alerts the caregiver when the data deviates — before it becomes an emergency.
+Remote health monitoring for elderly family members. A caregiver connects their relative's wearable (Fitbit and Pixel Watch via Google Health API today; Garmin and Withings later; Apple Watch and Galaxy Watch only through the wearer's Google Health app), CardiTrack learns that person's baseline, and alerts the caregiver when the data deviates — before it becomes an emergency.
 
 - The person being monitored is a **CardiMember**. They often have no login and may never open the app.
 - The person paying and receiving alerts is the **caregiver** — a family member of an organisation account.

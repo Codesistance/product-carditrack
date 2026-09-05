@@ -423,7 +423,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 | Feature | CardiTrack | Medical Alert Watches | Fitbit Premium | Apple Health | Care\|Mind (defunct) |
 |---------|-----------|----------------------|----------------|-------------|---------------------|
 | **Pricing** | $7-15/mo consumer, all three tiers | $47-68/mo | $10/mo | Free | ~$15/mo |
-| **Multi-Device Support** | 🔄 Fitbit shipped (Google Health API, incl. Pixel Watch); Garmin Q1 2027; Apple/Samsung Q2 2027; Withings/Oura/Whoop Q3 2027 | ❌ Proprietary only | ✅ Fitbit only | ✅ Apple only | ✅ Fitbit only |
+| **Multi-Device Support** | 🔄 Fitbit + Pixel Watch shipped (Google Health API); Garmin Q1 2027; Withings Q3 2027; Apple Watch and Galaxy Watch through the wearer's Google Health app (no dedicated integration) | ❌ Proprietary only | ✅ Fitbit only | ✅ Apple only | ✅ Fitbit only |
 | **Preventive Monitoring** | ✅ AI pattern analysis | ❌ Reactive only | ⚠️ Basic insights | ❌ None | ✅ Basic patterns |
 | **Family Dashboard** | 🔄 Mobile shipped; web in development | ⚠️ Limited | ❌ No | ⚠️ Manual check | ✅ iOS only |
 | **Automated Alerts** | ✅ Statistical + AI alerts with push delivery (FCM); no SMS/email (out of scope) | ✅ Emergency only | ❌ None | ❌ None | ✅ Email |
@@ -452,7 +452,7 @@ The elderly health monitoring market is experiencing rapid growth driven by agin
 
 **What It Means:**
 - Supported today: Fitbit via the Google Health API (which also covers Pixel Watch)
-- Supported roadmap: Garmin (Q1 2027), Apple Watch and Samsung (Q2 2027), Withings/Oura/Whoop (Q3 2027)
+- Supported roadmap: Garmin (Q1 2027) and Withings (Q3 2027) as dedicated integrations; Apple Watch and Samsung Galaxy Watch through the wearer's Google Health app on the existing engine (Oura and Whoop dropped 2026-09-05)
 - Families can keep the device their elderly parent already wears
 - No vendor lock-in
 
@@ -890,7 +890,7 @@ CardiTrack enters a growing market — $9B+ addressable across the US & EU, with
 1. Complete the live-wearer verification of the Google Health API integration (console registration and field mappings already verified) — before the September 2026 legacy Fitbit Web API sunset (Aug-Sep 2026)
 2. Complete R1 core monitoring and beta test with 20-50 families (Q4 2026 — within the 100-user cap for unverified apps); submit Google restricted-scope verification (Gate 1 + CASA)
 3. Public launch with Fitbit + Garmin support (Q1 2027 — **requires Google verification passed** to exceed 100 connected wearers, and the mobile disclosure banner shipped)
-4. Add Apple Watch & Samsung (Q2 2027)
+4. Confirm Apple Watch & Galaxy Watch coverage through Google Health with live wearers; Withings integration (Q3 2027)
 5. Scale to 1,000+ customers (H2 2027), with the annual CASA reassessment as an ongoing operating item
 
 **Long-term Vision:** Become the **leading multi-device elderly health monitoring platform**, serving 100,000+ families by 2029, with potential acquisition by major tech/healthcare company.

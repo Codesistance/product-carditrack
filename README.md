@@ -187,13 +187,17 @@ See the [DPIA](docs/compliance/dpia.md) and the [data protection architecture](d
 ### Current Support
 - ✅ **Fitbit** via the **Google Health API** (the legacy Fitbit Web API is decommissioned September 2026; the codebase has migrated, Google console registration was completed 2026-08-07 with field mappings verified 2026-08-09; restricted-scope verification + the annual CASA assessment are still outstanding, and unverified apps are capped at 100 users until they complete)
 
-### Planned Support
-- 🔄 **Garmin** (Venu, Forerunner, Vivoactive)
-- 🔄 **Apple Watch** (Series 4+)
-- 🔄 **Samsung Galaxy Watch** (5, 6)
-- ⏳ **Withings** (ScanWatch)
-- ⏳ **Oura Ring** (Gen 3)
-- ⏳ **Whoop** (4.0)
+- ✅ **Google Pixel Watch** — same Google Health API engine as Fitbit
+- ✅ **Legacy Fitbit Web API: never used.** Its 2026-09-30 shutdown affects nothing here — every connection has always been Google-issued against `health.googleapis.com`
+
+### Planned dedicated integrations
+- 🔄 **Garmin** (Venu, Forerunner, Vivoactive) — R2; developer-program access is approval-gated and unconfirmed
+- ⏳ **Withings** (ScanWatch) — R4; self-serve OAuth 2.0 API, the fallback if Garmin stays closed
+
+### Through the wearer's Google Health app (no dedicated integration — decided 2026-09-05)
+- **Apple Watch** and **Samsung Galaxy Watch** — neither vendor offers a server-side connection; when the wearer shares the watch into Google Health (Apple Health on iPhone, Health Connect on Android), the existing Google Health API engine reads it. Remaining work: map the brands into the device picker and confirm metric coverage with a live wearer. See [devices.md](docs/execution/backend/api/devices.md).
+
+Oura and Whoop were dropped from the roadmap on 2026-09-05 (their enum members and config stubs are pending cleanup).
 
 ## 🧠 AI Features
 

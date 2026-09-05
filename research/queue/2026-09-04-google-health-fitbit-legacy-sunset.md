@@ -41,3 +41,19 @@ a legacy Fitbit token that needs a forced re-consent flow before 2026-09-30? If 
 latter, is that flow shipped, and is there a way to identify affected users now?
 
 claude "work through @research/queue/2026-09-04-google-health-fitbit-legacy-sunset.md"
+
+## Resolution — 2026-09-05
+
+**No exposure.** CardiTrack has never called `api.fitbit.com`. Grep of `src/`, `infrastructure/`
+and `.github/` finds the string only in the original 2026-03 `InitialCreate` migration, as the
+informational `ApiEndpoint` of the seeded Fitbit `Device` row — rewritten to
+`health.googleapis.com` by the 2026-08-13 `AddGooglePixelWatchDevice` migration, and
+`Device.ApiEndpoint` is never read at runtime. All three `appsettings.json` files and both
+tfvars point `ApiBaseUrl` at `health.googleapis.com` and `AuthorizationUrl` at
+`accounts.google.com`. Every stored `DeviceConnection` token was issued by Google OAuth against
+the `carditrack-devices-{env}` client registered 2026-08-07, so there is no legacy-token
+population and no forced re-consent to run.
+
+Recorded in `docs/execution/backend/api/devices.md` ("Legacy Fitbit Web API — not exposed"),
+`docs/technical/oauth_clients.md`, and the release matrix. The live-wearer field-population
+check (oauth_clients.md step 5b) stays open on its own merits. Closed.

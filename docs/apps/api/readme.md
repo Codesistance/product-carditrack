@@ -285,7 +285,11 @@ env vars in `infrastructure/main.tf`). **Element 0 must therefore be the GoogleH
 **throws at startup** if the first element is anything else, rather than silently binding Google
 credentials to the wrong provider. The `GarminConnect`, `Withings`, `Oura`, and `Whoop` entries
 that follow are **config-only stubs** in the same shape: no API client or sync service is
-registered for them yet.
+registered for them yet. Only Garmin and Withings are still planned; **Oura and Whoop were
+dropped from the roadmap on 2026-09-05** and their entries (with the matching `DeviceType` and
+`HealthApi` members) are cleanup. Apple Watch and Galaxy Watch get no entry of their own — their
+data arrives through the GoogleHealth provider when the wearer shares into Google Health, so the
+eventual change is adding those two `DeviceTypes` to element 0, not a new block.
 
 ### AI providers
 
