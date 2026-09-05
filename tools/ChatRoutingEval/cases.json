@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "source": "docs/technical/member_chat_routing.md §11 — extracted, not retyped",
-  "caveat": "One author, phrasings of failures already on record. NOT the blind two-person eval set step 1 requires.",
+  "source": "docs/technical/member_chat_routing.md §11 — extracted, not retyped; c36-c50 transcribed from an observed caregiver session, 2026-09-04",
+  "caveat": "c01-c35: one author, phrasings of failures already on record. c36-c50: real caregiver messages from one observed session, labelled by one author afterwards. Still NOT the blind two-person eval set step 1 requires — but c36-c50 are at least real phrasings, which the seed is explicit about lacking.",
   "cases": [
     {
       "id": "c01",
@@ -385,6 +385,174 @@
       "special": "rejected-pre-router",
       "note": null,
       "guards": "Must never reach routing"
+    },
+    {
+      "id": "c36",
+      "question": "what of his diet",
+      "context": null,
+      "accepted": [
+        "steer.offtopic"
+      ],
+      "special": null,
+      "note": "Observed 2026-09-04 — clarified, and both offered branches were dead ends",
+      "guards": "Health-adjacent but held nowhere: no diet data and no diet advice topic exist. Must not clarify between two branches that cannot be served."
+    },
+    {
+      "id": "c37",
+      "question": "Is he taking his tablets?",
+      "context": null,
+      "accepted": [
+        "steer.offtopic"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Medication appears only as a prohibition in the prompt guards; there is no medication reading to fetch."
+    },
+    {
+      "id": "c38",
+      "question": "Has he lost weight?",
+      "context": null,
+      "accepted": [
+        "steer.offtopic"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Weight is a device-capability pill only — ActivityLog carries no weight column."
+    },
+    {
+      "id": "c39",
+      "question": "How has his mood been?",
+      "context": null,
+      "accepted": [
+        "steer.offtopic"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "No mood data. Warmth must not become a fabricated read of something unmeasured."
+    },
+    {
+      "id": "c40",
+      "question": "When is his next appointment?",
+      "context": null,
+      "accepted": [
+        "steer.offtopic"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Care logistics, not readings — nothing here holds a calendar."
+    },
+    {
+      "id": "c41",
+      "question": "anything to followup on?",
+      "context": null,
+      "accepted": [
+        "inference"
+      ],
+      "special": null,
+      "note": "Observed 2026-09-04 — answered as a re-read of the turn before it",
+      "guards": "A triage question naming no metric. Re-reading the day's figures is not an answer."
+    },
+    {
+      "id": "c42",
+      "question": "What should I be watching?",
+      "context": null,
+      "accepted": [
+        "inference"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Names no metric; the answer is what is outstanding, not a recitation."
+    },
+    {
+      "id": "c43",
+      "question": "Anything I've missed?",
+      "context": "after a status answer",
+      "accepted": [
+        "inference"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Terse triage follow-up — must not repeat figures already given."
+    },
+    {
+      "id": "c44",
+      "question": "what kind of exercises can he do",
+      "context": null,
+      "accepted": [
+        "advise"
+      ],
+      "special": null,
+      "note": "Observed 2026-09-04 — served the stored 'more movement' row verbatim",
+      "guards": "Asks which, not whether. A stored general activity suggestion does not answer it, and a reply must not present one as if it did."
+    },
+    {
+      "id": "c45",
+      "question": "How much walking is enough?",
+      "context": null,
+      "accepted": [
+        "advise",
+        "analysis"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Steps have no published band — an answer must not invent 10,000 as if it were guidance."
+    },
+    {
+      "id": "c46",
+      "question": "How often should he be getting up?",
+      "context": null,
+      "accepted": [
+        "advise"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "A frequency question the stored row is unlikely to address."
+    },
+    {
+      "id": "c47",
+      "question": "How are they doing today?",
+      "context": null,
+      "accepted": [
+        "status",
+        "analysis"
+      ],
+      "special": null,
+      "note": "Observed 2026-09-04 — got the 'I can't see what he is doing right now' reply",
+      "guards": "'Today' is not 'right now'. The liveness disclaimer answers a question that was not asked; either the status line or a baseline comparison is a real answer."
+    },
+    {
+      "id": "c48",
+      "question": "How's he been today?",
+      "context": null,
+      "accepted": [
+        "status",
+        "analysis"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Same shape as c47, past tense — still one day, still not a liveness question."
+    },
+    {
+      "id": "c49",
+      "question": "How is he doing today compared with usual?",
+      "context": null,
+      "accepted": [
+        "analysis"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Names the comparison explicitly, so analysis rather than status."
+    },
+    {
+      "id": "c50",
+      "question": "Is he resting at the moment?",
+      "context": null,
+      "accepted": [
+        "status"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Genuinely about this instant — the liveness reply is the correct answer here, and must keep working once 'today' stops reaching it."
     }
   ]
 }
