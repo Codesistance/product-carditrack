@@ -280,7 +280,20 @@ public class MedicalPromptToneTests
         Assert.Equal(5, lines.Count);
     }
 
-    /// <summary>The one prompt the pronoun rule is deliberately kept out of.</summary>
+    /// <summary>Prompts that send no name, so the pronoun rule would be an instruction to invent.</summary>
+    private static readonly string[] NamelessProsePrompts =
+    [
+        "StatusLineGenerationService.CurrentStatusInstructions",
+        "RealtimeAssessmentService.AssessmentInstructions",
+        "HealthInsightService.BaselineInstructions",
+        "HealthInsightService.LearningInstructions",
+        "HealthInsightService.ProvisionalInstructions",
+    ];
+
+    private static bool IsNameless(string name) =>
+        NamelessProsePrompts.Contains(name, StringComparer.Ordinal);
+
+    /// <summary>The one prompt the pronoun rule is deliberately kept out of for latency.</summary>
     private const string StatusPrompt = "StatusLineGenerationService.CurrentStatusInstructions";
 
     /// <summary>
@@ -306,8 +319,11 @@ public class MedicalPromptToneTests
         if (IsUtility(name))
             return;
 
-        if (name == StatusPrompt)
+        if (IsNameless(name))
+        {
+            Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), prompt, StringComparison.Ordinal);
             return;
+        }
 
         // A clinical read is given no name to use — the member context sends none — so all three
         // of the rule's clauses were about a decision it never faces. The rewrite step, which is
@@ -322,18 +338,20 @@ public class MedicalPromptToneTests
     }
 
     /// <summary>
-    /// The status prompt is the exception, and stays one. It asks for a headline of two to five
-    /// words and a sentence under fifteen — a pronoun scarcely arises, and its own instructions
-    /// already settle how the person is named. It is also the only prompt a caregiver waits on and
-    /// the only one under a character budget, so an inert rule here is paid for in latency on
-    /// nearly every dashboard view. Deleting this test is the cheap way to lose that.
+    /// Briefs that never send a name omit the pronoun rule. Status also sits under a character
+    /// budget; the others would be instructing the model to invent. Deleting this test is the
+    /// cheap way to put the rule back on a nameless brief.
     /// </summary>
     [Fact]
-    public void The_status_prompt_is_left_out_of_the_pronoun_rule()
+    public void Nameless_briefs_omit_the_pronoun_rule()
     {
-        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusPrompt).Prompt;
+        var byName = AllPrompts().ToDictionary(p => $"{p.Service}.{p.Field}", p => p.Prompt);
 
-        Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), status, StringComparison.Ordinal);
+        foreach (var name in NamelessProsePrompts)
+        {
+            Assert.True(byName.ContainsKey(name), $"{name} was not found by the prompt reflection.");
+            Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), byName[name], StringComparison.Ordinal);
+        }
     }
 
     /// <summary>
@@ -359,6 +377,26 @@ public class MedicalPromptToneTests
     {
         Assert.DoesNotContain("Name them once", MedicalPromptBlocks.Pronouns, StringComparison.Ordinal);
         Assert.Contains("Never invent a name", MedicalPromptBlocks.Pronouns);
+    }
+
+    [Fact]
+    public void Waiting_copy_carries_no_example_sentence()
+    {
+        var waiting = AllPrompts().Single(p => p.Field == "WaitingSentencesInstructions").Prompt;
+
+        Assert.DoesNotContain("for example", waiting, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Reading through the last week of sleep", waiting, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Triage_does_not_treat_a_worried_verdict_as_advice()
+    {
+        var triage = AllPrompts().Single(p => p.Field == "MaliciousCheckInstructions").Prompt;
+
+        Assert.Contains("should I be worried about her?", triage, StringComparison.Ordinal);
+        Assert.Contains("is not this", triage, StringComparison.Ordinal);
+        var adviceLine = triage.Split('\n').First(l => l.Contains("isAskingForAdvice", StringComparison.Ordinal));
+        Assert.DoesNotContain("should I be worried about her?", adviceLine, StringComparison.Ordinal);
     }
 
     [Theory]

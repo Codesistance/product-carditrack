@@ -68,8 +68,10 @@ public class AdviseGenerationService
     /// Version 2 is the two-slot split; rows from before the column exist at 0 and regenerate on
     /// their next pass. Version 3 unclamps the clinical half — <see cref="MedicalPromptBlocks.ClinicalRead"/>
     /// in place of the old three-rule block, and the register guard off the clinical entry.
+    /// Version 4 aligns the sleep reference with the National Sleep Foundation 7–9 / 7–8-from-65
+    /// band the rest of the product already cites.
     /// </remarks>
-    internal const int CurrentPromptVersion = 3;
+    internal const int CurrentPromptVersion = 4;
 
     /// <summary>
     /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — MedGemma's read of where the readings fall

@@ -47,7 +47,12 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// dividing by it would turn a 1 bpm wobble into an astronomical deviation score; half a
     /// beat per minute is the smallest jitter worth calling a jitter.
     /// </summary>
-    public const double NoiseFloorBpm = 0.5;
+    /// <summary>
+    /// Stored when the model's hour message names a condition. Severity still routes; the
+    /// sentence a caregiver would read must not.
+    /// </summary>
+    internal const string NonClinicalObservation =
+        "The hour's heart rate sat far enough from the usual pattern to record.";
 
     /// <summary>
     /// <c>CARDITRACK_REALTIME_ASSESSMENT_PROMPT</c> — the real-time severity assessment
@@ -66,7 +71,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// non-public static fields, so this widening changes nothing about what that suite checks.
     /// </remarks>
     internal const string AssessmentInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        MedicalPromptBlocks.Tone + """
         Assess this hour of wearable readings for a family caregiver.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
@@ -260,7 +265,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             HrNoiseRms = ssa.NoiseRms,
             StepsSum = steps,
             SpO2Mean = spo2,
-            ModelOutput = aiResponse.Message.Length <= 4000 ? aiResponse.Message : aiResponse.Message[..4000],
+            ModelOutput = CaregiverFacingAssessment(aiResponse.Message),
             RawSeverity = rawSeverity,
             Severity = severity,
             SsaEngine = SsaParameters.Engine,
@@ -483,5 +488,13 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             return null;
 
         return values[(lastIndex - windowMinutes + 1)..(lastIndex + 1)];
+    }
+
+    private static string CaregiverFacingAssessment(string message)
+    {
+        var truncated = message.Length <= 4000 ? message : message[..4000];
+        return JournalRegisterGuards.NamesACondition(truncated) is null
+            ? truncated
+            : NonClinicalObservation;
     }
 }

@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -120,14 +121,22 @@ public class StatusLineGenerationService
         // filter is the one that matters — and doing it here in memory is how the claim of being
         // "the same read as DashboardService's" quietly stopped being true.
         var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId);
-        var severity = unresolvedAlerts.Count == 0
-            ? "green"
-            : unresolvedAlerts.Max(a => a.Severity).ToString().ToLowerInvariant();
 
         // The member's own civil day, not the host's — the same anchor the digest resolves.
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
-        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+        var utcNow = DateTime.UtcNow;
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
         var today = DateOnly.FromDateTime(localNow);
+
+        var highestAlert = unresolvedAlerts.Count == 0
+            ? AlertSeverity.Green
+            : unresolvedAlerts.Max(a => a.Severity);
+        var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(cardiMemberId, ct);
+        var latestDigest = await _unitOfWork.Digests.GetLatestByDateAsync(
+            cardiMemberId, today, DigestAudience.Family, ct);
+        var severity = StatusDisplayTier.Resolve(
+                highestAlert, latestAssessment, latestDigest, utcNow)
+            .ToString().ToLowerInvariant();
 
         var recentLogs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-2), today);
@@ -232,11 +241,11 @@ public class StatusLineGenerationService
         DateOnly today,
         DigestDayProgress progress)
     {
-        // Titles only. The type and severity of each alert are what the tier above is computed
-        // from, so repeating them per alert tells the model nothing it has not been told.
-        // Flattened, as every other renderer that carries an alert title does: this one puts each
-        // on its own "- " line inside a section, so a newline in a title would open a line the
-        // section never labelled.
+        // Titles only. The type and severity of each alert feed the tier above, alongside a
+        // recent yellow-or-worse assessment and today's family digest — see
+        // <see cref="StatusDisplayTier"/>. Flattened, as every other renderer that carries an
+        // alert title does: this one puts each on its own "- " line inside a section, so a
+        // newline in a title would open a line the section never labelled.
         var alertContext = unresolvedAlerts.Count == 0
             ? "No unresolved alerts."
             : string.Join("\n", unresolvedAlerts.Select(a => $"- {MedicalPromptBlocks.Flatten(a.Title)}"));
@@ -249,7 +258,7 @@ public class StatusLineGenerationService
             --- Current severity tier ---
             {severity}
 
-            --- Unresolved alerts driving this tier ---
+            --- Unresolved alerts ---
             {alertContext}
 
             --- Recent readings (the most recent days that carried any, oldest first) ---

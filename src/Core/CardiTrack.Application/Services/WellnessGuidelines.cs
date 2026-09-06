@@ -43,10 +43,11 @@ public static partial class WellnessGuidelines
                 + "minutes a week of moderate aerobic activity, or 75-150 minutes vigorous",
                 ActivityMarkers(),
                 "https://www.who.int/publications/i/item/9789240015128"),
-            new("AASM/CDC consensus",
-                "AASM/CDC consensus — adult sleep duration: 7 or more hours a night",
+            new("National Sleep Foundation",
+                "National Sleep Foundation — recommended nightly sleep 7–9 hours for "
+                + "adults, 7–8 hours from 65",
                 SleepMarkers(),
-                "https://doi.org/10.5664/jcsm.4758"),
+                "https://doi.org/10.1016/j.sleh.2014.12.010"),
             new("American Heart Association",
                 "American Heart Association — typical adult resting heart rate 60-100 bpm at "
                 + "rest, lower in well-conditioned adults",
@@ -85,9 +86,19 @@ public static partial class WellnessGuidelines
     [GeneratedRegex(@"\b(?:WHO|World Health Organi[sz]ation|physical activity)\b", RegexOptions.IgnoreCase)]
     private static partial Regex ActivityMarkers();
 
-    [GeneratedRegex(@"\b(?:AASM|CDC|sleep)\b", RegexOptions.IgnoreCase)]
+    /// <remarks>
+    /// Authority names only, matching the activity marker. The bare word "sleep" used to match
+    /// here and attached the sleep citation to "usual sleep" / "sleep baseline" — the same mismatch
+    /// the WHO activity marker was tightened to stop. Old AASM/CDC stored picks quote nothing
+    /// until Advise regenerates onto this prompt version.
+    /// </remarks>
+    [GeneratedRegex(@"\b(?:NSF|National Sleep Foundation)\b", RegexOptions.IgnoreCase)]
     private static partial Regex SleepMarkers();
 
-    [GeneratedRegex(@"\b(?:AHA|heart)\b", RegexOptions.IgnoreCase)]
+    /// <remarks>
+    /// Authority names only. The bare word "heart" attached the AHA resting-rate citation to
+    /// "heart rate baseline" the same way "sleep" did.
+    /// </remarks>
+    [GeneratedRegex(@"\b(?:AHA|American Heart Association)\b", RegexOptions.IgnoreCase)]
     private static partial Regex HeartMarkers();
 }

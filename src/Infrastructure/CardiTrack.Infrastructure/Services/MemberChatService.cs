@@ -69,10 +69,12 @@ public class MemberChatService : IMemberChatService
           sleep last night" and "how many steps today" are all answerable from recorded readings
           and must be no.
         - isAskingForAdvice: asks what should be done about the member's health or wellbeing
-          rather than what their readings say — "does he need help with his sleep?", "should I be
-          worried about her?", "what can I do about how little he's walking?", "how do we get her
-          sleeping better?". The test is whether answering it would mean recommending an action.
-          Asking what a reading was, or how the person is doing, is not this.
+          rather than what their readings say — "does he need help with his sleep?",
+          "what can I do about how little he's walking?", "how do we get her sleeping better?".
+          The test is whether answering it would mean recommending an action.
+          Asking what a reading was, how the person is doing, or whether it is worth attention
+          — "should I be worried about her?" — is not this: that is a verdict on the readings,
+          not a request for something to try.
 
         An ordinary question about the member's health, in any tone, is none of the five — do not
         flag a question merely for being blunt, worried, or informally worded. The message may also
@@ -164,7 +166,7 @@ public class MemberChatService : IMemberChatService
         A caregiver just asked the question below inside a health-monitoring app, and preparing the
         full answer takes a little while. Write exactly three short waiting messages to show them
         meanwhile — each under ten words, present tense, calm, and specific to what the question
-        is about (for example "Reading through the last week of sleep…"). Each message describes
+        is about. Each message describes
         the checking that is happening; it must not answer the question, state any finding or
         reading, give advice, or name any person.
 
@@ -1886,6 +1888,8 @@ public class MemberChatService : IMemberChatService
         var resolved = ResolvedOrFallback(rewritten, name);
         if (resolved == CouldNotAnswerReply)
             return resolved;
+        if (JournalRegisterGuards.NamesACondition(resolved) is not null)
+            return CouldNotAnswerReply;
 
         var reply = CapReply(resolved);
         return MemberChatReplies.ResolveSpan(readingsFrom, readingsTo, fetchedWindow) is { } span

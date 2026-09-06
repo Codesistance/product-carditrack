@@ -138,6 +138,30 @@ public class RealtimeAssessmentServiceTests
     }
 
     [Fact]
+    public async Task ANamedCondition_IsReplaced_WhileSeverityStillRoutes()
+    {
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "This hour is consistent with tachycardia and may indicate arrhythmia.",
+                Severity = "high",
+            });
+
+        await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        await _assessments.Received(1).UpsertAsync(
+            Arg.Is<RealtimeAssessment>(a =>
+                a.ModelOutput == RealtimeAssessmentService.NonClinicalObservation
+                && a.Severity == AlertSeverity.Orange
+                && a.RawSeverity == "high"),
+            Arg.Any<CancellationToken>());
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.Message == RealtimeAssessmentService.NonClinicalObservation
+            && a.Severity == AlertSeverity.Orange));
+    }
+
+    [Fact]
     public async Task AGreenVerdict_RaisesNoAlert()
     {
         await CreateSut().AssessDueMembersAsync(UtcNow);

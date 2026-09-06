@@ -11,8 +11,8 @@ namespace CardiTrack.API.Controllers;
 
 /// <summary>
 /// A caregiver's persisted, multi-turn conversation about one CardiMember. Distinct from
-/// <see cref="ChatController"/> (general provider, de-identified, client-replayed history) and from
 /// <see cref="InsightsController"/>'s one-shot ask endpoint — see <see cref="IMemberChatService"/>.
+/// <see cref="ChatController"/> is retired (410) and points here.
 /// </summary>
 [Authorize]
 [AuditHealthDataAccess("MemberChat")]

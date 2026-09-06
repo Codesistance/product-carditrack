@@ -240,11 +240,10 @@ internal static partial class MedicalPromptBlocks
     /// <para>
     /// The line used to open "Name them once". <see cref="Tone"/> has just said the reader is a
     /// family member, so "them" attaches to the reader, not the person the readings are about.
-    /// And most of the prompts that carry this rule never give a name at all — only the digest
-    /// and the status line send <c>CardiTrackCardiMember</c>, and of those only the digest carries this
-    /// block — so "name them" was an instruction to invent. The token itself stays out of this
-    /// line: alert and assessor copy is stored without resolving it, and a leftover brace pair
-    /// would reach a caregiver. "They" remains only for that nameless, sex-not-stated case.
+    /// Callers that send no name omit this block: a rule about naming is an instruction to invent
+    /// when the placeholder never arrives. The token itself stays out of this line for the one
+    /// nameless path that still stores copy without resolving it — leftover braces would reach a
+    /// caregiver. "They" remains only for that nameless, sex-not-stated case.
     /// </para>
     /// <para>
     /// Not part of <see cref="Tone"/>, and not appended to <c>CurrentStatusInstructions</c>, for
@@ -262,12 +261,11 @@ internal static partial class MedicalPromptBlocks
     /// </para>
     /// <para>
     /// "Never invent a name" leads. It used to close the line, after a semicolon, at the end of
-    /// forty-five words — while "if sex is not stated, use a given name instead of they" led. Most
-    /// of the prompts carrying this rule give no name at all: only the digest and the status line
-    /// send <c>CardiTrackCardiMember</c>, and the alert, baseline, provisional, learning, assessor
-    /// and chat-clinical briefs give the model nothing to name the person with. So the clause it
-    /// met first was one it could not satisfy, and the clause releasing it arrived last. The
-    /// wording of all three is unchanged; only which one the model reads first is.
+    /// forty-five words — while "if sex is not stated, use a given name instead of they" led. The
+    /// briefs that send no name (status, baseline, learning, provisional, assessor, chat-clinical)
+    /// no longer carry this block; the ones that do send <c>CardiTrackCardiMember</c> — digest,
+    /// journals, advise rewrite, member-chat rewrite, alert — meet the clause they can satisfy
+    /// first. The wording of all three is unchanged; only which one the model reads first is.
     /// </para>
     /// </remarks>
     internal const string Pronouns =
@@ -663,8 +661,8 @@ internal static partial class MedicalPromptBlocks
     /// <para>
     /// Facts stated as rules, not example output — the same reason <see cref="CaregiverRegister"/>
     /// gives at length for why this file never hands MedGemma a sentence to complete from. These
-    /// are population-level public-health guidance (WHO activity, AASM/CDC sleep, an AHA general
-    /// heart-rate reference), not a personalised clinical target, and deliberately so: CardiTrack
+    /// are population-level public-health guidance (WHO activity, National Sleep Foundation sleep,
+    /// an AHA general heart-rate reference), not a personalised clinical target, and deliberately so: CardiTrack
     /// is not a medical device (docs/solution_manifest.md), and grounding a suggestion in named,
     /// checkable sources — rather than the model's own unconstrained medical reasoning — is what
     /// keeps Advise on the wellness side of that line.
@@ -677,7 +675,7 @@ internal static partial class MedicalPromptBlocks
     /// </remarks>
     internal const string WellnessGuidelineReference =
         "- Adult physical activity (WHO, 2020): at least 150-300 minutes a week of moderate aerobic activity, or 75-150 minutes vigorous, plus muscle-strengthening on 2 or more days." + NL
-        + "- Adult sleep duration (AASM/CDC consensus): 7 or more hours a night; consistently under that is worth noting." + NL
+        + "- Adult sleep duration (National Sleep Foundation): 7–9 hours a night for adults, 7–8 hours from 65; consistently under 7 hours is worth noting." + NL
         + "- Resting heart rate (AHA general reference): commonly 60-100 bpm at rest, lower in well-conditioned adults — a population range, not a judgement on any one reading." + NL
         + "- SpO2 and heart-rate-variability readings from a consumer wearable are not medical-grade; use them as directional context only, never as a measurement to act on." + NL
         + "- Daily step counts have no published typical range: no accredited body publishes one, so there is no reference above to measure them against. A shortfall in steps is a shortfall against this member's own usual, and nothing else." + NL

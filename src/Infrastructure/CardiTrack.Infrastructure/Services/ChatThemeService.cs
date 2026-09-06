@@ -40,7 +40,7 @@ public class ChatThemeService : IChatThemeService
         A family caregiver had the conversation below inside a health-monitoring app, asking
         about their family member's readings, sleep, activity and alerts. Write a short label —
         three to six words — naming what the conversation was about, the way a folder or note
-        gets titled: "Sleep quality this week", "Alert about resting heart rate". Plain words in
+        gets titled. Plain words in
         sentence case, no quotes, no trailing punctuation. Do not name or describe any person:
         where CardiTrackCardiMember appears it stands in for a name, and the label must not
         contain it.

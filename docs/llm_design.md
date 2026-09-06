@@ -632,8 +632,8 @@ here because the first build collapsed them into one prompt and shipped the pred
 already up):
 
 - **Clinical (AI:Private, MedGemma).** Data only: where the readings fall short of the
-  public-health reference (`WellnessGuidelineReference` — WHO activity, AASM/CDC sleep, AHA
-  heart-rate, the wearable caveat) or the member's own 30-day baseline, and one everyday action
+  public-health reference (`WellnessGuidelineReference` — WHO activity, National Sleep Foundation
+  sleep, AHA heart-rate, the wearable caveat) or the member's own 30-day baseline, and one everyday action
   that would close that specific shortfall. Direction is part of the brief: a met or beaten
   reference is a reason for **no entry**, never for "more of the same". No audience, no name —
   MedGemma is not aware of who; just data. Guarded per entry: a condition or treatment, or a

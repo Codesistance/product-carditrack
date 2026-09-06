@@ -184,6 +184,20 @@ public class MemberChatRoutedDispatchTests
     }
 
     [Fact]
+    public async Task ARewriteThatNamesACondition_IsNotShown()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(
+                "This looks like tachycardia sitting behind the rise.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how's his heart rate?");
+
+        Assert.Equal(MemberChatService.CouldNotAnswerReply, reply.Reply);
+    }
+
+    [Fact]
     public async Task AnUnparseableAnswer_DescendsToAnalysis()
     {
         RouterAnswers(primary: null);
