@@ -348,6 +348,25 @@ public class MetricAlarmEngineTests
     }
 
     [Fact]
+    public async Task ASkippedMember_IsStillForgottenByTheTracker()
+    {
+        // A paused member is loaded and then left alone — but loaded is tracked, and on a shared
+        // scope every early return would otherwise leave its rows behind for the rest of the pass.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            OrganizationId = _organizationId,
+            Name = "Margaret Doe",
+            IsActive = true,
+            MonitoringPausedUntil = UtcNow.AddDays(3),
+        });
+
+        await Engine().EvaluateAsync(UtcNow);
+
+        _unitOfWork.Received(1).ClearTracking();
+    }
+
+    [Fact]
     public async Task OneMembersFailedSave_DoesNotPoisonTheRest()
     {
         // The scope is shared across the pass. A failed save leaves its entries in the change

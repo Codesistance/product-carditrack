@@ -70,11 +70,16 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             }
             catch (Exception ex)
             {
-                // One member's failure must not cost the rest of the fleet this pass. Catching is
-                // not enough for that: the scope is shared, so whatever this member's save left in
-                // the change tracker would be retried — and fail the same way — inside every later
-                // member's save.
+                // One member's failure must not cost the rest of the fleet this pass.
                 _logger.LogError(ex, "Metric alarm evaluation failed for CardiMember {CardiMemberId}.", memberId);
+            }
+            finally
+            {
+                // The scope is shared across the whole pass, so one member's rows must not outlive
+                // their turn — on every exit, not just the happy one. After a failed save, what was
+                // left in the change tracker would otherwise be retried, and fail the same way,
+                // inside every later member's save; after a skip or a success it is dead weight that
+                // every subsequent save would still have to scan.
                 _unitOfWork.ClearTracking();
             }
         }
@@ -163,13 +168,8 @@ public class MetricAlarmEngine : IMetricAlarmEngine
         // Every transition recorded this tick has to be saved before the next tick reads it — above
         // all the Ok that lets a later breach read as a transition rather than as a condition that
         // was already standing. A tick that changed nothing has nothing pending and costs no round
-        // trip here.
+        // trip here. The caller clears the tracker once this member is done, whichever way it ends.
         await _unitOfWork.SaveChangesAsync();
-
-        // Forget this member's rows before moving to the next. The scope is shared across the whole
-        // pass, and a tracker that keeps every member's entities makes each later save scan all of
-        // them; nothing below needs what was loaded above.
-        _unitOfWork.ClearTracking();
 
         // Push dispatch, the same direct call the statistical engine makes. One bad dispatch must
         // not cost the batch the alerts it already persisted; DispatchService dedups, so a retried
