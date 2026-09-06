@@ -215,6 +215,38 @@ public class AlarmDraftTests
     }
 
     [Fact]
+    public void EditingAnAlarmTheCatalogueNoLongerAllows_RepicksInsteadOfShowingAMismatch()
+    {
+        // The alarm was legal when saved; the catalogue ships with the app and the row lives in the
+        // database, so a release can leave rows behind that no longer validate. The draft has to
+        // narrow them, or the picker shows the first allowed option while Request still holds the
+        // old one and Save fails on a combination the caregiver never chose.
+        var existing = new MetricAlarmResponse
+        {
+            Name = "Stale",
+            Metric = AlarmMetric.HeartRate,
+            Statistic = AlarmStatistic.Sum,          // never offered on a level metric
+            Operator = AlarmOperator.GreaterThan,
+            ThresholdKind = AlarmThresholdKind.BaselineSigma, // heart rate has no learned baseline
+            ThresholdValue = 9_999m,                 // far outside the band
+            PeriodMinutes = 1440,                    // a daily period on a sub-daily metric
+            EvaluationPeriods = 99,
+            DatapointsToAlarm = 99,
+            Severity = AlertSeverity.Orange,
+            IsEnabled = true,
+        };
+
+        var draft = new AlarmDraft(Catalogue(), existing);
+
+        Assert.Contains(draft.Request.Statistic, draft.Statistics);
+        Assert.Contains(draft.Request.PeriodMinutes, draft.Periods);
+        Assert.Contains(draft.Request.ThresholdKind, draft.ThresholdKinds);
+        var (min, max) = draft.ThresholdRange;
+        Assert.InRange(draft.Request.ThresholdValue, min, max);
+        Assert.Empty(draft.Validate());
+    }
+
+    [Fact]
     public void RedSeverity_AsksForConfirmationBeforeItIsValid()
     {
         var draft = Draft();

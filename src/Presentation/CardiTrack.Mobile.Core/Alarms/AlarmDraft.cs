@@ -44,6 +44,15 @@ public sealed class AlarmDraft
                 ContextGate = existing.ContextGate,
                 IsEnabled = existing.IsEnabled,
             };
+
+            // Narrow the saved alarm against today's catalogue rather than trusting it. It was
+            // legal when it was saved, but the catalogue ships with the app and the alarm lives in
+            // the database, so a release that drops a statistic or tightens a bound leaves rows
+            // behind that no longer validate. Without this the picker would show the first allowed
+            // option while Request still held the old one — the screen and the payload disagreeing,
+            // and the server rejecting a combination the caregiver never chose. SelectMetric
+            // re-picks only what is no longer allowed, so a still-valid alarm is untouched.
+            SelectMetric(Request.Metric);
             return;
         }
 

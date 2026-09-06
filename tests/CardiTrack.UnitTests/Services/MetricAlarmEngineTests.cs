@@ -111,10 +111,18 @@ public class MetricAlarmEngineTests
     [Fact]
     public async Task StampsItsOwnRuleMarker_SoTwoAlarmsCannotDedupAgainstEachOther()
     {
+        Alert? written = null;
+        await _alerts.AddAsync(Arg.Do<Alert>(a => written = a));
+
         await Engine().EvaluateAsync(UtcNow);
 
-        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
-            a.MetricValues!.Contains($"\"rule\":\"custom:{_alarm.Id}\"")));
+        // Asserted through the production predicate rather than against the JSON. AlertRuleMarkers
+        // is what every producer's cooldown and dedup actually reads the marker with, and it reads
+        // it as a substring — so parsing the JSON here would pass even if the stamp stopped being
+        // findable by the thing that has to find it.
+        Assert.NotNull(written);
+        Assert.True(AlertRuleMarkers.HasRule(written!, MetricAlarmEngine.CustomRule(_alarm.Id)));
+        Assert.False(AlertRuleMarkers.HasRule(written!, MetricAlarmEngine.CustomRule(Guid.NewGuid())));
     }
 
     [Fact]
