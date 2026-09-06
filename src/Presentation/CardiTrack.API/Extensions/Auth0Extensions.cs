@@ -38,6 +38,7 @@ public static class Auth0Extensions
                 };
 
                 options.RequireHttpsMetadata = true;
+                OidcBackchannel.Configure(options);
 
                 options.Events = new JwtBearerEvents
                 {
@@ -54,6 +55,10 @@ public static class Auth0Extensions
                     }
                 };
             });
+
+        // AddHostedService is TryAddEnumerable underneath, so registering it from each bearer
+        // scheme's extension yields one warm-up that covers every scheme.
+        services.AddHostedService<OidcDiscoveryWarmup>();
 
         return services;
     }

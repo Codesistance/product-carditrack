@@ -66,8 +66,9 @@ The **deepest** errored span is the origin; its ancestors are usually just propa
 **3. Map the span to code**, via the table above. Then read the actual code path before
 forming a hypothesis. A span name is evidence, not a diagnosis.
 
-**4. Pull the logs** — but see "Trace↔log correlation" below. Query
-`service:<api|web|worker>` over the trace's own time window; you cannot query by trace ID.
+**4. Pull the logs** by trace ID — see "Trace↔log correlation" below for the facet. Fall
+back to `service:<api|web|worker>` over the trace's own time window only for lines that
+were written outside any activity.
 
 **5. Check the client side** if the trace starts at a mobile request. The MAUI app marks
 the API host first-party and sends W3C `traceparent`
@@ -103,17 +104,20 @@ opposite of what most Datadog setups assume:
 
 ## Trace↔log correlation
 
-**Logs carry no trace ID.** Serilog is enriched with `FromLogContext`, `WithMachineName`,
-`WithEnvironmentName`, `Application` and `Version` only — there is no span enricher, so
-nothing writes `dd.trace_id` into log events. Correlating a trace to its logs *by ID* is
-impossible today.
+**Logs carry the trace ID.**
+[ActivityLogEnricher.cs](../../../src/Infrastructure/CardiTrack.Observability/ActivityLogEnricher.cs)
+stamps every log event written inside an activity with the 32-hex `trace_id` and 16-hex
+`span_id`, and the OTLP log sink surfaces them under `otel`. Query logs with
 
-*What to do instead:* query `service:<name>` narrowed to the trace's own time window, and
-match on timestamp proximity to the errored span.
+```
+@otel.trace_id:<32-hex trace id>
+```
 
-*Real fix, if this keeps costing time:* add `Serilog.Enrichers.Span`, or set `dd.trace_id`
-from `Activity.Current` in a custom enricher, in `CardiTrack.Observability`. That is an
-app-code change and needs its own PR — do not fold it into a triage.
+(verified 2026-09-06 against trace `26da03980f79daee383cece35cf1cdb2`: both the span
+exception and the `JWT Authentication failed` warning came back). There is no
+`dd.trace_id` — that is the Datadog-tracer decimal convention, and the OTLP intake does not
+need it. Lines logged outside any activity (startup, hosted services) have no trace ID;
+for those, query `service:<name>` over the window and match on timestamp.
 
 **Log level is the other reason a line is missing.** The APM sink inherits the Serilog
 root level. In **prod all three services run at `Warning`**, so no Information-level

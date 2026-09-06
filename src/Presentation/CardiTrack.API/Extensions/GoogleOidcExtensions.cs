@@ -45,6 +45,7 @@ public static class GoogleOidcExtensions
                 };
 
                 options.RequireHttpsMetadata = true;
+                OidcBackchannel.Configure(options);
 
                 options.Events = new JwtBearerEvents
                 {
@@ -75,6 +76,8 @@ public static class GoogleOidcExtensions
                     }
                 };
             });
+
+        services.AddHostedService<OidcDiscoveryWarmup>();
 
         return services;
     }
