@@ -1,3 +1,4 @@
+using System.Globalization;
 ﻿using System.Net;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
@@ -635,6 +636,65 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         {
             _logger.LogWarning(ex, "Offline cache write failed for GET {Path}", path);
         }
+    }
+
+    // ---- Health data export (M1-17, Story 6.3) ----
+
+    public Task<ReportQueuedResponse> GenerateReportAsync(
+        GenerateReportRequest request, CancellationToken ct = default) =>
+        PostAsync<GenerateReportRequest, ReportQueuedResponse>("api/v1/reports", request, ct);
+
+    public async Task<ReportStatusResponse?> GetReportStatusAsync(
+        string reportId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await GetAsync<ReportStatusResponse>($"api/v1/reports/{reportId}", ct);
+        }
+        catch (ApiException ex) when (ex.IsNotFound)
+        {
+            // Unknown, expired, or another user's — indistinguishable by design, and all three
+            // mean the same thing to a poller: there is nothing here any more.
+            return null;
+        }
+    }
+
+    public async Task<ReportFile> DownloadReportAsync(string reportId, CancellationToken ct = default)
+    {
+        const string path = "api/v1/reports/{0}/download";
+        var requestPath = string.Format(CultureInfo.InvariantCulture, path, reportId);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.GetAsync(requestPath, ct);
+        }
+        catch (Exception ex) when (IsTransport(ex))
+        {
+            throw NetworkError("GET", requestPath, ex, ct);
+        }
+
+        if (!response.IsSuccessStatusCode)
+            throw await MapErrorAsync("GET", requestPath, response, ct);
+
+        // Raw bytes, not the JSON envelope every other call unwraps — this endpoint serves a
+        // file. The filename comes from Content-Disposition because the server built it from the
+        // member and period, and the client should not try to reconstruct that.
+        var content = await response.Content.ReadAsByteArrayAsync(ct);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+            ?? $"carditrack-export-{reportId}";
+
+        return new ReportFile(content, contentType, fileName);
+    }
+
+    public async Task<bool> CanExportHealthDataAsync(CancellationToken ct = default)
+    {
+        var availability = await GetAsync<ReportAvailabilityResponse>(
+            "api/v1/reports/availability", ct);
+
+        return availability.Available;
     }
 
     private async Task<ApiException> MapErrorAsync(string method, string path, HttpResponseMessage response, CancellationToken ct)

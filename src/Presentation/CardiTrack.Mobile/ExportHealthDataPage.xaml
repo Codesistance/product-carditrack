@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.ExportHealthDataPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <ContentPage.Resources>
+        <!-- The format cards are built in code-behind so each can carry its own explanation, so
+             their type is declared here rather than repeated three times in C#. -->
+        <Style x:Key="FormatNameStyle" TargetType="Label" BasedOn="{StaticResource Body2Dark}">
+            <Setter Property="FontAttributes" Value="Bold"/>
+        </Style>
+        <Style x:Key="FormatDetailStyle" TargetType="Label" BasedOn="{StaticResource Body2}">
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+    </ContentPage.Resources>
+
+    <!-- Same root as the other detail pages: top keeps the inset the header band is drawn
+         against, bottom releases it so BottomNavBar can run white to the screen edge. Full-bleed
+         per CLAUDE.md — no page-level card, radius only on the components inside. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <ImageButton Source="icon_back_white.svg"
+                                 WidthRequest="20" HeightRequest="20"
+                                 BackgroundColor="Transparent"
+                                 SemanticProperties.Description="Back"
+                                 Clicked="OnBackClicked"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Export Health Data"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitleLabel"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <Grid Padding="20,16,20,28">
+
+                <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                    <controls:SkeletonView HeightRequest="80"/>
+                    <controls:SkeletonView HeightRequest="160"/>
+                    <controls:SkeletonView HeightRequest="220"/>
+                </VerticalStackLayout>
+
+                <!-- Basic plan: the upsell, not a form that would be refused once filled in. -->
+                <VerticalStackLayout x:Name="UpsellPanel" Spacing="12" IsVisible="False" Padding="0,40,0,0">
+                    <Label Text="Export is part of Complete Care"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="UpsellDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
+                    <Label Text="We couldn't open export"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="ErrorDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Try again"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HorizontalOptions="Center"
+                            Clicked="OnRetryClicked"/>
+                </VerticalStackLayout>
+
+                <!-- M1-17a — the form -->
+                <VerticalStackLayout x:Name="FormPanel" Spacing="14" IsVisible="False">
+
+                    <!-- Who -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="Export data for" Style="{StaticResource Heading3}" FontSize="16"/>
+                            <Picker x:Name="MemberPicker"
+                                    Title="Choose a person"
+                                    TextColor="{StaticResource HeadingText}"
+                                    TitleColor="{StaticResource MutedText}"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- When -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="Period" Style="{StaticResource Heading3}" FontSize="16"/>
+
+                            <!-- Presets first: the four windows a caregiver actually asks for.
+                                 The pickers below stay live for anything else. -->
+                            <HorizontalStackLayout x:Name="PresetRow" Spacing="8">
+                                <Button Text="7 days" Style="{StaticResource SecondaryOutlineButton}"
+                                        FontSize="12" Padding="12,6" HeightRequest="34"
+                                        CommandParameter="7" Clicked="OnPresetClicked"/>
+                                <Button Text="30 days" Style="{StaticResource SecondaryOutlineButton}"
+                                        FontSize="12" Padding="12,6" HeightRequest="34"
+                                        CommandParameter="30" Clicked="OnPresetClicked"/>
+                                <Button Text="90 days" Style="{StaticResource SecondaryOutlineButton}"
+                                        FontSize="12" Padding="12,6" HeightRequest="34"
+                                        CommandParameter="90" Clicked="OnPresetClicked"/>
+                                <Button Text="All" Style="{StaticResource SecondaryOutlineButton}"
+                                        FontSize="12" Padding="12,6" HeightRequest="34"
+                                        CommandParameter="365" Clicked="OnPresetClicked"/>
+                            </HorizontalStackLayout>
+
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                    <Label Text="From" Style="{StaticResource Body2}"/>
+                                    <DatePicker x:Name="FromPicker"
+                                                Format="d MMM yyyy"
+                                                TextColor="{StaticResource HeadingText}"
+                                                DateSelected="OnDateChanged"/>
+                                </VerticalStackLayout>
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                    <Label Text="To" Style="{StaticResource Body2}"/>
+                                    <DatePicker x:Name="ToPicker"
+                                                Format="d MMM yyyy"
+                                                TextColor="{StaticResource HeadingText}"
+                                                DateSelected="OnDateChanged"/>
+                                </VerticalStackLayout>
+                            </Grid>
+
+                            <Label x:Name="RangeHintLabel" Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- What -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="What to include" Style="{StaticResource Heading3}" FontSize="16"/>
+
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <CheckBox x:Name="MetricsCheck" Grid.Column="0" IsChecked="True"
+                                          Color="{StaticResource Primary}"
+                                          CheckedChanged="OnSelectionChanged"/>
+                                <Label Grid.Column="1" Text="Activity, heart rate and sleep"
+                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <CheckBox x:Name="AlertsCheck" Grid.Column="0" IsChecked="True"
+                                          Color="{StaticResource Primary}"
+                                          CheckedChanged="OnSelectionChanged"/>
+                                <Label Grid.Column="1" Text="Alerts and events"
+                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <CheckBox x:Name="DevicesCheck" Grid.Column="0"
+                                          Color="{StaticResource Primary}"
+                                          CheckedChanged="OnSelectionChanged"/>
+                                <Label Grid.Column="1" Text="Which devices the readings came from"
+                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Format -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout x:Name="FormatStack" Spacing="10">
+                            <Label Text="Format" Style="{StaticResource Heading3}" FontSize="16"/>
+                            <!-- One card per format, built in code-behind so each can carry its
+                                 own "who is this for" line and stay in step with the selection. -->
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Label x:Name="EstimateLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+
+                    <Button x:Name="ExportButton"
+                            Text="Export Data"
+                            Style="{StaticResource AuthGradientButton}"
+                            Clicked="OnExportClicked"/>
+                </VerticalStackLayout>
+
+                <!-- M1-17b — generating -->
+                <VerticalStackLayout x:Name="GeneratingPanel" Spacing="14" IsVisible="False" Padding="0,60,0,0">
+                    <ActivityIndicator IsRunning="True" Color="{StaticResource Primary}" HeightRequest="36"/>
+                    <Label Text="Generating export…"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="GeneratingDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Cancel"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HorizontalOptions="Center"
+                            Clicked="OnCancelGenerationClicked"/>
+                </VerticalStackLayout>
+
+                <!-- M1-17c — complete -->
+                <VerticalStackLayout x:Name="CompletePanel" Spacing="12" IsVisible="False" Padding="0,50,0,0">
+                    <Label Text="Export complete"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="CompleteDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Save or share"
+                            Style="{StaticResource AuthGradientButton}"
+                            Clicked="OnShareClicked"/>
+                    <Button Text="Open"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            Clicked="OnOpenClicked"/>
+                    <Button Text="Export something else"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            Clicked="OnStartOverClicked"/>
+                </VerticalStackLayout>
+
+                <!-- M1-17d — error -->
+                <VerticalStackLayout x:Name="FailedPanel" Spacing="12" IsVisible="False" Padding="0,60,0,0">
+                    <Label Text="That didn't work — let's try again"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="FailedDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Try again"
+                            Style="{StaticResource AuthGradientButton}"
+                            Clicked="OnStartOverClicked"/>
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+
+        <controls:BottomNavBar Grid.Row="2" Tab="Dashboard"/>
+    </Grid>
+</ContentPage>

@@ -18,7 +18,7 @@
 
 ## Build Status (as of August 9, 2026)
 
-> **16 of 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-11/M1-12/M1-16 Alert Details — one `AlertDetailPage` branching on rule and severity — M1-13 CardiMemberDetailPage, M1-14 EditCardiMemberPage, M1-15 DeviceManagementPage). **The one unbuilt screen is M1-17 Health Data Export**; its entry point shows a "Coming soon" dialog, as does anything else unbuilt, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
+> **All 17 Figma M1 screens are built** in `CardiTrack.Mobile` (M1-01 through M1-10, plus M1-11/M1-12/M1-16 Alert Details — one `AlertDetailPage` branching on rule and severity — M1-13 CardiMemberDetailPage, M1-14 EditCardiMemberPage, M1-15 DeviceManagementPage, and M1-17 ExportHealthDataPage). Anything else unbuilt shows a "Coming soon" dialog, except the dashboard's Add-Member action, which pushes M1-04 (AddCardiMemberPage) directly. **Four shipped screens have no Figma M1 frame — needs design sync:** SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (specs in the canonical doc). Unbuilt screens below remain design intent, each marked with a status line.
 
 ---
 
@@ -48,9 +48,9 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 | M1-14 | Edit CardiMember | 1 + 2 as-built | ✅ `EditCardiMemberPage` |
 | M1-15 | Device Management | 1 + 3 as-built | ✅ `DeviceManagementPage` |
 | M1-16 | Alert Detail - Heart Rate | 1 | ✅ `AlertDetailPage` (rule branch) |
-| M1-17 | Health Data Export | 4 (a–d) | ❌ not built |
+| M1-17 | Health Data Export | 4 (a–d) | ✅ `ExportHealthDataPage` |
 
-**Total: 17 designed screens · 37 designed states — 16 of 17 built**
+**Total: 17 designed screens · 37 designed states — 17 of 17 built**
 
 **Shipped screens without Figma M1 frames** (need design sync; no M1 IDs assigned per project convention): SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage, NotificationsPage (nudge inbox), QuestionnairesPage — see the canonical [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) for full specs.
 
@@ -1026,7 +1026,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 ---
 
 ### M1-17: Health Data Export
-**Status:** Not built — design intent below (P0 for MVP 1, still to be implemented)
+**Status:** ✅ Built (`ExportHealthDataPage`). As-built notes follow the design intent below.
 **User Story:** 6.3 Health Data Export
 **Entry:** ← M2-03 Trend Charts (Export icon) | ← M2-01 Settings ("Export Health Data") | ← M1-13 CardiMember Detail ("Export Data")
 **Exit:** ← Previous screen (back) | → Share sheet / email
@@ -1081,6 +1081,17 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 - **M1-17b — Generating:** Progress bar with cancel option
 - **M1-17c — Complete:** Success message with share/save actions
 - **M1-17d — Error:** "That didn't work — let's try again" with retry
+
+**As built** — four panels on one page, so an error returns the caregiver to the form they filled in rather than to the start of a flow. Differences from the intent above, each deliberate:
+
+- **One delivery action, not three.** "Save or share" opens the native share sheet, which on both iOS and Android *is* the route to Save to Files / Save to Drive as well as to mail and messaging — a separate "Save to Device" button would open the same sheet. "Email to…" is not built: mailing PHI from the server is its own subsystem (provider, address verification, abuse limits) and is not MVP 1 scope. An **Open** action sits beside it so a PDF can be read without leaving the app.
+- **No preview.** "Preview Export" is not built; the estimated file size is, computed from the period and format.
+- **Plan gate before the form.** A Basic caregiver sees the Complete Care upsell instead of a form that would come back 402. The check is `GET /api/v1/reports/availability` — a courtesy for the UI; the API refuses on its own regardless.
+- **Data selection is three checkboxes**, not five: activity/heart rate/sleep travel together on one daily row, and there is no notes feature to include.
+- **HL7 v2 is not offered** — MVP 2, and refused by the API's validator.
+- Progress is an indeterminate spinner: the API reports no percentage (`progressPercent` is always null).
+
+**Entry points as built:** M1-13 CardiMember Detail ("Export Data", scoped to that member) and Settings → Account ("Export health data", which asks who). M2-03 Trend Charts is R2.
 
 ---
 

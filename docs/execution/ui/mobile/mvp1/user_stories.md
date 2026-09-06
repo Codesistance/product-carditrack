@@ -2,7 +2,7 @@
 
 > **Extract — do not edit directly.** This file is extracted from the canonical [user_stories.md](../user_stories.md); make changes there and re-extract. Release sequencing is governed by the [release matrix](../../../../release_matrix.md).
 
-> **Build status (August 14, 2026):** 16 of 17 Figma M1 screens are built (M1-01 through M1-16). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16. Unbuilt: M1-17 Health Data Export. Seven shipped surfaces have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8), plus NotificationsPage, QuestionnairesPage, and QuestionCard.
+> **Build status (September 6, 2026):** all 17 Figma M1 screens are built (M1-01 through M1-17). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16. Seven shipped surfaces have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8), plus NotificationsPage, QuestionnairesPage, and QuestionCard.
 
 Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped screens without Figma M1 frames.
 
@@ -172,7 +172,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
   - Data source indicator on charts (which device provided this data)
 - **Screens:** M1-15 (Device Management)
 
-**Story 6.3: Health Data Export** _(P0 — Must Have; **status: M1-17 not built yet** — entry points show "Coming soon")_
+**Story 6.3: Health Data Export** _(P0 — Must Have; **status: shipped** — `ExportHealthDataPage`, API renders PDF/CSV/FHIR R4)_
 - **As a** caregiver preparing for a doctor's visit or needing records
 - **I want to** export a CardiMember's health data in standard medical formats
 - **So that** I can share it with healthcare providers or keep it for my records
@@ -285,7 +285,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 | 1.8 | Account-Type Setup | P0 | Built — no Figma M1 frame |
 | 2.1 | Daily Health Overview | P0 | Built (M1-09) |
 | 3.1 | Receiving Critical Alerts | P0 | **Built** — M1-10 list + `AlertDetailPage` (M1-11/12/16) |
-| 6.3 | Health Data Export | P0 | **Not built** (M1-17 — P0 but unbuilt) |
+| 6.3 | Health Data Export | P0 | **Shipped** (M1-17 `ExportHealthDataPage`; save/share only — no server-side email) |
 | 3.3 | Alert Acknowledgment & Notes | P1 | Partial — acknowledge + undo shipped; notes still not built |
 | 6.2 | Device Management | P1 | Built (M1-15) |
 | 11.1 | Gradual Activity Decline | — | Built (`AlertDetailPage`, steps chart) |

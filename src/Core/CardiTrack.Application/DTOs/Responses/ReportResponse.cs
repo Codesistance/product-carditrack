@@ -39,3 +39,23 @@ public class ReportMetadata
     public string? FhirProfile { get; init; }
     public IReadOnlyList<string>? FhirResources { get; init; }
 }
+
+/// <summary>
+/// Whether this caregiver's plan includes health data export, and what to tell them if not.
+/// </summary>
+/// <remarks>
+/// Exists so the export entry point can offer the upgrade instead of a form that would be
+/// refused with a 402 once it is filled in. It is a convenience for the UI, never the gate:
+/// <c>POST /api/v1/reports</c> checks entitlement itself, because a client is not an authority
+/// on what its user has paid for.
+/// </remarks>
+public class ReportAvailabilityResponse
+{
+    public required bool Available { get; init; }
+
+    /// <summary>Copy to show when <see cref="Available"/> is false; null when it is true.</summary>
+    public string? Message { get; init; }
+
+    /// <summary>The tier export needs, for a client that wants to name it in its own copy.</summary>
+    public SubscriptionTier RequiredTier { get; init; }
+}

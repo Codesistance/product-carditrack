@@ -729,6 +729,25 @@
                             </Grid>
                         </Border>
 
+                        <!-- M1-17. Sits with the other ways in rather than with the two rows
+                             below it, because exporting changes nothing about the member — it
+                             hands the caregiver a copy of what is already here. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnExportDataTapped"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
+                                <Image Grid.Column="0" Source="icon_clipboard.svg"
+                                       WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Export Data"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <VerticalStackLayout x:Name="PauseRowLayout">
                                 <!-- The recognizer sits on the header row, not the card, so taps

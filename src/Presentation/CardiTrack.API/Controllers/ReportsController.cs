@@ -3,6 +3,7 @@ using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Domain.Enums;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -70,6 +71,42 @@ public class ReportsController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Whether the caller's plan includes export, so the client can offer the upgrade instead of
+    /// a form that would be refused. A convenience, never the gate — <c>POST</c> checks for itself.
+    /// </summary>
+    [HttpGet("availability")]
+    [ProducesResponseType(typeof(ApiResponse<ReportAvailabilityResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ApiResponse<ReportAvailabilityResponse>>> Availability(CancellationToken ct)
+    {
+        if (NotSignedIn(out var signInError))
+            return signInError;
+
+        try
+        {
+            await _entitlements.RequireAsync(
+                UserContext.OrganizationId, PlanFeature.HealthDataExport, ct);
+
+            return Success(new ReportAvailabilityResponse
+            {
+                Available = true,
+                RequiredTier = SubscriptionTier.Complete
+            });
+        }
+        catch (FeatureNotEntitledException ex)
+        {
+            // 200 with Available=false, not 402: the client asked whether it may offer export,
+            // and "no" is a successful answer to that question.
+            return Success(new ReportAvailabilityResponse
+            {
+                Available = false,
+                Message = ex.Message,
+                RequiredTier = ex.RequiredTier
+            });
         }
     }
 

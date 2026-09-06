@@ -3,18 +3,31 @@ using System.Runtime.CompilerServices;
 namespace CardiTrack.UnitTests.Architecture;
 
 /// <summary>
-/// The member-photos design confines the GCS SDK and the image codec to one adapter file each,
-/// behind the Application ports — that is what makes "no other code path can reach the photo
-/// bucket or decode caregiver uploads" a checkable claim rather than a hope. Same source-scan
-/// mechanism as <see cref="EnvironmentalEnrichmentReachTests"/>.
+/// The bucket-backed designs confine the GCS SDK and the image codec to their adapter files,
+/// behind the Application ports — that is what makes "no other code path can reach a bucket or
+/// decode caregiver uploads" a checkable claim rather than a hope. Same source-scan mechanism as
+/// <see cref="EnvironmentalEnrichmentReachTests"/>.
 /// </summary>
 public class ProfilePhotoStorageReachTests
 {
     // Segments rather than literal separator-bearing strings — see
     // EnvironmentalEnrichmentReachTests for why (Linux CI runners).
+    /// <summary>The adapters that may touch the GCS SDK's StorageClient — one bucket each.</summary>
     private static readonly string[][] GcsClientAllowedFiles =
     [
-        // The only file that may touch the GCS SDK's StorageClient/UrlSigner.
+        ["src", "Infrastructure", "CardiTrack.Infrastructure", "ExternalClients", "Storage", "GcsProfilePhotoStorage.cs"],
+        ["src", "Infrastructure", "CardiTrack.Infrastructure", "ExternalClients", "Storage", "GcsReportStorage.cs"],
+    ];
+
+    /// <summary>
+    /// Signing is narrower than storage: only the photo adapter mints signed URLs.
+    /// <c>GcsReportStorage</c> deliberately has no signing method — an export is a complete
+    /// identified health record, and a signed URL to one would be a bearer capability outside the
+    /// ownership check and invisible to the audit trail, so exports are streamed through the API
+    /// instead. Keeping this list at one file is what stops that decision being quietly undone.
+    /// </summary>
+    private static readonly string[][] UrlSignerAllowedFiles =
+    [
         ["src", "Infrastructure", "CardiTrack.Infrastructure", "ExternalClients", "Storage", "GcsProfilePhotoStorage.cs"],
     ];
 
@@ -25,17 +38,18 @@ public class ProfilePhotoStorageReachTests
     ];
 
     [Fact]
-    public void StorageClient_IsReferencedOnlyByTheGcsAdapter()
+    public void StorageClient_IsReferencedOnlyByTheGcsAdapters()
     {
         AssertSymbolConfinedTo("StorageClient", GcsClientAllowedFiles);
     }
 
     [Fact]
-    public void UrlSigner_IsReferencedOnlyByTheGcsAdapter()
+    public void UrlSigner_IsReferencedOnlyByThePhotoAdapter()
     {
         // The signer mints bearer-capability URLs to full-face photos; a second call site would
-        // be a second place the "never log the URL" rule has to hold.
-        AssertSymbolConfinedTo("UrlSigner", GcsClientAllowedFiles);
+        // be a second place the "never log the URL" rule has to hold — and, for the export
+        // bucket, a signed URL is a design the adapter deliberately does not offer at all.
+        AssertSymbolConfinedTo("UrlSigner", UrlSignerAllowedFiles);
     }
 
     [Fact]
