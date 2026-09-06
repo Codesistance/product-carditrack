@@ -328,7 +328,7 @@ Periods marked ⚖ are engineering **proposals** requiring legal ratification (D
 | Audit logs (`compliance.audit_logs`) | Postgres → GCS archive | **6 years** (HIPAA §164.316(b)(2)(i)); 1 year hot, then export to a **bucket-lock (WORM) GCS bucket** | Hard delete after 6 y by lifecycle rule | Resolves the 3-way conflict between `AuditLog.cs:7` ("90 days"), Terraform `audit_retention_days = 90`, and [infrastructure.md](../infrastructure.md) ("6-year") — **6 years wins; fix the other two** |
 | Consent records | Postgres compliance | Relationship duration + ⚖ 6 years | Never anonymized (they *are* the proof); hard delete at period end | Defense/accountability (GDPR Art. 5(2), 7(1)) |
 | Erasure ledger | Postgres compliance | ⚖ 6 years | Hard delete | Proof of erasure; stores hashes only (§6) |
-| Generated reports | Cache (`report:*` keys) | 1 hour TTL — **already implemented**, `ReportGenerationService.cs:22` | TTL expiry | Densest PHI artifact outside Postgres |
+| Generated reports / health-data exports | Postgres (`Reports` row) + private GCS bucket (rendered file) | **7 days** from queue time (`Storage:Reports:Retention`) — **implemented 2026-09-06**. Replaced the 1-hour cache TTL, which was a Redis memory-pressure figure rather than a policy and did not survive "export it now, take it to Thursday's appointment" | **Hard delete** of the bucket object then the row, by `ExpiredReportCleanupWorker` (daily, advisory-locked, `DryRun` rehearsal). A GCS lifecycle rule at 14 days is the backstop, so an object cannot outlive its window because the job stopped running. The window is stamped at queue time, so a slow generation cannot shorten what the caregiver was told | Densest PHI artifact outside Postgres — a named member's readings, alerts and devices for a whole period in one file. Bucket is private with `public_access_prevention`, versioning **off** and soft-delete retention **zero** (ADR finding #11: versioning defeats deletion claims); **never served by signed URL** — downloads stream through the API so the ownership check and the audit row apply to every read |
 | Push tokens (`PushDeviceToken`) | Postgres clinical | **30 days after disable** | **Hard delete** — never soft-retained | Tier 1 device identifier; a disabled token has no operational value and every retained day is exposure ([notification_engine.md](./notification_engine.md) §7.2 C2) |
 | Notifications + delivery outbox | Postgres clinical | ⚖ 180 d resolved / 90 d delivered | Hard delete. Rows hold no names — `TemplateData` is counters only, names resolve from the vault at render time | Keeps the completeness-nudge surface out of the identifier↔clinical join that finding #1 describes |
 | AI pipeline results (`RealtimeAssessments`, `DigestEntries`, `EnvironmentalReadings`) | Postgres clinical (partitioned) | Per [llm_design.md](../llm_design.md): assessments 90 d, **digests and CardiJournal entries 7 mo**, environmental 90 d — **enforced today** by `PartitionMaintenanceWorker` partition drops. The journal window is the longest history any plan sells plus margin, applied uniformly — the minimisation trade-off that makes is DPIA open item **OI-14** | Partition drop; erasure = delete by `CardiMemberId` | Per-user LSTM model blobs were descoped with the LSTM (2026-08-10) — no model-weight artifacts exist |
@@ -464,7 +464,16 @@ CREATE TABLE compliance.erasure_ledger (
                 payload_ciphertext, set shredded_at. Identity is now
                 unrecoverable INCLUDING in every backup taken while the DEK
                 design was in force.
- 7. CACHE/DERIVED  Purge report:* cache keys for the member's reports.
+ 7. EXPORTS    Delete every Reports row whose CardiMemberIds contains the
+                member, and the bucket object each one names. An export is
+                rendered from a point in time, so a file covering this member
+                still holds their readings after step 3 empties the tables it
+                was built from — and one export may cover several members, so
+                the sweep is by containment, not by owner. (The cache keys this
+                step used to purge are gone: reports became a Postgres row plus
+                a GCS object on 2026-09-06. IReportRepository has no by-member
+                query yet — it is needed here, and is part of the unbuilt P3
+                erasure work rather than of the export feature itself.)
  8. SUBPROCESSORS  Telemetry: member GUID now maps to nothing (see step 10);
                 if legal classifies APM data as personal data, file provider
                 deletion API calls here (D6).

@@ -1,5 +1,5 @@
-using System.Globalization;
-﻿using System.Net;
+﻿using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -674,19 +674,31 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             throw NetworkError("GET", requestPath, ex, ct);
         }
 
-        if (!response.IsSuccessStatusCode)
-            throw await MapErrorAsync("GET", requestPath, response, ct);
+        // Disposed, unlike the JSON calls above: this is the one response in the client that
+        // carries a whole file, so holding its content stream holds a pooled connection open for
+        // as long as the caller keeps the ReportFile.
+        using (response)
+        {
+            if (!response.IsSuccessStatusCode)
+                throw await MapErrorAsync("GET", requestPath, response, ct);
 
-        // Raw bytes, not the JSON envelope every other call unwraps — this endpoint serves a
-        // file. The filename comes from Content-Disposition because the server built it from the
-        // member and period, and the client should not try to reconstruct that.
-        var content = await response.Content.ReadAsByteArrayAsync(ct);
-        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
-        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
-            ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
-            ?? $"carditrack-export-{reportId}";
+            // Raw bytes, not the JSON envelope every other call unwraps — this endpoint serves a
+            // file. The filename comes from Content-Disposition because the server built it from
+            // the member and period, and the client should not try to reconstruct that.
+            var content = await response.Content.ReadAsByteArrayAsync(ct);
 
-        return new ReportFile(content, contentType, fileName);
+            // ToString(), not MediaType: the header is "text/csv; charset=utf-8" and MediaType
+            // drops the charset — the very thing the CSV renderer's BOM exists to get right. This
+            // value is handed to the OS share sheet, so it should say everything the server said.
+            var contentType = response.Content.Headers.ContentType?.ToString()
+                ?? "application/octet-stream";
+
+            var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+                ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                ?? $"carditrack-export-{reportId}";
+
+            return new ReportFile(content, contentType, fileName);
+        }
     }
 
     public async Task<bool> CanExportHealthDataAsync(CancellationToken ct = default)

@@ -101,17 +101,34 @@ public class ReportGenerationServiceTests
             IncludeAlerts = includeAlerts
         };
 
-    /// <summary>Generation runs on an unobserved background task; poll until it lands.</summary>
+    /// <summary>
+    /// Generation runs on an unobserved background task; poll until it lands.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling is a wall-clock deadline and deliberately generous. Every step the background
+    /// task takes here is in-memory — substituted repositories, an instant AI stub, a dictionary
+    /// "bucket" — so a healthy run returns in milliseconds and this costs nothing. But the whole
+    /// solution's suites run in parallel, and Testcontainers bringing up Postgres for the
+    /// integration run starves the thread pool for seconds at a time; the previous 200 × 25 ms
+    /// (5 s) ceiling failed once under exactly that load. A test that fails when the machine is
+    /// busy teaches everyone to re-run rather than to read, so the limit is set where only a
+    /// genuinely stuck generation can reach it.
+    /// </remarks>
     private async Task<ReportStatusResponse> WaitForTerminalStatusAsync(ReportGenerationService sut, string reportId)
     {
-        for (var i = 0; i < 200; i++)
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+
+        while (DateTime.UtcNow < deadline)
         {
             var status = await sut.GetStatusAsync(_userId, reportId);
             if (status is not null && status.Status != ReportStatus.Pending)
                 return status;
             await Task.Delay(25);
         }
-        throw new TimeoutException($"Report {reportId} never left Pending.");
+
+        throw new TimeoutException(
+            $"Report {reportId} never left Pending within 60s. The background generation either "
+            + "faulted before writing a terminal status, or never ran.");
     }
 
     /// <summary>Holds the AI call open so the report stays Pending until released.</summary>
