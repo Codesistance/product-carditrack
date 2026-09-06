@@ -101,4 +101,23 @@ public class AdvisePickerTests
         Assert.Same(general, AdvisePicker.PickDefault([newerSleep, general], DateTime.UtcNow));
         Assert.Same(newerSleep, AdvisePicker.PickDefault([newerSleep, Row(AdviseTopic.HeartRate, ageHours: 9)], DateTime.UtcNow));
     }
+
+    /// <summary>
+    /// Whole words, like the topic matchers: "which" inside "sandwich" is not a caregiver asking
+    /// which, and a question that names its topic plainly is one the standing row answers.
+    /// </summary>
+    [Theory]
+    [InlineData("should I make him a sandwich before bed?")]
+    [InlineData("does he need help with his sleep?")]
+    [InlineData("what can I do about how little she's walking?")]
+    public void AQuestionThatIsNotAskingForSpecifics(string question) =>
+        Assert.False(AdvisePicker.AsksForSpecifics(question));
+
+    [Theory]
+    [InlineData("what kind of exercises can he do")]
+    [InlineData("Which exercises are best for him?")]
+    [InlineData("how long should his walks be?")]
+    [InlineData("how often should he get up?")]
+    public void AQuestionAskingWhichOrHowMuch(string question) =>
+        Assert.True(AdvisePicker.AsksForSpecifics(question));
 }

@@ -238,4 +238,70 @@ public class AdviseReplyTests
         foreach (var claim in new[] { "you should", "you must", "diagnos", "prescri", "stop taking" })
             Assert.DoesNotContain(claim, reply, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// "What kind of exercises can he do" was answered with "add more movement, like short walks
+    /// during breaks". The caregiver asked WHICH; they were told DO MORE, with nothing marking the
+    /// two as different questions.
+    /// <para>
+    /// The row itself stays exactly as it is — advise is never generated per question, and that is
+    /// what earns it the only suggestion licence on this platform. What was missing was honesty
+    /// about fit.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("what kind of exercises can he do")]
+    [InlineData("how much walking is enough?")]
+    [InlineData("how often should he be getting up?")]
+    [InlineData("is it safe for him to walk that far?")]
+    public void ASpecificsQuestion_IsToldTheSuggestionIsAStandingOne(string question)
+    {
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now, question);
+
+        Assert.Contains("standing suggestion for Dad", reply, StringComparison.Ordinal);
+        Assert.Contains("rather than an answer to exactly what you asked", reply, StringComparison.Ordinal);
+        // The row is still served in full — this frames it, it does not withhold it.
+        Assert.Contains("A steadier bedtime could help him settle earlier.", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An ordinary advice question is one the standing suggestion genuinely answers, and saying
+    /// otherwise would undercut a reply that is doing its job.
+    /// </summary>
+    [Theory]
+    [InlineData("does he need help with his sleep?")]
+    [InlineData("should I be worried about his walking?")]
+    [InlineData("what can I do about how little he's walking?")]
+    public void AnOrdinaryAdviceQuestion_IsNotHedged(string question)
+    {
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now, question);
+
+        Assert.DoesNotContain("standing suggestion", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// One doctor mention, not two. The specifics framing already routes to a clinician, so the
+    /// generic line must suppress itself the same way it does for a stored row that mentions one —
+    /// telling a caregiver to see the doctor twice in three sentences is a nag.
+    /// </summary>
+    [Fact]
+    public void TheSpecificsFramingDoesNotStackASecondDoctorLine()
+    {
+        var reply = MemberChatReplies.AdviseReply(
+            "Dad", Advise(suggestion: "A short walk after lunch is worth trying."), Now,
+            "what kind of exercises can he do");
+
+        Assert.DoesNotContain("That's just an idea to consider", reply, StringComparison.Ordinal);
+        var mentions = reply.Split("doctor", StringSplitOptions.None).Length - 1;
+        Assert.True(mentions == 1, $"expected one doctor mention, found {mentions}: {reply}");
+    }
+
+    /// <summary>No question given — the older callers, and the framing simply does not apply.</summary>
+    [Fact]
+    public void WithNoQuestionAtAll_NothingIsAdded()
+    {
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
+
+        Assert.DoesNotContain("standing suggestion", reply, StringComparison.Ordinal);
+    }
 }

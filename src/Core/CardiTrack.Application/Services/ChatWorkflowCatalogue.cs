@@ -109,11 +109,20 @@ public static class ChatWorkflowCatalogue
                 ChatClaimClass.Comparison,
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.RealtimeAssessments]),
 
+            // The second sentence is new, and a caregiver found the gap it fills on the second
+            // message of a session: "anything to followup on?". The line was framed entirely
+            // around a verdict on a named thing — "should I be concerned", "is that a real
+            // change" — so a triage question naming nothing fell to the default rung and came
+            // back as a re-read of the figures the turn before had just given. Asking what needs
+            // attention is a verdict question; it simply does not say about what.
             new(MemberChatWorkflow.Inference,
                 "inference",
                 "Whether what the readings show is settled or worth attention. Choose this when "
                 + "the question asks for a verdict rather than for figures. It returns the figures "
-                + "as well.",
+                + "as well. Choose it too when the question asks what is worth attention without "
+                + "naming any particular reading — \"anything to follow up on?\", \"what should I "
+                + "be watching?\", \"anything I've missed?\" — which asks for the same verdict "
+                + "across everything rather than about one thing.",
                 ChatClaimClass.Judgement,
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.UnresolvedAlerts, DataQueryKind.RealtimeAssessments]),
 
@@ -139,9 +148,24 @@ public static class ChatWorkflowCatalogue
                 ChatClaimClass.None,
                 []),
 
+            // "Unrelated to their health or care" was too narrow, and a caregiver found the gap on
+            // the fourth message of a session: "what of his diet". Diet IS this person's health and
+            // care — it is simply not something CardiTrack holds a single reading of. The old line
+            // tested topical relevance; the boundary that actually matters is what the wearable
+            // records. §3 keeps the dataset registry out of the routing prompt for good reasons, so
+            // the router cannot look up what exists — which makes this line the only place the
+            // limit can be stated. Named explicitly rather than described, because "we do not
+            // measure that" is not something a model can infer from a vocabulary it was not shown.
             new(MemberChatWorkflow.SteerOffTopic,
                 "steer.offtopic",
-                "A genuine request, but about something unrelated to this person's health or care.",
+                "A genuine request this app holds no readings for. Either it is unrelated to this "
+                + "person's health or care, or it is about an aspect of their health that comes "
+                + "from nowhere in this app: what they eat or drink, medication, weight, mood or "
+                + "feelings, appointments, or anything a carer would have to be told rather than a "
+                + "watch recording it. This service sees only what the member's wearable records — "
+                + "steps, heart rate, sleep, breathing and heart rate variability — plus the "
+                + "alerts and baselines computed from those. A health question about anything else "
+                + "belongs here, however reasonable it is to ask.",
                 ChatClaimClass.None,
                 []),
 

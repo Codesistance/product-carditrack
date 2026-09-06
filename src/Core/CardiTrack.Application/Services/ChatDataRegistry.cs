@@ -79,9 +79,15 @@ public static class ChatDataRegistry
             new(DataQueryKind.Baseline,
                 "Baseline — the member's own established pattern (typical steps, resting heart "
                 + "rate, sleep), the reference for whether a reading is usual for them"),
+            // "Alerts nobody has acknowledged yet" described the row and not the question it
+            // answers, so a planner told to "pick only what the question actually needs" read past
+            // it whenever the question named no metric — which is exactly when it is needed. "Is
+            // there anything outstanding" is what a caregiver asking "anything to follow up on?"
+            // means, and this is the only source that knows.
             new(DataQueryKind.UnresolvedAlerts,
                 "UnresolvedAlerts — alerts raised for this member that nobody has acknowledged "
-                + "yet"),
+                + "yet: what is still outstanding, and the source for any question about whether "
+                + "anything needs attention or has been missed"),
             new(DataQueryKind.RealtimeAssessments,
                 "RealtimeAssessments — recent hour-by-hour heart-rate severity assessments"),
         });

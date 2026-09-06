@@ -186,7 +186,10 @@ public class MemberChatAdviseRoutingTests
         _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
-                new MemberChatService.MemberChatClinicalAiResponse { Analysis = "Steps are near his usual." },
+                new MemberChatService.MemberChatClinicalAiResponse
+                {
+                    Analysis = "Steps are near his usual.", ReadingsFrom = null, ReadingsTo = null,
+                },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<string>("He's been about as active as usual.", new AiUsage()));

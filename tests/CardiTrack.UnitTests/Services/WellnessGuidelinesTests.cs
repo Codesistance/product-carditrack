@@ -52,4 +52,37 @@ public class WellnessGuidelinesTests
     [InlineData("SpO2 wearable caveat")]
     public void AnythingOutsideTheSet_QuotesNothing(string? stored) =>
         Assert.Null(WellnessGuidelines.CitationFor(stored));
+
+    /// <summary>
+    /// The mismatch a caregiver was actually shown: the WHO's "150-300 minutes a week" quoted
+    /// under a suggestion whose evidence was a weekly step count. Steps are not minutes, so the
+    /// reference could not be checked against the claim it was attached to.
+    /// <para>
+    /// The bare word "activity" used to match the WHO marker. The generation prompt invites a
+    /// finding measured against "the reference below or of their own usual", there is no published
+    /// step band to cite — no accredited body publishes one — and guidelineCited is required, so an
+    /// activity shortfall found against the member's own baseline had to name something. "Activity
+    /// baseline" was something.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("activity baseline")]
+    [InlineData("his own activity levels")]
+    [InlineData("the member's own baseline")]
+    [InlineData("their usual activity")]
+    public void AFindingAgainstTheMembersOwnBaseline_QuotesNoPublishedRange(string stored) =>
+        Assert.Null(WellnessGuidelines.CitationFor(stored));
+
+    /// <summary>
+    /// Tightening the marker must not stop a genuine WHO pick resolving — the point was to drop
+    /// the bare word, not the authority.
+    /// </summary>
+    [Theory]
+    [InlineData("Adult physical activity (WHO, 2020)")]
+    [InlineData("WHO physical activity guidance")]
+    [InlineData("World Health Organization")]
+    [InlineData("physical activity guideline")]
+    public void AGenuineActivityPickStillResolves(string stored) =>
+        Assert.Contains("150-300 minutes", WellnessGuidelines.CitationFor(stored) ?? "",
+            StringComparison.Ordinal);
 }
