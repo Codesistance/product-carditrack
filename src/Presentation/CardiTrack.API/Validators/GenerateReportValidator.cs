@@ -26,7 +26,12 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
 
     public GenerateReportValidator()
     {
+        // Cascade.Stop, not decoration: `required` is satisfied by an explicit JSON null, and
+        // FluentValidation's default is to keep evaluating a chain after a rule fails — so
+        // {"cardiMemberIds": null} ran the Must predicates against null and threw, turning a
+        // malformed request into a 500 where a 400 was the whole point of this validator.
         RuleFor(x => x.CardiMemberIds)
+            .Cascade(CascadeMode.Stop)
             .NotEmpty().WithMessage("Choose at least one person to export data for")
             .Must(ids => ids.Count <= MaxCardiMembers)
                 .WithMessage($"You can export up to {MaxCardiMembers} people at a time")

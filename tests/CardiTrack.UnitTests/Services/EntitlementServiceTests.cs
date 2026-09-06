@@ -106,6 +106,21 @@ public class EntitlementServiceTests
     }
 
     [Fact]
+    public async Task AnUnmappedFeature_FailsWithAFaultThatNamesIt()
+    {
+        // Every PlanFeature is mapped today. This pins the shape of the failure for the day one
+        // is added and the row here is forgotten: a diagnosable fault naming the feature and this
+        // file, not a bare KeyNotFoundException — and never a silent allow or a silent deny.
+        GivenSubscription(SubscriptionTier.Complete);
+
+        var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            CreateSut().HasAsync(_organizationId, (PlanFeature)999));
+
+        Assert.Contains("999", exception.Message);
+        Assert.Contains(nameof(EntitlementService), exception.Message);
+    }
+
+    [Fact]
     public async Task RequireAsync_Returns_WhenEntitled()
     {
         GivenSubscription(SubscriptionTier.Complete);

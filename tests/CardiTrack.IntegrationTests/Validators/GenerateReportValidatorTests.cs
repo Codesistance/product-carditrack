@@ -39,6 +39,27 @@ public class GenerateReportValidatorTests
     // ── Member count ────────────────────────────────────────────────────────────
 
     [Fact]
+    public void Rejects_ANullMemberList_WithoutThrowing()
+    {
+        // `required` is satisfied by an explicit JSON null, so {"cardiMemberIds": null} reaches
+        // here as null. Without Cascade.Stop the Must predicates ran against it and threw, which
+        // the API surfaced as a 500 — the one outcome a request validator exists to prevent.
+        // Built directly, not through Build(): that helper substitutes a valid list for null,
+        // which would make this assert nothing.
+        var request = new GenerateReportRequest
+        {
+            CardiMemberIds = null!,
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf
+        };
+
+        var result = _validator.Validate(request);
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
     public void Rejects_AnEmptyMemberList()
     {
         Assert.False(_validator.Validate(Build(memberIds: [])).IsValid);

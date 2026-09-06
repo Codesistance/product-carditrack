@@ -41,7 +41,7 @@ public class EntitlementService : IEntitlementService
         if (await HasAsync(organizationId, feature, ct))
             return;
 
-        var required = Minimums[feature];
+        var required = MinimumTierFor(feature);
         throw new FeatureNotEntitledException(
             feature,
             required,
@@ -67,8 +67,27 @@ public class EntitlementService : IEntitlementService
         if (subscription.Status == SubscriptionStatus.Trial && HasTrialLapsed(subscription))
             return false;
 
-        return subscription.Tier >= Minimums[feature];
+        return subscription.Tier >= MinimumTierFor(feature);
     }
+
+    /// <summary>
+    /// The tier a feature needs, or a fault that names the feature.
+    /// </summary>
+    /// <remarks>
+    /// Indexing <see cref="Minimums"/> directly threw a bare <see cref="KeyNotFoundException"/> if
+    /// a new <see cref="PlanFeature"/> were added without a row here — a 500 whose message names
+    /// neither the feature nor this file. It throws rather than defaulting either way on purpose:
+    /// guessing "Basic" would silently open a paid feature to everyone, and guessing the highest
+    /// tier would silently withhold one, and both of those ship. This fails in the first minute of
+    /// development instead.
+    /// </remarks>
+    private static SubscriptionTier MinimumTierFor(PlanFeature feature) =>
+        Minimums.TryGetValue(feature, out var tier)
+            ? tier
+            : throw new ArgumentOutOfRangeException(
+                nameof(feature), feature,
+                $"No minimum subscription tier is configured for {feature}. "
+                + $"Add it to {nameof(EntitlementService)}.{nameof(Minimums)}.");
 
     private static bool HasTrialLapsed(Subscription subscription) =>
         subscription.TrialEndDate is { } endsAt && endsAt <= DateTime.UtcNow;
