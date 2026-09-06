@@ -148,8 +148,12 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             await RecordStateAsync(previous, alarm, memberId, verdict, alert, utcNow);
         }
 
-        if (created.Count > 0 || states.Count >= 0)
-            await _unitOfWork.SaveChangesAsync();
+        // Unconditional, and the alert rows are not what makes it so: every alarm evaluated this
+        // tick wrote or updated a state row, including the ones that concluded nothing happened.
+        // Skipping the save on a quiet tick would discard the LastEvaluatedUtc that says the alarm
+        // is being looked at, and — worse — the Ok that has to be recorded before a later breach can
+        // read as a transition rather than as a condition that was already standing.
+        await _unitOfWork.SaveChangesAsync();
 
         // Push dispatch, the same direct call the statistical engine makes. One bad dispatch must
         // not cost the batch the alerts it already persisted; DispatchService dedups, so a retried
