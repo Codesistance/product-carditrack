@@ -1,74 +1,40 @@
-﻿using CardiTrack.API.Infrastructure.Auditing;
-using CardiTrack.API.Infrastructure.UserContext;
-using CardiTrack.Application.DTOs.Common;
-using CardiTrack.Application.DTOs.Requests;
+﻿using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Responses;
-using CardiTrack.Application.Interfaces.Repositories;
-using CardiTrack.Application.Interfaces.Services;
-using CardiTrack.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CardiTrack.API.Controllers;
 
+/// <summary>
+/// Retired public chat. Caregiver questions about a member belong on
+/// <see cref="MemberChatController"/>.
+/// </summary>
 [Authorize]
-[AuditHealthDataAccess("ChatAboutMember")]
 [Route("api/v1/chat")]
 public class ChatController : BaseApiController
 {
-    private readonly IGenerativeAiService _generativeAi;
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly ICardiMemberAccessService _access;
-
-    public ChatController(
-        IUserContext userContext,
-        ILogger<ChatController> logger,
-        IGenerativeAiService generativeAi,
-        IUnitOfWork unitOfWork,
-        ICardiMemberAccessService access)
+    public ChatController(IUserContext userContext, ILogger<ChatController> logger)
         : base(userContext, logger)
     {
-        _generativeAi = generativeAi;
-        _unitOfWork = unitOfWork;
-        _access = access;
     }
 
-    /// <summary>Send a message to the AI, with the CardiMember's recent health data injected as context.</summary>
+    /// <summary>
+    /// Retired — send caregiver questions to
+    /// <c>POST /api/v1/member-chat/members/{cardiMemberId}/messages</c>.
+    /// </summary>
     [HttpPost]
-    [ProducesResponseType(typeof(ApiResponse<ChatResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status410Gone)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ApiResponse<ChatResponse>>> Chat(
-        [FromBody] ChatRequest request, CancellationToken ct)
+    public ActionResult Chat()
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
-        try
-        {
-            await _access.RequireViewAccessAsync(UserContext.UserId, request.CardiMemberId, ct);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return Error(ex.Message, StatusCodes.Status404NotFound);
-        }
-
-        var to = DateOnly.FromDateTime(DateTime.UtcNow);
-        var from = to.AddDays(-3);
-        var logs = await _unitOfWork.ActivityLogs
-            .GetByCardiMemberAndDateRangeAsync(request.CardiMemberId, from, to);
-
-        var systemContext = PublicChatPrompt.BuildContextMessage(logs);
-        var history = request.History.Prepend(systemContext).ToList();
-
-        var reply = await _generativeAi.ChatAsync(history, request.Message, ct);
-
-        return Success(new ChatResponse
-        {
-            Reply = reply,
-            ConversationId = Guid.NewGuid().ToString("N")
-        });
+        return Error(
+            "This chat endpoint is gone. Send questions about a member to "
+            + "POST /api/v1/member-chat/members/{cardiMemberId}/messages.",
+            StatusCodes.Status410Gone);
     }
 }

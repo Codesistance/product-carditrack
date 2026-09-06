@@ -214,6 +214,46 @@ public class StatusLineGenerationServiceTests
     }
 
     [Fact]
+    public async Task AFreshYellowAssessment_RaisesTheTierWhenNoAlertsAreOpen()
+    {
+        var assessments = Substitute.For<IRealtimeAssessmentRepository>();
+        _unitOfWork.RealtimeAssessments.Returns(assessments);
+        assessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>()).Returns(new RealtimeAssessment
+        {
+            CardiMemberId = _memberId,
+            Severity = AlertSeverity.Yellow,
+            WindowStartUtc = DateTime.UtcNow.AddHours(-2),
+        });
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("yellow", prompt);
+        Assert.Contains("No unresolved alerts.", prompt);
+    }
+
+    [Fact]
+    public async Task TodaysCheckInDigest_RaisesTheTierWhenNoAlertsAreOpen()
+    {
+        var digests = Substitute.For<IDigestRepository>();
+        _unitOfWork.Digests.Returns(digests);
+        digests.GetLatestByDateAsync(
+                _memberId, Arg.Any<DateOnly>(), DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                Audience = DigestAudience.Family,
+                Urgency = DigestUrgency.CheckIn,
+                Text = "Worth a call today.",
+            });
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("yellow", prompt);
+    }
+
+    [Fact]
     public async Task UnresolvedAlerts_SendTheWorstSeverityAndListEachAlert()
     {
         GivenAlerts(

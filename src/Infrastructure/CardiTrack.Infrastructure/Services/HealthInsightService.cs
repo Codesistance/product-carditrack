@@ -46,8 +46,7 @@ public class HealthInsightService : IHealthInsightService
         for their real name, which you are not given.
 
         Respond with:
-        - explanation: what this alert means in the recent readings, and a lay mention of what
-          may sit behind it if the readings support one.
+        - explanation: what this alert means in the recent readings.
         - recommendedAction: one specific thing the caregiver can do now that answers this
           alert. Never start, stop or change medication, never a diagnosis, and never a fix.
 
@@ -60,7 +59,7 @@ public class HealthInsightService : IHealthInsightService
     /// old clinical-queue brief and does not belong on a line a family reads.
     /// </summary>
     private const string BaselineInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        MedicalPromptBlocks.Tone + """
         Describe this person's health trends against the established baseline.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
@@ -78,7 +77,7 @@ public class HealthInsightService : IHealthInsightService
     /// listed: MedGemma would echo them.
     /// </summary>
     private const string LearningInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        MedicalPromptBlocks.Tone + """
         Describe what the readings have shown so far.
         There is not yet enough history to know this person's normal, so call nothing unusual.
 
@@ -98,7 +97,7 @@ public class HealthInsightService : IHealthInsightService
     /// MedGemma would echo them.
     /// </summary>
     private const string ProvisionalInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        MedicalPromptBlocks.Tone + """
         Describe an early reading against this short window.
         The baseline is provisional — under 30 days of history — so a comparison is an impression, not an established pattern.
         Do not treat so short a window as settled.
@@ -169,9 +168,9 @@ public class HealthInsightService : IHealthInsightService
         return new AlertInsightResponse
         {
             AlertId = alertId,
-            Explanation = ResolvedOrEmpty(aiResponse.Explanation, name),
+            Explanation = CaregiverFacingInsight(aiResponse.Explanation, name),
             Severity = alert.Severity,
-            RecommendedAction = ResolvedOrEmpty(aiResponse.RecommendedAction, name),
+            RecommendedAction = CaregiverFacingInsight(aiResponse.RecommendedAction, name),
         };
     }
 
@@ -179,11 +178,18 @@ public class HealthInsightService : IHealthInsightService
     /// Substitutes <see cref="NamePlaceholder.Token"/> when a name is on file. Leftover braces
     /// are dropped rather than returned: the status line and the digest already refuse to show
     /// them, and an insight that still says <c>CardiTrackCardiMember</c> is worse than an empty field.
+    /// A named condition is dropped the same way — this path has no rewrite step to strip one.
     /// </summary>
     private static string ResolvedOrEmpty(string? text, string? name)
     {
         var resolved = NamePlaceholder.Resolve(text, name) ?? string.Empty;
         return NamePlaceholder.IsPresentIn(resolved) ? string.Empty : resolved;
+    }
+
+    private static string CaregiverFacingInsight(string? text, string? name)
+    {
+        var resolved = ResolvedOrEmpty(text, name);
+        return JournalRegisterGuards.NamesACondition(resolved) is null ? resolved : string.Empty;
     }
 
     public async Task<BaselineInsightResponse> AnalyzeBaselineAsync(
@@ -266,10 +272,8 @@ public class HealthInsightService : IHealthInsightService
         var aiResponse = await _medicalAi.GenerateStructuredAsync<BaselineAiResponse>(prompt, ct);
 
         // The same placeholder guard the alert path applies. These three briefs never mention
-        // CardiTrackCardiMember — only the alert one does — but they all carry the pronoun rule,
-        // which talks about naming the person, and a token that reaches a caregiver unresolved is
-        // worse than an empty field wherever it happens. Guarding only the prompt that was known
-        // to produce it is guarding the case already understood.
+        // CardiTrackCardiMember — only the alert one does — so a token that reaches a caregiver
+        // unresolved is worse than an empty field wherever it happens.
         var name = NamePlaceholder.FirstName(member?.Name);
 
         return new BaselineInsightResponse

@@ -16,7 +16,7 @@ public class AdviseReplyTests
     private static MemberAdvise Advise(
         string summary = "His sleep has been under seven hours most nights this week.",
         string suggestion = "A steadier bedtime could help him settle earlier.",
-        string? guideline = "Adult sleep duration (AASM/CDC)",
+        string? guideline = "Adult sleep duration (National Sleep Foundation)",
         TimeSpan? age = null) => new()
         {
             Summary = summary,
@@ -125,7 +125,7 @@ public class AdviseReplyTests
         var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now);
 
         Assert.EndsWith(
-            "Reference: AASM/CDC consensus — adult sleep duration: 7 or more hours a night.",
+            "Reference: National Sleep Foundation — recommended nightly sleep 7–9 hours for adults, 7–8 hours from 65.",
             reply, StringComparison.Ordinal);
         Assert.DoesNotContain("based on", reply, StringComparison.OrdinalIgnoreCase);
     }

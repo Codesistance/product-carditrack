@@ -126,6 +126,8 @@ public class ChatThemeServiceTests
         Assert.DoesNotContain("Margaret", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("CardiTrackCardiMember", prompt, StringComparison.Ordinal);
         Assert.Contains("Caregiver:", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sleep quality this week", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Alert about resting heart rate", prompt, StringComparison.Ordinal);
     }
 
     /// <summary>One conversation whose generation fails is skipped — retried by a later pass —

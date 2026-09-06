@@ -462,7 +462,7 @@ public class HealthInsightServicePromptTests
         Assert.Contains("Write as a caregiver would", prompt);
         Assert.Contains("Everyday words for the readings are fine", prompt);
         Assert.Contains("what this alert means in the recent readings", prompt);
-        Assert.Contains("lay mention", prompt);
+        Assert.DoesNotContain("may sit behind it", prompt, StringComparison.Ordinal);
         Assert.Contains("one specific thing the caregiver can do now that answers this", prompt);
         Assert.Contains("CardiTrackCardiMember", prompt);
         Assert.DoesNotContain("heart rate, sleep, quieter today, worth a look", prompt);
@@ -502,5 +502,23 @@ public class HealthInsightServicePromptTests
         Assert.Equal(string.Empty, result.RecommendedAction);
         Assert.DoesNotContain("CardiTrackCardiMember", result.Explanation, StringComparison.Ordinal);
         Assert.DoesNotContain("CardiTrackCardiMember", result.RecommendedAction, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AlertInsight_DropsANamedCondition_FromBothFields()
+    {
+        SetupAlert();
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "This looks like tachycardia sitting behind the rise.",
+                RecommendedAction = "Ask whether arrhythmia has been discussed before.",
+            });
+
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal(string.Empty, result.Explanation);
+        Assert.Equal(string.Empty, result.RecommendedAction);
     }
 }

@@ -16,7 +16,7 @@ public class WellnessGuidelinesTests
     /// generation was grounded against (<c>MedicalPromptBlocks.WellnessGuidelineReference</c>).</summary>
     [Theory]
     [InlineData("World Health Organization", "150-300 minutes")]
-    [InlineData("AASM/CDC consensus", "7 or more hours")]
+    [InlineData("National Sleep Foundation", "7–9 hours")]
     [InlineData("American Heart Association", "60-100 bpm")]
     public void EachCitation_QuotesTheFiguresThePromptCarried(string authority, string figures)
     {
@@ -30,8 +30,8 @@ public class WellnessGuidelinesTests
     /// free-text picks rows already stored carry.</summary>
     [Theory]
     [InlineData("Adult physical activity (WHO, 2020)", "World Health Organization")]
-    [InlineData("Adult sleep duration (AASM/CDC)", "AASM/CDC consensus")]
-    [InlineData("aasm/cdc sleep consensus", "AASM/CDC consensus")]
+    [InlineData("Adult sleep duration (National Sleep Foundation)", "National Sleep Foundation")]
+    [InlineData("nsf sleep recommendation", "National Sleep Foundation")]
     [InlineData("Resting heart rate (AHA general reference)", "American Heart Association")]
     public void StoredPicks_MapToTheirAuthority(string stored, string authority)
     {
@@ -70,6 +70,10 @@ public class WellnessGuidelinesTests
     [InlineData("his own activity levels")]
     [InlineData("the member's own baseline")]
     [InlineData("their usual activity")]
+    [InlineData("usual sleep")]
+    [InlineData("sleep baseline")]
+    [InlineData("heart rate baseline")]
+    [InlineData("Adult sleep duration (AASM/CDC)")]
     public void AFindingAgainstTheMembersOwnBaseline_QuotesNoPublishedRange(string stored) =>
         Assert.Null(WellnessGuidelines.CitationFor(stored));
 
@@ -84,5 +88,20 @@ public class WellnessGuidelinesTests
     [InlineData("physical activity guideline")]
     public void AGenuineActivityPickStillResolves(string stored) =>
         Assert.Contains("150-300 minutes", WellnessGuidelines.CitationFor(stored) ?? "",
+            StringComparison.Ordinal);
+
+    [Theory]
+    [InlineData("Adult sleep duration (National Sleep Foundation)")]
+    [InlineData("NSF sleep recommendation")]
+    [InlineData("National Sleep Foundation")]
+    public void AGenuineSleepPickStillResolves(string stored) =>
+        Assert.Contains("7–9 hours", WellnessGuidelines.CitationFor(stored) ?? "",
+            StringComparison.Ordinal);
+
+    [Theory]
+    [InlineData("Resting heart rate (AHA general reference)")]
+    [InlineData("American Heart Association")]
+    public void AGenuineHeartPickStillResolves(string stored) =>
+        Assert.Contains("60-100 bpm", WellnessGuidelines.CitationFor(stored) ?? "",
             StringComparison.Ordinal);
 }
