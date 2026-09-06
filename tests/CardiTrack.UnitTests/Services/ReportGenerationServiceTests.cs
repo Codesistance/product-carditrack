@@ -563,6 +563,56 @@ public class ReportGenerationServiceTests
         Assert.Equal(RecordingRenderer.ContentTypeValue, contentType);
     }
 
+    [Theory]
+    [InlineData("<script>alert(1)</script>")]
+    [InlineData("rpt_unknown")]
+    public async Task DownloadAsync_DoesNotEchoTheRequestedId_WhenItIsNotFound(string reportId)
+    {
+        // ReportsController hands ex.Message straight to the client, so an interpolated id would
+        // put caller-supplied text back in the response — and would put developer copy in front
+        // of a caregiver. Fixed copy, matching what the status endpoint says.
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().DownloadAsync(_userId, reportId));
+
+        Assert.DoesNotContain(reportId, ex.Message);
+        Assert.Equal("We couldn't find that report — it may have expired. Try generating a new one.", ex.Message);
+    }
+
+    [Fact]
+    public async Task DownloadAsync_DoesNotNameTheInternalStatus_WhileTheReportIsPending()
+    {
+        // "(status: Pending)" is an enum name, and it reached the caregiver verbatim.
+        var gate = HoldGeneration();
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.DownloadAsync(_userId, queued.ReportId));
+
+        Assert.DoesNotContain(queued.ReportId, ex.Message);
+        Assert.DoesNotContain(nameof(ReportStatus.Pending), ex.Message);
+
+        gate.SetResult("done");
+    }
+
+    [Fact]
+    public async Task DownloadAsync_TellsAnExpiredAndAReapedReportApartToNobody()
+    {
+        // Unknown, expired, another user's and content-already-gone are deliberately
+        // indistinguishable; saying which one it was in the copy would undo that.
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+        _storage.Clear();
+
+        var reaped = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            sut.DownloadAsync(_userId, queued.ReportId));
+        var unknown = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            sut.DownloadAsync(_userId, Guid.NewGuid().ToString("N")));
+
+        Assert.Equal(unknown.Message, reaped.Message);
+    }
+
     [Fact]
     public async Task DownloadAsync_Throws_WhenReportUnknown()
     {

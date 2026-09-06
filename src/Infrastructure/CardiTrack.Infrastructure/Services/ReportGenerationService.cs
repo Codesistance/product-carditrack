@@ -113,18 +113,29 @@ public class ReportGenerationService : IReportGenerationService
         return ToStatusResponse(report);
     }
 
+    /// <summary>
+    /// The bytes of a ready report the requesting user owns.
+    /// </summary>
+    /// <remarks>
+    /// The exception messages are fixed caregiver-facing copy, matching what
+    /// <see cref="GetStatusAsync"/>'s caller says. <c>ReportsController</c> returns them straight
+    /// to the client, so interpolating the requested id would put caller-supplied text back in a
+    /// response — and, just as much to the point, would put developer copy ("Report 8f14e45f… is
+    /// not ready (status: Pending)") in front of a caregiver, leaking an internal enum name with
+    /// it. The id is in the request path and the trace; it does not need to be in the answer.
+    /// </remarks>
     public async Task<(byte[] Content, string ContentType, string FileName)> DownloadAsync(
         Guid requestingUserId, string reportId)
     {
         if (requestingUserId == Guid.Empty || !TryParseId(reportId, out var id))
-            throw new KeyNotFoundException($"Report {reportId} not found or has expired.");
+            throw new KeyNotFoundException(NotFoundMessage);
 
         var report = await _unitOfWork.Reports.GetForOwnerAsync(id, requestingUserId);
         if (report is null || report.ExpiresAt <= DateTime.UtcNow)
-            throw new KeyNotFoundException($"Report {reportId} not found or has expired.");
+            throw new KeyNotFoundException(NotFoundMessage);
 
         if (report.Status != ReportStatus.Ready)
-            throw new InvalidOperationException($"Report {reportId} is not ready (status: {report.Status}).");
+            throw new InvalidOperationException(NotReadyMessage);
 
         // A Ready row always names an object; a Ready row without one would be a bug in the
         // completion path, and reads as gone rather than as a null-reference 500.
@@ -132,13 +143,25 @@ public class ReportGenerationService : IReportGenerationService
             ? null
             : await _storage.DownloadAsync(report.ObjectName);
 
+        // An object that has gone from the bucket ahead of its row is, from the caregiver's side,
+        // the same fact as an expired report — so it is told the same way.
         if (content is null)
-            throw new KeyNotFoundException($"Report {reportId} content not found.");
+            throw new KeyNotFoundException(NotFoundMessage);
 
         return (content,
             report.ContentType ?? "application/octet-stream",
-            report.FileName ?? $"report-{reportId}");
+            report.FileName ?? $"report-{FormatId(report.Id)}");
     }
+
+    /// <summary>
+    /// One message for unknown, expired, another user's, and content already reaped — the four are
+    /// deliberately indistinguishable, so telling them apart in the copy would undo that.
+    /// </summary>
+    private const string NotFoundMessage =
+        "We couldn't find that report — it may have expired. Try generating a new one.";
+
+    private const string NotReadyMessage =
+        "That report isn't ready yet — give it a moment and try again.";
 
     /// <summary>
     /// Renders the export outside the request. Opens its own scope: the caller's returned long

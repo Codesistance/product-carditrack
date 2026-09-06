@@ -188,6 +188,8 @@ What each format contains:
 | 404 | Report unknown, expired, owned by another user, or its object is gone from the bucket — **410 is never returned** |
 | 409 | Report exists but is not `Ready` yet (still pending, or failed) |
 
+Both messages are **fixed caregiver-facing copy** and never echo the requested id or name the internal `ReportStatus`. The four 404 causes share one message, because they are meant to be indistinguishable.
+
 ---
 
 **Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [User Stories 2.3, 9.2](../../ui/mobile/user_stories.md)
