@@ -20,6 +20,13 @@ namespace CardiTrack.API.Controllers;
 /// </para>
 /// </summary>
 [Authorize]
+// Class level, matching CardiMembersController, rather than per action. An opt-in that has to be
+// remembered on every new route develops a hole the moment somebody adds one, and the failure is
+// invisible — the trail just quietly stops covering an endpoint. The cost is a few low-value rows
+// for the catalogue route, which carries no member data; on a six-year HIPAA trail that is the
+// cheaper mistake. The method-level attribute on GetMemberAlarms still wins for that action, since
+// the middleware reads the last matching metadata entry.
+[AuditHealthDataAccess("AccessMetricAlarm")]
 [Route("api/v1")]
 public class MetricAlarmsController : BaseApiController
 {
