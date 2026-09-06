@@ -98,6 +98,12 @@ public partial class MetricAlarmsPage : ContentPage
         }
         catch (ApiException ex)
         {
+            // The list has to go, not just be covered. This page reloads — returning from the
+            // builder and a successful toggle both clear the cache — so a failure here can land on
+            // top of a list that is already rendered, and leaving it up would show a caregiver
+            // stale alarms beside an error saying the alarms could not be loaded.
+            _alarms = null;
+            AlarmsPanel.IsVisible = false;
             ErrorDetailLabel.Text = ex.Message;
             LoadingSpinner.IsVisible = false;
             LoadingSpinner.IsRunning = false;
