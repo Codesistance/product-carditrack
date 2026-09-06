@@ -5,6 +5,12 @@
       "slack_ts": null,
       "item_count": 25,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-06",
+      "slack_ts": null,
+      "item_count": 5,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -232,6 +238,51 @@
       "severity": "FYI",
       "category": "competition",
       "brief": "research/queue/2026-09-04-cadence-ai-proactive-care-engine.md"
+    },
+    {
+      "date": "2026-09-06",
+      "slug": "ollama-ssrf-cve-2026-85180-bypasses-bleeding-llama-fix",
+      "title": "Ollama SSRF (CVE-2026-85180) bypasses the \"Bleeding Llama\" fix \u2014 unpatched as of v0.34.0",
+      "url": "https://github.com/ollama/ollama/issues/17041",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-06-ollama-ssrf-cve-2026-85180-bypasses-bleeding-llama-fix.md"
+    },
+    {
+      "date": "2026-09-06",
+      "slug": "eic-accelerator-schedule-correction-2026",
+      "title": "Correction: EIC Accelerator's 2026-10-06 cutoff does not exist \u2014 real schedule runs to 2026-11-04",
+      "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-06-eic-accelerator-schedule-correction-2026.md"
+    },
+    {
+      "date": "2026-09-06",
+      "slug": "digital-europe-cardiovascular-ai-screening-pilot-2026",
+      "title": "New EU call touches cardiovascular AI (DIGITAL-2026-AI-PILOTING-10-SCREENING) \u2014 needs a 7-partner consortium, deadline 2026-10-01",
+      "url": "https://digital-strategy.ec.europa.eu/en/events/info-day-digital-health-topics-under-digital-europe-programme-apply-ai-piloting-ai-based-image",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-06-digital-europe-cardiovascular-ai-screening-pilot-2026.md"
+    },
+    {
+      "date": "2026-09-06",
+      "slug": "google-health-guardian-pixel-watch-fitbit-air",
+      "title": "Google ships \"Health Guardian\": passive BP, insulin-resistance and breathing-emergency detection on Fitbit/Pixel Watch",
+      "url": "https://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-06-google-health-guardian-pixel-watch-fitbit-air.md"
+    },
+    {
+      "date": "2026-09-06",
+      "slug": "mhra-manchester-nhs-sandbox-launch",
+      "title": "MHRA and Manchester NHS launch a real-world testing sandbox for AI/wearable health tech",
+      "url": "https://www.gov.uk/government/news/mhra-and-manchester-nhs-partner-on-health-innovation-sandbox",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-06-mhra-manchester-nhs-sandbox-launch.md"
     }
   ]
 }
