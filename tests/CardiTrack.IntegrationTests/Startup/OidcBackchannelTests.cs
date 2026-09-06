@@ -25,7 +25,8 @@ public class OidcBackchannelTests
     [InlineData(GoogleOidcExtensions.SchemeName)]
     public void EveryBearerScheme_BoundsItsBackchannel(string scheme)
     {
-        var options = Provider().GetRequiredService<IOptionsMonitor<JwtBearerOptions>>().Get(scheme);
+        using var provider = Provider();
+        var options = provider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>().Get(scheme);
 
         Assert.Equal(OidcBackchannel.RequestTimeout, options.BackchannelTimeout);
         var handler = Assert.IsType<SocketsHttpHandler>(options.BackchannelHttpHandler);
@@ -49,7 +50,8 @@ public class OidcBackchannelTests
     [Fact]
     public void DiscoveryWarmup_IsRegisteredOnce_AcrossBothSchemes()
     {
-        var warmups = Provider().GetServices<IHostedService>().OfType<OidcDiscoveryWarmup>();
+        using var provider = Provider();
+        var warmups = provider.GetServices<IHostedService>().OfType<OidcDiscoveryWarmup>();
 
         Assert.Single(warmups);
     }
