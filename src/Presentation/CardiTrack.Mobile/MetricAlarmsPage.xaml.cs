@@ -99,9 +99,9 @@ public partial class MetricAlarmsPage : ContentPage
         catch (ApiException ex)
         {
             // The list has to go, not just be covered. This page reloads — returning from the
-            // builder and a successful toggle both clear the cache — so a failure here can land on
-            // top of a list that is already rendered, and leaving it up would show a caregiver
-            // stale alarms beside an error saying the alarms could not be loaded.
+            // builder clears the cache, and a successful toggle calls this directly — so a failure
+            // here can land on top of a list that is already rendered, and leaving it up would show
+            // a caregiver stale alarms beside an error saying the alarms could not be loaded.
             _alarms = null;
             AlarmsPanel.IsVisible = false;
             ErrorDetailLabel.Text = ex.Message;
@@ -242,7 +242,12 @@ public partial class MetricAlarmsPage : ContentPage
             // Switching an inherited alarm off writes this member an override that is off — which
             // is what an opt-out is. The server takes the account alarm's id and works that out.
             await _api.SaveMemberAlarmAsync(_memberId, alarm.Id, ToRequest(alarm, enabled));
-            _alarms = null;
+
+            // Reload rather than trust the row we hold. The server may have answered with a
+            // different row — switching an opt-out back on puts the account default back, under
+            // the default's own id — and the count in the crowding notice has moved either way.
+            // A list left as it was would send the next tap at an id that no longer exists.
+            await LoadAsync();
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
