@@ -1369,6 +1369,7 @@ Extends MVP 1 with account management, trend history, notification preferences, 
 
 **Notifications**
 - Alert Settings →
+- Your Alarms → *(R2 — caregiver-defined thresholds; reached from Member Details' Management group, needs design sync)*
 - Notification Preferences →
 - Quiet Hours →
 

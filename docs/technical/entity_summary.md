@@ -84,22 +84,34 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Calculated over 7, 14, 30, 60, and 90 day periods
 - Contains: Average and sample σ for steps and resting heart rate, **median and unscaled MAD** for steps, resting HR, and sleep minutes (additive; live alerts still use the mean), sleep averages, typical bedtime/wake, day-of-week variations (JSON); and, from 2026-08-22, avg/σ **and** median/MAD for overnight heart-rate variability, avg/σ for overnight respiratory rate, and averages for minutes with the heart rate raised and the longest unbroken sedentary stretch — the four the alert rules added in that sweep threshold on
 
+#### 11. **MetricAlarm** *(R2)*
+- A caregiver-defined threshold: "tell me when this reading reaches this level"
+- Contains: OrganizationId, **CardiMemberId (nullable)**, DerivedFromAlarmId (nullable), Name, Metric, Statistic, Operator, ThresholdKind, ThresholdValue, PeriodMinutes, EvaluationPeriods, DatapointsToAlarm, MissingDataTreatment, Severity, ContextGate, IsEnabled
+- **Scope is the nullable CardiMemberId**: null = an account-level default every member inherits; set = that member alone. A member row naming an account row in `DerivedFromAlarmId` *replaces* it for that member, and replacing it with `IsEnabled = false` is how a member opts out of an inherited alarm
+- Soft-deletable. Enums persist as **names** (`HasConversion<string>`), like the rest of the schema
+- Distinct from `AlertPreference`, which toggles CardiTrack's own nine rules: that one is keyed by compile-time catalogue strings, this one by Guid, and `AlertRuleOverrides` drops ids its catalogue does not know
+
+#### 12. **MetricAlarmState** *(R2)*
+- Where one alarm stands for one member: State (Ok/Alarm/InsufficientData), StateSinceUtc, LastEvaluatedUtc, LastAlertId
+- Exists so an alert is written on the **transition** into alarm rather than while it stands — without it a five-minute cron would re-raise the same finding twelve times an hour
+- Unique on (MetricAlarmId, CardiMemberId). Not soft-deletable: a stale standing state is worse than a missing one
+
 ### Business Entities
 
-#### 11. **Subscription**
+#### 13. **Subscription**
 - Trial/subscription state per organization — **no billing integration and no Stripe fields**
 - Contains: Tier (Basic, Complete, Plus), Status, StartDate, EndDate, `TrialEndDate` (30-day trial), BillingCycle, Price, Currency (default USD), PaymentMethod (JSON), Features (JSON)
 - MaxCardiMembers and MaxUsers are **organization-type driven**, not tier driven: Family 5 members / 1 user; Business 50 / 20
 - Unique index on OrganizationId; **FK to Organizations with cascade delete** (the one FK in the schema)
 
-#### 12. **Device** (Catalog)
+#### 14. **Device** (Catalog)
 - Reference data for supported wearable devices
 - Contains: DeviceType, Manufacturer, ModelName, DisplayName, Capabilities (JSON), ApiEndpoint, OAuthConfig (JSON), SortOrder, IconUrl
 - Used for UI display and capability checking; catalog `DisplayName` takes precedence over the enum display name
 
 ### Compliance Entities
 
-#### 13. **AuditLog**
+#### 15. **AuditLog**
 - HIPAA compliance audit trail for PHI access
 - Contains: UserId, CardiMemberId, Action, EntityType, Timestamp, IP address, user agent, request details, DataAccessed/ChangedFields (JSON)
 - **Retention policy is 6 years**; infrastructure currently implements **30 days dev / 90 days prod** (tfvars) — closing that gap is tracked follow-up infra work
@@ -116,7 +128,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - **CardiMemberNote** — self-authored notes by the monitored person (max 1000 chars)
 - **AlertNote** — follow-up notes on an alert, with optional actionTaken analytics key
 - **AlertPhoto** — photo attachments on alerts (blob URL, caption)
-- **AlertPreference** — one per CardiMember: sparse JSON disable-list of alert rule ids (`DisabledRules`). Missing row = all rules on. Producers skip evaluation for disabled ids.
+- ~~**AlertPreference**~~ — **shipped**: one per CardiMember, sparse JSON disable-list of alert rule ids (`DisabledRules`). Missing row = all rules on. Producers skip evaluation for disabled ids. Distinct from `MetricAlarm`, which is the caregiver's own thresholds rather than a switch over CardiTrack's rules.
 - ~~**PushNotificationToken**~~ — **shipped** as `PushDeviceToken` (APNS/FCM tokens per user device, token encrypted with a SHA-256 fingerprint for lookup), part of the push delivery spine (with Notification, NotificationDelivery, NotificationMute)
 - ~~**NotificationPreference**~~ — **shipped**: a per-User NotificationPreference table (the old per-relationship `NotificationPreferences` JSON column on UserCardiMember was dropped by `AddPushDeliverySpine`)
 - **Report** — async report generation state (format, parameters, status, download expiry). *Today: report state lives in the distributed cache only (fire-and-forget, lost on restart) — no entity or table.*
@@ -181,6 +193,8 @@ CardiMember (1) ──→ (N) RealtimeAssessment
 CardiMember (1) ──→ (N) DigestEntry
 CardiMember (1) ──→ (N) EnvironmentalReading
 CardiMember (1) ──→ (N) MemberQuestionnaire
+Organization (1) ──→ (N) MetricAlarm            [CardiMemberId null = account default]
+MetricAlarm (1) ──→ (N) MetricAlarmState        [one per inheriting member]
 User (1) ──→ (N) Notification / NotificationDelivery / PushDeviceToken / NotificationMute
 User (1) ──→ (1) NotificationPreference
 ```
@@ -204,7 +218,14 @@ The 32 domain enums:
 - **GranularMetric**: HeartRate, Steps, ActiveZoneMinutes, SpO2 (the four minute-grain series)
 - **AlertType**: Inactivity, HeartRate, Sleep, PatternBreak, Trend
 - **AlertSeverity**: Green (1), Yellow, Orange, Red
-- **AlertSensitivity**: Low, Medium, High (default Medium on CardiMember; stored, consumed by nothing)
+- **AlertSensitivity**: Low, Medium, High (default Medium on CardiMember; stored, consumed by nothing — caregiver-defined alarms are a separate mechanism and do not read it)
+- **AlarmMetric**: the readings a `MetricAlarm` may watch — five sub-daily (HeartRate, SpO2, Steps, ActiveZoneMinutes, HeartRateVariability) and eight daily (RestingHeartRate, DailySteps, SleepMinutes, DailySpO2Average, OvernightHeartRateVariability, OvernightBreathingRate, LongestSedentaryStretchMinutes, ElevatedZoneMinutes). Deliberately its own enum rather than a reuse of `GranularMetric`: an alarm names a metric *at a grain*
+- **AlarmStatistic**: Minimum, Maximum, Average, Sum, Latest
+- **AlarmOperator**: GreaterThan, GreaterThanOrEqualTo, LessThan, LessThanOrEqualTo
+- **AlarmThresholdKind**: Absolute, BaselinePercent, BaselineSigma (the latter two against the established 30-day baseline only)
+- **AlarmMissingDataTreatment**: Missing (default), NotBreaching, Ignore — CloudWatch's four minus `breaching`, which would read an unworn watch as a crisis
+- **AlarmEvaluationState**: Ok, Alarm, InsufficientData
+- **AlarmContextGate**: None, Inactive (the stillness gate)
 - **AlertStatus**: New, Acknowledged, Resolved (derived projection over Alert lifecycle fields — not a stored column)
 - **NotificationCategory**: Safety, Blocking, Unlock, Account
 - **NotificationPriority**: Critical, High, Medium, Low
@@ -260,4 +281,4 @@ EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuratio
 
 ---
 
-**Last Updated:** August 14, 2026
+**Last Updated:** September 6, 2026

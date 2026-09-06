@@ -68,7 +68,9 @@ The implemented `AlertType` enum (integers on the wire) differs from the string 
 
 ### Sensitivity and preferences
 
-**Alert sensitivity is fixed constants only.** The only thresholds that exist are the fixed dashboard-coloring constants (deviation > 30% → yellow, > 50% → orange — the "medium" profile below, hard-coded). There are no per-member sensitivity settings that change thresholds yet (`CardiMember.AlertSensitivity` is stored end-to-end but unused by producers).
+**The nine built-in rules still run on fixed constants.** Their thresholds are the hard-coded "medium" profile below (deviation > 30% → yellow, > 50% → orange), and `CardiMember.AlertSensitivity` remains stored end-to-end and unused by every producer. Nothing about the shipped rules is tunable.
+
+**What is tunable is a separate thing: caregiver-defined alarms.** `MetricAlarm` (R2) lets a caregiver say "tell me when this reading reaches this level" in the grammar cloud monitoring made standard — metric, statistic, comparison, threshold, evaluation window, M-of-N datapoints, missing-data treatment, severity — set once for the account and overridable per CardiMember. These **coexist with** the nine rules rather than retuning them: a firing alarm writes an ordinary `Alert` row with `rule: "custom:{alarmId}"` and inherits the whole delivery spine. See "User-defined alarms" below, and [alarm_catalogue.md](../../../technical/alarm_catalogue.md) for the suggested defaults and their sources.
 
 **Per-CardiMember alert-rule enablement is shipped.** `GET /api/v1/cardimembers/{id}/alert-preferences` returns clustered rules with effective on/off state (missing preference row = all on). `PATCH .../alert-preferences/rules/{ruleId}` toggles one rule immediately. Off means the producer **skips evaluation entirely** for that rule — no `Alert` row. Primary caregiver only for writes; any viewer of the member may read. Future A–G rules appear in the catalogue with `isImplemented: false` until their producers land.
 
@@ -434,6 +436,39 @@ Returns the updated `AlertRuleSettingResponse` for that rule.
 
 ---
 
+## User-defined alarms — `MetricAlarmsController`
+
+> **Implemented (R2).** Distinct from alert *preferences* above: those switch CardiTrack's own rules on and off, these are the caregiver's own thresholds.
+
+Scope lives in one table. A `MetricAlarm` row with a null `cardiMemberId` is an **account-level default** every CardiMember inherits; a row with one set applies to that member alone. A member row naming an account row in `derivedFromAlarmId` **replaces** it for that member — and replacing it with `isEnabled: false` is how a member opts out of an inherited alarm. A member row naming nothing is an addition.
+
+| Endpoint | Notes |
+|----------|-------|
+| `GET /api/v1/alarms/catalogue` | Which metric × statistic × period combinations are evaluable, the threshold band each metric allows, and whether it supports baseline-relative thresholds or the stillness gate. The builder reads this so an illegal alarm is unreachable rather than refused. |
+| `GET /api/v1/alarms` | The organization's account-level defaults. |
+| `POST /api/v1/alarms` | Creates one. **400** on an illegal combination, on a threshold outside the metric's band, or on `severity: red` without `confirmCriticalSeverity`. |
+| `PUT /api/v1/alarms/{alarmId}` | Replaces one. Clears every member's evaluation state for it, so a retuned alarm neither re-fires on a condition it was already standing on nor stays silent about one it now considers a breach. |
+| `DELETE /api/v1/alarms/{alarmId}` | **204.** Soft-delete. Members who had tuned it **keep their own copy** — a caregiver's tuning for one person is an intention about that person, and removing the shared default is not a retraction of it. |
+| `GET /api/v1/cardimembers/{id}/alarms` | The **effective** set: account defaults folded together with this member's overrides and additions. Each row carries `provenance` (`Inherited` / `Overridden` / `MemberOnly`), its `condition` as one composed sentence, and its current `state` (`Ok` / `Alarm` / `InsufficientData`). |
+| `POST /api/v1/cardimembers/{id}/alarms` | Adds an alarm for this member alone. |
+| `PUT /api/v1/cardimembers/{id}/alarms/{alarmId}` | Given an account default's id, writes this member's override of it; given a member alarm's own id, edits that row. |
+| `DELETE /api/v1/cardimembers/{id}/alarms/{alarmId}` | **204.** Reverts an override to the account default, or deletes a member-only alarm. Accepts either identity so a client holding one list row need not know which it has. |
+
+Reads require view access; **writes require primary-caregiver authority** — over that member for a member row, and over at least one member in the organization for an account-level default, since an account default reaches every one of them. Denial is **404, not 403**, the same non-disclosure convention as the rest of this API.
+
+### Semantics worth knowing
+
+- **An alert is written on the transition into alarm, never on the state.** `MetricAlarmState` carries that across ticks. Returning to normal re-arms the alarm — deliberately *not* the alert lifecycle: acknowledging a card says the caregiver has read it, not that the heart rate has come down.
+- **Missing data has three verbs, not CloudWatch's four.** `Missing` (default) reports insufficient data; `NotBreaching` counts a gap as normal; `Ignore` holds the current state. **`Breaching` is not offered** — treating absence as over the line turns "the watch is off the wrist" into a 3am page and contradicts the null-vs-zero discipline. Data absence keeps its own producer (`device_silence`).
+- **The evaluation window ends at the last reading, not at the clock.** Ingestion polls every ten minutes, so anchoring to wall-clock time would leave the newest datapoint permanently missing and make short alarms unfireable.
+- **Baseline-relative thresholds resolve against the established 30-day baseline only.** No 30-day row means `InsufficientData`, never a fire — the provisional-never-alerts rule, reached the same way it is for the built-in rules.
+- **Hysteresis:** a standing alarm clears only once the reading comes 5% back inside the threshold, so a value sitting on the line does not page on every crossing.
+- **Ceiling of 12 enabled alarms per member**, with the client advising past 6.
+
+Alarms are evaluated by `MetricAlarmWorker` every five minutes — non-AI polling, so the Worker per [CLAUDE.md](../../../../CLAUDE.md).
+
+---
+
 ## ~~PUT `/api/v1/cardimembers/{id}/alert-preferences`~~ (superseded)
 
 The bulk PUT that carried channels / quiet hours / family routing is superseded by the GET + per-rule PATCH above, plus user-scoped quiet hours on [notifications.md](notifications.md). SMS/email channels remain out of scope.
@@ -452,4 +487,4 @@ The bulk PUT that carried channels / quiet hours / family routing is superseded 
 
 **Related:** [readme.md](readme.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 15, 2026
+**Last Updated:** September 6, 2026

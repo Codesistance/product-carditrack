@@ -19,6 +19,7 @@ the Worker deploys to**. All alert a test-user population today:
 | Real-time assessor | **LLM-routed**: SSA features → MedGemma verdict → severity parse | `HeartRate` red/orange | `RealtimeAssessmentService`, `AssessmentSeverityParser` |
 | Inactivity detector | Deterministic rule (device silence) | `Inactivity` yellow | `InactivityDetectionService` |
 | Statistical engine (R1) | Five deterministic rules vs 30-day baseline | yellow/orange/red per taxonomy | `StatisticalAlertRules`, `StatisticalAlertService` |
+| Caregiver-defined alarms (R2) | Deterministic threshold arithmetic, **on numbers the caregiver chose** | yellow/orange/red, chosen by the caregiver | `MetricAlarmEvaluator`, `MetricAlarmEngine` |
 
 Only the first involves a model; the other two are pure arithmetic against the member's own
 baseline. All three produce the same artifact: an `Alert` row a caregiver sees, acknowledges,
@@ -79,6 +80,7 @@ contest — maps onto controls that exist in code today:
 | Human intervention is structural | The alert lifecycle **is** the human-review pathway: every alert awaits acknowledgment by a named caregiver; resolution is recorded (`AcknowledgedByUserId`, `IsResolved`) and is what re-arms the producer | `Alert` entity; `AlertsController` |
 | Contestability / auditability | Every alert carries its evidence: the `rule` discriminator plus the numbers that fired it in `MetricValues`; assessments store model input features, full output, raw severity word, routed severity, and **`SsaEngine`** — reconstructable months later | `RealtimeAssessment`; alert producers |
 | Transparency to the reader | Alert text names the observation and the yardstick in plain language; the on-demand insight endpoint explains any alert | alerts.md; `GET /api/v1/insights/alerts/{alertId}` |
+| The human sets the threshold, not only reads the result | Caregiver-defined alarms (R2) move the judgement itself to the human: they choose the metric, the level, the window and how urgent it is, and the system does arithmetic on their instruction. This is a **strengthening** of §2's position rather than a new exposure — but see the V4 entry below, because the machinery acting on that instruction is still ours | `MetricAlarm`; [alarm_catalogue.md](../technical/alarm_catalogue.md) |
 
 **Gap acknowledged:** the DPIA's "human-review queue for Critical" beyond the caregiver (a
 staff/clinical review tier) does not exist and is not planned — CardiTrack is explicitly not
@@ -92,7 +94,10 @@ sign-off.
 Profiling exists (baselines, assessments), so Arts. 13–15 require telling users meaningful
 information about the logic involved. Current state: the in-app alert text explains each
 alert's basis; `/privacy` has a plain-language **How alerting works** section (shipped
-thresholds only — no sensitivity slider); the auditor-facing artefact is
+thresholds only — no sensitivity slider). **That parenthetical is now out of date and the page
+needs updating**: caregiver-defined alarms ship in R2, so the public explanation of how alerting
+works has to say that a caregiver can add thresholds of their own, and that CardiTrack's own rules
+are unaffected by them. The auditor-facing artefact is
 [alerting_algorithm_card.md](alerting_algorithm_card.md). Remaining privacy-policy work
 (Google Limited Use, Art. 14 wearer notice, emergency-contact notice) is still DPIA
 mitigation **M12** / §6.4, not duplicated here.
@@ -128,6 +133,35 @@ tag across environments) and the SSA engine is pinned (`MathNet.Numerics.Evd`) p
 an assessment means the same thing everywhere. The 2026-08-14 Jacobi → Math.NET EVD swap is
 a V4 event: stored `HrDeviationScore` values from before that date are the same algebra, a
 different solver, and must not be treated as bit-stable against post-swap rows.
+
+**V4 entries recorded:**
+
+| Date | Change | Assessment |
+|---|---|---|
+| 2026-08-14 | Jacobi → Math.NET EVD for SSA | Same algebra, different solver. Stored `HrDeviationScore` values are not bit-stable across the swap and must not be pooled in a V2 claim |
+| 2026-09-06 | **Caregiver-defined alarms** (`MetricAlarm`) — a fourth producer whose thresholds are set by the user | See below |
+
+**On the 2026-09-06 change.** It does not alter any threshold in the algorithm card's §2: the nine
+statistical rules run unchanged, and `AlertSensitivity` still drives nothing. What it adds is a
+producer that evaluates a number the caregiver chose. Three observations for whoever reviews this:
+
+1. **The Art. 22 posture improves rather than degrades.** §2's argument is that the caregiver is the
+   decision-maker rather than a reviewer of the machine's decision. When the caregiver also sets the
+   threshold, the automated part shrinks to arithmetic on their own instruction — closer to a kitchen
+   timer than to profiling. The *profiling* that engages Arts. 13–15 is unchanged, because the
+   baseline-relative threshold kinds still compare a person against their own learned pattern.
+2. **The machinery is still ours, and still reviewable.** The evaluator's arithmetic, the M-of-N
+   semantics, the missing-data verbs, the hysteresis band, and above all the **bounds on what a
+   threshold may be** are product decisions, not user ones. A change to any of them is a V4 event on
+   the same footing as a change to a built-in constant. Recorded in the algorithm card §6.
+3. **The bounds are a safeguard, not a limitation.** Clamping each metric's threshold to a band is
+   what stops a caregiver building an alarm that pages them nightly and then abandoning alerting
+   altogether. The reasoning, and the one place where the bound deliberately departs from the
+   clinical definition (bradycardia), are documented in
+   [alarm_catalogue.md](../technical/alarm_catalogue.md) §3.1 and §7.
+
+**Still outstanding, and unaffected by this change:** the §2 re-run that push dispatch triggered on
+2026-08-11.
 
 **Results ledger:** append V2/V3 results to this document when executed; prod alerting for
 real families is gated on both being recorded here.
