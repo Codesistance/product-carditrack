@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddValidators(this IServiceCollection services)
     {
         services.AddScoped<IValidator<CreateOrganizationRequest>, CreateOrganizationValidator>();
+        services.AddScoped<IValidator<SaveMetricAlarmRequest>, SaveMetricAlarmValidator>();
         services.AddScoped<IValidator<CreateCardiMemberRequest>, CreateCardiMemberValidator>();
         services.AddScoped<IValidator<UpdateCardiMemberRequest>, UpdateCardiMemberValidator>();
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
@@ -88,6 +89,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationRepository, CardiTrack.Infrastructure.Repositories.NotificationRepository>();
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();
         services.AddScoped<IAlertPreferenceRepository, CardiTrack.Infrastructure.Repositories.AlertPreferenceRepository>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IMetricAlarmService, CardiTrack.Application.Services.MetricAlarmService>();
+        services.AddScoped<IMetricAlarmRepository, CardiTrack.Infrastructure.Repositories.MetricAlarmRepository>();
+        services.AddScoped<IMetricAlarmStateRepository, CardiTrack.Infrastructure.Repositories.MetricAlarmStateRepository>();
         services.AddScoped<INotificationSnapshotQueries, CardiTrack.Infrastructure.Repositories.NotificationSnapshotQueries>();
         services.AddScoped<IMemberChatSessionRepository, CardiTrack.Infrastructure.Repositories.MemberChatSessionRepository>();
         services.AddScoped<IMemberChatTurnRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnRepository>();

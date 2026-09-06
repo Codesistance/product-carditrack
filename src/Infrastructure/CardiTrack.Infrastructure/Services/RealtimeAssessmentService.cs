@@ -309,9 +309,11 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     {
         // Include soft-deleted rows so a dismissed heart episode is actually closed when the
         // hour comes back ordinary — otherwise deleting the card would re-arm the path while
-        // the same anomaly was still running.
+        // the same anomaly was still running. A caregiver-defined heart alarm's alert is not
+        // this producer's to close: its alarm may still be standing on its own threshold.
         var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false);
-        if (AlertResolution.Resolve(existing, a => a.AlertType == AlertType.HeartRate, utcNow) > 0)
+        if (AlertResolution.Resolve(
+                existing, a => a.AlertType == AlertType.HeartRate && !AlertRuleMarkers.IsCustomAlarm(a), utcNow) > 0)
         {
             await _unitOfWork.SaveChangesAsync();
 
@@ -328,9 +330,10 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         // already deleted — that dismissed this episode, not the next pass of the same anomaly.
         // Resolving when the hour comes back ordinary (above) is what re-arms it. A sustained
         // anomaly would otherwise re-alert every pass, and twelve pages an hour about one event
-        // teaches families to ignore the pager.
+        // teaches families to ignore the pager. A caregiver-defined heart alarm does not count:
+        // it never resolves its own alert, so it would hold this path shut indefinitely.
         var existing = await _unitOfWork.Alerts.GetByCardiMemberAsync(assessment.CardiMemberId, activeOnly: false);
-        if (existing.Any(a => a.AlertType == AlertType.HeartRate && !a.IsResolved))
+        if (existing.Any(a => a.AlertType == AlertType.HeartRate && !a.IsResolved && !AlertRuleMarkers.IsCustomAlarm(a)))
             return;
 
         ct.ThrowIfCancellationRequested();

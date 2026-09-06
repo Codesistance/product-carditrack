@@ -1,0 +1,38 @@
+using CardiTrack.Domain.Enums;
+
+namespace CardiTrack.Application.DTOs.Requests;
+
+/// <summary>
+/// Creates or replaces one alarm. The same shape for an account-level default and a member row —
+/// scope comes from the route, not the body, so a client cannot move an alarm between scopes by
+/// editing a field.
+/// </summary>
+public sealed class SaveMetricAlarmRequest
+{
+    public string Name { get; set; } = string.Empty;
+
+    public AlarmMetric Metric { get; set; }
+    public AlarmStatistic Statistic { get; set; }
+
+    // Defaulted rather than left at the enum's unnamed zero. These are not merely tidier
+    // defaults: zero is not a defined value for any of these enums, so an unset field fails
+    // validation with a message about a choice the caller never knew they had to make.
+    public AlarmOperator Operator { get; set; } = AlarmOperator.GreaterThan;
+    public AlarmThresholdKind ThresholdKind { get; set; } = AlarmThresholdKind.Absolute;
+    public decimal ThresholdValue { get; set; }
+    public int PeriodMinutes { get; set; }
+    public int EvaluationPeriods { get; set; } = 1;
+    public int DatapointsToAlarm { get; set; } = 1;
+    public AlarmMissingDataTreatment MissingDataTreatment { get; set; } = AlarmMissingDataTreatment.Missing;
+    public AlertSeverity Severity { get; set; } = AlertSeverity.Yellow;
+    public AlarmContextGate ContextGate { get; set; } = AlarmContextGate.None;
+    public bool IsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Required to save an alarm at <see cref="AlertSeverity.Red"/>. Red pushes, pierces quiet
+    /// hours and escalates to other caregivers when unacknowledged — an explicit acknowledgement
+    /// that this is what the caregiver means keeps a mis-tapped severity from waking a family at
+    /// three in the morning.
+    /// </summary>
+    public bool ConfirmCriticalSeverity { get; set; }
+}

@@ -952,6 +952,14 @@ public partial class CardiMemberDetailPage : ContentPage
             $"{AlertSettingsPage.Route}?memberId={_memberId}&name={name}&canManage={canManage}");
     }
 
+    private async void OnMetricAlarmsTapped(object? sender, TappedEventArgs e)
+    {
+        var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
+        var canManage = _member?.IsPrimaryCaregiver == true;
+        await Shell.Current.GoToAsync(
+            $"{MetricAlarmsPage.Route}?memberId={_memberId}&name={name}&canManage={canManage}");
+    }
+
     private async void OnContactCallTapped(object? sender, TappedEventArgs e)
     {
         var phone = PhoneFor(ItemOf(sender));

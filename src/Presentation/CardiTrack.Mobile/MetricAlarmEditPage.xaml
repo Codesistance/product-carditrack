@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.MetricAlarmEditPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- Building one alarm. The pickers narrow each other as the caregiver moves down the page —
+         a daily metric drops the short windows, a level metric drops "total", a metric CardiTrack
+         has learned no usual for drops the compare-to-usual options — so an alarm that cannot work
+         is unreachable rather than refused at Save.
+
+         The sentence at the top is the alarm read back in plain words, and it is composed by the
+         same code that will write the alert, so the screen cannot promise something the alert does
+         not say.
+
+         No Figma frame — R2 work, on the design-sync backlog. -->
+
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label x:Name="HeaderTitle"
+                           Text="New Alarm"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitle"
+                           Text="Tell me when a level is reached"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20" Spacing="14">
+
+                <ActivityIndicator x:Name="LoadingSpinner"
+                                   IsRunning="True"
+                                   IsVisible="True"
+                                   HorizontalOptions="Center"
+                                   Margin="0,24"/>
+
+                <VerticalStackLayout x:Name="FormPanel" IsVisible="False" Spacing="14">
+
+                    <!-- The alarm read back. Kept at the top rather than the bottom because it is
+                         the thing a caregiver checks before saving, not after. -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="This alarm says" Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label x:Name="PreviewLabel" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="12">
+                            <Label Text="What to watch" Style="{StaticResource DashboardSectionTitle}"/>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Name it" Style="{StaticResource AuthFieldLabel}"/>
+                                <Border Style="{StaticResource AuthEntryBorder}">
+                                    <Entry x:Name="NameEntry"
+                                           Style="{StaticResource AuthEntry}"
+                                           Placeholder="Something you'll recognise at 2am"
+                                           MaxLength="80"
+                                           TextChanged="OnNameChanged"/>
+                                </Border>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Reading" Style="{StaticResource AuthFieldLabel}"/>
+                                <Picker x:Name="MetricPicker" SelectedIndexChanged="OnMetricChanged"/>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout x:Name="StatisticRow" Spacing="4">
+                                <Label Text="Taken as" Style="{StaticResource AuthFieldLabel}"/>
+                                <Picker x:Name="StatisticPicker" SelectedIndexChanged="OnStatisticChanged"/>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="12">
+                            <Label Text="When to tell you" Style="{StaticResource DashboardSectionTitle}"/>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Tell me when it" Style="{StaticResource AuthFieldLabel}"/>
+                                <Picker x:Name="OperatorPicker" SelectedIndexChanged="OnOperatorChanged"/>
+                            </VerticalStackLayout>
+
+                            <!-- Named so the label goes with the picker: a metric with only a fixed
+                                 level to compare against would otherwise leave "Compared to"
+                                 standing above nothing. -->
+                            <VerticalStackLayout x:Name="ThresholdKindRow" Spacing="4">
+                                <Label Text="Compared to" Style="{StaticResource AuthFieldLabel}"/>
+                                <Picker x:Name="ThresholdKindPicker" SelectedIndexChanged="OnThresholdKindChanged"/>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label x:Name="ThresholdLabel" Text="Level" Style="{StaticResource AuthFieldLabel}"/>
+                                <Border Style="{StaticResource AuthEntryBorder}">
+                                    <Entry x:Name="ThresholdEntry"
+                                           Style="{StaticResource AuthEntry}"
+                                           Keyboard="Numeric"
+                                           TextChanged="OnThresholdChanged"/>
+                                </Border>
+                                <Label x:Name="ThresholdHint" Style="{StaticResource Caption}"/>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout x:Name="PeriodRow" Spacing="4">
+                                <Label Text="Measured over" Style="{StaticResource AuthFieldLabel}"/>
+                                <Picker x:Name="PeriodPicker" SelectedIndexChanged="OnPeriodChanged"/>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label x:Name="EvaluationLabel" Style="{StaticResource AuthFieldLabel}"/>
+                                <Stepper x:Name="EvaluationStepper" Minimum="1" Increment="1"
+                                         ValueChanged="OnEvaluationPeriodsChanged"/>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label x:Name="DatapointsLabel" Style="{StaticResource AuthFieldLabel}"/>
+                                <Stepper x:Name="DatapointsStepper" Minimum="1" Increment="1"
+                                         ValueChanged="OnDatapointsChanged"/>
+                                <Label Style="{StaticResource Caption}"
+                                       Text="Asking for more than one reading is what keeps a single odd measurement from waking you."/>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout x:Name="GateRow" Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                        <Label Text="Only while they are still"
+                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                        <Label Style="{StaticResource Body2}" FontSize="13"
+                                               Text="A high heart rate on the stairs is a heart doing its job. This only counts readings taken while they were not moving."/>
+                                    </VerticalStackLayout>
+                                    <Switch x:Name="GateSwitch" Grid.Column="1"
+                                            OnColor="{StaticResource Primary}"
+                                            VerticalOptions="Center"
+                                            Toggled="OnGateToggled"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="12">
+                            <Label Text="How loud" Style="{StaticResource DashboardSectionTitle}"/>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Urgency" Style="{StaticResource AuthFieldLabel}"/>
+                                <Picker x:Name="SeverityPicker" SelectedIndexChanged="OnSeverityChanged"/>
+                                <Label x:Name="SeverityHint" Style="{StaticResource Caption}"/>
+                            </VerticalStackLayout>
+
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="If there is no reading" Style="{StaticResource AuthFieldLabel}"/>
+                                <Picker x:Name="MissingDataPicker" SelectedIndexChanged="OnMissingDataChanged"/>
+                                <Label Style="{StaticResource Caption}"
+                                       Text="A watch on a bedside table is not a reading of zero, so a gap never counts as crossing the line."/>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Label x:Name="ValidationLabel"
+                           Style="{StaticResource AuthErrorLabel}"
+                           IsVisible="False"/>
+
+                    <Button x:Name="DeleteButton"
+                            Text="Remove this alarm"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            IsVisible="False"
+                            Clicked="OnDeleteTapped"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="Couldn't open the alarm builder"
+                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label x:Name="ErrorDetailLabel" Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Held out of the scroll so the alarm can be saved from wherever the caregiver has read
+             down to. A card around a single button would only add a second edge to look at. -->
+        <Button x:Name="SaveButton"
+                Grid.Row="2"
+                Margin="20,0,20,20"
+                Text="Save alarm"
+                Style="{StaticResource PrimaryGradientButton}"
+                IsVisible="False"
+                Clicked="OnSaveTapped"/>
+    </Grid>
+</ContentPage>

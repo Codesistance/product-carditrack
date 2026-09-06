@@ -48,6 +48,28 @@ public class CardiMemberRepositoryTests(TestDatabaseFixture fixture)
     }
 
     [Fact]
+    public async Task GetActiveIdsWithActivitySinceAsync_ScopedToOrganizations_LeavesOtherTenantsOut()
+    {
+        using var scope = fixture.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<ICardiMemberRepository>();
+
+        var org = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var otherOrg = await TestDataSeeder.SeedOrganizationAsync(scope);
+        var member = await TestDataSeeder.SeedCardiMemberAsync(scope, org.Id);
+        var neighbour = await TestDataSeeder.SeedCardiMemberAsync(scope, otherOrg.Id);
+
+        var since = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7));
+        await SeedActivityLogAsync(scope, member.Id, since);
+        await SeedActivityLogAsync(scope, neighbour.Id, since);
+
+        var ids = await repo.GetActiveIdsWithActivitySinceAsync(since, [org.Id]);
+
+        Assert.Contains(member.Id, ids);
+        Assert.DoesNotContain(neighbour.Id, ids);
+        Assert.Empty(await repo.GetActiveIdsWithActivitySinceAsync(since, []));
+    }
+
+    [Fact]
     public async Task GetActiveIdsWithActivitySinceAsync_ExcludesMember_WithOnlyOlderActivity()
     {
         using var scope = fixture.CreateScope();

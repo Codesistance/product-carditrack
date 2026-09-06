@@ -4,7 +4,7 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-The 13 workers registered today (crons from `appsettings.json`):
+The 16 workers registered today (crons from `appsettings.json`):
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
@@ -16,7 +16,10 @@ The 13 workers registered today (crons from `appsettings.json`):
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
 | `InactivityDetectionWorker` | `0 */15 * * * *` (every 15 min) | Device-silence failsafe — one yellow `Inactivity` alert when a member has no granular readings for >2 h in waking hours |
 | `StatisticalAlertWorker` | `0 7-59/15 * * * *` (every 15 min, offset) | R1 statistical alert engine — nine deterministic rules vs the established 30-day baseline |
+| `MetricAlarmWorker` | `0 4-59/5 * * * *` (every 5 min, offset) | Caregiver-defined alarms — threshold arithmetic on numbers a caregiver set themselves |
 | `QuestionnaireExpiryWorker` | `0 12-59/20 * * * *` (every 20 min, offset) | Retires family questions that outlived the day they asked about |
+| `QuestionnaireAlertWorker` | `0 */5 * * * *` (every 5 min) | Raises the alert that carries a pending family question to the caregiver |
+| `QuietReassuranceWorker` | `0 30 8 * * *` (daily 08:30) | The reassurance pass — telling a family that a long quiet stretch is genuinely quiet |
 | `DeviceAuthRecoveryWorker` | `0 3-59/15 * * * *` (every 15 min, offset) | Retries provider-refused refresh tokens on a per-connection widening backoff |
 | `DataCompletenessWorker` | `0 0 6 * * *` (daily 06:00) | Reconciles data-completeness nudges per caregiver against what each account supplies |
 | `NotificationDispatchWorker` | `*/30 * * * * *` (every 30 s) | The push spine's pump — claims due outbox rows, retries, escalates, expires |
@@ -47,6 +50,7 @@ src/Worker/CardiTrack.Worker/
 │   ├── DeviceSyncAuditWorker.cs             # Wide-window re-fetch over a sample, to measure revisions
 │   ├── InactivityDetectionWorker.cs         # Device-silence failsafe (yellow Inactivity alert)
 │   ├── StatisticalAlertWorker.cs            # R1 statistical alert engine (nine rules)
+│   ├── MetricAlarmWorker.cs                 # Caregiver-defined alarms (R2)
 │   ├── QuestionnaireExpiryWorker.cs         # Retires family questions past the day they asked about
 │   ├── DeviceAuthRecoveryWorker.cs          # Retries provider-refused refresh tokens (backoff)
 │   ├── DataCompletenessWorker.cs            # Reconciles data-completeness nudges per caregiver
@@ -285,6 +289,20 @@ The R1 statistical alert engine: nine deterministic rules (`docs/execution/backe
 - Thresholds are the hard-coded **medium** sensitivity profile (>30% deviation; HR margin max(2σ, 5 bpm); trend ≥5%/week × 4 weeks; HRV max(2σ, 15% of mean) on two consecutive nights; overnight breathing max(2σ, 1/min); raised-zone minutes max(their usual, 25) on a day the decline rule already calls quiet; unbroken still stretch max(3 h, usual + 50%)). Low/high profiles wait on wiring `CardiMember.AlertSensitivity`. Per-rule on/off is gated by `AlertPreference` (default on).
 - **Null-vs-zero discipline holds**: a null reading (not measured) never fires anything — most critically in `no_morning_activity`, where an HR-only device's absent steps field must never page a family red.
 - **Cooldowns follow the family's remedy** (`AlertRuleMarkers`): rule-scoped everywhere except `HeartRate`, which is type-scoped across this engine and the AI assessor.
+
+### MetricAlarmWorker
+
+The caregiver-defined alarm engine (R2). Where `StatisticalAlertWorker` runs CardiTrack's own nine rules, this one runs thresholds a caregiver set themselves — metric, statistic, comparison, threshold, window, M-of-N datapoints, missing-data treatment and severity, in the grammar cloud monitoring made standard. Pure evaluation in `MetricAlarmEvaluator` and `MetricAlarmWindowing` (Application, I/O-free, boundary-tested); orchestration in `MetricAlarmEngine`. Non-AI polling, so the Worker per CLAUDE.md.
+
+- Runs **every 5 minutes**, offset from both quarter-hour jobs (`0 4-59/5 * * * *`). Five rather than fifteen because the shortest period the catalogue offers is five minutes, and a cadence slower than the period would quietly make a "tell me within five minutes" alarm mean something else. Deliberately no faster: ingestion polls every ten, so a tighter loop would only re-read the same data.
+- **Two reads per member, not two per alarm.** Every sub-daily alarm the member has is served from one minute-series fetch sized to the longest of them, and every daily alarm from one activity-log fetch. A member with eight alarms costs the same queries as a member with one. The outer filter is organizations with at least one enabled alarm, and the member query is scoped to those organizations, so a fleet where nobody has defined one costs a single query per pass and a fleet where one organization has costs that organization's members only. State rows are written on a transition and otherwise re-stamped hourly, not every tick.
+- **An alert is written on the transition into alarm, never on the state.** `MetricAlarmState` carries that across ticks; a condition that stays true keeps the alarm standing and stays quiet, and only a return to normal re-arms it — a dip through `InsufficientData` mid-episode does not, so a watch taken off for a quarter of an hour does not produce a second page when it goes back on. That is deliberately *not* the alert lifecycle — a caregiver acknowledging a card says they have read it, not that the reading has come down. This is also why the worker needs no cooldown of its own, and why its alerts are kept **out of** the type-scoped `HeartRate` cooldown the assessor and the statistical engine share: an alert nobody resolves would otherwise latch both of them shut.
+- **One member's failure costs that member the tick, nothing more.** The pass runs on one scope, and the change tracker is cleared after every member whichever way their turn ended — so a failed save is not replayed into every later save, and skipped members do not pile up in it.
+- **The window ends at the last reading, not at the clock.** Anchoring the newest datapoint to wall-clock time would leave it permanently missing behind a ten-minute poll, making every short alarm with M equal to N unfireable. The anchor search is bounded (one hour for sub-daily, two days for daily), so a watch that has been in a drawer for a week does not have last Tuesday evaluated as if it were now. Daily readings that **accumulate through the day** — steps, raised heart-rate minutes, the longest still stretch — anchor on the last completed day rather than today's partial row, which is the same day the built-in activity rules judge.
+- **Null-vs-zero discipline holds, and one CloudWatch option is refused because of it.** `Missing` (default), `NotBreaching` and `Ignore` all ship; `breaching` — absence counts as over the line — does not, because it would turn "the watch is off the wrist" into a three-in-the-morning page. Data absence keeps its own producer in `InactivityDetectionWorker`, which is the same separation Cloud Monitoring draws by making metric-absence its own policy type.
+- **Provisional baselines still never alert.** Baseline-relative threshold kinds resolve against the established 30-day row only; without one the alarm reports insufficient data.
+- Paused members are skipped, and a disabled alarm is not evaluated at all rather than evaluated and suppressed.
+- Suggested defaults and the published guidance behind each number: [alarm_catalogue.md](../../technical/alarm_catalogue.md).
 
 ### QuestionnaireExpiryWorker
 

@@ -275,6 +275,52 @@ public class RealtimeAssessmentServiceTests
         await _enqueue.DidNotReceive().EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
+    // A caregiver-defined heart alarm never resolves the alert it writes — its alarm may stand for
+    // days — so if it counted for this cooldown it would hold the assessor shut for as long as its
+    // card stayed open. It does not count.
+    [Fact]
+    public async Task ACaregiverAlarmsHeartAlert_DoesNotSuppressTheAssessor()
+    {
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "Sharply elevated.",
+                Severity = "critical",
+            });
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false,
+                MetricValues = $"{{\"rule\":\"{MetricAlarmEngine.CustomRule(Guid.NewGuid())}\"}}",
+            },
+        ]);
+
+        var assessed = await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.Equal(1, assessed);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a => a.AlertType == AlertType.HeartRate));
+    }
+
+    // The converse: the assessor's ordinary hour closes its own episode, not a caregiver's alarm,
+    // whose own threshold may still be breached.
+    [Fact]
+    public async Task AnOrdinaryWindow_LeavesACaregiverAlarmsAlertOpen()
+    {
+        SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72, jumpLast: false));
+        var custom = new Alert
+        {
+            CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false,
+            MetricValues = $"{{\"rule\":\"{MetricAlarmEngine.CustomRule(Guid.NewGuid())}\"}}",
+        };
+        _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([custom]);
+
+        await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        Assert.False(custom.IsResolved);
+    }
+
     // Two overlapping executions can both assess the same window — the Exists probe is not
     // atomic with the inference — but the upsert reports which one actually inserted, and only
     // the inserter may alert. The loser must route nothing, or one episode pages twice.

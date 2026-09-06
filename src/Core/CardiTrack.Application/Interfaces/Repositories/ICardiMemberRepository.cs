@@ -15,6 +15,15 @@ public interface ICardiMemberRepository : IRepository<CardiMember>
     Task<IReadOnlyList<Guid>> GetActiveIdsWithActivitySinceAsync(DateOnly since);
 
     /// <summary>
+    /// As <see cref="GetActiveIdsWithActivitySinceAsync(DateOnly)"/>, restricted to members of the
+    /// given organizations. For a pass whose work is defined per organization — the alarm engine
+    /// only evaluates members whose organization has an alarm, so walking the rest of the estate to
+    /// discard them one by one is pure cost.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetActiveIdsWithActivitySinceAsync(
+        DateOnly since, IReadOnlyCollection<Guid> organizationIds);
+
+    /// <summary>
     /// Ids of active members who have explicitly granted
     /// <see cref="Domain.Entities.CardiMember.EnvironmentalContextConsentGranted"/>. The sole
     /// candidate filter for the environmental-enrichment pass — a member absent from this list

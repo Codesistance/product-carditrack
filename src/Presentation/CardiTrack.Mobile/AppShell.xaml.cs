@@ -41,6 +41,8 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(JournalEntryPage.Route, typeof(JournalEntryPage));
         Routing.RegisterRoute(JournalTimingPage.Route, typeof(JournalTimingPage));
         Routing.RegisterRoute(AlertSettingsPage.Route, typeof(AlertSettingsPage));
+        Routing.RegisterRoute(MetricAlarmsPage.Route, typeof(MetricAlarmsPage));
+        Routing.RegisterRoute(MetricAlarmEditPage.Route, typeof(MetricAlarmEditPage));
         Routing.RegisterRoute(NotificationPreferencesPage.Route, typeof(NotificationPreferencesPage));
 
 #if ANDROID || IOS

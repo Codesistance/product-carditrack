@@ -44,6 +44,20 @@ public class CardiMemberRepository : Repository<CardiMember>, ICardiMemberReposi
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<Guid>> GetActiveIdsWithActivitySinceAsync(
+        DateOnly since, IReadOnlyCollection<Guid> organizationIds)
+    {
+        if (organizationIds.Count == 0)
+            return [];
+
+        return await _dbSet
+            .Where(cm => cm.IsActive &&
+                organizationIds.Contains(cm.OrganizationId) &&
+                _context.ActivityLogs.Any(al => al.CardiMemberId == cm.Id && al.Date >= since))
+            .Select(cm => cm.Id)
+            .ToListAsync();
+    }
+
     public async Task<IReadOnlyList<Guid>> GetActiveIdsWithEnvironmentalConsentAsync()
     {
         return await _dbSet

@@ -24,6 +24,8 @@ public interface IUnitOfWork : IDisposable
     IPushDeviceTokenRepository PushDeviceTokens { get; }
     INotificationPreferenceRepository NotificationPreferences { get; }
     IAlertPreferenceRepository AlertPreferences { get; }
+    IMetricAlarmRepository MetricAlarms { get; }
+    IMetricAlarmStateRepository MetricAlarmStates { get; }
     IMemberChatSessionRepository MemberChatSessions { get; }
     IMemberChatTurnRepository MemberChatTurns { get; }
     IMemberChatTurnUsageRepository MemberChatTurnUsages { get; }
@@ -31,6 +33,15 @@ public interface IUnitOfWork : IDisposable
     IMemberAdviseRepository MemberAdvises { get; }
 
     Task<int> SaveChangesAsync();
+
+    /// <summary>
+    /// Forgets every entity this unit of work is tracking, saved or not. For a pass that works
+    /// through many members on one scope: after a failed save the failed entries stay tracked and
+    /// would make every later save in the same scope fail the same way, and after a successful one
+    /// they are dead weight that every subsequent save still has to scan.
+    /// </summary>
+    void ClearTracking();
+
     Task BeginTransactionAsync();
     Task CommitTransactionAsync();
     Task RollbackTransactionAsync();

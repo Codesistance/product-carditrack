@@ -71,6 +71,8 @@ builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReading
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+builder.Services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
+builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
 // UnitOfWork's constructor takes every repository, so each host must register all of them even
 // when it never touches the feature — chat lives in the API, but a missing registration here
 // fails *every* UnitOfWork resolve, which is how notification dispatch went down in dev.
@@ -94,6 +96,7 @@ builder.Services.AddNumerics();
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 builder.Services.AddScoped<IInactivityDetectionService, InactivityDetectionService>();
 builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();
+builder.Services.AddScoped<IMetricAlarmEngine, MetricAlarmEngine>();
 builder.Services.AddScoped<IQuietReassuranceService, QuietReassuranceService>();
 builder.Services.AddScoped<IDeviceAuthRecoveryService, DeviceAuthRecoveryService>();
 
@@ -111,6 +114,7 @@ builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSy
 builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
 builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
 builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(StatisticalAlertWorker));
+builder.Services.AddWorker<MetricAlarmWorker>(configuration, nameof(MetricAlarmWorker));
 
 // Ages out questions nobody got to before the day they asked about ended. The read paths already
 // refuse to serve those; this is what stops one becoming a permanent placeholder for the member

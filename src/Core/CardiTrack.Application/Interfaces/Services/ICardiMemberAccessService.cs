@@ -50,4 +50,17 @@ public interface ICardiMemberAccessService
     /// <see cref="KeyNotFoundException"/>, for the same non-disclosure reason.
     /// </remarks>
     Task RequireManageAccessAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Throws <see cref="KeyNotFoundException"/> unless the user holds manage authority (as
+    /// <see cref="RequireManageAccessAsync"/> defines it) over at least one active CardiMember in
+    /// <paramref name="organizationId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The authority an account-wide setting takes — an account-level alarm reaches every member
+    /// in the organization, so it is written by someone who manages at least one of them. Kept
+    /// here rather than re-derived by the caller so the manage rule has exactly one definition.
+    /// </remarks>
+    Task RequireManageAccessInOrganizationAsync(
+        Guid requestingUserId, Guid organizationId, CancellationToken ct = default);
 }

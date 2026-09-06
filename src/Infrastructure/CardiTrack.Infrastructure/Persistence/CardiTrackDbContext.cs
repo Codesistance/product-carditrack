@@ -44,6 +44,8 @@ public class CardiTrackDbContext : DbContext
     public DbSet<PushDeviceToken> PushDeviceTokens => Set<PushDeviceToken>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<AlertPreference> AlertPreferences => Set<AlertPreference>();
+    public DbSet<MetricAlarm> MetricAlarms => Set<MetricAlarm>();
+    public DbSet<MetricAlarmState> MetricAlarmStates => Set<MetricAlarmState>();
 
     // Member chat (Scenario 1)
     public DbSet<MemberChatSession> MemberChatSessions => Set<MemberChatSession>();
