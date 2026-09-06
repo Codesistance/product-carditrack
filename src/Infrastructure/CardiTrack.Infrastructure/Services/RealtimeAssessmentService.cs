@@ -47,6 +47,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// dividing by it would turn a 1 bpm wobble into an astronomical deviation score; half a
     /// beat per minute is the smallest jitter worth calling a jitter.
     /// </summary>
+    public const double NoiseFloorBpm = 0.5;
+
     /// <summary>
     /// Stored when the model's hour message names a condition. Severity still routes; the
     /// sentence a caregiver would read must not.
