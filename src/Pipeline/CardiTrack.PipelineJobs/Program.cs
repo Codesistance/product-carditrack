@@ -78,6 +78,8 @@ builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReading
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+builder.Services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
+builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
 // UnitOfWork's constructor takes every repository, so each host must register all of them even
 // when it never touches the feature — see the same block in the Worker's Program.cs.
 builder.Services.AddScoped<IMemberChatSessionRepository, MemberChatSessionRepository>();
