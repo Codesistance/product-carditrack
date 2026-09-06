@@ -15,9 +15,16 @@ internal static class AlertRuleMarkers
     internal const string DeviceSilenceRule = "device_silence";
     internal const string RealtimeHeartRateRule = "realtime_hr";
 
+    /// <summary>The prefix a caregiver-defined alarm's marker carries: <c>custom:{alarmId}</c>.</summary>
+    internal const string CustomRulePrefix = "custom:";
+
     /// <summary>Whether the alert carries this rule marker in its MetricValues JSON.</summary>
     internal static bool HasRule(Alert alert, string rule) =>
         alert.MetricValues?.Contains($"\"rule\":\"{rule}\"", StringComparison.Ordinal) == true;
+
+    /// <summary>Whether a caregiver-defined alarm raised the alert, rather than one of the built-in rules.</summary>
+    internal static bool IsCustomAlarm(Alert alert) =>
+        alert.MetricValues?.Contains($"\"rule\":\"{CustomRulePrefix}", StringComparison.Ordinal) == true;
 
     /// <summary>
     /// Whether the alert carries this night marker — the civil day the judged night ended on,
@@ -44,11 +51,20 @@ internal static class AlertRuleMarkers
     /// is rule-scoped. An `Inactivity` alert from before rule markers existed is treated as
     /// device-silence, which was that type's only producer at the time.
     /// </para>
+    /// <para>
+    /// A caregiver-defined alarm is the exception to the heart rule. It re-arms through its own
+    /// state row and never resolves the alert it wrote, so letting it into the type-scoped cooldown
+    /// would latch the built-in and AI heart producers shut for as long as its card stays open. It
+    /// suppresses its own rule only — the same alarm firing twice — and nothing else.
+    /// </para>
     /// </summary>
     internal static bool Suppresses(Alert alert, AlertType type, string rule)
     {
         if (alert.IsResolved || alert.AlertType != type)
             return false;
+
+        if (IsCustomAlarm(alert))
+            return HasRule(alert, rule);
 
         if (type == AlertType.HeartRate)
             return true;

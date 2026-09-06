@@ -108,8 +108,15 @@ public static class MetricAlarmWindowing
         // that actually carries this reading. Today is usually unfinished and often empty, and for
         // sleep-derived readings the freshest row is today's rather than yesterday's — one rule
         // covers both without the engine having to know which metric settles when.
+        //
+        // With one exception the catalogue names. A reading that accumulates through the day is
+        // present on today's row from the first morning sync, at a fraction of what the day will
+        // end on. Anchoring on it would judge a partial day, and a "below" alarm on steps would
+        // fire every morning of a perfectly ordinary life — so those start the search at yesterday,
+        // the same day the built-in activity rules judge.
+        var accumulates = AlarmMetricCatalogue.Find(alarm.Metric)?.AccumulatesThroughDay == true;
         DateOnly? anchor = null;
-        for (var back = 0; back <= DailyLagAllowanceDays; back++)
+        for (var back = accumulates ? 1 : 0; back <= DailyLagAllowanceDays; back++)
         {
             var day = localToday.AddDays(-back);
             if (logsByDate.TryGetValue(day, out var log) && AlarmMetricCatalogue.DailyValue(alarm.Metric, log) is not null)

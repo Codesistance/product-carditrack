@@ -53,7 +53,7 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             return 0;
 
         var since = DateOnly.FromDateTime(utcNow).AddDays(-2);
-        var memberIds = await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(since);
+        var memberIds = await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(since, organizations);
 
         var raised = 0;
         foreach (var memberId in memberIds)
@@ -70,8 +70,12 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             }
             catch (Exception ex)
             {
-                // One member's failure must not cost the rest of the fleet this pass.
+                // One member's failure must not cost the rest of the fleet this pass. Catching is
+                // not enough for that: the scope is shared, so whatever this member's save left in
+                // the change tracker would be retried — and fail the same way — inside every later
+                // member's save.
                 _logger.LogError(ex, "Metric alarm evaluation failed for CardiMember {CardiMemberId}.", memberId);
+                _unitOfWork.ClearTracking();
             }
         }
 
@@ -86,6 +90,8 @@ public class MetricAlarmEngine : IMetricAlarmEngine
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return 0;
 
+        // The query was already scoped to these organizations; this is the engine's own guarantee
+        // that it never evaluates a member whose organization has no alarms, whatever fed it.
         if (!organizations.Contains(member.OrganizationId))
             return 0;
 
@@ -131,11 +137,17 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             var previous = states.GetValueOrDefault(alarm.Id);
             var previousState = previous?.State ?? AlarmEvaluationState.InsufficientData;
 
+            // Armed means no alert from the current episode is outstanding. LastAlertId is set on
+            // the transition into alarm and cleared on the return to Ok, so a standing episode that
+            // dips through InsufficientData — the watch off for a quarter of an hour — is still the
+            // same episode when the readings come back, and is not paged about twice.
+            var armed = previous?.LastAlertId is null;
+
             var datapoints = SourceOf(alarm) == AlarmMetricSource.Granular
                 ? Slice(alarm, window, utcNow)
                 : MetricAlarmWindowing.FromDailyLogs(alarm, logsByDate, localToday);
 
-            var verdict = MetricAlarmEvaluator.Evaluate(alarm, datapoints, baseline, previousState);
+            var verdict = MetricAlarmEvaluator.Evaluate(alarm, datapoints, baseline, previousState, armed);
 
             Alert? alert = null;
             if (verdict.RaisedNow)
@@ -148,12 +160,16 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             await RecordStateAsync(previous, alarm, memberId, verdict, alert, utcNow);
         }
 
-        // Unconditional, and the alert rows are not what makes it so: every alarm evaluated this
-        // tick wrote or updated a state row, including the ones that concluded nothing happened.
-        // Skipping the save on a quiet tick would discard the LastEvaluatedUtc that says the alarm
-        // is being looked at, and — worse — the Ok that has to be recorded before a later breach can
-        // read as a transition rather than as a condition that was already standing.
+        // Every transition recorded this tick has to be saved before the next tick reads it — above
+        // all the Ok that lets a later breach read as a transition rather than as a condition that
+        // was already standing. A tick that changed nothing has nothing pending and costs no round
+        // trip here.
         await _unitOfWork.SaveChangesAsync();
+
+        // Forget this member's rows before moving to the next. The scope is shared across the whole
+        // pass, and a tracker that keeps every member's entities makes each later save scan all of
+        // them; nothing below needs what was loaded above.
+        _unitOfWork.ClearTracking();
 
         // Push dispatch, the same direct call the statistical engine makes. One bad dispatch must
         // not cost the batch the alerts it already persisted; DispatchService dedups, so a retried
@@ -242,13 +258,14 @@ public class MetricAlarmEngine : IMetricAlarmEngine
         };
 
     /// <summary>The <c>rule</c> marker a custom alarm stamps: its own id, namespaced.</summary>
-    public static string CustomRule(Guid alarmId) => $"custom:{alarmId}";
+    public static string CustomRule(Guid alarmId) => $"{AlertRuleMarkers.CustomRulePrefix}{alarmId}";
 
     /// <summary>
     /// Which of the five <see cref="AlertType"/> values a custom alarm's alert is filed under. The
     /// type drives the detail screen's icon and the family-facing grouping, so a heart alarm has to
     /// land on <see cref="AlertType.HeartRate"/> even though this producer's own cooldown is the
-    /// state row rather than the type.
+    /// state row rather than the type — which is why <see cref="AlertRuleMarkers"/> keeps custom
+    /// alerts out of the type-scoped heart cooldown the other producers share.
     /// </summary>
     private static AlertType AlertTypeFor(AlarmMetric metric) => metric switch
     {
@@ -285,16 +302,32 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             return;
         }
 
-        if (previous.State != verdict.State)
+        var transitioned = previous.State != verdict.State;
+        if (transitioned)
         {
             previous.State = verdict.State;
             previous.StateSinceUtc = utcNow;
+
+            // Back to normal is the re-arm. Anything short of it — a dip into InsufficientData —
+            // keeps the episode's alert on record so the return to alarm is not paged again.
+            if (verdict.State == AlarmEvaluationState.Ok)
+                previous.LastAlertId = null;
         }
 
-        previous.LastEvaluatedUtc = utcNow;
         if (alert is not null)
             previous.LastAlertId = alert.Id;
 
+        // A quiet tick has nothing to record but "still looking". Worth keeping — it is how an
+        // alarm that has silently stopped being evaluated is told apart from one that is merely
+        // quiet — but not worth a row update every five minutes for every alarm of every member,
+        // so it is refreshed hourly. A transition is always written.
+        if (!transitioned && utcNow - previous.LastEvaluatedUtc < EvaluatedStampInterval)
+            return;
+
+        previous.LastEvaluatedUtc = utcNow;
         _unitOfWork.MetricAlarmStates.Update(previous);
     }
+
+    /// <summary>How often a state row that has not changed is still stamped as evaluated.</summary>
+    private static readonly TimeSpan EvaluatedStampInterval = TimeSpan.FromHours(1);
 }

@@ -219,6 +219,39 @@ public class MetricAlarmWindowingTests
     }
 
     [Fact]
+    public void Daily_AReadingThatAccumulatesThroughTheDay_IsJudgedOnTheLastCompletedDay()
+    {
+        // 07:10, first sync of the morning: today's row already exists and says 120 steps. That is
+        // not a day of 120 steps, it is a day that has barely started. A "below 3,000" alarm anchored
+        // on it would page every morning of an ordinary life.
+        var today = new DateOnly(2026, 9, 6);
+        var logs = Logs((today.AddDays(-1), 6500), (today, 120));
+
+        var points = MetricAlarmWindowing.FromDailyLogs(
+            Alarm(AlarmMetric.DailySteps, AlarmStatistic.Latest, 1440, 1), logs, today);
+
+        Assert.Equal(6500d, points[0].Value);
+    }
+
+    [Fact]
+    public void Daily_AReadingThatIsWholeWhenFiled_StillUsesTodaysRow()
+    {
+        // Resting heart rate is one figure for the day, not a running total, so the freshest row is
+        // the right one — the accumulating exception must not leak onto every daily metric.
+        var today = new DateOnly(2026, 9, 6);
+        var logs = new Dictionary<DateOnly, ActivityLog>
+        {
+            [today.AddDays(-1)] = new() { Date = today.AddDays(-1), RestingHeartRate = 60 },
+            [today] = new() { Date = today, RestingHeartRate = 71 },
+        };
+
+        var points = MetricAlarmWindowing.FromDailyLogs(
+            Alarm(AlarmMetric.RestingHeartRate, AlarmStatistic.Latest, 1440, 1), logs, today);
+
+        Assert.Equal(71d, points[0].Value);
+    }
+
+    [Fact]
     public void Daily_UsesTodaysRow_ForAReadingThatIsFiledOnTheDayTheNightEnded()
     {
         // Sleep is attributed to the civil day the night ended on, so last night lives on today's

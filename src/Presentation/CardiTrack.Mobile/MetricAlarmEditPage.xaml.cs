@@ -38,7 +38,7 @@ public partial class MetricAlarmEditPage : ContentPage
 
     private Guid _memberId;
     private Guid? _alarmId;
-    private string? _provenance;
+    private AlarmProvenance? _provenance;
     private AlarmDraft? _draft;
     private bool _loaded;
 
@@ -113,8 +113,8 @@ public partial class MetricAlarmEditPage : ContentPage
             // person" means. Offering Remove would send a caregiver to a 404 for asking a
             // reasonable question. An override, on the other hand, can be removed: that puts the
             // account's own setting back.
-            DeleteButton.IsVisible = existing is not null && _provenance != "Inherited";
-            DeleteButton.Text = _provenance == "Overridden"
+            DeleteButton.IsVisible = existing is not null && _provenance != AlarmProvenance.Inherited;
+            DeleteButton.Text = _provenance == AlarmProvenance.Overridden
                 ? "Use the account setting instead"
                 : "Remove this alarm";
 
@@ -220,6 +220,9 @@ public partial class MetricAlarmEditPage : ContentPage
                 _ => $"Between {Format(min)} and {Format(max)} {_draft.ThresholdUnit}".TrimEnd(),
             };
             ThresholdEntry.Text = Format(request.ThresholdValue);
+            // The field now shows a number again, whatever was half-typed before this refresh, and
+            // the draft's own record of the field has to agree with it.
+            _draft.SetThresholdText(ThresholdEntry.Text);
 
             var periods = _draft.Periods;
             PeriodPicker.ItemsSource = periods.Select(PeriodLabel).ToList();
@@ -331,16 +334,9 @@ public partial class MetricAlarmEditPage : ContentPage
 
         // Deliberately not clamped or rewritten while typing: pulling "4" up to the minimum the
         // moment it is typed makes "45" impossible to enter. Validation says what is wrong, and
-        // Save is what refuses.
-        // The caregiver's own culture first: a numeric keypad in a comma-decimal locale offers a
-        // comma, and parsing invariantly meant "0,5" silently did not parse at all — leaving the
-        // draft on its previous value and making the minimum sigma threshold impossible to type.
-        // Invariant is kept as a fallback so a pasted "0.5" still works wherever it came from.
-        if (decimal.TryParse(e.NewTextValue, NumberStyles.Number, CultureInfo.CurrentCulture, out var value)
-            || decimal.TryParse(e.NewTextValue, NumberStyles.Number, CultureInfo.InvariantCulture, out value))
-        {
-            _draft.Request.ThresholdValue = value;
-        }
+        // Save is what refuses — including when the field holds no number at all, which the draft
+        // remembers so an emptied field cannot save the level it used to show.
+        _draft.SetThresholdText(e.NewTextValue);
 
         PreviewLabel.Text = _draft.Describe();
 
@@ -477,7 +473,7 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_alarmId is not { } id || _saving)
             return;
 
-        var reverting = _provenance == "Overridden";
+        var reverting = _provenance == AlarmProvenance.Overridden;
         var confirmed = reverting
             ? await DisplayAlert(
                 "Go back to the account setting?",

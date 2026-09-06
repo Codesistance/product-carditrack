@@ -80,6 +80,8 @@ builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReading
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
+builder.Services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
+builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
 builder.Services.AddPushRepositories();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 

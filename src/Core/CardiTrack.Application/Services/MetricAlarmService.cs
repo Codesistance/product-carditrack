@@ -13,9 +13,10 @@ namespace CardiTrack.Application.Services;
 /// <b>Access.</b> Reading a member's alarms needs view access to that member. Writing anything —
 /// account-level or per-member — needs primary-caregiver authority: for a member row, over that
 /// member; for an account-level default, over at least one member in the organization, since an
-/// account default reaches every one of them. Denial throws <see cref="KeyNotFoundException"/> and
-/// surfaces as a 404, the same non-disclosure convention the rest of this API uses — a caller must
-/// not be able to tell "you may not" from "there is no such thing".
+/// account default reaches every one of them. Both rules are <see cref="ICardiMemberAccessService"/>'s,
+/// not re-derived here. Denial throws <see cref="KeyNotFoundException"/> and surfaces as a 404, the
+/// same non-disclosure convention the rest of this API uses — a caller must not be able to tell
+/// "you may not" from "there is no such thing".
 /// </para>
 /// </summary>
 public class MetricAlarmService : IMetricAlarmService
@@ -39,7 +40,7 @@ public class MetricAlarmService : IMetricAlarmService
             Metric = d.Metric,
             Title = d.Title,
             Unit = d.Unit,
-            Source = d.Source == AlarmMetricSource.Granular ? "granular" : "daily",
+            Source = d.Source,
             Statistics = d.Statistics,
             PeriodMinutes = d.PeriodMinutes,
             MinThreshold = d.MinThreshold,
@@ -83,7 +84,7 @@ public class MetricAlarmService : IMetricAlarmService
         Guid requestingUserId, SaveMetricAlarmRequest request, CancellationToken ct = default)
     {
         var organizationId = await RequireOrganizationAsync(requestingUserId);
-        await RequireAccountWriteAccessAsync(requestingUserId, organizationId);
+        await _access.RequireManageAccessInOrganizationAsync(requestingUserId, organizationId, ct);
         Validate(request);
 
         var alarm = new MetricAlarm { OrganizationId = organizationId };
@@ -99,21 +100,24 @@ public class MetricAlarmService : IMetricAlarmService
         Guid requestingUserId, Guid alarmId, SaveMetricAlarmRequest request, CancellationToken ct = default)
     {
         var organizationId = await RequireOrganizationAsync(requestingUserId);
-        await RequireAccountWriteAccessAsync(requestingUserId, organizationId);
+        await _access.RequireManageAccessInOrganizationAsync(requestingUserId, organizationId, ct);
         Validate(request);
 
         var alarm = await _unitOfWork.MetricAlarms.GetByIdAsync(organizationId, alarmId, ct);
         if (alarm is null || alarm.CardiMemberId is not null)
             throw new KeyNotFoundException(DeniedMessage);
 
+        var resets = ResetsState(alarm, request);
         Apply(alarm, request);
         _unitOfWork.MetricAlarms.Update(alarm);
 
-        // The alarm's definition has changed, so what it means to be "already in alarm" has too.
+        // When the alarm's definition has changed, what it means to be "already in alarm" has too.
         // Clearing the states makes every member re-establish theirs on the next tick, which is
         // what stops a retuned alarm from either re-firing on a condition it was already standing
-        // on or staying silent about one it now considers a breach.
-        await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(alarm.Id, ct);
+        // on or staying silent about one it now considers a breach. A rename or a change of
+        // severity changes neither, and must not re-page every member the alarm is standing on.
+        if (resets)
+            await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(alarm.Id, ct);
         await _unitOfWork.SaveChangesAsync();
 
         return Map(alarm, provenance: null, state: null);
@@ -122,7 +126,7 @@ public class MetricAlarmService : IMetricAlarmService
     public async Task DeleteAccountAlarmAsync(Guid requestingUserId, Guid alarmId, CancellationToken ct = default)
     {
         var organizationId = await RequireOrganizationAsync(requestingUserId);
-        await RequireAccountWriteAccessAsync(requestingUserId, organizationId);
+        await _access.RequireManageAccessInOrganizationAsync(requestingUserId, organizationId, ct);
 
         var alarm = await _unitOfWork.MetricAlarms.GetByIdAsync(organizationId, alarmId, ct);
         if (alarm is null || alarm.CardiMemberId is not null)
@@ -172,58 +176,67 @@ public class MetricAlarmService : IMetricAlarmService
         var target = rows.FirstOrDefault(a => a.Id == alarmId)
             ?? throw new KeyNotFoundException(DeniedMessage);
 
-        MetricAlarm row;
-        AlarmProvenance provenance;
+        // The row this save lands on: the member's own when the id names one (an override or an
+        // alarm of their own), otherwise their existing override of the account default it names.
+        // Null means this is the member's first override of that default.
+        var row = target.CardiMemberId == cardiMemberId
+            ? target
+            : rows.FirstOrDefault(a => a.CardiMemberId == cardiMemberId && a.DerivedFromAlarmId == alarmId);
 
-        if (target.CardiMemberId == cardiMemberId)
+        if (row is { DerivedFromAlarmId: { } sourceId }
+            && rows.FirstOrDefault(a => a.Id == sourceId && a.CardiMemberId is null) is { } source
+            && RevertsToDefault(row, source, request))
         {
-            // Editing the member's own row, whether it is an override or an alarm of their own.
-            row = target;
-            provenance = target.DerivedFromAlarmId is null ? AlarmProvenance.MemberOnly : AlarmProvenance.Overridden;
+            // An override that says exactly what the account default says is not an override — it
+            // is the default with a detached copy of it in the way. That is what a switch flipped
+            // off and back on produces, and left standing it would quietly stop following account-
+            // level edits while the screen said the alarm was tuned for this person. Reverting is
+            // the honest result; the ceiling still applies, since the default coming back on adds
+            // an enabled alarm the opt-out had taken away.
+            await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
+            row.IsActive = false;
+            _unitOfWork.MetricAlarms.Update(row);
+            await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
+            await ClearStateAsync(source.Id, cardiMemberId, ct);
+            await _unitOfWork.SaveChangesAsync();
+            return Map(source, AlarmProvenance.Inherited, state: null);
+        }
+
+        AlarmProvenance provenance;
+        if (row is not null)
+        {
+            provenance = row.DerivedFromAlarmId is null ? AlarmProvenance.MemberOnly : AlarmProvenance.Overridden;
+            var resets = ResetsState(row, request);
             await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
             Apply(row, request);
             _unitOfWork.MetricAlarms.Update(row);
+
+            // Same rule as the account-level edit: only a change to what is evaluated makes the
+            // standing state meaningless. Renaming an alarm must not page again about a condition
+            // the caregiver already has the card for.
+            if (resets)
+                await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
         }
         else
         {
-            // Overriding an account default for the first time. The new row carries the member's
-            // settings and names the default it replaces, so reverting is a delete rather than a
-            // re-entry of everything the account said.
-            var existing = rows.FirstOrDefault(
-                a => a.CardiMemberId == cardiMemberId && a.DerivedFromAlarmId == alarmId);
-
+            // First override of an account default. The new row carries the member's settings and
+            // names the default it replaces, so reverting is a delete rather than a re-entry of
+            // everything the account said. The default is what this replaces, so the member's
+            // effective count does not grow and the ceiling must not be applied as if it did.
             provenance = AlarmProvenance.Overridden;
-            if (existing is not null)
+            await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: alarmId, ct);
+            row = new MetricAlarm
             {
-                // The member's existing override is the row standing in the effective set.
-                row = existing;
-                await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
-                Apply(row, request);
-                _unitOfWork.MetricAlarms.Update(row);
-            }
-            else
-            {
-                // First override of an account default: the default is what this replaces, so the
-                // member's effective count does not grow and the ceiling must not be applied as if
-                // it did.
-                await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: alarmId, ct);
-                row = new MetricAlarm
-                {
-                    OrganizationId = member.OrganizationId,
-                    CardiMemberId = cardiMemberId,
-                    DerivedFromAlarmId = alarmId,
-                };
-                Apply(row, request);
-                await _unitOfWork.MetricAlarms.AddAsync(row);
-            }
-        }
+                OrganizationId = member.OrganizationId,
+                CardiMemberId = cardiMemberId,
+                DerivedFromAlarmId = alarmId,
+            };
+            Apply(row, request);
+            await _unitOfWork.MetricAlarms.AddAsync(row);
 
-        await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
-        if (row.DerivedFromAlarmId is { } replaced)
-        {
             // The account default no longer applies here, so the state it left behind for this
             // member must not outlive it and be read as this override's own standing state.
-            await ClearStateAsync(replaced, cardiMemberId, ct);
+            await ClearStateAsync(alarmId, cardiMemberId, ct);
         }
 
         await _unitOfWork.SaveChangesAsync();
@@ -257,6 +270,54 @@ public class MetricAlarmService : IMetricAlarmService
         var errors = MetricAlarmValidation.Validate(request);
         if (errors.Count > 0)
             throw new ArgumentException(errors[0].Message, errors[0].Field);
+    }
+
+    /// <summary>
+    /// Whether the save changes what the alarm evaluates, as opposed to what it is called or how
+    /// loudly it speaks. Only the former makes a standing evaluation state meaningless. Switching
+    /// the alarm on or off counts: turning one on is asking for a fresh look, and a state left
+    /// behind by an alarm that was off for a month is not one to trust.
+    /// </summary>
+    private static bool ResetsState(MetricAlarm alarm, SaveMetricAlarmRequest request) =>
+        Retunes(alarm, request) || alarm.IsEnabled != request.IsEnabled;
+
+    /// <summary>Whether the request changes the alarm's condition — anything the evaluator reads.</summary>
+    private static bool Retunes(MetricAlarm alarm, SaveMetricAlarmRequest request) =>
+        alarm.Metric != request.Metric
+        || alarm.Statistic != request.Statistic
+        || alarm.Operator != request.Operator
+        || alarm.ThresholdKind != request.ThresholdKind
+        || alarm.ThresholdValue != request.ThresholdValue
+        || alarm.PeriodMinutes != request.PeriodMinutes
+        || alarm.EvaluationPeriods != request.EvaluationPeriods
+        || alarm.DatapointsToAlarm != request.DatapointsToAlarm
+        || alarm.MissingDataTreatment != request.MissingDataTreatment
+        || alarm.ContextGate != request.ContextGate;
+
+    /// <summary>Whether the request says exactly what <paramref name="alarm"/> already says, switch included.</summary>
+    private static bool SaysTheSameAs(MetricAlarm alarm, SaveMetricAlarmRequest request) =>
+        !Retunes(alarm, request)
+        && alarm.IsEnabled == request.IsEnabled
+        && alarm.Severity == request.Severity
+        && string.Equals(alarm.Name, request.Name.Trim(), StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether saving <paramref name="request"/> over a member's <paramref name="override"/> of
+    /// <paramref name="source"/> should instead put the source back. Two shapes: the request is
+    /// the default verbatim, or it is the override's own opt-out switched back on and nothing else
+    /// — the list page's toggle, which sends the row it holds with only the switch changed.
+    /// </summary>
+    private static bool RevertsToDefault(MetricAlarm @override, MetricAlarm source, SaveMetricAlarmRequest request)
+    {
+        if (SaysTheSameAs(source, request))
+            return true;
+
+        if (@override.IsEnabled || !request.IsEnabled)
+            return false;
+
+        return !Retunes(@override, request)
+            && @override.Severity == request.Severity
+            && string.Equals(@override.Name, request.Name.Trim(), StringComparison.Ordinal);
     }
 
     private static void Apply(MetricAlarm alarm, SaveMetricAlarmRequest request)
@@ -295,7 +356,7 @@ public class MetricAlarmService : IMetricAlarmService
         ContextGate = alarm.ContextGate,
         IsEnabled = alarm.IsEnabled,
         Condition = MetricAlarmNarrative.Condition(alarm),
-        Provenance = provenance?.ToString(),
+        Provenance = provenance,
         State = state?.State,
         StateSinceUtc = state?.StateSinceUtc,
     };
@@ -318,28 +379,6 @@ public class MetricAlarmService : IMetricAlarmService
         if (member is null || !member.IsActive)
             throw new KeyNotFoundException(DeniedMessage);
         return member;
-    }
-
-    /// <summary>
-    /// An account-level alarm applies to everyone in the organization, so writing one takes the
-    /// same authority as writing for a member — held over at least one of them.
-    /// </summary>
-    private async Task RequireAccountWriteAccessAsync(Guid requestingUserId, Guid organizationId)
-    {
-        var links = await _unitOfWork.UserCardiMembers.GetByUserIdAsync(requestingUserId);
-        var primaryFor = links
-            .Where(l => l.IsActive && l.CanViewHealthData && l.IsPrimaryCaregiver)
-            .Select(l => l.CardiMemberId)
-            .ToList();
-
-        foreach (var memberId in primaryFor)
-        {
-            var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
-            if (member is { IsActive: true } && member.OrganizationId == organizationId)
-                return;
-        }
-
-        throw new KeyNotFoundException(DeniedMessage);
     }
 
     /// <summary>

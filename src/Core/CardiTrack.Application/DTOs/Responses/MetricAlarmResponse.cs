@@ -1,3 +1,4 @@
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.DTOs.Responses;
@@ -39,7 +40,7 @@ public sealed class MetricAlarmResponse
 
     /// <summary>Only present on a member's effective list: whether this row is inherited from the
     /// account, an override of one, or the member's own.</summary>
-    public string? Provenance { get; init; }
+    public AlarmProvenance? Provenance { get; init; }
 
     /// <summary>The current evaluation state for this member, when one has been recorded.</summary>
     public AlarmEvaluationState? State { get; init; }
@@ -62,8 +63,8 @@ public sealed class AlarmMetricOptionResponse
     public string Title { get; init; } = string.Empty;
     public string Unit { get; init; } = string.Empty;
 
-    /// <summary>"granular" for a sub-daily series, "daily" for one value per day or night.</summary>
-    public string Source { get; init; } = string.Empty;
+    /// <summary>Whether a datapoint is a sub-daily slice of the minute series or one value per day or night.</summary>
+    public AlarmMetricSource Source { get; init; }
 
     public IReadOnlyList<AlarmStatistic> Statistics { get; init; } = [];
     public IReadOnlyList<int> PeriodMinutes { get; init; } = [];

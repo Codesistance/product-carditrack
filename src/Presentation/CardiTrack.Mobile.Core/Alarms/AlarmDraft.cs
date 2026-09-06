@@ -1,3 +1,4 @@
+using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
@@ -43,6 +44,11 @@ public sealed class AlarmDraft
                 Severity = existing.Severity,
                 ContextGate = existing.ContextGate,
                 IsEnabled = existing.IsEnabled,
+
+                // A red alarm that is already saved was confirmed when it was made red. Asking again
+                // on every edit that leaves it red would train the caregiver to tap past the
+                // warning; picking red afresh still asks, because the page resets this on a change.
+                ConfirmCriticalSeverity = existing.Severity == AlertSeverity.Red,
             };
 
             // Narrow the saved alarm against today's catalogue rather than trusting it. It was
@@ -116,7 +122,7 @@ public sealed class AlarmDraft
         get
         {
             var ceiling = _catalogue.MaxEvaluationPeriods;
-            if (Definition?.Source == "granular" && Request.PeriodMinutes > 0)
+            if (Definition?.Source == AlarmMetricSource.Granular && Request.PeriodMinutes > 0)
                 ceiling = Math.Min(ceiling, 1440 / Request.PeriodMinutes);
             return Math.Max(1, ceiling);
         }
@@ -177,8 +183,41 @@ public sealed class AlarmDraft
     /// <summary>The condition in one sentence, as the saved alarm will carry it.</summary>
     public string Describe() => MetricAlarmNarrative.Condition(Request);
 
-    /// <summary>Whatever is still wrong with the draft, judged by the same rules the server uses.</summary>
-    public IReadOnlyList<AlarmValidationError> Validate() => MetricAlarmValidation.Validate(Request);
+    /// <summary>
+    /// Takes the threshold as typed. The caregiver's own culture first — a numeric keypad in a
+    /// comma-decimal locale offers a comma — with invariant as a fallback so a pasted "0.5" works
+    /// anywhere. Text that is not a number (an emptied field, a lone minus or point mid-edit) leaves
+    /// the last good value in place for the preview but marks the draft unsaveable until a number is
+    /// there again: the alternative is Save quietly submitting a level the field no longer shows.
+    /// </summary>
+    /// <returns>Whether the text was a number.</returns>
+    public bool SetThresholdText(string? text)
+    {
+        var parsed = decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out var value)
+            || decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out value);
+
+        if (parsed)
+            Request.ThresholdValue = value;
+        _thresholdUnreadable = !parsed;
+        return parsed;
+    }
+
+    private bool _thresholdUnreadable;
+
+    /// <summary>Whatever is still wrong with the draft, judged by the same rules the server uses —
+    /// plus the one thing only the screen can know, that the level field does not hold a number.</summary>
+    public IReadOnlyList<AlarmValidationError> Validate()
+    {
+        var errors = MetricAlarmValidation.Validate(Request);
+        if (!_thresholdUnreadable)
+            return errors;
+
+        return
+        [
+            new AlarmValidationError(nameof(Request.ThresholdValue), "Enter a number for the level."),
+            .. errors.Where(e => e.Field != nameof(Request.ThresholdValue)),
+        ];
+    }
 
     /// <summary>
     /// Whether the caregiver should be warned rather than stopped — a red alarm pushes through

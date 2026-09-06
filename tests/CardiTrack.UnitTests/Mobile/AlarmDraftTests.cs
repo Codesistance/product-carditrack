@@ -22,7 +22,7 @@ public class AlarmDraftTests
             Metric = d.Metric,
             Title = d.Title,
             Unit = d.Unit,
-            Source = d.Source == AlarmMetricSource.Granular ? "granular" : "daily",
+            Source = d.Source,
             Statistics = d.Statistics,
             PeriodMinutes = d.PeriodMinutes,
             MinThreshold = d.MinThreshold,
@@ -243,6 +243,52 @@ public class AlarmDraftTests
         Assert.Contains(draft.Request.ThresholdKind, draft.ThresholdKinds);
         var (min, max) = draft.ThresholdRange;
         Assert.InRange(draft.Request.ThresholdValue, min, max);
+        Assert.Empty(draft.Validate());
+    }
+
+    [Fact]
+    public void EditingARedAlarm_DoesNotAskForTheConfirmationAgain()
+    {
+        // It was confirmed when it was made red. Asking on every edit that leaves it red trains the
+        // caregiver to tap past the warning — the list page's toggle already re-saves red alarms
+        // without asking, and the builder has to agree with it.
+        var existing = new MetricAlarmResponse
+        {
+            Name = "Blood oxygen critical",
+            Metric = AlarmMetric.SpO2,
+            Statistic = AlarmStatistic.Average,
+            Operator = AlarmOperator.LessThan,
+            ThresholdKind = AlarmThresholdKind.Absolute,
+            ThresholdValue = 88m,
+            PeriodMinutes = 5,
+            EvaluationPeriods = 1,
+            DatapointsToAlarm = 1,
+            Severity = AlertSeverity.Red,
+            IsEnabled = true,
+        };
+
+        var draft = new AlarmDraft(Catalogue(), existing);
+
+        Assert.False(draft.NeedsCriticalConfirmation);
+        Assert.Empty(draft.Validate());
+    }
+
+    [Fact]
+    public void AThresholdFieldThatHoldsNoNumber_MakesTheDraftUnsaveable()
+    {
+        // Cleared to type a new level and then abandoned: the previous number must not be what Save
+        // quietly sends while the field shows nothing.
+        var draft = Draft();
+        draft.Request.Name = "Heart rate high";
+        draft.SetThresholdText("125");
+        Assert.Empty(draft.Validate());
+
+        Assert.False(draft.SetThresholdText(""));
+        Assert.Equal(125m, draft.Request.ThresholdValue);
+        Assert.Contains(draft.Validate(), e => e.Field == nameof(draft.Request.ThresholdValue));
+
+        Assert.True(draft.SetThresholdText("45"));
+        Assert.Equal(45m, draft.Request.ThresholdValue);
         Assert.Empty(draft.Validate());
     }
 

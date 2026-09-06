@@ -166,6 +166,29 @@ public class MetricAlarmEvaluatorTests
     }
 
     [Fact]
+    public void RaisedNow_IsFalseWhileTheEpisodesAlertIsStillOutstanding()
+    {
+        // Alarm -> InsufficientData -> Alarm is one episode with a gap in it, not two episodes. The
+        // engine passes armed: false for as long as the alert it wrote has not been re-armed by a
+        // return to Ok, and the evaluator must honour that even though the state did change.
+        var verdict = MetricAlarmEvaluator.Evaluate(
+            Alarm(), Points(130), null, AlarmEvaluationState.InsufficientData, armed: false);
+
+        Assert.Equal(AlarmEvaluationState.Alarm, verdict.State);
+        Assert.False(verdict.RaisedNow);
+    }
+
+    [Fact]
+    public void RaisedNow_IsTrueFromInsufficientData_WhenArmed()
+    {
+        // A new alarm whose first ticks saw no data fires on the first breach it does see.
+        var verdict = MetricAlarmEvaluator.Evaluate(
+            Alarm(), Points(130), null, AlarmEvaluationState.InsufficientData);
+
+        Assert.True(verdict.RaisedNow);
+    }
+
+    [Fact]
     public void Hysteresis_KeepsAStandingAlarmStanding_JustInsideTheThreshold()
     {
         // 118 is under the 120 that fired it, but not under the 114 it has to reach to clear.

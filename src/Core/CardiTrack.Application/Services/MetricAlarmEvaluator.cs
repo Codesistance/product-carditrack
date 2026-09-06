@@ -15,8 +15,9 @@ public readonly record struct AlarmDatapoint(double? Value, bool GateSatisfied =
 
 /// <summary>What one tick concluded about one alarm.</summary>
 /// <param name="RaisedNow">
-/// True only on the transition into <see cref="AlarmEvaluationState.Alarm"/>. This, not the state
-/// itself, is what writes an alert.
+/// True only on the transition into <see cref="AlarmEvaluationState.Alarm"/> while the alarm is
+/// armed — see the <c>armed</c> parameter of <see cref="MetricAlarmEvaluator.Evaluate"/>. This,
+/// not the state itself, is what writes an alert.
 /// </param>
 public sealed record AlarmVerdict(
     AlarmEvaluationState State,
@@ -48,11 +49,20 @@ public static class MetricAlarmEvaluator
     /// </summary>
     public const decimal HysteresisFraction = 0.05m;
 
+    /// <param name="armed">
+    /// Whether an alert may be written this tick. False while the current episode's alert is still
+    /// outstanding — the alarm has fired and has not yet returned to <see cref="AlarmEvaluationState.Ok"/>.
+    /// That is what keeps a standing episode that dips through
+    /// <see cref="AlarmEvaluationState.InsufficientData"/> (the watch off for a quarter of an hour)
+    /// from paging a second time when the readings come back: the state left Alarm, but the
+    /// episode did not end. Only a return to normal re-arms.
+    /// </param>
     public static AlarmVerdict Evaluate(
         MetricAlarm alarm,
         IReadOnlyList<AlarmDatapoint> datapoints,
         PatternBaseline? baseline,
-        AlarmEvaluationState previousState)
+        AlarmEvaluationState previousState,
+        bool armed = true)
     {
         ArgumentNullException.ThrowIfNull(alarm);
         ArgumentNullException.ThrowIfNull(datapoints);
@@ -99,7 +109,7 @@ public static class MetricAlarmEvaluator
 
         return new AlarmVerdict(
             state,
-            RaisedNow: state == AlarmEvaluationState.Alarm && previousState != AlarmEvaluationState.Alarm,
+            RaisedNow: armed && state == AlarmEvaluationState.Alarm && previousState != AlarmEvaluationState.Alarm,
             EffectiveThreshold: threshold,
             ObservedValue: observed,
             BreachingDatapoints: breaching,

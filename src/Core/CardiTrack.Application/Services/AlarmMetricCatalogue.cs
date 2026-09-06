@@ -30,6 +30,12 @@ public enum AlarmMetricSource
 /// The granular series that serves this metric, for <see cref="AlarmMetricSource.Granular"/> rows;
 /// null for daily ones.
 /// </param>
+/// <param name="AccumulatesThroughDay">
+/// For daily rows: whether the day's value is only a day's worth once the day is over. Steps,
+/// raised-heart-rate minutes and the longest still stretch all climb from zero as the day goes on,
+/// so today's row is a partial figure until midnight and an alarm must judge the last completed
+/// day instead. A sleep-derived reading or a resting heart rate is whole as soon as it is filed.
+/// </param>
 public sealed record AlarmMetricDefinition(
     AlarmMetric Metric,
     string Title,
@@ -41,7 +47,8 @@ public sealed record AlarmMetricDefinition(
     decimal MaxThreshold,
     bool SupportsBaselinePercent,
     bool SupportsBaselineSigma,
-    GranularMetric? Backing = null);
+    GranularMetric? Backing = null,
+    bool AccumulatesThroughDay = false);
 
 /// <summary>
 /// The authority on what an alarm may be built from. Validation rejects against this rather than
@@ -113,7 +120,8 @@ public static class AlarmMetricCatalogue
 
             new AlarmMetricDefinition(AlarmMetric.DailySteps, "Daily steps", "steps",
                 AlarmMetricSource.Daily, DailyStatistics, DailyPeriods,
-                0m, 100_000m, SupportsBaselinePercent: true, SupportsBaselineSigma: true),
+                0m, 100_000m, SupportsBaselinePercent: true, SupportsBaselineSigma: true,
+                AccumulatesThroughDay: true),
 
             new AlarmMetricDefinition(AlarmMetric.SleepMinutes, "Sleep duration", "minutes",
                 AlarmMetricSource.Daily, DailyStatistics, DailyPeriods,
@@ -133,11 +141,13 @@ public static class AlarmMetricCatalogue
 
             new AlarmMetricDefinition(AlarmMetric.LongestSedentaryStretchMinutes, "Longest still stretch", "minutes",
                 AlarmMetricSource.Daily, DailyStatistics, DailyPeriods,
-                0m, 1_440m, SupportsBaselinePercent: true, SupportsBaselineSigma: false),
+                0m, 1_440m, SupportsBaselinePercent: true, SupportsBaselineSigma: false,
+                AccumulatesThroughDay: true),
 
             new AlarmMetricDefinition(AlarmMetric.ElevatedZoneMinutes, "Raised heart-rate minutes", "minutes",
                 AlarmMetricSource.Daily, DailyStatistics, DailyPeriods,
-                0m, 1_440m, SupportsBaselinePercent: true, SupportsBaselineSigma: false),
+                0m, 1_440m, SupportsBaselinePercent: true, SupportsBaselineSigma: false,
+                AccumulatesThroughDay: true),
         });
 
     public static IReadOnlyList<AlarmMetricDefinition> Definitions => DefinitionsInternal;

@@ -172,8 +172,8 @@ public partial class MetricAlarmsPage : ContentPage
 
         var pills = new HorizontalStackLayout { Spacing = 6 };
         pills.Add(SeverityPill(alarm.Severity, resources));
-        if (alarm.Provenance is "Inherited" or "Overridden")
-            pills.Add(Pill(alarm.Provenance == "Inherited" ? "From your account" : "Tuned for them", resources));
+        if (alarm.Provenance is AlarmProvenance.Inherited or AlarmProvenance.Overridden)
+            pills.Add(Pill(alarm.Provenance == AlarmProvenance.Inherited ? "From your account" : "Tuned for them", resources));
         if (alarm.State == AlarmEvaluationState.InsufficientData)
             pills.Add(Pill("Waiting for data", resources));
 

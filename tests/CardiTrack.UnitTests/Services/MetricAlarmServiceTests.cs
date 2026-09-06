@@ -143,4 +143,137 @@ public class MetricAlarmServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => Service().SaveMemberOverrideAsync(_userId, _memberId, optOut.Id, Request("Opted out")));
     }
+
+    /// <summary>A request that says exactly what the row says — what the list page's toggle sends.</summary>
+    private static SaveMetricAlarmRequest RequestFrom(MetricAlarm alarm, bool enabled) => new()
+    {
+        Name = alarm.Name,
+        Metric = alarm.Metric,
+        Statistic = alarm.Statistic,
+        Operator = alarm.Operator,
+        ThresholdKind = alarm.ThresholdKind,
+        ThresholdValue = alarm.ThresholdValue,
+        PeriodMinutes = alarm.PeriodMinutes,
+        EvaluationPeriods = alarm.EvaluationPeriods,
+        DatapointsToAlarm = alarm.DatapointsToAlarm,
+        MissingDataTreatment = alarm.MissingDataTreatment,
+        Severity = alarm.Severity,
+        ContextGate = alarm.ContextGate,
+        IsEnabled = enabled,
+    };
+
+    private MetricAlarm MemberAlarm(string name)
+    {
+        var alarm = AccountAlarm(name);
+        alarm.CardiMemberId = _memberId;
+        return alarm;
+    }
+
+    [Fact]
+    public async Task SwitchingAnOptedOutAlarmBackOn_PutsTheAccountDefaultBack()
+    {
+        // Off then on again must leave the member inheriting the default, not holding a detached
+        // copy of it marked "tuned for them" that stops following account-level edits.
+        var account = AccountAlarm("HR high");
+        var optOut = AccountAlarm("HR high");
+        optOut.CardiMemberId = _memberId;
+        optOut.DerivedFromAlarmId = account.Id;
+        optOut.IsEnabled = false;
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>())
+            .Returns([account, optOut]);
+
+        var result = await Service().SaveMemberOverrideAsync(
+            _userId, _memberId, optOut.Id, RequestFrom(optOut, enabled: true));
+
+        Assert.Equal(account.Id, result.Id);
+        Assert.Equal(AlarmProvenance.Inherited, result.Provenance);
+        Assert.False(optOut.IsActive);
+        await _alarms.DidNotReceive().AddAsync(Arg.Any<MetricAlarm>());
+    }
+
+    [Fact]
+    public async Task SavingAnOverrideThatSaysWhatTheDefaultSays_PutsTheAccountDefaultBack()
+    {
+        var account = AccountAlarm("HR high");
+        var tuned = AccountAlarm("HR high");
+        tuned.CardiMemberId = _memberId;
+        tuned.DerivedFromAlarmId = account.Id;
+        tuned.ThresholdValue = 140m;
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>())
+            .Returns([account, tuned]);
+
+        var result = await Service().SaveMemberOverrideAsync(
+            _userId, _memberId, tuned.Id, RequestFrom(account, enabled: true));
+
+        Assert.Equal(AlarmProvenance.Inherited, result.Provenance);
+        Assert.False(tuned.IsActive);
+    }
+
+    [Fact]
+    public async Task AGenuinelyDifferentOverride_StaysAnOverride()
+    {
+        var account = AccountAlarm("HR high");
+        var optOut = AccountAlarm("HR high");
+        optOut.CardiMemberId = _memberId;
+        optOut.DerivedFromAlarmId = account.Id;
+        optOut.IsEnabled = false;
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>())
+            .Returns([account, optOut]);
+
+        var request = RequestFrom(optOut, enabled: true);
+        request.ThresholdValue = 140m;
+
+        var result = await Service().SaveMemberOverrideAsync(_userId, _memberId, optOut.Id, request);
+
+        Assert.Equal(AlarmProvenance.Overridden, result.Provenance);
+        Assert.True(optOut.IsActive);
+        Assert.Equal(140m, optOut.ThresholdValue);
+    }
+
+    [Fact]
+    public async Task RenamingAnAlarm_KeepsItsStandingState()
+    {
+        // A rename changes nothing the evaluator reads. Wiping the state would make the next tick
+        // read a condition the caregiver already has the card for as a fresh transition, and page
+        // again.
+        var own = MemberAlarm("Oxygen");
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>()).Returns([own]);
+
+        var request = RequestFrom(own, enabled: true);
+        request.Name = "Oxygen (night)";
+        request.Severity = AlertSeverity.Red;
+        request.ConfirmCriticalSeverity = true;
+
+        await Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, request);
+
+        Assert.Equal("Oxygen (night)", own.Name);
+        await _states.DidNotReceive().DeleteForAlarmAsync(own.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RetuningAnAlarm_ResetsItsState()
+    {
+        var own = MemberAlarm("Oxygen");
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>()).Returns([own]);
+
+        var request = RequestFrom(own, enabled: true);
+        request.ThresholdValue = 140m;
+
+        await Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, request);
+
+        await _states.Received(1).DeleteForAlarmAsync(own.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SwitchingAnAlarmOff_ResetsItsState()
+    {
+        // A state left behind by an alarm that was off for a month is not one to trust when it
+        // comes back on, so the switch resets it in both directions.
+        var own = MemberAlarm("Oxygen");
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>()).Returns([own]);
+
+        await Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, RequestFrom(own, enabled: false));
+
+        await _states.Received(1).DeleteForAlarmAsync(own.Id, Arg.Any<CancellationToken>());
+    }
 }

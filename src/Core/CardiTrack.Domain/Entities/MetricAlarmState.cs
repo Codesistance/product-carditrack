@@ -34,6 +34,11 @@ public class MetricAlarmState : BaseEntity
     /// <summary>The last tick that reached a verdict, for diagnosing an alarm that has gone quiet.</summary>
     public DateTime LastEvaluatedUtc { get; set; }
 
-    /// <summary>The alert raised by the most recent transition into alarm, if any.</summary>
+    /// <summary>
+    /// The alert raised by the current episode's transition into alarm, if any. Cleared when the
+    /// alarm returns to <see cref="AlarmEvaluationState.Ok"/>, which makes it the re-arm: while it
+    /// is set, a pass through <see cref="AlarmEvaluationState.InsufficientData"/> and back into
+    /// alarm is the same episode continuing, not a new one to page about.
+    /// </summary>
     public Guid? LastAlertId { get; set; }
 }

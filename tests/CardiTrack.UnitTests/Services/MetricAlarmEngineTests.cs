@@ -60,7 +60,8 @@ public class MetricAlarmEngineTests
             .Returns([_organizationId]);
         _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>())
             .Returns([_alarm]);
-        _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId]);
+        _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlyCollection<Guid>>())
+            .Returns([_memberId]);
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
             Id = _memberId,
@@ -222,7 +223,157 @@ public class MetricAlarmEngineTests
         _alarms.GetOrganizationIdsWithEnabledAlarmsAsync(Arg.Any<CancellationToken>()).Returns([]);
 
         Assert.Equal(0, await Engine().EvaluateAsync(UtcNow));
-        await _members.DidNotReceive().GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>());
+        await _members.DidNotReceive().GetActiveIdsWithActivitySinceAsync(
+            Arg.Any<DateOnly>(), Arg.Any<IReadOnlyCollection<Guid>>());
+    }
+
+    [Fact]
+    public async Task AsksOnlyForMembersOfOrganizationsThatHaveAlarms()
+    {
+        // The outer filter has to reach the query. Fetching every active member in the estate and
+        // discarding the ones whose organization has no alarms is one SELECT per discarded member.
+        await Engine().EvaluateAsync(UtcNow);
+
+        await _members.Received(1).GetActiveIdsWithActivitySinceAsync(
+            Arg.Any<DateOnly>(), Arg.Is<IReadOnlyCollection<Guid>>(o => o.Single() == _organizationId));
+    }
+
+    [Fact]
+    public async Task DoesNotPageAgain_WhenAStandingEpisodeDipsThroughInsufficientData()
+    {
+        // The watch came off for a quarter of an hour mid-episode and went back on with the heart
+        // rate unchanged. The state left Alarm, but the episode never ended: the alert it raised is
+        // still on the row, and that is what says "already told them".
+        _states.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns(
+        [
+            new MetricAlarmState
+            {
+                MetricAlarmId = _alarm.Id,
+                CardiMemberId = _memberId,
+                State = AlarmEvaluationState.InsufficientData,
+                StateSinceUtc = UtcNow.AddMinutes(-15),
+                LastAlertId = Guid.NewGuid(),
+            },
+        ]);
+
+        Assert.Equal(0, await Engine().EvaluateAsync(UtcNow));
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    [Fact]
+    public async Task PagesFromInsufficientData_WhenNoEpisodeIsOutstanding()
+    {
+        // A new alarm whose first ticks had no data, or one that came back to normal and then went
+        // quiet, is armed: the first breach it sees is a fresh episode.
+        _states.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns(
+        [
+            new MetricAlarmState
+            {
+                MetricAlarmId = _alarm.Id,
+                CardiMemberId = _memberId,
+                State = AlarmEvaluationState.InsufficientData,
+                StateSinceUtc = UtcNow.AddMinutes(-15),
+                LastAlertId = null,
+            },
+        ]);
+
+        Assert.Equal(1, await Engine().EvaluateAsync(UtcNow));
+    }
+
+    [Fact]
+    public async Task ReturningToNormal_ClearsTheEpisodesAlert()
+    {
+        // The re-arm itself: back to Ok forgets the alert, so the next breach is a new episode.
+        SetHeartRate(100);
+        var state = new MetricAlarmState
+        {
+            MetricAlarmId = _alarm.Id,
+            CardiMemberId = _memberId,
+            State = AlarmEvaluationState.Alarm,
+            StateSinceUtc = UtcNow.AddMinutes(-30),
+            LastAlertId = Guid.NewGuid(),
+        };
+        _states.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([state]);
+
+        await Engine().EvaluateAsync(UtcNow);
+
+        Assert.Equal(AlarmEvaluationState.Ok, state.State);
+        Assert.Null(state.LastAlertId);
+    }
+
+    [Fact]
+    public async Task AQuietTick_DoesNotRewriteTheStateRow()
+    {
+        // Nothing changed and the row was stamped minutes ago: writing it again is a row update per
+        // alarm per member every five minutes for no information.
+        _states.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns(
+        [
+            new MetricAlarmState
+            {
+                MetricAlarmId = _alarm.Id,
+                CardiMemberId = _memberId,
+                State = AlarmEvaluationState.Alarm,
+                StateSinceUtc = UtcNow.AddMinutes(-30),
+                LastEvaluatedUtc = UtcNow.AddMinutes(-5),
+                LastAlertId = Guid.NewGuid(),
+            },
+        ]);
+
+        await Engine().EvaluateAsync(UtcNow);
+
+        _states.DidNotReceive().Update(Arg.Any<MetricAlarmState>());
+    }
+
+    [Fact]
+    public async Task AQuietTick_StillStampsTheRowOnceAnHour()
+    {
+        // "Still looking" is worth keeping — it is how an alarm nobody evaluates any more is told
+        // apart from one that is merely quiet — just not every five minutes.
+        _states.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns(
+        [
+            new MetricAlarmState
+            {
+                MetricAlarmId = _alarm.Id,
+                CardiMemberId = _memberId,
+                State = AlarmEvaluationState.Alarm,
+                StateSinceUtc = UtcNow.AddHours(-3),
+                LastEvaluatedUtc = UtcNow.AddHours(-2),
+                LastAlertId = Guid.NewGuid(),
+            },
+        ]);
+
+        await Engine().EvaluateAsync(UtcNow);
+
+        _states.Received(1).Update(Arg.Is<MetricAlarmState>(s => s.LastEvaluatedUtc == UtcNow));
+    }
+
+    [Fact]
+    public async Task OneMembersFailedSave_DoesNotPoisonTheRest()
+    {
+        // The scope is shared across the pass. A failed save leaves its entries in the change
+        // tracker, and without clearing them every later member's save would fail the same way —
+        // the per-member catch would be logging the same exception for the whole estate.
+        var failingId = Guid.NewGuid();
+        _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>(), Arg.Any<IReadOnlyCollection<Guid>>())
+            .Returns([failingId, _memberId]);
+        _members.GetByIdAsync(failingId).Returns(new CardiMember
+        {
+            Id = failingId,
+            OrganizationId = _organizationId,
+            Name = "Arthur Doe",
+            IsActive = true,
+        });
+        _alarms.GetForMemberAsync(_organizationId, failingId, Arg.Any<CancellationToken>()).Returns([_alarm]);
+        _states.GetByCardiMemberAsync(failingId, Arg.Any<CancellationToken>()).Returns([]);
+        _unitOfWork.SaveChangesAsync().Returns(
+            _ => throw new InvalidOperationException("row was deleted underneath us"),
+            _ => Task.FromResult(1));
+
+        var raised = await Engine().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        _unitOfWork.Received().ClearTracking();
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a => a.CardiMemberId == _memberId));
     }
 
     [Fact]

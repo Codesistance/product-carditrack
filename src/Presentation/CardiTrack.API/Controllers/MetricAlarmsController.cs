@@ -7,6 +7,7 @@ using CardiTrack.Application.Interfaces.Services;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CardiTrack.API.Controllers;
 
@@ -248,6 +249,10 @@ public class MetricAlarmsController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
         }
+        catch (DbUpdateException)
+        {
+            return Error(ConcurrentSaveMessage, StatusCodes.Status409Conflict);
+        }
     }
 
     private async Task<ActionResult<ApiResponse<MetricAlarmResponse>>> GuardedCreate(
@@ -269,5 +274,15 @@ public class MetricAlarmsController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
         }
+        catch (DbUpdateException)
+        {
+            return Error(ConcurrentSaveMessage, StatusCodes.Status409Conflict);
+        }
     }
+
+    // Two devices writing the same member's first override at once both read "no override yet",
+    // and the unique index on (member, default) refuses the loser. The winner's row stands, so the
+    // loser is told to look again rather than shown a server error.
+    private const string ConcurrentSaveMessage =
+        "This alarm was just changed from another device. Refresh and try again.";
 }
