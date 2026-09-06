@@ -660,6 +660,35 @@ public class ReportGenerationServiceTests
     }
 
     [Fact]
+    public async Task Gather_PassesNoReadings_WhenTheMetricsSectionIsOff()
+    {
+        // The narrative prompt is built from whatever the gather returns, so loading the logs
+        // regardless meant a caregiver who unticked metrics still had their readings described in
+        // the PDF — and still had them sent to the general provider.
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10), Steps = 4321 }]);
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(includeMetrics: false));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Empty(_renderer.LastData!.Members.Single().ActivityLogs);
+    }
+
+    [Fact]
+    public async Task Prompt_DescribesNoMetrics_WhenTheMetricsSectionIsOff()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10), Steps = 4321 }]);
+
+        var prompt = await CapturePromptAsync(BuildRequest(includeMetrics: false));
+
+        // Not just absent from the rendered file — absent from what leaves for the provider.
+        Assert.DoesNotContain("### Activity Metrics", prompt);
+        Assert.DoesNotContain("4321", prompt);
+    }
+
+    [Fact]
     public async Task Gather_DoesNotReadDevices_WhenTheSectionIsOff()
     {
         var sut = CreateSut();

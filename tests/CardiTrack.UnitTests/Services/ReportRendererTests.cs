@@ -205,6 +205,59 @@ public class ReportRendererTests
         Assert.DoesNotContain("ConnectionStatus", csv);
     }
 
+    [Theory]
+    [InlineData("=HYPERLINK(\"http://example.com\",\"Click\")")]
+    [InlineData("+1-555-0100")]
+    [InlineData("-Margaret")]
+    [InlineData("@Margaret")]
+    public async Task Csv_NeutralisesAValueASpreadsheetWouldTreatAsAFormula(string memberName)
+    {
+        // The file is built to be forwarded — to family, to a clinician — so a name that opens
+        // with one of these must arrive as text, not as something Excel evaluates (CWE-1236).
+        var csv = await RenderCsvAsync(BuildData(memberName));
+        var row = csv.TrimEnd().Split('\n')[1].TrimEnd('\r');
+
+        // CsvHelper only quotes a field that needs it, so the apostrophe may or may not sit
+        // inside quotes — what matters is that it is there, ahead of the trigger character.
+        Assert.StartsWith("'" + memberName[0], row.TrimStart('"'));
+    }
+
+    [Fact]
+    public async Task Csv_LeavesAnOrdinaryNameExactlyAsEntered()
+    {
+        // The escape is applied only where it is needed; it is not a blanket prefix that would
+        // put a stray apostrophe in front of every name in the file.
+        var csv = await RenderCsvAsync(BuildData("Margaret Doe"));
+
+        Assert.Contains("Margaret Doe,2026-02-10", csv);
+        Assert.DoesNotContain("'Margaret", csv);
+    }
+
+    [Fact]
+    public async Task Csv_LeavesNegativeNumbersAsNumbers()
+    {
+        // The escape covers strings that came from a person, not the numeric columns — a reading
+        // that is legitimately negative must stay a number a spreadsheet can chart.
+        var day = FullDay();
+        day.Distance = -1.5m;
+
+        var csv = await RenderCsvAsync(BuildData(logs: [day]));
+
+        Assert.Contains(",-1.5,", csv);
+        Assert.DoesNotContain("'-1.5", csv);
+    }
+
+    [Fact]
+    public async Task Csv_NeutralisesAnAlertTitleTheSameWay()
+    {
+        var alert = BuildAlert();
+        alert.Title = "=cmd|'/c calc'!A1";
+
+        var csv = await RenderCsvAsync(BuildData(alerts: [alert]));
+
+        Assert.Contains("'=cmd", csv);
+    }
+
     // ── FHIR R4 ─────────────────────────────────────────────────────────────────
 
     private static async Task<Bundle> RenderBundleAsync(

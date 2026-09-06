@@ -26,6 +26,12 @@ namespace CardiTrack.Infrastructure.Services.Reports;
 /// message bodies and device labels are caregiver free text and stay out
 /// (docs/technical/data_protection_architecture.md §70, §85).
 /// </para>
+/// <para>
+/// Every string that came from a person goes through <see cref="WriteText"/>, which stops a
+/// spreadsheet reading it as a formula. This file is built to be forwarded — to family, to a
+/// clinician — so the usual "it is only opened by the person who exported it" reasoning does not
+/// hold here.
+/// </para>
 /// </remarks>
 public class CsvReportRenderer : IReportRenderer
 {
@@ -77,6 +83,34 @@ public class CsvReportRenderer : IReportRenderer
         return Task.FromResult(new RenderedReport(bytes, "text/csv; charset=utf-8", "csv"));
     }
 
+    /// <summary>
+    /// Characters that make a spreadsheet treat a cell as a formula rather than as text.
+    /// </summary>
+    /// <remarks>
+    /// Excel and Sheets both evaluate a cell opening with one of these, so a member named
+    /// <c>=HYPERLINK("http://…","Click")</c> would arrive at a clinician's desk as a live link
+    /// rather than as a name (CWE-1236). Every string that came from a person is written through
+    /// <see cref="WriteText"/>; the numeric columns are not, so a negative distance stays a number.
+    /// </remarks>
+    private static readonly char[] FormulaTriggers = ['=', '+', '-', '@', '\t', '\r'];
+
+    /// <summary>
+    /// Writes a caregiver- or rule-supplied string, neutralising it as a formula if it would
+    /// otherwise become one. The leading apostrophe is the convention both Excel and Sheets read
+    /// as "this is text", and it is added only to a value that needs it — an ordinary name is
+    /// written exactly as it was entered.
+    /// </summary>
+    private static void WriteText(CsvWriter csv, string? value)
+    {
+        if (!string.IsNullOrEmpty(value) && Array.IndexOf(FormulaTriggers, value[0]) >= 0)
+        {
+            csv.WriteField("'" + value);
+            return;
+        }
+
+        csv.WriteField(value);
+    }
+
     private static void WriteDailyMetrics(CsvWriter csv, ReportDataSet data)
     {
         foreach (var header in new[]
@@ -95,7 +129,7 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var log in member.ActivityLogs)
             {
-                csv.WriteField(member.Member.Name);
+                WriteText(csv, member.Member.Name);
                 csv.WriteField(log.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
                 csv.WriteField(log.Steps);
                 csv.WriteField(log.Distance);
@@ -125,11 +159,11 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var alert in member.Alerts)
             {
-                csv.WriteField(member.Member.Name);
+                WriteText(csv, member.Member.Name);
                 csv.WriteField(alert.TriggeredDate.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
                 csv.WriteField(alert.Severity.ToString());
                 csv.WriteField(alert.AlertType.ToString());
-                csv.WriteField(alert.Title);
+                WriteText(csv, alert.Title);
                 csv.WriteField(alert.AcknowledgedDate?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
                 csv.NextRecord();
             }
@@ -151,7 +185,7 @@ public class CsvReportRenderer : IReportRenderer
         {
             foreach (var device in member.Devices)
             {
-                csv.WriteField(member.Member.Name);
+                WriteText(csv, member.Member.Name);
                 csv.WriteField(device.DeviceType.ToString());
                 csv.WriteField(device.ConnectionStatus.ToString());
                 csv.WriteField(device.ConnectedDate?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));

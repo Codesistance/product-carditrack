@@ -224,10 +224,16 @@ public class ReportGenerationService : IReportGenerationService
             var member = await unitOfWork.CardiMembers.GetByIdAsync(memberId);
             if (member is null) continue;
 
-            var logs = (await unitOfWork.ActivityLogs
-                    .GetByCardiMemberAndDateRangeAsync(memberId, request.DateRangeFrom, request.DateRangeTo))
-                .OrderBy(l => l.Date)
-                .ToList();
+            // Gated like the other two sections, and for a sharper reason than symmetry: the
+            // narrative prompt is built from whatever this gather returns, so loading the logs
+            // regardless meant a caregiver who unticked metrics still had the readings described
+            // in their PDF — and still had them sent to the general provider.
+            var logs = request.IncludeMetrics
+                ? (await unitOfWork.ActivityLogs
+                        .GetByCardiMemberAndDateRangeAsync(memberId, request.DateRangeFrom, request.DateRangeTo))
+                    .OrderBy(l => l.Date)
+                    .ToList()
+                : [];
 
             var alerts = request.IncludeAlerts
                 ? (await unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
