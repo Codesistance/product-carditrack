@@ -53,6 +53,10 @@ public class CardiTrackDbContext : DbContext
     // Dashboard status line (batch-generated, API-served)
     public DbSet<MemberStatusLine> MemberStatusLines => Set<MemberStatusLine>();
 
+    // Health-data exports. The row is the request and its outcome; the rendered bytes live in
+    // the export bucket (docs/infrastructure.md — files never in the database).
+    public DbSet<Report> Reports => Set<Report>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

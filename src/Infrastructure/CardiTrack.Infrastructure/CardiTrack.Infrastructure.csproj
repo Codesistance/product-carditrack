@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <PackageReference Include="Anthropic" Version="12.40.0" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
     <PackageReference Include="FirebaseAdmin" Version="3.6.0" />
     <!-- Explicit, though FirebaseAdmin already drags it in transitively: MedGemmaIdentityTokenHandler
          mints the OIDC token that Cloud Run's IAM check requires, so this is load-bearing for the
@@ -28,6 +29,8 @@
     <!-- Member profile photos live in a private GCS bucket, served via short-lived V4 signed
          URLs; the client is confined to GcsProfilePhotoStorage (architecture test). -->
     <PackageReference Include="Google.Cloud.Storage.V1" Version="4.15.0" />
+    <PackageReference Include="Hl7.Fhir.R4" Version="6.4.0" />
+    <PackageReference Include="QuestPDF" Version="2026.8.0" />
     <!-- Re-encodes uploaded photos (validate, downscale, strip EXIF/GPS) before storage.
          In-process; no network; not a subprocessor. Confined to ImageSharpProfilePhotoProcessor.
          Pinned to the 3.x line deliberately: 4.x moved to a paid Six Labors license and its

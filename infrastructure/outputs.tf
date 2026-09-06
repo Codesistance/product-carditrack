@@ -60,6 +60,11 @@ output "member_photos_bucket_name" {
   value       = module.deployments.member_photos_bucket_name
 }
 
+output "report_exports_bucket_name" {
+  description = "Name of the health-data exports bucket"
+  value       = module.deployments.report_exports_bucket_name
+}
+
 output "secret_manager_project" {
   description = "Secret Manager project path"
   value       = module.deployments.secret_manager_project

@@ -1129,6 +1129,10 @@ public partial class CardiMemberDetailPage : ContentPage
             $"{JournalTimingPage.Route}?memberId={_memberId}&name={name}");
     }
 
+    /// <summary>M1-17 Health Data Export, scoped to the member whose page this is.</summary>
+    private async void OnExportDataTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync($"{ExportHealthDataPage.Route}?memberId={_memberId}");
+
     private async void OnQuestionsTapped(object? sender, EventArgs e)
     {
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);

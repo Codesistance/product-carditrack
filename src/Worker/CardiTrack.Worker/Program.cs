@@ -78,6 +78,7 @@ builder.Services.AddScoped<IMemberChatSessionRepository, MemberChatSessionReposi
 builder.Services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
 builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
 builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
+builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
@@ -88,6 +89,7 @@ builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionServi
 // needs the bucket's list/delete port. An unset bucket is the supported local state: the adapter
 // lists nothing (with one warning), so the sweep is a no-op rather than a failure.
 builder.Services.AddMemberPhotoStorage(configuration);
+builder.Services.AddReportStorage(configuration);
 
 // Application services
 builder.Services.AddNumerics();
@@ -142,6 +144,13 @@ builder.Services.AddWorker<QuietReassuranceWorker>(configuration, nameof(QuietRe
 builder.Services.AddWorker<OrphanedPhotoCleanupWorker>(configuration, nameof(OrphanedPhotoCleanupWorker));
 builder.Services.Configure<OrphanedPhotoCleanupOptions>(
     configuration.GetSection($"Workers:{nameof(OrphanedPhotoCleanupWorker)}"));
+
+// Retention for health-data exports: deletes objects and rows past the download window, and fails
+// out generations abandoned by a restart. The durable-storage counterpart to the TTL the
+// cache-backed reports design used to get for free.
+builder.Services.AddWorker<ExpiredReportCleanupWorker>(configuration, nameof(ExpiredReportCleanupWorker));
+builder.Services.Configure<ExpiredReportCleanupOptions>(
+    configuration.GetSection($"Workers:{nameof(ExpiredReportCleanupWorker)}"));
 
 // Push delivery spine (notification_engine.md Phase 3)
 builder.Services.AddWorker<NotificationDispatchWorker>(configuration, nameof(NotificationDispatchWorker));

@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.ExternalClients.Storage;
 using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Services.Reports;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared;
 using Microsoft.Extensions.Configuration;
@@ -32,6 +33,48 @@ public static class StorageServiceExtensions
         // signer and log-once flag are all meant to live for the process.
         services.AddSingleton<IProfilePhotoProcessor, ImageSharpProfilePhotoProcessor>();
         services.AddSingleton<IProfilePhotoStorage, GcsProfilePhotoStorage>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Wires health-data export storage. Registered by the API (which generates and serves
+    /// exports) and by the Worker (which reaps expired ones). Same absent-bucket stance as photos
+    /// at startup — it is a supported local state, not a misconfiguration — but at call time the
+    /// adapter throws rather than degrading: an export has no partial answer worth returning.
+    /// </summary>
+    public static IServiceCollection AddReportStorage(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        var options = configuration.GetSection(ConfigurationKeys.Storage.ReportsSectionName)
+            .Get<ReportStorageOptions>() ?? new ReportStorageOptions();
+
+        services.AddSingleton(options);
+
+        // Singleton: the adapter holds nothing per-request, and its GCS client is meant to live
+        // for the process.
+        services.AddSingleton<IReportStorage, GcsReportStorage>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Wires the export renderers — one per <see cref="Domain.Enums.ReportFormat"/> shipping in
+    /// MVP 1. Registered by the API only; the Worker reaps expired exports but never renders one.
+    /// <c>ReportGenerationService</c> resolves the whole set and picks by format, so MVP 2's HL7 v2
+    /// arrives as one more <c>AddSingleton</c> here.
+    /// </summary>
+    public static IServiceCollection AddReportRendering(this IServiceCollection services)
+    {
+        // QuestPDF refuses to render until a licence is declared. Community is the correct
+        // declaration below its revenue threshold; revisit alongside the licence review before
+        // this ships to a paying-scale deployment.
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
+        // Singletons: every renderer is stateless.
+        services.AddSingleton<IReportRenderer, PdfReportRenderer>();
+        services.AddSingleton<IReportRenderer, CsvReportRenderer>();
+        services.AddSingleton<IReportRenderer, FhirR4ReportRenderer>();
 
         return services;
     }

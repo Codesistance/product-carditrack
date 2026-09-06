@@ -138,6 +138,26 @@
                     </Grid>
                 </Border>
 
+                <!-- M1-17's second entry point. Under Account rather than its own section:
+                     it is a thing the caregiver does with their data, alongside the password
+                     and the deletion request at the foot of this page. -->
+                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                          SemanticProperties.Description="Export health data"
+                          SemanticProperties.Hint="Download records as a PDF, spreadsheet or FHIR bundle">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnExportHealthDataTapped"/>
+                        </Grid.GestureRecognizers>
+                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                            <Label Text="Export health data" Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label Text="A PDF, spreadsheet or FHIR bundle for a doctor's visit"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                               VerticalTextAlignment="Center"/>
+                    </Grid>
+                </Border>
+
                 <Label Text="About"
                        Style="{StaticResource DashboardSectionTitle}"
                        Margin="4,8,4,-4"/>

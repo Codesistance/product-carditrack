@@ -33,6 +33,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(CardiMemberDetailPage.Route, typeof(CardiMemberDetailPage));
         Routing.RegisterRoute(EditCardiMemberPage.Route, typeof(EditCardiMemberPage));
         Routing.RegisterRoute(DeviceManagementPage.Route, typeof(DeviceManagementPage));
+        Routing.RegisterRoute(ExportHealthDataPage.Route, typeof(ExportHealthDataPage));
         Routing.RegisterRoute(QuestionnairesPage.Route, typeof(QuestionnairesPage));
         Routing.RegisterRoute(MedicalInformationPage.Route, typeof(MedicalInformationPage));
         Routing.RegisterRoute(MetricTrendPage.Route, typeof(MetricTrendPage));

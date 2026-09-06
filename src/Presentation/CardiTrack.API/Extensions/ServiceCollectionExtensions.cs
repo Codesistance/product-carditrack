@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
         services.AddScoped<IValidator<MemberChatMessageRequest>, MemberChatMessageValidator>();
+        services.AddScoped<IValidator<GenerateReportRequest>, GenerateReportValidator>();
         return services;
     }
 
@@ -36,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IUserService, CardiTrack.Application.Services.UserService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ICardiMemberService, CardiTrack.Application.Services.CardiMemberService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ISubscriptionService, CardiTrack.Application.Services.SubscriptionService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IEntitlementService, CardiTrack.Application.Services.EntitlementService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDashboardService, CardiTrack.Application.Services.DashboardService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDigestQueryService, CardiTrack.Application.Services.DigestQueryService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IJournalSettingsService, CardiTrack.Application.Services.JournalSettingsService>();
@@ -93,6 +95,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemberChatTurnRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnRepository>();
         services.AddScoped<IMemberChatTurnUsageRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnUsageRepository>();
         services.AddScoped<IMemberStatusLineRepository, CardiTrack.Infrastructure.Repositories.MemberStatusLineRepository>();
+        services.AddScoped<IReportRepository, CardiTrack.Infrastructure.Repositories.ReportRepository>();
         services.AddScoped<IMemberAdviseRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseRepository>();
 
         // Push delivery spine (notification_engine.md Phase 3) — the API both issues the
@@ -109,6 +112,8 @@ public static class ServiceCollectionExtensions
         // Member profile photos (processor + GCS signed-URL adapter). Registered even with no
         // bucket configured: reads degrade to initials avatars rather than failing resolution.
         services.AddMemberPhotoStorage(configuration);
+        services.AddReportStorage(configuration);
+        services.AddReportRendering();
 
         // External clients
         services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();

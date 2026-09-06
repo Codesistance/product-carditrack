@@ -28,12 +28,13 @@ locals {
   storage_bucket_name   = "${var.project_id}-${var.project_name}-${local.environment}"
   # Defined here rather than derived inside the module so api_env_vars below can name the
   # bucket without a circular reference to the module's own outputs.
-  member_photos_bucket_name = "${var.project_id}-${var.project_name}-${local.environment}-member-photos"
-  pubsub_topic_name         = "${var.project_name}-${local.environment}-realtime"
-  log_sink_name             = "${var.project_name}-${local.environment}-audit-sink"
-  audit_bucket_name         = "${var.project_id}-${var.project_name}-${local.environment}-audit"
-  oom_alert_name            = "${var.project_name}-${local.environment}-cloud-run-oom"
-  oom_alert_service_prefix  = "${var.project_name}-${local.environment}-"
+  member_photos_bucket_name  = "${var.project_id}-${var.project_name}-${local.environment}-member-photos"
+  report_exports_bucket_name = "${var.project_id}-${var.project_name}-${local.environment}-report-exports"
+  pubsub_topic_name          = "${var.project_name}-${local.environment}-realtime"
+  log_sink_name              = "${var.project_name}-${local.environment}-audit-sink"
+  audit_bucket_name          = "${var.project_id}-${var.project_name}-${local.environment}-audit"
+  oom_alert_name             = "${var.project_name}-${local.environment}-cloud-run-oom"
+  oom_alert_service_prefix   = "${var.project_name}-${local.environment}-"
 
   # Read rather than repeated: .model-version is what bakes a tag into the MedGemma image, and
   # AI__Private__Model below is the name the API then asks Ollama for. As two literals they
@@ -157,6 +158,9 @@ module "deployments" {
       # CardiMember profile photos (member_photos.tf). Bucket name only — signed-URL TTL
       # and upload limits are app config with appsettings defaults.
       "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
+      # Health-data exports (report_exports.tf). Bucket name only — the retention window and
+      # generation timeout are app config with appsettings defaults.
+      "Storage__Reports__Bucket" = local.report_exports_bucket_name
     },
     # Transitional — DELETE once an image carrying the AI__Public/AI__Private settings is
     # deployed to every environment. Terraform sets env vars and CI sets the image
@@ -251,6 +255,8 @@ module "deployments" {
       "Logging__LogLevel__Default" = var.log_minimum_level.worker
       # Same bucket as the API's entry above — OrphanedPhotoCleanupWorker's sweep target.
       "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
+      # Likewise for ExpiredReportCleanupWorker: the same export bucket the API writes to.
+      "Storage__Reports__Bucket" = local.report_exports_bucket_name
     },
     # The Worker hosts device pull and the audit pull today, so it is where the cadence
     # parameters land.
@@ -398,12 +404,13 @@ module "deployments" {
   migrator_container_image      = var.migrator_container_image
 
   # Cloud Storage
-  storage_bucket_name       = local.storage_bucket_name
-  member_photos_bucket_name = local.member_photos_bucket_name
-  storage_location          = var.storage_location
-  storage_class             = var.storage_class
-  storage_force_destroy     = !local.is_prod
-  storage_labels            = local.common_labels
+  storage_bucket_name        = local.storage_bucket_name
+  member_photos_bucket_name  = local.member_photos_bucket_name
+  report_exports_bucket_name = local.report_exports_bucket_name
+  storage_location           = var.storage_location
+  storage_class              = var.storage_class
+  storage_force_destroy      = !local.is_prod
+  storage_labels             = local.common_labels
 
   # Secret Manager
   db_password_secret_id  = "${var.project_name}-${local.environment}-db-password"

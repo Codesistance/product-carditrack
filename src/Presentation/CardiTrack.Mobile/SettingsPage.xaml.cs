@@ -72,6 +72,10 @@ public partial class SettingsPage : ContentPage
 
     // The same reset-link call the signed-out Forgot Password screen makes, sent to the
     // signed-in address without asking for it again — there is nothing else to type.
+    /// <summary>M1-17 Health Data Export, unscoped — the page asks which member.</summary>
+    private async void OnExportHealthDataTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(ExportHealthDataPage.Route);
+
     private async void OnChangePasswordTapped(object? sender, TappedEventArgs e)
     {
         var email = _authService.CurrentUserEmail;
