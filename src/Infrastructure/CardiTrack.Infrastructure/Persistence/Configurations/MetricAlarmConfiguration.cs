@@ -51,5 +51,17 @@ public class MetricAlarmConfiguration : IEntityTypeConfiguration<MetricAlarm>
 
         // Resolving overrides, and finding what a deleted account default leaves behind.
         builder.HasIndex(a => a.DerivedFromAlarmId);
+
+        // One live override per member per account default, enforced by the database rather than by
+        // the read-then-insert in MetricAlarmService. Two requests can both see no override and both
+        // insert; the second row is then invisible — resolution groups by the default and takes the
+        // first — but it outlives a delete, so the alarm a caregiver removed reappears. The filter
+        // carries IsActive so that deleting an override and writing a new one is still allowed, and
+        // it is named because an unnamed HasIndex over the same properties silently replaces the
+        // plain index above rather than adding to it.
+        builder.HasIndex(a => new { a.CardiMemberId, a.DerivedFromAlarmId })
+            .IsUnique()
+            .HasFilter("\"DerivedFromAlarmId\" IS NOT NULL AND \"IsActive\"")
+            .HasDatabaseName("IX_MetricAlarms_OneOverridePerMemberPerDefault");
     }
 }

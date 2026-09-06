@@ -332,8 +332,15 @@ public partial class MetricAlarmEditPage : ContentPage
         // Deliberately not clamped or rewritten while typing: pulling "4" up to the minimum the
         // moment it is typed makes "45" impossible to enter. Validation says what is wrong, and
         // Save is what refuses.
-        if (decimal.TryParse(e.NewTextValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+        // The caregiver's own culture first: a numeric keypad in a comma-decimal locale offers a
+        // comma, and parsing invariantly meant "0,5" silently did not parse at all — leaving the
+        // draft on its previous value and making the minimum sigma threshold impossible to type.
+        // Invariant is kept as a fallback so a pasted "0.5" still works wherever it came from.
+        if (decimal.TryParse(e.NewTextValue, NumberStyles.Number, CultureInfo.CurrentCulture, out var value)
+            || decimal.TryParse(e.NewTextValue, NumberStyles.Number, CultureInfo.InvariantCulture, out value))
+        {
             _draft.Request.ThresholdValue = value;
+        }
 
         PreviewLabel.Text = _draft.Describe();
 
@@ -548,8 +555,13 @@ public partial class MetricAlarmEditPage : ContentPage
 
     private static string Readings(int count) => count == 1 ? "reading" : "readings";
 
+    /// <summary>
+    /// Display formatting, in the caregiver's own culture so that what the field shows is what the
+    /// keypad lets them type back. Invariant here would print "0.5" beside a keypad offering a
+    /// comma.
+    /// </summary>
     private static string Format(decimal value) =>
         value == decimal.Truncate(value)
-            ? ((long)value).ToString(CultureInfo.InvariantCulture)
-            : value.ToString("0.#", CultureInfo.InvariantCulture);
+            ? ((long)value).ToString(CultureInfo.CurrentCulture)
+            : value.ToString("0.#", CultureInfo.CurrentCulture);
 }
