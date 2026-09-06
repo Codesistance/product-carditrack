@@ -144,7 +144,8 @@ public class MetricAlarmService : IMetricAlarmService
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var member = await RequireMemberAsync(cardiMemberId);
         Validate(request);
-        await RequireCapacityAsync(member, cardiMemberId, request, addingNew: true, alarmId: null, ct);
+        // A brand-new member alarm replaces nothing.
+        await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: null, ct);
 
         var alarm = new MetricAlarm
         {
@@ -179,7 +180,7 @@ public class MetricAlarmService : IMetricAlarmService
             // Editing the member's own row, whether it is an override or an alarm of their own.
             row = target;
             provenance = target.DerivedFromAlarmId is null ? AlarmProvenance.MemberOnly : AlarmProvenance.Overridden;
-            await RequireCapacityAsync(member, cardiMemberId, request, addingNew: false, alarmId: row.Id, ct);
+            await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
             Apply(row, request);
             _unitOfWork.MetricAlarms.Update(row);
         }
@@ -194,14 +195,18 @@ public class MetricAlarmService : IMetricAlarmService
             provenance = AlarmProvenance.Overridden;
             if (existing is not null)
             {
+                // The member's existing override is the row standing in the effective set.
                 row = existing;
-                await RequireCapacityAsync(member, cardiMemberId, request, addingNew: false, alarmId: row.Id, ct);
+                await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
                 Apply(row, request);
                 _unitOfWork.MetricAlarms.Update(row);
             }
             else
             {
-                await RequireCapacityAsync(member, cardiMemberId, request, addingNew: true, alarmId: null, ct);
+                // First override of an account default: the default is what this replaces, so the
+                // member's effective count does not grow and the ceiling must not be applied as if
+                // it did.
+                await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: alarmId, ct);
                 row = new MetricAlarm
                 {
                     OrganizationId = member.OrganizationId,
@@ -342,19 +347,27 @@ public class MetricAlarmService : IMetricAlarmService
     /// arbitrary: past a handful, a caregiver stops being able to say what they have switched on,
     /// and an alarm nobody can account for is one they will eventually silence wholesale.
     /// </summary>
+    /// <param name="replacesEffectiveAlarmId">
+    /// The id of the row this save replaces <b>in the member's effective set</b>, or null when it
+    /// genuinely adds one. The distinction is easy to get backwards: writing a member's first
+    /// override of an account default creates a row, but it does not add an alarm — the override
+    /// takes the default's place. Counting it as an addition refuses the override once a member is
+    /// at the ceiling, which is a caregiver being told they cannot tune an alarm they already have.
+    /// </param>
     private async Task RequireCapacityAsync(
         CardiMember member, Guid cardiMemberId, SaveMetricAlarmRequest request,
-        bool addingNew, Guid? alarmId, CancellationToken ct)
+        Guid? replacesEffectiveAlarmId, CancellationToken ct)
     {
+        // Turning one off, or saving one that is off, can never push a member past a ceiling.
         if (!request.IsEnabled)
             return;
 
         var rows = await _unitOfWork.MetricAlarms.GetForMemberAsync(member.OrganizationId, cardiMemberId, ct);
-        var enabled = MetricAlarmResolution
+        var othersEnabled = MetricAlarmResolution
             .Evaluable(MetricAlarmResolution.Resolve(rows, cardiMemberId))
-            .Count(e => addingNew || e.Alarm.Id != alarmId);
+            .Count(e => e.Alarm.Id != replacesEffectiveAlarmId);
 
-        if (enabled + (addingNew ? 1 : 0) > MetricAlarmValidation.MaxEnabledAlarmsPerMember)
+        if (othersEnabled + 1 > MetricAlarmValidation.MaxEnabledAlarmsPerMember)
         {
             throw new InvalidOperationException(
                 $"{member.Name} already has {MetricAlarmValidation.MaxEnabledAlarmsPerMember} alarms switched on. "

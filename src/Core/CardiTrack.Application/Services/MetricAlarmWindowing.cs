@@ -53,8 +53,14 @@ public static class MetricAlarmWindowing
     /// no period passes the gate, which is the safe direction: an alarm that only fires when we
     /// positively know the wearer was still is better than one that assumes it.
     /// </param>
+    /// <param name="utcNow">
+    /// The clock end of the search. The anchor must be a reading no older than
+    /// <see cref="LagAllowanceMinutes"/> before this, which is what actually bounds the staleness
+    /// this method is allowed to evaluate — the fetched series is widened to whole hours and so
+    /// reaches further back than the allowance on its own.
+    /// </param>
     public static IReadOnlyList<AlarmDatapoint> FromMinuteSeries(
-        MetricAlarm alarm, float?[]? series, float?[]? stepSeries, DateTime seriesStartUtc)
+        MetricAlarm alarm, float?[]? series, float?[]? stepSeries, DateTime seriesStartUtc, DateTime utcNow)
     {
         ArgumentNullException.ThrowIfNull(alarm);
 
@@ -62,7 +68,7 @@ public static class MetricAlarmWindowing
         if (series is null || series.Length == 0)
             return empty;
 
-        var anchor = LastReadingIndex(series);
+        var anchor = LastReadingIndex(series, seriesStartUtc, utcNow);
         if (anchor is not { } lastIndex)
             return empty;
 
@@ -129,9 +135,34 @@ public static class MetricAlarmWindowing
         return points;
     }
 
-    private static int? LastReadingIndex(float?[] series)
+    /// <summary>
+    /// The most recent minute carrying a reading, searched backwards from now and no further than
+    /// <see cref="LagAllowanceMinutes"/>.
+    /// <para>
+    /// Both ends of that search matter. The series is fetched on whole-hour bounds, so it reaches
+    /// back further than the allowance and forward to the end of the current hour. Without the
+    /// upper bound a future-stamped sample would become "the last reading"; without the lower one,
+    /// a watch that stopped reporting two hours ago would still be anchored on and its readings
+    /// evaluated as if they were current — which is the staleness the allowance exists to refuse,
+    /// and on a health alarm the wrong direction to be wrong in.
+    /// </para>
+    /// </summary>
+    private static int? LastReadingIndex(float?[] series, DateTime seriesStartUtc, DateTime utcNow)
     {
-        for (var i = series.Length - 1; i >= 0; i--)
+        // Both bounds come from the clock and are only then clamped to the array. Deriving the
+        // lower bound from the clamped upper one instead would quietly widen the lookback whenever
+        // the series ends before now — which is exactly when a stale anchor is the risk.
+        var newest = (int)Math.Floor((utcNow - seriesStartUtc).TotalMinutes);
+        if (newest < 0)
+            return null;
+
+        var oldest = (int)Math.Ceiling(
+            (utcNow.AddMinutes(-LagAllowanceMinutes) - seriesStartUtc).TotalMinutes);
+
+        newest = Math.Min(newest, series.Length - 1);
+        oldest = Math.Max(oldest, 0);
+
+        for (var i = newest; i >= oldest; i--)
         {
             if (series[i] is not null)
                 return i;

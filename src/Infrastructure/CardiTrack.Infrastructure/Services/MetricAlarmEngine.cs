@@ -132,7 +132,7 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             var previousState = previous?.State ?? AlarmEvaluationState.InsufficientData;
 
             var datapoints = SourceOf(alarm) == AlarmMetricSource.Granular
-                ? Slice(alarm, window)
+                ? Slice(alarm, window, utcNow)
                 : MetricAlarmWindowing.FromDailyLogs(alarm, logsByDate, localToday);
 
             var verdict = MetricAlarmEvaluator.Evaluate(alarm, datapoints, baseline, previousState);
@@ -188,7 +188,7 @@ public class MetricAlarmEngine : IMetricAlarmEngine
         static DateTime Floor(DateTime t) => new(t.Year, t.Month, t.Day, t.Hour, 0, 0, DateTimeKind.Utc);
     }
 
-    private static IReadOnlyList<AlarmDatapoint> Slice(MetricAlarm alarm, GranularWindow? window)
+    private static IReadOnlyList<AlarmDatapoint> Slice(MetricAlarm alarm, GranularWindow? window, DateTime utcNow)
     {
         if (window is null)
             return Enumerable.Repeat(new AlarmDatapoint(null), alarm.EvaluationPeriods).ToList();
@@ -202,7 +202,7 @@ public class MetricAlarmEngine : IMetricAlarmEngine
             ? window.MinuteSeries.GetValueOrDefault(GranularMetric.Steps)
             : null;
 
-        return MetricAlarmWindowing.FromMinuteSeries(alarm, series, steps, window.FromUtc);
+        return MetricAlarmWindowing.FromMinuteSeries(alarm, series, steps, window.FromUtc, utcNow);
     }
 
     private static AlarmMetricSource SourceOf(MetricAlarm alarm) =>

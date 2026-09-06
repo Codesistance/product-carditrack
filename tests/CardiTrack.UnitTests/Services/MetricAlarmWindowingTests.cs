@@ -13,6 +13,10 @@ public class MetricAlarmWindowingTests
 {
     private static readonly DateTime SeriesStart = new(2026, 9, 6, 10, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>Twenty minutes into the series — comfortably inside the lag allowance of the
+    /// readings each test plants, so anchoring is about the data rather than about staleness.</summary>
+    private static readonly DateTime Now = SeriesStart.AddMinutes(20);
+
     private static MetricAlarm Alarm(
         AlarmMetric metric = AlarmMetric.HeartRate,
         AlarmStatistic statistic = AlarmStatistic.Average,
@@ -48,7 +52,7 @@ public class MetricAlarmWindowingTests
         // wearer who took the watch off. Both datapoints must land on the data that exists.
         var series = Series(10, 130, 130, 130, 130, 130, 130, 130, 130, 130, 130);
 
-        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), series, null, SeriesStart);
+        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), series, null, SeriesStart, Now);
 
         Assert.Equal(2, points.Count);
         Assert.All(points, p => Assert.Equal(130d, p.Value));
@@ -57,7 +61,7 @@ public class MetricAlarmWindowingTests
     [Fact]
     public void Window_WithNoReadingsAtAll_IsAllMissing()
     {
-        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), new float?[60], null, SeriesStart);
+        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), new float?[60], null, SeriesStart, Now);
 
         Assert.Equal(2, points.Count);
         Assert.All(points, p => Assert.Null(p.Value));
@@ -66,7 +70,7 @@ public class MetricAlarmWindowingTests
     [Fact]
     public void Window_WithNoSeriesForTheMetric_IsAllMissing()
     {
-        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), null, null, SeriesStart);
+        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), null, null, SeriesStart, Now);
 
         Assert.Equal(2, points.Count);
         Assert.All(points, p => Assert.Null(p.Value));
@@ -78,7 +82,7 @@ public class MetricAlarmWindowingTests
         // Minutes 10-14 read 100, minutes 15-19 read 130. Newest period is the 130s.
         var series = Series(10, 100, 100, 100, 100, 100, 130, 130, 130, 130, 130);
 
-        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), series, null, SeriesStart);
+        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), series, null, SeriesStart, Now);
 
         Assert.Equal(100d, points[0].Value);
         Assert.Equal(130d, points[1].Value);
@@ -95,7 +99,7 @@ public class MetricAlarmWindowingTests
         var series = Series(10, 100, 120, 110);
 
         var points = MetricAlarmWindowing.FromMinuteSeries(
-            Alarm(statistic: statistic, evaluationPeriods: 1), series, null, SeriesStart);
+            Alarm(statistic: statistic, evaluationPeriods: 1), series, null, SeriesStart, Now);
 
         Assert.Equal(expected, points[0].Value);
     }
@@ -111,7 +115,7 @@ public class MetricAlarmWindowingTests
         series[12] = 120;
 
         var points = MetricAlarmWindowing.FromMinuteSeries(
-            Alarm(evaluationPeriods: 1), series, null, SeriesStart);
+            Alarm(evaluationPeriods: 1), series, null, SeriesStart, Now);
 
         Assert.Equal(120d, points[0].Value);
     }
@@ -125,7 +129,7 @@ public class MetricAlarmWindowingTests
         var steps = Series(10, 0, 0, 0, 0, 0);
 
         var points = MetricAlarmWindowing.FromMinuteSeries(
-            Alarm(evaluationPeriods: 1, gate: AlarmContextGate.Inactive), heart, steps, SeriesStart);
+            Alarm(evaluationPeriods: 1, gate: AlarmContextGate.Inactive), heart, steps, SeriesStart, Now);
 
         Assert.True(points[0].GateSatisfied);
     }
@@ -137,7 +141,7 @@ public class MetricAlarmWindowingTests
         var steps = Series(10, 0, 40, 55, 60, 30);
 
         var points = MetricAlarmWindowing.FromMinuteSeries(
-            Alarm(evaluationPeriods: 1, gate: AlarmContextGate.Inactive), heart, steps, SeriesStart);
+            Alarm(evaluationPeriods: 1, gate: AlarmContextGate.Inactive), heart, steps, SeriesStart, Now);
 
         Assert.False(points[0].GateSatisfied);
     }
@@ -150,9 +154,49 @@ public class MetricAlarmWindowingTests
         var heart = Series(10, 130, 130, 130, 130, 130);
 
         var points = MetricAlarmWindowing.FromMinuteSeries(
-            Alarm(evaluationPeriods: 1, gate: AlarmContextGate.Inactive), heart, null, SeriesStart);
+            Alarm(evaluationPeriods: 1, gate: AlarmContextGate.Inactive), heart, null, SeriesStart, Now);
 
         Assert.False(points[0].GateSatisfied);
+    }
+
+    [Fact]
+    public void Window_RefusesToAnchorOnAReadingOlderThanTheLagAllowance()
+    {
+        // The series is fetched on whole-hour bounds, so it reaches back further than the allowance.
+        // A watch that stopped reporting over an hour ago must not have those readings evaluated as
+        // if they were current — that is stale data raising a live alarm.
+        var series = Series(2, 130, 130, 130, 130, 130);
+        var wellAfter = SeriesStart.AddMinutes(2 + MetricAlarmWindowing.LagAllowanceMinutes + 5);
+
+        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), series, null, SeriesStart, wellAfter);
+
+        Assert.All(points, p => Assert.Null(p.Value));
+    }
+
+    [Fact]
+    public void Window_StillAnchors_OnAReadingJustInsideTheLagAllowance()
+    {
+        var series = Series(10, 130, 130, 130, 130, 130);
+        var justInside = SeriesStart.AddMinutes(14 + MetricAlarmWindowing.LagAllowanceMinutes);
+
+        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), series, null, SeriesStart, justInside);
+
+        Assert.Equal(130d, points[^1].Value);
+    }
+
+    [Fact]
+    public void Window_IgnoresAMinuteStampedAfterNow()
+    {
+        // The fetch runs to the end of the current hour, so later slots exist and should be empty.
+        // A future-stamped sample must not become "the last reading".
+        var series = new float?[60];
+        series[10] = 130;
+        series[40] = 200;
+
+        var points = MetricAlarmWindowing.FromMinuteSeries(Alarm(), series, null, SeriesStart, Now);
+
+        Assert.DoesNotContain(points, p => p.Value == 200d);
+        Assert.Equal(130d, points[^1].Value);
     }
 
     // ── daily ────────────────────────────────────────────────────────────────────────────
