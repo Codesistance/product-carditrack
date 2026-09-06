@@ -35,6 +35,11 @@ public sealed class OidcDiscoveryWarmup(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // An aborted startup cancels the warm-ups it kicked off; once startup has completed
+        // only StopAsync does, which is why the registration lives no longer than this method.
+        using var abortedStartup = cancellationToken.Register(
+            static state => ((CancellationTokenSource)state!).Cancel(), _stopping);
+
         foreach (var scheme in await schemes.GetAllSchemesAsync())
         {
             if (scheme.HandlerType != typeof(JwtBearerHandler))
@@ -76,10 +81,11 @@ public sealed class OidcDiscoveryWarmup(
         }
         catch (Exception ex)
         {
-            // Not an error: the first authenticated request will fetch it under the same budget.
-            // Logged at Warning so it reaches Datadog in prod, where Information does not.
+            // Not an error: the first authenticated request tries again under the same budget,
+            // and may hit the same wall. Logged at Warning so it reaches Datadog in prod, where
+            // Information does not.
             logger.LogWarning(ex,
-                "OIDC discovery for {Scheme} could not be warmed after {ElapsedMs:0} ms; the first authenticated request will fetch it",
+                "OIDC discovery for {Scheme} could not be warmed after {ElapsedMs:0} ms; the first authenticated request will try again",
                 scheme, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }

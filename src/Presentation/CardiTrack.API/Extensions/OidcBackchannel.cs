@@ -16,9 +16,11 @@ namespace CardiTrack.API.Extensions;
 /// caregiver saw a timeout at sign-in either way.
 /// </para>
 /// <para>
-/// Five seconds to connect and ten end to end: a healthy fetch takes 100–300 ms, and a stuck one now
-/// fails fast enough for the handler's own refresh retry, and the mobile budget, to absorb it. Both
-/// schemes share these numbers so the pipeline's GoogleOidc scheme cannot quietly keep the old ones.
+/// Five seconds to connect and ten per request. Discovery and JWKS are separate requests, so one
+/// configuration load is bounded at twenty seconds, and a connect that never completes fails at
+/// five; a healthy fetch takes 100–300 ms. That is fast enough for the handler's own refresh retry,
+/// and the mobile client's 30 s budget, to absorb. Both schemes share these numbers so the
+/// pipeline's GoogleOidc scheme cannot quietly keep the old ones.
 /// </para>
 /// </remarks>
 public static class OidcBackchannel

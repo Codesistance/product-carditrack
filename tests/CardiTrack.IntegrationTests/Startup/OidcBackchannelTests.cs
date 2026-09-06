@@ -41,8 +41,8 @@ public class OidcBackchannelTests
     [Fact]
     public void ConnectTimeout_IsShorterThanTheRequestTimeout_WhichIsInsideTheMobileBudget()
     {
-        // A stuck connect must fail before the request budget does, and the request budget must
-        // leave room for the handler's key-not-found refresh inside the mobile client's 30 s.
+        // A stuck connect must fail before the request budget does, and one configuration load
+        // (discovery plus JWKS, two requests) must fit inside the mobile client's 30 s.
         Assert.True(OidcBackchannel.ConnectTimeout < OidcBackchannel.RequestTimeout);
         Assert.True(OidcBackchannel.RequestTimeout * 2 < TimeSpan.FromSeconds(30));
     }
