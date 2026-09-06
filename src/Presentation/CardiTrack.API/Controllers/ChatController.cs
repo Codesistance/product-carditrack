@@ -34,7 +34,7 @@ public class ChatController : BaseApiController
 
         return Error(
             "This chat endpoint is gone. Send questions about a member to "
-            + "POST /api/v1/member-chat/members/{id}/messages.",
+            + "POST /api/v1/member-chat/members/{cardiMemberId}/messages.",
             StatusCodes.Status410Gone);
     }
 }

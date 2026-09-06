@@ -138,7 +138,7 @@ The full implemented surface is 56 endpoints across 13 controllers:
 | `GET /api/v1/oauth/redirect/{provider}` | Anonymous OAuth bounce (200 HTML hand-off) | [devices.md](devices.md) |
 | `POST /api/v1/oauth/callback/{provider}` | Complete OAuth, store connection (201) | [devices.md](devices.md) |
 | `POST /api/v1/chat` | Retired (410 Gone) — use member chat | — |
-| `POST /api/v1/member-chat/members/{id}/messages` | Caregiver conversation about one CardiMember | — |
+| `POST /api/v1/member-chat/members/{cardiMemberId}/messages` | Caregiver conversation about one CardiMember | — |
 | `GET /api/v1/insights/alerts/{alertId}` | MedGemma analysis of an alert | [alerts.md](alerts.md) |
 | `GET /api/v1/insights/members/{id}/baseline` | MedGemma narrative baseline analysis | [health-data.md](health-data.md) |
 | `GET /api/v1/insights/members/{id}/status` | Short AI status line for the dashboard hero card | [health-data.md](health-data.md) |
@@ -201,7 +201,7 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 | [reports.md](reports.md) | Reports & Exports | **Implemented** (LLM text output; PDF/CSV/FHIR planned) | 2.3, 9.2 |
 | — | Onboarding | **Implemented** (`/api/Onboarding/*`) | 1.1, 1.2 |
 | — | Dashboard | **Implemented** (`GET /api/v1/cardimembers/{id}/dashboard`) | 2.1 |
-| — | AI Chat | **Implemented** (`POST /api/v1/member-chat/members/{id}/messages`; `POST /api/v1/chat` is 410 Gone) | — |
+| — | AI Chat | **Implemented** (`POST /api/v1/member-chat/members/{cardiMemberId}/messages`; `POST /api/v1/chat` is 410 Gone) | — |
 | — | AI Insights | **Implemented** (`/api/v1/insights/*` — 5 endpoints) | 3.1 |
 | — | Health check | **Implemented** (`GET /health`) | — |
 
