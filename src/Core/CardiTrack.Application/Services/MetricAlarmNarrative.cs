@@ -1,4 +1,5 @@
 using System.Globalization;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
@@ -24,12 +25,34 @@ public static class MetricAlarmNarrative
     public static string Condition(MetricAlarm alarm)
     {
         ArgumentNullException.ThrowIfNull(alarm);
+        return Compose(alarm.Metric, alarm.Statistic, alarm.Operator, alarm.ThresholdKind,
+            alarm.ThresholdValue, alarm.PeriodMinutes, alarm.EvaluationPeriods,
+            alarm.DatapointsToAlarm, alarm.ContextGate);
+    }
 
-        var definition = AlarmMetricCatalogue.Find(alarm.Metric);
-        var metric = definition?.Title ?? alarm.Metric.ToString();
+    /// <summary>
+    /// The same sentence for an alarm still being built. The builder previews it as the caregiver
+    /// picks, and previewing it any other way would let the screen promise something the saved
+    /// alarm does not say.
+    /// </summary>
+    public static string Condition(SaveMetricAlarmRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Compose(request.Metric, request.Statistic, request.Operator, request.ThresholdKind,
+            request.ThresholdValue, request.PeriodMinutes, request.EvaluationPeriods,
+            request.DatapointsToAlarm, request.ContextGate);
+    }
+
+    private static string Compose(
+        AlarmMetric metricKind, AlarmStatistic statistic, AlarmOperator comparison,
+        AlarmThresholdKind thresholdKind, decimal thresholdValue, int periodMinutes,
+        int evaluationPeriods, int datapointsToAlarm, AlarmContextGate contextGate)
+    {
+        var definition = AlarmMetricCatalogue.Find(metricKind);
+        var metric = definition?.Title ?? metricKind.ToString();
         var unit = definition?.Unit ?? string.Empty;
 
-        var subject = alarm.Statistic switch
+        var subject = statistic switch
         {
             AlarmStatistic.Average => $"Average {Lower(metric)}",
             AlarmStatistic.Minimum => $"Lowest {Lower(metric)}",
@@ -38,7 +61,7 @@ public static class MetricAlarmNarrative
             _ => metric,
         };
 
-        var comparison = alarm.Operator switch
+        var comparisonWords = comparison switch
         {
             AlarmOperator.GreaterThan => "is above",
             AlarmOperator.GreaterThanOrEqualTo => "reaches",
@@ -47,25 +70,25 @@ public static class MetricAlarmNarrative
             _ => "reaches",
         };
 
-        var level = alarm.ThresholdKind switch
+        var level = thresholdKind switch
         {
             AlarmThresholdKind.BaselinePercent =>
-                $"{Number(alarm.ThresholdValue)}% of their usual",
+                $"{Number(thresholdValue)}% of their usual",
             AlarmThresholdKind.BaselineSigma =>
-                $"{Number(alarm.ThresholdValue)} × their usual variation "
-                + $"{(alarm.Operator is AlarmOperator.GreaterThan or AlarmOperator.GreaterThanOrEqualTo ? "above" : "below")} normal",
+                $"{Number(thresholdValue)} × their usual variation "
+                + $"{(comparison is AlarmOperator.GreaterThan or AlarmOperator.GreaterThanOrEqualTo ? "above" : "below")} normal",
             _ => string.IsNullOrEmpty(unit)
-                ? Number(alarm.ThresholdValue)
-                : $"{Number(alarm.ThresholdValue)} {unit}",
+                ? Number(thresholdValue)
+                : $"{Number(thresholdValue)} {unit}",
         };
 
-        var window = Window(alarm);
-        var count = alarm.EvaluationPeriods > 1
-            ? $", on {alarm.DatapointsToAlarm} of the last {alarm.EvaluationPeriods}"
+        var window = Window(periodMinutes);
+        var count = evaluationPeriods > 1
+            ? $", on {datapointsToAlarm} of the last {evaluationPeriods}"
             : string.Empty;
-        var gate = alarm.ContextGate == AlarmContextGate.Inactive ? ", while they are still" : string.Empty;
+        var gate = contextGate == AlarmContextGate.Inactive ? ", while they are still" : string.Empty;
 
-        return $"{subject} {comparison} {level} {window}{count}{gate}.";
+        return $"{subject} {comparisonWords} {level} {window}{count}{gate}.";
     }
 
     /// <summary>The body of the alert a firing alarm raises.</summary>
@@ -108,7 +131,7 @@ public static class MetricAlarmNarrative
         return string.IsNullOrWhiteSpace(alarm.Name) ? "An alarm you set has been reached" : alarm.Name;
     }
 
-    private static string Window(MetricAlarm alarm) => alarm.PeriodMinutes switch
+    private static string Window(int periodMinutes) => periodMinutes switch
     {
         AlarmMetricCatalogue.DailyPeriodMinutes => "on a day",
         60 => "over an hour",

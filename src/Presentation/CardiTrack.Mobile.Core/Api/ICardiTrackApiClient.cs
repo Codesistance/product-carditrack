@@ -52,6 +52,34 @@ public interface ICardiTrackApiClient
     Task<AlertRuleSettingResponse> SetAlertRuleEnabledAsync(
         Guid cardiMemberId, string ruleId, bool enabled, CancellationToken ct = default);
 
+    /// <summary>What an alarm may legally be built from — the builder's option list.</summary>
+    Task<AlarmCatalogueResponse> GetAlarmCatalogueAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// The alarms that apply to one CardiMember: account-level defaults folded together with this
+    /// member's overrides and additions, each saying where it came from and where it stands.
+    /// </summary>
+    Task<IReadOnlyList<MetricAlarmResponse>> GetMemberAlarmsAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>Adds an alarm for this CardiMember alone. Primary caregiver only.</summary>
+    Task<MetricAlarmResponse> CreateMemberAlarmAsync(
+        Guid cardiMemberId, SaveMetricAlarmRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets what applies to this CardiMember for one alarm — editing their own row, or writing an
+    /// override of an account default. Saving with <c>IsEnabled</c> false is how a member opts out
+    /// of an inherited alarm.
+    /// </summary>
+    Task<MetricAlarmResponse> SaveMemberAlarmAsync(
+        Guid cardiMemberId, Guid alarmId, SaveMetricAlarmRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes what this member has of their own for an alarm — reverting an override to the
+    /// account default, or deleting an alarm that was only ever theirs.
+    /// </summary>
+    Task DeleteMemberAlarmAsync(Guid cardiMemberId, Guid alarmId, CancellationToken ct = default);
+
     /// <summary>
     /// When this member's CardiJournal books are written, in their own local time, with the
     /// window and step a picker must stay inside.

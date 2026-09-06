@@ -677,6 +677,37 @@
                             </Grid>
                         </Border>
 
+                        <!-- The caregiver's own thresholds, directly under the rules CardiTrack
+                             checks on its own. The pairing is the point: one row says what
+                             CardiTrack looks for, the next says what you have asked it to look for
+                             on top of that, and a caregiver wondering "why did I get told about
+                             this" has both answers in one place.
+
+                             R2, and no Figma frame — on the design-sync backlog. -->
+                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
+                                  SemanticProperties.Description="Your Alarms"
+                                  SemanticProperties.Hint="Set the levels you want to be told about">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
+                                </Grid.GestureRecognizers>
+                                <!-- The same bell-and-cog as Alert Settings above it: same subject,
+                                     same kind of setting. What separates the two rows is their
+                                     labels, and separating them by icon as well would suggest they
+                                     were different sorts of thing. -->
+                                <Image Grid.Column="0"
+                                       Source="icon_bell_cog.svg"
+                                       WidthRequest="22" HeightRequest="22"
+                                       VerticalOptions="Center"/>
+                                <Label Grid.Column="1"
+                                       Text="Your Alarms"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       VerticalTextAlignment="Center"/>
+                                <Image Grid.Column="2" Source="icon_chevron.svg"
+                                       WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
+                            </Grid>
+                        </Border>
+
                         <!-- When each book is written. In Management rather than under the
                              CardiJournal row it used to sit beneath: the journal is something you
                              read, and this is a setting for how CardiTrack behaves — which is what

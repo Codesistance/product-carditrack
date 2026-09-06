@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.MetricAlarmsPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- The alarms a caregiver has set for this CardiMember: their own thresholds, as opposed to
+         Alert Settings next door, which switches CardiTrack's own rules on and off. The two pages
+         are deliberate neighbours in Member Details' Management group and share a shape — a
+         switch saves the moment it is flipped, and nothing here is held half-made.
+
+         Each row says what the alarm watches in one sentence, composed server-side so this screen
+         and the alert it eventually raises cannot describe the same alarm differently. A row
+         inherited from the account is marked as such, because "why am I getting this" is the first
+         question a caregiver asks about an alarm they do not remember setting.
+
+         No Figma frame — R2 work, and on the design-sync backlog alongside the other frameless
+         screens. -->
+
+    <Grid RowDefinitions="Auto,*" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Your Alarms"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitle"
+                           Text="Levels you want to be told about"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="20" Spacing="14">
+
+                <ActivityIndicator x:Name="LoadingSpinner"
+                                   IsRunning="True"
+                                   IsVisible="True"
+                                   HorizontalOptions="Center"
+                                   Margin="0,24"/>
+
+                <VerticalStackLayout x:Name="AlarmsPanel" IsVisible="False" Spacing="14">
+
+                    <Label x:Name="IntroLabel" Style="{StaticResource Body2}"/>
+
+                    <!-- Said only once the count is worth saying it about: past a handful, a
+                         caregiver stops being able to account for what they have switched on, and
+                         an alarm nobody can account for is one they eventually silence wholesale. -->
+                    <Border x:Name="CrowdingNotice"
+                            IsVisible="False"
+                            Style="{StaticResource OutlinedCard}"
+                            Padding="14,12">
+                        <Label x:Name="CrowdingLabel" Style="{StaticResource Body2}"/>
+                    </Border>
+
+                    <VerticalStackLayout x:Name="AlarmsHost" Spacing="12"/>
+
+                    <VerticalStackLayout x:Name="EmptyPanel" IsVisible="False" Spacing="8">
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="No alarms set" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label Style="{StaticResource Body2}"
+                                       Text="CardiTrack already watches for its own patterns. An alarm is for a level you have been told to watch for — a resting heart rate over a number, say, or oxygen dropping below one."/>
+                            </VerticalStackLayout>
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <Button x:Name="AddButton"
+                            Text="Add an alarm"
+                            Style="{StaticResource PrimaryGradientButton}"
+                            Clicked="OnAddTapped"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="Couldn't load these alarms"
+                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label x:Name="ErrorDetailLabel" Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

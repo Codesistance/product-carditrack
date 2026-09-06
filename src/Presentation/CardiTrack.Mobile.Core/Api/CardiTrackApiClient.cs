@@ -92,6 +92,27 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             new SetAlertRuleEnabledRequest { Enabled = enabled },
             ct);
 
+    public Task<AlarmCatalogueResponse> GetAlarmCatalogueAsync(CancellationToken ct = default) =>
+        GetAsync<AlarmCatalogueResponse>("api/v1/alarms/catalogue", ct);
+
+    public Task<IReadOnlyList<MetricAlarmResponse>> GetMemberAlarmsAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<MetricAlarmResponse>>($"api/v1/cardimembers/{cardiMemberId}/alarms", ct);
+
+    public Task<MetricAlarmResponse> CreateMemberAlarmAsync(
+        Guid cardiMemberId, SaveMetricAlarmRequest request, CancellationToken ct = default) =>
+        SendAsync<SaveMetricAlarmRequest, MetricAlarmResponse>(
+            HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/alarms", request, ct);
+
+    public Task<MetricAlarmResponse> SaveMemberAlarmAsync(
+        Guid cardiMemberId, Guid alarmId, SaveMetricAlarmRequest request, CancellationToken ct = default) =>
+        SendAsync<SaveMetricAlarmRequest, MetricAlarmResponse>(
+            HttpMethod.Put, $"api/v1/cardimembers/{cardiMemberId}/alarms/{alarmId}", request, ct);
+
+    public Task DeleteMemberAlarmAsync(
+        Guid cardiMemberId, Guid alarmId, CancellationToken ct = default) =>
+        SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/alarms/{alarmId}", ct);
+
     public Task<JournalSettingsResponse> GetJournalSettingsAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<JournalSettingsResponse>($"api/v1/cardimembers/{cardiMemberId}/journal-settings", ct);

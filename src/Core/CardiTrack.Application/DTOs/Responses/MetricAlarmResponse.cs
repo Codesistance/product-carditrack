@@ -16,15 +16,19 @@ public sealed class MetricAlarmResponse
 
     public AlarmMetric Metric { get; init; }
     public AlarmStatistic Statistic { get; init; }
-    public AlarmOperator Operator { get; init; }
-    public AlarmThresholdKind ThresholdKind { get; init; }
+
+    // Defaulted for the same reason as the request's: zero is not a defined value for any of
+    // these enums, so a client that round-trips this shape without every field set would build
+    // a draft that fails validation on a choice it never touched.
+    public AlarmOperator Operator { get; init; } = AlarmOperator.GreaterThan;
+    public AlarmThresholdKind ThresholdKind { get; init; } = AlarmThresholdKind.Absolute;
     public decimal ThresholdValue { get; init; }
     public int PeriodMinutes { get; init; }
-    public int EvaluationPeriods { get; init; }
-    public int DatapointsToAlarm { get; init; }
-    public AlarmMissingDataTreatment MissingDataTreatment { get; init; }
-    public AlertSeverity Severity { get; init; }
-    public AlarmContextGate ContextGate { get; init; }
+    public int EvaluationPeriods { get; init; } = 1;
+    public int DatapointsToAlarm { get; init; } = 1;
+    public AlarmMissingDataTreatment MissingDataTreatment { get; init; } = AlarmMissingDataTreatment.Missing;
+    public AlertSeverity Severity { get; init; } = AlertSeverity.Yellow;
+    public AlarmContextGate ContextGate { get; init; } = AlarmContextGate.None;
     public bool IsEnabled { get; init; }
 
     /// <summary>

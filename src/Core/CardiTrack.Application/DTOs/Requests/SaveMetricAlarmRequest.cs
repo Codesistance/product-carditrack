@@ -13,8 +13,12 @@ public sealed class SaveMetricAlarmRequest
 
     public AlarmMetric Metric { get; set; }
     public AlarmStatistic Statistic { get; set; }
-    public AlarmOperator Operator { get; set; }
-    public AlarmThresholdKind ThresholdKind { get; set; }
+
+    // Defaulted rather than left at the enum's unnamed zero. These are not merely tidier
+    // defaults: zero is not a defined value for any of these enums, so an unset field fails
+    // validation with a message about a choice the caller never knew they had to make.
+    public AlarmOperator Operator { get; set; } = AlarmOperator.GreaterThan;
+    public AlarmThresholdKind ThresholdKind { get; set; } = AlarmThresholdKind.Absolute;
     public decimal ThresholdValue { get; set; }
     public int PeriodMinutes { get; set; }
     public int EvaluationPeriods { get; set; } = 1;
