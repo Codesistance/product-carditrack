@@ -1,14 +1,16 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text;
-using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
-using Microsoft.Extensions.Caching.Distributed;
+using CardiTrack.Infrastructure.Settings;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
@@ -21,8 +23,12 @@ public class ReportGenerationServiceTests
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
-    private readonly InMemoryDistributedCache _cache = new();
+    private readonly IDeviceConnectionRepository _devices = Substitute.For<IDeviceConnectionRepository>();
+    private readonly InMemoryReportRepository _reports = new();
+    private readonly InMemoryReportStorage _storage = new();
+    private readonly RecordingRenderer _renderer = new(ReportFormat.Pdf);
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
+    private readonly ReportStorageOptions _options = new();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _otherUserId = Guid.NewGuid();
@@ -33,18 +39,43 @@ public class ReportGenerationServiceTests
         _unitOfWork.CardiMembers.Returns(_members);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.Alerts.Returns(_alerts);
+        _unitOfWork.DeviceConnections.Returns(_devices);
+        _unitOfWork.Reports.Returns(_reports);
 
-        // Defaults: known member, no logs, no alerts, AI returns a fixed report.
+        // Defaults: known member, no logs, no alerts, AI returns a fixed narrative.
         _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = "Margaret Doe" });
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _alerts.GetByCardiMemberAsync(_memberId, false).Returns([]);
+        _devices.GetByCardiMemberIdAsync(Arg.Any<Guid>()).Returns([]);
         _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("Generated report body.");
     }
 
+    /// <summary>
+    /// Background generation resolves its own scope, so the fake hands back the same substitutes
+    /// the test set up — which is also what makes the "survives a restart" test below meaningful:
+    /// a second service instance shares only the repository and the bucket, never in-memory state.
+    /// </summary>
+    private IServiceScopeFactory BuildScopeFactory()
+    {
+        var provider = new StubServiceProvider(new Dictionary<Type, object>
+        {
+            [typeof(IUnitOfWork)] = _unitOfWork,
+            [typeof(IGenerativeAiService)] = _generativeAi,
+            [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer }
+        });
+
+        var scope = Substitute.For<IServiceScope>();
+        scope.ServiceProvider.Returns(provider);
+
+        var factory = Substitute.For<IServiceScopeFactory>();
+        factory.CreateScope().Returns(scope);
+        return factory;
+    }
+
     private ReportGenerationService CreateSut() =>
-        new(_generativeAi, _unitOfWork, _cache, _access,
+        new(_unitOfWork, _storage, _access, _options, BuildScopeFactory(),
             Substitute.For<ILogger<ReportGenerationService>>());
 
     /// <summary>Makes the access service refuse the given member, as it does for an unlinked user.</summary>
@@ -95,7 +126,7 @@ public class ReportGenerationServiceTests
     // ── GenerateAsync — queueing ────────────────────────────────────────────────
 
     [Fact]
-    public async Task GenerateAsync_ReturnsQueuedResponse_AndCachesPendingStatus()
+    public async Task GenerateAsync_ReturnsQueuedResponse_AndRecordsPendingStatus()
     {
         var gate = HoldGeneration();
 
@@ -127,6 +158,90 @@ public class ReportGenerationServiceTests
         Assert.NotEqual(first.ReportId, second.ReportId);
     }
 
+    [Fact]
+    public async Task GenerateAsync_EchoesTheRequestedFormat_Immediately()
+    {
+        // The cache-backed design never copied Format into the stored status, so the API's own
+        // docs recorded `format` as "currently always null".
+        var gate = HoldGeneration();
+
+        var queued = await CreateSut().GenerateAsync(_userId, BuildRequest(ReportFormat.FhirR4));
+        var status = await CreateSut().GetStatusAsync(_userId, queued.ReportId);
+
+        Assert.Equal(ReportFormat.FhirR4, status!.Format);
+
+        gate.SetResult("done");
+    }
+
+    // ── Durability ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ReadyReport_SurvivesTheServiceInstanceThatMadeIt()
+    {
+        // The regression the whole durable-storage change exists for: under the cache-backed
+        // design an API restart lost finished reports along with in-flight ones.
+        var generator = CreateSut();
+        var queued = await generator.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(generator, queued.ReportId);
+
+        var afterRestart = CreateSut();
+
+        var status = await afterRestart.GetStatusAsync(_userId, queued.ReportId);
+        Assert.Equal(ReportStatus.Ready, status!.Status);
+
+        var (content, _, _) = await afterRestart.DownloadAsync(_userId, queued.ReportId);
+        Assert.NotEmpty(content);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ReturnsNull_OnceThePublishedWindowHasPassed()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        // Expiry is decided by the timestamp, not by whether the cleanup sweep has run — a report
+        // must never outlive the window it advertised just because the worker is between passes.
+        var report = _reports.Single();
+        report.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+
+        Assert.Null(await sut.GetStatusAsync(_userId, queued.ReportId));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            sut.DownloadAsync(_userId, queued.ReportId));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_StampsExpiryAtQueueTime_NotAtCompletion()
+    {
+        // A slow generation must not quietly shorten the window the caregiver was promised.
+        var gate = HoldGeneration();
+        var before = DateTime.UtcNow;
+
+        await CreateSut().GenerateAsync(_userId, BuildRequest());
+        var report = _reports.Single();
+
+        Assert.InRange(
+            report.ExpiresAt,
+            before.Add(_options.Retention).AddSeconds(-5),
+            DateTime.UtcNow.Add(_options.Retention).AddSeconds(5));
+
+        gate.SetResult("done");
+    }
+
+    [Fact]
+    public async Task DownloadAsync_ReportsNotFound_WhenTheObjectIsGoneButTheRowRemains()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        // A partially-completed cleanup, or a lifecycle rule that moved first.
+        _storage.Clear();
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            sut.DownloadAsync(_userId, queued.ReportId));
+    }
+
     // ── Background generation ───────────────────────────────────────────────────
 
     [Fact]
@@ -138,8 +253,8 @@ public class ReportGenerationServiceTests
         var status = await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
         Assert.Equal(ReportStatus.Ready, status.Status);
-        Assert.Equal("text/plain", status.ContentType);
-        Assert.Equal(Encoding.UTF8.GetByteCount("Generated report body."), status.FileSizeBytes);
+        Assert.Equal(RecordingRenderer.ContentTypeValue, status.ContentType);
+        Assert.Equal(_renderer.LastRendered!.Content.Length, status.FileSizeBytes);
         Assert.Equal($"/api/v1/reports/{queued.ReportId}/download", status.DownloadUrl);
         Assert.NotNull(status.CompletedAt);
         Assert.NotNull(status.DownloadExpiresAt);
@@ -160,6 +275,86 @@ public class ReportGenerationServiceTests
         Assert.DoesNotContain("quota", status.Error);
     }
 
+    [Fact]
+    public async Task BackgroundGeneration_MarksReportFailed_WhenNoRendererHandlesTheFormat()
+    {
+        // HL7 v2 is a defined enum member for MVP 2. The request validator refuses it at the
+        // edge; if one ever reaches here it must fail the report, not throw into nothing.
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(ReportFormat.Hl7V2));
+
+        var status = await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(ReportStatus.Failed, status.Status);
+    }
+
+    [Fact]
+    public async Task BackgroundGeneration_StoresBytesUnderAnOwnerScopedObjectName()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        // Owner-prefixed so an erasure sweep can find everything belonging to one account.
+        var objectName = Assert.Single(_storage.ObjectNames);
+        Assert.Equal($"reports/{_userId}/{queued.ReportId}.{RecordingRenderer.ExtensionValue}", objectName);
+    }
+
+    // ── Filenames ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DownloadAsync_NamesTheFileAfterTheMemberAndPeriod()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        var (_, _, fileName) = await sut.DownloadAsync(_userId, queued.ReportId);
+
+        Assert.Equal(
+            $"carditrack-export-margaret-doe-20260207-20260309.{RecordingRenderer.ExtensionValue}",
+            fileName);
+    }
+
+    [Theory]
+    [InlineData("Margaret O'Doe-Smith", "margaret-o-doe-smith")]
+    [InlineData("玛格丽特", "member")]
+    [InlineData("../../etc/passwd", "etc-passwd")]
+    public async Task DownloadAsync_BuildsAFilenameSafeSubject(string memberName, string expectedSlug)
+    {
+        // The filename reaches a Content-Disposition header, so a name carrying a quote or a path
+        // separator must not carry through to it.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember { Id = _memberId, Name = memberName });
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+        var (_, _, fileName) = await sut.DownloadAsync(_userId, queued.ReportId);
+
+        Assert.StartsWith($"carditrack-export-{expectedSlug}-", fileName);
+    }
+
+    [Fact]
+    public async Task DownloadAsync_NamesTheFileByCount_ForMultipleMembers()
+    {
+        var secondMemberId = Guid.NewGuid();
+        SetUpMember(secondMemberId, "John Roe");
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, new GenerateReportRequest
+        {
+            CardiMemberIds = [_memberId, secondMemberId],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf
+        });
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+        var (_, _, fileName) = await sut.DownloadAsync(_userId, queued.ReportId);
+
+        // A filename is not the place to list a family.
+        Assert.StartsWith("carditrack-export-2-members-", fileName);
+    }
+
     // ── Pseudonymisation ────────────────────────────────────────────────────────
     //
     // Reports go to the general provider (Gemini's consumer endpoint, outside the Google Cloud
@@ -178,10 +373,7 @@ public class ReportGenerationServiceTests
     public async Task Prompt_LabelsEachMemberDistinctly()
     {
         var secondMemberId = Guid.NewGuid();
-        _members.GetByIdAsync(secondMemberId).Returns(new CardiMember { Id = secondMemberId, Name = "John Roe" });
-        _activityLogs.GetByCardiMemberAndDateRangeAsync(secondMemberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
-            .Returns([]);
-        _alerts.GetByCardiMemberAsync(secondMemberId, false).Returns([]);
+        SetUpMember(secondMemberId, "John Roe");
 
         var prompt = await CapturePromptAsync(new GenerateReportRequest
         {
@@ -198,7 +390,7 @@ public class ReportGenerationServiceTests
     }
 
     [Fact]
-    public async Task GeneratedReport_HasRealNamesRestored()
+    public async Task NarrativeHandedToTheRenderer_HasRealNamesRestored()
     {
         _generativeAi.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns("Patient A is walking less than usual. Check in with Patient A this week.");
@@ -206,16 +398,15 @@ public class ReportGenerationServiceTests
 
         var queued = await sut.GenerateAsync(_userId, BuildRequest());
         await WaitForTerminalStatusAsync(sut, queued.ReportId);
-        var (content, _, _) = await sut.DownloadAsync(_userId, queued.ReportId);
 
         // Every occurrence, not just the first — the caregiver reads a report about a person.
         Assert.Equal(
             "Margaret Doe is walking less than usual. Check in with Margaret Doe this week.",
-            Encoding.UTF8.GetString(content));
+            _renderer.LastNarrative);
     }
 
     [Fact]
-    public async Task GeneratedReport_RestoresLongLabelsWithoutPrefixCollision()
+    public async Task Narrative_RestoresLongLabelsWithoutPrefixCollision()
     {
         // 27 members, so labels run past "Patient Z" into "Patient AA" — a naive replace would
         // rewrite the "Patient A" prefix inside "Patient AA" and corrupt the report.
@@ -223,10 +414,7 @@ public class ReportGenerationServiceTests
         for (var i = 1; i < 27; i++)
         {
             var id = Guid.NewGuid();
-            _members.GetByIdAsync(id).Returns(new CardiMember { Id = id, Name = $"Member {i:00}" });
-            _activityLogs.GetByCardiMemberAndDateRangeAsync(id, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
-                .Returns([]);
-            _alerts.GetByCardiMemberAsync(id, false).Returns([]);
+            SetUpMember(id, $"Member {i:00}");
             memberIds.Add(id);
         }
 
@@ -242,9 +430,29 @@ public class ReportGenerationServiceTests
             Format = ReportFormat.Pdf
         });
         await WaitForTerminalStatusAsync(sut, queued.ReportId);
-        var (content, _, _) = await sut.DownloadAsync(_userId, queued.ReportId);
 
-        Assert.Equal("Member 26 is stable. Margaret Doe is not.", Encoding.UTF8.GetString(content));
+        Assert.Equal("Member 26 is stable. Margaret Doe is not.", _renderer.LastNarrative);
+    }
+
+    [Theory]
+    [InlineData(ReportFormat.Csv)]
+    [InlineData(ReportFormat.FhirR4)]
+    public async Task MachineReadableFormats_AreRenderedWithoutCallingTheModel(ReportFormat format)
+    {
+        // A spreadsheet column or a FHIR resource holding a paragraph of generated English is
+        // neither useful nor safe to feed onward into an EHR — and a caregiver asking for CSV
+        // should not wait on an inference, or fail when the provider is down.
+        var renderer = new RecordingRenderer(format);
+        var sut = new ReportGenerationService(
+            _unitOfWork, _storage, _access, _options,
+            BuildScopeFactoryFor(renderer), Substitute.For<ILogger<ReportGenerationService>>());
+
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(format));
+        var status = await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(ReportStatus.Ready, status.Status);
+        Assert.Null(renderer.LastNarrative);
+        await _generativeAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     // ── Access control ──────────────────────────────────────────────────────────
@@ -266,15 +474,16 @@ public class ReportGenerationServiceTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().GenerateAsync(_userId, BuildRequest()));
 
-        // Nothing was handed to the model and no job was left running behind the failed call.
+        // Nothing was handed to the model, no row was written, and no job was left running.
         await _generativeAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        Assert.Empty(_reports.All);
     }
 
     [Fact]
     public async Task GenerateAsync_ChecksEveryRequestedMember_NotJustTheFirst()
     {
         var secondMemberId = Guid.NewGuid();
-        _members.GetByIdAsync(secondMemberId).Returns(new CardiMember { Id = secondMemberId, Name = "John Doe" });
+        SetUpMember(secondMemberId, "John Doe");
         DenyAccessTo(secondMemberId);
 
         var request = new GenerateReportRequest
@@ -321,105 +530,44 @@ public class ReportGenerationServiceTests
         Assert.Null(await sut.GetStatusAsync(Guid.Empty, queued.ReportId));
     }
 
-    // ── Unreadable cache entries ────────────────────────────────────────────────
-    //
-    // Reports live in a shared Redis whose contents outlive any one deploy, so a stored entry can
-    // predate the current format. Reading one must be a miss, not an exception surfacing as a 500.
-
-    /// <summary>Keys mirror ReportGenerationService's private format so entries can be seeded raw.</summary>
-    private static string StatusKey(string reportId) => $"report:status:{reportId}";
-    private static string ContentKey(string reportId) => $"report:content:{reportId}";
-
-    private void SeedRawCacheEntry(string key, string json) =>
-        _cache.Set(key, Encoding.UTF8.GetBytes(json), new DistributedCacheEntryOptions());
-
-    /// <summary>Exactly what the service wrote before reports carried an owner: a bare status object.</summary>
-    private static string PreOwnershipEntry() => JsonSerializer.Serialize(new ReportStatusResponse
-    {
-        ReportId = "legacy",
-        Status = ReportStatus.Ready,
-        CreatedAt = DateTimeOffset.UtcNow,
-        Metadata = new ReportMetadata { CardiMembers = [Guid.NewGuid().ToString()] }
-    });
-
-    [Fact]
-    public async Task GetStatusAsync_ReturnsNull_ForAnEntryInThePreOwnershipFormat()
-    {
-        SeedRawCacheEntry(StatusKey("legacy"), PreOwnershipEntry());
-
-        // Status serialises as a number where the envelope now expects an object, so a strict
-        // read throws here rather than failing closed.
-        Assert.Null(await CreateSut().GetStatusAsync(_userId, "legacy"));
-    }
+    // ── Malformed report ids ────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("not json at all")]
-    [InlineData("{\"OwnerUserId\":\"")]
-    [InlineData("{\"OwnerUserId\":\"not-a-guid\",\"Status\":{}}")]
-    [InlineData("null")]
-    public async Task GetStatusAsync_ReturnsNull_ForAnUnreadableEntry(string payload)
+    [InlineData("rpt_unknown")]
+    [InlineData("")]
+    [InlineData("not-a-guid")]
+    public async Task GetStatusAsync_ReturnsNull_ForAnIdThatIsNotAReportId(string reportId)
     {
-        SeedRawCacheEntry(StatusKey("damaged"), payload);
-
-        Assert.Null(await CreateSut().GetStatusAsync(_userId, "damaged"));
+        // A garbage id is a miss, not a parse exception surfacing as a 500.
+        Assert.Null(await CreateSut().GetStatusAsync(_userId, reportId));
     }
-
-    [Fact]
-    public async Task DownloadAsync_ReportsNotFound_ForAnUnreadableEntry()
-    {
-        SeedRawCacheEntry(StatusKey("legacy"), PreOwnershipEntry());
-        SeedRawCacheEntry(ContentKey("legacy"), "Report body.");
-
-        // A not-found, not a deserialization failure bubbling out as a 500.
-        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            CreateSut().DownloadAsync(_userId, "legacy"));
-    }
-
-    [Fact]
-    public async Task GetStatusAsync_EvictsAnUnreadableEntry_AlongWithItsBody()
-    {
-        SeedRawCacheEntry(StatusKey("legacy"), PreOwnershipEntry());
-        SeedRawCacheEntry(ContentKey("legacy"), "Report body.");
-
-        await CreateSut().GetStatusAsync(_userId, "legacy");
-
-        // The body is only reachable through the status entry, so leaving it behind would strand
-        // report content in the cache until its TTL expired.
-        Assert.Null(_cache.Get(StatusKey("legacy")));
-        Assert.Null(_cache.Get(ContentKey("legacy")));
-    }
-
-    // ── GetStatusAsync ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetStatusAsync_ReturnsNull_WhenReportUnknown()
     {
-        var result = await CreateSut().GetStatusAsync(_userId, "rpt_unknown");
-
-        Assert.Null(result);
+        Assert.Null(await CreateSut().GetStatusAsync(_userId, Guid.NewGuid().ToString("N")));
     }
 
     // ── DownloadAsync ───────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task DownloadAsync_ReturnsUtf8Content_WhenReady()
+    public async Task DownloadAsync_ReturnsRenderedBytes_WhenReady()
     {
         var sut = CreateSut();
         var queued = await sut.GenerateAsync(_userId, BuildRequest());
         await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
-        var (content, contentType, fileName) = await sut.DownloadAsync(_userId, queued.ReportId);
+        var (content, contentType, _) = await sut.DownloadAsync(_userId, queued.ReportId);
 
-        Assert.Equal("Generated report body.", Encoding.UTF8.GetString(content));
-        Assert.Equal("text/plain; charset=utf-8", contentType);
-        Assert.Equal($"report-{queued.ReportId}.txt", fileName);
+        Assert.Equal(_renderer.LastRendered!.Content, content);
+        Assert.Equal(RecordingRenderer.ContentTypeValue, contentType);
     }
 
     [Fact]
     public async Task DownloadAsync_Throws_WhenReportUnknown()
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            CreateSut().DownloadAsync(_userId, "rpt_unknown"));
+            CreateSut().DownloadAsync(_userId, Guid.NewGuid().ToString("N")));
     }
 
     [Fact]
@@ -448,6 +596,80 @@ public class ReportGenerationServiceTests
             sut.DownloadAsync(_userId, queued.ReportId));
     }
 
+    // ── Data gathering ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Gather_PassesOnlyAlertsInsideTheDateRange()
+    {
+        _alerts.GetByCardiMemberAsync(_memberId, false).Returns(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                Title = "In-range alert",
+                Severity = AlertSeverity.Red,
+                TriggeredDate = new DateTime(2026, 2, 15, 8, 0, 0, DateTimeKind.Utc),
+            },
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                Title = "Out-of-range alert",
+                Severity = AlertSeverity.Yellow,
+                TriggeredDate = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc),
+            },
+        ]);
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        var alerts = _renderer.LastData!.Members.Single().Alerts;
+        Assert.Equal("In-range alert", Assert.Single(alerts).Title);
+    }
+
+    [Fact]
+    public async Task Gather_SkipsUnknownMembers()
+    {
+        var unknownId = Guid.NewGuid();
+        _members.GetByIdAsync(unknownId).Returns((CardiMember?)null);
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, new GenerateReportRequest
+        {
+            CardiMemberIds = [unknownId],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf
+        });
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Empty(_renderer.LastData!.Members);
+    }
+
+    [Fact]
+    public async Task Gather_PassesTheSectionTogglesThrough()
+    {
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(
+            _userId, BuildRequest(includeMetrics: false, includeAlerts: false));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.False(_renderer.LastSections!.IncludeMetrics);
+        Assert.False(_renderer.LastSections.IncludeAlerts);
+    }
+
+    [Fact]
+    public async Task Gather_DoesNotReadDevices_WhenTheSectionIsOff()
+    {
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildRequest());
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        await _devices.DidNotReceive().GetByCardiMemberIdAsync(Arg.Any<Guid>());
+    }
+
     // ── Prompt building ─────────────────────────────────────────────────────────
 
     private async Task<string> CapturePromptAsync(GenerateReportRequest request)
@@ -465,13 +687,12 @@ public class ReportGenerationServiceTests
     }
 
     [Fact]
-    public async Task Prompt_IncludesPseudonymisedMember_FormatAndPeriod()
+    public async Task Prompt_IncludesPseudonymisedMemberAndPeriod()
     {
-        var prompt = await CapturePromptAsync(BuildRequest(ReportFormat.Csv));
+        var prompt = await CapturePromptAsync(BuildRequest());
 
         // Was "## Patient: Margaret Doe" — the name is now withheld from the provider.
         Assert.Contains("## Patient A", prompt);
-        Assert.Contains("Write a Csv health report", prompt);
         Assert.Contains($"covering {new DateOnly(2026, 2, 7)} to {new DateOnly(2026, 3, 9)}.", prompt);
     }
 
@@ -498,96 +719,169 @@ public class ReportGenerationServiceTests
     }
 
     [Fact]
-    public async Task Prompt_IncludesOnlyAlertsInsideDateRange()
+    public async Task Prompt_NamesNothingForADayTheDeviceMissed()
     {
-        _alerts.GetByCardiMemberAsync(_memberId, false).Returns(
-        [
-            new Alert
-            {
-                CardiMemberId = _memberId,
-                Title = "In-range alert",
-                Severity = AlertSeverity.Red,
-                TriggeredDate = new DateTime(2026, 2, 15, 8, 0, 0, DateTimeKind.Utc),
-            },
-            new Alert
-            {
-                CardiMemberId = _memberId,
-                Title = "Out-of-range alert",
-                Severity = AlertSeverity.Yellow,
-                TriggeredDate = new DateTime(2026, 1, 1, 8, 0, 0, DateTimeKind.Utc),
-            },
-        ]);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10) }]);
 
         var prompt = await CapturePromptAsync(BuildRequest());
 
-        Assert.Contains("### Alerts", prompt);
-        Assert.Contains("In-range alert", prompt);
-        Assert.DoesNotContain("Out-of-range alert", prompt);
+        // Never "steps=, HR=, sleep=min" — an empty value reads as a real one.
+        Assert.Contains("nothing measured", prompt);
+        Assert.DoesNotContain("steps=,", prompt);
     }
 
-    [Fact]
-    public async Task Prompt_OmitsSections_WhenTogglesDisabled()
+    private void SetUpMember(Guid id, string name)
     {
-        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
-            .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10), Steps = 100 }]);
-        _alerts.GetByCardiMemberAsync(_memberId, false).Returns(
-        [
-            new Alert
-            {
-                CardiMemberId = _memberId,
-                Title = "Some alert",
-                TriggeredDate = new DateTime(2026, 2, 15, 8, 0, 0, DateTimeKind.Utc),
-            },
-        ]);
-
-        var prompt = await CapturePromptAsync(BuildRequest(includeMetrics: false, includeAlerts: false));
-
-        Assert.DoesNotContain("### Activity Metrics", prompt);
-        Assert.DoesNotContain("### Alerts", prompt);
+        _members.GetByIdAsync(id).Returns(new CardiMember { Id = id, Name = name });
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(id, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+        _alerts.GetByCardiMemberAsync(id, false).Returns([]);
     }
 
-    [Fact]
-    public async Task Prompt_SkipsUnknownMembers()
+    private IServiceScopeFactory BuildScopeFactoryFor(IReportRenderer renderer)
     {
-        var unknownId = Guid.NewGuid();
-        _members.GetByIdAsync(unknownId).Returns((CardiMember?)null);
-        var request = new GenerateReportRequest
+        var provider = new StubServiceProvider(new Dictionary<Type, object>
         {
-            CardiMemberIds = [unknownId],
-            DateRangeFrom = new DateOnly(2026, 2, 7),
-            DateRangeTo = new DateOnly(2026, 3, 9),
-            Format = ReportFormat.Pdf
-        };
+            [typeof(IUnitOfWork)] = _unitOfWork,
+            [typeof(IGenerativeAiService)] = _generativeAi,
+            [typeof(IEnumerable<IReportRenderer>)] = new[] { renderer }
+        });
 
-        var prompt = await CapturePromptAsync(request);
+        var scope = Substitute.For<IServiceScope>();
+        scope.ServiceProvider.Returns(provider);
 
-        Assert.DoesNotContain("## Patient:", prompt);
+        var factory = Substitute.For<IServiceScopeFactory>();
+        factory.CreateScope().Returns(scope);
+        return factory;
     }
 
-    /// <summary>Dictionary-backed IDistributedCache — enough for status/content round-trips.</summary>
-    private sealed class InMemoryDistributedCache : IDistributedCache
+    /// <summary>Captures what the service handed the renderer, and returns deterministic bytes.</summary>
+    private sealed class RecordingRenderer : IReportRenderer
     {
-        private readonly ConcurrentDictionary<string, byte[]> _store = new();
+        public const string ContentTypeValue = "application/test";
+        public const string ExtensionValue = "test";
 
-        public byte[]? Get(string key) => _store.TryGetValue(key, out var value) ? value : null;
-        public Task<byte[]?> GetAsync(string key, CancellationToken token = default) => Task.FromResult(Get(key));
+        public RecordingRenderer(ReportFormat format) => Format = format;
 
-        public void Set(string key, byte[] value, DistributedCacheEntryOptions options) => _store[key] = value;
-        public Task SetAsync(string key, byte[] value, DistributedCacheEntryOptions options,
-            CancellationToken token = default)
+        public ReportFormat Format { get; }
+
+        public ReportDataSet? LastData { get; private set; }
+        public ReportSections? LastSections { get; private set; }
+        public string? LastNarrative { get; private set; }
+        public RenderedReport? LastRendered { get; private set; }
+
+        public Task<RenderedReport> RenderAsync(
+            ReportDataSet data, ReportSections sections, string? narrative, CancellationToken ct = default)
         {
-            Set(key, value, options);
+            LastData = data;
+            LastSections = sections;
+            LastNarrative = narrative;
+            LastRendered = new RenderedReport(
+                Encoding.UTF8.GetBytes(narrative ?? "rendered"), ContentTypeValue, ExtensionValue);
+
+            return Task.FromResult(LastRendered);
+        }
+    }
+
+    /// <summary>Dictionary-backed bucket — enough for upload/download/delete round-trips.</summary>
+    private sealed class InMemoryReportStorage : IReportStorage
+    {
+        private readonly ConcurrentDictionary<string, byte[]> _objects = new();
+
+        public IReadOnlyCollection<string> ObjectNames => _objects.Keys.ToList();
+
+        public void Clear() => _objects.Clear();
+
+        public Task<string> UploadAsync(
+            Guid ownerUserId, string reportId, string extension, string contentType,
+            ReadOnlyMemory<byte> content, CancellationToken ct = default)
+        {
+            var objectName = $"reports/{ownerUserId}/{reportId}.{extension}";
+            _objects[objectName] = content.ToArray();
+            return Task.FromResult(objectName);
+        }
+
+        public Task<byte[]?> DownloadAsync(string objectName, CancellationToken ct = default) =>
+            Task.FromResult(_objects.TryGetValue(objectName, out var bytes) ? bytes : null);
+
+        public Task DeleteAsync(string objectName, CancellationToken ct = default)
+        {
+            _objects.TryRemove(objectName, out _);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// Dictionary-backed report repository. Entities are stored by reference, as EF's change
+    /// tracker would hold them, so an <c>Update</c> the service makes is visible to a later read.
+    /// </summary>
+    private sealed class InMemoryReportRepository : IReportRepository
+    {
+        private readonly ConcurrentDictionary<Guid, Report> _rows = new();
+
+        public IReadOnlyCollection<Report> All => _rows.Values.ToList();
+        public Report Single() => _rows.Values.Single();
+
+        public Task<Report?> GetForOwnerAsync(Guid reportId, Guid ownerUserId, CancellationToken ct = default) =>
+            Task.FromResult(_rows.TryGetValue(reportId, out var report) && report.OwnerUserId == ownerUserId
+                ? report
+                : null);
+
+        public Task<IReadOnlyList<Report>> GetExpiredAsync(DateTime asOf, int limit, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Report>>(
+                _rows.Values.Where(r => r.ExpiresAt <= asOf).OrderBy(r => r.ExpiresAt).Take(limit).ToList());
+
+        public Task<IReadOnlyList<Report>> GetStalePendingAsync(DateTime olderThan, int limit, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<Report>>(
+                _rows.Values
+                    .Where(r => r.Status == ReportStatus.Pending && r.CreatedDate <= olderThan)
+                    .OrderBy(r => r.CreatedDate).Take(limit).ToList());
+
+        public Task<Report?> GetByIdAsync(Guid id) =>
+            Task.FromResult(_rows.TryGetValue(id, out var report) ? report : null);
+
+        public Task AddAsync(Report entity)
+        {
+            _rows[entity.Id] = entity;
             return Task.CompletedTask;
         }
 
-        public void Refresh(string key) { }
-        public Task RefreshAsync(string key, CancellationToken token = default) => Task.CompletedTask;
+        public void Update(Report entity) => _rows[entity.Id] = entity;
+        public void Remove(Report entity) => _rows.TryRemove(entity.Id, out _);
 
-        public void Remove(string key) => _store.TryRemove(key, out _);
-        public Task RemoveAsync(string key, CancellationToken token = default)
+        public void RemoveRange(IEnumerable<Report> entities)
         {
-            Remove(key);
+            foreach (var entity in entities)
+                Remove(entity);
+        }
+
+        public Task<IEnumerable<Report>> GetAllAsync() => Task.FromResult<IEnumerable<Report>>(_rows.Values);
+
+        public Task<IEnumerable<Report>> FindAsync(
+            System.Linq.Expressions.Expression<Func<Report, bool>> predicate) =>
+            Task.FromResult(_rows.Values.Where(predicate.Compile()));
+
+        public Task<Report?> FirstOrDefaultAsync(
+            System.Linq.Expressions.Expression<Func<Report, bool>> predicate) =>
+            Task.FromResult(_rows.Values.FirstOrDefault(predicate.Compile()));
+
+        public Task AddRangeAsync(IEnumerable<Report> entities)
+        {
+            foreach (var entity in entities)
+                _rows[entity.Id] = entity;
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>Resolves exactly the services background generation asks its scope for.</summary>
+    private sealed class StubServiceProvider : IServiceProvider
+    {
+        private readonly Dictionary<Type, object> _services;
+
+        public StubServiceProvider(Dictionary<Type, object> services) => _services = services;
+
+        public object? GetService(Type serviceType) =>
+            _services.TryGetValue(serviceType, out var service) ? service : null;
     }
 }

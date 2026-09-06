@@ -230,7 +230,7 @@ public static class ConfigurationKeys
         public const string SectionName = "Environmental";
     }
 
-    /// <summary>Blob storage for user-supplied binary content — today, member profile photos.</summary>
+    /// <summary>Blob storage for binary content: member profile photos and health-data exports.</summary>
     public static class Storage
     {
         /// <summary>
@@ -241,5 +241,14 @@ public static class ConfigurationKeys
         /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
         /// </summary>
         public const string MemberPhotosSectionName = "Storage:MemberPhotos";
+
+        /// <summary>
+        /// Health-data export storage (bucket name, retention, generation timeout) — see
+        /// <c>StorageServiceExtensions</c>. The bucket arrives from Terraform as
+        /// <c>Storage__Reports__Bucket</c>; empty (every local machine) disables export rather
+        /// than failing startup, and every storage call then throws with that instruction.
+        /// Object section: use with IConfiguration.GetSection(), not ConfigurationLoader.Get().
+        /// </summary>
+        public const string ReportsSectionName = "Storage:Reports";
     }
 }

@@ -1,37 +1,59 @@
 using System.Text;
-using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Reports;
+using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
-using CardiTrack.Shared.Json;
-using Microsoft.Extensions.Caching.Distributed;
+using CardiTrack.Infrastructure.Settings;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Services;
 
+/// <summary>
+/// Queues, renders and serves health-data exports.
+/// </summary>
+/// <remarks>
+/// <para>
+/// State is durable: a <see cref="Report"/> row carries the request and its outcome, and the
+/// rendered bytes go to the export bucket. The previous design kept both as distributed-cache
+/// entries on a one-hour TTL, which meant a deploy lost in-flight generations *and* finished
+/// reports a caregiver had not downloaded yet — for a document someone plans to take to an
+/// appointment, that is the wrong failure.
+/// </para>
+/// <para>
+/// Generation still runs on a detached task rather than a queue, but it now opens its own DI
+/// scope: the request scope's <see cref="IUnitOfWork"/> is disposed the moment the 202 goes out,
+/// so continuing to use it was a race the cache-backed version could lose silently. Anything the
+/// detached task fails to finish is failed out by <c>ExpiredReportCleanupWorker</c> rather than
+/// left pending forever.
+/// </para>
+/// </remarks>
 public class ReportGenerationService : IReportGenerationService
 {
-    private readonly IGenerativeAiService _generativeAi;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IDistributedCache _cache;
+    private readonly IReportStorage _storage;
     private readonly ICardiMemberAccessService _access;
+    private readonly ReportStorageOptions _options;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ReportGenerationService> _logger;
 
-    private static readonly TimeSpan ReportTtl = TimeSpan.FromHours(1);
-
     public ReportGenerationService(
-        IGenerativeAiService generativeAi,
         IUnitOfWork unitOfWork,
-        IDistributedCache cache,
+        IReportStorage storage,
         ICardiMemberAccessService access,
+        ReportStorageOptions options,
+        IServiceScopeFactory scopeFactory,
         ILogger<ReportGenerationService> logger)
     {
-        _generativeAi = generativeAi;
         _unitOfWork = unitOfWork;
-        _cache = cache;
+        _storage = storage;
         _access = access;
+        _options = options;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -39,27 +61,29 @@ public class ReportGenerationService : IReportGenerationService
     {
         // Checked here, before anything is queued, so an unauthorised request fails as a 404 on
         // the call rather than as a silently-abandoned background job. Because the whole set is
-        // vetted up front, prompt building below can trust every id in the request.
+        // vetted up front, the gather below can trust every id in the request.
         await _access.RequireViewAccessAsync(requestingUserId, request.CardiMemberIds);
 
-        var reportId = Guid.NewGuid().ToString("N");
-
-        var initialStatus = new ReportStatusResponse
+        var now = DateTime.UtcNow;
+        var report = new Report
         {
-            ReportId = reportId,
+            OwnerUserId = requestingUserId,
+            CardiMemberIds = request.CardiMemberIds.ToList(),
+            Format = request.Format,
             Status = ReportStatus.Pending,
-            CreatedAt = DateTimeOffset.UtcNow,
-            Metadata = new ReportMetadata
-            {
-                CardiMembers = request.CardiMemberIds.Select(id => id.ToString()).ToList(),
-                DateRangeFrom = request.DateRangeFrom,
-                DateRangeTo = request.DateRangeTo
-            }
+            DateRangeFrom = request.DateRangeFrom,
+            DateRangeTo = request.DateRangeTo,
+            Title = request.Title,
+            // Stamped at queue time, not at completion: the caregiver is told how long they have
+            // when they ask, and a slow generation must not quietly shorten that window.
+            ExpiresAt = now.Add(_options.Retention)
         };
 
-        await WriteStatusAsync(reportId, requestingUserId, initialStatus);
+        await _unitOfWork.Reports.AddAsync(report);
+        await _unitOfWork.SaveChangesAsync();
 
-        _ = Task.Run(() => GenerateInBackground(reportId, requestingUserId, request));
+        var reportId = FormatId(report.Id);
+        _ = Task.Run(() => GenerateInBackground(report.Id, request));
 
         return new ReportQueuedResponse
         {
@@ -72,138 +96,245 @@ public class ReportGenerationService : IReportGenerationService
 
     public async Task<ReportStatusResponse?> GetStatusAsync(Guid requestingUserId, string reportId)
     {
-        var cached = await ReadAsync(reportId);
-
         // A report id is a bearer-style handle, so ownership is what actually protects the
         // content. Someone else's report reads as "no such report" — same as an expired one —
         // rather than a 403 that would confirm the id is live.
-        if (cached is null || requestingUserId == Guid.Empty || cached.OwnerUserId != requestingUserId)
+        if (requestingUserId == Guid.Empty || !TryParseId(reportId, out var id))
             return null;
 
-        return cached.Status;
+        var report = await _unitOfWork.Reports.GetForOwnerAsync(id, requestingUserId);
+
+        // Past its window the row may still be here — the cleanup worker sweeps on a schedule, it
+        // is not a clock. Expiry is decided by the timestamp, so a report never outlives the
+        // window it advertised just because the sweep has not come round.
+        if (report is null || report.ExpiresAt <= DateTime.UtcNow)
+            return null;
+
+        return ToStatusResponse(report);
     }
 
     public async Task<(byte[] Content, string ContentType, string FileName)> DownloadAsync(
         Guid requestingUserId, string reportId)
     {
-        var status = await GetStatusAsync(requestingUserId, reportId);
-
-        if (status is null)
+        if (requestingUserId == Guid.Empty || !TryParseId(reportId, out var id))
             throw new KeyNotFoundException($"Report {reportId} not found or has expired.");
-        if (status.Status != ReportStatus.Ready)
-            throw new InvalidOperationException($"Report {reportId} is not ready (status: {status.Status}).");
 
-        var contentJson = await _cache.GetStringAsync(ContentKey(reportId));
-        if (contentJson is null)
+        var report = await _unitOfWork.Reports.GetForOwnerAsync(id, requestingUserId);
+        if (report is null || report.ExpiresAt <= DateTime.UtcNow)
+            throw new KeyNotFoundException($"Report {reportId} not found or has expired.");
+
+        if (report.Status != ReportStatus.Ready)
+            throw new InvalidOperationException($"Report {reportId} is not ready (status: {report.Status}).");
+
+        // A Ready row always names an object; a Ready row without one would be a bug in the
+        // completion path, and reads as gone rather than as a null-reference 500.
+        var content = report.ObjectName is null
+            ? null
+            : await _storage.DownloadAsync(report.ObjectName);
+
+        if (content is null)
             throw new KeyNotFoundException($"Report {reportId} content not found.");
 
-        var bytes = Encoding.UTF8.GetBytes(contentJson);
-        return (bytes, "text/plain; charset=utf-8", $"report-{reportId}.txt");
+        return (content,
+            report.ContentType ?? "application/octet-stream",
+            report.FileName ?? $"report-{reportId}");
     }
 
-    private async Task GenerateInBackground(string reportId, Guid requestingUserId, GenerateReportRequest request)
+    /// <summary>
+    /// Renders the export outside the request. Opens its own scope: the caller's returned long
+    /// before this runs, taking its <see cref="IUnitOfWork"/> with it.
+    /// </summary>
+    private async Task GenerateInBackground(Guid reportId, GenerateReportRequest request)
     {
+        using var scope = _scopeFactory.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var generativeAi = scope.ServiceProvider.GetRequiredService<IGenerativeAiService>();
+        var renderers = scope.ServiceProvider.GetServices<IReportRenderer>();
+
+        var report = await unitOfWork.Reports.GetByIdAsync(reportId);
+        if (report is null)
+        {
+            // Erased or reaped between queueing and here — nothing to render, and nothing wrong.
+            _logger.LogInformation("Report {ReportId} vanished before generation started.", reportId);
+            return;
+        }
+
         try
         {
-            var prompt = await BuildReportPromptAsync(request);
-            var generated = await _generativeAi.GenerateAsync(prompt.Text);
+            var renderer = renderers.FirstOrDefault(r => r.Format == report.Format)
+                ?? throw new NotSupportedException(
+                    $"No renderer is registered for report format {report.Format}.");
 
-            // Names are restored only here, after the model has answered — the provider never
-            // saw them.
-            var content = RestoreNames(generated, prompt.Pseudonyms);
+            var data = await GatherAsync(unitOfWork, request);
+            var sections = new ReportSections(
+                request.IncludeMetrics, request.IncludeAlerts, request.IncludeDevices);
 
-            await _cache.SetStringAsync(ContentKey(reportId), content,
-                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
+            var narrative = await BuildNarrativeAsync(generativeAi, data, report.Format);
+            var rendered = await renderer.RenderAsync(data, sections, narrative);
 
-            var status = (await ReadAsync(reportId))?.Status;
-            var updated = new ReportStatusResponse
-            {
-                ReportId = reportId,
-                Status = ReportStatus.Ready,
-                CompletedAt = DateTimeOffset.UtcNow,
-                ContentType = "text/plain",
-                FileSizeBytes = Encoding.UTF8.GetByteCount(content),
-                DownloadUrl = $"/api/v1/reports/{reportId}/download",
-                DownloadExpiresAt = DateTimeOffset.UtcNow.Add(ReportTtl),
-                CreatedAt = status?.CreatedAt ?? DateTimeOffset.UtcNow,
-                Format = status?.Format,
-                Metadata = status?.Metadata
-            };
+            var objectName = await _storage.UploadAsync(
+                report.OwnerUserId,
+                FormatId(report.Id),
+                rendered.Extension,
+                rendered.ContentType,
+                rendered.Content);
 
-            await WriteStatusAsync(reportId, requestingUserId, updated);
+            report.Status = ReportStatus.Ready;
+            report.ObjectName = objectName;
+            report.ContentType = rendered.ContentType;
+            report.FileName = BuildFileName(data, rendered.Extension);
+            report.FileSizeBytes = rendered.Content.Length;
+            report.CompletedAt = DateTime.UtcNow;
+
+            unitOfWork.Reports.Update(report);
+            await unitOfWork.SaveChangesAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Report generation failed for {ReportId}", reportId);
-            var failed = new ReportStatusResponse
+
+            try
             {
-                ReportId = reportId,
-                Status = ReportStatus.Failed,
-                CreatedAt = DateTimeOffset.UtcNow,
-                CompletedAt = DateTimeOffset.UtcNow,
-                Error = "Report generation failed. Please try again."
-            };
-            await WriteStatusAsync(reportId, requestingUserId, failed);
+                report.Status = ReportStatus.Failed;
+                report.CompletedAt = DateTime.UtcNow;
+                report.Error = "Report generation failed. Please try again.";
+
+                unitOfWork.Reports.Update(report);
+                await unitOfWork.SaveChangesAsync();
+            }
+            catch (Exception saveEx)
+            {
+                // The database is the thing that failed. Leave the row Pending and let the
+                // cleanup worker's stale sweep fail it out, rather than losing the report id here.
+                _logger.LogError(saveEx, "Could not record the failure of report {ReportId}", reportId);
+            }
         }
     }
-
-    /// <summary>Reads the cache envelope — status plus owner. Callers outside this type go through
-    /// <see cref="GetStatusAsync"/>, which applies the ownership check.</summary>
-    /// <remarks>
-    /// Deliberately lenient, unlike the strict <see cref="JsonUtility.Deserialize{T}"/> used for
-    /// payloads we control. An entry written in an older shape, truncated, or otherwise unreadable
-    /// is a cache miss — not a 500 on someone polling their report. Strictness here would also put
-    /// a preview of the cached payload, CardiMember ids included, into the exception message and
-    /// from there into the logs.
-    /// </remarks>
-    private async Task<CachedReport?> ReadAsync(string reportId)
-    {
-        var json = await _cache.GetStringAsync(ReportKey(reportId));
-        if (json is null)
-            return null;
-
-        if (!JsonUtility.TryDeserialize<CachedReport>(json, out var cached, out var errors)
-            || cached?.Status is null)
-        {
-            // Locations only — the error text can quote the offending value, and this cache holds
-            // health-report metadata.
-            _logger.LogWarning(
-                "Discarding unreadable report cache entry {ReportId}; {ErrorCount} error(s) at {ErrorLocations}",
-                reportId,
-                errors.Count,
-                string.Join(", ", errors.Select(e =>
-                    $"{(e.Path.Length == 0 ? "$" : e.Path)}@{e.LineNumber}:{e.LinePosition}")));
-
-            await EvictAsync(reportId);
-            return null;
-        }
-
-        return cached;
-    }
-
-    /// <summary>Drops a report's status and body together — the body is unreachable once the
-    /// status entry it is gated behind is gone.</summary>
-    private async Task EvictAsync(string reportId)
-    {
-        await _cache.RemoveAsync(ReportKey(reportId));
-        await _cache.RemoveAsync(ContentKey(reportId));
-    }
-
-    private Task WriteStatusAsync(string reportId, Guid ownerUserId, ReportStatusResponse status) =>
-        _cache.SetStringAsync(
-            ReportKey(reportId),
-            Serialize(new CachedReport { OwnerUserId = ownerUserId, Status = status }),
-            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ReportTtl });
 
     /// <summary>
-    /// What actually goes in the cache: the client-facing status wrapped with the id of the user
-    /// entitled to it. Internal to this service — the owner id is never returned to a caller.
+    /// Reads everything the export covers, once, in request order.
     /// </summary>
-    private sealed class CachedReport
+    private static async Task<ReportDataSet> GatherAsync(
+        IUnitOfWork unitOfWork, GenerateReportRequest request)
     {
-        public Guid OwnerUserId { get; set; }
-        public ReportStatusResponse Status { get; set; } = null!;
+        var members = new List<ReportMemberData>(request.CardiMemberIds.Count);
+
+        foreach (var memberId in request.CardiMemberIds)
+        {
+            var member = await unitOfWork.CardiMembers.GetByIdAsync(memberId);
+            if (member is null) continue;
+
+            var logs = (await unitOfWork.ActivityLogs
+                    .GetByCardiMemberAndDateRangeAsync(memberId, request.DateRangeFrom, request.DateRangeTo))
+                .OrderBy(l => l.Date)
+                .ToList();
+
+            var alerts = request.IncludeAlerts
+                ? (await unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
+                    .Where(a =>
+                        DateOnly.FromDateTime(a.TriggeredDate) >= request.DateRangeFrom &&
+                        DateOnly.FromDateTime(a.TriggeredDate) <= request.DateRangeTo)
+                    .OrderBy(a => a.TriggeredDate)
+                    .ToList()
+                : [];
+
+            var devices = request.IncludeDevices
+                ? (await unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(memberId)).ToList()
+                : [];
+
+            members.Add(new ReportMemberData(member, logs, alerts, devices));
+        }
+
+        return new ReportDataSet(members, request.DateRangeFrom, request.DateRangeTo, request.Title);
     }
+
+    /// <summary>
+    /// The caregiver-facing prose, or null for formats that have no place for it.
+    /// </summary>
+    /// <remarks>
+    /// CSV and FHIR are machine-facing: a spreadsheet column or a FHIR resource holding a
+    /// paragraph of generated English would be neither useful nor safe to feed onward into an EHR.
+    /// Only the PDF carries the narrative, so only the PDF pays the model call — and a caregiver
+    /// asking for CSV gets their file without waiting on an inference.
+    /// </remarks>
+    private async Task<string?> BuildNarrativeAsync(
+        IGenerativeAiService generativeAi, ReportDataSet data, ReportFormat format)
+    {
+        if (format != ReportFormat.Pdf)
+            return null;
+
+        var prompt = BuildReportPrompt(data);
+        var generated = await generativeAi.GenerateAsync(prompt.Text);
+
+        // Names are restored only here, after the model has answered — the provider never saw them.
+        return RestoreNames(generated, prompt.Pseudonyms);
+    }
+
+    /// <summary>
+    /// <c>carditrack-export-{member}-{from}-{to}.{ext}</c> for one member; the member part becomes
+    /// the member count past that, because a filename is not the place to list a family.
+    /// </summary>
+    private static string BuildFileName(ReportDataSet data, string extension)
+    {
+        var subject = data.Members.Count == 1
+            ? Slug(data.Members[0].Member.Name)
+            : $"{data.Members.Count}-members";
+
+        return $"carditrack-export-{subject}-{data.From:yyyyMMdd}-{data.To:yyyyMMdd}.{extension}";
+    }
+
+    /// <summary>
+    /// A filename-safe rendering of a member's name. ASCII letters and digits only, so the value
+    /// cannot carry a path separator, a quote, or anything else that would need escaping in the
+    /// <c>Content-Disposition</c> header it ends up in.
+    /// </summary>
+    private static string Slug(string name)
+    {
+        var slug = new string(name
+            .Select(c => char.IsAsciiLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')
+            .ToArray())
+            .Trim('-');
+
+        while (slug.Contains("--", StringComparison.Ordinal))
+            slug = slug.Replace("--", "-", StringComparison.Ordinal);
+
+        // A name of nothing but non-ASCII characters is a real case, not a defensive one.
+        return slug.Length == 0 ? "member" : slug[..Math.Min(slug.Length, 40)];
+    }
+
+    private ReportStatusResponse ToStatusResponse(Report report) => new()
+    {
+        ReportId = FormatId(report.Id),
+        Status = report.Status,
+        Format = report.Format,
+        ContentType = report.ContentType,
+        FileSizeBytes = report.FileSizeBytes,
+        DownloadUrl = report.Status == ReportStatus.Ready
+            ? $"/api/v1/reports/{FormatId(report.Id)}/download"
+            : null,
+        DownloadExpiresAt = new DateTimeOffset(DateTime.SpecifyKind(report.ExpiresAt, DateTimeKind.Utc)),
+        CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(report.CreatedDate, DateTimeKind.Utc)),
+        CompletedAt = report.CompletedAt is { } completed
+            ? new DateTimeOffset(DateTime.SpecifyKind(completed, DateTimeKind.Utc))
+            : null,
+        Error = report.Error,
+        Metadata = new ReportMetadata
+        {
+            CardiMembers = report.CardiMemberIds.Select(id => id.ToString()).ToList(),
+            DateRangeFrom = report.DateRangeFrom,
+            DateRangeTo = report.DateRangeTo
+        }
+    };
+
+    /// <summary>The published id shape: a GUID in compact "N" form, 32 hex chars, no dashes.</summary>
+    private static string FormatId(Guid id) => id.ToString("N");
+
+    /// <summary>
+    /// Parses a client-supplied report id. Deliberately tolerant of the dashed form too — a
+    /// caregiver's client that round-trips the id through a GUID type still resolves its own
+    /// report, and the ownership check is what protects the content either way.
+    /// </summary>
+    private static bool TryParseId(string reportId, out Guid id) => Guid.TryParse(reportId, out id);
 
     /// <summary>
     /// A prompt with no patient names in it, plus the mapping needed to put them back.
@@ -216,54 +347,40 @@ public class ReportGenerationService : IReportGenerationService
     /// is. Members are labelled positionally here and the labels are swapped back for real names
     /// after the response returns, so identity and health data never leave together.
     /// </summary>
-    private async Task<ReportPrompt> BuildReportPromptAsync(GenerateReportRequest request)
+    private static ReportPrompt BuildReportPrompt(ReportDataSet data)
     {
         var sections = new List<string>();
         var pseudonyms = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        foreach (var memberId in request.CardiMemberIds)
+        foreach (var member in data.Members)
         {
-            var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
-            if (member is null) continue;
-
-            var logs = await _unitOfWork.ActivityLogs
-                .GetByCardiMemberAndDateRangeAsync(memberId, request.DateRangeFrom, request.DateRangeTo);
-
             var label = PseudonymFor(pseudonyms.Count);
-            pseudonyms[label] = member.Name;
+            pseudonyms[label] = member.Member.Name;
 
             var sb = new StringBuilder();
             sb.AppendLine($"## {label}");
 
-            if (request.IncludeMetrics && logs.Any())
+            if (member.ActivityLogs.Count > 0)
             {
                 sb.AppendLine("### Activity Metrics");
-                foreach (var log in logs.OrderBy(l => l.Date))
+                foreach (var log in member.ActivityLogs)
                     sb.AppendLine($"  {log.Date}: {DayFigures(log)}");
             }
 
-            if (request.IncludeAlerts)
+            if (member.Alerts.Count > 0)
             {
-                var alerts = await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false);
-                var inRange = alerts.Where(a =>
-                    DateOnly.FromDateTime(a.TriggeredDate) >= request.DateRangeFrom &&
-                    DateOnly.FromDateTime(a.TriggeredDate) <= request.DateRangeTo).ToList();
-
-                if (inRange.Any())
-                {
-                    sb.AppendLine("### Alerts");
-                    foreach (var alert in inRange)
-                        sb.AppendLine(
-                            $"  {alert.TriggeredDate:yyyy-MM-dd} [{alert.Severity}] "
-                            + MedicalPromptBlocks.Flatten(alert.Title));
-                }
+                sb.AppendLine("### Alerts");
+                foreach (var alert in member.Alerts)
+                    sb.AppendLine(
+                        $"  {alert.TriggeredDate:yyyy-MM-dd} [{alert.Severity}] "
+                        + MedicalPromptBlocks.Flatten(alert.Title));
             }
 
             sections.Add(sb.ToString());
         }
 
         var text = MedicalPromptBlocks.Tone + $"""
-            Write a {request.Format} health report for a non-clinical caregiver, covering {request.DateRangeFrom} to {request.DateRangeTo}.
+            Write a health report for a non-clinical caregiver, covering {data.From} to {data.To}.
 
             """ + MedicalPromptBlocks.CaregiverRegister + $"""
 
@@ -287,7 +404,7 @@ public class ReportGenerationService : IReportGenerationService
     /// document a caregiver keeps. The same shape the family digest guards against and asserts on;
     /// this is the third renderer in the review that had it.
     /// </remarks>
-    private static string DayFigures(Domain.Entities.ActivityLog log)
+    private static string DayFigures(ActivityLog log)
     {
         var parts = new List<string>(3);
         if (log.Steps is { } steps)
@@ -327,8 +444,4 @@ public class ReportGenerationService : IReportGenerationService
 
         return content;
     }
-
-    private static string ReportKey(string reportId) => $"report:status:{reportId}";
-    private static string ContentKey(string reportId) => $"report:content:{reportId}";
-    private static string Serialize<T>(T obj) => JsonSerializer.Serialize(obj);
 }

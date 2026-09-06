@@ -70,6 +70,7 @@ try
     builder.Services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
     builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
     builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
+    builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
     builder.Services.AddPushRepositories();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
