@@ -15,10 +15,11 @@ public class MetricAlarmStateRepository : Repository<MetricAlarmState>, IMetricA
         Guid cardiMemberId, CancellationToken ct = default) =>
         await _dbSet.Where(s => s.CardiMemberId == cardiMemberId).ToListAsync(ct);
 
-    public async Task DeleteForAlarmAsync(Guid metricAlarmId, CancellationToken ct = default)
-    {
-        var rows = await _dbSet.Where(s => s.MetricAlarmId == metricAlarmId).ToListAsync(ct);
-        if (rows.Count > 0)
-            _dbSet.RemoveRange(rows);
-    }
+    /// <summary>
+    /// Server-side, like the other bulk deletes in this folder: an account-level alarm has one state
+    /// row per inheriting member, and loading them all just to mark them deleted is a read the
+    /// database can do without. Executes immediately rather than at <c>SaveChangesAsync</c>.
+    /// </summary>
+    public async Task DeleteForAlarmAsync(Guid metricAlarmId, CancellationToken ct = default) =>
+        await _dbSet.Where(s => s.MetricAlarmId == metricAlarmId).ExecuteDeleteAsync(ct);
 }

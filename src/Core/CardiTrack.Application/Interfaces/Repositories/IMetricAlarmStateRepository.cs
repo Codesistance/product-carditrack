@@ -8,7 +8,9 @@ public interface IMetricAlarmStateRepository : IRepository<MetricAlarmState>
     /// tick rather than fetching per alarm.</summary>
     Task<IReadOnlyList<MetricAlarmState>> GetByCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
 
-    /// <summary>Discards the states belonging to an alarm that has been deleted, so a later alarm
-    /// can never inherit a stale standing state through a reused id.</summary>
+    /// <summary>Discards the states belonging to an alarm that has been deleted or retuned, so a
+    /// later evaluation can never inherit a stale standing state. Takes effect immediately, not at
+    /// <c>SaveChangesAsync</c> — it is a set-based delete, one statement however many members
+    /// inherit the alarm.</summary>
     Task DeleteForAlarmAsync(Guid metricAlarmId, CancellationToken ct = default);
 }
