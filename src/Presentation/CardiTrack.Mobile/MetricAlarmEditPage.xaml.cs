@@ -99,6 +99,18 @@ public partial class MetricAlarmEditPage : ContentPage
             {
                 var alarms = await _api.GetMemberAlarmsAsync(_memberId);
                 existing = alarms.FirstOrDefault(a => a.Id == id);
+
+                if (existing is null)
+                {
+                    // Tapped on the list, gone by the time this page loaded — removed from another
+                    // device, or an override reverted to the account setting. Building a "new" alarm
+                    // here while Save still PUTs to the old id would fail with a 404 on a screen
+                    // that said New Alarm. Say what happened and go back to the list instead.
+                    await _popups.ShowErrorAsync(
+                        "This alarm was removed after the list was loaded.", "Alarm no longer exists");
+                    await Shell.Current.GoToAsync("..");
+                    return;
+                }
             }
 
             _draft = new AlarmDraft(catalogue, existing);
