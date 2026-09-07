@@ -722,14 +722,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         }
     }
 
-    public async Task<bool> CanExportHealthDataAsync(CancellationToken ct = default)
-    {
-        var availability = await GetAsync<ReportAvailabilityResponse>(
-            "api/v1/reports/availability", ct);
-
-        return availability.Available;
-    }
-
     private async Task<ApiException> MapErrorAsync(string method, string path, HttpResponseMessage response, CancellationToken ct)
     {
         string message = $"Request failed ({(int)response.StatusCode}).";

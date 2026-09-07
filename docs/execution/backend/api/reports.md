@@ -11,7 +11,7 @@ How generation works:
 - **Retention is 7 days** (`Storage:Reports:Retention`), enforced by `ExpiredReportCleanupWorker` in `CardiTrack.Worker`, with a slacker GCS lifecycle rule as the backstop. The same worker fails out reports left `Pending` past `Storage:Reports:GenerationTimeout` (15 min) — the abandoned generations the old 1-hour cache TTL used to hide.
 - Report IDs are GUIDs in compact **`"N"` format** (32 hex chars, no dashes). The dashed form is also accepted on read.
 - **Ownership is checked up front**: `ReportGenerationService.GenerateAsync` calls `RequireViewAccessAsync` on every requested CardiMember ID before queueing — any id the caller cannot read fails the **whole request with 404** (indistinguishable from a nonexistent member).
-- **Plan-gated**: `POST` requires **Complete Care or above** via `IEntitlementService`, and refuses with **402** naming the tier needed. The status and download endpoints are **deliberately ungated** — a plan that lapses after generation must not strip a caregiver of a record they already asked for.
+- **Not plan-gated.** Nothing in CardiTrack is gated by plan today (R1 is trial-only; subscriptions ship in R2), so export is open to every signed-in caregiver. The `IEntitlementService` that gated it on 2026-09-06 was removed on 2026-09-07. When gating arrives, the read paths (status, download) should stay ungated — a plan that lapses after generation must not strip a caregiver of a record they already asked for.
 - **Business validation** now exists (`GenerateReportValidator`): **max 5 CardiMembers**, **max 365-day range**, no duplicate members, at least one section, and an MVP 1 format.
 - **Privacy:** the **AI narrative is generated only for PDF**. Because it goes to the public Gemini endpoint, member names are pseudonymised as "Patient A", "Patient B", … before the model call and swapped back only after the response returns. The model never sees a real name. **CSV and FHIR R4 make no model call at all.**
 - **No free text crosses into any export** — no medical notes, no alert message bodies, no caregiver device labels ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §70, §85).
@@ -87,7 +87,6 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 | Status | When |
 |--------|------|
 | 400 | A business rule failed — too many members, a range over 365 days, duplicate members, no sections, or HL7 v2 |
-| 402 | The organisation's plan does not include export (Basic). The message names the tier needed |
 | 404 | A requested CardiMember ID is unknown **or not readable by the caller** — deliberately indistinguishable |
 
 ---

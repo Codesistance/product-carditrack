@@ -16,9 +16,8 @@ namespace CardiTrack.Mobile;
 /// hits an error should land back on the form they filled in, not at the start of a flow.
 /// </para>
 /// <para>
-/// The plan gate is asked about before the form is shown, so a Basic caregiver sees what upgrading
-/// buys instead of filling in a form that would come back 402. That check is a courtesy, not the
-/// gate — the API refuses on its own, and it is what actually protects the feature.
+/// Export is open to every account: nothing in CardiTrack is gated by plan today, so the page asks
+/// only for the member list before showing the form.
 /// </para>
 /// </remarks>
 [QueryProperty(nameof(MemberId), "memberId")]
@@ -122,22 +121,7 @@ public partial class ExportHealthDataPage : ContentPage
 
         try
         {
-            // Both up front: without the member list there is nothing to export, and without the
-            // entitlement answer the form would be a promise we might not keep.
-            var membersCall = _api.GetCardiMembersAsync();
-            var entitledCall = _api.CanExportHealthDataAsync();
-            await Task.WhenAll(membersCall, entitledCall);
-
-            if (!await entitledCall)
-            {
-                UpsellDetailLabel.Text =
-                    "Health data export is part of Complete Care. Upgrade your plan to export "
-                    + "your family's records as a PDF, spreadsheet or FHIR bundle.";
-                ShowOnly(UpsellPanel);
-                return;
-            }
-
-            _members = (await membersCall).ToList();
+            _members = (await _api.GetCardiMembersAsync()).ToList();
             if (_members.Count == 0)
             {
                 ErrorDetailLabel.Text = "There's nobody to export data for yet.";
@@ -542,7 +526,7 @@ public partial class ExportHealthDataPage : ContentPage
     private void ShowOnly(View panel)
     {
         foreach (var candidate in new View[]
-                 { SkeletonPanel, UpsellPanel, ErrorPanel, FormPanel, GeneratingPanel, CompletePanel, FailedPanel })
+                 { SkeletonPanel, ErrorPanel, FormPanel, GeneratingPanel, CompletePanel, FailedPanel })
         {
             candidate.IsVisible = ReferenceEquals(candidate, panel);
         }
