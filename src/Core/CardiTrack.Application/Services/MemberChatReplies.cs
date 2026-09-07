@@ -97,10 +97,18 @@ public static partial class MemberChatReplies
         return $"{CaptionLead(line)} {LatestReadingsReply(firstName, recent, today)}";
     }
 
-    /// <summary>The caption as the dashboard shows it: headline, then sentence.</summary>
+    /// <summary>The caption as the dashboard shows it: headline, then sentence — closed with a
+    /// full stop, since a sentence follows it here where on the dashboard nothing does.</summary>
     private static string CaptionLead(MemberStatusLine line)
     {
+        // The stored line is generated copy; the generator strips nothing from the end of the
+        // message, so a caption may arrive without terminal punctuation and the dashboard never
+        // minded. Joined to the readings with a space, "Steps are very low today The most
+        // recent…" is a run-on, so the stop is guaranteed here rather than assumed of the model.
         var message = line.Message.Trim();
+        if (!message.EndsWith('.') && !message.EndsWith('!') && !message.EndsWith('?') && !message.EndsWith('…'))
+            message += ".";
+
         var headline = line.Headline?.Trim();
 
         // The headline is documented as droppable — the dashboard keeps per-tier copy to fall

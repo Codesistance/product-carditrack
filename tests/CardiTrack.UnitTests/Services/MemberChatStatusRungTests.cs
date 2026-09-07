@@ -220,6 +220,28 @@ public class MemberChatStatusRungTests
         Assert.DoesNotContain("16", reply, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A stored caption may arrive without terminal punctuation — the generator strips nothing
+    /// from the end — and on the dashboard nothing follows it. Here a sentence does, so the stop
+    /// is guaranteed rather than assumed of the model.
+    /// </summary>
+    [Fact]
+    public void ACaptionWithoutAFullStop_GetsOne_BeforeTheReadings()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine { Headline = null, Message = "Steps are very low today" };
+
+        var reply = MemberChatReplies.StatusLineReply(
+            "Dad", line, [new ActivityLog { Date = today, Steps = 812 }], today);
+
+        Assert.StartsWith("Steps are very low today. The most recent readings", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("today The", reply, StringComparison.Ordinal);
+        // One stop, not two, when the caption already ends in one.
+        var punctuated = MemberChatReplies.StatusLineReply(
+            "Dad", new MemberStatusLine { Message = "Steps are very low today." }, [], today);
+        Assert.DoesNotContain("..", punctuated, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("how is his heart rate", StatusMetric.RestingHeartRate)]
     [InlineData("what's his pulse like", StatusMetric.RestingHeartRate)]
