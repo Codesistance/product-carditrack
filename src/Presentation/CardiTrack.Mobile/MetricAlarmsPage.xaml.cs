@@ -120,8 +120,8 @@ public partial class MetricAlarmsPage : ContentPage
         AddButton.IsVisible = _canManage;
 
         IntroLabel.Text = _canManage
-            ? "CardiTrack watches for its own patterns already. These are levels you have asked to be told about on top of that."
-            : "CardiTrack watches for its own patterns already. These are levels the primary carer has asked to be told about on top of that.";
+            ? "CardiTrack watches for its own patterns already. However, you may have some specific concerns of your own."
+            : "CardiTrack watches for its own patterns already. These are the specific concerns the primary carer has asked to be told about.";
 
         var enabled = alarms.Count(a => a.IsEnabled);
         CrowdingNotice.IsVisible = enabled > MetricAlarmValidation.RecommendedMaxEnabledAlarms;
