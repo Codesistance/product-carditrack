@@ -114,17 +114,15 @@
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <VerticalStackLayout Grid.Column="0" Spacing="2">
                                     <Label Text="From" Style="{StaticResource Body2}"/>
-                                    <DatePicker x:Name="FromPicker"
-                                                Format="d MMM yyyy"
-                                                TextColor="{StaticResource HeadingText}"
-                                                DateSelected="OnDateChanged"/>
+                                    <controls:DateField x:Name="FromPicker"
+                                                        Format="d MMM yyyy"
+                                                        DateSelected="OnDateChanged"/>
                                 </VerticalStackLayout>
                                 <VerticalStackLayout Grid.Column="1" Spacing="2">
                                     <Label Text="To" Style="{StaticResource Body2}"/>
-                                    <DatePicker x:Name="ToPicker"
-                                                Format="d MMM yyyy"
-                                                TextColor="{StaticResource HeadingText}"
-                                                DateSelected="OnDateChanged"/>
+                                    <controls:DateField x:Name="ToPicker"
+                                                        Format="d MMM yyyy"
+                                                        DateSelected="OnDateChanged"/>
                                 </VerticalStackLayout>
                             </Grid>
 

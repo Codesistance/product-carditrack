@@ -83,21 +83,12 @@
                     <!-- Date of Birth -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
                         <Label Text="Date of Birth*" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <DatePicker x:Name="DobPicker"
-                                            FontFamily="Quicksand"
-                                            FontSize="14"
-                                            Format="MM/dd/yyyy"
-                                            TextColor="{StaticResource HeadingText}"
-                                            BackgroundColor="Transparent"
+                        <!-- Written as the edit form writes it (d MMM yyyy): the same date of
+                             birth should read the same on the two forms that show it. -->
+                        <controls:DateField x:Name="DobPicker"
+                                            Format="d MMM yyyy"
+                                            Placeholder="Choose their date of birth"
                                             DateSelected="OnDobSelected"/>
-                                <Label Grid.Column="1"
-                                       Text="&#x1F4C5;"
-                                       FontSize="18"
-                                       VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
                     </VerticalStackLayout>
 
                     <!-- Sex. Not in the M1-04 comp; sits under Date of Birth because the two
