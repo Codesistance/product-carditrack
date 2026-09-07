@@ -209,27 +209,19 @@ public static partial class ChatDataRegistry
         });
 
     /// <summary>
-    /// The words a verdict uses when it is about the band's metric. Whole words, like every
-    /// other keyword match in this layer, and deliberately loose within that: the clinical read
-    /// writes "resting HR", "heart rate" and "bpm" for the same thing, and a verdict that names
-    /// the reading in any of its spellings has named it.
+    /// The words a verdict uses when it is about the band's metric — <see cref="StatusQuestion"/>'s
+    /// lists, so the citation filter and the status rung cannot disagree about what counts as
+    /// naming a reading. Deliberately loose within whole words: the clinical read writes
+    /// "resting HR", "heart rate" and "bpm" for the same thing, and a verdict that names the
+    /// reading in any of its spellings has named it.
     /// </summary>
     private static Regex MetricWords(ChartMetricKind metric) => metric switch
     {
-        ChartMetricKind.RestingHeartRate => HeartRateWords(),
-        ChartMetricKind.Sleep => SleepWords(),
-        ChartMetricKind.OvernightBreathingRate => BreathingWords(),
+        ChartMetricKind.RestingHeartRate => StatusQuestion.WordsFor(StatusMetric.RestingHeartRate),
+        ChartMetricKind.Sleep => StatusQuestion.WordsFor(StatusMetric.Sleep),
+        ChartMetricKind.OvernightBreathingRate => StatusQuestion.WordsFor(StatusMetric.BreathingRate),
         _ => NothingMatches(),
     };
-
-    [GeneratedRegex(@"\b(?:heart rate|resting hr|hr|bpm|pulse)\b", RegexOptions.IgnoreCase)]
-    private static partial Regex HeartRateWords();
-
-    [GeneratedRegex(@"\b(?:sleep\w*|slept|asleep)\b", RegexOptions.IgnoreCase)]
-    private static partial Regex SleepWords();
-
-    [GeneratedRegex(@"\b(?:breath\w*|respirat\w*)\b", RegexOptions.IgnoreCase)]
-    private static partial Regex BreathingWords();
 
     /// <summary>A band for a metric this map does not know quotes nothing — the same direction
     /// every other drop here takes.</summary>

@@ -914,7 +914,7 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.Status when aboutThisMoment =>
                 await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
-                await AnswerStatusLineAsync(triageUsage, cardiMemberId, member, utcNow, ct),
+                await AnswerStatusLineAsync(flattened, triageUsage, cardiMemberId, member, utcNow, ct),
             // The row already read above when advise was a clarify candidate; a direct route to
             // advise reads it here instead — once, either way.
             MemberChatWorkflow.Advise =>
@@ -1210,8 +1210,16 @@ public class MemberChatService : IMemberChatService
     /// the caption rests on are one whitelisted read this rung was already making on the other
     /// branch; <see cref="MemberChatReplies.StatusLineReply"/> puts them after the line.
     /// </para>
+    /// <para>
+    /// Which of the three shapes answers is the question's own words, in code — §5's source
+    /// rule, "a named metric computes that value; none serves the stored line", built at last
+    /// after "how is his heart rate" was answered with the steps caption (dev, 2026-09-07). The
+    /// choice is <see cref="MemberChatReplies.StatusReply"/>'s; this fetches the two inputs it
+    /// needs, both of which it was already fetching.
+    /// </para>
     /// </remarks>
     private async Task<MemberChatWorkflowResult> AnswerStatusLineAsync(
+        string flattened,
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
@@ -1223,9 +1231,7 @@ public class MemberChatService : IMemberChatService
         var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
-        var reply = line is not null
-            ? MemberChatReplies.StatusLineReply(name, line, recent, today)
-            : MemberChatReplies.LatestReadingsReply(name, recent, today);
+        var reply = MemberChatReplies.StatusReply(name, flattened, line, recent, today);
 
         return new MemberChatWorkflowResult
         {

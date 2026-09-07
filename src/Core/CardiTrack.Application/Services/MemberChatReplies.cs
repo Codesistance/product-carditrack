@@ -94,14 +94,138 @@ public static partial class MemberChatReplies
     public static string StatusLineReply(
         string? firstName, MemberStatusLine line, IReadOnlyList<ActivityLog> recent, DateOnly today)
     {
+        return $"{CaptionLead(line)} {LatestReadingsReply(firstName, recent, today)}";
+    }
+
+    /// <summary>The caption as the dashboard shows it: headline, then sentence.</summary>
+    private static string CaptionLead(MemberStatusLine line)
+    {
         var message = line.Message.Trim();
         var headline = line.Headline?.Trim();
 
         // The headline is documented as droppable — the dashboard keeps per-tier copy to fall
         // back on — so the reply must read whole without it.
-        var lead = string.IsNullOrWhiteSpace(headline) ? message : $"{headline} — {message}";
+        return string.IsNullOrWhiteSpace(headline) ? message : $"{headline} — {message}";
+    }
 
-        return $"{lead} {LatestReadingsReply(firstName, recent, today)}";
+    /// <summary>
+    /// The status rung's answer, chosen from the question's own words: the reading it names, the
+    /// full list if it asked for the readings, else the dashboard's line.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §5 gives this rung a deterministic source rule — a named metric computes that value, no
+    /// metric serves the stored line — and until now only the second half existed. "How is his
+    /// heart rate" was answered "Steps are lower today than yesterday." (dev, 2026-09-07): the
+    /// caption is a sentence about whichever reading the batch found most worth a sentence, and
+    /// a question naming a different reading was answered about the wrong one, truthfully.
+    /// </para>
+    /// <para>
+    /// A named reading leads, dated, with the previous day's value beside it — the comparison
+    /// the caregiver is asking for when they ask "how is" a number. The caption follows only
+    /// when it is about something else: a caption about the reading just stated is the same
+    /// fact twice, and one about a different reading is the rest of the picture. A request for
+    /// the readings themselves gets the readings, not the caption that summarises them.
+    /// </para>
+    /// </remarks>
+    public static string StatusReply(
+        string? firstName,
+        string question,
+        MemberStatusLine? line,
+        IReadOnlyList<ActivityLog> recent,
+        DateOnly today)
+    {
+        if (StatusQuestion.MetricNamed(question) is { } metric)
+        {
+            var reply = MetricReadingReply(firstName, metric, recent, today);
+            return line is not null && StatusQuestion.MetricNamed(line.Message) != metric
+                ? $"{reply} On the whole: {CaptionLead(line)}"
+                : reply;
+        }
+
+        if (StatusQuestion.AsksForAllReadings(question) || line is null)
+            return LatestReadingsReply(firstName, recent, today);
+
+        return StatusLineReply(firstName, line, recent, today);
+    }
+
+    /// <summary>
+    /// One reading, dated, with the previous day's value for comparison when there is one — the
+    /// <see cref="LatestReadingsReply"/> shape restricted to the metric the caregiver named.
+    /// </summary>
+    public static string MetricReadingReply(
+        string? firstName, StatusMetric metric, IReadOnlyList<ActivityLog> recent, DateOnly today)
+    {
+        var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
+        var name = MetricName(metric);
+
+        var dated = recent
+            .Where(l => Figure(metric, l) is not null)
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        if (dated.Count == 0)
+        {
+            return $"I don't have a recent {name} reading for {subject} — readings arrive once their "
+                + "watch has recorded and synced them.";
+        }
+
+        var latest = dated[^1];
+        var reply = $"The most recent {name} I have for {subject} is {Figure(metric, latest)}, "
+            + When(metric, latest.Date, today);
+
+        if (dated.Count > 1)
+        {
+            var previous = dated[^2];
+            reply += $"; {When(metric, previous.Date, today)} it was {Figure(metric, previous)}";
+        }
+
+        return reply + ".";
+    }
+
+    /// <summary>The metric as a caregiver reads it — spelled once here, so a figure and its
+    /// name cannot drift apart between replies.</summary>
+    private static string MetricName(StatusMetric metric) => metric switch
+    {
+        StatusMetric.HeartRateVariability => "overnight heart rate variability",
+        StatusMetric.RestingHeartRate => "resting heart rate",
+        StatusMetric.Oxygen => "blood oxygen",
+        StatusMetric.BreathingRate => "overnight breathing rate",
+        StatusMetric.Sleep => "sleep",
+        _ => "step count",
+    };
+
+    /// <summary>The metric's figure on one day, in its own unit, or null when that day has none.</summary>
+    private static string? Figure(StatusMetric metric, ActivityLog log) => metric switch
+    {
+        StatusMetric.HeartRateVariability => log.HeartRateVariabilityMs is { } hrv
+            ? $"{hrv.ToString("0", CultureInfo.InvariantCulture)} ms" : null,
+        StatusMetric.RestingHeartRate => log.RestingHeartRate is { } hr ? $"{hr} bpm" : null,
+        StatusMetric.Oxygen => log.SpO2Average is { } spo2
+            ? $"{spo2.ToString("0.#", CultureInfo.InvariantCulture)}%" : null,
+        // The overnight figure, as the charts and the bands block use; the daytime rate stands in
+        // only for a device that records nothing overnight.
+        StatusMetric.BreathingRate => (log.OvernightBreathingRate ?? log.BreathingRate) is { } br
+            ? $"{br.ToString("0.#", CultureInfo.InvariantCulture)} breaths a minute" : null,
+        StatusMetric.Sleep => log.SleepMinutes is { } sleep ? ReadingFigures.SleepFigure(sleep) : null,
+        _ => log.Steps is { } steps ? $"{steps:#,##0} steps" : null,
+    };
+
+    /// <summary>
+    /// The day a figure belongs to. Sleep is attributed to the morning it ended on, so a night on
+    /// today's row is "last night" — the same rule every renderer follows, spelled for a chat
+    /// reply rather than a heading.
+    /// </summary>
+    private static string When(StatusMetric metric, DateOnly date, DateOnly today)
+    {
+        if (metric != StatusMetric.Sleep)
+            return DayLabel(date, today);
+
+        return date == today
+            ? "last night"
+            : date == today.AddDays(-1)
+                ? "the night before last"
+                : $"the night ending {date.ToString("MMM d", CultureInfo.InvariantCulture)}";
     }
 
     /// <summary>
@@ -112,13 +236,19 @@ public static partial class MemberChatReplies
         IReadOnlyList<ActivityLog> recent, DateOnly today)
     {
         var latest = recent
-            .Where(l => l.Steps is not null || l.RestingHeartRate is not null || l.SleepMinutes is not null)
+            .Where(l => l.Steps is not null || l.RestingHeartRate is not null || l.SleepMinutes is not null
+                        || l.HeartRateVariabilityMs is not null || l.OvernightBreathingRate is not null
+                        || l.SpO2Average is not null)
             .OrderBy(l => l.Date)
             .LastOrDefault();
 
         if (latest is null)
             return null;
 
+        // Every reading the day carries, not the first three: asked for "his specific
+        // measurements", a list that stopped at sleep left the overnight figures out of an
+        // answer whose whole point was completeness. Absent ones are omitted rather than named
+        // — a device that derives none should not have the reply say so every time.
         var parts = new List<string>();
         if (latest.Steps is { } steps)
             parts.Add($"{steps:#,##0} steps");
@@ -126,6 +256,12 @@ public static partial class MemberChatReplies
             parts.Add($"a resting heart rate of {hr} bpm");
         if (latest.SleepMinutes is { } sleep)
             parts.Add($"{ReadingFigures.SleepFigure(sleep)} of sleep the night before");
+        if (latest.HeartRateVariabilityMs is { } hrv)
+            parts.Add($"an overnight heart rate variability of {hrv.ToString("0", CultureInfo.InvariantCulture)} ms");
+        if (latest.OvernightBreathingRate is { } breathing)
+            parts.Add($"{breathing.ToString("0.#", CultureInfo.InvariantCulture)} breaths a minute overnight");
+        if (latest.SpO2Average is { } spo2)
+            parts.Add($"{spo2.ToString("0.#", CultureInfo.InvariantCulture)}% blood oxygen");
 
         return (DayLabel(latest.Date, today), Join(parts));
     }

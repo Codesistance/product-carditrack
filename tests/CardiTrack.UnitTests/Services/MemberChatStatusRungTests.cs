@@ -103,6 +103,129 @@ public class MemberChatStatusRungTests
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             NullLogger<MemberChatService>.Instance);
 
+    // ── A question that names a reading ─────────────────────────────────────────
+
+    /// <summary>
+    /// The owner's own session (dev, 2026-09-07): "how is his heart rate" → "Steps are lower today
+    /// than yesterday." A true caption about the wrong reading. The named reading leads, dated and
+    /// beside yesterday's; the caption follows only because it is about something else.
+    /// </summary>
+    [Fact]
+    public async Task AMetricQuestion_LeadsWithThatMetric_NeverTheStepsCaption()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        StatusLineIs("Steps are lower today than yesterday.", TimeSpan.FromHours(1));
+        ReadingsAre(
+            new ActivityLog { Date = today.AddDays(-1), Steps = 4905, RestingHeartRate = 68 },
+            new ActivityLog { Date = today, Steps = 1200, RestingHeartRate = 70 });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how is his heart rate");
+
+        Assert.StartsWith(
+            "The most recent resting heart rate I have for Moses is 70 bpm, today so far; yesterday it was 68 bpm.",
+            reply.Reply, StringComparison.Ordinal);
+        Assert.True(
+            reply.Reply.IndexOf("70 bpm", StringComparison.Ordinal)
+            < reply.Reply.IndexOf("Steps are lower", StringComparison.Ordinal),
+            "the reading the caregiver asked about has to come before a caption about another one.");
+        Assert.Contains("On the whole: Settling — Steps are lower today than yesterday.", reply.Reply, StringComparison.Ordinal);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+    }
+
+    /// <summary>
+    /// "His specific measurements" is a request for the figures, not for the sentence that
+    /// summarises them — every reading the day carries, and no caption.
+    /// </summary>
+    [Fact]
+    public async Task AReadingsQuestion_ListsEveryMetric_NotTheCaption()
+    {
+        StatusLineIs("Steps are lower today than yesterday.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog
+        {
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Steps = 1200,
+            RestingHeartRate = 70,
+            SleepMinutes = 370,
+            HeartRateVariabilityMs = 42.4m,
+            OvernightBreathingRate = 14.2m,
+            SpO2Average = 96.4m,
+        });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "his specific measurements");
+
+        Assert.StartsWith("The most recent readings I have for Moses are today so far:", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("1,200 steps", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("a resting heart rate of 70 bpm", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("of sleep the night before", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("an overnight heart rate variability of 42 ms", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("14.2 breaths a minute overnight", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("96.4% blood oxygen", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Steps are lower", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A caption about the reading just stated is the same fact twice, so it is dropped;
+    /// one about a different reading is the rest of the picture, so it follows.</summary>
+    [Fact]
+    public void TheCaptionFollowsAMetricReply_OnlyWhenItIsAboutSomethingElse()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine { Message = "Steps are lower today than yesterday." };
+        var readings = new[] { new ActivityLog { Date = today, Steps = 1200, RestingHeartRate = 70 } };
+
+        var aboutSteps = MemberChatReplies.StatusReply("Dad", "how are his steps", line, readings, today);
+        var aboutHeart = MemberChatReplies.StatusReply("Dad", "how is his heart rate", line, readings, today);
+
+        Assert.DoesNotContain("On the whole", aboutSteps, StringComparison.Ordinal);
+        Assert.Contains("On the whole: Steps are lower today than yesterday.", aboutHeart, StringComparison.Ordinal);
+    }
+
+    /// <summary>Sleep belongs to the morning it ended on, so today's row is last night.</summary>
+    [Fact]
+    public void ASleepReadingIsDatedAsANight()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var reply = MemberChatReplies.MetricReadingReply("Dad", StatusMetric.Sleep,
+            [
+                new ActivityLog { Date = today.AddDays(-1), SleepMinutes = 420 },
+                new ActivityLog { Date = today, SleepMinutes = 370 },
+            ], today);
+
+        Assert.StartsWith("The most recent sleep I have for Dad is ", reply, StringComparison.Ordinal);
+        Assert.Contains(", last night; the night before last it was ", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A named reading the watch has not recorded is said to be unrecorded, by name.</summary>
+    [Fact]
+    public void AMetricWithNoReadingSaysSo()
+    {
+        var reply = MemberChatReplies.MetricReadingReply("Dad", StatusMetric.Oxygen,
+            [new ActivityLog { Date = new DateOnly(2026, 9, 7), Steps = 1200 }], new DateOnly(2026, 9, 7));
+
+        Assert.StartsWith("I don't have a recent blood oxygen reading for Dad", reply, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("how is his heart rate", StatusMetric.RestingHeartRate)]
+    [InlineData("what's his pulse like", StatusMetric.RestingHeartRate)]
+    [InlineData("how is his heart rate variability", StatusMetric.HeartRateVariability)]
+    [InlineData("what's her HRV", StatusMetric.HeartRateVariability)]
+    [InlineData("is his oxygen ok", StatusMetric.Oxygen)]
+    [InlineData("how is his breathing overnight", StatusMetric.BreathingRate)]
+    [InlineData("how did he sleep", StatusMetric.Sleep)]
+    [InlineData("how many steps today", StatusMetric.Steps)]
+    [InlineData("how is dad today", null)]
+    [InlineData("his specific measurements", null)]
+    public void AStatusQuestionNamesAtMostOneReading(string question, StatusMetric? expected) =>
+        Assert.Equal(expected, StatusQuestion.MetricNamed(question));
+
+    [Theory]
+    [InlineData("his specific measurements", true)]
+    [InlineData("her readings", true)]
+    [InlineData("the numbers", true)]
+    [InlineData("how is dad today", false)]
+    public void AReadingsRequestIsRecognised(string question, bool expected) =>
+        Assert.Equal(expected, StatusQuestion.AsksForAllReadings(question));
+
     // ── "How are they doing today?" ─────────────────────────────────────────────
 
     /// <summary>
