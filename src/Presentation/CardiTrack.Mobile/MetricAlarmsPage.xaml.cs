@@ -126,8 +126,8 @@ public partial class MetricAlarmsPage : ContentPage
         var enabled = alarms.Count(a => a.IsEnabled);
         CrowdingNotice.IsVisible = enabled > MetricAlarmValidation.RecommendedMaxEnabledAlarms;
         CrowdingLabel.Text =
-            $"{enabled} alarms are switched on. Past about {MetricAlarmValidation.RecommendedMaxEnabledAlarms} "
-            + "it gets hard to hold them all in mind, and alarms nobody can account for are the ones that end up ignored.";
+            $"{enabled} levels are switched on. Past about {MetricAlarmValidation.RecommendedMaxEnabledAlarms} "
+            + "it gets hard to hold them all in mind, and levels nobody can account for are the ones that end up ignored.";
 
         EmptyPanel.IsVisible = alarms.Count == 0;
         // An empty host still takes its slot in the stack, so the intro sat two spacings above
@@ -257,7 +257,7 @@ public partial class MetricAlarmsPage : ContentPage
             _applying = true;
             toggle.IsToggled = previous;
             _applying = false;
-            await _popups.ShowErrorAsync(ex.Message, "Couldn't update this alarm");
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't update this level");
         }
         catch (ApiException)
         {
