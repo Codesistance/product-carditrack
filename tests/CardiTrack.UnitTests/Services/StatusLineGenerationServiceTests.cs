@@ -596,6 +596,49 @@ public class StatusLineGenerationServiceTests
     }
 
     [Fact]
+    public async Task DuplicateYesterdayRows_ObservationsUseTheLaterUpdatedRow()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            PeriodDays = 30,
+            AvgSteps = 6000,
+            AvgRestingHeartRate = 71,
+            StdDevHeartRate = 2.0m,
+            TypicalWakeTime = new TimeOnly(7, 0),
+        });
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    Date = FrozenYesterday,
+                    Steps = 6100,
+                    RestingHeartRate = 71,
+                    CreatedDate = new DateTime(2026, 9, 6, 8, 0, 0, DateTimeKind.Utc),
+                    UpdatedDate = new DateTime(2026, 9, 6, 9, 0, 0, DateTimeKind.Utc),
+                },
+                new ActivityLog
+                {
+                    Date = FrozenYesterday,
+                    Steps = 2500,
+                    RestingHeartRate = 71,
+                    CreatedDate = new DateTime(2026, 9, 6, 10, 0, 0, DateTimeKind.Utc),
+                    UpdatedDate = new DateTime(2026, 9, 6, 11, 0, 0, DateTimeKind.Utc),
+                },
+                new ActivityLog { Date = FrozenToday, Steps = 26, RestingHeartRate = 70 },
+            ]);
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.Contains("--- Computed observations ---", prompt);
+        Assert.Contains("2,500 steps (usual 6,000)", prompt);
+        Assert.Contains("steps=2500", prompt);
+        Assert.DoesNotContain("6,100 steps", prompt);
+        Assert.DoesNotContain("steps=6100", prompt);
+    }
+
+    [Fact]
     public async Task LearningMember_GetsNoUsualLineAndNoObservations()
     {
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);

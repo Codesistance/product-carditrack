@@ -259,7 +259,13 @@ public class StatusLineGenerationService
         DateTime localNow,
         DateTime utcNow)
     {
-        var logs = recentLogs.ToList();
+        // One row per local day — same pick as the window table and BaselineCalculator.
+        // ActivityLogs is unique per member+date in the store; this still keeps an in-memory
+        // duplicate from feeding observations a different row than the readings section.
+        var logs = recentLogs
+            .GroupBy(l => l.Date)
+            .Select(g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First())
+            .ToList();
         var todayLog = logs.Find(l => l.Date == today);
         var yesterdayLog = logs.Find(l => l.Date == today.AddDays(-1));
 
