@@ -55,7 +55,7 @@ public static class MetricAlarmValidation
         var definition = AlarmMetricCatalogue.Find(request.Metric);
         if (definition is null)
         {
-            errors.Add(new(nameof(request.Metric), "That is not a reading CardiTrack can watch a level on."));
+            errors.Add(new(nameof(request.Metric), "CardiTrack cannot watch a level on that reading. Choose one of the readings listed."));
             return errors;
         }
 
