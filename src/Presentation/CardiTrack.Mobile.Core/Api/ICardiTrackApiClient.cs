@@ -389,12 +389,6 @@ public interface ICardiTrackApiClient
     /// <summary>
     /// Queues an export. Returns immediately with a report id to poll.
     /// </summary>
-    /// <remarks>
-    /// Throws <see cref="ApiException"/> with <c>PaymentRequired</c> when the caller's plan does
-    /// not include export — the message names the tier needed and is safe to show as-is. The
-    /// screen gates its own entry point on <see cref="CanExportHealthDataAsync"/>, so this is the
-    /// backstop for a plan that lapsed while the form was open, not the usual path.
-    /// </remarks>
     Task<ReportQueuedResponse> GenerateReportAsync(
         GenerateReportRequest request, CancellationToken ct = default);
 
@@ -410,12 +404,6 @@ public interface ICardiTrackApiClient
     /// authorized and audited like every other read of health data.
     /// </summary>
     Task<ReportFile> DownloadReportAsync(string reportId, CancellationToken ct = default);
-
-    /// <summary>
-    /// Whether the caller's plan includes health data export. Lets the export entry point offer
-    /// the upgrade instead of a form that would be refused once it is filled in.
-    /// </summary>
-    Task<bool> CanExportHealthDataAsync(CancellationToken ct = default);
 }
 
 /// <summary>A downloaded export: the bytes, and what to call them when saving or sharing.</summary>

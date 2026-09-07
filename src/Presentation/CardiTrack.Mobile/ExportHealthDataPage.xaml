@@ -63,16 +63,6 @@
                     <controls:SkeletonView HeightRequest="220"/>
                 </VerticalStackLayout>
 
-                <!-- Basic plan: the upsell, not a form that would be refused once filled in. -->
-                <VerticalStackLayout x:Name="UpsellPanel" Spacing="12" IsVisible="False" Padding="0,40,0,0">
-                    <Label Text="Export is part of Complete Care"
-                           Style="{StaticResource Heading3}"
-                           HorizontalTextAlignment="Center"/>
-                    <Label x:Name="UpsellDetailLabel"
-                           Style="{StaticResource Body2}"
-                           HorizontalTextAlignment="Center"/>
-                </VerticalStackLayout>
-
                 <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
                     <Label Text="We couldn't open export"
                            Style="{StaticResource Heading3}"
