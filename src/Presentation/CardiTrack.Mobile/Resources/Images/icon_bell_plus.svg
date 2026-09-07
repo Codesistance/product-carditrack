@@ -1,0 +1,12 @@
+<!-- Custom alerts: the caregiver's own thresholds, directly under Alert Settings. The bell keeps
+     the subject the two rows share, and the badge is what tells them apart: Alert Settings wears
+     a cog (CardiTrack's own rules, switched on and off), this wears a plus (an alert the
+     caregiver added). Bell drawn at icon_bell_cog's size so the badge has the same cleared
+     corner; the plus is two strokes, so it holds on any ground without a fill. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M8.8 3a4.6 4.6 0 0 0-4.6 4.6v2.9l-1.2 2.4A.8.8 0 0 0 3.7 14.1h10.2a.8.8 0 0 0 .7-1.2L13.4 10.5V7.6A4.6 4.6 0 0 0 8.8 3Z" stroke="#1884DC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M7.1 15.9a1.7 1.7 0 0 0 3.4 0" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Plus badge: the cog's weight and corner. -->
+  <path d="M18.7 15.4v6.6M15.4 18.7h6.6" stroke="#1884DC" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
