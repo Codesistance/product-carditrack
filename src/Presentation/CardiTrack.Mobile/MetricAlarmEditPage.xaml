@@ -39,7 +39,7 @@
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <Label x:Name="HeaderTitle"
-                           Text="New custom alert"
+                           Text="New Custom Alert"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label x:Name="HeaderSubtitle"

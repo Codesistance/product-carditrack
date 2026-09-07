@@ -124,7 +124,7 @@ public partial class MetricAlarmEditPage : ContentPage
 
             _provenance = existing?.Provenance;
 
-            HeaderTitle.Text = existing is null ? "New custom alert" : "Edit custom alert";
+            HeaderTitle.Text = existing is null ? "New Custom Alert" : "Edit Custom Alert";
 
             // An inherited alarm is the account's, not this member's, so there is nothing here to
             // delete — switching it off on the list writes the opt-out, which is what "not for this
