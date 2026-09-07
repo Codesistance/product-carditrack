@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.ChoiceField">
+
+    <!-- The dropdown drawn as the field beside it. The platform Picker was a bare underline in
+         the middle of a form made of rounded white fields, and its list opened in system chrome —
+         square, system font, system colours — the one surface on the page that looked borrowed.
+         This is the same Border the Entry fields use, with the chosen value where the text would
+         go and a chevron saying it opens; the list it opens is the app's own sheet. -->
+    <Border x:Name="Field" Style="{StaticResource AuthEntryBorder}">
+        <Border.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnTapped"/>
+        </Border.GestureRecognizers>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <Label x:Name="ValueLabel"
+                   Grid.Column="0"
+                   FontFamily="Quicksand"
+                   FontSize="14"
+                   VerticalOptions="Center"
+                   LineBreakMode="TailTruncation"/>
+            <Image Grid.Column="1"
+                   Source="icon_chevron_down.svg"
+                   WidthRequest="20"
+                   HeightRequest="20"
+                   VerticalOptions="Center"/>
+        </Grid>
+    </Border>
+</ContentView>

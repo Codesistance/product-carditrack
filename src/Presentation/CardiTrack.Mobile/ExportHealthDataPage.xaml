@@ -83,10 +83,9 @@
                     <Border Style="{StaticResource ElevatedCard}">
                         <VerticalStackLayout Spacing="8">
                             <Label Text="Export data for" Style="{StaticResource Heading3}" FontSize="16"/>
-                            <Picker x:Name="MemberPicker"
-                                    Title="Choose a person"
-                                    TextColor="{StaticResource HeadingText}"
-                                    TitleColor="{StaticResource MutedText}"/>
+                            <controls:ChoiceField x:Name="MemberPicker"
+                                                  Title="Choose a person"
+                                                  Prompt="Export data for"/>
                         </VerticalStackLayout>
                     </Border>
 

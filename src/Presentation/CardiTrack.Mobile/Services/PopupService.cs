@@ -59,6 +59,28 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return null;
+
+            var sheet = new ChoiceSheetPage(title, options, selectedIndex);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(sheet, animated: false);
+                return await sheet.Result;
+            }
+            finally
+            {
+                // Released only once the sheet has left the modal stack — same handshake as the
+                // chooser above, and the page underneath reads IsShowing to know it never left.
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     public Task<ContactEdit?> EditContactAsync(ContactEditKind kind, string? name, string? phone) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {

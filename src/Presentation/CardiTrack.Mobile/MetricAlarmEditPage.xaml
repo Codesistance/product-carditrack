@@ -90,12 +90,14 @@
 
                             <VerticalStackLayout Spacing="4">
                                 <Label Text="Reading" Style="{StaticResource AuthFieldLabel}"/>
-                                <Picker x:Name="MetricPicker" SelectedIndexChanged="OnMetricChanged"/>
+                                <controls:ChoiceField x:Name="MetricPicker" Prompt="Reading"
+                                                      SelectedIndexChanged="OnMetricChanged"/>
                             </VerticalStackLayout>
 
                             <VerticalStackLayout x:Name="StatisticRow" Spacing="4">
                                 <Label Text="Taken as" Style="{StaticResource AuthFieldLabel}"/>
-                                <Picker x:Name="StatisticPicker" SelectedIndexChanged="OnStatisticChanged"/>
+                                <controls:ChoiceField x:Name="StatisticPicker" Prompt="Taken as"
+                                                      SelectedIndexChanged="OnStatisticChanged"/>
                             </VerticalStackLayout>
                         </VerticalStackLayout>
                     </Border>
@@ -106,7 +108,8 @@
 
                             <VerticalStackLayout Spacing="4">
                                 <Label Text="Tell me when it" Style="{StaticResource AuthFieldLabel}"/>
-                                <Picker x:Name="OperatorPicker" SelectedIndexChanged="OnOperatorChanged"/>
+                                <controls:ChoiceField x:Name="OperatorPicker" Prompt="Tell me when it"
+                                                      SelectedIndexChanged="OnOperatorChanged"/>
                             </VerticalStackLayout>
 
                             <!-- Named so the label goes with the picker: a metric with only a fixed
@@ -114,7 +117,8 @@
                                  standing above nothing. -->
                             <VerticalStackLayout x:Name="ThresholdKindRow" Spacing="4">
                                 <Label Text="Compared to" Style="{StaticResource AuthFieldLabel}"/>
-                                <Picker x:Name="ThresholdKindPicker" SelectedIndexChanged="OnThresholdKindChanged"/>
+                                <controls:ChoiceField x:Name="ThresholdKindPicker" Prompt="Compared to"
+                                                      SelectedIndexChanged="OnThresholdKindChanged"/>
                             </VerticalStackLayout>
 
                             <VerticalStackLayout Spacing="4">
@@ -130,7 +134,8 @@
 
                             <VerticalStackLayout x:Name="PeriodRow" Spacing="4">
                                 <Label Text="Measured over" Style="{StaticResource AuthFieldLabel}"/>
-                                <Picker x:Name="PeriodPicker" SelectedIndexChanged="OnPeriodChanged"/>
+                                <controls:ChoiceField x:Name="PeriodPicker" Prompt="Measured over"
+                                                      SelectedIndexChanged="OnPeriodChanged"/>
                             </VerticalStackLayout>
 
                             <VerticalStackLayout Spacing="4">
@@ -170,13 +175,15 @@
 
                             <VerticalStackLayout Spacing="4">
                                 <Label Text="Urgency" Style="{StaticResource AuthFieldLabel}"/>
-                                <Picker x:Name="SeverityPicker" SelectedIndexChanged="OnSeverityChanged"/>
+                                <controls:ChoiceField x:Name="SeverityPicker" Prompt="Urgency"
+                                                      SelectedIndexChanged="OnSeverityChanged"/>
                                 <Label x:Name="SeverityHint" Style="{StaticResource Caption}"/>
                             </VerticalStackLayout>
 
                             <VerticalStackLayout Spacing="4">
                                 <Label Text="If there is no reading" Style="{StaticResource AuthFieldLabel}"/>
-                                <Picker x:Name="MissingDataPicker" SelectedIndexChanged="OnMissingDataChanged"/>
+                                <controls:ChoiceField x:Name="MissingDataPicker" Prompt="If there is no reading"
+                                                      SelectedIndexChanged="OnMissingDataChanged"/>
                                 <Label Style="{StaticResource Caption}"
                                        Text="A watch on a bedside table is not a reading of zero, so a gap never counts as crossing the line."/>
                             </VerticalStackLayout>

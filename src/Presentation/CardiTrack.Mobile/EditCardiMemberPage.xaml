@@ -180,28 +180,15 @@
                          so the empty picker reads as the open question it is. -->
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Sex" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Picker x:Name="SexPicker"
-                                    Title="Not recorded"
-                                    FontFamily="Quicksand"
-                                    FontSize="14"
-                                    TextColor="{StaticResource HeadingText}"
-                                    BackgroundColor="Transparent"
-                                    SemanticProperties.Hint="Used to read heart rate and sleep against the right range"
-                                    />
-                        </Border>
+                        <controls:ChoiceField x:Name="SexPicker"
+                                              Title="Not recorded"
+                                              Prompt="Sex"
+                                              SemanticProperties.Hint="Used to read heart rate and sleep against the right range"/>
                     </VerticalStackLayout>
 
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Picker x:Name="RelationshipPicker"
-                                    FontFamily="Quicksand"
-                                    FontSize="14"
-                                    TextColor="{StaticResource HeadingText}"
-                                    BackgroundColor="Transparent"
-                                    />
-                        </Border>
+                        <controls:ChoiceField x:Name="RelationshipPicker" Prompt="Relationship"/>
                     </VerticalStackLayout>
 
                     <BoxView Style="{StaticResource DividerLine}" Margin="0,6"/>
@@ -267,14 +254,7 @@
 
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Alert Sensitivity" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Picker x:Name="SensitivityPicker"
-                                    FontFamily="Quicksand"
-                                    FontSize="14"
-                                    TextColor="{StaticResource HeadingText}"
-                                    BackgroundColor="Transparent"
-                                    />
-                        </Border>
+                        <controls:ChoiceField x:Name="SensitivityPicker" Prompt="Alert Sensitivity"/>
                         <Label Text="Saved with them. Alerting itself isn't live yet, so this won't change what you're notified about today."
                                Style="{StaticResource Body2}"
                                FontSize="12"/>

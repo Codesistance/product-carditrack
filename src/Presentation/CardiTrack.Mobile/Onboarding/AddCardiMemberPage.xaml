@@ -104,15 +104,11 @@
                          together are what set the reference range the summaries are read against. -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
                         <Label Text="Sex*" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Picker x:Name="SexPicker"
-                                    Title="Select sex"
-                                    FontFamily="Quicksand"
-                                    FontSize="14"
-                                    BackgroundColor="Transparent"
-                                    SemanticProperties.Hint="Used to read heart rate and sleep against the right range"
-                                    SelectedIndexChanged="OnFormChanged"/>
-                        </Border>
+                        <controls:ChoiceField x:Name="SexPicker"
+                                              Title="Select sex"
+                                              Prompt="Sex"
+                                              SemanticProperties.Hint="Used to read heart rate and sleep against the right range"
+                                              SelectedIndexChanged="OnFormChanged"/>
                         <Label Text="Helps us read heart rate and sleep against the right range."
                                Style="{StaticResource Body2}"
                                FontSize="12"/>
@@ -121,14 +117,10 @@
                     <!-- Relationship -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
                         <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Picker x:Name="RelationshipPicker"
-                                    Title="Select relationship"
-                                    FontFamily="Quicksand"
-                                    FontSize="14"
-                                    BackgroundColor="Transparent"
-                                    SelectedIndexChanged="OnFormChanged"/>
-                        </Border>
+                        <controls:ChoiceField x:Name="RelationshipPicker"
+                                              Title="Select relationship"
+                                              Prompt="Relationship"
+                                              SelectedIndexChanged="OnFormChanged"/>
                     </VerticalStackLayout>
 
                     <BoxView Style="{StaticResource DividerLine}" Margin="0,24,0,0"/>
