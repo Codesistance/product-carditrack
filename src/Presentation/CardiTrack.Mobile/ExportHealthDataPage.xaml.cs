@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Services;
 using Microsoft.Maui.Controls.Shapes;
 
@@ -273,31 +274,8 @@ public partial class ExportHealthDataPage : ContentPage
             return;
         }
 
-        EstimateLabel.Text = $"Estimated size: {EstimateFor(days, _selectedFormat)}";
+        EstimateLabel.Text = $"Estimated size: {ExportSizeEstimate.Describe(days, _selectedFormat)}";
         ExportButton.IsEnabled = true;
-    }
-
-    /// <summary>
-    /// A rough size, so "Export" is not a leap in the dark on a metered connection. Deliberately
-    /// coarse and rounded up — an estimate that reads as precise would be a promise about a file
-    /// that has not been rendered yet.
-    /// </summary>
-    private static string EstimateFor(int days, ReportFormat format)
-    {
-        var bytesPerDay = format switch
-        {
-            ReportFormat.Csv => 120,
-            ReportFormat.FhirR4 => 2_400,
-            _ => 900
-        };
-
-        // The PDF carries a fixed cover, the narrative and the footer whatever the period is.
-        var overhead = format == ReportFormat.Pdf ? 40_000 : 1_000;
-        var total = overhead + (days * bytesPerDay);
-
-        return total < 1_000_000
-            ? $"about {Math.Max(1, total / 1024)} KB"
-            : $"about {total / 1_048_576.0:0.#} MB";
     }
 
     // ── Generating ──────────────────────────────────────────────────────────────
