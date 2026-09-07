@@ -697,7 +697,7 @@
                              R2, and no Figma frame — on the design-sync backlog. -->
                         <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52"
-                                  SemanticProperties.Description="Your Alarms"
+                                  SemanticProperties.Description="Custom Alerts"
                                   SemanticProperties.Hint="Set the levels you want to be told about">
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
@@ -711,7 +711,7 @@
                                        WidthRequest="22" HeightRequest="22"
                                        VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
-                                       Text="Your Alarms"
+                                       Text="Custom Alerts"
                                        Style="{StaticResource Body1SemiBoldDark}"
                                        VerticalTextAlignment="Center"/>
                                 <Image Grid.Column="2" Source="icon_chevron.svg"

@@ -40,11 +40,11 @@
                 </controls:SquareBorder>
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
-                    <Label Text="Your Alarms"
+                    <Label Text="Custom Alerts"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label x:Name="HeaderSubtitle"
-                           Text="Levels you want to be told about"
+                           Text="Alerts you set yourself"
                            FontFamily="Quicksand"
                            FontSize="12"
                            TextColor="{StaticResource White}"
@@ -82,15 +82,15 @@
                     <VerticalStackLayout x:Name="EmptyPanel" IsVisible="False" Spacing="8">
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="6">
-                                <Label Text="No alarms set" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label Text="No custom alerts yet" Style="{StaticResource Body1SemiBoldDark}"/>
                                 <Label Style="{StaticResource Body2}"
-                                       Text="CardiTrack already watches for its own patterns. An alarm is for a level you have been told to watch for — a resting heart rate over a number, say, or oxygen dropping below one."/>
+                                       Text="CardiTrack already watches for its own patterns. A custom alert is for a level you have been told to watch for — a resting heart rate over a number, say, or oxygen dropping below one."/>
                             </VerticalStackLayout>
                         </Border>
                     </VerticalStackLayout>
 
                     <Button x:Name="AddButton"
-                            Text="Add an alarm"
+                            Text="Add a custom alert"
                             Style="{StaticResource PrimaryGradientButton}"
                             Clicked="OnAddTapped"/>
                 </VerticalStackLayout>
@@ -98,7 +98,7 @@
                 <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
                     <Border Style="{StaticResource ElevatedCard}">
                         <VerticalStackLayout Spacing="6">
-                            <Label Text="Couldn't load these alarms"
+                            <Label Text="Couldn't load these alerts"
                                    Style="{StaticResource Body1SemiBoldDark}"/>
                             <Label x:Name="ErrorDetailLabel" Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>

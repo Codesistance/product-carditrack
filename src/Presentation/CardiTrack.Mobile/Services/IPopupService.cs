@@ -91,6 +91,18 @@ public interface IPopupService
     Task<string?> ChooseAsync(string title, string cancelText, params string[] options);
 
     /// <summary>
+    /// Asks the user to pick one row of a list that already has an answer — what a
+    /// <c>ChoiceField</c> opens. The current row is marked so the caregiver sees what is set
+    /// before changing it. Returns the tapped row's index, or null when cancelled or dismissed.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="ChooseAsync"/>, which answers a question with no current answer and hands
+    /// back a label: a field's options can repeat a label legitimately, and its page addresses
+    /// them by index, as it did with the Picker.
+    /// </remarks>
+    Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex);
+
+    /// <summary>
     /// Opens the M1-13 contact carousel's own edit form on one record: the emergency contact, or
     /// the CardiMember's own number. Returns what was entered, or null when cancelled — an
     /// unchanged return is still a return, so the caller compares before it saves.

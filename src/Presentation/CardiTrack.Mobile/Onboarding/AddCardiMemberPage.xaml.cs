@@ -2,6 +2,7 @@ using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Localization;
 using CardiTrack.Mobile.Core.Media;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -218,7 +219,29 @@ public partial class AddCardiMemberPage : ContentPage
     private void OnDobSelected(object? sender, DateChangedEventArgs e)
     {
         _dobTouched = true;
+        // A refusal stands until the field changes; choosing a date is the change.
+        ShowDobError(null);
         OnFormChanged(sender, e);
+    }
+
+    /// <summary>
+    /// A date of birth is required, and there is no harmless stand-in for one that was not
+    /// chosen: the form used to send today's date, which made a member born this morning without
+    /// anyone deciding that. Refused with the message under the field, the way the edit form
+    /// refuses the same field, and the field's edge tinted so the message has somewhere to point.
+    /// </summary>
+    private bool ValidateDob()
+    {
+        var error = DateOfBirth.Validate(DobPicker.Date, DateOnly.FromDateTime(DateTime.Today));
+        ShowDobError(error);
+        return error is null;
+    }
+
+    private void ShowDobError(string? error)
+    {
+        DobError.Text = error ?? string.Empty;
+        DobError.IsVisible = error is not null;
+        DobPicker.HasError = error is not null;
     }
 
     private void OnFormChanged(object? sender, EventArgs e)
@@ -240,6 +263,9 @@ public partial class AddCardiMemberPage : ContentPage
     private async void OnContinueClicked(object? sender, EventArgs e)
     {
         FormError.IsVisible = false;
+        if (!ValidateDob())
+            return;
+
         ContinueBtn.Text = "Saving...";
         ContinueBtn.IsEnabled = false;
 
@@ -252,7 +278,8 @@ public partial class AddCardiMemberPage : ContentPage
             var member = await _api.CreateCardiMemberAsync(new CreateCardiMemberRequest
             {
                 Name = NameEntry.Text!.Trim(),
-                DateOfBirth = DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today),
+                // ValidateDob refused a missing date a moment ago.
+                DateOfBirth = DateOnly.FromDateTime(DobPicker.Date!.Value),
                 Gender = SelectedSex(),
                 RelationshipType = SelectedRelationship(),
                 MedicalNotes = NullIfEmpty(MedicalNotesEditor.Text),

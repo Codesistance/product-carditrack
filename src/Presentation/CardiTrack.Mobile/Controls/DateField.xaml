@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.DateField">
+
+    <!-- A date drawn as the field beside it, with the platform's own calendar dialog behind it.
+         The stock look was the DatePicker's underline chrome, not the dialog — the dialog is the
+         one each platform's users already know, and it is accessible in ways a hand-drawn calendar
+         would have to earn — so the underline goes and the dialog stays. -->
+    <Grid>
+
+        <!-- The platform picker, kept in the tree but given no size and no ink. It cannot be
+             hidden outright: a control that is not on screen can neither take focus nor be
+             clicked, and one or the other is what opens its dialog (see the code-behind). It
+             sits under the field, which takes the taps and passes them on. Out of the
+             accessibility tree, deliberately: a screen reader would otherwise land on an
+             unlabelled, invisible control a step after the field that speaks for it. -->
+        <DatePicker x:Name="Picker"
+                    Opacity="0"
+                    WidthRequest="1"
+                    HeightRequest="1"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Start"
+                    AutomationProperties.IsInAccessibleTree="False"
+                    DateSelected="OnPickerDateSelected"/>
+
+        <Border x:Name="Field" Style="{StaticResource AuthEntryBorder}">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnTapped"/>
+            </Border.GestureRecognizers>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Label x:Name="ValueLabel"
+                       Grid.Column="0"
+                       FontFamily="Quicksand"
+                       FontSize="14"
+                       VerticalOptions="Center"
+                       LineBreakMode="TailTruncation"/>
+                <Image Grid.Column="1"
+                       Source="icon_calendar.svg"
+                       WidthRequest="20"
+                       HeightRequest="20"
+                       VerticalOptions="Center"/>
+            </Grid>
+        </Border>
+    </Grid>
+</ContentView>

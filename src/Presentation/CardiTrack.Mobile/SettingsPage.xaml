@@ -227,23 +227,14 @@
                             <Label Text="•  Their devices are disconnected from CardiTrack." Style="{StaticResource Body2Dark}"/>
                             <Label Text="•  Nothing can be recovered afterwards." Style="{StaticResource Body2Dark}"/>
                         </VerticalStackLayout>
-                        <HorizontalStackLayout Spacing="8" Margin="0,4,0,0">
-                            <CheckBox x:Name="DeleteConfirmCheck"
-                                      Color="{StaticResource DangerRed}"
-                                      WidthRequest="20" HeightRequest="20"
-                                      VerticalOptions="Center"
-                                      CheckedChanged="OnDeleteConfirmChanged"
-                                      SemanticProperties.Description="I understand this can't be undone"
-                                      SemanticProperties.Hint="Ticking this turns on the deletion request button"/>
-                            <Label Text="I understand this can't be undone"
-                                   Style="{StaticResource Body2Medium}"
-                                   VerticalOptions="Center"
-                                   VerticalTextAlignment="Center">
-                                <Label.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnDeleteConfirmLabelTapped"/>
-                                </Label.GestureRecognizers>
-                            </Label>
-                        </HorizontalStackLayout>
+                        <!-- The label ticks the box on its own now — that is the control's, not a
+                             gesture this page wires — and the tick is DangerRed, as the box was. -->
+                        <controls:CheckField x:Name="DeleteConfirmCheck"
+                                             Margin="0,4,0,0"
+                                             Text="I understand this can't be undone"
+                                             CheckedColor="{StaticResource DangerRed}"
+                                             CheckedChanged="OnDeleteConfirmChanged"
+                                             SemanticProperties.Hint="Ticking this turns on the deletion request button"/>
                         <Button x:Name="DeleteAccountBtn"
                                 Text="Start deletion request"
                                 Style="{StaticResource SecondaryOutlineButton}"

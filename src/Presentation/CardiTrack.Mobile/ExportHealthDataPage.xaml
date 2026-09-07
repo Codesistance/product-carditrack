@@ -83,10 +83,9 @@
                     <Border Style="{StaticResource ElevatedCard}">
                         <VerticalStackLayout Spacing="8">
                             <Label Text="Export data for" Style="{StaticResource Heading3}" FontSize="16"/>
-                            <Picker x:Name="MemberPicker"
-                                    Title="Choose a person"
-                                    TextColor="{StaticResource HeadingText}"
-                                    TitleColor="{StaticResource MutedText}"/>
+                            <controls:ChoiceField x:Name="MemberPicker"
+                                                  Title="Choose a person"
+                                                  Prompt="Export data for"/>
                         </VerticalStackLayout>
                     </Border>
 
@@ -115,17 +114,17 @@
                             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                 <VerticalStackLayout Grid.Column="0" Spacing="2">
                                     <Label Text="From" Style="{StaticResource Body2}"/>
-                                    <DatePicker x:Name="FromPicker"
-                                                Format="d MMM yyyy"
-                                                TextColor="{StaticResource HeadingText}"
-                                                DateSelected="OnDateChanged"/>
+                                    <controls:DateField x:Name="FromPicker"
+                                                        Format="d MMM yyyy"
+                                                        SemanticProperties.Description="From"
+                                                        DateSelected="OnDateChanged"/>
                                 </VerticalStackLayout>
                                 <VerticalStackLayout Grid.Column="1" Spacing="2">
                                     <Label Text="To" Style="{StaticResource Body2}"/>
-                                    <DatePicker x:Name="ToPicker"
-                                                Format="d MMM yyyy"
-                                                TextColor="{StaticResource HeadingText}"
-                                                DateSelected="OnDateChanged"/>
+                                    <controls:DateField x:Name="ToPicker"
+                                                        Format="d MMM yyyy"
+                                                        SemanticProperties.Description="To"
+                                                        DateSelected="OnDateChanged"/>
                                 </VerticalStackLayout>
                             </Grid>
 
@@ -138,27 +137,15 @@
                         <VerticalStackLayout Spacing="6">
                             <Label Text="What to include" Style="{StaticResource Heading3}" FontSize="16"/>
 
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <CheckBox x:Name="MetricsCheck" Grid.Column="0" IsChecked="True"
-                                          Color="{StaticResource Primary}"
-                                          CheckedChanged="OnSelectionChanged"/>
-                                <Label Grid.Column="1" Text="Activity, heart rate and sleep"
-                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <CheckBox x:Name="AlertsCheck" Grid.Column="0" IsChecked="True"
-                                          Color="{StaticResource Primary}"
-                                          CheckedChanged="OnSelectionChanged"/>
-                                <Label Grid.Column="1" Text="Alerts and events"
-                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <CheckBox x:Name="DevicesCheck" Grid.Column="0"
-                                          Color="{StaticResource Primary}"
-                                          CheckedChanged="OnSelectionChanged"/>
-                                <Label Grid.Column="1" Text="Which devices the readings came from"
-                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
-                            </Grid>
+                            <controls:CheckField x:Name="MetricsCheck" IsChecked="True"
+                                                 Text="Activity, heart rate and sleep"
+                                                 CheckedChanged="OnSelectionChanged"/>
+                            <controls:CheckField x:Name="AlertsCheck" IsChecked="True"
+                                                 Text="Alerts and events"
+                                                 CheckedChanged="OnSelectionChanged"/>
+                            <controls:CheckField x:Name="DevicesCheck"
+                                                 Text="Which devices the readings came from"
+                                                 CheckedChanged="OnSelectionChanged"/>
                         </VerticalStackLayout>
                     </Border>
 

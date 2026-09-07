@@ -176,12 +176,13 @@
                     <Label x:Name="ConfirmError" Style="{StaticResource AuthErrorLabel}" IsVisible="False"/>
 
                     <!-- Terms checkbox -->
-                    <HorizontalStackLayout Spacing="4" Margin="0,10,0,0">
-                        <CheckBox x:Name="TermsCheck"
-                                  Color="{StaticResource Primary}"
-                                  WidthRequest="20" HeightRequest="20"
-                                  VerticalOptions="Center"
-                                  CheckedChanged="OnTermsCheckedChanged"/>
+                    <!-- The label goes in as the field's content rather than its Text, so the two
+                         links inside it keep their own taps: a line that opens a document when
+                         touched cannot also be the line that ticks the box. -->
+                    <controls:CheckField x:Name="TermsCheck"
+                                         Margin="0,10,0,0"
+                                         SemanticProperties.Description="I agree to the Terms of Service and Privacy Policy"
+                                         CheckedChanged="OnTermsCheckedChanged">
                         <Label VerticalTextAlignment="Center" VerticalOptions="Center">
                             <Label.FormattedText>
                                 <FormattedString>
@@ -218,7 +219,7 @@
                                 </FormattedString>
                             </Label.FormattedText>
                         </Label>
-                    </HorizontalStackLayout>
+                    </controls:CheckField>
 
                     <!-- Create Account button -->
                     <Button x:Name="CreateBtn"

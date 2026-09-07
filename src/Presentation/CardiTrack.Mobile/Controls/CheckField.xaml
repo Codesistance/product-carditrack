@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.CheckField">
+
+    <!-- A tick box in the app's own hand. The platform CheckBox took the accent colour and nothing
+         else: Material's shape on Android, a circle on iOS, each platform's own tick, so the same
+         form ticked differently on the two phones. This is a rounded square in the field hairline
+         when off and the accent when on, drawn the same on both, with the label beside it.
+
+         Set through ContentView.Content by name, deliberately: the class declares LabelContent as
+         its content property so a page can drop a label between its tags, and that declaration
+         applies to this file too — an unqualified child here would be handed to LabelContent
+         before the named parts it needs exist. -->
+    <ContentView.Content>
+    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
+
+        <!-- 44pt to tap, 22pt to see: the box is small so the label leads, the target is not. -->
+        <Grid x:Name="BoxHit"
+              Grid.Column="0"
+              WidthRequest="44"
+              HeightRequest="44"
+              VerticalOptions="Center">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnTapped"/>
+            </Grid.GestureRecognizers>
+            <Border x:Name="Box"
+                    WidthRequest="22"
+                    HeightRequest="22"
+                    Padding="0"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    BackgroundColor="{StaticResource White}"
+                    Stroke="{StaticResource InputBorder}"
+                    StrokeThickness="1.5">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="6"/>
+                </Border.StrokeShape>
+                <!-- Drawn rather than loaded: a white tick is one path, and a path takes the box's
+                     own size without a second asset for a second colour. -->
+                <Path x:Name="Tick"
+                      Data="M6 11.5 L9.5 15 L16 7.5"
+                      Stroke="{StaticResource White}"
+                      StrokeThickness="2.5"
+                      StrokeLineCap="Round"
+                      StrokeLineJoin="Round"
+                      WidthRequest="22"
+                      HeightRequest="22"
+                      IsVisible="False"/>
+            </Border>
+        </Grid>
+
+        <Grid x:Name="LabelHost"
+              Grid.Column="1"
+              VerticalOptions="Center">
+            <!-- Out of the accessibility tree: the box beside it already announces the words and
+                 the state together, and a label a screen reader can land on by itself would say
+                 the words without the state. -->
+            <Label x:Name="TextLabel"
+                   Style="{StaticResource Body2Medium}"
+                   AutomationProperties.IsInAccessibleTree="False"
+                   VerticalOptions="Center"
+                   VerticalTextAlignment="Center"
+                   LineBreakMode="WordWrap">
+                <Label.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnTapped"/>
+                </Label.GestureRecognizers>
+            </Label>
+        </Grid>
+    </Grid>
+    </ContentView.Content>
+</ContentView>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.ChoiceSheetPage"
+             BackgroundColor="Transparent">
+
+    <!-- Same shell as AppPopupPage and AppChooserPage — scrim, card, entry animation — so the list
+         a field opens reads as the same object as a confirmation. The body is the difference: rows
+         rather than buttons, because this list has a current answer and a row can carry the tick
+         that says which. The chooser's buttons are for questions that have none yet. -->
+    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24,24,24,16"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout>
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Heading3}"
+                       HorizontalTextAlignment="Center"/>
+
+                <!-- Unlike the chooser, this list scrolls: the alarm builder's readings run to
+                     eight or more rows and a card that grew to hold them would leave the phone.
+                     The card's own width is fixed by PopupCard.Fit before the first layout, so the
+                     rows are measured against a real width and wrap inside it; the scroll's
+                     height is capped in code from the page's, since a share of the screen is the
+                     only sensible ceiling on a control that could be shown on anything. -->
+                <ScrollView x:Name="OptionsScroll"
+                            Margin="0,12,0,0"
+                            HorizontalScrollBarVisibility="Never">
+                    <VerticalStackLayout x:Name="OptionsHost" Spacing="0"/>
+                </ScrollView>
+
+                <Button x:Name="CancelBtn"
+                        Text="Cancel"
+                        BackgroundColor="Transparent"
+                        TextColor="{StaticResource MutedText}"
+                        FontFamily="QuicksandSemiBold"
+                        FontSize="16"
+                        HeightRequest="44"
+                        Margin="0,8,0,0"
+                        Clicked="OnCancelClicked"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

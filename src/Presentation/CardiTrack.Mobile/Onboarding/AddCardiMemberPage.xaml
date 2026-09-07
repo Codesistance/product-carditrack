@@ -83,36 +83,25 @@
                     <!-- Date of Birth -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
                         <Label Text="Date of Birth*" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <DatePicker x:Name="DobPicker"
-                                            FontFamily="Quicksand"
-                                            FontSize="14"
-                                            Format="MM/dd/yyyy"
-                                            TextColor="{StaticResource HeadingText}"
-                                            BackgroundColor="Transparent"
+                        <!-- Written as the edit form writes it (d MMM yyyy): the same date of
+                             birth should read the same on the two forms that show it. -->
+                        <controls:DateField x:Name="DobPicker"
+                                            Format="d MMM yyyy"
+                                            Placeholder="Choose their date of birth"
+                                            SemanticProperties.Description="Date of birth"
                                             DateSelected="OnDobSelected"/>
-                                <Label Grid.Column="1"
-                                       Text="&#x1F4C5;"
-                                       FontSize="18"
-                                       VerticalOptions="Center"/>
-                            </Grid>
-                        </Border>
+                        <Label x:Name="DobError" Style="{StaticResource AuthErrorLabel}" IsVisible="False"/>
                     </VerticalStackLayout>
 
                     <!-- Sex. Not in the M1-04 comp; sits under Date of Birth because the two
                          together are what set the reference range the summaries are read against. -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
                         <Label Text="Sex*" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Picker x:Name="SexPicker"
-                                    Title="Select sex"
-                                    FontFamily="Quicksand"
-                                    FontSize="14"
-                                    BackgroundColor="Transparent"
-                                    SemanticProperties.Hint="Used to read heart rate and sleep against the right range"
-                                    SelectedIndexChanged="OnFormChanged"/>
-                        </Border>
+                        <controls:ChoiceField x:Name="SexPicker"
+                                              Title="Select sex"
+                                              Prompt="Sex"
+                                              SemanticProperties.Hint="Used to read heart rate and sleep against the right range"
+                                              SelectedIndexChanged="OnFormChanged"/>
                         <Label Text="Helps us read heart rate and sleep against the right range."
                                Style="{StaticResource Body2}"
                                FontSize="12"/>
@@ -121,14 +110,10 @@
                     <!-- Relationship -->
                     <VerticalStackLayout Spacing="6" Margin="0,16,0,0">
                         <Label Text="Relationship" Style="{StaticResource AuthFieldLabel}"/>
-                        <Border Style="{StaticResource AuthEntryBorder}">
-                            <Picker x:Name="RelationshipPicker"
-                                    Title="Select relationship"
-                                    FontFamily="Quicksand"
-                                    FontSize="14"
-                                    BackgroundColor="Transparent"
-                                    SelectedIndexChanged="OnFormChanged"/>
-                        </Border>
+                        <controls:ChoiceField x:Name="RelationshipPicker"
+                                              Title="Select relationship"
+                                              Prompt="Relationship"
+                                              SelectedIndexChanged="OnFormChanged"/>
                     </VerticalStackLayout>
 
                     <BoxView Style="{StaticResource DividerLine}" Margin="0,24,0,0"/>
