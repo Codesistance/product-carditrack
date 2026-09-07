@@ -1077,6 +1077,14 @@ public class MemberChatService : IMemberChatService
     /// disclaimed it, is the whole reason this exists. Past the staleness ceiling it computes from
     /// readings rather than declining: unlike a suggestion, there is always something to say.
     /// </para>
+    /// <para>
+    /// The readings are fetched on both branches, not only the fallback. The stored line is a
+    /// dashboard caption written to sit under a headline and beside the day's tiles, and served
+    /// bare it answered "how is Dad today" with "Steps are very low today." and nothing else — no
+    /// figure, no day — while the same question routed to inference got a paragraph. The figures
+    /// the caption rests on are one whitelisted read this rung was already making on the other
+    /// branch; <see cref="MemberChatReplies.StatusLineReply"/> puts them after the line.
+    /// </para>
     /// </remarks>
     private async Task<MemberChatWorkflowResult> AnswerStatusLineAsync(
         AiUsage triageUsage,
@@ -1086,24 +1094,13 @@ public class MemberChatService : IMemberChatService
         CancellationToken ct)
     {
         var name = NamePlaceholder.FirstName(member?.Name);
+        var today = DateOnly.FromDateTime(utcNow);
+        var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
+        var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
-        // The same member guard the dashboard reader and the batch generators apply: a paused or
-        // deactivated member's stored line describes a monitoring state that no longer exists.
-        var line = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
-            ? await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId)
-            : null;
-
-        string reply;
-        if (StatusLineServability.IsServable(line, utcNow))
-        {
-            reply = line.Message.Trim();
-        }
-        else
-        {
-            var today = DateOnly.FromDateTime(utcNow);
-            var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
-            reply = MemberChatReplies.LatestReadingsReply(name, recent, today);
-        }
+        var reply = line is not null
+            ? MemberChatReplies.StatusLineReply(name, line, recent, today)
+            : MemberChatReplies.LatestReadingsReply(name, recent, today);
 
         return new MemberChatWorkflowResult
         {
@@ -1111,6 +1108,30 @@ public class MemberChatService : IMemberChatService
             Reply = CapReply(reply),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
+    }
+
+    /// <summary>
+    /// The stored status line this member may currently be shown, or null when there is none to
+    /// serve — the row behind the dashboard hero, read through the guards the hero's own reader
+    /// applies.
+    /// </summary>
+    /// <remarks>
+    /// Two guards, in the order <c>HealthInsightService.GetCurrentStatusMessageAsync</c> applies
+    /// them: the member first — a paused or deactivated member's stored line describes a
+    /// monitoring state that no longer exists — then the row, through the servability rule chat
+    /// and the dashboard share so the two cannot disagree about whether a current line exists.
+    /// One method rather than the guard repeated per caller, because the status rung and the
+    /// inference rung both need exactly this row and a second copy of the guard is how the two
+    /// would come to differ.
+    /// </remarks>
+    private async Task<MemberStatusLine?> ReadServableStatusLineAsync(
+        Guid cardiMemberId, CardiMember? member, DateTime utcNow)
+    {
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return null;
+
+        var line = await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId);
+        return StatusLineServability.IsServable(line, utcNow) ? line : null;
     }
 
     /// <summary>

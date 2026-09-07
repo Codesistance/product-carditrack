@@ -70,6 +70,40 @@ public static partial class MemberChatReplies
     }
 
     /// <summary>
+    /// The stored status line as a chat answer: the dashboard's headline and sentence, then the
+    /// latest figures they rest on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The persisted line is a caption. On the dashboard it sits under a headline and a tier
+    /// colour, beside tiles carrying the day's numbers, and "Steps are very low today." reads
+    /// correctly there because the hero above it says how much that matters and the tile beside
+    /// it says what the number is. Served verbatim in a chat bubble it arrives with neither — a
+    /// bare seven-word sentence to "how is Dad today", when the same question routed one rung
+    /// higher gets a paragraph with figures in it (observed 2026-09-07).
+    /// </para>
+    /// <para>
+    /// So the line keeps its place at the front, where the dashboard puts it, and the figures
+    /// follow — the same dated figure list the other two status replies speak, through
+    /// <see cref="LatestReadingsReply"/>, so the three cannot state a reading differently or date
+    /// it differently. Still assembled in code: this rung makes no model call, and a caption
+    /// plus figures is a sentence code can write.
+    /// </para>
+    /// </remarks>
+    public static string StatusLineReply(
+        string? firstName, MemberStatusLine line, IReadOnlyList<ActivityLog> recent, DateOnly today)
+    {
+        var message = line.Message.Trim();
+        var headline = line.Headline?.Trim();
+
+        // The headline is documented as droppable — the dashboard keeps per-tier copy to fall
+        // back on — so the reply must read whole without it.
+        var lead = string.IsNullOrWhiteSpace(headline) ? message : $"{headline} — {message}";
+
+        return $"{lead} {LatestReadingsReply(firstName, recent, today)}";
+    }
+
+    /// <summary>
     /// The newest day with anything recorded on it, as a dated figure list — shared by the two
     /// status replies so they cannot state the same readings differently.
     /// </summary>

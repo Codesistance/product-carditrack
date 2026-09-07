@@ -109,16 +109,46 @@ public class MemberChatStatusRungTests
     /// The transcript's failure, in one assertion. The caregiver asked about the day; the app
     /// answered about the instant.
     /// </summary>
+    /// <remarks>
+    /// The line leads, and the figures follow it. Served alone it was a dashboard caption with
+    /// the dashboard taken away — "Steps are very low today." to "how is Dad today", with no
+    /// number and no day, while the same question one rung up got a paragraph (2026-09-07).
+    /// </remarks>
     [Fact]
     public async Task ADayQuestionIsAnsweredWithTheStatusLine_NotTheLivenessDisclaimer()
     {
         StatusLineIs("Winding down for the night.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog
+        {
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Steps = 4905,
+            RestingHeartRate = 70,
+        });
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "How are they doing today?");
 
-        Assert.Equal("Winding down for the night.", reply.Reply);
+        Assert.StartsWith("Settling — Winding down for the night.", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("4,905 steps", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("a resting heart rate of 70 bpm", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("today so far", reply.Reply, StringComparison.Ordinal);
         Assert.DoesNotContain("can't see", reply.Reply, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("right now", reply.Reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A fresh line with nothing recorded behind it still answers — the caption, then the honest
+    /// "no recent readings" the readings fallback already says, rather than a caption alone.
+    /// </summary>
+    [Fact]
+    public async Task AStatusLineWithNoReadingsBehindIt_StillSaysSo()
+    {
+        StatusLineIs("Winding down for the night.", TimeSpan.FromHours(1));
+        ReadingsAre();
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "How are they doing today?");
+
+        Assert.StartsWith("Settling — Winding down for the night.", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("don't have any recent readings for Moses", reply.Reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -234,6 +264,42 @@ public class MemberChatStatusRungTests
         Assert.Contains("4,905 steps", reply, StringComparison.Ordinal);
         Assert.Contains("a resting heart rate of 70 bpm", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("can't see", reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The status-line reply is the caption and then the same dated figures the readings reply
+    /// states — one figure list across the three status replies, so none can date a reading
+    /// differently from the others.
+    /// </summary>
+    [Fact]
+    public void TheStatusLineReplyLeadsWithTheCaption_ThenDatesTheFigures()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine
+        {
+            Headline = "Quieter than usual",
+            Message = "Steps are very low today.",
+            GeneratedAtUtc = DateTime.UtcNow,
+        };
+
+        var reply = MemberChatReplies.StatusLineReply(
+            "Dad", line, [new ActivityLog { Date = today, Steps = 812, RestingHeartRate = 68 }], today);
+
+        Assert.StartsWith("Quieter than usual — Steps are very low today.", reply, StringComparison.Ordinal);
+        Assert.Contains("today so far: 812 steps and a resting heart rate of 68 bpm", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A dropped headline — the row's documented case — leaves the sentence whole
+    /// rather than a dangling dash.</summary>
+    [Fact]
+    public void TheStatusLineReplyReadsWholeWithoutAHeadline()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine { Headline = null, Message = "Steps are very low today." };
+
+        var reply = MemberChatReplies.StatusLineReply("Dad", line, [], today);
+
+        Assert.StartsWith("Steps are very low today. I don't have any recent readings", reply, StringComparison.Ordinal);
     }
 
     /// <summary>Nothing recorded is said plainly, and never inferred from silence.</summary>
