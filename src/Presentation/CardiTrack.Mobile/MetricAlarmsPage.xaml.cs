@@ -130,6 +130,9 @@ public partial class MetricAlarmsPage : ContentPage
             + "it gets hard to hold them all in mind, and alarms nobody can account for are the ones that end up ignored.";
 
         EmptyPanel.IsVisible = alarms.Count == 0;
+        // An empty host still takes its slot in the stack, so the intro sat two spacings above
+        // the empty-state card instead of one. Hidden until there is a row to hold.
+        AlarmsHost.IsVisible = alarms.Count > 0;
 
         _applying = true;
         try
