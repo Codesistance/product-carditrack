@@ -54,6 +54,16 @@ public sealed class OidcDiscoveryWarmup(
     /// <summary>How many times one scheme's discovery is attempted before the warm-up gives up.</summary>
     public static int MaxAttempts => Backoffs.Count + 1;
 
+    /// <summary>
+    /// How far past <see cref="OidcBackchannel.ConnectTimeout"/> an attempt may have run and still
+    /// be read as a connect-phase timeout. The handler cancels the connect at exactly that mark,
+    /// but the cancellation has to unwind through the pool, the HTTP client and
+    /// <c>ConfigurationManager</c> before it reaches here — the observed case was 5102 ms against
+    /// a 5000 ms timeout. A second covers that comfortably and is still far short of
+    /// <see cref="OidcBackchannel.RequestTimeout"/>.
+    /// </summary>
+    internal static readonly TimeSpan ConnectTimeoutTolerance = TimeSpan.FromSeconds(1);
+
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly CancellationTokenSource _stopping = new();
 
@@ -165,9 +175,10 @@ public sealed class OidcDiscoveryWarmup(
     /// <remarks>
     /// A connect that never completes surfaces as an <see cref="OperationCanceledException"/> or
     /// <see cref="TimeoutException"/> rather than a socket error, and the same pair is what the
-    /// request budget throws. The two are told apart by how long the attempt took: the connect
-    /// timeout fires at <see cref="OidcBackchannel.ConnectTimeout"/>, well inside
-    /// <see cref="OidcBackchannel.RequestTimeout"/>.
+    /// request budget throws. The two are told apart by how long the attempt took: an attempt that
+    /// ended at about <see cref="OidcBackchannel.ConnectTimeout"/> (within
+    /// <see cref="ConnectTimeoutTolerance"/>) was the connect phase; one that ran on past that was
+    /// connected and waiting on the response until <see cref="OidcBackchannel.RequestTimeout"/>.
     /// </remarks>
     internal static string DescribeFailure(Exception exception, TimeSpan elapsed)
     {
@@ -190,7 +201,7 @@ public sealed class OidcDiscoveryWarmup(
 
         if (chain.Any(static e => e is OperationCanceledException or TimeoutException))
         {
-            return elapsed < OidcBackchannel.RequestTimeout
+            return elapsed <= OidcBackchannel.ConnectTimeout + ConnectTimeoutTolerance
                 ? $"{rootType}: timed out in the connect phase — DNS, TCP or TLS did not complete within the {OidcBackchannel.ConnectTimeout.TotalSeconds:0} s ConnectTimeout"
                 : $"{rootType}: timed out waiting for the response within the {OidcBackchannel.RequestTimeout.TotalSeconds:0} s BackchannelTimeout";
         }

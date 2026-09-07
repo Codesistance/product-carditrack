@@ -146,7 +146,11 @@ public class OidcDiscoveryWarmupTests
         static Exception Idx20803(Exception inner) =>
             new InvalidOperationException("IDX20803: Unable to obtain configuration from: 'https://carditrack-test.invalid/'.", inner);
 
-        var connectTimeout = OidcBackchannel.ConnectTimeout + TimeSpan.FromMilliseconds(100);
+        // 5102 ms is the elapsed figure from the dev instance that motivated this; the tolerance
+        // lets it read as connect-phase, and anything past the tolerance was a connected socket
+        // waiting on the issuer.
+        var connectTimeout = OidcBackchannel.ConnectTimeout + TimeSpan.FromMilliseconds(102);
+        var justPastTolerance = OidcBackchannel.ConnectTimeout + OidcDiscoveryWarmup.ConnectTimeoutTolerance + TimeSpan.FromMilliseconds(100);
         var requestTimeout = OidcBackchannel.RequestTimeout + TimeSpan.FromMilliseconds(200);
 
         return new TheoryData<Exception, TimeSpan, string>
@@ -175,6 +179,11 @@ public class OidcDiscoveryWarmupTests
                 Idx20803(new HttpRequestException("connect", new OperationCanceledException("cancelled"))),
                 connectTimeout,
                 "OperationCanceledException: timed out in the connect phase"
+            },
+            {
+                Idx20803(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 10 seconds elapsing.", new TimeoutException("timeout"))),
+                justPastTolerance,
+                "TimeoutException: timed out waiting for the response"
             },
             {
                 Idx20803(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 10 seconds elapsing.", new TimeoutException("timeout"))),
