@@ -35,7 +35,7 @@ This is the design's main claim and the thing to falsify first (§11). A router 
 
 ## 3. The routing call
 
-One structured call on `AI:Rewrite` (Vertex), and it does **one job: classify**. It does not choose data, windows or metrics. The rendered purpose lines — seven now that `investigation` has its handler, see §4 — are the only vocabulary it carries.
+One structured call on `AI:Rewrite` (Vertex), and it does **one job: classify**. It does not choose datasets or windows. The rendered purpose lines — seven now that `investigation` has its handler, see §4 — plus a closed list of reading and advise-topic labels are the vocabulary it carries.
 
 ```
 // in
@@ -47,9 +47,12 @@ history        the caregiver's prior QUESTIONS only, name-redacted
 // out
 workflow       one rendered id — unknown ids dropped
 runnerUp       the id that fits almost as well — the observed uncertainty signal
+namedMetric    steps | restingHeartRate | hrv | oxygen | breathing | sleep | all — omitted when the question is not about a reading
+adviseTopic    activity | sleep | heart — omitted unless workflow is advise
+asksForSpecifics  true when advise cannot answer which / how much / how often / is it safe
 ```
 
-**Why it carries no data vocabulary.** Grounding the registry here would put ~50 entries in front of a model whose only decision is which handful of things is being asked. It is prompt weight that cannot change the answer, on the one call every message pays for. Dataset selection needs to know *which workflow is running* to be any good, and at routing time that is precisely what is not yet known.
+**Why it carries no dataset vocabulary.** Grounding the registry here would put ~50 entries in front of a model whose only decision is which handful of things is being asked. It is prompt weight that cannot change the answer, on the one call every message pays for. Dataset selection needs to know *which workflow is running* to be any good, and at routing time that is precisely what is not yet known. Naming a *reading* (`namedMetric`) is classifying what was asked — "moved much" is steps — not choosing what to fetch; status still loads the same three-day window it always did.
 
 Three properties carry over from `DataQueryPlannerService` unchanged and are not negotiable:
 
@@ -64,7 +67,7 @@ Each workflow plans its own fetch against the slice of the registry its `allowed
 
 | Workflow | How it gets data |
 |---|---|
-| `status` | Registry entries picked in code by metric-name match. No call. |
+| `status` | Same three-day activity window, picked in code. Which figure to speak is `namedMetric` from the routing call. No extra call. |
 | `advise` | The stored topic-scoped row. No call. |
 | `steer.casual`, `steer.offtopic` | None. |
 | `analysis`, `inference` | One planning call over that workflow's registry slice. |
@@ -199,12 +202,21 @@ internal sealed record ChatRouteAiResponse
     [Description("A second way that also genuinely fits, exactly as named in the list, "
         + "omitted when nothing else fits.")]
     public string? RunnerUp { get; init; }
+
+    [Description("The wearable reading the question is about.")]
+    public string? NamedMetric { get; init; }
+
+    [Description("When workflow is advise, the area named.")]
+    public string? AdviseTopic { get; init; }
+
+    [Description("True when an advise question asks which, how much, how often, or whether something is safe.")]
+    public bool AsksForSpecifics { get; init; }
 }
 ```
 
-Two fields: the route, required, and **one** runner-up, optional. This is narrower than the list of alternatives this section specified before — nothing downstream ever consumed a third candidate, because clarify offers exactly two readings and the ladder tie-break needs only the pair. An absent `RunnerUp` is a model that saw one clear fit and suppresses clarify outright; a present one only makes clarify *possible*, since §5 then absorbs adjacent rungs and reading-rung pairs. Both parse through `ChatRouteDecision.ParseLabel`, so a name outside the catalogue drops to null rather than being coerced.
+The route, required, and **one** runner-up, optional — plus the three fields the zero-model rungs need so they do not sniff the question with a keyword list. An absent `RunnerUp` is a model that saw one clear fit and suppresses clarify outright; a present one only makes clarify *possible*, since §5 then absorbs adjacent rungs and reading-rung pairs. `namedMetric` / `adviseTopic` parse through `ChatRouteDecision.ParseMetric` / `ParseAdviseTopic`, so a name outside the closed list drops to null rather than being coerced — the same as `ParseLabel`. "has he moved much?" is how a keyword list fails: `moved` was not on the steps list, so status reprinted the daily caption. The router names `steps`; the handler still writes the sentence.
 
-No datasets, no window, no metrics. Those belong to the workflow's own planning call (§3), where the registry slice is short and the job is narrow.
+No datasets, no window. Those belong to the workflow's own planning call (§3), where the registry slice is short and the job is narrow.
 
 ### Three counts, not one
 
@@ -253,7 +265,7 @@ Eight catalogue entries, eight handlers — seven of the entries render into the
 **Data.** The latest reading, or the state of the pipeline. Read **through the registry**, like every other workflow — `status` picks its entries in code rather than with a model, but the resolver, the clamping and the whitelist are the same ones everything else goes through.
 
 **Rules.**
-- **Source chosen by a deterministic rule, not a heuristic.** If the question names a registry metric, compute that value. If it names none — "how is he right now" — serve the stored `MemberStatusLine`. A registry-name match, not string-sniffing. *Built 2026-09-07, after "how is his heart rate" was answered with the steps caption on dev: `StatusQuestion.MetricNamed` is the match (heart rate, HRV, oxygen, breathing, sleep, steps — one vocabulary, which the inference citation filter reads from too), `MemberChatReplies.MetricReadingReply` states that reading dated beside the previous day's, and the caption follows only when it is about a different reading. A request for the readings themselves — "his specific measurements", "the numbers" — gets the full dated list rather than the caption.*
+- **Source chosen by the routing call, sentence still assembled in code.** If the router names a reading, compute that value. If it names `all`, serve the dated list. If it names none — "how is he right now" — serve the stored `MemberStatusLine`. *Replaced a keyword list on 2026-09-07 that could not see "has he moved much?" as steps and reprinted the daily caption. `ChatRouteDecision.NamedMetric` is the match (heart rate, HRV, oxygen, breathing, sleep, steps, or all), `MemberChatReplies.MetricReadingReply` states that reading dated beside the previous day's, and the caption follows only when it is about a different reading — that last check walks the stored line with `ChatDataRegistry.PrimaryMetricNamed`, classifying our own generated caption, not the caregiver's words.*
 - **The stored line has the same staleness guard as `advise`**, shared in code so chat and the Dashboard cannot disagree about whether a current line exists. Past it, `status` computes from readings rather than declining: unlike a suggestion, there is always a fallback.
 - **The stored line is served with its figures, never bare** (2026-09-07). The line is a dashboard caption: it sits under a headline and a tier colour, beside the tiles carrying the day's numbers, and "Steps are very low today." reads correctly there because the surface around it says how much that matters and what the number is. Served verbatim in a bubble it answered "how is Dad today" with seven words, no figure and no day, while the same question one rung up got a paragraph. `MemberChatReplies.StatusLineReply` puts the headline and line first — where the dashboard puts them — and the latest dated figures after, through the same figure list the other two status replies speak. The readings are fetched on both branches; still zero model calls.
 - **Covers the data pipeline, not just the body.** "Is his watch connected?", "why no data since Tuesday?", "is monitoring paused?" — the questions asked when the app looks broken, which nothing else answers.
@@ -324,7 +336,7 @@ Eight catalogue entries, eight handlers — seven of the entries render into the
 **Discriminator.** Answering would mean recommending an action. The only entry licensed to.
 
 **Rules.**
-- **Topic matched deterministically on registry metric names**, the same mechanism `status` uses to choose its source. No model call, no heuristic, and `advise` stays at zero calls.
+- **Topic named by the routing call**, the same call that chose `advise`. No second model call, and `advise` stays at zero generation calls after the route. A keyword list on the question was the same miss as status: two parallel vocabularies that already drifted, and neither matched "moved". Unknown or omitted topics fall back to the general row, then the most recent servable.
 - **A general ask serves the suggestion whose readings deviate most from usual.** "Any tips?" names no topic; the answer to the question behind it is whatever most needs attention, chosen on findings already computed rather than arbitrarily.
 - **The batch generates only where the readings warrant.** The generation pass already withholds a row when nothing fits a wellness reference; extended per topic, most members get one or two rather than N — so pipeline cost stays near today's, and a topic with no suggestion is a signal rather than a gap.
 - **The Details card and Dashboard show what a general ask would serve**, by the same selection rule in shared code, so the card and a chat reply cannot disagree.

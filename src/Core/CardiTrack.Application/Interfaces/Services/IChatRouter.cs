@@ -3,9 +3,10 @@ using CardiTrack.Application.DTOs.Common;
 namespace CardiTrack.Application.Interfaces.Services;
 
 /// <summary>
-/// The one classifier of the member-chat redesign: which catalogue entry serves this question.
-/// One job — classify. It does not choose data, windows or metrics; each workflow's own planner
-/// does that downstream, already knowing which workflow it serves.
+/// The one classifier of the member-chat redesign: which catalogue entry serves this question,
+/// and — on the same call — which reading or advise topic the question named. One job: classify
+/// what was asked. It does not choose datasets or windows; each workflow's own planner does that
+/// downstream, already knowing which workflow it serves.
 /// </summary>
 public interface IChatRouter
 {

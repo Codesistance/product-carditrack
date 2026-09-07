@@ -19,6 +19,35 @@ public sealed record ChatRouteDecision
     public MemberChatWorkflow? RunnerUp { get; init; }
 
     /// <summary>
+    /// The wearable reading the question is about, when the router named one that parsed. Null
+    /// when the question is about how the person is in general, when it asked for every reading
+    /// (<see cref="AllReadings"/>), or when the label was missing or unknown — unknown drops,
+    /// never coerced, the same as <see cref="ParseLabel"/>.
+    /// </summary>
+    public StatusMetric? NamedMetric { get; init; }
+
+    /// <summary>
+    /// True when the question asked for the readings themselves rather than one named figure or
+    /// how the person is. Distinct from an omitted <see cref="NamedMetric"/>: omit is "how is he",
+    /// which serves the stored line; this is "his numbers", which serves the dated list.
+    /// </summary>
+    public bool AllReadings { get; init; }
+
+    /// <summary>
+    /// The wellbeing area an advise question named, when the router named one that parsed. Null
+    /// when the question named none, when the workflow is not advise, or when the label was
+    /// unknown — the picker then falls back to the general row, then the most recent servable.
+    /// </summary>
+    public AdviseTopic? AdviseTopic { get; init; }
+
+    /// <summary>
+    /// True when an advise question asks which, how much, how often, or whether something is
+    /// safe — shapes a standing, pre-generated suggestion cannot answer. The row is still served;
+    /// the reply says it is a standing suggestion rather than an answer to that question.
+    /// </summary>
+    public bool AsksForSpecifics { get; init; }
+
+    /// <summary>
     /// True when the two candidates are different <em>asks</em> — genuine confusion about what was
     /// wanted, which is what clarify exists for. Two things absorb ambiguity rather than asking:
     /// adjacent rungs, which the ladder's tie-break takes downward, and any pair of reading rungs,
@@ -117,4 +146,50 @@ public sealed record ChatRouteDecision
             .FirstOrDefault(w => string.Equals(w.Label, label.Trim(), StringComparison.OrdinalIgnoreCase));
         return match?.Id;
     }
+
+    /// <summary>
+    /// The closed labels the routing prompt offers for <see cref="NamedMetric"/> / all-readings.
+    /// The prompt renders this list; <see cref="ParseMetric"/> and <see cref="ParseAllReadings"/>
+    /// accept only these — one object serving both, the same way the catalogue serves the workflow.
+    /// </summary>
+    public static IReadOnlyList<string> MetricLabels { get; } =
+        ["steps", "restingHeartRate", "hrv", "oxygen", "breathing", "sleep", "all"];
+
+    /// <summary>The closed labels the routing prompt offers for <see cref="AdviseTopic"/>.</summary>
+    public static IReadOnlyList<string> AdviseTopicLabels { get; } =
+        ["activity", "sleep", "heart"];
+
+    /// <summary>
+    /// Maps a <c>namedMetric</c> label to the reading it names. <c>all</c> and unknown names
+    /// drop to null — <c>all</c> is <see cref="ParseAllReadings"/>'s job, not a sixth metric.
+    /// </summary>
+    public static StatusMetric? ParseMetric(string? label) => Canonical(label) switch
+    {
+        "steps" => StatusMetric.Steps,
+        "restingheartrate" => StatusMetric.RestingHeartRate,
+        "hrv" => StatusMetric.HeartRateVariability,
+        "oxygen" => StatusMetric.Oxygen,
+        "breathing" => StatusMetric.BreathingRate,
+        "sleep" => StatusMetric.Sleep,
+        _ => null,
+    };
+
+    /// <summary>True only for the exact <c>all</c> label — unknown names are not a readings request.</summary>
+    public static bool ParseAllReadings(string? label) => Canonical(label) == "all";
+
+    /// <summary>
+    /// Maps an <c>adviseTopic</c> label to the stored-suggestion topic it names. Unknown names
+    /// drop to null, never to <see cref="CardiTrack.Domain.Enums.AdviseTopic.General"/> — general
+    /// is the picker's fallback, not a thing the router is asked to name.
+    /// </summary>
+    public static CardiTrack.Domain.Enums.AdviseTopic? ParseAdviseTopic(string? label) => Canonical(label) switch
+    {
+        "activity" => CardiTrack.Domain.Enums.AdviseTopic.Activity,
+        "sleep" => CardiTrack.Domain.Enums.AdviseTopic.Sleep,
+        "heart" => CardiTrack.Domain.Enums.AdviseTopic.HeartRate,
+        _ => null,
+    };
+
+    private static string? Canonical(string? label) =>
+        string.IsNullOrWhiteSpace(label) ? null : label.Trim().ToLowerInvariant();
 }

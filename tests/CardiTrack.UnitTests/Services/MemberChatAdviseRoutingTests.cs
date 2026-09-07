@@ -70,11 +70,18 @@ public class MemberChatAdviseRoutingTests
     }
 
     /// <summary>The route that selects the workflow — the dispatch reads its answer, and the
-    /// triage booleans only decide when the router fails.</summary>
-    private void Route(MemberChatWorkflow primary) =>
+    /// triage booleans only decide when the router fails. Topic and specifics come from the
+    /// same call; they default off so ordinary advice questions stay unframed.</summary>
+    private void Route(
+        MemberChatWorkflow primary, AdviseTopic? topic = null, bool asksForSpecifics = false) =>
         _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<ChatRouteDecision>(
-                new ChatRouteDecision { Primary = primary },
+                new ChatRouteDecision
+                {
+                    Primary = primary,
+                    AdviseTopic = topic,
+                    AsksForSpecifics = asksForSpecifics,
+                },
                 new AiUsage { ModelName = "test-rewrite" }));
 
     /// <summary>The malicious pre-check every path pays for before anything else runs.</summary>
@@ -166,6 +173,59 @@ public class MemberChatAdviseRoutingTests
         await _planner.DidNotReceive().PlanAsync(
             Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
             Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// "What kind of exercises can he do" still serves the stored row — advise is never
+    /// generated per question — but the reply has to say the row is a standing suggestion,
+    /// not an answer to which. The router names that shape; the handler does not sniff the
+    /// question.
+    /// </summary>
+    [Fact]
+    public async Task ASpecificsAdviceQuestion_IsToldTheSuggestionIsStanding()
+    {
+        Route(MemberChatWorkflow.Advise, asksForSpecifics: true);
+
+        var result = await CreateSut().SendMessageAsync(_userId, _memberId, "what kind of exercises can he do");
+
+        Assert.Contains("standing suggestion for Moses", result.Reply, StringComparison.Ordinal);
+        Assert.Contains("A short walk after lunch is worth trying.", result.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The sleep question gets the sleep row, not whichever topic the batch wrote last — the
+    /// routing call names the topic, and the picker the details card shares applies it.
+    /// </summary>
+    [Fact]
+    public async Task AnAdviceQuestion_ServesTheNamedTopicsRow()
+    {
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)
+        [
+            new MemberAdvise
+            {
+                CardiMemberId = _memberId,
+                Topic = AdviseTopic.Activity,
+                Summary = "His steps have been below his usual this week.",
+                Suggestion = "A short walk after lunch is worth trying.",
+                GuidelineCited = "Adult physical activity (WHO, 2020)",
+                GeneratedAtUtc = DateTime.UtcNow.AddHours(-6),
+            },
+            new MemberAdvise
+            {
+                CardiMemberId = _memberId,
+                Topic = AdviseTopic.Sleep,
+                Summary = "His sleep has been under seven hours most nights this week.",
+                Suggestion = "A steadier bedtime could help him settle earlier.",
+                GuidelineCited = "Adult sleep duration (National Sleep Foundation)",
+                GeneratedAtUtc = DateTime.UtcNow.AddHours(-4),
+            },
+        ]);
+        Route(MemberChatWorkflow.Advise, topic: AdviseTopic.Sleep);
+
+        var result = await CreateSut().SendMessageAsync(_userId, _memberId, "does he need help with his sleep");
+
+        Assert.Contains("A steadier bedtime could help him settle earlier.", result.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("A short walk after lunch is worth trying.", result.Reply, StringComparison.Ordinal);
     }
 
     /// <summary>

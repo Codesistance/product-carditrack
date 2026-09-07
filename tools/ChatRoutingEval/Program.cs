@@ -854,7 +854,10 @@ sealed record EvalCase(
     string[] Accepted,
     string? Special,
     string? Note,
-    string Guards)
+    string Guards,
+    string? NamedMetric = null,
+    string? AdviseTopic = null,
+    bool? AsksForSpecifics = null)
 {
     /// <summary>The labels the seed key treats as correct — several, where the ladder's superset
     /// rule makes neighbouring rungs both defensible.</summary>
