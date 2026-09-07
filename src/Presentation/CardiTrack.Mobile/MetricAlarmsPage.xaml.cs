@@ -120,8 +120,8 @@ public partial class MetricAlarmsPage : ContentPage
         AddButton.IsVisible = _canManage;
 
         IntroLabel.Text = _canManage
-            ? "CardiTrack watches for its own patterns already. These are levels you have asked to be told about on top of that."
-            : "CardiTrack watches for its own patterns already. These are levels the primary carer has asked to be told about on top of that.";
+            ? "CardiTrack watches for its own patterns already. However, you may have some specific concerns of your own."
+            : "CardiTrack watches for its own patterns already. The primary carer can add specific concerns of their own here.";
 
         var enabled = alarms.Count(a => a.IsEnabled);
         CrowdingNotice.IsVisible = enabled > MetricAlarmValidation.RecommendedMaxEnabledAlarms;
@@ -130,6 +130,9 @@ public partial class MetricAlarmsPage : ContentPage
             + "it gets hard to hold them all in mind, and alarms nobody can account for are the ones that end up ignored.";
 
         EmptyPanel.IsVisible = alarms.Count == 0;
+        // An empty host still takes its slot in the stack, so the intro sat two spacings above
+        // the empty-state card instead of one. Hidden until there is a row to hold.
+        AlarmsHost.IsVisible = alarms.Count > 0;
 
         _applying = true;
         try
