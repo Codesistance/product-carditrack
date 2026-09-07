@@ -102,8 +102,10 @@ public partial class ChoiceSheetPage : ContentPage
 
     /// <summary>
     /// Same width rule as the popup this shares its shell with — see <see cref="PopupCard"/> — and
-    /// a ceiling on the list, so a long one scrolls inside the card rather than growing it off
-    /// the screen.
+    /// a hard ceiling on the list at half the page, so a long one scrolls inside the card rather
+    /// than growing it off the screen. Half, whatever the screen: on one too short for three rows
+    /// in half its height the list shows fewer and scrolls, which still leaves the title and the
+    /// Cancel row where a thumb can reach them.
     /// </summary>
     protected override void OnSizeAllocated(double width, double height)
     {
@@ -111,7 +113,7 @@ public partial class ChoiceSheetPage : ContentPage
         PopupCard.Fit(Card, width);
 
         if (height > 0)
-            OptionsScroll.MaximumHeightRequest = Math.Max(RowHeight * 3, height * ListShareOfPage);
+            OptionsScroll.MaximumHeightRequest = height * ListShareOfPage;
     }
 
     protected override void OnAppearing()

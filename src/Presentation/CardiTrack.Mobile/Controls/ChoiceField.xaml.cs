@@ -133,6 +133,8 @@ public partial class ChoiceField : ContentView
             // The pages set the hint on the field, as they did on the Picker; the Border is what
             // a screen reader lands on, so it is passed down.
             SemanticProperties.SetHint(Field, SemanticProperties.GetHint(this));
+        else if (propertyName == SemanticProperties.DescriptionProperty.PropertyName)
+            Paint();
     }
 
     private void OnOptionsChanged(IList<string>? options) =>
@@ -202,11 +204,10 @@ public partial class ChoiceField : ContentView
         // an empty field rather than as a value.
         ValueLabel.TextColor = MetricStatus.Resource(chosen is null ? "BodyText" : "HeadingText", Colors.Gray);
 
-        var name = Prompt ?? Title;
+        // The page's description is the label when it set one; the field's own prompt otherwise.
+        // Said the same way the date field says it — see FieldDescription.
         SemanticProperties.SetDescription(
             Field,
-            string.IsNullOrEmpty(name)
-                ? chosen ?? "Not set"
-                : $"{name}: {chosen ?? "not set"}");
+            FieldDescription.For(SemanticProperties.GetDescription(this) ?? Prompt ?? Title, chosen, "not set"));
     }
 }

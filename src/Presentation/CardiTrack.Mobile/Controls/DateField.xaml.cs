@@ -69,6 +69,13 @@ public partial class DateField : ContentView
         "Choose a date",
         propertyChanged: (bindable, _, _) => ((DateField)bindable).Paint());
 
+    public static readonly BindableProperty HasErrorProperty = BindableProperty.Create(
+        nameof(HasError),
+        typeof(bool),
+        typeof(DateField),
+        false,
+        propertyChanged: (bindable, _, _) => ((DateField)bindable).Paint());
+
     /// <summary>Set while the platform picker is being brought in line with <see cref="Date"/>.</summary>
     private bool _mirroring;
 
@@ -113,6 +120,17 @@ public partial class DateField : ContentView
         set => SetValue(PlaceholderProperty, value);
     }
 
+    /// <summary>
+    /// Whether the page has refused the day in the field. Draws the edge in ErrorRed, the same
+    /// mark the sign-up form and the alarm builder put on a refused Entry; the message itself is
+    /// the page's, under the field.
+    /// </summary>
+    public bool HasError
+    {
+        get => (bool)GetValue(HasErrorProperty);
+        set => SetValue(HasErrorProperty, value);
+    }
+
     /// <summary>Old and new day, in the shape the platform picker raises.</summary>
     public event EventHandler<DateChangedEventArgs>? DateSelected;
 
@@ -124,6 +142,10 @@ public partial class DateField : ContentView
             Field.Opacity = IsEnabled ? 1 : DisabledOpacity;
         else if (propertyName == SemanticProperties.HintProperty.PropertyName)
             SemanticProperties.SetHint(Field, SemanticProperties.GetHint(this));
+        else if (propertyName == SemanticProperties.DescriptionProperty.PropertyName)
+            // The page's description is the field's label for a screen reader; the value is
+            // appended to it, so it is repainted rather than passed down as it is.
+            Paint();
     }
 
     private void OnTapped(object? sender, TappedEventArgs e)
@@ -214,6 +236,12 @@ public partial class DateField : ContentView
         // The placeholder takes the ink the Entry fields give theirs, so an unset day reads as an
         // empty field rather than as a value.
         ValueLabel.TextColor = MetricStatus.Resource(day is null ? "BodyText" : "HeadingText", Colors.Gray);
-        SemanticProperties.SetDescription(Field, day is null ? "No date chosen" : text);
+        Field.Stroke = new SolidColorBrush(MetricStatus.Resource(HasError ? "ErrorRed" : "InputBorder", Colors.Gray));
+
+        // The Border is the one thing a screen reader lands on — the platform picker behind it
+        // is out of the tree — so it carries the page's label and the day together.
+        SemanticProperties.SetDescription(
+            Field,
+            FieldDescription.For(SemanticProperties.GetDescription(this), day is null ? null : text, "no date chosen"));
     }
 }

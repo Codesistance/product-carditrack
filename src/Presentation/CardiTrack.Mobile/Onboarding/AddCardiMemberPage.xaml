@@ -88,7 +88,9 @@
                         <controls:DateField x:Name="DobPicker"
                                             Format="d MMM yyyy"
                                             Placeholder="Choose their date of birth"
+                                            SemanticProperties.Description="Date of birth"
                                             DateSelected="OnDobSelected"/>
+                        <Label x:Name="DobError" Style="{StaticResource AuthErrorLabel}" IsVisible="False"/>
                     </VerticalStackLayout>
 
                     <!-- Sex. Not in the M1-04 comp; sits under Date of Birth because the two

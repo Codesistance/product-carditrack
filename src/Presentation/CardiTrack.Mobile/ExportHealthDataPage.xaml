@@ -116,12 +116,14 @@
                                     <Label Text="From" Style="{StaticResource Body2}"/>
                                     <controls:DateField x:Name="FromPicker"
                                                         Format="d MMM yyyy"
+                                                        SemanticProperties.Description="From"
                                                         DateSelected="OnDateChanged"/>
                                 </VerticalStackLayout>
                                 <VerticalStackLayout Grid.Column="1" Spacing="2">
                                     <Label Text="To" Style="{StaticResource Body2}"/>
                                     <controls:DateField x:Name="ToPicker"
                                                         Format="d MMM yyyy"
+                                                        SemanticProperties.Description="To"
                                                         DateSelected="OnDateChanged"/>
                                 </VerticalStackLayout>
                             </Grid>

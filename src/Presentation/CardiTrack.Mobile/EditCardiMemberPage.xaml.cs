@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Localization;
 using CardiTrack.Mobile.Core.Media;
 using CardiTrack.Mobile.Services;
@@ -290,7 +291,8 @@ public partial class EditCardiMemberPage : ContentPage
         return _pendingPhotoBytes is not null
             || _removePhoto
             || NameEntry.Text?.Trim() != _member.Name
-            || DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today) != _member.DateOfBirth
+            // A cleared date is a change too — Validate will refuse it, but it is not what loaded.
+            || DobPicker.Date is not { } dob || DateOnly.FromDateTime(dob) != _member.DateOfBirth
             // Only a picked sex can be a change. An untouched picker on a member with no sex
             // recorded is the state it loaded in, not an edit worth warning about on cancel.
             || SelectedSex() is { } sex && sex != _member.Gender
@@ -324,7 +326,8 @@ public partial class EditCardiMemberPage : ContentPage
             var request = new UpdateCardiMemberRequest
             {
                 Name = NameEntry.Text!.Trim(),
-                DateOfBirth = DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today),
+                // Validate refused a missing date a moment ago.
+                DateOfBirth = DateOnly.FromDateTime(DobPicker.Date!.Value),
                 Gender = SelectedSex(),
                 RelationshipType = SelectedRelationship(),
                 Email = _member.Email,
@@ -402,10 +405,13 @@ public partial class EditCardiMemberPage : ContentPage
             valid = false;
         }
 
-        var age = AgeOn(DateOnly.FromDateTime(DobPicker.Date ?? DateTime.Today));
-        if (age is < 18 or > 120)
+        // The same rule the add form applies, from the same place — and never today for a date
+        // that is not there.
+        var dobError = DateOfBirth.Validate(DobPicker.Date, DateOnly.FromDateTime(DateTime.Today));
+        DobPicker.HasError = dobError is not null;
+        if (dobError is not null)
         {
-            DobError.Text = "CardiMember must be between 18 and 120 years old";
+            DobError.Text = dobError;
             DobError.IsVisible = true;
             valid = false;
         }
@@ -456,15 +462,6 @@ public partial class EditCardiMemberPage : ContentPage
         SensitivityPicker.SelectedIndex >= 0
             ? Sensitivities[SensitivityPicker.SelectedIndex].Value
             : AlertSensitivity.Medium;
-
-    private static int AgeOn(DateOnly dateOfBirth)
-    {
-        var today = DateTime.UtcNow;
-        var age = today.Year - dateOfBirth.Year;
-        if (today.Month < dateOfBirth.Month || (today.Month == dateOfBirth.Month && today.Day < dateOfBirth.Day))
-            age--;
-        return age;
-    }
 
     private static string? NullIfEmpty(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

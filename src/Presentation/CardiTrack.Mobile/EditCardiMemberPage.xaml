@@ -162,7 +162,9 @@
 
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Date of Birth*" Style="{StaticResource AuthFieldLabel}"/>
-                        <controls:DateField x:Name="DobPicker" Format="d MMM yyyy"/>
+                        <controls:DateField x:Name="DobPicker"
+                                            Format="d MMM yyyy"
+                                            SemanticProperties.Description="Date of birth"/>
                         <Label x:Name="DobError"
                                Style="{StaticResource AuthErrorLabel}"
                                IsVisible="False"/>

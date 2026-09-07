@@ -12,13 +12,16 @@
         <!-- The platform picker, kept in the tree but given no size and no ink. It cannot be
              hidden outright: a control that is not on screen can neither take focus nor be
              clicked, and one or the other is what opens its dialog (see the code-behind). It
-             sits under the field, which takes the taps and passes them on. -->
+             sits under the field, which takes the taps and passes them on. Out of the
+             accessibility tree, deliberately: a screen reader would otherwise land on an
+             unlabelled, invisible control a step after the field that speaks for it. -->
         <DatePicker x:Name="Picker"
                     Opacity="0"
                     WidthRequest="1"
                     HeightRequest="1"
                     HorizontalOptions="Start"
                     VerticalOptions="Start"
+                    AutomationProperties.IsInAccessibleTree="False"
                     DateSelected="OnPickerDateSelected"/>
 
         <Border x:Name="Field" Style="{StaticResource AuthEntryBorder}">
