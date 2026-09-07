@@ -903,7 +903,7 @@ internal static partial class MedicalPromptBlocks
         var rows = logs
             .Where(l => l.Date == today || l.Date == yesterday)
             .GroupBy(l => l.Date)
-            .Select(g => g.Last())
+            .Select(g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First())
             .OrderBy(l => l.Date)
             .ToList();
 

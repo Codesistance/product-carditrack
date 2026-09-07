@@ -87,6 +87,33 @@ public class StatusWindowDailyLinesTests
     }
 
     [Fact]
+    public void DuplicateDates_KeepTheMostRecentlyUpdatedRow()
+    {
+        var older = new ActivityLog
+        {
+            Date = Yesterday,
+            Steps = 1111,
+            CreatedDate = new DateTime(2026, 8, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedDate = new DateTime(2026, 8, 21, 9, 0, 0, DateTimeKind.Utc),
+        };
+        var newer = new ActivityLog
+        {
+            Date = Yesterday,
+            Steps = 2222,
+            CreatedDate = new DateTime(2026, 8, 21, 10, 0, 0, DateTimeKind.Utc),
+            UpdatedDate = new DateTime(2026, 8, 21, 11, 0, 0, DateTimeKind.Utc),
+        };
+
+        var lines = MedicalPromptBlocks.StatusWindowDailyLines(
+            [newer, older],
+            Today,
+            MorningProgress());
+
+        Assert.Contains("steps=2222", lines);
+        Assert.DoesNotContain("1111", lines);
+    }
+
+    [Fact]
     public void NoRows_SaysSo()
     {
         Assert.Equal(

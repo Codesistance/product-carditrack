@@ -464,13 +464,10 @@ public class StatusLineGenerationServiceTests
     [Fact]
     public async Task FetchesYesterdayAndToday_NotAThirdDay()
     {
-        var tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
-        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz));
-
-        await CreateSut().RegenerateAsync(_memberId);
+        await CreateSut(new FrozenTimeProvider(LondonMorningUtc)).RegenerateAsync(_memberId);
 
         await _activityLogs.Received(1).GetByCardiMemberAndDateRangeAsync(
-            _memberId, today.AddDays(-1), today);
+            _memberId, FrozenYesterday, FrozenToday);
     }
 
     [Fact]
