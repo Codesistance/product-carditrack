@@ -106,11 +106,22 @@ public class MemberChatService : IMemberChatService
     /// suggest the caregiver did something wrong.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Now carries what this app actually holds, because most of what reaches this entry is no
     /// longer a poem or the weather. A caregiver asking "what of his diet" is asking a reasonable
     /// question about their father's health that CardiTrack has no reading of, and a generic "I
     /// can't help with that" leaves them to rediscover the boundary one topic at a time. Naming
     /// the sources once turns a refusal into something they learn from.
+    /// </para>
+    /// <para>
+    /// The last paragraph is the exception to the brief's own premise. The brief asserts the
+    /// message is a request, and a message that is not one — a bare email address, sent to the
+    /// router because no purpose line fits a non-request — was duly described as "a very
+    /// reasonable health question" about something the wearable does not track (2026-09-07).
+    /// The obvious cases are now caught in code before any model runs
+    /// (<see cref="MemberChatReplies.CarriesNoQuestion"/>); this is the second line, for the
+    /// fragments that still reach here.
+    /// </para>
     /// </remarks>
     private const string OffTopicSteerInstructions = """
         A family caregiver sent the request below inside a health-monitoring app. The app answers
@@ -127,6 +138,10 @@ public class MemberChatService : IMemberChatService
         an answer from the readings that do exist, and do not attempt the request itself. Write
         CardiTrackCardiMember exactly as written if you name the member; it stands in for their
         real name.
+
+        If the message is not a request at all — an address, a pasted fragment, a stray line —
+        say you didn't catch a question and name what you can help with; in that case
+        do not describe it as a health question.
 
         Respond with:
         - reply: the message to show the caregiver.
@@ -461,6 +476,51 @@ public class MemberChatService : IMemberChatService
         // Read before the history block, not with the rest of the context below: the name is what
         // gets swapped back out of the recalled turns before any of them reach a model.
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+
+        // The one guard that runs before any model, the pre-check included: a message with no
+        // question in it never reaches one, so there is nothing for the pre-check to protect and
+        // nothing for the router to misplace. Everything else — triage, route, dispatch — is one
+        // step, so that this branch and that one meet the same persistence below.
+        var result = MemberChatReplies.CarriesNoQuestion(flattened)
+            ? NotAQuestionResult(member?.Name)
+            : await RouteAndAnswerAsync(flattened, session, cardiMemberId, member, utcNow, ct);
+
+        var (_, assistantTurn) = await PersistTurnsAsync(
+            session, flattened, result, utcNow, ct);
+        await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
+
+        await _unitOfWork.SaveChangesAsync();
+
+        return new MemberChatMessageResponse
+        {
+            SessionId = session.Id,
+            Reply = result.Reply,
+            Charts = result.Charts,
+            GeneratedAt = DateTimeOffset.UtcNow,
+        };
+    }
+
+    /// <summary>
+    /// Every model-facing step of a turn: the malicious pre-check, the routing call, and the
+    /// dispatch to the workflow that answers. Returns the workflow's account of what it spent,
+    /// with the route billed into it, for the one persistence path in
+    /// <see cref="SendMessageAsync"/> to write.
+    /// </summary>
+    /// <remarks>
+    /// Split from <see cref="SendMessageAsync"/> when a second no-model answer joined the
+    /// zero-call rungs (<see cref="NotAQuestionResult"/>): that answer needs the session and the
+    /// member the caller already read, and none of what follows here, and the alternative was a
+    /// second copy of "persist, bill, save, respond" — the duplication the uniform contract
+    /// (docs/technical/member_chat_routing.md §7) exists to remove.
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult> RouteAndAnswerAsync(
+        string flattened,
+        MemberChatSession session,
+        Guid cardiMemberId,
+        CardiMember? member,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
         var history = await BuildHistoryBlockAsync(session.Id, member?.Name, ct);
 
         // History travels with every step that reads the caregiver's message, not just the
@@ -528,20 +588,37 @@ public class MemberChatService : IMemberChatService
             result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
         }
 
-        var (_, assistantTurn) = await PersistTurnsAsync(
-            session, flattened, result, utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
-
-        await _unitOfWork.SaveChangesAsync();
-
-        return new MemberChatMessageResponse
-        {
-            SessionId = session.Id,
-            Reply = result.Reply,
-            Charts = result.Charts,
-            GeneratedAt = DateTimeOffset.UtcNow,
-        };
+        return result;
     }
+
+    /// <summary>
+    /// The canned nudge for a message with no question in it — an address on its own, a line
+    /// with no word — answered before any model runs and stamped as the casual steer, the entry
+    /// for "not a question at all".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A message that was only an email address reached the router, which has no purpose line
+    /// for a non-request and fell to <c>steer.offtopic</c>; that steer's brief asserts the request
+    /// is a health question about something unrecorded, so the caregiver was told "That is a very
+    /// reasonable health question, but Dad's wearable does not track food, medication, or weight"
+    /// (2026-09-07). Three model calls to misdescribe a string the app can recognise before the
+    /// first — see <see cref="MemberChatReplies.CarriesNoQuestion"/> for how narrowly.
+    /// </para>
+    /// <para>
+    /// Zero calls, so <c>Calls</c> is empty and the turn bills nothing: the honest account of a
+    /// turn that spent nothing, not a usage row invented to look like the others. Persisted like
+    /// every other turn all the same — it is still a message the caregiver sent and a reply they
+    /// read, and the transcript should show both, under the rung the routing design gives a
+    /// non-question.
+    /// </para>
+    /// </remarks>
+    private static MemberChatWorkflowResult NotAQuestionResult(string? memberName) => new()
+    {
+        Workflow = MemberChatWorkflow.SteerCasual,
+        Reply = MemberChatReplies.NotAQuestionReply(NamePlaceholder.FirstName(memberName)),
+        Calls = [],
+    };
 
     /// <summary>
     /// The full pipeline: plan the fetch, resolve it through the whitelist, read it clinically on

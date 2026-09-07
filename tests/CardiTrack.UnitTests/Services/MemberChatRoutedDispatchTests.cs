@@ -513,6 +513,50 @@ public class MemberChatRoutedDispatchTests
         await _usages.DidNotReceive().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.Route));
     }
 
+    /// <summary>
+    /// A message that was only an email address was told it was "a very reasonable health
+    /// question" the wearable does not track (2026-09-07): no purpose line fits a non-request, the
+    /// router fell to steer.offtopic, and that brief asserts the message is a health question.
+    /// Now it never reaches a model — not the pre-check, not the router, not a steer — and the
+    /// turn is still persisted, under the rung for "not a question at all", billed for nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("someone@example.com")]
+    [InlineData("https://example.com/some/path?x=1")]
+    [InlineData("www.example.com.")]
+    [InlineData("12345")]
+    [InlineData("???")]
+    public async Task ANonQuestion_GetsTheCannedNudge_WithoutRouting(string message)
+    {
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, message);
+
+        Assert.Equal(
+            "I didn't catch a question there — ask me about Moses's sleep, activity, heart rate or alerts.",
+            reply.Reply);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(default!, default);
+        await _router.DidNotReceiveWithAnyArgs().RouteAsync(default!, default, default);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(default!, default);
+        await _unitOfWork.MemberChatTurns.Received().AddAsync(Arg.Is<MemberChatTurn>(t =>
+            t.Role == ChatTurnRole.Assistant && t.Workflow == MemberChatWorkflow.SteerCasual));
+        await _usages.DidNotReceiveWithAnyArgs().AddAsync(default!);
+    }
+
+    /// <summary>
+    /// The second line, for fragments the code guard is too narrow to catch: the off-topic brief
+    /// no longer asserts that whatever reached it is a health question. Asserted here rather than
+    /// in MedicalPromptToneTests, which deliberately excludes the steer prompts.
+    /// </summary>
+    [Fact]
+    public void TheOffTopicSteer_IsToldNotToCallANonRequestAHealthQuestion()
+    {
+        var brief = MemberChatService.HandlerBriefs[MemberChatWorkflow.SteerOffTopic];
+
+        Assert.Contains("not a request at all", brief, StringComparison.Ordinal);
+        Assert.Contains("do not describe it as a health question", brief, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task TheMaliciousVerdictStillHardStops()
     {

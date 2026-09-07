@@ -299,6 +299,53 @@ public static partial class MemberChatReplies
         RegexOptions.IgnoreCase)]
     private static partial Regex SettledClaim();
 
+    /// <summary>
+    /// True when the message carries nothing a question could be made of: an email address or a
+    /// URL on its own, or a line with no letter in it at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Judged in code, ahead of the router, because the router cannot be taught this. Everything
+    /// it renders is a way of answering, and a message that asks nothing fits none of them — so
+    /// a bare email address fell to <c>steer.offtopic</c>, whose brief asserts the request is a
+    /// health question about something unrecorded, and the caregiver was told their address was
+    /// "a very reasonable health question" that the wearable does not track (2026-09-07). Three
+    /// model calls to misdescribe a string the app could have recognised before the first.
+    /// </para>
+    /// <para>
+    /// Narrow on purpose. "hi", "ok?", "thanks" and a lone question mark after a word all carry a
+    /// word, and the router already places those as <c>steer.casual</c>; this catches only what
+    /// no purpose line could ever place. Erring narrow is the safe direction: a non-question that
+    /// slips through still gets the steer, whose brief now knows to say it caught no question,
+    /// while a real question caught here would be answered with a nudge.
+    /// </para>
+    /// </remarks>
+    public static bool CarriesNoQuestion(string message)
+    {
+        var trimmed = message.Trim();
+        return AddressOnly().IsMatch(trimmed) || !AnyLetter().IsMatch(trimmed);
+    }
+
+    /// <summary>The whole message is one email address or one URL, trailing punctuation aside.</summary>
+    [GeneratedRegex(@"^(?:[^\s@]+@[^\s@]+\.[^\s@]+|(?:https?://|www\.)\S+)[.,;:!?)]*$", RegexOptions.IgnoreCase)]
+    private static partial Regex AddressOnly();
+
+    /// <summary>Any letter in any script — the least a question can be made of.</summary>
+    [GeneratedRegex(@"\p{L}")]
+    private static partial Regex AnyLetter();
+
+    /// <summary>
+    /// The nudge for a message with no question in it: what was missing, and what to ask instead
+    /// — the same "what I can help with" every steer closes on, without a model to write it.
+    /// </summary>
+    public static string NotAQuestionReply(string? firstName)
+    {
+        // "their" rather than an invented relationship word, for the reason LiveStatusReply's
+        // subject line gives at length.
+        var whose = string.IsNullOrWhiteSpace(firstName) ? "their" : $"{firstName}'s";
+        return $"I didn't catch a question there — ask me about {whose} sleep, activity, heart rate or alerts.";
+    }
+
     /// <summary>Oxford-less list joining — "a, b and c".</summary>
     private static string Join(IReadOnlyList<string> parts) => parts.Count switch
     {
