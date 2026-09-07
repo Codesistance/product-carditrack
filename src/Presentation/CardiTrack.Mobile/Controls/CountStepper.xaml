@@ -8,6 +8,9 @@
          at its minimum it looks exactly as it does everywhere else, so a caregiver taps a button
          that does nothing and cannot tell why.
 
+         The glyphs are kept out of the accessibility tree: the circle around each carries the
+         spoken name and the tap, and a reader landing on a bare "+" would say nothing useful.
+
          The buttons borrow SecondaryOutlineButton's treatment — white fill, PrimaryDark hairline,
          Primary ink — squeezed to a circle, which is the shape the header's back button already
          gives a round tap target on every page. Round rather than the 25-radius pill because a
@@ -28,6 +31,7 @@
                 <TapGestureRecognizer Tapped="OnMinusTapped"/>
             </Border.GestureRecognizers>
             <Label Text="&#x2212;"
+                   AutomationProperties.IsInAccessibleTree="False"
                    FontFamily="QuicksandSemiBold"
                    FontSize="20"
                    TextColor="{StaticResource Primary}"
@@ -58,6 +62,7 @@
                 <TapGestureRecognizer Tapped="OnPlusTapped"/>
             </Border.GestureRecognizers>
             <Label Text="+"
+                   AutomationProperties.IsInAccessibleTree="False"
                    FontFamily="QuicksandSemiBold"
                    FontSize="20"
                    TextColor="{StaticResource Primary}"
