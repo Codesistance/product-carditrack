@@ -137,13 +137,14 @@ public partial class CheckField : ContentView
     {
         TextLabel.IsVisible = content is null;
         // Only one label lives in the host at a time: the built-in one, or the page's.
-        for (var i = LabelHost.Count - 1; i >= 0; i--)
+        var children = LabelHost.Children;
+        for (var i = children.Count - 1; i >= 0; i--)
         {
-            if (!ReferenceEquals(LabelHost[i], TextLabel))
-                LabelHost.RemoveAt(i);
+            if (!ReferenceEquals(children[i], TextLabel))
+                children.RemoveAt(i);
         }
         if (content is not null)
-            LabelHost.Add(content);
+            children.Add(content);
     }
 
     private void Paint()
