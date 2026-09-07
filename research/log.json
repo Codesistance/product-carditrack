@@ -5,6 +5,12 @@
       "slack_ts": null,
       "item_count": 25,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-07",
+      "slack_ts": null,
+      "item_count": 1,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -232,6 +238,15 @@
       "severity": "FYI",
       "category": "competition",
       "brief": "research/queue/2026-09-04-cadence-ai-proactive-care-engine.md"
+    },
+    {
+      "date": "2026-09-07",
+      "slug": "dotnet-10-cve-batch-august-servicing",
+      "title": ".NET 10 August 2026 servicing (10.0.11) fixes 9 CVEs incl. CVE-2026-62900 — floating base-image tags auto-remediate on next rebuild",
+      "url": "https://devblogs.microsoft.com/dotnet/dotnet-and-dotnet-framework-august-2026-servicing-updates/",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-07-dotnet-10-cve-batch-august-servicing.md"
     }
   ]
 }
