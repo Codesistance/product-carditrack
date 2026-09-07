@@ -109,18 +109,23 @@ public class MetricAlarmService : IMetricAlarmService
 
         var resets = ResetsState(alarm, request);
         Apply(alarm, request);
-        _unitOfWork.MetricAlarms.Update(alarm);
 
-        // When the alarm's definition has changed, what it means to be "already in alarm" has too.
-        // Clearing the states makes every member re-establish theirs on the next tick, which is
-        // what stops a retuned alarm from either re-firing on a condition it was already standing
-        // on or staying silent about one it now considers a breach. A rename or a change of
-        // severity changes neither, and must not re-page every member the alarm is standing on.
-        if (resets)
-            await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(alarm.Id, ct);
-        await _unitOfWork.SaveChangesAsync();
+        return await InTransactionAsync(async () =>
+        {
+            _unitOfWork.MetricAlarms.Update(alarm);
 
-        return Map(alarm, provenance: null, state: null);
+            // When the alarm's definition has changed, what it means to be "already in alarm" has
+            // too. Clearing the states makes every member re-establish theirs on the next tick,
+            // which is what stops a retuned alarm from either re-firing on a condition it was
+            // already standing on or staying silent about one it now considers a breach. A rename
+            // or a change of severity changes neither, and must not re-page every member the
+            // alarm is standing on.
+            if (resets)
+                await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(alarm.Id, ct);
+            await _unitOfWork.SaveChangesAsync();
+
+            return Map(alarm, provenance: null, state: null);
+        });
     }
 
     public async Task DeleteAccountAlarmAsync(Guid requestingUserId, Guid alarmId, CancellationToken ct = default)
@@ -132,14 +137,18 @@ public class MetricAlarmService : IMetricAlarmService
         if (alarm is null || alarm.CardiMemberId is not null)
             throw new KeyNotFoundException(DeniedMessage);
 
-        alarm.IsActive = false;
-        _unitOfWork.MetricAlarms.Update(alarm);
-        await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(alarm.Id, ct);
+        await InTransactionAsync(async () =>
+        {
+            alarm.IsActive = false;
+            _unitOfWork.MetricAlarms.Update(alarm);
+            await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(alarm.Id, ct);
 
-        // Overrides of a deleted default become the members' own alarms — see MetricAlarmResolution.
-        // Deliberately not cascaded: a caregiver who tuned this alarm for one person has expressed
-        // an intention about that person, and removing the account default is not a retraction of it.
-        await _unitOfWork.SaveChangesAsync();
+            // Overrides of a deleted default become the members' own alarms — see
+            // MetricAlarmResolution. Deliberately not cascaded: a caregiver who tuned this alarm
+            // for one person has expressed an intention about that person, and removing the
+            // account default is not a retraction of it.
+            await _unitOfWork.SaveChangesAsync();
+        });
     }
 
     public async Task<MetricAlarmResponse> CreateMemberAlarmAsync(
@@ -183,64 +192,68 @@ public class MetricAlarmService : IMetricAlarmService
             ? target
             : rows.FirstOrDefault(a => a.CardiMemberId == cardiMemberId && a.DerivedFromAlarmId == alarmId);
 
-        if (row is { DerivedFromAlarmId: { } sourceId }
-            && rows.FirstOrDefault(a => a.Id == sourceId && a.CardiMemberId is null) is { } source
-            && RevertsToDefault(row, source, request))
+        return await InTransactionAsync(async () =>
         {
-            // An override that says exactly what the account default says is not an override — it
-            // is the default with a detached copy of it in the way. That is what a switch flipped
-            // off and back on produces, and left standing it would quietly stop following account-
-            // level edits while the screen said the alarm was tuned for this person. Reverting is
-            // the honest result; the ceiling still applies, since the default coming back on adds
-            // an enabled alarm the opt-out had taken away.
-            await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
-            row.IsActive = false;
-            _unitOfWork.MetricAlarms.Update(row);
-            await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
-            await ClearStateAsync(source.Id, cardiMemberId, ct);
-            await _unitOfWork.SaveChangesAsync();
-            return Map(source, AlarmProvenance.Inherited, state: null);
-        }
-
-        AlarmProvenance provenance;
-        if (row is not null)
-        {
-            provenance = row.DerivedFromAlarmId is null ? AlarmProvenance.MemberOnly : AlarmProvenance.Overridden;
-            var resets = ResetsState(row, request);
-            await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
-            Apply(row, request);
-            _unitOfWork.MetricAlarms.Update(row);
-
-            // Same rule as the account-level edit: only a change to what is evaluated makes the
-            // standing state meaningless. Renaming an alarm must not page again about a condition
-            // the caregiver already has the card for.
-            if (resets)
-                await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
-        }
-        else
-        {
-            // First override of an account default. The new row carries the member's settings and
-            // names the default it replaces, so reverting is a delete rather than a re-entry of
-            // everything the account said. The default is what this replaces, so the member's
-            // effective count does not grow and the ceiling must not be applied as if it did.
-            provenance = AlarmProvenance.Overridden;
-            await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: alarmId, ct);
-            row = new MetricAlarm
+            if (row is { DerivedFromAlarmId: { } sourceId }
+                && rows.FirstOrDefault(a => a.Id == sourceId && a.CardiMemberId is null) is { } source
+                && RevertsToDefault(row, source, request))
             {
-                OrganizationId = member.OrganizationId,
-                CardiMemberId = cardiMemberId,
-                DerivedFromAlarmId = alarmId,
-            };
-            Apply(row, request);
-            await _unitOfWork.MetricAlarms.AddAsync(row);
+                // An override that says exactly what the account default says is not an override —
+                // it is the default with a detached copy of it in the way. That is what a switch
+                // flipped off and back on produces, and left standing it would quietly stop
+                // following account-level edits while the screen said the alarm was tuned for this
+                // person. Reverting is the honest result; the ceiling still applies, since the
+                // default coming back on adds an enabled alarm the opt-out had taken away.
+                await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
+                row.IsActive = false;
+                _unitOfWork.MetricAlarms.Update(row);
+                await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
+                await ClearStateAsync(source.Id, cardiMemberId, ct);
+                await _unitOfWork.SaveChangesAsync();
+                return Map(source, AlarmProvenance.Inherited, state: null);
+            }
 
-            // The account default no longer applies here, so the state it left behind for this
-            // member must not outlive it and be read as this override's own standing state.
-            await ClearStateAsync(alarmId, cardiMemberId, ct);
-        }
+            AlarmProvenance provenance;
+            if (row is not null)
+            {
+                provenance = row.DerivedFromAlarmId is null ? AlarmProvenance.MemberOnly : AlarmProvenance.Overridden;
+                var resets = ResetsState(row, request);
+                await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: row.Id, ct);
+                Apply(row, request);
+                _unitOfWork.MetricAlarms.Update(row);
 
-        await _unitOfWork.SaveChangesAsync();
-        return Map(row, provenance, state: null);
+                // Same rule as the account-level edit: only a change to what is evaluated makes the
+                // standing state meaningless. Renaming an alarm must not page again about a
+                // condition the caregiver already has the card for.
+                if (resets)
+                    await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
+            }
+            else
+            {
+                // First override of an account default. The new row carries the member's settings
+                // and names the default it replaces, so reverting is a delete rather than a
+                // re-entry of everything the account said. The default is what this replaces, so
+                // the member's effective count does not grow and the ceiling must not be applied
+                // as if it did.
+                provenance = AlarmProvenance.Overridden;
+                await RequireCapacityAsync(member, cardiMemberId, request, replacesEffectiveAlarmId: alarmId, ct);
+                row = new MetricAlarm
+                {
+                    OrganizationId = member.OrganizationId,
+                    CardiMemberId = cardiMemberId,
+                    DerivedFromAlarmId = alarmId,
+                };
+                Apply(row, request);
+                await _unitOfWork.MetricAlarms.AddAsync(row);
+
+                // The account default no longer applies here, so the state it left behind for this
+                // member must not outlive it and be read as this override's own standing state.
+                await ClearStateAsync(alarmId, cardiMemberId, ct);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+            return Map(row, provenance, state: null);
+        });
     }
 
     public async Task DeleteMemberAlarmAsync(
@@ -257,13 +270,49 @@ public class MetricAlarmService : IMetricAlarmService
             ?? rows.FirstOrDefault(a => a.CardiMemberId == cardiMemberId && a.DerivedFromAlarmId == alarmId)
             ?? throw new KeyNotFoundException(DeniedMessage);
 
-        row.IsActive = false;
-        _unitOfWork.MetricAlarms.Update(row);
-        await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
-        await _unitOfWork.SaveChangesAsync();
+        await InTransactionAsync(async () =>
+        {
+            row.IsActive = false;
+            _unitOfWork.MetricAlarms.Update(row);
+            await _unitOfWork.MetricAlarmStates.DeleteForAlarmAsync(row.Id, ct);
+            await _unitOfWork.SaveChangesAsync();
+        });
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runs one write as a single unit. Not ceremony: <see cref="IMetricAlarmStateRepository"/>'s
+    /// DeleteForAlarmAsync is a server-side ExecuteDelete, which commits the moment it is called,
+    /// while the alarm row beside it is only pending until SaveChangesAsync. Without a transaction
+    /// a failed save leaves the states gone and the alarm untouched, and the next tick
+    /// re-establishes state from nothing — paging a second time about a condition the caregiver
+    /// already has the card for, which is the harm transition-only firing exists to prevent.
+    /// <para>
+    /// Safe to open by hand here: no host configures EnableRetryOnFailure (see
+    /// NpgsqlOptionsExtensions, the single spelling of UseNpgsql), so there is no retrying
+    /// execution strategy to reject a user-initiated transaction.
+    /// </para>
+    /// </summary>
+    private async Task<T> InTransactionAsync<T>(Func<Task<T>> write)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            var result = await write();
+            await _unitOfWork.CommitTransactionAsync();
+            return result;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
+    }
+
+    /// <inheritdoc cref="InTransactionAsync{T}(Func{Task{T}})"/>
+    private async Task InTransactionAsync(Func<Task> write) =>
+        await InTransactionAsync(async () => { await write(); return true; });
 
     private static void Validate(SaveMetricAlarmRequest request)
     {

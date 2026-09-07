@@ -5,6 +5,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -275,5 +276,44 @@ public class MetricAlarmServiceTests
         await Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, RequestFrom(own, enabled: false));
 
         await _states.Received(1).DeleteForAlarmAsync(own.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AWriteThatSucceeds_CommitsTheWholeThingOnce()
+    {
+        var own = MemberAlarm("Oxygen");
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>()).Returns([own]);
+
+        var request = RequestFrom(own, enabled: true);
+        request.ThresholdValue = 140m;
+
+        await Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, request);
+
+        await _unitOfWork.Received(1).BeginTransactionAsync();
+        await _unitOfWork.Received(1).CommitTransactionAsync();
+        await _unitOfWork.DidNotReceive().RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task AWriteWhoseSaveFails_RollsBackRatherThanLeavingTheStateDeleted()
+    {
+        // DeleteForAlarmAsync is a server-side delete — it commits the moment it is called, while
+        // the alarm row beside it is only pending. Without the transaction a failed save would
+        // leave the states gone and the alarm untouched, and the next tick would re-establish
+        // state from nothing and page a second time about a condition the caregiver already has
+        // the card for. TimeoutException stands in for any failure the database hands back; the
+        // service raises InvalidOperationException itself, so it would not tell us what we asked.
+        var own = MemberAlarm("Oxygen");
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>()).Returns([own]);
+        _unitOfWork.SaveChangesAsync().ThrowsAsync(new TimeoutException("the database gave up"));
+
+        var request = RequestFrom(own, enabled: true);
+        request.ThresholdValue = 140m;
+
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, request));
+
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
     }
 }
