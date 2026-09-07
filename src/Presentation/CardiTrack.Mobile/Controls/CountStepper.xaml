@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.CountStepper">
+
+    <!-- A count with a button either side of it, in place of the platform Stepper. The stock
+         control is a pair of grey boxes drawn by the OS: it takes none of the app's colour, and
+         at its minimum it looks exactly as it does everywhere else, so a caregiver taps a button
+         that does nothing and cannot tell why.
+
+         The buttons borrow SecondaryOutlineButton's treatment — white fill, PrimaryDark hairline,
+         Primary ink — squeezed to a circle, which is the shape the header's back button already
+         gives a round tap target on every page. Round rather than the 25-radius pill because a
+         glyph on its own is a dot, not a word. -->
+    <HorizontalStackLayout Spacing="14">
+
+        <Border x:Name="MinusButton"
+                WidthRequest="40"
+                HeightRequest="40"
+                Padding="0"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource PrimaryDark}"
+                StrokeThickness="1">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnMinusTapped"/>
+            </Border.GestureRecognizers>
+            <Label Text="&#x2212;"
+                   FontFamily="QuicksandSemiBold"
+                   FontSize="20"
+                   TextColor="{StaticResource Primary}"
+                   HorizontalTextAlignment="Center"
+                   VerticalTextAlignment="Center"/>
+        </Border>
+
+        <!-- Wide enough for two digits so the buttons do not shuffle as the count crosses 9. -->
+        <Label x:Name="ValueLabel"
+               FontFamily="QuicksandSemiBold"
+               FontSize="20"
+               TextColor="{StaticResource HeadingText}"
+               MinimumWidthRequest="32"
+               HorizontalTextAlignment="Center"
+               VerticalOptions="Center"/>
+
+        <Border x:Name="PlusButton"
+                WidthRequest="40"
+                HeightRequest="40"
+                Padding="0"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource PrimaryDark}"
+                StrokeThickness="1">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnPlusTapped"/>
+            </Border.GestureRecognizers>
+            <Label Text="+"
+                   FontFamily="QuicksandSemiBold"
+                   FontSize="20"
+                   TextColor="{StaticResource Primary}"
+                   HorizontalTextAlignment="Center"
+                   VerticalTextAlignment="Center"/>
+        </Border>
+
+    </HorizontalStackLayout>
+</ContentView>

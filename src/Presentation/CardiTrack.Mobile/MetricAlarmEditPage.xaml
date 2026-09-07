@@ -79,7 +79,7 @@
 
                             <VerticalStackLayout Spacing="4">
                                 <Label Text="Name it" Style="{StaticResource AuthFieldLabel}"/>
-                                <Border Style="{StaticResource AuthEntryBorder}">
+                                <Border x:Name="NameBorder" Style="{StaticResource AuthEntryBorder}">
                                     <Entry x:Name="NameEntry"
                                            Style="{StaticResource AuthEntry}"
                                            Placeholder="Something you'll recognise at 2am"
@@ -119,7 +119,7 @@
 
                             <VerticalStackLayout Spacing="4">
                                 <Label x:Name="ThresholdLabel" Text="Level" Style="{StaticResource AuthFieldLabel}"/>
-                                <Border Style="{StaticResource AuthEntryBorder}">
+                                <Border x:Name="ThresholdBorder" Style="{StaticResource AuthEntryBorder}">
                                     <Entry x:Name="ThresholdEntry"
                                            Style="{StaticResource AuthEntry}"
                                            Keyboard="Numeric"
@@ -135,14 +135,14 @@
 
                             <VerticalStackLayout Spacing="4">
                                 <Label x:Name="EvaluationLabel" Style="{StaticResource AuthFieldLabel}"/>
-                                <Stepper x:Name="EvaluationStepper" Minimum="1" Increment="1"
-                                         ValueChanged="OnEvaluationPeriodsChanged"/>
+                                <controls:CountStepper x:Name="EvaluationStepper" Minimum="1"
+                                                       ValueChanged="OnEvaluationPeriodsChanged"/>
                             </VerticalStackLayout>
 
                             <VerticalStackLayout Spacing="4">
                                 <Label x:Name="DatapointsLabel" Style="{StaticResource AuthFieldLabel}"/>
-                                <Stepper x:Name="DatapointsStepper" Minimum="1" Increment="1"
-                                         ValueChanged="OnDatapointsChanged"/>
+                                <controls:CountStepper x:Name="DatapointsStepper" Minimum="1"
+                                                       ValueChanged="OnDatapointsChanged"/>
                                 <Label Style="{StaticResource Caption}"
                                        Text="Asking for more than one reading is what keeps a single odd measurement from waking you."/>
                             </VerticalStackLayout>
@@ -183,10 +183,6 @@
                         </VerticalStackLayout>
                     </Border>
 
-                    <Label x:Name="ValidationLabel"
-                           Style="{StaticResource AuthErrorLabel}"
-                           IsVisible="False"/>
-
                     <Button x:Name="DeleteButton"
                             Text="Remove this alarm"
                             Style="{StaticResource SecondaryOutlineButton}"
@@ -208,13 +204,24 @@
         </ScrollView>
 
         <!-- Held out of the scroll so the alarm can be saved from wherever the caregiver has read
-             down to. A card around a single button would only add a second edge to look at. -->
-        <Button x:Name="SaveButton"
-                Grid.Row="2"
-                Margin="20,0,20,20"
-                Text="Save alarm"
-                Style="{StaticResource PrimaryGradientButton}"
-                IsVisible="False"
-                Clicked="OnSaveTapped"/>
+             down to. A card around a single button would only add a second edge to look at.
+
+             The refusal sits here too, directly above the button that refused. It used to be the
+             last thing in the scroll, and a Save tapped from the top of a long form was refused
+             two screens above where the thumb was, with nothing on screen changing. The field at
+             fault is tinted in place so the message has somewhere to point. -->
+        <VerticalStackLayout Grid.Row="2" Spacing="8">
+            <Label x:Name="ValidationLabel"
+                   Style="{StaticResource AuthErrorLabel}"
+                   Margin="20,8,20,0"
+                   IsVisible="False"/>
+
+            <Button x:Name="SaveButton"
+                    Margin="20,0,20,20"
+                    Text="Save alarm"
+                    Style="{StaticResource PrimaryGradientButton}"
+                    IsVisible="False"
+                    Clicked="OnSaveTapped"/>
+        </VerticalStackLayout>
     </Grid>
 </ContentPage>
