@@ -48,14 +48,14 @@ public static class MetricAlarmValidation
         var errors = new List<AlarmValidationError>();
 
         if (string.IsNullOrWhiteSpace(request.Name))
-            errors.Add(new(nameof(request.Name), "Give the level a name you will recognise."));
+            errors.Add(new(nameof(request.Name), "Give the alert a name you will recognise."));
         else if (request.Name.Trim().Length > MaxNameLength)
             errors.Add(new(nameof(request.Name), $"Keep the name to {MaxNameLength} characters or fewer."));
 
         var definition = AlarmMetricCatalogue.Find(request.Metric);
         if (definition is null)
         {
-            errors.Add(new(nameof(request.Metric), "CardiTrack cannot watch a level on that reading. Choose one of the readings listed."));
+            errors.Add(new(nameof(request.Metric), "CardiTrack cannot alert on that reading. Choose one of the readings listed."));
             return errors;
         }
 
@@ -105,7 +105,7 @@ public static class MetricAlarmValidation
         }
         else if (!Enum.IsDefined(request.ContextGate))
         {
-            errors.Add(new(nameof(request.ContextGate), "Choose when the level applies."));
+            errors.Add(new(nameof(request.ContextGate), "Choose when the alert applies."));
         }
 
         if (!Enum.IsDefined(request.MissingDataTreatment))
@@ -114,12 +114,12 @@ public static class MetricAlarmValidation
         if (!Enum.IsDefined(request.Severity) || request.Severity == AlertSeverity.Green)
         {
             errors.Add(new(nameof(request.Severity),
-                "Choose how urgent this level is. Green is reserved for CardiTrack's own findings."));
+                "Choose how urgent this alert is. Green is reserved for CardiTrack's own findings."));
         }
         else if (request.Severity == AlertSeverity.Red && !request.ConfirmCriticalSeverity)
         {
             errors.Add(new(nameof(request.Severity),
-                "A red level pushes through quiet hours and escalates to other carers. Confirm that is what you want."));
+                "A red alert pushes through quiet hours and escalates to other carers. Confirm that is what you want."));
         }
 
         return errors;

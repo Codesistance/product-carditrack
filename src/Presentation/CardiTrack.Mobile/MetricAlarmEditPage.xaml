@@ -39,7 +39,7 @@
 
                 <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <Label x:Name="HeaderTitle"
-                           Text="New level"
+                           Text="New custom alert"
                            Style="{StaticResource Heading3}"
                            TextColor="{StaticResource White}"/>
                     <Label x:Name="HeaderSubtitle"
@@ -68,7 +68,7 @@
                          the thing a caregiver checks before saving, not after. -->
                     <Border Style="{StaticResource ElevatedCard}">
                         <VerticalStackLayout Spacing="6">
-                            <Label Text="This level says" Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label Text="This alert says" Style="{StaticResource DashboardSectionTitle}"/>
                             <Label x:Name="PreviewLabel" Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
                         </VerticalStackLayout>
                     </Border>
@@ -191,7 +191,7 @@
                     </Border>
 
                     <Button x:Name="DeleteButton"
-                            Text="Remove this level"
+                            Text="Remove this alert"
                             Style="{StaticResource SecondaryOutlineButton}"
                             IsVisible="False"
                             Clicked="OnDeleteTapped"/>
@@ -200,7 +200,7 @@
                 <VerticalStackLayout x:Name="ErrorPanel" IsVisible="False" Spacing="12">
                     <Border Style="{StaticResource ElevatedCard}">
                         <VerticalStackLayout Spacing="6">
-                            <Label Text="Couldn't open the level builder"
+                            <Label Text="Couldn't open the alert builder"
                                    Style="{StaticResource Body1SemiBoldDark}"/>
                             <Label x:Name="ErrorDetailLabel" Style="{StaticResource Body2}"/>
                         </VerticalStackLayout>
@@ -225,7 +225,7 @@
 
             <Button x:Name="SaveButton"
                     Margin="20,0,20,20"
-                    Text="Save level"
+                    Text="Save alert"
                     Style="{StaticResource PrimaryGradientButton}"
                     IsVisible="False"
                     Clicked="OnSaveTapped"/>

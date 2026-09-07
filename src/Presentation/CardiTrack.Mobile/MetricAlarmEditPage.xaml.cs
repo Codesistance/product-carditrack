@@ -113,7 +113,7 @@ public partial class MetricAlarmEditPage : ContentPage
                     // here while Save still PUTs to the old id would fail with a 404 on a screen
                     // that said New Alarm. Say what happened and go back to the list instead.
                     await _popups.ShowErrorAsync(
-                        "This level was removed after the list was loaded.", "Level no longer exists");
+                        "This alert was removed after the list was loaded.", "Alert no longer exists");
                     await Shell.Current.GoToAsync("..");
                     return;
                 }
@@ -124,7 +124,7 @@ public partial class MetricAlarmEditPage : ContentPage
 
             _provenance = existing?.Provenance;
 
-            HeaderTitle.Text = existing is null ? "New level" : "Edit level";
+            HeaderTitle.Text = existing is null ? "New custom alert" : "Edit custom alert";
 
             // An inherited alarm is the account's, not this member's, so there is nothing here to
             // delete — switching it off on the list writes the opt-out, which is what "not for this
@@ -134,7 +134,7 @@ public partial class MetricAlarmEditPage : ContentPage
             DeleteButton.IsVisible = existing is not null && _provenance != AlarmProvenance.Inherited;
             DeleteButton.Text = _provenance == AlarmProvenance.Overridden
                 ? "Use the account setting instead"
-                : "Remove this level";
+                : "Remove this alert";
 
             LoadingSpinner.IsVisible = false;
             LoadingSpinner.IsRunning = false;
@@ -177,7 +177,7 @@ public partial class MetricAlarmEditPage : ContentPage
             {
                 "Say nothing until readings come back",
                 "Treat the gap as normal",
-                "Keep whatever the level was saying",
+                "Keep whatever the alert was saying",
             };
 
             NameEntry.Text = _draft.Request.Name;
@@ -266,7 +266,7 @@ public partial class MetricAlarmEditPage : ContentPage
                 _ => 0,
             };
             SeverityHint.Text = request.Severity == AlertSeverity.Red
-                ? "A red level pushes through quiet hours and goes on to other carers if nobody acknowledges it."
+                ? "A red alert pushes through quiet hours and goes on to other carers if nobody acknowledges it."
                 : string.Empty;
 
             MissingDataPicker.SelectedIndex = request.MissingDataTreatment switch
@@ -469,7 +469,7 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_draft.NeedsCriticalConfirmation)
         {
             var confirmed = await _popups.ConfirmInfoAsync(
-                "An urgent level sounds through quiet hours and goes on to other carers if nobody "
+                "An urgent alert sounds through quiet hours and goes on to other carers if nobody "
                 + "acknowledges it. Use it for the things that cannot wait until morning.",
                 "Wake you for this?",
                 "Yes, wake me",
@@ -498,7 +498,7 @@ public partial class MetricAlarmEditPage : ContentPage
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
-            await _popups.ShowErrorAsync(ex.Message, "Couldn't save this level");
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't save this alert");
         }
         catch (ApiException)
         {
@@ -521,14 +521,14 @@ public partial class MetricAlarmEditPage : ContentPage
         var reverting = _provenance == AlarmProvenance.Overridden;
         var confirmed = reverting
             ? await _popups.ConfirmInfoAsync(
-                "This person's own version of this level is removed, and the one set for the whole "
+                "This person's own version of this alert is removed, and the one set for the whole "
                 + "account applies to them again.",
                 "Go back to the account setting?",
                 "Use the account setting",
                 "Keep theirs")
             : await _popups.ConfirmWarningAsync(
                 "CardiTrack will stop watching for this level. Its own patterns carry on as before.",
-                "Remove this level?",
+                "Remove this alert?",
                 "Remove",
                 "Keep it");
 
@@ -544,7 +544,7 @@ public partial class MetricAlarmEditPage : ContentPage
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(
-                ex.Message, reverting ? "Couldn't go back to the account setting" : "Couldn't remove this level");
+                ex.Message, reverting ? "Couldn't go back to the account setting" : "Couldn't remove this alert");
         }
         catch (ApiException)
         {
