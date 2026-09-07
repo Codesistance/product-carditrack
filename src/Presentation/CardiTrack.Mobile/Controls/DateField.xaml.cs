@@ -158,18 +158,26 @@ public partial class DateField : ContentView
     {
         // The platform picker refuses an earliest above its latest, so the two are handed over in
         // the order that keeps them consistent at every step.
+        //
+        // The pair is read from this control's own properties first, and normalised — a page that
+        // sets the two one after the other can leave them upside down for one statement, and
+        // handing an upside-down pair to the picker in either order throws. Only then is the
+        // order decided, against what the picker holds now.
+        var (earliest, latest) = DateBounds.Normalise(MinimumDate, MaximumDate);
+
         _mirroring = true;
         try
         {
-            if (MinimumDate > Picker.MaximumDate)
+            // A picker holding no latest has nothing the new earliest can be past.
+            if (DateBounds.LatestFirst(earliest, Picker.MaximumDate ?? DateTime.MaxValue))
             {
-                Picker.MaximumDate = MaximumDate;
-                Picker.MinimumDate = MinimumDate;
+                Picker.MaximumDate = latest;
+                Picker.MinimumDate = earliest;
             }
             else
             {
-                Picker.MinimumDate = MinimumDate;
-                Picker.MaximumDate = MaximumDate;
+                Picker.MinimumDate = earliest;
+                Picker.MaximumDate = latest;
             }
         }
         finally
