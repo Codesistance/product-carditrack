@@ -691,12 +691,11 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
                                 </Grid.GestureRecognizers>
-                                <!-- The same bell as Alert Settings above it, wearing a level marker instead of a cog:
-                                     same subject, but these are levels the caregiver sets by hand rather
-                                     than rules CardiTrack applies. Two rows with one icon read as a
-                                     duplicate; the badge is the difference. -->
+                                <!-- A gauge, not the bell Alert Settings wears above it: this row is about a level the
+                                     caregiver chose on a dial, and the alert that follows is the bell's
+                                     business. Two rows with one glyph read as a duplicate. -->
                                 <Image Grid.Column="0"
-                                       Source="icon_bell_level.svg"
+                                       Source="icon_level_gauge.svg"
                                        WidthRequest="22" HeightRequest="22"
                                        VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
