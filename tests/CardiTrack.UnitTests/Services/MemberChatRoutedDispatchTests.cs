@@ -183,6 +183,95 @@ public class MemberChatRoutedDispatchTests
         Assert.DoesNotContain("References:", reply.Reply, StringComparison.Ordinal);
     }
 
+    /// <summary>The dashboard hero at Yellow by way of today's family digest — the one input the
+    /// inference rung's dataset vocabulary cannot reach — and a fresh line beneath it.</summary>
+    private void TheHeroIsYellow(string statusLine)
+    {
+        _unitOfWork.Digests.GetLatestByDateAsync(
+                _memberId, Arg.Any<DateOnly>(), DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                Audience = DigestAudience.Family,
+                Urgency = DigestUrgency.CheckIn,
+                Text = "Worth a call today.",
+            });
+        _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(_memberId).Returns(new MemberStatusLine
+        {
+            Headline = "Quieter than usual",
+            Message = statusLine,
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+    }
+
+    private void InferenceAnswers(string analysis, string rewrite)
+    {
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DataQueryPlan>(
+                new DataQueryPlan { Sources = [], ChartMetrics = [] }, new AiUsage()));
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.InferenceClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
+                new MemberChatService.InferenceClinicalAiResponse
+                {
+                    Analysis = analysis, ReferencesUsed = [], ReadingsFrom = null, ReadingsTo = null,
+                },
+                new AiUsage()));
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(rewrite, new AiUsage()));
+    }
+
+    /// <summary>
+    /// "Anything to follow up on?" under a Yellow hero reading "Steps are very low today." came
+    /// back "Everything looks settled…" (2026-09-07). The inference read saw only what its planner
+    /// fetched, and the tier rested on today's digest, which is not in its vocabulary. Now the
+    /// clinical read is shown the hero, and a verdict that still says settled is led by the line.
+    /// </summary>
+    [Fact]
+    public async Task AnInferenceVerdict_CannotSaySettled_UnderAYellowHero()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        TheHeroIsYellow("Steps are very low today.");
+        InferenceAnswers(
+            analysis: "Settled. No alerts; readings at baseline.",
+            rewrite: "Everything looks settled — nothing there needs your attention.");
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
+
+        // The family's screen leads, in the app's words; the verdict follows rather than being
+        // rewritten by code.
+        Assert.StartsWith("Steps are very low today. The dashboard is showing that as worth attention today",
+            reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("Everything looks settled", reply.Reply, StringComparison.Ordinal);
+
+        // And the clinical read was given the hero to disagree with — tier and line, on the
+        // Private slot, where the line's resolved name may travel.
+        var clinicalPrompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("--- Current status (dashboard) ---", clinicalPrompt, StringComparison.Ordinal);
+        Assert.Contains("Tier: Yellow", clinicalPrompt, StringComparison.Ordinal);
+        Assert.Contains("Line: Steps are very low today.", clinicalPrompt, StringComparison.Ordinal);
+        // Never the rewrite: the status line carries the member's real name.
+        var rewritePrompt = (string)_rewriteAi.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IRewriteAiService.GenerateWithUsageAsync))
+            .GetArguments()[0]!;
+        Assert.DoesNotContain("Current status (dashboard)", rewritePrompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>A settled verdict under a settled hero is left exactly as the rewrite wrote it —
+    /// the guard is for disagreement, not decoration.</summary>
+    [Fact]
+    public async Task AnInferenceVerdict_UnderAGreenHero_IsLeftAlone()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        InferenceAnswers(analysis: "Settled.", rewrite: "Everything looks settled.");
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
+
+        Assert.Equal("Everything looks settled.", reply.Reply);
+    }
+
     [Fact]
     public async Task ARewriteThatNamesACondition_IsNotShown()
     {

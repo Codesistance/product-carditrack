@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
@@ -248,6 +249,55 @@ public static partial class MemberChatReplies
 
         return $"{reply}\n\n{sentence}";
     }
+
+    /// <summary>
+    /// A verdict held to the dashboard hero above it: when the hero is Yellow or worse and the
+    /// reply reads as settled, the status line leads and the reply follows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Anything to follow up on?" was answered "Everything looks settled…" under a Yellow hero
+    /// whose line read "Steps are very low today." (2026-09-07). The inference read sees what its
+    /// planner fetched, and the hero tier rests partly on things outside that vocabulary — today's
+    /// family digest urgency, the fresh hour assessment — so the verdict had nothing in front of
+    /// it to disagree with. The clinical brief now carries the tier and the rule; this is the code
+    /// behind the rule, for the reason every guard on this platform exists: a prompt rule
+    /// forbidding a claim does not hold (docs/technical/member_chat_routing.md §9).
+    /// </para>
+    /// <para>
+    /// Leads with the line rather than rewriting the verdict, because the verdict is the model's
+    /// sentence and this must not compose a different one out of it. What the caregiver reads
+    /// first is what the dashboard is already telling them, in the app's own words; the reply
+    /// stands after it as the readings' view. Below Yellow nothing is touched — the hero is
+    /// settled too, and a reply agreeing with it needs no correction.
+    /// </para>
+    /// <para>
+    /// The pattern is deliberately whole-picture — "settled", "nothing needs attention",
+    /// "everything looks fine" — not every reassuring clause. A reply that says one reading looks
+    /// steady is not claiming the day is. It also fires on "not settled", which costs a redundant
+    /// lead that agrees with the reply: erring toward the status line is the safe direction.
+    /// </para>
+    /// </remarks>
+    public static string ReconcileWithStatusTier(string reply, AlertSeverity tier, MemberStatusLine? statusLine)
+    {
+        if (tier < AlertSeverity.Yellow || !SettledClaim().IsMatch(reply))
+            return reply;
+
+        var caption = statusLine?.Message.Trim();
+        var lead = string.IsNullOrWhiteSpace(caption)
+            ? "The dashboard is showing something worth attention today, so I wouldn't call things settled."
+            : $"{caption} The dashboard is showing that as worth attention today, so I wouldn't call "
+              + "things settled.";
+
+        return $"{lead}\n\n{reply}";
+    }
+
+    /// <summary>A reply saying the whole picture is fine — the claim a Yellow hero contradicts.</summary>
+    [GeneratedRegex(
+        @"\b(?:settled|no concerns?|nothing(?: \w+){0,2} (?:needs?|stands? out|to follow|to worry|to flag|to watch)"
+        + @"|(?:everything|all|things) (?:looks?|seems?|is|are) (?:fine|good|okay|ok|steady|calm|normal|well))\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex SettledClaim();
 
     /// <summary>Oxford-less list joining — "a, b and c".</summary>
     private static string Join(IReadOnlyList<string> parts) => parts.Count switch

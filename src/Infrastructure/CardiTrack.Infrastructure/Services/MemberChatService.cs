@@ -270,6 +270,13 @@ public class MemberChatService : IMemberChatService
         just been given those figures is asking precisely because the list did not tell them
         whether anything mattered.
 
+        The data may carry the current dashboard status: the tier the family is already being
+        shown for this member, and the line beneath it. Your verdict may not read as more settled
+        than that tier. At Yellow or above, lead with what the tier rests on — the alert, the
+        assessment or the digest behind it — and do not call things settled beneath it: a chat
+        answer calmer than the screen it is read under is a contradiction the family is left to
+        resolve alone.
+
         Every figure below describes a period that has already finished. Never state what the
         person is doing at this moment. If the data below cannot support a verdict either way,
         say so plainly rather than manufacturing confidence. The activity data covers only the
@@ -611,12 +618,21 @@ public class MemberChatService : IMemberChatService
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
+        // Read after the fetch and beside it, never through the planner: the hero tier is not a
+        // dataset the model may ask for, it is the claim the family is already looking at, and a
+        // verdict is held to it whatever the planner chose.
+        var dashboard = await ReadDashboardStatusAsync(cardiMemberId, member, utcNow, ct);
+
         var today = DateOnly.FromDateTime(utcNow);
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
+        // The status line carries the member's resolved name, which is why it renders here — into
+        // the Private-slot block — and never into the rewrite prompt.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
+            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}"
+            + (dashboard is { } status ? $"\n\n{FormatDashboardStatus(status)}" : string.Empty)
+            + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(clinicalPrompt, ct);
@@ -628,6 +644,12 @@ public class MemberChatService : IMemberChatService
         var reply = ComposeReply(
             rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
+
+        // The brief above told the clinical read not to be calmer than the hero. This is the
+        // guard behind that rule, applied to what the caregiver actually reads: a settled verdict
+        // under a Yellow-or-worse hero gets the status line in front of it.
+        if (dashboard is { } shown)
+            reply = MemberChatReplies.ReconcileWithStatusTier(reply, shown.Tier, shown.Line);
 
         // The authorities behind the verdict, quoted at the end of the reply. The model named
         // which of the prompt's published ranges it drew on; the citation text is the registry's
@@ -1132,6 +1154,80 @@ public class MemberChatService : IMemberChatService
 
         var line = await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId);
         return StatusLineServability.IsServable(line, utcNow) ? line : null;
+    }
+
+    /// <summary>
+    /// What the dashboard hero is showing this member as — the tier and the line under it — read
+    /// the way the hero's own writer reads them, or null for a member the dashboard shows nothing
+    /// current for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The inference read sees only what its planner asked for, from a vocabulary of four
+    /// sources. The hero tier is <see cref="StatusDisplayTier.Resolve"/> over three inputs, and
+    /// two of them — today's family digest urgency and the fresh hour assessment — are outside
+    /// that vocabulary altogether, while the third, unresolved alerts, reaches the prompt only
+    /// when the planner thought to ask. So a verdict could say "settled" beneath a Yellow hero
+    /// with nothing in its prompt to say otherwise, and on 2026-09-07 it did.
+    /// </para>
+    /// <para>
+    /// Same inputs, same resolver, same local day as
+    /// <c>StatusLineGenerationService.RegenerateAsync</c>, including the member's own anchor
+    /// clock for the digest lookup: a chat verdict and the hero must resolve the same tier from
+    /// the same rows, or this becomes a third opinion rather than an agreement. Both reads are
+    /// indexed lookups on a path that already spends four model calls.
+    /// </para>
+    /// </remarks>
+    private async Task<DashboardStatus?> ReadDashboardStatusAsync(
+        Guid cardiMemberId, CardiMember? member, DateTime utcNow, CancellationToken ct)
+    {
+        // A paused or deactivated member has no hero to agree with: the dashboard shows the
+        // monitoring state instead, and the batch generators skip them for the same reason.
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return null;
+
+        var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId);
+        var highestAlert = unresolvedAlerts.Count == 0
+            ? AlertSeverity.Green
+            : unresolvedAlerts.Max(a => a.Severity);
+        var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(cardiMemberId, ct);
+
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
+        var latestDigest = await _unitOfWork.Digests.GetLatestByDateAsync(
+            cardiMemberId, localToday, DigestAudience.Family, ct);
+
+        var tier = StatusDisplayTier.Resolve(highestAlert, latestAssessment, latestDigest, utcNow);
+        var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
+
+        return new DashboardStatus(tier, line);
+    }
+
+    /// <summary>The hero as the family sees it: its tier and the line beneath.</summary>
+    private sealed record DashboardStatus(AlertSeverity Tier, MemberStatusLine? Line);
+
+    /// <summary>
+    /// The dashboard status as a prompt section for the inference read — the tier named and
+    /// glossed, and the line under it, so the verdict has the family's screen in front of it.
+    /// </summary>
+    /// <remarks>
+    /// The gloss is the <see cref="DigestUrgency"/> vocabulary the tier shares its scale with:
+    /// a colour name alone tells a clinical model nothing about how much the family is being
+    /// asked to do.
+    /// </remarks>
+    private static string FormatDashboardStatus(DashboardStatus status)
+    {
+        var gloss = status.Tier switch
+        {
+            AlertSeverity.Red => "needs attention now",
+            AlertSeverity.Orange => "worth prompt attention today",
+            AlertSeverity.Yellow => "worth a check-in today",
+            _ => "settled — nothing pressing",
+        };
+
+        return "--- Current status (dashboard) ---\n"
+            + $"  Tier: {status.Tier} ({gloss}); the colour the family is already looking at for this member\n"
+            + $"  Line: {(status.Line is { } line ? line.Message.Trim() : "none current")}";
     }
 
     /// <summary>
