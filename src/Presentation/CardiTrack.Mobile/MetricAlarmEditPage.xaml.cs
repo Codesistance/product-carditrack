@@ -47,6 +47,12 @@ public partial class MetricAlarmEditPage : ContentPage
 
     private bool _saving;
 
+    /// <summary>
+    /// Set by the first refused Save. Before it, a field the caregiver has not reached is not yet
+    /// wrong; after it, everything wrong stays marked until it is put right.
+    /// </summary>
+    private bool _saveAttempted;
+
     public MetricAlarmEditPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
@@ -272,19 +278,50 @@ public partial class MetricAlarmEditPage : ContentPage
 
             PreviewLabel.Text = _draft.Describe();
 
-            // Errors are shown only for the fields a caregiver has actually reached — an empty
-            // name on a form they have just opened is not a mistake yet.
-            var errors = _draft.Validate()
-                .Where(e => e.Field != nameof(request.Name) || !string.IsNullOrEmpty(NameEntry.Text))
-                .ToList();
-            ValidationLabel.Text = errors.Count > 0 ? errors[0].Message : string.Empty;
-            ValidationLabel.IsVisible = errors.Count > 0;
+            ShowValidation();
         }
         finally
         {
             _applying = false;
         }
     }
+
+    /// <summary>
+    /// Says what is still wrong, above the Save button, and marks the field it is wrong in. The
+    /// rules are the draft's; this only decides which of them the caregiver is ready to hear.
+    /// </summary>
+    /// <returns>Whether anything was shown — after a Save attempt, that is whether the draft can be saved.</returns>
+    private bool ShowValidation()
+    {
+        if (_draft is null)
+            return false;
+
+        // Errors are shown only for the fields a caregiver has actually reached — an empty name
+        // on a form they have just opened is not a mistake yet. Once Save has refused, it is.
+        var errors = _draft.Validate()
+            .Where(e => _saveAttempted
+                        || e.Field != nameof(_draft.Request.Name)
+                        || !string.IsNullOrEmpty(NameEntry.Text))
+            .ToList();
+
+        ValidationLabel.Text = errors.Count > 0 ? errors[0].Message : string.Empty;
+        ValidationLabel.IsVisible = errors.Count > 0;
+
+        // The message names one problem; the tint marks every field with one, so a caregiver who
+        // fixes the first is already looking at the second.
+        var nameWrong = errors.Any(e => e.Field == nameof(_draft.Request.Name));
+        var thresholdWrong = errors.Any(e => e.Field == nameof(_draft.Request.ThresholdValue));
+
+        NameBorder.Stroke = new SolidColorBrush(FieldStroke(nameWrong));
+        ThresholdBorder.Stroke = new SolidColorBrush(FieldStroke(thresholdWrong));
+        ThresholdHint.TextColor = Controls.MetricStatus.Resource(thresholdWrong ? "ErrorRed" : "MutedText", Colors.Gray);
+
+        return errors.Count > 0;
+    }
+
+    /// <summary>The same red the sign-up form draws round a refused field, or the field's own hairline.</summary>
+    private static Color FieldStroke(bool wrong) =>
+        Controls.MetricStatus.Resource(wrong ? "ErrorRed" : "InputBorder", Colors.Gray);
 
     // ── handlers ─────────────────────────────────────────────────────────────────────────
 
@@ -351,10 +388,7 @@ public partial class MetricAlarmEditPage : ContentPage
         _draft.SetThresholdText(e.NewTextValue);
 
         PreviewLabel.Text = _draft.Describe();
-
-        var errors = _draft.Validate();
-        ValidationLabel.Text = errors.Count > 0 ? errors[0].Message : string.Empty;
-        ValidationLabel.IsVisible = errors.Count > 0;
+        ShowValidation();
     }
 
     private void OnPeriodChanged(object? sender, EventArgs e)
@@ -433,7 +467,7 @@ public partial class MetricAlarmEditPage : ContentPage
         // of saving, rather than as a checkbox somebody scrolls past.
         if (_draft.NeedsCriticalConfirmation)
         {
-            var confirmed = await DisplayAlert(
+            var confirmed = await DisplayAlertAsync(
                 "Wake you for this?",
                 "An urgent alarm sounds through quiet hours and goes on to other carers if nobody "
                 + "acknowledges it. Use it for the things that cannot wait until morning.",
@@ -446,13 +480,9 @@ public partial class MetricAlarmEditPage : ContentPage
             _draft.Request.ConfirmCriticalSeverity = true;
         }
 
-        var errors = _draft.Validate();
-        if (errors.Count > 0)
-        {
-            ValidationLabel.Text = errors[0].Message;
-            ValidationLabel.IsVisible = true;
+        _saveAttempted = true;
+        if (ShowValidation())
             return;
-        }
 
         _saving = true;
         SaveButton.IsEnabled = false;
@@ -487,13 +517,13 @@ public partial class MetricAlarmEditPage : ContentPage
 
         var reverting = _provenance == AlarmProvenance.Overridden;
         var confirmed = reverting
-            ? await DisplayAlert(
+            ? await DisplayAlertAsync(
                 "Go back to the account setting?",
                 "This person's own version of this alarm is removed, and the one set for the whole "
                 + "account applies to them again.",
                 "Use the account setting",
                 "Keep theirs")
-            : await DisplayAlert(
+            : await DisplayAlertAsync(
                 "Remove this alarm?",
                 "CardiTrack will stop watching for this level. Its own patterns carry on as before.",
                 "Remove",
