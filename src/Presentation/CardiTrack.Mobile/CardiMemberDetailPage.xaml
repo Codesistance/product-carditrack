@@ -691,9 +691,10 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
                                 </Grid.GestureRecognizers>
-                                <!-- The same bell as Alert Settings above it, wearing a plus instead of a cog: same
-                                     subject, but these are alerts the caregiver added rather than rules
-                                     CardiTrack applies. Two rows with one glyph read as a duplicate. -->
+                                <!-- The same bell as Alert Settings above it, wearing a plus
+                                     instead of a cog: same subject, but these are alerts the
+                                     caregiver added rather than rules CardiTrack applies. Two
+                                     rows with one glyph read as a duplicate. -->
                                 <Image Grid.Column="0"
                                        Source="icon_bell_plus.svg"
                                        WidthRequest="22" HeightRequest="22"
