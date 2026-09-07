@@ -1,3 +1,4 @@
+using System.Globalization;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Mobile.Core.Forms;
@@ -59,7 +60,9 @@ public static class ExportSizeEstimate
         if (total < Megabyte)
             return $"about {Math.Max(1, (total + Kilobyte - 1) / Kilobyte)} KB";
 
+        // Invariant on purpose: the figure sits inside English copy, so "2,7 MB" under a
+        // continental locale would read as two numbers.
         var tenthsOfMegabyte = Math.Ceiling(total * 10.0 / Megabyte);
-        return $"about {tenthsOfMegabyte / 10:0.#} MB";
+        return $"about {(tenthsOfMegabyte / 10).ToString("0.#", CultureInfo.InvariantCulture)} MB";
     }
 }
