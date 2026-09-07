@@ -1,3 +1,5 @@
+using CardiTrack.Mobile.Core.Forms;
+
 namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
@@ -115,6 +117,8 @@ public partial class CheckField : ContentView
             Opacity = IsEnabled ? 1 : DisabledOpacity;
         else if (propertyName == SemanticProperties.HintProperty.PropertyName)
             SemanticProperties.SetHint(BoxHit, SemanticProperties.GetHint(this));
+        else if (propertyName == SemanticProperties.DescriptionProperty.PropertyName)
+            Paint();
     }
 
     private void OnTapped(object? sender, TappedEventArgs e)
@@ -152,10 +156,17 @@ public partial class CheckField : ContentView
         Tick.IsVisible = on;
 
         TextLabel.Text = Text;
+        // Cleared rather than left: a colour set and then unset should give the label back to its
+        // style, not leave it holding the last ink it was handed.
         if (TextColor is { } ink)
             TextLabel.TextColor = ink;
+        else
+            TextLabel.ClearValue(Label.TextColorProperty);
 
-        var name = Text ?? "Tick box";
-        SemanticProperties.SetDescription(BoxHit, $"{name}, {(on ? "ticked" : "not ticked")}");
+        // The page's own description wins, then the label, then the box's plain name — see
+        // CheckDescription for why in that order. A row whose label is links and a sentence has
+        // no Text, and must not be announced as an unnamed box.
+        SemanticProperties.SetDescription(
+            BoxHit, CheckDescription.For(SemanticProperties.GetDescription(this), Text, on));
     }
 }

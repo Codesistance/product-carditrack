@@ -181,6 +181,7 @@
                          touched cannot also be the line that ticks the box. -->
                     <controls:CheckField x:Name="TermsCheck"
                                          Margin="0,10,0,0"
+                                         SemanticProperties.Description="I agree to the Terms of Service and Privacy Policy"
                                          CheckedChanged="OnTermsCheckedChanged">
                         <Label VerticalTextAlignment="Center" VerticalOptions="Center">
                             <Label.FormattedText>
