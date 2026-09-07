@@ -204,6 +204,22 @@ public class MemberChatStatusRungTests
         Assert.StartsWith("I don't have a recent blood oxygen reading for Dad", reply, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The daytime breathing rate is a different reading from the overnight one, and a value from
+    /// the first must not be served under the second's name — a reviewer caught the fallback
+    /// doing exactly that. A day with only a daytime figure is the empty case, by name.
+    /// </summary>
+    [Fact]
+    public void ADaytimeBreathingRateIsNotServedAsOvernight()
+    {
+        var reply = MemberChatReplies.MetricReadingReply("Dad", StatusMetric.BreathingRate,
+            [new ActivityLog { Date = new DateOnly(2026, 9, 7), BreathingRate = 16m, OvernightBreathingRate = null }],
+            new DateOnly(2026, 9, 7));
+
+        Assert.StartsWith("I don't have a recent overnight breathing rate reading for Dad", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("16", reply, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("how is his heart rate", StatusMetric.RestingHeartRate)]
     [InlineData("what's his pulse like", StatusMetric.RestingHeartRate)]

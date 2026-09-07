@@ -203,9 +203,11 @@ public static partial class MemberChatReplies
         StatusMetric.RestingHeartRate => log.RestingHeartRate is { } hr ? $"{hr} bpm" : null,
         StatusMetric.Oxygen => log.SpO2Average is { } spo2
             ? $"{spo2.ToString("0.#", CultureInfo.InvariantCulture)}%" : null,
-        // The overnight figure, as the charts and the bands block use; the daytime rate stands in
-        // only for a device that records nothing overnight.
-        StatusMetric.BreathingRate => (log.OvernightBreathingRate ?? log.BreathingRate) is { } br
+        // The overnight figure only, as the charts and the bands block use. The daytime
+        // BreathingRate is a different reading — awake, whole-day — and standing it in under the
+        // name "overnight breathing rate" would label one field's value as the other's; a device
+        // that records nothing overnight gets the honest empty case instead.
+        StatusMetric.BreathingRate => log.OvernightBreathingRate is { } br
             ? $"{br.ToString("0.#", CultureInfo.InvariantCulture)} breaths a minute" : null,
         StatusMetric.Sleep => log.SleepMinutes is { } sleep ? ReadingFigures.SleepFigure(sleep) : null,
         _ => log.Steps is { } steps ? $"{steps:#,##0} steps" : null,
