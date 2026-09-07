@@ -692,7 +692,7 @@
                                     <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
                                 </Grid.GestureRecognizers>
                                 <!-- The same bell as Alert Settings above it, wearing a level marker instead of a cog:
-                                     same subject, but these are levels the caregiver set by hand rather
+                                     same subject, but these are levels the caregiver sets by hand rather
                                      than rules CardiTrack applies. Two rows with one icon read as a
                                      duplicate; the badge is the difference. -->
                                 <Image Grid.Column="0"
