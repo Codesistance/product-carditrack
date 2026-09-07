@@ -464,13 +464,14 @@ public partial class MetricAlarmEditPage : ContentPage
             return;
 
         // Red pushes through quiet hours and escalates to other carers. Asked once, at the point
-        // of saving, rather than as a checkbox somebody scrolls past.
+        // of saving, rather than as a checkbox somebody scrolls past. Info-styled: this is an
+        // offer to be woken, not a caution against it — the caregiver may well want exactly this.
         if (_draft.NeedsCriticalConfirmation)
         {
-            var confirmed = await DisplayAlertAsync(
-                "Wake you for this?",
+            var confirmed = await _popups.ConfirmInfoAsync(
                 "An urgent alarm sounds through quiet hours and goes on to other carers if nobody "
                 + "acknowledges it. Use it for the things that cannot wait until morning.",
+                "Wake you for this?",
                 "Yes, wake me",
                 "Pick something quieter");
 
@@ -515,17 +516,19 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_alarmId is not { } id || _saving)
             return;
 
+        // Reverting is an offer — the account's alarm takes over, nothing stops being watched —
+        // so it takes the info shell. Removing is the one that leaves a level unwatched.
         var reverting = _provenance == AlarmProvenance.Overridden;
         var confirmed = reverting
-            ? await DisplayAlertAsync(
-                "Go back to the account setting?",
+            ? await _popups.ConfirmInfoAsync(
                 "This person's own version of this alarm is removed, and the one set for the whole "
                 + "account applies to them again.",
+                "Go back to the account setting?",
                 "Use the account setting",
                 "Keep theirs")
-            : await DisplayAlertAsync(
-                "Remove this alarm?",
+            : await _popups.ConfirmWarningAsync(
                 "CardiTrack will stop watching for this level. Its own patterns carry on as before.",
+                "Remove this alarm?",
                 "Remove",
                 "Keep it");
 
