@@ -87,8 +87,10 @@ public partial class CountStepper : ContentView
     {
         // A bound that moved past the count drags the count with it, which re-enters
         // OnValueChanged and repaints; a bound that did not still changes which button is live.
+        var before = Value;
         CoerceValue(ValueProperty);
-        Paint();
+        if (Value == before)
+            Paint();
     }
 
     private void OnValueChanged(int oldValue, int newValue)
@@ -108,6 +110,10 @@ public partial class CountStepper : ContentView
         var canDecrease = Value > Minimum;
         var canIncrease = Value < Maximum;
 
+        // Disabled for real, not only dimmed: a screen reader or a keyboard then reports and
+        // skips the button, rather than announcing a control that swallows the tap.
+        MinusButton.IsEnabled = canDecrease;
+        PlusButton.IsEnabled = canIncrease;
         MinusButton.Opacity = canDecrease ? 1 : DisabledOpacity;
         PlusButton.Opacity = canIncrease ? 1 : DisabledOpacity;
 

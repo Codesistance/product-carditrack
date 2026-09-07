@@ -290,10 +290,11 @@ public partial class MetricAlarmEditPage : ContentPage
     /// Says what is still wrong, above the Save button, and marks the field it is wrong in. The
     /// rules are the draft's; this only decides which of them the caregiver is ready to hear.
     /// </summary>
-    private void ShowValidation()
+    /// <returns>Whether anything was shown — after a Save attempt, that is whether the draft can be saved.</returns>
+    private bool ShowValidation()
     {
         if (_draft is null)
-            return;
+            return false;
 
         // Errors are shown only for the fields a caregiver has actually reached — an empty name
         // on a form they have just opened is not a mistake yet. Once Save has refused, it is.
@@ -314,6 +315,8 @@ public partial class MetricAlarmEditPage : ContentPage
         NameBorder.Stroke = new SolidColorBrush(FieldStroke(nameWrong));
         ThresholdBorder.Stroke = new SolidColorBrush(FieldStroke(thresholdWrong));
         ThresholdHint.TextColor = Controls.MetricStatus.Resource(thresholdWrong ? "ErrorRed" : "MutedText", Colors.Gray);
+
+        return errors.Count > 0;
     }
 
     /// <summary>The same red the sign-up form draws round a refused field, or the field's own hairline.</summary>
@@ -478,11 +481,8 @@ public partial class MetricAlarmEditPage : ContentPage
         }
 
         _saveAttempted = true;
-        if (_draft.Validate().Count > 0)
-        {
-            ShowValidation();
+        if (ShowValidation())
             return;
-        }
 
         _saving = true;
         SaveButton.IsEnabled = false;
