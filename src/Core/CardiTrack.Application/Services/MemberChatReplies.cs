@@ -274,8 +274,9 @@ public static partial class MemberChatReplies
     /// <para>
     /// The pattern is deliberately whole-picture — "settled", "nothing needs attention",
     /// "everything looks fine" — not every reassuring clause. A reply that says one reading looks
-    /// steady is not claiming the day is. It also fires on "not settled", which costs a redundant
-    /// lead that agrees with the reply: erring toward the status line is the safe direction.
+    /// steady is not claiming the day is. And it is affirmative only: "not settled", "nothing is
+    /// settled yet" already agree with the hero, and leading them with the status line would say
+    /// the same thing twice — the first time in the app's voice and the second in the model's.
     /// </para>
     /// </remarks>
     public static string ReconcileWithStatusTier(string reply, AlertSeverity tier, MemberStatusLine? statusLine)
@@ -292,9 +293,15 @@ public static partial class MemberChatReplies
         return $"{lead}\n\n{reply}";
     }
 
-    /// <summary>A reply saying the whole picture is fine — the claim a Yellow hero contradicts.</summary>
+    /// <summary>
+    /// A reply saying the whole picture is fine — the claim a Yellow hero contradicts. The
+    /// lookbehind on "settled" is what keeps it a claim: a negation in front of the word — "not",
+    /// "isn't", "nothing is", "far from" — turns it into agreement with the hero, and agreement is
+    /// left alone.
+    /// </summary>
     [GeneratedRegex(
-        @"\b(?:settled|no concerns?|nothing(?: \w+){0,2} (?:needs?|stands? out|to follow|to worry|to flag|to watch)"
+        @"\b(?:(?<!\b(?:not|never|hardly|isn't|aren't|wasn't|far from|less than|nothing(?:'s| is| looks| seems| feels)) )settled"
+        + @"|no concerns?|nothing(?: \w+){0,2} (?:needs?|stands? out|to follow|to worry|to flag|to watch)"
         + @"|(?:everything|all|things) (?:looks?|seems?|is|are) (?:fine|good|okay|ok|steady|calm|normal|well))\b",
         RegexOptions.IgnoreCase)]
     private static partial Regex SettledClaim();

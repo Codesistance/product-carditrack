@@ -46,6 +46,19 @@ public class MemberChatStatusTierTests
         Assert.StartsWith("Steps are very low today.", reply, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A negated "settled" is agreement with the hero, not a claim against it. Leading these with
+    /// the status line would say the same thing twice — once in the app's voice, once in the
+    /// model's — which is what the bare-token match did.
+    /// </summary>
+    [Theory]
+    [InlineData("Things aren't settled yet — his steps are well below his usual.")]
+    [InlineData("Nothing is settled yet: the low step count is worth keeping an eye on.")]
+    [InlineData("This is not settled, and it's worth watching.")]
+    [InlineData("It's far from settled today.")]
+    public void ANegatedSettled_UnderAYellowHero_IsUnchanged(string verdict) =>
+        Assert.Equal(verdict, MemberChatReplies.ReconcileWithStatusTier(verdict, AlertSeverity.Yellow, Line));
+
     /// <summary>A settled hero and a settled verdict agree — nothing to reconcile.</summary>
     [Fact]
     public void ASettledVerdict_UnderAGreenHero_IsUnchanged()
