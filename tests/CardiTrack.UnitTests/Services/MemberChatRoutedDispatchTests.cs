@@ -122,6 +122,12 @@ public class MemberChatRoutedDispatchTests
     /// own citation lines, keyed by what the clinical read named. The model picks WHICH; the
     /// registry writes WHAT, so an invented authority never reaches the caregiver.
     /// </summary>
+    /// <remarks>
+    /// And a real authority the verdict did not use is dropped too. The model is shown all three
+    /// bands every call and echoes all three back, which put the same three-line footer under
+    /// every reply (2026-09-07); a verdict that mentions only heart rate quotes only the heart
+    /// rate authority, however many the model named.
+    /// </remarks>
     [Fact]
     public async Task AnInferenceReply_QuotesItsAuthorities_AndDropsInventedOnes()
     {
@@ -130,14 +136,27 @@ public class MemberChatRoutedDispatchTests
                 Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
                 Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DataQueryPlan>(
-                new DataQueryPlan { Sources = [], ChartMetrics = [] }, new AiUsage()));
+                new DataQueryPlan { Sources = [DataQueryKind.RecentActivity], ChartMetrics = [] }, new AiUsage()));
+        // Every band's metric was fetched, so the only thing narrowing the footer is the verdict.
+        _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog
+            {
+                Date = DateOnly.FromDateTime(DateTime.UtcNow),
+                RestingHeartRate = 62,
+                SleepMinutes = 420,
+                OvernightBreathingRate = 14,
+            }]);
         _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.InferenceClinicalAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
                 new MemberChatService.InferenceClinicalAiResponse
                 {
                     Analysis = "Settled. Resting HR 62 bpm sits at his usual and inside 60-100.",
-                    ReferencesUsed = ["American Heart Association", "Journal of Invented Results"],
+                    ReferencesUsed =
+                    [
+                        "American Heart Association", "National Sleep Foundation",
+                        "World Health Organization", "Journal of Invented Results",
+                    ],
                     ReadingsFrom = null,
                     ReadingsTo = null,
                 },
@@ -147,10 +166,12 @@ public class MemberChatRoutedDispatchTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "should I worry about his heart rate?");
 
-        Assert.Contains(
+        Assert.EndsWith(
             "References: American Heart Association — typical adult resting heart rate 60–100 bpm.",
             reply.Reply, StringComparison.Ordinal);
         Assert.DoesNotContain("Invented", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("National Sleep Foundation", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("World Health Organization", reply.Reply, StringComparison.Ordinal);
     }
 
     /// <summary>A verdict resting on the member's own baseline alone quotes nothing — no

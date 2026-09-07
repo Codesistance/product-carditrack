@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.Application.Services;
 
@@ -65,7 +67,7 @@ public sealed record PublishedBand(
 /// guidance.
 /// </para>
 /// </remarks>
-public static class ChatDataRegistry
+public static partial class ChatDataRegistry
 {
     /// <summary>Every source the whitelist can actually fetch — the registry is a description of
     /// capability, so an entry with no fetch path would be a lie the planner acts on.</summary>
@@ -134,7 +136,53 @@ public static class ChatDataRegistry
     /// only author of <em>what</em>, which is what makes a quoted authority worth reading: it is
     /// checkably the range the prompt actually carried, never a study the model remembered.
     /// </summary>
-    public static IReadOnlyList<string> CitationsFor(IEnumerable<string> authorities)
+    /// <remarks>
+    /// This overload answers only "is the name real". Whether the verdict actually used the band
+    /// is the other overload's question, and the one an inference reply must ask — see there for
+    /// the footer this one produced on its own.
+    /// </remarks>
+    public static IReadOnlyList<string> CitationsFor(IEnumerable<string> authorities) =>
+        NamedBands(authorities).Select(b => b.Citation).Distinct().ToList();
+
+    /// <summary>
+    /// The citation lines a verdict has earned: named by the model, <em>and</em> about a metric
+    /// the readings block actually carried, <em>and</em> about a metric the verdict text actually
+    /// mentions.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Matching on the authority name alone put the same three-line References footer under
+    /// every inference reply (observed 2026-09-07). The model is shown all three bands on every
+    /// call, in <see cref="BandsBlock"/>, and asked which it drew on; a small model answers by
+    /// echoing the list. Nothing then checked the pick against what the verdict said or what
+    /// data it had, so a verdict about heart rate quoted the sleep and breathing authorities too
+    /// — and a caregiver reading three citations under a one-sentence answer learns to skip the
+    /// footer, which is the opposite of what a citation is for.
+    /// </para>
+    /// <para>
+    /// Two checks, both in code, both about what the model was actually given rather than what
+    /// it claims. The metric must be present in the fetched readings: a band the verdict could
+    /// not have compared anything against was not drawn on, whatever the model says. And the
+    /// metric's words must appear in the verdict: an authority for a reading the verdict never
+    /// mentions is a citation to nothing the caregiver read. The model still picks
+    /// <em>which</em>; this narrows the pick to what the reply can stand behind, the same
+    /// posture as <c>MemberChatReplies.ResolveSpan</c> dropping a date outside the window that
+    /// was fetched.
+    /// </para>
+    /// </remarks>
+    /// <param name="authorities">What the model named — the closed-vocabulary pick.</param>
+    /// <param name="analysis">The clinical read's own text, the verdict the citations sit under.</param>
+    /// <param name="fetched">What the whitelist actually put in front of the model.</param>
+    public static IReadOnlyList<string> CitationsFor(
+        IEnumerable<string> authorities, string analysis, FetchedMemberData fetched) =>
+        NamedBands(authorities)
+            .Where(b => WasFetched(b.Metric, fetched.RecentActivity) && MetricWords(b.Metric).IsMatch(analysis))
+            .Select(b => b.Citation)
+            .Distinct()
+            .ToList();
+
+    /// <summary>The bands whose authority the model named, in registry order.</summary>
+    private static IEnumerable<PublishedBand> NamedBands(IEnumerable<string> authorities)
     {
         var named = authorities
             .Where(a => !string.IsNullOrWhiteSpace(a))
@@ -146,12 +194,47 @@ public static class ChatDataRegistry
         static string Initials(string authority) =>
             new(authority.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).ToArray());
 
-        return Bands
-            .Where(b => named.Contains(b.Authority) || named.Contains(Initials(b.Authority)))
-            .Select(b => b.Citation)
-            .Distinct()
-            .ToList();
+        return Bands.Where(b => named.Contains(b.Authority) || named.Contains(Initials(b.Authority)));
     }
+
+    /// <summary>Whether any fetched day carried a value for the band's metric — the band was in
+    /// front of the model either way; the reading it compares against was not.</summary>
+    private static bool WasFetched(ChartMetricKind metric, IReadOnlyList<ActivityLog> recent) =>
+        recent.Any(l => metric switch
+        {
+            ChartMetricKind.RestingHeartRate => l.RestingHeartRate is not null,
+            ChartMetricKind.Sleep => l.SleepMinutes is not null,
+            ChartMetricKind.OvernightBreathingRate => l.OvernightBreathingRate is not null,
+            _ => false,
+        });
+
+    /// <summary>
+    /// The words a verdict uses when it is about the band's metric. Whole words, like every
+    /// other keyword match in this layer, and deliberately loose within that: the clinical read
+    /// writes "resting HR", "heart rate" and "bpm" for the same thing, and a verdict that names
+    /// the reading in any of its spellings has named it.
+    /// </summary>
+    private static Regex MetricWords(ChartMetricKind metric) => metric switch
+    {
+        ChartMetricKind.RestingHeartRate => HeartRateWords(),
+        ChartMetricKind.Sleep => SleepWords(),
+        ChartMetricKind.OvernightBreathingRate => BreathingWords(),
+        _ => NothingMatches(),
+    };
+
+    [GeneratedRegex(@"\b(?:heart rate|resting hr|hr|bpm|pulse)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex HeartRateWords();
+
+    [GeneratedRegex(@"\b(?:sleep\w*|slept|asleep)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SleepWords();
+
+    [GeneratedRegex(@"\b(?:breath\w*|respirat\w*)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex BreathingWords();
+
+    /// <summary>A band for a metric this map does not know quotes nothing — the same direction
+    /// every other drop here takes.</summary>
+    [GeneratedRegex(@"(?!)")]
+    private static partial Regex NothingMatches();
 
     /// <summary>
     /// The bands as one prompt block, with the two rules that keep a band from overreaching: a

@@ -1,4 +1,6 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Entities;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -67,5 +69,79 @@ public class InferenceCitationTests
         Assert.Equal(2, citations.Count);
         Assert.StartsWith("American Heart Association", citations[0], StringComparison.Ordinal);
         Assert.StartsWith("World Health Organization", citations[1], StringComparison.Ordinal);
+    }
+
+    // ---- what the verdict actually used ---------------------------------------------------
+
+    private static readonly string[] AllThree =
+        ["American Heart Association", "National Sleep Foundation", "World Health Organization"];
+
+    private static FetchedMemberData Fetched(int? hr = null, int? sleep = null, int? breathing = null) => new()
+    {
+        RecentActivity =
+        [
+            new ActivityLog
+            {
+                Date = new DateOnly(2026, 9, 7),
+                RestingHeartRate = hr,
+                SleepMinutes = sleep,
+                OvernightBreathingRate = breathing,
+            },
+        ],
+        RecentActivityWindow = (new DateOnly(2026, 9, 7), new DateOnly(2026, 9, 7)),
+    };
+
+    /// <summary>
+    /// The footer that appeared under every reply: the model, shown all three bands, named all
+    /// three. A verdict that mentions only heart rate has used only the heart rate authority.
+    /// </summary>
+    [Fact]
+    public void AnAuthorityForAMetricTheVerdictNeverMentions_IsDropped()
+    {
+        var citations = ChatDataRegistry.CitationsFor(
+            AllThree, "Settled. Resting HR 62 bpm sits at his usual.", Fetched(hr: 62, sleep: 420, breathing: 14));
+
+        var citation = Assert.Single(citations);
+        Assert.StartsWith("American Heart Association", citation, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A band the readings never carried was not compared against, whatever the verdict says —
+    /// a sleep authority under a verdict written with no sleep figure in front of it.
+    /// </summary>
+    [Fact]
+    public void AnAuthorityForAMetricThatWasNeverFetched_IsDropped()
+    {
+        var citations = ChatDataRegistry.CitationsFor(
+            AllThree, "Sleep at 7 hours and heart rate at 62 both sit inside range.", Fetched(hr: 62));
+
+        var citation = Assert.Single(citations);
+        Assert.StartsWith("American Heart Association", citation, StringComparison.Ordinal);
+    }
+
+    /// <summary>Named, fetched and mentioned, each in its own spelling — all three survive, in
+    /// registry order.</summary>
+    [Fact]
+    public void AuthoritiesTheVerdictUsed_AllSurvive()
+    {
+        var citations = ChatDataRegistry.CitationsFor(
+            AllThree,
+            "Resting HR 62 bpm at baseline; slept 7 h; breathing rate 14/min overnight — all inside range.",
+            Fetched(hr: 62, sleep: 420, breathing: 14));
+
+        Assert.Equal(3, citations.Count);
+        Assert.StartsWith("American Heart Association", citations[0], StringComparison.Ordinal);
+        Assert.StartsWith("National Sleep Foundation", citations[1], StringComparison.Ordinal);
+        Assert.StartsWith("World Health Organization", citations[2], StringComparison.Ordinal);
+    }
+
+    /// <summary>No readings fetched at all — a verdict from context and baseline alone — quotes
+    /// nothing, however many bands the model named.</summary>
+    [Fact]
+    public void NothingFetched_QuotesNothing()
+    {
+        var empty = new FetchedMemberData();
+
+        Assert.Empty(ChatDataRegistry.CitationsFor(AllThree, "Heart rate, sleep and breathing all fine.", empty));
     }
 }

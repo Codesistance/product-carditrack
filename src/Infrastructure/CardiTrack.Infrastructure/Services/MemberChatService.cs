@@ -656,9 +656,13 @@ public class MemberChatService : IMemberChatService
         // own fixed lines — the model picks WHICH, never writes WHAT, the same traceability
         // pattern AdviseGenerationService earns its suggestion licence with. Unrecognised names
         // drop, so an invented authority can never reach a caregiver; nothing used, nothing
-        // quoted. Appended after ComposeReply's cap, so a long verdict can no longer truncate
-        // away the citation it is required to carry.
-        var citations = ChatDataRegistry.CitationsFor(clinical.Result.ReferencesUsed);
+        // quoted. So does a real authority the verdict did not use — named but for a metric
+        // the read never mentions, or one the fetch never carried — because the model echoes
+        // the whole bands block back and the same three-line footer under every reply is a
+        // footer nobody reads. Appended after ComposeReply's cap, so a long verdict can no
+        // longer truncate away the citation it is required to carry.
+        var citations = ChatDataRegistry.CitationsFor(
+            clinical.Result.ReferencesUsed, clinical.Result.Analysis, fetched);
         if (citations.Count > 0)
             reply += $"\n\nReferences: {string.Join("; ", citations)}.";
 
