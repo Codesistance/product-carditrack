@@ -45,12 +45,21 @@ public static class ExportSizeEstimate
     public static long Bytes(int days, ReportFormat format) =>
         Overhead(format) + ((long)Math.Max(0, days) * BytesPerDay(format));
 
-    /// <summary>The estimate as the form shows it: "about 65 KB", or "about 1.2 MB" past a megabyte.</summary>
+    private const long Kilobyte = 1_024;
+    private const long Megabyte = 1_048_576;
+
+    /// <summary>
+    /// The estimate as the form shows it: "about 65 KB", or "about 1.2 MB" from a megabyte up.
+    /// Rounded up at both scales, and the megabyte cut-over uses the same 1,048,576 the figure
+    /// is divided by, so "about 1 MB" never sits beside a kilobyte count that would read larger.
+    /// </summary>
     public static string Describe(int days, ReportFormat format)
     {
         var total = Bytes(days, format);
-        return total < 1_000_000
-            ? $"about {Math.Max(1, total / 1024)} KB"
-            : $"about {total / 1_048_576.0:0.#} MB";
+        if (total < Megabyte)
+            return $"about {Math.Max(1, (total + Kilobyte - 1) / Kilobyte)} KB";
+
+        var tenthsOfMegabyte = Math.Ceiling(total * 10.0 / Megabyte);
+        return $"about {tenthsOfMegabyte / 10:0.#} MB";
     }
 }

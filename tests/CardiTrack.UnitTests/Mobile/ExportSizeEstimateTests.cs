@@ -5,8 +5,9 @@ namespace CardiTrack.UnitTests.Mobile;
 
 /// <summary>
 /// The export form's size estimate, pinned to real exports of one member over 30 days on dev
-/// (2026-09-07). An estimate may run over — it is meant to be rounded up — but it must never
-/// promise a fraction of the file that arrives, which is what the FHIR figure did before this.
+/// (2026-09-07). An estimate may run over — it is meant to be rounded up — and may run a fifth
+/// under, since a day's readings vary; what it must not do is promise a third of the file that
+/// arrives, which is what the FHIR figure did before this.
 /// </summary>
 public class ExportSizeEstimateTests
 {
@@ -36,9 +37,17 @@ public class ExportSizeEstimateTests
     }
 
     [Fact]
-    public void AYearOfFhir_ReadsInMegabytes()
+    public void AYearOfFhir_ReadsInMegabytes_RoundedUp()
     {
-        Assert.EndsWith(" MB", ExportSizeEstimate.Describe(365, ReportFormat.FhirR4));
+        // 2,000 + 365 × 7,500 = 2,739,500 bytes = 2.61 MiB, shown as the next tenth up.
+        Assert.Equal("about 2.7 MB", ExportSizeEstimate.Describe(365, ReportFormat.FhirR4));
+    }
+
+    [Fact]
+    public void Kilobytes_RoundUp_NotDown()
+    {
+        // 1,000 + 30 × 120 = 4,600 bytes = 4.49 KiB: "about 5 KB", never "about 4 KB".
+        Assert.Equal("about 5 KB", ExportSizeEstimate.Describe(30, ReportFormat.Csv));
     }
 
     [Fact]
