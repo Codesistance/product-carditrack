@@ -449,7 +449,7 @@ only that much of it and will keep rising; still in progress — activity totals
 partial; the sleep figure is last night's and complete): steps=26, HR_max=122
 ```
 
-Both instruction blocks say the rest outright: today's steps and active minutes are a running total, to be read against how much of the waking day has gone and never against a whole-day usual, and never called low unless a computed observation says so. The hero prompt gets a one-line version of the same rule — it is the only prompt on a request path a caregiver waits on, and `StatusPromptBudget` went up by 50 characters to hold it, which is the budget working rather than failing.
+The digest instruction block says the rest outright: today's steps and active minutes are a running total, to be read against how much of the waking day has gone and never against a whole-day usual, and never called low unless a computed observation says so. The hero prompt does not restate that as a "never call them low" line — MedGemma treats a prohibition as the topic — and instead is told to lead with a computed observation when one is present, and not to name today's running totals unless an observation does. The window it is given is yesterday and today on the member's clock, every figure those rows actually hold, not a three-field slice.
 
 The hero line also stopped anchoring "today" to UTC. `HealthInsightService` resolved a UTC civil day while the digest resolved the member's own through `MemberAnchorTimeZone`, so for a caregiver far enough east or west the two surfaces disagreed about which row was today.
 

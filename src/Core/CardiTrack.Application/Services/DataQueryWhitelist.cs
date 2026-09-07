@@ -48,7 +48,7 @@ public static class DataQueryWhitelist
         // Inclusive on both ends, so N days back from today is N-1 subtracted, not N — the repository
         // filters `>= from && <= to` and would otherwise return one day more than was asked for.
         // Matches how the rest of the codebase counts a window (StatusLineGenerationService reads
-        // three days as today.AddDays(-2)..today), and means a one-week ceiling fetches a week.
+        // two days as today.AddDays(-1)..today), and means a one-week ceiling fetches a week.
         var window = sources.Contains(DataQueryKind.RecentActivity)
             ? (From: today.AddDays(-(Clamp(plan.RecentActivityDays, MinRecentActivityDays, MaxRecentActivityDays) - 1)), To: today)
             : ((DateOnly From, DateOnly To)?)null;

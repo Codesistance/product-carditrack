@@ -67,9 +67,24 @@ public class StatusLineGenerationServiceTests
             });
     }
 
-    private StatusLineGenerationService CreateSut() =>
+    private StatusLineGenerationService CreateSut(TimeProvider? time = null) =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            NullLogger<StatusLineGenerationService>.Instance);
+            NullLogger<StatusLineGenerationService>.Instance, time);
+
+    /// <summary>
+    /// 07:00 UTC on 2026-09-07 is 08:00 in Europe/London (BST) — morning, before
+    /// <see cref="DigestInterpretationSignals.TodayStepsComparableFromHour"/>.
+    /// </summary>
+    private static readonly DateTimeOffset LondonMorningUtc = new(2026, 9, 7, 7, 0, 0, TimeSpan.Zero);
+    private static readonly DateOnly FrozenToday = new(2026, 9, 7);
+    private static readonly DateOnly FrozenYesterday = new(2026, 9, 6);
+
+    private sealed class FrozenTimeProvider : TimeProvider
+    {
+        private readonly DateTimeOffset _utc;
+        public FrozenTimeProvider(DateTimeOffset utc) => _utc = utc;
+        public override DateTimeOffset GetUtcNow() => _utc;
+    }
 
     [Fact]
     public async Task PersistsAFreshRow_WithTheResolvedHeadlineAndMessage()
@@ -358,6 +373,9 @@ public class StatusLineGenerationServiceTests
         Assert.Contains("under 15 words", prompt);
         Assert.Contains("green settled, yellow a mention", prompt);
         Assert.Contains("write CardiTrackCardiMember exactly as written", prompt);
+        Assert.Contains("Lead with a computed observation when one is present", prompt);
+        Assert.Contains("Name today's steps or active minutes only if an observation does", prompt);
+        Assert.DoesNotContain("never call them low", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Never use clinical terms", prompt, StringComparison.Ordinal);
     }
 
@@ -441,6 +459,250 @@ public class StatusLineGenerationServiceTests
         await _medicalAi.DidNotReceive().GenerateStructuredAsync<StatusLineGenerationService.CurrentStatusAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
         await _statusLines.DidNotReceive().AddAsync(Arg.Any<MemberStatusLine>());
+    }
+
+    [Fact]
+    public async Task FetchesYesterdayAndToday_NotAThirdDay()
+    {
+        await CreateSut(new FrozenTimeProvider(LondonMorningUtc)).RegenerateAsync(_memberId);
+
+        await _activityLogs.Received(1).GetByCardiMemberAndDateRangeAsync(
+            _memberId, FrozenYesterday, FrozenToday);
+    }
+
+    [Fact]
+    public async Task WindowRowsCarryOvernightVitals_AndDoNotLeadWithSteps()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    Date = FrozenYesterday,
+                    Steps = 6100,
+                    RestingHeartRate = 71,
+                    HeartRateVariabilityMs = 41.2m,
+                    OvernightBreathingRate = 14.1m,
+                    SleepMinutes = 420,
+                },
+                new ActivityLog
+                {
+                    Date = FrozenToday,
+                    Steps = 900,
+                    RestingHeartRate = 70,
+                    SpO2Average = 96.4m,
+                },
+            ]);
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.Contains("HRV=41.2ms", prompt);
+        Assert.Contains("breathingAsleep=14.1/min", prompt);
+        Assert.Contains("SpO2=96.4%", prompt);
+        Assert.DoesNotContain("steps=,", prompt);
+        Assert.DoesNotContain("--- Recent readings", prompt);
+        Assert.Contains("--- Window readings (yesterday and today) ---", prompt);
+
+        var yesterdayLine = prompt.Split('\n').Single(l =>
+            l.Contains("Yesterday", StringComparison.Ordinal) && l.Contains("HRV=41.2ms", StringComparison.Ordinal));
+        Assert.True(
+            yesterdayLine.IndexOf("HRV=41.2ms", StringComparison.Ordinal)
+            < yesterdayLine.IndexOf("steps=6100", StringComparison.Ordinal),
+            "Completed overnight readings must precede the running step total.");
+    }
+
+    [Fact]
+    public async Task ATwoDaysAgoRow_DoesNotAppearInThePrompt()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { Date = FrozenToday.AddDays(-2), Steps = 8888, RestingHeartRate = 88 },
+                new ActivityLog { Date = FrozenYesterday, Steps = 6100 },
+                new ActivityLog { Date = FrozenToday, Steps = 900 },
+            ]);
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.DoesNotContain("8888", prompt);
+        Assert.DoesNotContain("days ago", prompt);
+    }
+
+    [Fact]
+    public async Task LowStepsThisMorning_DoNotProduceAQuietTodayObservation()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            PeriodDays = 30,
+            AvgSteps = 6000,
+            AvgRestingHeartRate = 71,
+            StdDevHeartRate = 2.0m,
+            TypicalWakeTime = new TimeOnly(7, 0),
+        });
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { Date = FrozenYesterday, Steps = 6100, RestingHeartRate = 71 },
+                new ActivityLog { Date = FrozenToday, Steps = 26, RestingHeartRate = 70 },
+            ]);
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.DoesNotContain("--- Computed observations ---", prompt);
+        Assert.Contains("Name today's steps or active minutes only if an observation does", prompt);
+        Assert.Contains("--- Usual pattern ---", prompt);
+    }
+
+    [Fact]
+    public async Task YesterdaysActivityDecline_IsAComputedObservation_NotTodaysRunningTotal()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            PeriodDays = 30,
+            AvgSteps = 6000,
+            AvgRestingHeartRate = 71,
+            StdDevHeartRate = 2.0m,
+            TypicalWakeTime = new TimeOnly(7, 0),
+        });
+        GivenAlerts(
+        [
+            new Alert
+            {
+                CardiMemberId = _memberId,
+                AlertType = AlertType.Inactivity,
+                Severity = AlertSeverity.Yellow,
+                Title = "Quieter day yesterday",
+            },
+        ]);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { Date = FrozenYesterday, Steps = 2500, RestingHeartRate = 71 },
+                new ActivityLog { Date = FrozenToday, Steps = 26, RestingHeartRate = 70 },
+            ]);
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.Contains("--- Computed observations ---", prompt);
+        Assert.Contains("Yesterday:", prompt);
+        Assert.Contains("2,500 steps (usual 6,000)", prompt);
+        Assert.DoesNotContain("Today so far: 26 steps", prompt);
+        Assert.Contains("Quieter day yesterday", prompt);
+        Assert.Contains("yellow", prompt);
+    }
+
+    [Fact]
+    public async Task DuplicateYesterdayRows_ObservationsUseTheLaterUpdatedRow()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(new PatternBaseline
+        {
+            PeriodDays = 30,
+            AvgSteps = 6000,
+            AvgRestingHeartRate = 71,
+            StdDevHeartRate = 2.0m,
+            TypicalWakeTime = new TimeOnly(7, 0),
+        });
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog
+                {
+                    Date = FrozenYesterday,
+                    Steps = 6100,
+                    RestingHeartRate = 71,
+                    CreatedDate = new DateTime(2026, 9, 6, 8, 0, 0, DateTimeKind.Utc),
+                    UpdatedDate = new DateTime(2026, 9, 6, 9, 0, 0, DateTimeKind.Utc),
+                },
+                new ActivityLog
+                {
+                    Date = FrozenYesterday,
+                    Steps = 2500,
+                    RestingHeartRate = 71,
+                    CreatedDate = new DateTime(2026, 9, 6, 10, 0, 0, DateTimeKind.Utc),
+                    UpdatedDate = new DateTime(2026, 9, 6, 11, 0, 0, DateTimeKind.Utc),
+                },
+                new ActivityLog { Date = FrozenToday, Steps = 26, RestingHeartRate = 70 },
+            ]);
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.Contains("--- Computed observations ---", prompt);
+        Assert.Contains("2,500 steps (usual 6,000)", prompt);
+        Assert.Contains("steps=2500", prompt);
+        Assert.DoesNotContain("6,100 steps", prompt);
+        Assert.DoesNotContain("steps=6100", prompt);
+    }
+
+    [Fact]
+    public async Task LearningMember_GetsNoUsualLineAndNoObservations()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { Date = FrozenToday, Steps = 900, RestingHeartRate = 70 },
+            ]);
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.DoesNotContain("--- Computed observations ---", prompt);
+        Assert.DoesNotContain("--- Usual pattern ---", prompt);
+        Assert.Contains("steps=900", prompt);
+    }
+
+    [Fact]
+    public async Task AFreshYellowHour_IsQuotedOnce_Truncated()
+    {
+        var assessments = Substitute.For<IRealtimeAssessmentRepository>();
+        _unitOfWork.RealtimeAssessments.Returns(assessments);
+        assessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>()).Returns(new RealtimeAssessment
+        {
+            CardiMemberId = _memberId,
+            Severity = AlertSeverity.Yellow,
+            WindowStartUtc = LondonMorningUtc.UtcDateTime.AddHours(-2),
+            WindowEndUtc = LondonMorningUtc.UtcDateTime.AddHours(-1),
+            ModelOutput = new string('x', 240),
+        });
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.Contains("--- Recent hour ---", prompt);
+        Assert.Contains("Yellow, 1h ago:", prompt);
+        Assert.Contains("…", prompt);
+        Assert.DoesNotContain(new string('x', 240), prompt);
+    }
+
+    [Fact]
+    public async Task AStaleHour_IsNotQuoted()
+    {
+        var assessments = Substitute.For<IRealtimeAssessmentRepository>();
+        _unitOfWork.RealtimeAssessments.Returns(assessments);
+        assessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>()).Returns(new RealtimeAssessment
+        {
+            CardiMemberId = _memberId,
+            Severity = AlertSeverity.Yellow,
+            WindowStartUtc = LondonMorningUtc.UtcDateTime.AddHours(-25),
+            WindowEndUtc = LondonMorningUtc.UtcDateTime.AddHours(-24),
+            ModelOutput = "Heart rate sat far from the usual pattern.",
+        });
+
+        var prompt = await PromptAtAsync(LondonMorningUtc);
+
+        Assert.DoesNotContain("--- Recent hour ---", prompt);
+        Assert.DoesNotContain("Heart rate sat far from the usual pattern.", prompt);
+        Assert.Contains("green", prompt);
+    }
+
+    private async Task<string> PromptAtAsync(DateTimeOffset utc)
+    {
+        await CreateSut(new FrozenTimeProvider(utc)).RegenerateAsync(_memberId);
+        return (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
     }
 
     /// <summary>

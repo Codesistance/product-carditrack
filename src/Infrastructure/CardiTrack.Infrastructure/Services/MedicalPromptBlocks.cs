@@ -890,6 +890,88 @@ internal static partial class MedicalPromptBlocks
     }
 
     /// <summary>
+    /// Yesterday and today for the dashboard hero: the same figures
+    /// <see cref="DigestDayFigures"/> names, ordered completed-first so a 15-word sentence is not
+    /// handed steps as the first number. Empty columns stay off the line — this prompt asks for
+    /// one sentence, and <c>steps=</c> beside a real reading is the hole that used to look like a
+    /// collapse.
+    /// </summary>
+    internal static string StatusWindowDailyLines(
+        IEnumerable<ActivityLog> logs, DateOnly today, DigestDayProgress progress)
+    {
+        var yesterday = today.AddDays(-1);
+        var rows = logs
+            .Where(l => l.Date == today || l.Date == yesterday)
+            .GroupBy(l => l.Date)
+            .Select(g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First())
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        string Render(ActivityLog l) =>
+            $"  {DayLabel(l.Date, today, sleepRecorded: l.SleepMinutes is not null, progress: progress)}: "
+            + StatusWindowFigures(l);
+
+        var lines = rows.Select(Render).ToList();
+        if (lines.Count > 0 && rows.TrueForAll(l => l.Date != today))
+            lines.Add(Render(new ActivityLog { Date = today }));
+
+        return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
+    }
+
+    /// <summary>
+    /// Overnight and resting figures first, running totals last. Same keys and units as
+    /// <see cref="DigestDayFigures"/> so a finding the digest named is the same string here.
+    /// </summary>
+    private static string StatusWindowFigures(ActivityLog log)
+    {
+        var parts = new List<string>();
+
+        if (log.SleepMinutes is { } sleep)
+            parts.Add($"sleep(night ending that morning)={sleep}min");
+
+        var stages = new List<string>();
+        if (log.DeepSleepMinutes is { } deep)
+            stages.Add($"deep {deep}");
+        if (log.LightSleepMinutes is { } light)
+            stages.Add($"light {light}");
+        if (log.RemSleepMinutes is { } rem)
+            stages.Add($"rem {rem}");
+        if (stages.Count > 0)
+            parts.Add($"sleepStages(min)={string.Join("/", stages)}");
+
+        if (log.HeartRateVariabilityMs is { } hrv)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"HRV={hrv:0.#}ms"));
+        if (log.OvernightBreathingRate is { } overnightBreathing)
+        {
+            parts.Add(string.Create(
+                CultureInfo.InvariantCulture, $"breathingAsleep={overnightBreathing:0.#}/min"));
+        }
+
+        if (log.RestingHeartRate is { } resting)
+            parts.Add($"HR={resting}");
+        if (log.AvgHeartRate is { } avg)
+            parts.Add($"HR_avg={avg}");
+        if (log.MaxHeartRate is { } max)
+            parts.Add($"HR_max={max}");
+
+        if (log.SpO2Average is { } spo2)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"SpO2={spo2:0.#}%"));
+        if (log.BreathingRate is { } breathing)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"breathing={breathing:0.#}/min"));
+
+        if (log.Steps is { } steps)
+            parts.Add($"steps={steps}");
+        if (log.ActiveMinutes is { } active)
+            parts.Add($"activeMinutes={active}");
+        if (CardiTrack.Application.Services.BaselineCalculator.ElevatedZoneMinutes(log) is { } elevated)
+            parts.Add($"minutesHeartRateRaised={elevated}");
+        if (log.LongestSedentaryStretchMinutes is { } stretch)
+            parts.Add($"longestStillStretch={stretch}min");
+
+        return parts.Count > 0 ? string.Join(", ", parts) : "nothing measured";
+    }
+
+    /// <summary>
     /// Which day a reading belongs to, said before the reading rather than after it. Relative to
     /// the member's own today, because that is the anchor the model is missing — it cannot know
     /// what today's date is except by being told. Today's label scopes "partial" to the activity
