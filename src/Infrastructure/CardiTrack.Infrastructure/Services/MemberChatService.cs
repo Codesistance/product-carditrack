@@ -773,7 +773,19 @@ public class MemberChatService : IMemberChatService
             ? MemberChatWorkflow.Analysis
             : route.Primary.Value;
 
-        if (route.NeedsClarify && !history.LastAssistantWasClarify)
+        if (route.NeedsClarify
+            && route.PitsAdviseAgainstASteer
+            && await PickAdviseAsync(flattened, cardiMemberId, member, utcNow) is not null)
+        {
+            // A steer is a redirect, not an answer, and never beats a servable suggestion:
+            // asked "what kind of exercises can he do" with an activity row on file, the app
+            // offered "something outside their health data, or a suggestion for what could
+            // help?" — a choice between being turned away and being answered. Checked ahead of
+            // the once-per-message marker because this is not a clarify at all, so a prior
+            // clarify in the session should not send it to analysis either.
+            primary = MemberChatWorkflow.Advise;
+        }
+        else if (route.NeedsClarify && !history.LastAssistantWasClarify)
         {
             var offerable = await ServableClarifyBranchesAsync(flattened, route, cardiMemberId, member, utcNow);
             switch (offerable.Count)

@@ -346,6 +346,53 @@ public class MemberChatRoutedDispatchTests
     }
 
     /// <summary>
+    /// "What kind of exercises can he do" routed steer.offtopic with advise behind it, and the
+    /// caregiver was asked whether they meant "something outside their health data" or "a
+    /// suggestion for what could help" (2026-09-07). A steer is a redirect, not an answer, and a
+    /// servable suggestion is what the redirect would point them at — so it is served, whichever
+    /// of the two the router put first.
+    /// </summary>
+    [Theory]
+    [InlineData(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Advise)]
+    [InlineData(MemberChatWorkflow.Advise, MemberChatWorkflow.SteerOffTopic)]
+    [InlineData(MemberChatWorkflow.SteerCasual, MemberChatWorkflow.Advise)]
+    public async Task AnAdviseAgainstASteer_ServesTheSuggestion_InsteadOfAsking(
+        MemberChatWorkflow primary, MemberChatWorkflow runnerUp)
+    {
+        AServableSuggestionExists();
+        RouterAnswers(primary, runnerUp);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "what kind of exercises can he do");
+
+        Assert.StartsWith("A short walk after lunch is worth trying.", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Which would help most?", reply.Reply);
+        // No steer was generated: the turn made no call beyond the triage and the route.
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(default!, default);
+    }
+
+    /// <summary>
+    /// With no suggestion on file the pair still resolves without asking — down to the steer,
+    /// through the dead-branch rule, exactly as it did before the rule above existed.
+    /// </summary>
+    [Fact]
+    public async Task AnAdviseAgainstASteer_WithNothingToServe_StillSteers()
+    {
+        _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(_memberId)
+            .Returns((IReadOnlyList<MemberAdvise>)[]);
+        RouterAnswers(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Advise);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "I can't help with that one." },
+                new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "what kind of exercises can he do");
+
+        Assert.Equal("I can't help with that one.", reply.Reply);
+    }
+
+    /// <summary>
     /// A stale suggestion is no more offerable than a missing one — the servability rule the
     /// details card and the pulse dot already share decides it, not the row's mere existence.
     /// </summary>

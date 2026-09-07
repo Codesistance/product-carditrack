@@ -88,6 +88,28 @@ public class ChatRouteDecisionTests
             new ChatRouteDecision { Primary = runnerUp, RunnerUp = primary }.NeedsClarify);
     }
 
+    /// <summary>
+    /// The shape the dispatch resolves without asking when a suggestion exists: advise against
+    /// either steer, in either order. Still a clarify by <see cref="ChatRouteDecision.NeedsClarify"/>
+    /// — the record cannot know whether a row exists — which is why the pair is named separately.
+    /// </summary>
+    [Theory]
+    [InlineData(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Advise, true)]
+    [InlineData(MemberChatWorkflow.Advise, MemberChatWorkflow.SteerOffTopic, true)]
+    [InlineData(MemberChatWorkflow.SteerCasual, MemberChatWorkflow.Advise, true)]
+    [InlineData(MemberChatWorkflow.Status, MemberChatWorkflow.Advise, false)]        // a reading against advise is a real ask
+    [InlineData(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Analysis, false)] // a steer against a reading, too
+    [InlineData(MemberChatWorkflow.Advise, MemberChatWorkflow.Advise, false)]
+    public void AdviseAgainstASteer_IsNamedAsSuch(
+        MemberChatWorkflow primary, MemberChatWorkflow runnerUp, bool expected)
+    {
+        var decision = new ChatRouteDecision { Primary = primary, RunnerUp = runnerUp };
+
+        Assert.Equal(expected, decision.PitsAdviseAgainstASteer);
+        if (expected)
+            Assert.True(decision.NeedsClarify, "the pair is still a different ask until the dispatch finds a row.");
+    }
+
     [Fact]
     public void NoRunnerUp_NeverClarifies()
     {

@@ -134,10 +134,19 @@ public static class ChatWorkflowCatalogue
                 ChatClaimClass.Judgement,
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.UnresolvedAlerts, DataQueryKind.RealtimeAssessments]),
 
+            // The second sentence is new (2026-09-07). "What kind of exercises can he do" routed
+            // steer.offtopic with advise behind it, and the caregiver was asked whether they meant
+            // "something outside their health data" or "a suggestion for what could help". The
+            // line said only "recommending an action", and a question asking WHICH action, or how
+            // much or how often of one, did not read to the router as that — while the widened
+            // off-topic line beside it, listing everything the wearable does not record, read as
+            // a closer fit. Naming the shapes is cheaper than another clarify on the first advice
+            // question a caregiver asks.
             new(MemberChatWorkflow.Advise,
                 "advise",
-                "What could be done about the member's wellbeing. Choose this when answering would "
-                + "mean recommending an action.",
+                "What could be done about the member's wellbeing — including what kind, how much "
+                + "or how often of something would suit them: exercise, walking, sleep habits. "
+                + "Choose this when answering would mean recommending an action.",
                 ChatClaimClass.Suggestion,
                 []),
 
@@ -165,7 +174,8 @@ public static class ChatWorkflowCatalogue
                 + "watch recording it. This service sees only what the member's wearable records — "
                 + "steps, heart rate, sleep, breathing and heart rate variability — plus the "
                 + "alerts and baselines computed from those. A health question about anything else "
-                + "belongs here, however reasonable it is to ask.",
+                + "belongs here, however reasonable it is to ask. Not this when it asks what could "
+                + "be done about their activity, sleep or heart rate — that is advise.",
                 ChatClaimClass.None,
                 []),
 

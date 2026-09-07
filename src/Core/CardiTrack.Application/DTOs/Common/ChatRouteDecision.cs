@@ -31,6 +31,29 @@ public sealed record ChatRouteDecision
         && !AreBothReadings(p, r);
 
     /// <summary>
+    /// True when the two candidates are <c>advise</c> and one of the steers — a pair that
+    /// <see cref="NeedsClarify"/> calls a different ask, and which the dispatch resolves without
+    /// asking whenever there is a suggestion to serve.
+    /// </summary>
+    /// <remarks>
+    /// A steer is a redirect, not an answer: it says what the app cannot do and points at what it
+    /// can. A servable suggestion is one of the things it can do. Offering the caregiver a choice
+    /// between the two — "something outside their health data, or a suggestion for what could
+    /// help?" — asks them to pick between being turned away and being answered, which is not a
+    /// real ambiguity (observed 2026-09-07 on "what kind of exercises can he do"). Whether there
+    /// <em>is</em> a suggestion needs a lookup this record cannot make, so the rule lives in the
+    /// dispatch and this only names the shape; with no row the pair clarifies down to the steer
+    /// through the dead-branch rule, as before.
+    /// </remarks>
+    public bool PitsAdviseAgainstASteer =>
+        Primary is { } p && RunnerUp is { } r
+        && ((p == MemberChatWorkflow.Advise && IsSteer(r)) || (r == MemberChatWorkflow.Advise && IsSteer(p)));
+
+    private static bool IsSteer(MemberChatWorkflow workflow) => workflow
+        is MemberChatWorkflow.SteerCasual
+        or MemberChatWorkflow.SteerOffTopic;
+
+    /// <summary>
     /// The ladder's neighbour relation. The five ladder rungs are ranked; the steer entries sit off
     /// the ladder entirely, so a steer against any ladder rung is never adjacent — "either steer
     /// entry against analysis" is §5's own example of what should clarify. The two steers are
