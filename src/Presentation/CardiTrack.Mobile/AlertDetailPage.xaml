@@ -99,25 +99,45 @@
                                  orange banners it was the same colour as the ground behind it and
                                  the title simply had no icon at all. Hence the translucent-white
                                  tile and the white-stroke variants: on a coloured ground the mark
-                                 has to bring its own contrast. -->
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                <Border WidthRequest="44" HeightRequest="44"
+                                 has to bring its own contrast.
+
+                                 NOTICE / URGENT / CRITICAL sits in the card's top-right rather
+                                 than in the title stack, so the tile can run from the title's
+                                 top to the date's bottom — the same Fill + width-bound-to-height
+                                 treatment the header's back button uses — without covering the
+                                 badge as well. -->
+                            <Grid RowDefinitions="Auto,Auto"
+                                  ColumnDefinitions="Auto,*"
+                                  ColumnSpacing="12"
+                                  RowSpacing="2">
+                                <Label x:Name="SeverityBadge"
+                                       Grid.Row="0"
+                                       Grid.Column="0"
+                                       Grid.ColumnSpan="2"
+                                       HorizontalOptions="End"
+                                       HorizontalTextAlignment="End"
+                                       FontFamily="QuicksandSemiBold"
+                                       FontSize="12"
+                                       TextColor="{StaticResource White}"/>
+                                <!-- Fill + width-bound-to-height: the tile matches the title and
+                                     date exactly and stays square at whatever that is. -->
+                                <controls:SquareBorder Grid.Row="1"
+                                        Grid.Column="0"
                                         StrokeThickness="0"
                                         BackgroundColor="#33FFFFFF"
-                                        VerticalOptions="Start">
-                                    <Border.StrokeShape>
+                                        VerticalOptions="Fill">
+                                    <controls:SquareBorder.StrokeShape>
                                         <RoundRectangle CornerRadius="14"/>
-                                    </Border.StrokeShape>
+                                    </controls:SquareBorder.StrokeShape>
                                     <Image x:Name="ReasonIcon"
                                            WidthRequest="24" HeightRequest="24"
                                            HorizontalOptions="Center"
                                            VerticalOptions="Center"/>
-                                </Border>
-                                <VerticalStackLayout Grid.Column="1" Spacing="4">
-                                    <Label x:Name="SeverityBadge"
-                                           FontFamily="QuicksandSemiBold"
-                                           FontSize="12"
-                                           TextColor="{StaticResource White}"/>
+                                </controls:SquareBorder>
+                                <VerticalStackLayout Grid.Row="1"
+                                                     Grid.Column="1"
+                                                     Spacing="4"
+                                                     VerticalOptions="Start">
                                     <Label x:Name="TitleLabel"
                                            Style="{StaticResource Heading3}"
                                            TextColor="{StaticResource White}"
