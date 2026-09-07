@@ -122,6 +122,12 @@ public class MemberChatRoutedDispatchTests
     /// own citation lines, keyed by what the clinical read named. The model picks WHICH; the
     /// registry writes WHAT, so an invented authority never reaches the caregiver.
     /// </summary>
+    /// <remarks>
+    /// And a real authority the verdict did not use is dropped too. The model is shown all three
+    /// bands every call and echoes all three back, which put the same three-line footer under
+    /// every reply (2026-09-07); a verdict that mentions only heart rate quotes only the heart
+    /// rate authority, however many the model named.
+    /// </remarks>
     [Fact]
     public async Task AnInferenceReply_QuotesItsAuthorities_AndDropsInventedOnes()
     {
@@ -130,14 +136,27 @@ public class MemberChatRoutedDispatchTests
                 Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
                 Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DataQueryPlan>(
-                new DataQueryPlan { Sources = [], ChartMetrics = [] }, new AiUsage()));
+                new DataQueryPlan { Sources = [DataQueryKind.RecentActivity], ChartMetrics = [] }, new AiUsage()));
+        // Every band's metric was fetched, so the only thing narrowing the footer is the verdict.
+        _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog
+            {
+                Date = DateOnly.FromDateTime(DateTime.UtcNow),
+                RestingHeartRate = 62,
+                SleepMinutes = 420,
+                OvernightBreathingRate = 14,
+            }]);
         _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.InferenceClinicalAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
                 new MemberChatService.InferenceClinicalAiResponse
                 {
                     Analysis = "Settled. Resting HR 62 bpm sits at his usual and inside 60-100.",
-                    ReferencesUsed = ["American Heart Association", "Journal of Invented Results"],
+                    ReferencesUsed =
+                    [
+                        "American Heart Association", "National Sleep Foundation",
+                        "World Health Organization", "Journal of Invented Results",
+                    ],
                     ReadingsFrom = null,
                     ReadingsTo = null,
                 },
@@ -147,10 +166,12 @@ public class MemberChatRoutedDispatchTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "should I worry about his heart rate?");
 
-        Assert.Contains(
+        Assert.EndsWith(
             "References: American Heart Association — typical adult resting heart rate 60–100 bpm.",
             reply.Reply, StringComparison.Ordinal);
         Assert.DoesNotContain("Invented", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("National Sleep Foundation", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("World Health Organization", reply.Reply, StringComparison.Ordinal);
     }
 
     /// <summary>A verdict resting on the member's own baseline alone quotes nothing — no
@@ -181,6 +202,95 @@ public class MemberChatRoutedDispatchTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "are his steps ok?");
 
         Assert.DoesNotContain("References:", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>The dashboard hero at Yellow by way of today's family digest — the one input the
+    /// inference rung's dataset vocabulary cannot reach — and a fresh line beneath it.</summary>
+    private void TheHeroIsYellow(string statusLine)
+    {
+        _unitOfWork.Digests.GetLatestByDateAsync(
+                _memberId, Arg.Any<DateOnly>(), DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                Audience = DigestAudience.Family,
+                Urgency = DigestUrgency.CheckIn,
+                Text = "Worth a call today.",
+            });
+        _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(_memberId).Returns(new MemberStatusLine
+        {
+            Headline = "Quieter than usual",
+            Message = statusLine,
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+    }
+
+    private void InferenceAnswers(string analysis, string rewrite)
+    {
+        _planner.PlanAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<IReadOnlyList<DataQueryKind>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DataQueryPlan>(
+                new DataQueryPlan { Sources = [], ChartMetrics = [] }, new AiUsage()));
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.InferenceClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
+                new MemberChatService.InferenceClinicalAiResponse
+                {
+                    Analysis = analysis, ReferencesUsed = [], ReadingsFrom = null, ReadingsTo = null,
+                },
+                new AiUsage()));
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(rewrite, new AiUsage()));
+    }
+
+    /// <summary>
+    /// "Anything to follow up on?" under a Yellow hero reading "Steps are very low today." came
+    /// back "Everything looks settled…" (2026-09-07). The inference read saw only what its planner
+    /// fetched, and the tier rested on today's digest, which is not in its vocabulary. Now the
+    /// clinical read is shown the hero, and a verdict that still says settled is led by the line.
+    /// </summary>
+    [Fact]
+    public async Task AnInferenceVerdict_CannotSaySettled_UnderAYellowHero()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        TheHeroIsYellow("Steps are very low today.");
+        InferenceAnswers(
+            analysis: "Settled. No alerts; readings at baseline.",
+            rewrite: "Everything looks settled — nothing there needs your attention.");
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
+
+        // The family's screen leads, in the app's words; the verdict follows rather than being
+        // rewritten by code.
+        Assert.StartsWith("Steps are very low today. The dashboard is showing that as worth attention today",
+            reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("Everything looks settled", reply.Reply, StringComparison.Ordinal);
+
+        // And the clinical read was given the hero to disagree with — tier and line, on the
+        // Private slot, where the line's resolved name may travel.
+        var clinicalPrompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("--- Current status (dashboard) ---", clinicalPrompt, StringComparison.Ordinal);
+        Assert.Contains("Tier: Yellow", clinicalPrompt, StringComparison.Ordinal);
+        Assert.Contains("Line: Steps are very low today.", clinicalPrompt, StringComparison.Ordinal);
+        // Never the rewrite: the status line carries the member's real name.
+        var rewritePrompt = (string)_rewriteAi.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IRewriteAiService.GenerateWithUsageAsync))
+            .GetArguments()[0]!;
+        Assert.DoesNotContain("Current status (dashboard)", rewritePrompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>A settled verdict under a settled hero is left exactly as the rewrite wrote it —
+    /// the guard is for disagreement, not decoration.</summary>
+    [Fact]
+    public async Task AnInferenceVerdict_UnderAGreenHero_IsLeftAlone()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        InferenceAnswers(analysis: "Settled.", rewrite: "Everything looks settled.");
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
+
+        Assert.Equal("Everything looks settled.", reply.Reply);
     }
 
     [Fact]
@@ -254,6 +364,112 @@ public class MemberChatRoutedDispatchTests
 
         Assert.DoesNotContain("Which would help most?", reply.Reply);
         Assert.DoesNotContain("a suggestion for what could help", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// "What kind of exercises can he do" routed steer.offtopic with advise behind it, and the
+    /// caregiver was asked whether they meant "something outside their health data" or "a
+    /// suggestion for what could help" (2026-09-07). A steer is a redirect, not an answer, and a
+    /// servable suggestion is what the redirect would point them at — so it is served, whichever
+    /// of the two the router put first.
+    /// </summary>
+    [Theory]
+    [InlineData(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Advise)]
+    [InlineData(MemberChatWorkflow.Advise, MemberChatWorkflow.SteerOffTopic)]
+    [InlineData(MemberChatWorkflow.SteerCasual, MemberChatWorkflow.Advise)]
+    public async Task AnAdviseAgainstASteer_ServesTheSuggestion_InsteadOfAsking(
+        MemberChatWorkflow primary, MemberChatWorkflow runnerUp)
+    {
+        AServableSuggestionExists();
+        RouterAnswers(primary, runnerUp);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "what kind of exercises can he do");
+
+        Assert.StartsWith("A short walk after lunch is worth trying.", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Which would help most?", reply.Reply);
+        // No steer was generated: the turn made no call beyond the triage and the route.
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(default!, default);
+        // And the row that decided it is the row that was served — read once, not once to
+        // decide and again to answer.
+        await _unitOfWork.MemberAdvises.Received(1).GetAllByCardiMemberAsync(_memberId);
+    }
+
+    /// <summary>
+    /// The once-per-message marker guards asking, not resolving. With the previous assistant turn
+    /// a clarify and no advise row, the steer pair must still collapse to the steer — a reviewer
+    /// caught it descending to analysis instead, because the collapse lived inside the block the
+    /// marker skips.
+    /// </summary>
+    [Fact]
+    public async Task AnAdviseAgainstASteer_WithNothingToServe_StillSteers_AfterAClarify()
+    {
+        var session = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        };
+        session.Turns.Add(new MemberChatTurn
+        {
+            SessionId = session.Id,
+            Role = ChatTurnRole.Assistant,
+            Workflow = MemberChatWorkflow.Clarify,
+            Content = PromptContextFactory.Encryption.Encrypt("I can answer that a couple of different ways…"),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(_memberId)
+            .Returns((IReadOnlyList<MemberAdvise>)[]);
+        RouterAnswers(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Advise);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "I can't help with that one." },
+                new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "what kind of exercises can he do");
+
+        Assert.Equal("I can't help with that one.", reply.Reply);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+    }
+
+    /// <summary>A direct route to advise still reads the row exactly once.</summary>
+    [Fact]
+    public async Task ADirectAdviseRoute_ReadsTheRowOnce()
+    {
+        AServableSuggestionExists();
+        RouterAnswers(MemberChatWorkflow.Advise);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "should he walk more?");
+
+        Assert.StartsWith("A short walk after lunch is worth trying.", reply.Reply, StringComparison.Ordinal);
+        await _unitOfWork.MemberAdvises.Received(1).GetAllByCardiMemberAsync(_memberId);
+    }
+
+    /// <summary>
+    /// With no suggestion on file the pair still resolves without asking — down to the steer,
+    /// through the dead-branch rule, exactly as it did before the rule above existed.
+    /// </summary>
+    [Fact]
+    public async Task AnAdviseAgainstASteer_WithNothingToServe_StillSteers()
+    {
+        _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(_memberId)
+            .Returns((IReadOnlyList<MemberAdvise>)[]);
+        RouterAnswers(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Advise);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "I can't help with that one." },
+                new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "what kind of exercises can he do");
+
+        Assert.Equal("I can't help with that one.", reply.Reply);
     }
 
     /// <summary>
@@ -354,6 +570,50 @@ public class MemberChatRoutedDispatchTests
 
         Assert.Equal("The week looks steady.", reply.Reply);
         await _usages.DidNotReceive().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.Route));
+    }
+
+    /// <summary>
+    /// A message that was only an email address was told it was "a very reasonable health
+    /// question" the wearable does not track (2026-09-07): no purpose line fits a non-request, the
+    /// router fell to steer.offtopic, and that brief asserts the message is a health question.
+    /// Now it never reaches a model — not the pre-check, not the router, not a steer — and the
+    /// turn is still persisted, under the rung for "not a question at all", billed for nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("someone@example.com")]
+    [InlineData("https://example.com/some/path?x=1")]
+    [InlineData("www.example.com.")]
+    [InlineData("12345")]
+    [InlineData("???")]
+    public async Task ANonQuestion_GetsTheCannedNudge_WithoutRouting(string message)
+    {
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, message);
+
+        Assert.Equal(
+            "I didn't catch a question there — ask me about Moses's sleep, activity, heart rate or alerts.",
+            reply.Reply);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(default!, default);
+        await _router.DidNotReceiveWithAnyArgs().RouteAsync(default!, default, default);
+        await _rewriteAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(default!, default);
+        await _unitOfWork.MemberChatTurns.Received().AddAsync(Arg.Is<MemberChatTurn>(t =>
+            t.Role == ChatTurnRole.Assistant && t.Workflow == MemberChatWorkflow.SteerCasual));
+        await _usages.DidNotReceiveWithAnyArgs().AddAsync(default!);
+    }
+
+    /// <summary>
+    /// The second line, for fragments the code guard is too narrow to catch: the off-topic brief
+    /// no longer asserts that whatever reached it is a health question. Asserted here rather than
+    /// in MedicalPromptToneTests, which deliberately excludes the steer prompts.
+    /// </summary>
+    [Fact]
+    public void TheOffTopicSteer_IsToldNotToCallANonRequestAHealthQuestion()
+    {
+        var brief = MemberChatService.HandlerBriefs[MemberChatWorkflow.SteerOffTopic];
+
+        Assert.Contains("not a request at all", brief, StringComparison.Ordinal);
+        Assert.Contains("do not describe it as a health question", brief, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -106,11 +106,22 @@ public class MemberChatService : IMemberChatService
     /// suggest the caregiver did something wrong.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Now carries what this app actually holds, because most of what reaches this entry is no
     /// longer a poem or the weather. A caregiver asking "what of his diet" is asking a reasonable
     /// question about their father's health that CardiTrack has no reading of, and a generic "I
     /// can't help with that" leaves them to rediscover the boundary one topic at a time. Naming
     /// the sources once turns a refusal into something they learn from.
+    /// </para>
+    /// <para>
+    /// The last paragraph is the exception to the brief's own premise. The brief asserts the
+    /// message is a request, and a message that is not one — a bare email address, sent to the
+    /// router because no purpose line fits a non-request — was duly described as "a very
+    /// reasonable health question" about something the wearable does not track (2026-09-07).
+    /// The obvious cases are now caught in code before any model runs
+    /// (<see cref="MemberChatReplies.CarriesNoQuestion"/>); this is the second line, for the
+    /// fragments that still reach here.
+    /// </para>
     /// </remarks>
     private const string OffTopicSteerInstructions = """
         A family caregiver sent the request below inside a health-monitoring app. The app answers
@@ -127,6 +138,10 @@ public class MemberChatService : IMemberChatService
         an answer from the readings that do exist, and do not attempt the request itself. Write
         CardiTrackCardiMember exactly as written if you name the member; it stands in for their
         real name.
+
+        If the message is not a request at all — an address, a pasted fragment, a stray line —
+        say you didn't catch a question and name what you can help with; in that case
+        do not describe it as a health question.
 
         Respond with:
         - reply: the message to show the caregiver.
@@ -269,6 +284,13 @@ public class MemberChatService : IMemberChatService
         Listing today's figures back is not an answer to that question, and a caregiver who has
         just been given those figures is asking precisely because the list did not tell them
         whether anything mattered.
+
+        The data may carry the current dashboard status: the tier the family is already being
+        shown for this member, and the line beneath it. Your verdict may not read as more settled
+        than that tier. At Yellow or above, lead with what the tier rests on — the alert, the
+        assessment or the digest behind it — and do not call things settled beneath it: a chat
+        answer calmer than the screen it is read under is a contradiction the family is left to
+        resolve alone.
 
         Every figure below describes a period that has already finished. Never state what the
         person is doing at this moment. If the data below cannot support a verdict either way,
@@ -454,6 +476,51 @@ public class MemberChatService : IMemberChatService
         // Read before the history block, not with the rest of the context below: the name is what
         // gets swapped back out of the recalled turns before any of them reach a model.
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+
+        // The one guard that runs before any model, the pre-check included: a message with no
+        // question in it never reaches one, so there is nothing for the pre-check to protect and
+        // nothing for the router to misplace. Everything else — triage, route, dispatch — is one
+        // step, so that this branch and that one meet the same persistence below.
+        var result = MemberChatReplies.CarriesNoQuestion(flattened)
+            ? NotAQuestionResult(member?.Name)
+            : await RouteAndAnswerAsync(flattened, session, cardiMemberId, member, utcNow, ct);
+
+        var (_, assistantTurn) = await PersistTurnsAsync(
+            session, flattened, result, utcNow, ct);
+        await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
+
+        await _unitOfWork.SaveChangesAsync();
+
+        return new MemberChatMessageResponse
+        {
+            SessionId = session.Id,
+            Reply = result.Reply,
+            Charts = result.Charts,
+            GeneratedAt = DateTimeOffset.UtcNow,
+        };
+    }
+
+    /// <summary>
+    /// Every model-facing step of a turn: the malicious pre-check, the routing call, and the
+    /// dispatch to the workflow that answers. Returns the workflow's account of what it spent,
+    /// with the route billed into it, for the one persistence path in
+    /// <see cref="SendMessageAsync"/> to write.
+    /// </summary>
+    /// <remarks>
+    /// Split from <see cref="SendMessageAsync"/> when a second no-model answer joined the
+    /// zero-call rungs (<see cref="NotAQuestionResult"/>): that answer needs the session and the
+    /// member the caller already read, and none of what follows here, and the alternative was a
+    /// second copy of "persist, bill, save, respond" — the duplication the uniform contract
+    /// (docs/technical/member_chat_routing.md §7) exists to remove.
+    /// </remarks>
+    private async Task<MemberChatWorkflowResult> RouteAndAnswerAsync(
+        string flattened,
+        MemberChatSession session,
+        Guid cardiMemberId,
+        CardiMember? member,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
         var history = await BuildHistoryBlockAsync(session.Id, member?.Name, ct);
 
         // History travels with every step that reads the caregiver's message, not just the
@@ -521,20 +588,37 @@ public class MemberChatService : IMemberChatService
             result = result with { Calls = InsertAfterTriage(result.Calls, billedRoute) };
         }
 
-        var (_, assistantTurn) = await PersistTurnsAsync(
-            session, flattened, result, utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
-
-        await _unitOfWork.SaveChangesAsync();
-
-        return new MemberChatMessageResponse
-        {
-            SessionId = session.Id,
-            Reply = result.Reply,
-            Charts = result.Charts,
-            GeneratedAt = DateTimeOffset.UtcNow,
-        };
+        return result;
     }
+
+    /// <summary>
+    /// The canned nudge for a message with no question in it — an address on its own, a line
+    /// with no word — answered before any model runs and stamped as the casual steer, the entry
+    /// for "not a question at all".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A message that was only an email address reached the router, which has no purpose line
+    /// for a non-request and fell to <c>steer.offtopic</c>; that steer's brief asserts the request
+    /// is a health question about something unrecorded, so the caregiver was told "That is a very
+    /// reasonable health question, but Dad's wearable does not track food, medication, or weight"
+    /// (2026-09-07). Three model calls to misdescribe a string the app can recognise before the
+    /// first — see <see cref="MemberChatReplies.CarriesNoQuestion"/> for how narrowly.
+    /// </para>
+    /// <para>
+    /// Zero calls, so <c>Calls</c> is empty and the turn bills nothing: the honest account of a
+    /// turn that spent nothing, not a usage row invented to look like the others. Persisted like
+    /// every other turn all the same — it is still a message the caregiver sent and a reply they
+    /// read, and the transcript should show both, under the rung the routing design gives a
+    /// non-question.
+    /// </para>
+    /// </remarks>
+    private static MemberChatWorkflowResult NotAQuestionResult(string? memberName) => new()
+    {
+        Workflow = MemberChatWorkflow.SteerCasual,
+        Reply = MemberChatReplies.NotAQuestionReply(NamePlaceholder.FirstName(memberName)),
+        Calls = [],
+    };
 
     /// <summary>
     /// The full pipeline: plan the fetch, resolve it through the whitelist, read it clinically on
@@ -611,12 +695,21 @@ public class MemberChatService : IMemberChatService
         var plan = await _planner.PlanAsync(flattened, history.Full, allowed, ct);
         var fetched = await DataQueryWhitelist.ExecuteAsync(plan.Result, cardiMemberId, _unitOfWork, utcNow, ct);
 
+        // Read after the fetch and beside it, never through the planner: the hero tier is not a
+        // dataset the model may ask for, it is the claim the family is already looking at, and a
+        // verdict is held to it whatever the planner chose.
+        var dashboard = await ReadDashboardStatusAsync(cardiMemberId, member, utcNow, ct);
+
         var today = DateOnly.FromDateTime(utcNow);
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
+        // The status line carries the member's resolved name, which is why it renders here — into
+        // the Private-slot block — and never into the rewrite prompt.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
+            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}"
+            + (dashboard is { } status ? $"\n\n{FormatDashboardStatus(status)}" : string.Empty)
+            + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
             flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(clinicalPrompt, ct);
@@ -629,14 +722,24 @@ public class MemberChatService : IMemberChatService
             rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
+        // The brief above told the clinical read not to be calmer than the hero. This is the
+        // guard behind that rule, applied to what the caregiver actually reads: a settled verdict
+        // under a Yellow-or-worse hero gets the status line in front of it.
+        if (dashboard is { } shown)
+            reply = MemberChatReplies.ReconcileWithStatusTier(reply, shown.Tier, shown.Line);
+
         // The authorities behind the verdict, quoted at the end of the reply. The model named
         // which of the prompt's published ranges it drew on; the citation text is the registry's
         // own fixed lines — the model picks WHICH, never writes WHAT, the same traceability
         // pattern AdviseGenerationService earns its suggestion licence with. Unrecognised names
         // drop, so an invented authority can never reach a caregiver; nothing used, nothing
-        // quoted. Appended after ComposeReply's cap, so a long verdict can no longer truncate
-        // away the citation it is required to carry.
-        var citations = ChatDataRegistry.CitationsFor(clinical.Result.ReferencesUsed);
+        // quoted. So does a real authority the verdict did not use — named but for a metric
+        // the read never mentions, or one the fetch never carried — because the model echoes
+        // the whole bands block back and the same three-line footer under every reply is a
+        // footer nobody reads. Appended after ComposeReply's cap, so a long verdict can no
+        // longer truncate away the citation it is required to carry.
+        var citations = ChatDataRegistry.CitationsFor(
+            clinical.Result.ReferencesUsed, clinical.Result.Analysis, fetched);
         if (citations.Count > 0)
             reply += $"\n\nReferences: {string.Join("; ", citations)}.";
 
@@ -751,9 +854,36 @@ public class MemberChatService : IMemberChatService
             ? MemberChatWorkflow.Analysis
             : route.Primary.Value;
 
-        if (route.NeedsClarify && !history.LastAssistantWasClarify)
+        // The one row both clarify rules below turn on, looked up at most once per turn: whether
+        // advise has anything to serve decides the advise-against-steer rule and the dead-branch
+        // rule alike, and the advise handler then serves this same row rather than reading it
+        // again. Read only when advise is actually one of the two candidates and a rule can act
+        // on it — every other pair, and a repeat clarify that is not the steer case, never
+        // touches the table.
+        var adviseIsACandidate =
+            route.Primary == MemberChatWorkflow.Advise || route.RunnerUp == MemberChatWorkflow.Advise;
+        var advise = route.NeedsClarify && adviseIsACandidate
+                     && (route.PitsAdviseAgainstASteer || !history.LastAssistantWasClarify)
+            ? await PickAdviseAsync(flattened, cardiMemberId, member, utcNow)
+            : null;
+
+        if (route.NeedsClarify && route.PitsAdviseAgainstASteer)
         {
-            var offerable = await ServableClarifyBranchesAsync(flattened, route, cardiMemberId, member, utcNow);
+            // A steer is a redirect, not an answer, and never beats a servable suggestion:
+            // asked "what kind of exercises can he do" with an activity row on file, the app
+            // offered "something outside their health data, or a suggestion for what could
+            // help?" — a choice between being turned away and being answered. With no row the
+            // pair collapses to the steer, here and not through the clarify block below: the
+            // once-per-message marker guards asking, not resolving, and a pair that is never
+            // asked about must resolve the same way whether or not the turn before was a
+            // clarify — a reviewer caught it descending to analysis in exactly that case.
+            primary = advise is not null
+                ? MemberChatWorkflow.Advise
+                : route.Primary == MemberChatWorkflow.Advise ? route.RunnerUp!.Value : route.Primary!.Value;
+        }
+        else if (route.NeedsClarify && !history.LastAssistantWasClarify)
+        {
+            var offerable = ServableClarifyBranches(route, advise);
             switch (offerable.Count)
             {
                 // Both branches can be served — the ambiguity is real and worth one tap.
@@ -784,9 +914,13 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.Status when aboutThisMoment =>
                 await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
-                await AnswerStatusLineAsync(triageUsage, cardiMemberId, member, utcNow, ct),
+                await AnswerStatusLineAsync(flattened, triageUsage, cardiMemberId, member, utcNow, ct),
+            // The row already read above when advise was a clarify candidate; a direct route to
+            // advise reads it here instead — once, either way.
             MemberChatWorkflow.Advise =>
-                await AnswerAdviseAsync(flattened, triageUsage, cardiMemberId, member, utcNow),
+                AdviseResult(
+                    flattened, triageUsage, member,
+                    advise ?? await PickAdviseAsync(flattened, cardiMemberId, member, utcNow), utcNow),
             MemberChatWorkflow.SteerCasual =>
                 await SteerAsync(flattened, triageUsage, casual: true, member?.Name, ct),
             MemberChatWorkflow.SteerOffTopic =>
@@ -815,8 +949,9 @@ public class MemberChatService : IMemberChatService
     /// <para>
     /// Only advise can be empty in this sense. The reading rungs always have something to say, even
     /// if it is that the window held no readings, and the steers say something by construction. So
-    /// this costs one indexed lookup, on a path that is meant to be rare, and only when advise is
-    /// one of the two candidates.
+    /// the only fact this needs is whether there is a suggestion to serve — the row the dispatch
+    /// has already looked up, once, for every rule that turns on it — which makes this a pure
+    /// function of the routing answer and that row.
     /// </para>
     /// <para>
     /// Widening <c>steer.offtopic</c>'s purpose line should stop most of these being routed here at
@@ -824,28 +959,18 @@ public class MemberChatService : IMemberChatService
     /// nobody has thought of yet.
     /// </para>
     /// </remarks>
-    private async Task<IReadOnlyList<MemberChatWorkflow>> ServableClarifyBranchesAsync(
-        string flattened,
-        ChatRouteDecision route,
-        Guid cardiMemberId,
-        CardiMember? member,
-        DateTime utcNow)
+    /// <param name="advise">The suggestion advise would serve, or null when there is none — the
+    /// caller's lookup, made only when advise is one of the two candidates.</param>
+    private static IReadOnlyList<MemberChatWorkflow> ServableClarifyBranches(
+        ChatRouteDecision route, MemberAdvise? advise)
     {
         // NeedsClarify is only true when both are present and different, so advise appears at
-        // most once and the lookup below runs at most once.
+        // most once.
         MemberChatWorkflow[] candidates = [route.Primary!.Value, route.RunnerUp!.Value];
 
-        var offerable = new List<MemberChatWorkflow>(candidates.Length);
-        foreach (var candidate in candidates)
-        {
-            if (candidate is not MemberChatWorkflow.Advise
-                || await PickAdviseAsync(flattened, cardiMemberId, member, utcNow) is not null)
-            {
-                offerable.Add(candidate);
-            }
-        }
-
-        return offerable;
+        return candidates
+            .Where(candidate => candidate is not MemberChatWorkflow.Advise || advise is not null)
+            .ToList();
     }
 
     /// <summary>
@@ -1077,8 +1202,24 @@ public class MemberChatService : IMemberChatService
     /// disclaimed it, is the whole reason this exists. Past the staleness ceiling it computes from
     /// readings rather than declining: unlike a suggestion, there is always something to say.
     /// </para>
+    /// <para>
+    /// The readings are fetched on both branches, not only the fallback. The stored line is a
+    /// dashboard caption written to sit under a headline and beside the day's tiles, and served
+    /// bare it answered "how is Dad today" with "Steps are very low today." and nothing else — no
+    /// figure, no day — while the same question routed to inference got a paragraph. The figures
+    /// the caption rests on are one whitelisted read this rung was already making on the other
+    /// branch; <see cref="MemberChatReplies.StatusLineReply"/> puts them after the line.
+    /// </para>
+    /// <para>
+    /// Which of the three shapes answers is the question's own words, in code — §5's source
+    /// rule, "a named metric computes that value; none serves the stored line", built at last
+    /// after "how is his heart rate" was answered with the steps caption (dev, 2026-09-07). The
+    /// choice is <see cref="MemberChatReplies.StatusReply"/>'s; this fetches the two inputs it
+    /// needs, both of which it was already fetching.
+    /// </para>
     /// </remarks>
     private async Task<MemberChatWorkflowResult> AnswerStatusLineAsync(
+        string flattened,
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
@@ -1086,24 +1227,11 @@ public class MemberChatService : IMemberChatService
         CancellationToken ct)
     {
         var name = NamePlaceholder.FirstName(member?.Name);
+        var today = DateOnly.FromDateTime(utcNow);
+        var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
+        var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
-        // The same member guard the dashboard reader and the batch generators apply: a paused or
-        // deactivated member's stored line describes a monitoring state that no longer exists.
-        var line = member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
-            ? await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId)
-            : null;
-
-        string reply;
-        if (StatusLineServability.IsServable(line, utcNow))
-        {
-            reply = line.Message.Trim();
-        }
-        else
-        {
-            var today = DateOnly.FromDateTime(utcNow);
-            var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
-            reply = MemberChatReplies.LatestReadingsReply(name, recent, today);
-        }
+        var reply = MemberChatReplies.StatusReply(name, flattened, line, recent, today);
 
         return new MemberChatWorkflowResult
         {
@@ -1111,6 +1239,104 @@ public class MemberChatService : IMemberChatService
             Reply = CapReply(reply),
             Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
         };
+    }
+
+    /// <summary>
+    /// The stored status line this member may currently be shown, or null when there is none to
+    /// serve — the row behind the dashboard hero, read through the guards the hero's own reader
+    /// applies.
+    /// </summary>
+    /// <remarks>
+    /// Two guards, in the order <c>HealthInsightService.GetCurrentStatusMessageAsync</c> applies
+    /// them: the member first — a paused or deactivated member's stored line describes a
+    /// monitoring state that no longer exists — then the row, through the servability rule chat
+    /// and the dashboard share so the two cannot disagree about whether a current line exists.
+    /// One method rather than the guard repeated per caller, because the status rung and the
+    /// inference rung both need exactly this row and a second copy of the guard is how the two
+    /// would come to differ.
+    /// </remarks>
+    private async Task<MemberStatusLine?> ReadServableStatusLineAsync(
+        Guid cardiMemberId, CardiMember? member, DateTime utcNow)
+    {
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return null;
+
+        var line = await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId);
+        return StatusLineServability.IsServable(line, utcNow) ? line : null;
+    }
+
+    /// <summary>
+    /// What the dashboard hero is showing this member as — the tier and the line under it — read
+    /// the way the hero's own writer reads them, or null for a member the dashboard shows nothing
+    /// current for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The inference read sees only what its planner asked for, from a vocabulary of four
+    /// sources. The hero tier is <see cref="StatusDisplayTier.Resolve"/> over three inputs, and
+    /// two of them — today's family digest urgency and the fresh hour assessment — are outside
+    /// that vocabulary altogether, while the third, unresolved alerts, reaches the prompt only
+    /// when the planner thought to ask. So a verdict could say "settled" beneath a Yellow hero
+    /// with nothing in its prompt to say otherwise, and on 2026-09-07 it did.
+    /// </para>
+    /// <para>
+    /// Same inputs, same resolver, same local day as
+    /// <c>StatusLineGenerationService.RegenerateAsync</c>, including the member's own anchor
+    /// clock for the digest lookup: a chat verdict and the hero must resolve the same tier from
+    /// the same rows, or this becomes a third opinion rather than an agreement. Both reads are
+    /// indexed lookups on a path that already spends four model calls.
+    /// </para>
+    /// </remarks>
+    private async Task<DashboardStatus?> ReadDashboardStatusAsync(
+        Guid cardiMemberId, CardiMember? member, DateTime utcNow, CancellationToken ct)
+    {
+        // A paused or deactivated member has no hero to agree with: the dashboard shows the
+        // monitoring state instead, and the batch generators skip them for the same reason.
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return null;
+
+        var unresolvedAlerts = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(cardiMemberId);
+        var highestAlert = unresolvedAlerts.Count == 0
+            ? AlertSeverity.Green
+            : unresolvedAlerts.Max(a => a.Severity);
+        var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(cardiMemberId, ct);
+
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
+        var latestDigest = await _unitOfWork.Digests.GetLatestByDateAsync(
+            cardiMemberId, localToday, DigestAudience.Family, ct);
+
+        var tier = StatusDisplayTier.Resolve(highestAlert, latestAssessment, latestDigest, utcNow);
+        var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
+
+        return new DashboardStatus(tier, line);
+    }
+
+    /// <summary>The hero as the family sees it: its tier and the line beneath.</summary>
+    private sealed record DashboardStatus(AlertSeverity Tier, MemberStatusLine? Line);
+
+    /// <summary>
+    /// The dashboard status as a prompt section for the inference read — the tier named and
+    /// glossed, and the line under it, so the verdict has the family's screen in front of it.
+    /// </summary>
+    /// <remarks>
+    /// The gloss is the <see cref="DigestUrgency"/> vocabulary the tier shares its scale with:
+    /// a colour name alone tells a clinical model nothing about how much the family is being
+    /// asked to do.
+    /// </remarks>
+    private static string FormatDashboardStatus(DashboardStatus status)
+    {
+        var gloss = status.Tier switch
+        {
+            AlertSeverity.Red => "needs attention now",
+            AlertSeverity.Orange => "worth prompt attention today",
+            AlertSeverity.Yellow => "worth a check-in today",
+            _ => "settled — nothing pressing",
+        };
+
+        return "--- Current status (dashboard) ---\n"
+            + $"  Tier: {status.Tier} ({gloss}); the colour the family is already looking at for this member\n"
+            + $"  Line: {(status.Line is { } line ? line.Message.Trim() : "none current")}";
     }
 
     /// <summary>
@@ -1149,18 +1375,28 @@ public class MemberChatService : IMemberChatService
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
-        DateTime utcNow)
-    {
-        var advise = await PickAdviseAsync(flattened, cardiMemberId, member, utcNow);
+        DateTime utcNow) =>
+        AdviseResult(
+            flattened, triageUsage, member,
+            await PickAdviseAsync(flattened, cardiMemberId, member, utcNow), utcNow);
 
-        return new MemberChatWorkflowResult
-        {
-            Workflow = MemberChatWorkflow.Advise,
-            Reply = CapReply(MemberChatReplies.AdviseReply(
-                NamePlaceholder.FirstName(member?.Name), advise, utcNow, flattened)),
-            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
-        };
-    }
+    /// <summary>
+    /// The advise turn from a row already in hand — split from <see cref="AnswerAdviseAsync"/> so
+    /// the routed dispatch, which has to look the row up to decide whether advise runs at all,
+    /// can serve what it looked up rather than reading it twice.
+    /// </summary>
+    private static MemberChatWorkflowResult AdviseResult(
+        string flattened,
+        AiUsage triageUsage,
+        CardiMember? member,
+        MemberAdvise? advise,
+        DateTime utcNow) => new()
+    {
+        Workflow = MemberChatWorkflow.Advise,
+        Reply = CapReply(MemberChatReplies.AdviseReply(
+            NamePlaceholder.FirstName(member?.Name), advise, utcNow, flattened)),
+        Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+    };
 
     /// <summary>The message and nothing else — see <see cref="SteerAsync"/> for why no history
     /// travels with it.</summary>

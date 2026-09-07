@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
@@ -70,6 +71,174 @@ public static partial class MemberChatReplies
     }
 
     /// <summary>
+    /// The stored status line as a chat answer: the dashboard's headline and sentence, then the
+    /// latest figures they rest on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The persisted line is a caption. On the dashboard it sits under a headline and a tier
+    /// colour, beside tiles carrying the day's numbers, and "Steps are very low today." reads
+    /// correctly there because the hero above it says how much that matters and the tile beside
+    /// it says what the number is. Served verbatim in a chat bubble it arrives with neither — a
+    /// bare seven-word sentence to "how is Dad today", when the same question routed one rung
+    /// higher gets a paragraph with figures in it (observed 2026-09-07).
+    /// </para>
+    /// <para>
+    /// So the line keeps its place at the front, where the dashboard puts it, and the figures
+    /// follow — the same dated figure list the other two status replies speak, through
+    /// <see cref="LatestReadingsReply"/>, so the three cannot state a reading differently or date
+    /// it differently. Still assembled in code: this rung makes no model call, and a caption
+    /// plus figures is a sentence code can write.
+    /// </para>
+    /// </remarks>
+    public static string StatusLineReply(
+        string? firstName, MemberStatusLine line, IReadOnlyList<ActivityLog> recent, DateOnly today)
+    {
+        return $"{CaptionLead(line)} {LatestReadingsReply(firstName, recent, today)}";
+    }
+
+    /// <summary>The caption as the dashboard shows it: headline, then sentence — closed with a
+    /// full stop, since a sentence follows it here where on the dashboard nothing does.</summary>
+    private static string CaptionLead(MemberStatusLine line)
+    {
+        // The stored line is generated copy; the generator strips nothing from the end of the
+        // message, so a caption may arrive without terminal punctuation and the dashboard never
+        // minded. Joined to the readings with a space, "Steps are very low today The most
+        // recent…" is a run-on, so the stop is guaranteed here rather than assumed of the model.
+        var message = line.Message.Trim();
+        if (!message.EndsWith('.') && !message.EndsWith('!') && !message.EndsWith('?') && !message.EndsWith('…'))
+            message += ".";
+
+        var headline = line.Headline?.Trim();
+
+        // The headline is documented as droppable — the dashboard keeps per-tier copy to fall
+        // back on — so the reply must read whole without it.
+        return string.IsNullOrWhiteSpace(headline) ? message : $"{headline} — {message}";
+    }
+
+    /// <summary>
+    /// The status rung's answer, chosen from the question's own words: the reading it names, the
+    /// full list if it asked for the readings, else the dashboard's line.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §5 gives this rung a deterministic source rule — a named metric computes that value, no
+    /// metric serves the stored line — and until now only the second half existed. "How is his
+    /// heart rate" was answered "Steps are lower today than yesterday." (dev, 2026-09-07): the
+    /// caption is a sentence about whichever reading the batch found most worth a sentence, and
+    /// a question naming a different reading was answered about the wrong one, truthfully.
+    /// </para>
+    /// <para>
+    /// A named reading leads, dated, with the previous day's value beside it — the comparison
+    /// the caregiver is asking for when they ask "how is" a number. The caption follows only
+    /// when it is about something else: a caption about the reading just stated is the same
+    /// fact twice, and one about a different reading is the rest of the picture. A request for
+    /// the readings themselves gets the readings, not the caption that summarises them.
+    /// </para>
+    /// </remarks>
+    public static string StatusReply(
+        string? firstName,
+        string question,
+        MemberStatusLine? line,
+        IReadOnlyList<ActivityLog> recent,
+        DateOnly today)
+    {
+        if (StatusQuestion.MetricNamed(question) is { } metric)
+        {
+            var reply = MetricReadingReply(firstName, metric, recent, today);
+            return line is not null && StatusQuestion.MetricNamed(line.Message) != metric
+                ? $"{reply} On the whole: {CaptionLead(line)}"
+                : reply;
+        }
+
+        if (StatusQuestion.AsksForAllReadings(question) || line is null)
+            return LatestReadingsReply(firstName, recent, today);
+
+        return StatusLineReply(firstName, line, recent, today);
+    }
+
+    /// <summary>
+    /// One reading, dated, with the previous day's value for comparison when there is one — the
+    /// <see cref="LatestReadingsReply"/> shape restricted to the metric the caregiver named.
+    /// </summary>
+    public static string MetricReadingReply(
+        string? firstName, StatusMetric metric, IReadOnlyList<ActivityLog> recent, DateOnly today)
+    {
+        var subject = string.IsNullOrWhiteSpace(firstName) ? "them" : firstName;
+        var name = MetricName(metric);
+
+        var dated = recent
+            .Where(l => Figure(metric, l) is not null)
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        if (dated.Count == 0)
+        {
+            return $"I don't have a recent {name} reading for {subject} — readings arrive once their "
+                + "watch has recorded and synced them.";
+        }
+
+        var latest = dated[^1];
+        var reply = $"The most recent {name} I have for {subject} is {Figure(metric, latest)}, "
+            + When(metric, latest.Date, today);
+
+        if (dated.Count > 1)
+        {
+            var previous = dated[^2];
+            reply += $"; {When(metric, previous.Date, today)} it was {Figure(metric, previous)}";
+        }
+
+        return reply + ".";
+    }
+
+    /// <summary>The metric as a caregiver reads it — spelled once here, so a figure and its
+    /// name cannot drift apart between replies.</summary>
+    private static string MetricName(StatusMetric metric) => metric switch
+    {
+        StatusMetric.HeartRateVariability => "overnight heart rate variability",
+        StatusMetric.RestingHeartRate => "resting heart rate",
+        StatusMetric.Oxygen => "blood oxygen",
+        StatusMetric.BreathingRate => "overnight breathing rate",
+        StatusMetric.Sleep => "sleep",
+        _ => "step count",
+    };
+
+    /// <summary>The metric's figure on one day, in its own unit, or null when that day has none.</summary>
+    private static string? Figure(StatusMetric metric, ActivityLog log) => metric switch
+    {
+        StatusMetric.HeartRateVariability => log.HeartRateVariabilityMs is { } hrv
+            ? $"{hrv.ToString("0", CultureInfo.InvariantCulture)} ms" : null,
+        StatusMetric.RestingHeartRate => log.RestingHeartRate is { } hr ? $"{hr} bpm" : null,
+        StatusMetric.Oxygen => log.SpO2Average is { } spo2
+            ? $"{spo2.ToString("0.#", CultureInfo.InvariantCulture)}%" : null,
+        // The overnight figure only, as the charts and the bands block use. The daytime
+        // BreathingRate is a different reading — awake, whole-day — and standing it in under the
+        // name "overnight breathing rate" would label one field's value as the other's; a device
+        // that records nothing overnight gets the honest empty case instead.
+        StatusMetric.BreathingRate => log.OvernightBreathingRate is { } br
+            ? $"{br.ToString("0.#", CultureInfo.InvariantCulture)} breaths a minute" : null,
+        StatusMetric.Sleep => log.SleepMinutes is { } sleep ? ReadingFigures.SleepFigure(sleep) : null,
+        _ => log.Steps is { } steps ? $"{steps:#,##0} steps" : null,
+    };
+
+    /// <summary>
+    /// The day a figure belongs to. Sleep is attributed to the morning it ended on, so a night on
+    /// today's row is "last night" — the same rule every renderer follows, spelled for a chat
+    /// reply rather than a heading.
+    /// </summary>
+    private static string When(StatusMetric metric, DateOnly date, DateOnly today)
+    {
+        if (metric != StatusMetric.Sleep)
+            return DayLabel(date, today);
+
+        return date == today
+            ? "last night"
+            : date == today.AddDays(-1)
+                ? "the night before last"
+                : $"the night ending {date.ToString("MMM d", CultureInfo.InvariantCulture)}";
+    }
+
+    /// <summary>
     /// The newest day with anything recorded on it, as a dated figure list — shared by the two
     /// status replies so they cannot state the same readings differently.
     /// </summary>
@@ -77,13 +246,19 @@ public static partial class MemberChatReplies
         IReadOnlyList<ActivityLog> recent, DateOnly today)
     {
         var latest = recent
-            .Where(l => l.Steps is not null || l.RestingHeartRate is not null || l.SleepMinutes is not null)
+            .Where(l => l.Steps is not null || l.RestingHeartRate is not null || l.SleepMinutes is not null
+                        || l.HeartRateVariabilityMs is not null || l.OvernightBreathingRate is not null
+                        || l.SpO2Average is not null)
             .OrderBy(l => l.Date)
             .LastOrDefault();
 
         if (latest is null)
             return null;
 
+        // Every reading the day carries, not the first three: asked for "his specific
+        // measurements", a list that stopped at sleep left the overnight figures out of an
+        // answer whose whole point was completeness. Absent ones are omitted rather than named
+        // — a device that derives none should not have the reply say so every time.
         var parts = new List<string>();
         if (latest.Steps is { } steps)
             parts.Add($"{steps:#,##0} steps");
@@ -91,6 +266,12 @@ public static partial class MemberChatReplies
             parts.Add($"a resting heart rate of {hr} bpm");
         if (latest.SleepMinutes is { } sleep)
             parts.Add($"{ReadingFigures.SleepFigure(sleep)} of sleep the night before");
+        if (latest.HeartRateVariabilityMs is { } hrv)
+            parts.Add($"an overnight heart rate variability of {hrv.ToString("0", CultureInfo.InvariantCulture)} ms");
+        if (latest.OvernightBreathingRate is { } breathing)
+            parts.Add($"{breathing.ToString("0.#", CultureInfo.InvariantCulture)} breaths a minute overnight");
+        if (latest.SpO2Average is { } spo2)
+            parts.Add($"{spo2.ToString("0.#", CultureInfo.InvariantCulture)}% blood oxygen");
 
         return (DayLabel(latest.Date, today), Join(parts));
     }
@@ -213,6 +394,111 @@ public static partial class MemberChatReplies
             : $"Those figures cover {label}.";
 
         return $"{reply}\n\n{sentence}";
+    }
+
+    /// <summary>
+    /// A verdict held to the dashboard hero above it: when the hero is Yellow or worse and the
+    /// reply reads as settled, the status line leads and the reply follows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Anything to follow up on?" was answered "Everything looks settled…" under a Yellow hero
+    /// whose line read "Steps are very low today." (2026-09-07). The inference read sees what its
+    /// planner fetched, and the hero tier rests partly on things outside that vocabulary — today's
+    /// family digest urgency, the fresh hour assessment — so the verdict had nothing in front of
+    /// it to disagree with. The clinical brief now carries the tier and the rule; this is the code
+    /// behind the rule, for the reason every guard on this platform exists: a prompt rule
+    /// forbidding a claim does not hold (docs/technical/member_chat_routing.md §9).
+    /// </para>
+    /// <para>
+    /// Leads with the line rather than rewriting the verdict, because the verdict is the model's
+    /// sentence and this must not compose a different one out of it. What the caregiver reads
+    /// first is what the dashboard is already telling them, in the app's own words; the reply
+    /// stands after it as the readings' view. Below Yellow nothing is touched — the hero is
+    /// settled too, and a reply agreeing with it needs no correction.
+    /// </para>
+    /// <para>
+    /// The pattern is deliberately whole-picture — "settled", "nothing needs attention",
+    /// "everything looks fine" — not every reassuring clause. A reply that says one reading looks
+    /// steady is not claiming the day is. And it is affirmative only: "not settled", "nothing is
+    /// settled yet" already agree with the hero, and leading them with the status line would say
+    /// the same thing twice — the first time in the app's voice and the second in the model's.
+    /// </para>
+    /// </remarks>
+    public static string ReconcileWithStatusTier(string reply, AlertSeverity tier, MemberStatusLine? statusLine)
+    {
+        if (tier < AlertSeverity.Yellow || !SettledClaim().IsMatch(reply))
+            return reply;
+
+        var caption = statusLine?.Message.Trim();
+        var lead = string.IsNullOrWhiteSpace(caption)
+            ? "The dashboard is showing something worth attention today, so I wouldn't call things settled."
+            : $"{caption} The dashboard is showing that as worth attention today, so I wouldn't call "
+              + "things settled.";
+
+        return $"{lead}\n\n{reply}";
+    }
+
+    /// <summary>
+    /// A reply saying the whole picture is fine — the claim a Yellow hero contradicts. The
+    /// lookbehind on "settled" is what keeps it a claim: a negation in front of the word — "not",
+    /// "isn't", "nothing is", "far from" — turns it into agreement with the hero, and agreement is
+    /// left alone. The negation may sit up to two words back ("not yet settled", "not really
+    /// settled"): .NET lookbehind is variable-length, so the exclusion reaches as far as the
+    /// phrasing does rather than only to the word immediately before.
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(?:(?<!\b(?:not|never|hardly|isn't|aren't|wasn't|far from|less than|nothing(?:'s| is| looks| seems| feels))(?: \w+){0,2} )settled"
+        + @"|no concerns?|nothing(?: \w+){0,2} (?:needs?|stands? out|to follow|to worry|to flag|to watch)"
+        + @"|(?:everything|all|things) (?:looks?|seems?|is|are) (?:fine|good|okay|ok|steady|calm|normal|well))\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex SettledClaim();
+
+    /// <summary>
+    /// True when the message carries nothing a question could be made of: an email address or a
+    /// URL on its own, or a line with no letter in it at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Judged in code, ahead of the router, because the router cannot be taught this. Everything
+    /// it renders is a way of answering, and a message that asks nothing fits none of them — so
+    /// a bare email address fell to <c>steer.offtopic</c>, whose brief asserts the request is a
+    /// health question about something unrecorded, and the caregiver was told their address was
+    /// "a very reasonable health question" that the wearable does not track (2026-09-07). Three
+    /// model calls to misdescribe a string the app could have recognised before the first.
+    /// </para>
+    /// <para>
+    /// Narrow on purpose. "hi", "ok?", "thanks" and a lone question mark after a word all carry a
+    /// word, and the router already places those as <c>steer.casual</c>; this catches only what
+    /// no purpose line could ever place. Erring narrow is the safe direction: a non-question that
+    /// slips through still gets the steer, whose brief now knows to say it caught no question,
+    /// while a real question caught here would be answered with a nudge.
+    /// </para>
+    /// </remarks>
+    public static bool CarriesNoQuestion(string message)
+    {
+        var trimmed = message.Trim();
+        return AddressOnly().IsMatch(trimmed) || !AnyLetter().IsMatch(trimmed);
+    }
+
+    /// <summary>The whole message is one email address or one URL, trailing punctuation aside.</summary>
+    [GeneratedRegex(@"^(?:[^\s@]+@[^\s@]+\.[^\s@]+|(?:https?://|www\.)\S+)[.,;:!?)]*$", RegexOptions.IgnoreCase)]
+    private static partial Regex AddressOnly();
+
+    /// <summary>Any letter in any script — the least a question can be made of.</summary>
+    [GeneratedRegex(@"\p{L}")]
+    private static partial Regex AnyLetter();
+
+    /// <summary>
+    /// The nudge for a message with no question in it: what was missing, and what to ask instead
+    /// — the same "what I can help with" every steer closes on, without a model to write it.
+    /// </summary>
+    public static string NotAQuestionReply(string? firstName)
+    {
+        // "their" rather than an invented relationship word, for the reason LiveStatusReply's
+        // subject line gives at length.
+        var whose = string.IsNullOrWhiteSpace(firstName) ? "their" : $"{firstName}'s";
+        return $"I didn't catch a question there — ask me about {whose} sleep, activity, heart rate or alerts.";
     }
 
     /// <summary>Oxford-less list joining — "a, b and c".</summary>

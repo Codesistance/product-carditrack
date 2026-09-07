@@ -103,22 +103,213 @@ public class MemberChatStatusRungTests
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             NullLogger<MemberChatService>.Instance);
 
+    // ── A question that names a reading ─────────────────────────────────────────
+
+    /// <summary>
+    /// The owner's own session (dev, 2026-09-07): "how is his heart rate" → "Steps are lower today
+    /// than yesterday." A true caption about the wrong reading. The named reading leads, dated and
+    /// beside yesterday's; the caption follows only because it is about something else.
+    /// </summary>
+    [Fact]
+    public async Task AMetricQuestion_LeadsWithThatMetric_NeverTheStepsCaption()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        StatusLineIs("Steps are lower today than yesterday.", TimeSpan.FromHours(1));
+        ReadingsAre(
+            new ActivityLog { Date = today.AddDays(-1), Steps = 4905, RestingHeartRate = 68 },
+            new ActivityLog { Date = today, Steps = 1200, RestingHeartRate = 70 });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how is his heart rate");
+
+        Assert.StartsWith(
+            "The most recent resting heart rate I have for Moses is 70 bpm, today so far; yesterday it was 68 bpm.",
+            reply.Reply, StringComparison.Ordinal);
+        Assert.True(
+            reply.Reply.IndexOf("70 bpm", StringComparison.Ordinal)
+            < reply.Reply.IndexOf("Steps are lower", StringComparison.Ordinal),
+            "the reading the caregiver asked about has to come before a caption about another one.");
+        Assert.Contains("On the whole: Settling — Steps are lower today than yesterday.", reply.Reply, StringComparison.Ordinal);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+    }
+
+    /// <summary>
+    /// "His specific measurements" is a request for the figures, not for the sentence that
+    /// summarises them — every reading the day carries, and no caption.
+    /// </summary>
+    [Fact]
+    public async Task AReadingsQuestion_ListsEveryMetric_NotTheCaption()
+    {
+        StatusLineIs("Steps are lower today than yesterday.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog
+        {
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Steps = 1200,
+            RestingHeartRate = 70,
+            SleepMinutes = 370,
+            HeartRateVariabilityMs = 42.4m,
+            OvernightBreathingRate = 14.2m,
+            SpO2Average = 96.4m,
+        });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "his specific measurements");
+
+        Assert.StartsWith("The most recent readings I have for Moses are today so far:", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("1,200 steps", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("a resting heart rate of 70 bpm", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("of sleep the night before", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("an overnight heart rate variability of 42 ms", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("14.2 breaths a minute overnight", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("96.4% blood oxygen", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("Steps are lower", reply.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A caption about the reading just stated is the same fact twice, so it is dropped;
+    /// one about a different reading is the rest of the picture, so it follows.</summary>
+    [Fact]
+    public void TheCaptionFollowsAMetricReply_OnlyWhenItIsAboutSomethingElse()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine { Message = "Steps are lower today than yesterday." };
+        var readings = new[] { new ActivityLog { Date = today, Steps = 1200, RestingHeartRate = 70 } };
+
+        var aboutSteps = MemberChatReplies.StatusReply("Dad", "how are his steps", line, readings, today);
+        var aboutHeart = MemberChatReplies.StatusReply("Dad", "how is his heart rate", line, readings, today);
+
+        Assert.DoesNotContain("On the whole", aboutSteps, StringComparison.Ordinal);
+        Assert.Contains("On the whole: Steps are lower today than yesterday.", aboutHeart, StringComparison.Ordinal);
+    }
+
+    /// <summary>Sleep belongs to the morning it ended on, so today's row is last night.</summary>
+    [Fact]
+    public void ASleepReadingIsDatedAsANight()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var reply = MemberChatReplies.MetricReadingReply("Dad", StatusMetric.Sleep,
+            [
+                new ActivityLog { Date = today.AddDays(-1), SleepMinutes = 420 },
+                new ActivityLog { Date = today, SleepMinutes = 370 },
+            ], today);
+
+        Assert.StartsWith("The most recent sleep I have for Dad is ", reply, StringComparison.Ordinal);
+        Assert.Contains(", last night; the night before last it was ", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A named reading the watch has not recorded is said to be unrecorded, by name.</summary>
+    [Fact]
+    public void AMetricWithNoReadingSaysSo()
+    {
+        var reply = MemberChatReplies.MetricReadingReply("Dad", StatusMetric.Oxygen,
+            [new ActivityLog { Date = new DateOnly(2026, 9, 7), Steps = 1200 }], new DateOnly(2026, 9, 7));
+
+        Assert.StartsWith("I don't have a recent blood oxygen reading for Dad", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The daytime breathing rate is a different reading from the overnight one, and a value from
+    /// the first must not be served under the second's name — a reviewer caught the fallback
+    /// doing exactly that. A day with only a daytime figure is the empty case, by name.
+    /// </summary>
+    [Fact]
+    public void ADaytimeBreathingRateIsNotServedAsOvernight()
+    {
+        var reply = MemberChatReplies.MetricReadingReply("Dad", StatusMetric.BreathingRate,
+            [new ActivityLog { Date = new DateOnly(2026, 9, 7), BreathingRate = 16m, OvernightBreathingRate = null }],
+            new DateOnly(2026, 9, 7));
+
+        Assert.StartsWith("I don't have a recent overnight breathing rate reading for Dad", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("16", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A stored caption may arrive without terminal punctuation — the generator strips nothing
+    /// from the end — and on the dashboard nothing follows it. Here a sentence does, so the stop
+    /// is guaranteed rather than assumed of the model.
+    /// </summary>
+    [Fact]
+    public void ACaptionWithoutAFullStop_GetsOne_BeforeTheReadings()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine { Headline = null, Message = "Steps are very low today" };
+
+        var reply = MemberChatReplies.StatusLineReply(
+            "Dad", line, [new ActivityLog { Date = today, Steps = 812 }], today);
+
+        Assert.StartsWith("Steps are very low today. The most recent readings", reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("today The", reply, StringComparison.Ordinal);
+        // One stop, not two, when the caption already ends in one.
+        var punctuated = MemberChatReplies.StatusLineReply(
+            "Dad", new MemberStatusLine { Message = "Steps are very low today." }, [], today);
+        Assert.DoesNotContain("..", punctuated, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("how is his heart rate", StatusMetric.RestingHeartRate)]
+    [InlineData("what's his pulse like", StatusMetric.RestingHeartRate)]
+    [InlineData("how is his heart rate variability", StatusMetric.HeartRateVariability)]
+    [InlineData("what's her HRV", StatusMetric.HeartRateVariability)]
+    [InlineData("is his oxygen ok", StatusMetric.Oxygen)]
+    [InlineData("how is his breathing overnight", StatusMetric.BreathingRate)]
+    [InlineData("how did he sleep", StatusMetric.Sleep)]
+    [InlineData("how many steps today", StatusMetric.Steps)]
+    [InlineData("how is dad today", null)]
+    [InlineData("his specific measurements", null)]
+    public void AStatusQuestionNamesAtMostOneReading(string question, StatusMetric? expected) =>
+        Assert.Equal(expected, StatusQuestion.MetricNamed(question));
+
+    [Theory]
+    [InlineData("his specific measurements", true)]
+    [InlineData("her readings", true)]
+    [InlineData("the numbers", true)]
+    [InlineData("how is dad today", false)]
+    public void AReadingsRequestIsRecognised(string question, bool expected) =>
+        Assert.Equal(expected, StatusQuestion.AsksForAllReadings(question));
+
     // ── "How are they doing today?" ─────────────────────────────────────────────
 
     /// <summary>
     /// The transcript's failure, in one assertion. The caregiver asked about the day; the app
     /// answered about the instant.
     /// </summary>
+    /// <remarks>
+    /// The line leads, and the figures follow it. Served alone it was a dashboard caption with
+    /// the dashboard taken away — "Steps are very low today." to "how is Dad today", with no
+    /// number and no day, while the same question one rung up got a paragraph (2026-09-07).
+    /// </remarks>
     [Fact]
     public async Task ADayQuestionIsAnsweredWithTheStatusLine_NotTheLivenessDisclaimer()
     {
         StatusLineIs("Winding down for the night.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog
+        {
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            Steps = 4905,
+            RestingHeartRate = 70,
+        });
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "How are they doing today?");
 
-        Assert.Equal("Winding down for the night.", reply.Reply);
+        Assert.StartsWith("Settling — Winding down for the night.", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("4,905 steps", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("a resting heart rate of 70 bpm", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("today so far", reply.Reply, StringComparison.Ordinal);
         Assert.DoesNotContain("can't see", reply.Reply, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("right now", reply.Reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// A fresh line with nothing recorded behind it still answers — the caption, then the honest
+    /// "no recent readings" the readings fallback already says, rather than a caption alone.
+    /// </summary>
+    [Fact]
+    public async Task AStatusLineWithNoReadingsBehindIt_StillSaysSo()
+    {
+        StatusLineIs("Winding down for the night.", TimeSpan.FromHours(1));
+        ReadingsAre();
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "How are they doing today?");
+
+        Assert.StartsWith("Settling — Winding down for the night.", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("don't have any recent readings for Moses", reply.Reply, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -234,6 +425,42 @@ public class MemberChatStatusRungTests
         Assert.Contains("4,905 steps", reply, StringComparison.Ordinal);
         Assert.Contains("a resting heart rate of 70 bpm", reply, StringComparison.Ordinal);
         Assert.DoesNotContain("can't see", reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The status-line reply is the caption and then the same dated figures the readings reply
+    /// states — one figure list across the three status replies, so none can date a reading
+    /// differently from the others.
+    /// </summary>
+    [Fact]
+    public void TheStatusLineReplyLeadsWithTheCaption_ThenDatesTheFigures()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine
+        {
+            Headline = "Quieter than usual",
+            Message = "Steps are very low today.",
+            GeneratedAtUtc = DateTime.UtcNow,
+        };
+
+        var reply = MemberChatReplies.StatusLineReply(
+            "Dad", line, [new ActivityLog { Date = today, Steps = 812, RestingHeartRate = 68 }], today);
+
+        Assert.StartsWith("Quieter than usual — Steps are very low today.", reply, StringComparison.Ordinal);
+        Assert.Contains("today so far: 812 steps and a resting heart rate of 68 bpm", reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A dropped headline — the row's documented case — leaves the sentence whole
+    /// rather than a dangling dash.</summary>
+    [Fact]
+    public void TheStatusLineReplyReadsWholeWithoutAHeadline()
+    {
+        var today = new DateOnly(2026, 9, 7);
+        var line = new MemberStatusLine { Headline = null, Message = "Steps are very low today." };
+
+        var reply = MemberChatReplies.StatusLineReply("Dad", line, [], today);
+
+        Assert.StartsWith("Steps are very low today. I don't have any recent readings", reply, StringComparison.Ordinal);
     }
 
     /// <summary>Nothing recorded is said plainly, and never inferred from silence.</summary>
