@@ -867,15 +867,19 @@ public class MemberChatService : IMemberChatService
             ? await PickAdviseAsync(flattened, cardiMemberId, member, utcNow)
             : null;
 
-        if (route.NeedsClarify && route.PitsAdviseAgainstASteer && advise is not null)
+        if (route.NeedsClarify && route.PitsAdviseAgainstASteer)
         {
             // A steer is a redirect, not an answer, and never beats a servable suggestion:
             // asked "what kind of exercises can he do" with an activity row on file, the app
             // offered "something outside their health data, or a suggestion for what could
-            // help?" — a choice between being turned away and being answered. Checked ahead of
-            // the once-per-message marker because this is not a clarify at all, so a prior
-            // clarify in the session should not send it to analysis either.
-            primary = MemberChatWorkflow.Advise;
+            // help?" — a choice between being turned away and being answered. With no row the
+            // pair collapses to the steer, here and not through the clarify block below: the
+            // once-per-message marker guards asking, not resolving, and a pair that is never
+            // asked about must resolve the same way whether or not the turn before was a
+            // clarify — a reviewer caught it descending to analysis in exactly that case.
+            primary = advise is not null
+                ? MemberChatWorkflow.Advise
+                : route.Primary == MemberChatWorkflow.Advise ? route.RunnerUp!.Value : route.Primary!.Value;
         }
         else if (route.NeedsClarify && !history.LastAssistantWasClarify)
         {

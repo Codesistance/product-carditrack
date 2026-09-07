@@ -395,6 +395,49 @@ public class MemberChatRoutedDispatchTests
         await _unitOfWork.MemberAdvises.Received(1).GetAllByCardiMemberAsync(_memberId);
     }
 
+    /// <summary>
+    /// The once-per-message marker guards asking, not resolving. With the previous assistant turn
+    /// a clarify and no advise row, the steer pair must still collapse to the steer — a reviewer
+    /// caught it descending to analysis instead, because the collapse lived inside the block the
+    /// marker skips.
+    /// </summary>
+    [Fact]
+    public async Task AnAdviseAgainstASteer_WithNothingToServe_StillSteers_AfterAClarify()
+    {
+        var session = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        };
+        session.Turns.Add(new MemberChatTurn
+        {
+            SessionId = session.Id,
+            Role = ChatTurnRole.Assistant,
+            Workflow = MemberChatWorkflow.Clarify,
+            Content = PromptContextFactory.Encryption.Encrypt("I can answer that a couple of different ways…"),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(_memberId)
+            .Returns((IReadOnlyList<MemberAdvise>)[]);
+        RouterAnswers(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.Advise);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "I can't help with that one." },
+                new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "what kind of exercises can he do");
+
+        Assert.Equal("I can't help with that one.", reply.Reply);
+        await _planner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default, default);
+    }
+
     /// <summary>A direct route to advise still reads the row exactly once.</summary>
     [Fact]
     public async Task ADirectAdviseRoute_ReadsTheRowOnce()
