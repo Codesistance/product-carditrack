@@ -35,6 +35,29 @@ public abstract class BaseApiController : ControllerBase
     }
 
     /// <summary>
+    /// Returns a 202 API response with data: the work is queued, and the body says where to poll.
+    /// </summary>
+    /// <remarks>
+    /// Named Queued rather than Accepted so it does not shadow <see cref="ControllerBase.Accepted(object)"/>,
+    /// which other controllers hand a ready-made envelope. Built here rather than as
+    /// <c>Accepted(Success(data).Value)</c> in a controller: the
+    /// implicit conversion from an <see cref="OkObjectResult"/> to
+    /// <see cref="ActionResult{TValue}"/> fills <c>Result</c>, not <c>Value</c>, so that shape
+    /// sends a 202 with no body and the client reads an empty envelope. Export shipped that way
+    /// behind a plan gate nobody could pass, so nothing noticed until the gate came off.
+    /// </remarks>
+    protected ActionResult<ApiResponse<T>> Queued<T>(T data, string message = "On it!")
+    {
+        return StatusCode(StatusCodes.Status202Accepted, new ApiResponse<T>
+        {
+            Success = true,
+            Message = message,
+            Data = data,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
     /// Returns a 201 API response with data
     /// </summary>
     protected ActionResult<ApiResponse<T>> Created<T>(T data, string message = "All set!")

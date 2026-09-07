@@ -47,7 +47,7 @@ public class ReportsController : BaseApiController
         try
         {
             var result = await _reportService.GenerateAsync(UserContext.UserId, request);
-            return Accepted(Success(result, "We're preparing your report — it'll be ready shortly!").Value);
+            return Queued(result, "We're preparing your report — it'll be ready shortly!");
         }
         catch (KeyNotFoundException ex)
         {
