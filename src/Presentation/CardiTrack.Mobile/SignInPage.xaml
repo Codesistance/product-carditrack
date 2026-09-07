@@ -67,20 +67,15 @@
                     </Border>
 
                     <!-- Remember me + Forgot password row -->
-                    <Grid ColumnDefinitions="Auto,Auto,*"
+                    <Grid ColumnDefinitions="*,Auto"
                           Margin="0,8,0,0">
-                        <CheckBox Grid.Column="0"
-                                  x:Name="RememberCheck"
-                                  Color="{StaticResource Primary}"
-                                  WidthRequest="20" HeightRequest="20"
-                                  VerticalOptions="Center"/>
+                        <controls:CheckField Grid.Column="0"
+                                             x:Name="RememberCheck"
+                                             Text="Remember me"
+                                             TextColor="{StaticResource BodyText}"
+                                             HorizontalOptions="Start"
+                                             VerticalOptions="Center"/>
                         <Label Grid.Column="1"
-                               Text="Remember me"
-                               Style="{StaticResource Body2Medium}"
-                               TextColor="{StaticResource BodyText}"
-                               VerticalTextAlignment="Center"
-                               Margin="4,0,0,0"/>
-                        <Label Grid.Column="2"
                                Text="Forgot password"
                                Style="{StaticResource PrimaryLink}"
                                HorizontalOptions="End"

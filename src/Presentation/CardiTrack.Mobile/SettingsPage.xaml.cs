@@ -118,9 +118,6 @@ public partial class SettingsPage : ContentPage
         DeleteAccountBtn.Opacity = e.Value ? 1 : 0.5;
     }
 
-    private void OnDeleteConfirmLabelTapped(object? sender, TappedEventArgs e) =>
-        DeleteConfirmCheck.IsChecked = !DeleteConfirmCheck.IsChecked;
-
     private async void OnDeleteAccountClicked(object? sender, EventArgs e)
     {
         if (!DeleteConfirmCheck.IsChecked)

@@ -135,27 +135,15 @@
                         <VerticalStackLayout Spacing="6">
                             <Label Text="What to include" Style="{StaticResource Heading3}" FontSize="16"/>
 
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <CheckBox x:Name="MetricsCheck" Grid.Column="0" IsChecked="True"
-                                          Color="{StaticResource Primary}"
-                                          CheckedChanged="OnSelectionChanged"/>
-                                <Label Grid.Column="1" Text="Activity, heart rate and sleep"
-                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <CheckBox x:Name="AlertsCheck" Grid.Column="0" IsChecked="True"
-                                          Color="{StaticResource Primary}"
-                                          CheckedChanged="OnSelectionChanged"/>
-                                <Label Grid.Column="1" Text="Alerts and events"
-                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
-                            </Grid>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <CheckBox x:Name="DevicesCheck" Grid.Column="0"
-                                          Color="{StaticResource Primary}"
-                                          CheckedChanged="OnSelectionChanged"/>
-                                <Label Grid.Column="1" Text="Which devices the readings came from"
-                                       Style="{StaticResource Body2Dark}" VerticalTextAlignment="Center"/>
-                            </Grid>
+                            <controls:CheckField x:Name="MetricsCheck" IsChecked="True"
+                                                 Text="Activity, heart rate and sleep"
+                                                 CheckedChanged="OnSelectionChanged"/>
+                            <controls:CheckField x:Name="AlertsCheck" IsChecked="True"
+                                                 Text="Alerts and events"
+                                                 CheckedChanged="OnSelectionChanged"/>
+                            <controls:CheckField x:Name="DevicesCheck"
+                                                 Text="Which devices the readings came from"
+                                                 CheckedChanged="OnSelectionChanged"/>
                         </VerticalStackLayout>
                     </Border>
 
