@@ -1,13 +1,17 @@
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// The routing decision's pure half: label parsing against the catalogue, the ladder's neighbour
-/// relation, and when clarify fires. These are the rules §5 of the design states in prose; a
-/// router whose model calls are mocked out is exactly these rules.
+/// relation, when clarify fires, and the closed reading/topic labels the zero-model rungs
+/// consume. These are the rules §5 of the design states in prose; a router whose model calls
+/// are mocked out is exactly these rules.
 /// </summary>
 public class ChatRouteDecisionTests
 {
@@ -144,7 +148,61 @@ public class ChatRouteDecisionTests
         Assert.DoesNotContain("Baseline", prompt);
         Assert.DoesNotContain("UnresolvedAlerts", prompt);
         Assert.DoesNotContain("clarify", prompt);
+
+        foreach (var label in ChatRouteDecision.MetricLabels)
+            Assert.Contains(label, prompt);
+        foreach (var label in ChatRouteDecision.AdviseTopicLabels)
+            Assert.Contains(label, prompt);
+        Assert.Contains("namedMetric", prompt);
+        Assert.Contains("asksForSpecifics", prompt);
     }
+
+    [Theory]
+    [InlineData("steps", StatusMetric.Steps)]
+    [InlineData("restingHeartRate", StatusMetric.RestingHeartRate)]
+    [InlineData("HRV", StatusMetric.HeartRateVariability)]
+    [InlineData("oxygen", StatusMetric.Oxygen)]
+    [InlineData("breathing", StatusMetric.BreathingRate)]
+    [InlineData("sleep", StatusMetric.Sleep)]
+    [InlineData("  Steps  ", StatusMetric.Steps)]
+    public void ParseMetric_MapsClosedLabels(string label, StatusMetric expected) =>
+        Assert.Equal(expected, ChatRouteDecision.ParseMetric(label));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("all")]
+    [InlineData("moved")]
+    [InlineData("heart")]
+    [InlineData("2")]
+    public void ParseMetric_DropsUnknownAndAll(string? label) =>
+        Assert.Null(ChatRouteDecision.ParseMetric(label));
+
+    [Theory]
+    [InlineData("all", true)]
+    [InlineData("ALL", true)]
+    [InlineData("steps", false)]
+    [InlineData("moved", false)]
+    [InlineData(null, false)]
+    public void ParseAllReadings_IsOnlyTheAllLabel(string? label, bool expected) =>
+        Assert.Equal(expected, ChatRouteDecision.ParseAllReadings(label));
+
+    [Theory]
+    [InlineData("activity", AdviseTopic.Activity)]
+    [InlineData("sleep", AdviseTopic.Sleep)]
+    [InlineData("heart", AdviseTopic.HeartRate)]
+    [InlineData("HEART", AdviseTopic.HeartRate)]
+    public void ParseAdviseTopic_MapsClosedLabels(string label, AdviseTopic expected) =>
+        Assert.Equal(expected, ChatRouteDecision.ParseAdviseTopic(label));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("general")]
+    [InlineData("steps")]
+    [InlineData("exercise")]
+    public void ParseAdviseTopic_DropsUnknownAndGeneral(string? label) =>
+        Assert.Null(ChatRouteDecision.ParseAdviseTopic(label));
 
     [Fact]
     public void RoutingPrompt_IncludesHistoryOnlyWhenThereIsAny()
@@ -154,5 +212,58 @@ public class ChatRouteDecisionTests
 
         Assert.DoesNotContain("follow-up", bare);
         Assert.Contains("how did he sleep?", followed);
+    }
+
+    [Fact]
+    public async Task RouteAsync_MapsClosedMetricAndTopicFields()
+    {
+        var result = await RouteMapped("steps", "activity", asksForSpecifics: true);
+
+        Assert.Equal(MemberChatWorkflow.Status, result.Primary);
+        Assert.Equal(StatusMetric.Steps, result.NamedMetric);
+        Assert.False(result.AllReadings);
+        Assert.Equal(AdviseTopic.Activity, result.AdviseTopic);
+        Assert.True(result.AsksForSpecifics);
+    }
+
+    [Fact]
+    public async Task RouteAsync_AllLabel_IsReadingsNotAMetric()
+    {
+        var result = await RouteMapped("all", adviseTopic: null, asksForSpecifics: false);
+
+        Assert.Null(result.NamedMetric);
+        Assert.True(result.AllReadings);
+        Assert.Null(result.AdviseTopic);
+        Assert.False(result.AsksForSpecifics);
+    }
+
+    [Fact]
+    public async Task RouteAsync_UnknownMetricAndGeneralTopic_Drop()
+    {
+        var result = await RouteMapped("moved", "general", asksForSpecifics: false);
+
+        Assert.Null(result.NamedMetric);
+        Assert.False(result.AllReadings);
+        Assert.Null(result.AdviseTopic);
+    }
+
+    private static async Task<ChatRouteDecision> RouteMapped(
+        string? namedMetric, string? adviseTopic, bool asksForSpecifics)
+    {
+        var rewrite = Substitute.For<IRewriteAiService>();
+        rewrite.GenerateStructuredWithUsageAsync<ChatRouterService.ChatRouteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<ChatRouterService.ChatRouteAiResponse>(
+                new ChatRouterService.ChatRouteAiResponse
+                {
+                    Workflow = "status",
+                    NamedMetric = namedMetric,
+                    AdviseTopic = adviseTopic,
+                    AsksForSpecifics = asksForSpecifics,
+                },
+                new AiUsage { ModelName = "test-router" }));
+
+        var generated = await new ChatRouterService(rewrite).RouteAsync("has he moved much?");
+        return generated.Result;
     }
 }

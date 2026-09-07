@@ -209,19 +209,75 @@ public static partial class ChatDataRegistry
         });
 
     /// <summary>
-    /// The words a verdict uses when it is about the band's metric — <see cref="StatusQuestion"/>'s
-    /// lists, so the citation filter and the status rung cannot disagree about what counts as
-    /// naming a reading. Deliberately loose within whole words: the clinical read writes
-    /// "resting HR", "heart rate" and "bpm" for the same thing, and a verdict that names the
-    /// reading in any of its spellings has named it.
+    /// Whether generated prose — a clinical verdict, or the stored status-line caption — names
+    /// this reading. Whole words in the model's own register ("resting HR", "bpm", "steps"), not
+    /// caregiver vernacular: that judgement is the router's. The citation filter and the status
+    /// caption-append share this so they cannot disagree about what counts as naming the heart.
+    /// </summary>
+    public static bool Mentions(StatusMetric metric, string prose) =>
+        !string.IsNullOrWhiteSpace(prose) && WordsFor(metric).IsMatch(prose);
+
+    /// <summary>
+    /// The first reading the prose names, walking <see cref="StatusMetric"/> in declaration
+    /// order so "heart rate variability" is not a heart-rate caption. Null when it names none.
+    /// Used to decide whether a stored caption is about the same reading a status reply just
+    /// stated — classifying our own generated line, not the caregiver's question.
+    /// </summary>
+    public static StatusMetric? PrimaryMetricNamed(string prose)
+    {
+        if (string.IsNullOrWhiteSpace(prose))
+            return null;
+
+        foreach (var metric in Enum.GetValues<StatusMetric>())
+        {
+            if (Mentions(metric, prose))
+                return metric;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The words a generated line uses when it is about a reading. Deliberately loose within
+    /// whole words: the clinical read writes "resting HR", "heart rate" and "bpm" for the same
+    /// thing, and a verdict that names the reading in any of its spellings has named it.
     /// </summary>
     private static Regex MetricWords(ChartMetricKind metric) => metric switch
     {
-        ChartMetricKind.RestingHeartRate => StatusQuestion.WordsFor(StatusMetric.RestingHeartRate),
-        ChartMetricKind.Sleep => StatusQuestion.WordsFor(StatusMetric.Sleep),
-        ChartMetricKind.OvernightBreathingRate => StatusQuestion.WordsFor(StatusMetric.BreathingRate),
+        ChartMetricKind.RestingHeartRate => WordsFor(StatusMetric.RestingHeartRate),
+        ChartMetricKind.Sleep => WordsFor(StatusMetric.Sleep),
+        ChartMetricKind.OvernightBreathingRate => WordsFor(StatusMetric.BreathingRate),
         _ => NothingMatches(),
     };
+
+    private static Regex WordsFor(StatusMetric metric) => metric switch
+    {
+        StatusMetric.HeartRateVariability => HrvWords(),
+        StatusMetric.RestingHeartRate => HeartRateWords(),
+        StatusMetric.Oxygen => OxygenWords(),
+        StatusMetric.BreathingRate => BreathingWords(),
+        StatusMetric.Sleep => SleepWords(),
+        StatusMetric.Steps => StepsWords(),
+        _ => NothingMatches(),
+    };
+
+    [GeneratedRegex(@"\b(?:hrv|heart rate variability|variability)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex HrvWords();
+
+    [GeneratedRegex(@"\b(?:heart rate(?! variability)|heart(?! rate)|pulse|bpm|resting hr|hr)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex HeartRateWords();
+
+    [GeneratedRegex(@"\b(?:oxygen|spo2|o2|saturation)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex OxygenWords();
+
+    [GeneratedRegex(@"\b(?:breath\w*|respirat\w*)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex BreathingWords();
+
+    [GeneratedRegex(@"\b(?:sleep\w*|slept|asleep|nights?)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SleepWords();
+
+    [GeneratedRegex(@"\b(?:steps?|walk\w*|activity|active|moving|movement)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex StepsWords();
 
     /// <summary>A band for a metric this map does not know quotes nothing — the same direction
     /// every other drop here takes.</summary>

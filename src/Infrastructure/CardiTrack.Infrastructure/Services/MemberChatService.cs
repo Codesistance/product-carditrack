@@ -575,7 +575,7 @@ public class MemberChatService : IMemberChatService
                 { IsAboutThisMoment: true } =>
                     await AnswerLiveStatusAsync(triage.Usage, cardiMemberId, member?.Name, utcNow, ct),
                 { IsAskingForAdvice: true } =>
-                    await AnswerAdviseAsync(flattened, triage.Usage, cardiMemberId, member, utcNow),
+                    await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
                     await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, ct),
                 _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
@@ -864,7 +864,7 @@ public class MemberChatService : IMemberChatService
             route.Primary == MemberChatWorkflow.Advise || route.RunnerUp == MemberChatWorkflow.Advise;
         var advise = route.NeedsClarify && adviseIsACandidate
                      && (route.PitsAdviseAgainstASteer || !history.LastAssistantWasClarify)
-            ? await PickAdviseAsync(flattened, cardiMemberId, member, utcNow)
+            ? await PickAdviseAsync(route.AdviseTopic, cardiMemberId, member, utcNow)
             : null;
 
         if (route.NeedsClarify && route.PitsAdviseAgainstASteer)
@@ -914,13 +914,13 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.Status when aboutThisMoment =>
                 await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
-                await AnswerStatusLineAsync(flattened, triageUsage, cardiMemberId, member, utcNow, ct),
+                await AnswerStatusLineAsync(route, triageUsage, cardiMemberId, member, utcNow, ct),
             // The row already read above when advise was a clarify candidate; a direct route to
             // advise reads it here instead — once, either way.
             MemberChatWorkflow.Advise =>
                 AdviseResult(
-                    flattened, triageUsage, member,
-                    advise ?? await PickAdviseAsync(flattened, cardiMemberId, member, utcNow), utcNow),
+                    route.AsksForSpecifics, triageUsage, member,
+                    advise ?? await PickAdviseAsync(route.AdviseTopic, cardiMemberId, member, utcNow), utcNow),
             MemberChatWorkflow.SteerCasual =>
                 await SteerAsync(flattened, triageUsage, casual: true, member?.Name, ct),
             MemberChatWorkflow.SteerOffTopic =>
@@ -977,16 +977,16 @@ public class MemberChatService : IMemberChatService
     /// The stored suggestion this question would be served, or null when there is none to serve.
     /// </summary>
     /// <remarks>
-    /// Topic-scoped: the question's own words pick which suggestion answers it — the sleep question
+    /// Topic-scoped: the routing call names which suggestion answers it — the sleep question
     /// gets the sleep row — through the same picker the details card and the dashboard indicator
     /// read, so the three surfaces cannot disagree. <c>AdvisePicker.Pick</c> filters to servable
     /// rows itself, so a non-null result is already one this rung may show.
     /// </remarks>
     private async Task<MemberAdvise?> PickAdviseAsync(
-        string flattened, Guid cardiMemberId, CardiMember? member, DateTime utcNow) =>
+        AdviseTopic? topic, Guid cardiMemberId, CardiMember? member, DateTime utcNow) =>
         member is not null && member.IsActive && !member.IsMonitoringPaused(utcNow)
             ? AdvisePicker.Pick(
-                flattened, await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), utcNow)
+                topic, await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), utcNow)
             : null;
 
     /// <summary>
@@ -1211,15 +1211,16 @@ public class MemberChatService : IMemberChatService
     /// branch; <see cref="MemberChatReplies.StatusLineReply"/> puts them after the line.
     /// </para>
     /// <para>
-    /// Which of the three shapes answers is the question's own words, in code — §5's source
-    /// rule, "a named metric computes that value; none serves the stored line", built at last
-    /// after "how is his heart rate" was answered with the steps caption (dev, 2026-09-07). The
-    /// choice is <see cref="MemberChatReplies.StatusReply"/>'s; this fetches the two inputs it
-    /// needs, both of which it was already fetching.
+    /// Which of the three shapes answers is the routing call's classification — §5's source
+    /// rule, "a named metric computes that value; none serves the stored line", which a keyword
+    /// list on the question could not keep: "has he moved much?" reprinted the daily caption
+    /// because "moved" was not on the steps list. The choice is <see cref="MemberChatReplies.StatusReply"/>'s
+    /// given what the router named; this fetches the two inputs it needs, both of which it was
+    /// already fetching.
     /// </para>
     /// </remarks>
     private async Task<MemberChatWorkflowResult> AnswerStatusLineAsync(
-        string flattened,
+        ChatRouteDecision route,
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
@@ -1231,7 +1232,8 @@ public class MemberChatService : IMemberChatService
         var recent = await ReadStatusActivityAsync(cardiMemberId, utcNow, ct);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
-        var reply = MemberChatReplies.StatusReply(name, flattened, line, recent, today);
+        var reply = MemberChatReplies.StatusReply(
+            name, route.NamedMetric, route.AllReadings, line, recent, today);
 
         return new MemberChatWorkflowResult
         {
@@ -1371,14 +1373,13 @@ public class MemberChatService : IMemberChatService
     /// </para>
     /// </remarks>
     private async Task<MemberChatWorkflowResult> AnswerAdviseAsync(
-        string flattened,
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
         DateTime utcNow) =>
         AdviseResult(
-            flattened, triageUsage, member,
-            await PickAdviseAsync(flattened, cardiMemberId, member, utcNow), utcNow);
+            asksForSpecifics: false, triageUsage, member,
+            await PickAdviseAsync(topic: null, cardiMemberId, member, utcNow), utcNow);
 
     /// <summary>
     /// The advise turn from a row already in hand — split from <see cref="AnswerAdviseAsync"/> so
@@ -1386,7 +1387,7 @@ public class MemberChatService : IMemberChatService
     /// can serve what it looked up rather than reading it twice.
     /// </summary>
     private static MemberChatWorkflowResult AdviseResult(
-        string flattened,
+        bool asksForSpecifics,
         AiUsage triageUsage,
         CardiMember? member,
         MemberAdvise? advise,
@@ -1394,7 +1395,7 @@ public class MemberChatService : IMemberChatService
     {
         Workflow = MemberChatWorkflow.Advise,
         Reply = CapReply(MemberChatReplies.AdviseReply(
-            NamePlaceholder.FirstName(member?.Name), advise, utcNow, flattened)),
+            NamePlaceholder.FirstName(member?.Name), advise, utcNow, asksForSpecifics)),
         Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
     };
 

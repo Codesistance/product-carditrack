@@ -5,9 +5,9 @@ using CardiTrack.Domain.Enums;
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// The selection policy every advise reader shares: the question's named topic first, then the
-/// general row, then the most recent — servable rows only at every step, so no fallback ever
-/// serves what the details card would withhold.
+/// The selection policy every advise reader shares: the named topic first, then the general
+/// row, then the most recent — servable rows only at every step, so no fallback ever serves
+/// what the details card would withhold. The topic is the routing call's, not a keyword list.
 /// </summary>
 public class AdvisePickerTests
 {
@@ -21,35 +21,13 @@ public class AdvisePickerTests
         GeneratedAtUtc = DateTime.UtcNow.AddHours(-ageHours),
     };
 
-    [Theory]
-    [InlineData("does he need help with his sleep?", AdviseTopic.Sleep)]
-    [InlineData("how do we get her sleeping better", AdviseTopic.Sleep)]
-    [InlineData("what can I do about how little he's walking?", AdviseTopic.Activity)]
-    [InlineData("should she be more active?", AdviseTopic.Activity)]
-    [InlineData("anything to help his heart rate?", AdviseTopic.HeartRate)]
-    // The Copilot-caught misroute: "resting" contains the substring "rest", and with sleep
-    // checked first this question served the sleep suggestion. Heart words win, whole words only.
-    [InlineData("should I worry about his resting heart rate?", AdviseTopic.HeartRate)]
-    [InlineData("is he getting enough rest?", AdviseTopic.Sleep)]
-    [InlineData("I'm interested in whether he moves enough", AdviseTopic.Activity)]
-    public void TopicOf_ReadsTheQuestionsOwnWords(string question, AdviseTopic expected) =>
-        Assert.Equal(expected, AdvisePicker.TopicOf(question));
-
-    [Theory]
-    [InlineData("should I be worried about him?")]
-    [InlineData("what could we try?")]
-    // "interested" and "restless" carry the letters of "rest"; whole-word matching must not bite.
-    [InlineData("she's interested in how he's doing")]
-    public void TopicOf_NamesNothing_WhenTheQuestionNamesNothing(string question) =>
-        Assert.Null(AdvisePicker.TopicOf(question));
-
     [Fact]
     public void Pick_ServesTheNamedTopicsRow()
     {
         var sleep = Row(AdviseTopic.Sleep);
         var rows = new[] { Row(AdviseTopic.Activity), sleep, Row(AdviseTopic.General) };
 
-        Assert.Same(sleep, AdvisePicker.Pick("does he need help with his sleep?", rows, DateTime.UtcNow));
+        Assert.Same(sleep, AdvisePicker.Pick(AdviseTopic.Sleep, rows, DateTime.UtcNow));
     }
 
     [Fact]
@@ -58,7 +36,7 @@ public class AdvisePickerTests
         var general = Row(AdviseTopic.General);
         var rows = new[] { Row(AdviseTopic.Activity), general };
 
-        Assert.Same(general, AdvisePicker.Pick("does he need help with his sleep?", rows, DateTime.UtcNow));
+        Assert.Same(general, AdvisePicker.Pick(AdviseTopic.Sleep, rows, DateTime.UtcNow));
     }
 
     [Fact]
@@ -67,7 +45,7 @@ public class AdvisePickerTests
         var newer = Row(AdviseTopic.Activity, ageHours: 2);
         var rows = new[] { Row(AdviseTopic.HeartRate, ageHours: 20), newer };
 
-        Assert.Same(newer, AdvisePicker.Pick("does he need help with his sleep?", rows, DateTime.UtcNow));
+        Assert.Same(newer, AdvisePicker.Pick(AdviseTopic.Sleep, rows, DateTime.UtcNow));
     }
 
     /// <summary>An exact topic match that is not servable never wins over a servable fallback —
@@ -78,7 +56,7 @@ public class AdvisePickerTests
         var staleSleep = Row(AdviseTopic.Sleep, ageHours: 24 * 30);
         var general = Row(AdviseTopic.General);
 
-        var picked = AdvisePicker.Pick("does he need help with his sleep?", [staleSleep, general], DateTime.UtcNow);
+        var picked = AdvisePicker.Pick(AdviseTopic.Sleep, [staleSleep, general], DateTime.UtcNow);
 
         Assert.Same(general, picked);
     }
@@ -88,8 +66,19 @@ public class AdvisePickerTests
     {
         var rows = new[] { Row(AdviseTopic.Sleep, cited: null), Row(AdviseTopic.General, ageHours: 24 * 30) };
 
-        Assert.Null(AdvisePicker.Pick("anything to help?", rows, DateTime.UtcNow));
+        Assert.Null(AdvisePicker.Pick(null, rows, DateTime.UtcNow));
         Assert.Null(AdvisePicker.PickDefault(rows, DateTime.UtcNow));
+    }
+
+    /// <summary>A question the router did not pin to a topic still gets a suggestion — the
+    /// same fallback a details-card reader with no question uses.</summary>
+    [Fact]
+    public void Pick_WithNoTopic_UsesTheDefaultFallback()
+    {
+        var general = Row(AdviseTopic.General);
+        var sleep = Row(AdviseTopic.Sleep, ageHours: 1);
+
+        Assert.Same(general, AdvisePicker.Pick(null, [sleep, general], DateTime.UtcNow));
     }
 
     [Fact]
@@ -101,23 +90,4 @@ public class AdvisePickerTests
         Assert.Same(general, AdvisePicker.PickDefault([newerSleep, general], DateTime.UtcNow));
         Assert.Same(newerSleep, AdvisePicker.PickDefault([newerSleep, Row(AdviseTopic.HeartRate, ageHours: 9)], DateTime.UtcNow));
     }
-
-    /// <summary>
-    /// Whole words, like the topic matchers: "which" inside "sandwich" is not a caregiver asking
-    /// which, and a question that names its topic plainly is one the standing row answers.
-    /// </summary>
-    [Theory]
-    [InlineData("should I make him a sandwich before bed?")]
-    [InlineData("does he need help with his sleep?")]
-    [InlineData("what can I do about how little she's walking?")]
-    public void AQuestionThatIsNotAskingForSpecifics(string question) =>
-        Assert.False(AdvisePicker.AsksForSpecifics(question));
-
-    [Theory]
-    [InlineData("what kind of exercises can he do")]
-    [InlineData("Which exercises are best for him?")]
-    [InlineData("how long should his walks be?")]
-    [InlineData("how often should he get up?")]
-    public void AQuestionAskingWhichOrHowMuch(string question) =>
-        Assert.True(AdvisePicker.AsksForSpecifics(question));
 }

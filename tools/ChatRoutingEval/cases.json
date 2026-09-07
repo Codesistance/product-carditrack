@@ -56,7 +56,8 @@
       ],
       "special": null,
       "note": null,
-      "guards": "A period, however recent, is not this instant"
+      "guards": "A period, however recent, is not this instant",
+      "namedMetric": "sleep"
     },
     {
       "id": "c06",
@@ -67,7 +68,8 @@
       ],
       "special": null,
       "note": null,
-      "guards": "Single value, no baseline"
+      "guards": "Single value, no baseline",
+      "namedMetric": "steps"
     },
     {
       "id": "c07",
@@ -111,7 +113,8 @@
       ],
       "special": null,
       "note": null,
-      "guards": "Reached the planner and returned a readback of the week"
+      "guards": "Reached the planner and returned a readback of the week",
+      "adviseTopic": "sleep"
     },
     {
       "id": "c11",
@@ -122,7 +125,8 @@
       ],
       "special": null,
       "note": null,
-      "guards": "Recommending an action"
+      "guards": "Recommending an action",
+      "adviseTopic": "activity"
     },
     {
       "id": "c12",
@@ -506,7 +510,9 @@
       ],
       "special": null,
       "note": null,
-      "guards": "A frequency question the stored row is unlikely to address."
+      "guards": "A frequency question the stored row is unlikely to address.",
+      "adviseTopic": "activity",
+      "asksForSpecifics": true
     },
     {
       "id": "c47",
@@ -553,6 +559,19 @@
       "special": null,
       "note": null,
       "guards": "Genuinely about this instant — the liveness reply is the correct answer here, and must keep working once 'today' stops reaching it."
+    },
+    {
+      "id": "c51",
+      "question": "has he moved much?",
+      "context": "How are they doing today?",
+      "accepted": [
+        "status",
+        "analysis"
+      ],
+      "special": null,
+      "note": "Observed 2026-09-07 — status reprinted the daily caption plus every reading because 'moved' was not on the steps word list",
+      "guards": "Movement is steps. A follow-up after a day question must not reprint the caption dump.",
+      "namedMetric": "steps"
     }
   ]
 }

@@ -117,41 +117,42 @@ public static partial class MemberChatReplies
     }
 
     /// <summary>
-    /// The status rung's answer, chosen from the question's own words: the reading it names, the
-    /// full list if it asked for the readings, else the dashboard's line.
+    /// The status rung's answer, chosen from the routing call's classification: the reading it
+    /// named, the full list if they asked for the readings, else the dashboard's line.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// §5 gives this rung a deterministic source rule — a named metric computes that value, no
-    /// metric serves the stored line — and until now only the second half existed. "How is his
-    /// heart rate" was answered "Steps are lower today than yesterday." (dev, 2026-09-07): the
-    /// caption is a sentence about whichever reading the batch found most worth a sentence, and
-    /// a question naming a different reading was answered about the wrong one, truthfully.
+    /// §5 gives this rung a source rule — a named metric computes that value, no metric serves
+    /// the stored line — which used to be a keyword list on the question. That list could not
+    /// see "has he moved much?" as steps, and reprinted the daily caption. The router now names
+    /// the reading; this still writes the sentence, because a model assembling the figures is
+    /// the liveness-lie failure this rung exists to prevent.
     /// </para>
     /// <para>
-    /// A named reading leads, dated, with the previous day's value beside it — the comparison
-    /// the caregiver is asking for when they ask "how is" a number. The caption follows only
-    /// when it is about something else: a caption about the reading just stated is the same
-    /// fact twice, and one about a different reading is the rest of the picture. A request for
-    /// the readings themselves gets the readings, not the caption that summarises them.
+    /// A named reading leads, dated, with the previous day's value beside it. The caption
+    /// follows only when it is about something else: a caption about the reading just stated is
+    /// the same fact twice, and one about a different reading is the rest of the picture. A
+    /// request for the readings themselves gets the readings, not the caption that summarises
+    /// them.
     /// </para>
     /// </remarks>
     public static string StatusReply(
         string? firstName,
-        string question,
+        StatusMetric? namedMetric,
+        bool allReadings,
         MemberStatusLine? line,
         IReadOnlyList<ActivityLog> recent,
         DateOnly today)
     {
-        if (StatusQuestion.MetricNamed(question) is { } metric)
+        if (namedMetric is { } metric)
         {
             var reply = MetricReadingReply(firstName, metric, recent, today);
-            return line is not null && StatusQuestion.MetricNamed(line.Message) != metric
+            return line is not null && ChatDataRegistry.PrimaryMetricNamed(line.Message) != metric
                 ? $"{reply} On the whole: {CaptionLead(line)}"
                 : reply;
         }
 
-        if (StatusQuestion.AsksForAllReadings(question) || line is null)
+        if (allReadings || line is null)
             return LatestReadingsReply(firstName, recent, today);
 
         return StatusLineReply(firstName, line, recent, today);
@@ -556,7 +557,7 @@ public static partial class MemberChatReplies
     /// </para>
     /// </remarks>
     public static string AdviseReply(
-        string? firstName, MemberAdvise? advise, DateTime utcNow, string? question = null)
+        string? firstName, MemberAdvise? advise, DateTime utcNow, bool asksForSpecifics = false)
     {
         // "them" rather than an invented relationship word, for the reason LiveStatusReply's
         // subject line gives at length.
@@ -576,8 +577,9 @@ public static partial class MemberChatReplies
         // WHICH; they were answered DO MORE, with nothing to tell them the two were different
         // questions. The row stays as it is: advise is never generated per question, and that is
         // what earns it the only suggestion licence on this platform. What was missing was
-        // honesty about fit.
-        if (question is not null && AdvisePicker.AsksForSpecifics(question))
+        // honesty about fit. Whether the question is one of those shapes is the router's
+        // classification, not a keyword list on the question text.
+        if (asksForSpecifics)
         {
             reply += $" That's the standing suggestion for {subject} rather than an answer to "
                 + "exactly what you asked — for what specifically would suit them, their doctor "

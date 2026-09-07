@@ -6,17 +6,19 @@ using CardiTrack.Application.Services;
 namespace CardiTrack.Infrastructure.Services;
 
 /// <summary>
-/// The lean routing call — one structured generation on the Rewrite slot whose entire vocabulary
-/// is the catalogue's rendered purpose lines. Everything else about the design is scaffolding
-/// around those lines (see <c>docs/technical/member_chat_routing.md</c> §4); they are rendered
-/// from <see cref="ChatWorkflowCatalogue.Routable"/> at call time, so an entry becoming
-/// implemented starts rendering here without this file changing.
+/// The lean routing call — one structured generation on the Rewrite slot whose vocabulary is the
+/// catalogue's rendered purpose lines plus the closed reading/topic labels the zero-model rungs
+/// need. Everything else about the design is scaffolding around those lines (see
+/// <c>docs/technical/member_chat_routing.md</c> §4); the purpose lines are rendered from
+/// <see cref="ChatWorkflowCatalogue.Routable"/> at call time, so an entry becoming implemented
+/// starts rendering here without this file changing.
 /// </summary>
 /// <remarks>
-/// Carries no registry, no member context and no data vocabulary, deliberately: dataset selection
+/// Carries no registry, no member context and no dataset names, deliberately: dataset selection
 /// needs to know which workflow is running to be any good, and at routing time that is precisely
-/// what is not yet known. The prompt is the purpose lines, the ladder's tie-break, the question,
-/// and the caregiver's prior questions when there are any.
+/// what is not yet known. The prompt is the purpose lines, the ladder's tie-break, the closed
+/// reading and advise-topic labels, the question, and the caregiver's prior questions when there
+/// are any. Naming a reading is classifying what was asked, not choosing what to fetch.
 /// </remarks>
 public class ChatRouterService : IChatRouter
 {
@@ -30,10 +32,15 @@ public class ChatRouterService : IChatRouter
         var result = await _rewriteAi.GenerateStructuredWithUsageAsync<ChatRouteAiResponse>(
             BuildPrompt(question, questionsOnlyHistory), ct);
 
+        var named = result.Result.NamedMetric;
         var decision = new ChatRouteDecision
         {
             Primary = ChatRouteDecision.ParseLabel(result.Result.Workflow),
             RunnerUp = ChatRouteDecision.ParseLabel(result.Result.RunnerUp),
+            NamedMetric = ChatRouteDecision.ParseMetric(named),
+            AllReadings = ChatRouteDecision.ParseAllReadings(named),
+            AdviseTopic = ChatRouteDecision.ParseAdviseTopic(result.Result.AdviseTopic),
+            AsksForSpecifics = result.Result.AsksForSpecifics,
         };
 
         return new AiGenerationResult<ChatRouteDecision>(decision, result.Usage);
@@ -43,6 +50,8 @@ public class ChatRouterService : IChatRouter
     {
         var entries = string.Join("\n", ChatWorkflowCatalogue.Routable
             .Select(w => $"- {w.Label}: {w.Purpose}"));
+        var metrics = string.Join(", ", ChatRouteDecision.MetricLabels);
+        var topics = string.Join(", ", ChatRouteDecision.AdviseTopicLabels);
 
         var historySection = questionsOnlyHistory is null
             ? string.Empty
@@ -77,6 +86,15 @@ public class ChatRouterService : IChatRouter
             Respond with:
             - workflow: the one way of answering, exactly as named above.
             - runnerUp: a second way that also genuinely fits, exactly as named above, or omit it.
+            - namedMetric: the wearable reading the question is about, exactly one of: {metrics}.
+              "moved", "walking", "up and about" and "active" are steps. Use all when they asked
+              for the readings or numbers themselves. Omit when the question is about how the
+              person is in general, or is not about a reading.
+            - adviseTopic: when workflow is advise, the area they named, exactly one of: {topics}.
+              Omit otherwise, and omit when the advice question names no one area.
+            - asksForSpecifics: true when advise is answering which, how much, how often, or
+              whether something is safe — a standing suggestion cannot answer those. Omit or
+              false otherwise.
             """ + MedicalPromptBlocks.ChatMessageGuardrail;
     }
 
@@ -88,5 +106,18 @@ public class ChatRouterService : IChatRouter
         [Description("A second way that also genuinely fits, exactly as named in the list, "
             + "omitted when nothing else fits.")]
         public string? RunnerUp { get; init; }
+
+        [Description("The wearable reading the question is about, exactly one of: steps, "
+            + "restingHeartRate, hrv, oxygen, breathing, sleep, all; omitted when the question "
+            + "is not about a reading.")]
+        public string? NamedMetric { get; init; }
+
+        [Description("When the way of answering is advise, the area named, exactly one of: "
+            + "activity, sleep, heart; omitted otherwise.")]
+        public string? AdviseTopic { get; init; }
+
+        [Description("True when an advise question asks which, how much, how often, or whether "
+            + "something is safe.")]
+        public bool AsksForSpecifics { get; init; }
     }
 }

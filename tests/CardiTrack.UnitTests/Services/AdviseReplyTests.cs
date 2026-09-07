@@ -249,14 +249,10 @@ public class AdviseReplyTests
     /// about fit.
     /// </para>
     /// </summary>
-    [Theory]
-    [InlineData("what kind of exercises can he do")]
-    [InlineData("how much walking is enough?")]
-    [InlineData("how often should he be getting up?")]
-    [InlineData("is it safe for him to walk that far?")]
-    public void ASpecificsQuestion_IsToldTheSuggestionIsAStandingOne(string question)
+    [Fact]
+    public void ASpecificsQuestion_IsToldTheSuggestionIsAStandingOne()
     {
-        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now, question);
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now, asksForSpecifics: true);
 
         Assert.Contains("standing suggestion for Dad", reply, StringComparison.Ordinal);
         Assert.Contains("rather than an answer to exactly what you asked", reply, StringComparison.Ordinal);
@@ -268,13 +264,10 @@ public class AdviseReplyTests
     /// An ordinary advice question is one the standing suggestion genuinely answers, and saying
     /// otherwise would undercut a reply that is doing its job.
     /// </summary>
-    [Theory]
-    [InlineData("does he need help with his sleep?")]
-    [InlineData("should I be worried about his walking?")]
-    [InlineData("what can I do about how little he's walking?")]
-    public void AnOrdinaryAdviceQuestion_IsNotHedged(string question)
+    [Fact]
+    public void AnOrdinaryAdviceQuestion_IsNotHedged()
     {
-        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now, question);
+        var reply = MemberChatReplies.AdviseReply("Dad", Advise(), Now, asksForSpecifics: false);
 
         Assert.DoesNotContain("standing suggestion", reply, StringComparison.Ordinal);
     }
@@ -289,7 +282,7 @@ public class AdviseReplyTests
     {
         var reply = MemberChatReplies.AdviseReply(
             "Dad", Advise(suggestion: "A short walk after lunch is worth trying."), Now,
-            "what kind of exercises can he do");
+            asksForSpecifics: true);
 
         Assert.DoesNotContain("That's just an idea to consider", reply, StringComparison.Ordinal);
         var mentions = reply.Split("doctor", StringSplitOptions.None).Length - 1;

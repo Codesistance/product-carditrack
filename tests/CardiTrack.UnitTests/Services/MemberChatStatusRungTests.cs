@@ -65,11 +65,21 @@ public class MemberChatStatusRungTests
             .Returns((MemberChatSession?)null);
 
         Triage(aboutThisMoment: false);
+        RouteStatus();
+    }
+
+    /// <summary>The status route this turn takes — metric and all-readings come from the
+    /// router, not from sniffing the question.</summary>
+    private void RouteStatus(StatusMetric? metric = null, bool allReadings = false) =>
         _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<ChatRouteDecision>(
-                new ChatRouteDecision { Primary = MemberChatWorkflow.Status },
+                new ChatRouteDecision
+                {
+                    Primary = MemberChatWorkflow.Status,
+                    NamedMetric = metric,
+                    AllReadings = allReadings,
+                },
                 new AiUsage { ModelName = "test-router" }));
-    }
 
     private void Triage(bool aboutThisMoment) =>
         _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(
@@ -113,6 +123,7 @@ public class MemberChatStatusRungTests
     [Fact]
     public async Task AMetricQuestion_LeadsWithThatMetric_NeverTheStepsCaption()
     {
+        RouteStatus(StatusMetric.RestingHeartRate);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         StatusLineIs("Steps are lower today than yesterday.", TimeSpan.FromHours(1));
         ReadingsAre(
@@ -139,6 +150,7 @@ public class MemberChatStatusRungTests
     [Fact]
     public async Task AReadingsQuestion_ListsEveryMetric_NotTheCaption()
     {
+        RouteStatus(allReadings: true);
         StatusLineIs("Steps are lower today than yesterday.", TimeSpan.FromHours(1));
         ReadingsAre(new ActivityLog
         {
@@ -163,6 +175,34 @@ public class MemberChatStatusRungTests
         Assert.DoesNotContain("Steps are lower", reply.Reply, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The screenshot failure: "has he moved much?" after a day question reprinted the caption
+    /// plus every reading, because "moved" was not on the steps word list. The router names
+    /// steps; the handler states that reading, not the dump.
+    /// </summary>
+    [Fact]
+    public async Task AMovementQuestion_LeadsWithSteps_NotTheDailyDump()
+    {
+        RouteStatus(StatusMetric.Steps);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        StatusLineIs("Heart rate and steps are lower than usual today.", TimeSpan.FromHours(1));
+        ReadingsAre(new ActivityLog
+        {
+            Date = today,
+            Steps = 2050,
+            RestingHeartRate = 72,
+            SleepMinutes = 297,
+        });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "has he moved much?");
+
+        Assert.StartsWith(
+            "The most recent step count I have for Moses is 2,050 steps, today so far.",
+            reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("The most recent readings I have", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("sleep the night before", reply.Reply, StringComparison.Ordinal);
+    }
+
     /// <summary>A caption about the reading just stated is the same fact twice, so it is dropped;
     /// one about a different reading is the rest of the picture, so it follows.</summary>
     [Fact]
@@ -172,8 +212,10 @@ public class MemberChatStatusRungTests
         var line = new MemberStatusLine { Message = "Steps are lower today than yesterday." };
         var readings = new[] { new ActivityLog { Date = today, Steps = 1200, RestingHeartRate = 70 } };
 
-        var aboutSteps = MemberChatReplies.StatusReply("Dad", "how are his steps", line, readings, today);
-        var aboutHeart = MemberChatReplies.StatusReply("Dad", "how is his heart rate", line, readings, today);
+        var aboutSteps = MemberChatReplies.StatusReply(
+            "Dad", StatusMetric.Steps, allReadings: false, line, readings, today);
+        var aboutHeart = MemberChatReplies.StatusReply(
+            "Dad", StatusMetric.RestingHeartRate, allReadings: false, line, readings, today);
 
         Assert.DoesNotContain("On the whole", aboutSteps, StringComparison.Ordinal);
         Assert.Contains("On the whole: Steps are lower today than yesterday.", aboutHeart, StringComparison.Ordinal);
@@ -243,26 +285,12 @@ public class MemberChatStatusRungTests
     }
 
     [Theory]
-    [InlineData("how is his heart rate", StatusMetric.RestingHeartRate)]
-    [InlineData("what's his pulse like", StatusMetric.RestingHeartRate)]
-    [InlineData("how is his heart rate variability", StatusMetric.HeartRateVariability)]
-    [InlineData("what's her HRV", StatusMetric.HeartRateVariability)]
-    [InlineData("is his oxygen ok", StatusMetric.Oxygen)]
-    [InlineData("how is his breathing overnight", StatusMetric.BreathingRate)]
-    [InlineData("how did he sleep", StatusMetric.Sleep)]
-    [InlineData("how many steps today", StatusMetric.Steps)]
-    [InlineData("how is dad today", null)]
-    [InlineData("his specific measurements", null)]
-    public void AStatusQuestionNamesAtMostOneReading(string question, StatusMetric? expected) =>
-        Assert.Equal(expected, StatusQuestion.MetricNamed(question));
-
-    [Theory]
-    [InlineData("his specific measurements", true)]
-    [InlineData("her readings", true)]
-    [InlineData("the numbers", true)]
-    [InlineData("how is dad today", false)]
-    public void AReadingsRequestIsRecognised(string question, bool expected) =>
-        Assert.Equal(expected, StatusQuestion.AsksForAllReadings(question));
+    [InlineData("Steps are lower today than yesterday.", StatusMetric.Steps)]
+    [InlineData("Heart rate and steps are lower than usual today.", StatusMetric.RestingHeartRate)]
+    [InlineData("Overnight HRV is down.", StatusMetric.HeartRateVariability)]
+    [InlineData("Settling in for the evening.", null)]
+    public void AGeneratedCaptionNamesAtMostOnePrimaryReading(string caption, StatusMetric? expected) =>
+        Assert.Equal(expected, ChatDataRegistry.PrimaryMetricNamed(caption));
 
     // ── "How are they doing today?" ─────────────────────────────────────────────
 
