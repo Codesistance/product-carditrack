@@ -390,6 +390,22 @@ public class MemberChatRoutedDispatchTests
         // No steer was generated: the turn made no call beyond the triage and the route.
         await _rewriteAi.DidNotReceiveWithAnyArgs()
             .GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(default!, default);
+        // And the row that decided it is the row that was served — read once, not once to
+        // decide and again to answer.
+        await _unitOfWork.MemberAdvises.Received(1).GetAllByCardiMemberAsync(_memberId);
+    }
+
+    /// <summary>A direct route to advise still reads the row exactly once.</summary>
+    [Fact]
+    public async Task ADirectAdviseRoute_ReadsTheRowOnce()
+    {
+        AServableSuggestionExists();
+        RouterAnswers(MemberChatWorkflow.Advise);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "should he walk more?");
+
+        Assert.StartsWith("A short walk after lunch is worth trying.", reply.Reply, StringComparison.Ordinal);
+        await _unitOfWork.MemberAdvises.Received(1).GetAllByCardiMemberAsync(_memberId);
     }
 
     /// <summary>

@@ -854,9 +854,20 @@ public class MemberChatService : IMemberChatService
             ? MemberChatWorkflow.Analysis
             : route.Primary.Value;
 
-        if (route.NeedsClarify
-            && route.PitsAdviseAgainstASteer
-            && await PickAdviseAsync(flattened, cardiMemberId, member, utcNow) is not null)
+        // The one row both clarify rules below turn on, looked up at most once per turn: whether
+        // advise has anything to serve decides the advise-against-steer rule and the dead-branch
+        // rule alike, and the advise handler then serves this same row rather than reading it
+        // again. Read only when advise is actually one of the two candidates and a rule can act
+        // on it — every other pair, and a repeat clarify that is not the steer case, never
+        // touches the table.
+        var adviseIsACandidate =
+            route.Primary == MemberChatWorkflow.Advise || route.RunnerUp == MemberChatWorkflow.Advise;
+        var advise = route.NeedsClarify && adviseIsACandidate
+                     && (route.PitsAdviseAgainstASteer || !history.LastAssistantWasClarify)
+            ? await PickAdviseAsync(flattened, cardiMemberId, member, utcNow)
+            : null;
+
+        if (route.NeedsClarify && route.PitsAdviseAgainstASteer && advise is not null)
         {
             // A steer is a redirect, not an answer, and never beats a servable suggestion:
             // asked "what kind of exercises can he do" with an activity row on file, the app
@@ -868,7 +879,7 @@ public class MemberChatService : IMemberChatService
         }
         else if (route.NeedsClarify && !history.LastAssistantWasClarify)
         {
-            var offerable = await ServableClarifyBranchesAsync(flattened, route, cardiMemberId, member, utcNow);
+            var offerable = ServableClarifyBranches(route, advise);
             switch (offerable.Count)
             {
                 // Both branches can be served — the ambiguity is real and worth one tap.
@@ -900,8 +911,12 @@ public class MemberChatService : IMemberChatService
                 await AnswerLiveStatusAsync(triageUsage, cardiMemberId, member?.Name, utcNow, ct),
             MemberChatWorkflow.Status =>
                 await AnswerStatusLineAsync(triageUsage, cardiMemberId, member, utcNow, ct),
+            // The row already read above when advise was a clarify candidate; a direct route to
+            // advise reads it here instead — once, either way.
             MemberChatWorkflow.Advise =>
-                await AnswerAdviseAsync(flattened, triageUsage, cardiMemberId, member, utcNow),
+                AdviseResult(
+                    flattened, triageUsage, member,
+                    advise ?? await PickAdviseAsync(flattened, cardiMemberId, member, utcNow), utcNow),
             MemberChatWorkflow.SteerCasual =>
                 await SteerAsync(flattened, triageUsage, casual: true, member?.Name, ct),
             MemberChatWorkflow.SteerOffTopic =>
@@ -930,8 +945,9 @@ public class MemberChatService : IMemberChatService
     /// <para>
     /// Only advise can be empty in this sense. The reading rungs always have something to say, even
     /// if it is that the window held no readings, and the steers say something by construction. So
-    /// this costs one indexed lookup, on a path that is meant to be rare, and only when advise is
-    /// one of the two candidates.
+    /// the only fact this needs is whether there is a suggestion to serve — the row the dispatch
+    /// has already looked up, once, for every rule that turns on it — which makes this a pure
+    /// function of the routing answer and that row.
     /// </para>
     /// <para>
     /// Widening <c>steer.offtopic</c>'s purpose line should stop most of these being routed here at
@@ -939,28 +955,18 @@ public class MemberChatService : IMemberChatService
     /// nobody has thought of yet.
     /// </para>
     /// </remarks>
-    private async Task<IReadOnlyList<MemberChatWorkflow>> ServableClarifyBranchesAsync(
-        string flattened,
-        ChatRouteDecision route,
-        Guid cardiMemberId,
-        CardiMember? member,
-        DateTime utcNow)
+    /// <param name="advise">The suggestion advise would serve, or null when there is none — the
+    /// caller's lookup, made only when advise is one of the two candidates.</param>
+    private static IReadOnlyList<MemberChatWorkflow> ServableClarifyBranches(
+        ChatRouteDecision route, MemberAdvise? advise)
     {
         // NeedsClarify is only true when both are present and different, so advise appears at
-        // most once and the lookup below runs at most once.
+        // most once.
         MemberChatWorkflow[] candidates = [route.Primary!.Value, route.RunnerUp!.Value];
 
-        var offerable = new List<MemberChatWorkflow>(candidates.Length);
-        foreach (var candidate in candidates)
-        {
-            if (candidate is not MemberChatWorkflow.Advise
-                || await PickAdviseAsync(flattened, cardiMemberId, member, utcNow) is not null)
-            {
-                offerable.Add(candidate);
-            }
-        }
-
-        return offerable;
+        return candidates
+            .Where(candidate => candidate is not MemberChatWorkflow.Advise || advise is not null)
+            .ToList();
     }
 
     /// <summary>
@@ -1359,18 +1365,28 @@ public class MemberChatService : IMemberChatService
         AiUsage triageUsage,
         Guid cardiMemberId,
         CardiMember? member,
-        DateTime utcNow)
-    {
-        var advise = await PickAdviseAsync(flattened, cardiMemberId, member, utcNow);
+        DateTime utcNow) =>
+        AdviseResult(
+            flattened, triageUsage, member,
+            await PickAdviseAsync(flattened, cardiMemberId, member, utcNow), utcNow);
 
-        return new MemberChatWorkflowResult
-        {
-            Workflow = MemberChatWorkflow.Advise,
-            Reply = CapReply(MemberChatReplies.AdviseReply(
-                NamePlaceholder.FirstName(member?.Name), advise, utcNow, flattened)),
-            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
-        };
-    }
+    /// <summary>
+    /// The advise turn from a row already in hand — split from <see cref="AnswerAdviseAsync"/> so
+    /// the routed dispatch, which has to look the row up to decide whether advise runs at all,
+    /// can serve what it looked up rather than reading it twice.
+    /// </summary>
+    private static MemberChatWorkflowResult AdviseResult(
+        string flattened,
+        AiUsage triageUsage,
+        CardiMember? member,
+        MemberAdvise? advise,
+        DateTime utcNow) => new()
+    {
+        Workflow = MemberChatWorkflow.Advise,
+        Reply = CapReply(MemberChatReplies.AdviseReply(
+            NamePlaceholder.FirstName(member?.Name), advise, utcNow, flattened)),
+        Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+    };
 
     /// <summary>The message and nothing else — see <see cref="SteerAsync"/> for why no history
     /// travels with it.</summary>
