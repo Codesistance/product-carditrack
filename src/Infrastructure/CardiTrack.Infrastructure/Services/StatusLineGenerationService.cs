@@ -1,3 +1,4 @@
+using System.Globalization;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -49,7 +50,8 @@ public class StatusLineGenerationService
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Match the given tier: green settled, yellow a mention,
         orange or red more attentive.
-        Today's steps are a running count, not a day's worth: never call them low or down.
+        Lead with a computed observation when one is present; do not recap every figure.
+        Name today's steps or active minutes only if an observation does.
 
         Respond with:
         - headline: two to five words, sentence case, no full stop, no name
@@ -67,11 +69,11 @@ public class StatusLineGenerationService
     /// where it lived until the batch move.)
     /// </summary>
     /// <remarks>
-    /// Raised from 1,104 by exactly the 13 characters the placeholder grew when it stopped being
-    /// <c>{{NAME}}</c>: one occurrence, and no room bought for anything else. What that spend
-    /// buys is in <see cref="NamePlaceholder.Token"/>.
+    /// Reset to the measured length after the steps-priming prohibition was replaced by the
+    /// lead-with-observation rule. The data sections sit after this budget; they are not paid
+    /// from it.
     /// </remarks>
-    internal const int StatusPromptBudget = 1_117;
+    internal const int StatusPromptBudget = 1_161;
 
     /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
     internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;
@@ -82,21 +84,30 @@ public class StatusLineGenerationService
     /// </summary>
     private const int MaxStatusHeadlineLength = 40;
 
+    /// <summary>
+    /// Same cap <c>MonitoringContextSource</c> uses on an assessment finding. Enough for the
+    /// hour's point, not the whole caregiver message.
+    /// </summary>
+    private const int MaxAssessmentTextLength = 200;
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMedicalAiService _medicalAi;
     private readonly MemberContextComposer _memberContext;
     private readonly ILogger<StatusLineGenerationService> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public StatusLineGenerationService(
         IUnitOfWork unitOfWork,
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
-        ILogger<StatusLineGenerationService> logger)
+        ILogger<StatusLineGenerationService> logger,
+        TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
         _memberContext = memberContext;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>
@@ -112,8 +123,9 @@ public class StatusLineGenerationService
     /// </remarks>
     public async Task RegenerateAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
-        if (member is null || !member.IsActive || member.IsMonitoringPaused(DateTime.UtcNow))
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return;
 
         // The unresolved read every other caller makes: IsActive && !IsResolved, done in SQL and
@@ -124,7 +136,6 @@ public class StatusLineGenerationService
 
         // The member's own civil day, not the host's — the same anchor the digest resolves.
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
-        var utcNow = DateTime.UtcNow;
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
         var today = DateOnly.FromDateTime(localNow);
 
@@ -138,18 +149,21 @@ public class StatusLineGenerationService
                 highestAlert, latestAssessment, latestDigest, utcNow)
             .ToString().ToLowerInvariant();
 
+        // Yesterday and today — the same two local days the family digest and the computed
+        // observations already describe. The 30-day baseline is the yardstick, not extra rows.
         var recentLogs = await _unitOfWork.ActivityLogs
-            .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-2), today);
+            .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-1), today);
 
         var baseline = await _unitOfWork.PatternBaselines
             .GetLatestByCardiMemberAsync(cardiMemberId, PrimaryBaselinePeriodDays);
         var progress = DigestDayProgress.For(localNow, baseline, timeZone);
 
         var memberContext = await _memberContext.ComposeAsync(
-            new MemberContextRequest(member, cardiMemberId, today, DateTime.UtcNow, PromptPurpose.CurrentStatus), ct);
+            new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.CurrentStatus), ct);
 
         var prompt = BuildCurrentStatusPrompt(
-            memberContext, severity, unresolvedAlerts, recentLogs, today, progress);
+            memberContext, severity, unresolvedAlerts, recentLogs, today, progress,
+            baseline, latestAssessment, localNow, utcNow);
         var aiResponse = await _medicalAi.GenerateStructuredAsync<CurrentStatusAiResponse>(prompt, ct);
 
         // Resolved before persisting: the row is what every dashboard view reads until the next
@@ -177,7 +191,7 @@ public class StatusLineGenerationService
         var existing = await _unitOfWork.MemberStatusLines.GetByCardiMemberAsync(cardiMemberId);
         if (existing is not null)
         {
-            Overwrite(existing, headline, message);
+            Overwrite(existing, headline, message, utcNow);
             // The generic repository stages rather than executes — without this the row would be
             // dropped when the scope ends (same note as the questionnaire write in the digest).
             await _unitOfWork.SaveChangesAsync();
@@ -189,7 +203,7 @@ public class StatusLineGenerationService
             CardiMemberId = cardiMemberId,
             Headline = headline,
             Message = message,
-            GeneratedAtUtc = DateTime.UtcNow,
+            GeneratedAtUtc = utcNow,
         };
         await _unitOfWork.MemberStatusLines.AddAsync(fresh);
         try
@@ -208,17 +222,17 @@ public class StatusLineGenerationService
                 ?? throw new InvalidOperationException(
                     $"Insert of the status line for CardiMember {cardiMemberId} failed, but no "
                     + "existing row was found — not the unique-index race this handles.");
-            Overwrite(winner, headline, message);
+            Overwrite(winner, headline, message, utcNow);
             await _unitOfWork.SaveChangesAsync();
         }
     }
 
-    private static void Overwrite(MemberStatusLine line, string? headline, string message)
+    private static void Overwrite(MemberStatusLine line, string? headline, string message, DateTime utcNow)
     {
         line.Headline = headline;
         line.Message = message;
-        line.GeneratedAtUtc = DateTime.UtcNow;
-        line.UpdatedDate = DateTime.UtcNow;
+        line.GeneratedAtUtc = utcNow;
+        line.UpdatedDate = utcNow;
     }
 
     /// <summary>
@@ -239,8 +253,16 @@ public class StatusLineGenerationService
         IReadOnlyCollection<Alert> unresolvedAlerts,
         IEnumerable<ActivityLog> recentLogs,
         DateOnly today,
-        DigestDayProgress progress)
+        DigestDayProgress progress,
+        PatternBaseline? baseline,
+        RealtimeAssessment? latestAssessment,
+        DateTime localNow,
+        DateTime utcNow)
     {
+        var logs = recentLogs.ToList();
+        var todayLog = logs.Find(l => l.Date == today);
+        var yesterdayLog = logs.Find(l => l.Date == today.AddDays(-1));
+
         // Titles only. The type and severity of each alert feed the tier above, alongside a
         // recent yellow-or-worse assessment and today's family digest — see
         // <see cref="StatusDisplayTier"/>. Flattened, as every other renderer that carries an
@@ -257,59 +279,93 @@ public class StatusLineGenerationService
 
             --- Current severity tier ---
             {severity}
+            {DigestInterpretationSignals.Section(baseline, todayLog, yesterdayLog, localNow)}{RecentHourSection(latestAssessment, utcNow)}{UsualPatternLine(baseline)}
+            --- Window readings (yesterday and today) ---
+            {MedicalPromptBlocks.StatusWindowDailyLines(logs, today, progress)}
 
             --- Unresolved alerts ---
             {alertContext}
-
-            --- Recent readings (the most recent days that carried any, oldest first) ---
-            {StatusActivityLines(recentLogs, today, progress)}
             """;
     }
 
     /// <summary>
-    /// The same daily readings <see cref="MedicalPromptBlocks.DailyLines"/> renders, said in about
-    /// a third of the tokens — a different question, not a simplification: this prompt is asked
-    /// for a single sentence about today, where the shape of the last three days is context
-    /// rather than something to be quoted back.
+    /// The established 30-day scalars, as one line. Empty while there is no baseline or the
+    /// baseline holds no averages — a learning member has no yardstick, and naming an empty
+    /// "usual" would invite the model to invent one.
     /// </summary>
-    /// <param name="progress">
-    /// How far into their day the member is. The one place this prompt spends extra words on a
-    /// label, because "(partial)" alone is what let a hero line read "Steps are lower today" at
-    /// 07:14 — the model comparing a just-woken member's running total against yesterday's
-    /// finished one, the only two rows it had. See <see cref="DigestDayProgress"/>.
-    /// </param>
-    private static string StatusActivityLines(
-        IEnumerable<ActivityLog> logs, DateOnly today, DigestDayProgress progress)
+    private static string UsualPatternLine(PatternBaseline? baseline)
     {
-        var lines = logs
-            .TakeLast(3)
-            .Select(l =>
-            {
-                var label = (today.DayNumber - l.Date.DayNumber) switch
-                {
-                    <= 0 => $"Today so far ({progress.Describe()})",
-                    1 => "Yesterday",
-                    var days => $"{days} days ago",
-                };
+        if (baseline is null)
+            return string.Empty;
 
-                // Only what the device reported. Interpolating the nullable straight into the line
-                // rendered "steps=, HR=, sleep(night ending that morning)=min" for a member whose
-                // watch missed a metric — an empty value beside a real one, on the prompt asked for
-                // a single reassuring sentence. The digest's own renderer guards this and its tests
-                // assert on it (DoesNotContain "steps=,"); this line never did.
-                var figures = new List<string>(3);
-                if (l.Steps is { } steps)
-                    figures.Add($"steps={steps}");
-                if (l.RestingHeartRate is { } resting)
-                    figures.Add($"HR={resting}");
-                if (l.SleepMinutes is { } sleep)
-                    figures.Add($"sleep(night ending that morning)={sleep}min");
+        var usuals = new List<string>();
+        if (baseline.AvgSteps is { } steps)
+            usuals.Add(string.Create(CultureInfo.InvariantCulture, $"about {steps:N0} steps a day"));
+        if (baseline.AvgActiveMinutes is { } active)
+            usuals.Add(string.Create(CultureInfo.InvariantCulture, $"about {active:N0} active minutes a day"));
+        if (baseline.AvgRestingHeartRate is { } restingHr)
+            usuals.Add(string.Create(CultureInfo.InvariantCulture, $"a resting heart rate around {restingHr} bpm"));
+        if (baseline.AvgSleepMinutes is { } sleepMinutes)
+            usuals.Add($"about {Hours(sleepMinutes)} hours of sleep a night");
+        if (baseline.AvgHeartRateVariabilityMs is { } hrv)
+        {
+            usuals.Add(string.Create(
+                CultureInfo.InvariantCulture, $"overnight heart rate variability around {hrv:0.#} ms"));
+        }
+        if (baseline.AvgOvernightBreathingRate is { } breathing)
+        {
+            usuals.Add(string.Create(
+                CultureInfo.InvariantCulture, $"breathing around {breathing:0.#} a minute asleep"));
+        }
+        if (baseline.AvgLongestSedentaryStretchMinutes is { } stretch)
+            usuals.Add($"a longest unbroken still stretch of about {Hours(stretch)} hours");
+        if (usuals.Count == 0)
+            return string.Empty;
 
-                return $"  {label}: {(figures.Count > 0 ? string.Join(", ", figures) : "nothing measured")}";
-            })
-            .ToList();
+        return $"""
 
-        return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
+            --- Usual pattern ---
+            Usually: {string.Join("; ", usuals)}.
+            """ + "\n";
+    }
+
+    private static string Hours(int minutes) =>
+        (minutes / 60.0).ToString("F1", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The latest yellow-or-worse hour, when it is still fresh enough to colour the hero.
+    /// Same window <see cref="StatusDisplayTier.AssessmentFreshness"/> uses — a stale hour is
+    /// yesterday's picture. Omitted when there is no text: the tier already carried the severity.
+    /// </summary>
+    private static string RecentHourSection(RealtimeAssessment? assessment, DateTime utcNow)
+    {
+        if (assessment is null
+            || assessment.Severity is not { } severity
+            || severity < AlertSeverity.Yellow
+            || string.IsNullOrWhiteSpace(assessment.ModelOutput))
+        {
+            return string.Empty;
+        }
+        if (utcNow - assessment.WindowStartUtc >= StatusDisplayTier.AssessmentFreshness)
+            return string.Empty;
+
+        var text = MedicalPromptBlocks.Flatten(assessment.ModelOutput);
+        if (text.Length == 0)
+            return string.Empty;
+        if (text.Length > MaxAssessmentTextLength)
+            text = $"{MedicalPromptBlocks.CutTo(text, MaxAssessmentTextLength)}…";
+
+        return $"""
+
+            --- Recent hour ---
+            - {severity}, {HoursAgo(assessment.WindowEndUtc, utcNow)}: {text}
+            """ + "\n";
+    }
+
+    private static string HoursAgo(DateTime thenUtc, DateTime utcNow)
+    {
+        var hours = (int)Math.Floor((utcNow - thenUtc).TotalHours);
+        return hours <= 0 ? "within the hour" : $"{hours}h ago";
     }
 
     // Internal rather than private so IMedicalAiService.GenerateStructuredAsync<T> can be
