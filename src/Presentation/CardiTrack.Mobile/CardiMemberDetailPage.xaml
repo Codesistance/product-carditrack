@@ -272,6 +272,17 @@
                                     <Label x:Name="UrgencyLabel"
                                            Style="{StaticResource Message}"/>
                                 </HorizontalStackLayout>
+
+                                <!-- Why this card and the dashboard hero can disagree, on the day
+                                     they do. The hero's colour is the worst open alert; the rung
+                                     above is the model's read of today's readings on their own —
+                                     two writers, and a caregiver who has just come from a yellow
+                                     hero to a green rung is told which is which rather than left
+                                     to pick one. Hidden when they agree, which is most days. Body
+                                     rather than Message: it is about the rung, not the rung. -->
+                                <Label x:Name="UrgencyNoteLabel"
+                                       Style="{StaticResource Body}"
+                                       IsVisible="False"/>
                             </VerticalStackLayout>
                         </Border>
 

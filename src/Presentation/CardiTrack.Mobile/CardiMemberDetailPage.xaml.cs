@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
@@ -536,6 +537,7 @@ public partial class CardiMemberDetailPage : ContentPage
             _digestRendered = true;
 
             ApplyUrgency(digest.Urgency);
+            ApplyStatusNote(digest);
 
             if (unchanged)
                 return;
@@ -758,6 +760,21 @@ public partial class CardiMemberDetailPage : ContentPage
         UrgencyDot.Fill = color;
         UrgencyLabel.TextColor = color;
         UrgencyLabel.Text = text;
+    }
+
+    /// <summary>
+    /// The one line that reconciles this card with the dashboard hero on the day the two
+    /// disagree — <see cref="StatusAgreement"/> decides when that is and what it says. Reads the
+    /// member the page already loaded: the digest lands on its own round trip after
+    /// <see cref="Apply"/>, so by the time this runs <see cref="_member"/> is the same response
+    /// the rest of the screen was drawn from, and the periodic refresh re-runs both, so a hero
+    /// that changes colour between digests still moves this line on the next tick.
+    /// </summary>
+    private void ApplyStatusNote(DigestResponse digest)
+    {
+        var note = _member is null ? null : StatusAgreement.Note(_member, digest);
+        UrgencyNoteLabel.IsVisible = note is not null;
+        UrgencyNoteLabel.Text = note;
     }
 
     /// <summary>
