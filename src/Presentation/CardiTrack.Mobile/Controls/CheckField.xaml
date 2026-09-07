@@ -53,8 +53,12 @@
         <Grid x:Name="LabelHost"
               Grid.Column="1"
               VerticalOptions="Center">
+            <!-- Out of the accessibility tree: the box beside it already announces the words and
+                 the state together, and a label a screen reader can land on by itself would say
+                 the words without the state. -->
             <Label x:Name="TextLabel"
                    Style="{StaticResource Body2Medium}"
+                   AutomationProperties.IsInAccessibleTree="False"
                    VerticalOptions="Center"
                    VerticalTextAlignment="Center"
                    LineBreakMode="WordWrap">
