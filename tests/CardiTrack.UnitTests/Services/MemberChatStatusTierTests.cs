@@ -26,6 +26,7 @@ public class MemberChatStatusTierTests
     [InlineData("All looks fine for him this week.")]
     [InlineData("No concerns from the readings.")]
     [InlineData("Nothing stands out.")]
+    [InlineData("Things look settled for him this week.")]
     public void ASettledVerdict_UnderAYellowHero_IsLedByTheStatusLine(string verdict)
     {
         var reply = MemberChatReplies.ReconcileWithStatusTier(verdict, AlertSeverity.Yellow, Line);
@@ -56,6 +57,8 @@ public class MemberChatStatusTierTests
     [InlineData("Nothing is settled yet: the low step count is worth keeping an eye on.")]
     [InlineData("This is not settled, and it's worth watching.")]
     [InlineData("It's far from settled today.")]
+    [InlineData("Things are not yet settled — his steps are still well below usual.")]
+    [InlineData("It's not really settled while his steps sit this low.")]
     public void ANegatedSettled_UnderAYellowHero_IsUnchanged(string verdict) =>
         Assert.Equal(verdict, MemberChatReplies.ReconcileWithStatusTier(verdict, AlertSeverity.Yellow, Line));
 

@@ -297,10 +297,12 @@ public static partial class MemberChatReplies
     /// A reply saying the whole picture is fine — the claim a Yellow hero contradicts. The
     /// lookbehind on "settled" is what keeps it a claim: a negation in front of the word — "not",
     /// "isn't", "nothing is", "far from" — turns it into agreement with the hero, and agreement is
-    /// left alone.
+    /// left alone. The negation may sit up to two words back ("not yet settled", "not really
+    /// settled"): .NET lookbehind is variable-length, so the exclusion reaches as far as the
+    /// phrasing does rather than only to the word immediately before.
     /// </summary>
     [GeneratedRegex(
-        @"\b(?:(?<!\b(?:not|never|hardly|isn't|aren't|wasn't|far from|less than|nothing(?:'s| is| looks| seems| feels)) )settled"
+        @"\b(?:(?<!\b(?:not|never|hardly|isn't|aren't|wasn't|far from|less than|nothing(?:'s| is| looks| seems| feels))(?: \w+){0,2} )settled"
         + @"|no concerns?|nothing(?: \w+){0,2} (?:needs?|stands? out|to follow|to worry|to flag|to watch)"
         + @"|(?:everything|all|things) (?:looks?|seems?|is|are) (?:fine|good|okay|ok|steady|calm|normal|well))\b",
         RegexOptions.IgnoreCase)]
