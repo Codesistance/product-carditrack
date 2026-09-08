@@ -5,6 +5,12 @@
       "slack_ts": null,
       "item_count": 25,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-08",
+      "slack_ts": null,
+      "item_count": 1,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -232,6 +238,15 @@
       "severity": "FYI",
       "category": "competition",
       "brief": "research/queue/2026-09-04-cadence-ai-proactive-care-engine.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "withings-stetho-sense",
+      "title": "Withings launches StethO Sense — AI heart/lung sound analysis for family use on BeamO",
+      "url": "https://www.prnewswire.com/news-releases/withings-introduces-stetho-sense-bringing-heart-and-lung-sound-analysis-to-beamo-302869284.html",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-08-withings-stetho-sense.md"
     }
   ]
 }
