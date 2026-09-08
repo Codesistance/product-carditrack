@@ -315,9 +315,9 @@ public partial class DigestGenerationService : IDigestGenerationService
     private static readonly TimeSpan EarlyDayRegenerationInterval = TimeSpan.FromHours(2);
 
     /// <summary>
-    /// How long the clinical read is held for a member after the model failed to finish it: this
-    /// for the first failure, doubling with each consecutive one up to
-    /// <see cref="TruncatedReadHoldCap"/> (see <see cref="HoldFor"/>).
+    /// How long the clinical read is held for a member after the model first fails to finish it.
+    /// Each consecutive failure doubles the hold, up to <see cref="TruncatedReadHoldCap"/>
+    /// (see <see cref="HoldFor"/>).
     /// </summary>
     /// <remarks>
     /// <para>

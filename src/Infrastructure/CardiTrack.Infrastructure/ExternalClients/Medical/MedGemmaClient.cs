@@ -360,6 +360,10 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
                     // ends that. The log says so rather than prescribing a bigger number, and the
                     // typed exception carries the counts so a caller can stop retrying the prompt.
                     errorType = "truncated";
+                    // done_reason "length" means generation reached num_predict, so when the
+                    // server leaves eval_count out the ceiling is the count — not zero, which
+                    // would read as a reply that produced nothing.
+                    var producedTokens = meta.EvalCount ?? _settings.MaxOutputTokens;
                     _logger.LogError(
                         "MedGemma {Operation} stopped at the token budget rather than finishing "
                         + "(done_reason {DoneReason}): {OutputTokens} output token(s) against a "
@@ -368,13 +372,13 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
                         + "that fills the whole ceiling is usually a model that did not stop, not one "
                         + "that needed more room: compare OutputTokens with what this operation normally "
                         + "produces before raising MaxOutputTokens or ContextTokens for this model slot.",
-                        operationName, meta.DoneReason, meta.EvalCount, _settings.MaxOutputTokens,
+                        operationName, meta.DoneReason, producedTokens, _settings.MaxOutputTokens,
                         meta.PromptEvalCount, _settings.ContextTokens);
                     throw new AiReplyTruncatedException(
                         $"MedGemma {operationName} stopped at the token budget rather than finishing "
-                        + $"({meta.EvalCount} output token(s) against a {_settings.MaxOutputTokens} "
+                        + $"({producedTokens} output token(s) against a {_settings.MaxOutputTokens} "
                         + $"ceiling in a {_settings.ContextTokens}-token window), so the reply is incomplete.",
-                        outputTokens: meta.EvalCount ?? 0,
+                        outputTokens: producedTokens,
                         maxOutputTokens: _settings.MaxOutputTokens,
                         inputTokens: meta.PromptEvalCount,
                         contextTokens: _settings.ContextTokens);

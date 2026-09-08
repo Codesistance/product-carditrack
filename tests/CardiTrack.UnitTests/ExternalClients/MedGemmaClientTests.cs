@@ -762,6 +762,29 @@ public class MedGemmaClientTests
         Assert.IsAssignableFrom<HttpRequestException>(ex);
     }
 
+    /// <summary>
+    /// done_reason "length" means the ceiling was reached, so a payload that omits eval_count
+    /// still reports the ceiling as the count — never zero, which would read as a reply that
+    /// produced nothing, the opposite of what happened.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_Truncation_ReportsTheCeiling_WhenTheServerOmitsTheCount()
+    {
+        var payload = StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length")
+            .Replace(",\"eval_count\":128", string.Empty);
+        Assert.DoesNotContain("\"eval_count\"", payload);
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, payload);
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        Assert.Equal(MaxOutputTokens, ex.OutputTokens);
+        Assert.Contains($"{MaxOutputTokens} output token(s)", ex.Message);
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains($"{MaxOutputTokens} output token(s)", error.Message);
+    }
+
     /// <summary>Same DPIA invariant as every other failure path: the reply was derived from health
     /// data, and being cut short does not make it safe to quote.</summary>
     [Fact]
