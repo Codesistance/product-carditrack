@@ -9,7 +9,7 @@
     {
       "date": "2026-09-08",
       "slack_ts": null,
-      "item_count": 3,
+      "item_count": 11,
       "empty_reason": null
     }
   ],
@@ -265,6 +265,78 @@
       "severity": "HIGH",
       "category": "devices",
       "brief": "research/queue/2026-09-08-google-health-guardian-launch.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "eu-ai-act-article50-transparency-gap",
+      "title": "EU AI Act Article 50 transparency duty in force since 2026-08-02 — CardiTrack has no AI-disclosure on MedGemma narration",
+      "url": "https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act",
+      "severity": "CRITICAL",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-08-eu-ai-act-article50-transparency-gap.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "fda-genai-medical-device-discussion-paper",
+      "title": "FDA discussion paper proposes a two-axis risk framework for generative-AI medical devices (comment period to 2026-10-19)",
+      "url": "https://www.fda.gov/medical-devices/digital-health-center-excellence/considerations-regulation-generative-ai-enabled-medical-devices-discussion-paper-and-request",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-08-fda-genai-medical-device-discussion-paper.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "mhra-health-bill-device-licensing-amendments",
+      "title": "MHRA tables Health Bill amendments enabling a future GB medical-device licensing regime",
+      "url": "https://www.gov.uk/government/news/mhra-regulatory-reform-amendments-tabled-in-governments-health-bill",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-08-mhra-health-bill-device-licensing-amendments.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "auth0-third-party-app-controls-eol",
+      "title": "Auth0 deprecations: third-party-app security controls EOL 2026-10-23; new 10KB user-profile limit EOL 2027-03-04",
+      "url": "https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-08-auth0-third-party-app-controls-eol.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "automapper-commercial-license-compliance",
+      "title": "AutoMapper 16.2.0 requires a paid commercial license — CardiTrack is pinned well past the free tier",
+      "url": "https://www.jimmybogard.com/automapper-and-mediatr-commercial-editions-launch-today/",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-08-automapper-commercial-license-compliance.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "nhs-innovation-accelerator-2027-fellowship",
+      "title": "NHS Innovation Accelerator — 2027 Fellowship cohort, up to £50k + 3-year scale-up support, deadline 2026-09-27",
+      "url": "https://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-08-nhs-innovation-accelerator-2027-fellowship.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "aha-health-tech-competition-2026",
+      "title": "American Heart Association Health Tech Competition 2026 — deadline 2026-09-18",
+      "url": "https://ahahealthtech.org/aha-health-tech-competition-2026/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-08-aha-health-tech-competition-2026.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "nih-sbir-sttr-parent-announcement",
+      "title": "NIH SBIR/STTR parent announcements — next standard due date 2027-01-05 (US, gated on a US entity)",
+      "url": "https://seed.nih.gov/small-business-funding/find-funding/sbir-sttr-funding-opportunities",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-08-nih-sbir-sttr-parent-announcement.md"
     }
   ]
 }
