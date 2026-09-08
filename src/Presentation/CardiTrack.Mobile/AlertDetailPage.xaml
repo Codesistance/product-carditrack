@@ -101,27 +101,19 @@
                                  tile and the white-stroke variants: on a coloured ground the mark
                                  has to bring its own contrast.
 
-                                 NOTICE / URGENT / CRITICAL sits in the card's top-right rather
-                                 than in the title stack, so the tile can run from the title's
-                                 top to the date's bottom — the same Fill + width-bound-to-height
-                                 treatment the header's back button uses — without covering the
-                                 badge as well. -->
+                                 NOTICE / URGENT / CRITICAL sits at the end of the date's row,
+                                 opposite the date, rather than on a row of its own above the
+                                 title: up there it was a label floating over nothing, and it
+                                 cost the banner a whole line. The tile spans both rows, from the
+                                 title's top to the date's bottom — the same Fill +
+                                 width-bound-to-height treatment the header's back button uses. -->
                             <Grid RowDefinitions="Auto,Auto"
-                                  ColumnDefinitions="Auto,*"
+                                  ColumnDefinitions="Auto,*,Auto"
                                   ColumnSpacing="12"
-                                  RowSpacing="2">
-                                <Label x:Name="SeverityBadge"
-                                       Grid.Row="0"
-                                       Grid.Column="0"
-                                       Grid.ColumnSpan="2"
-                                       HorizontalOptions="End"
-                                       HorizontalTextAlignment="End"
-                                       FontFamily="QuicksandSemiBold"
-                                       FontSize="12"
-                                       TextColor="{StaticResource White}"/>
+                                  RowSpacing="4">
                                 <!-- Fill + width-bound-to-height: the tile matches the title and
                                      date exactly and stays square at whatever that is. -->
-                                <controls:SquareBorder Grid.Row="1"
+                                <controls:SquareBorder Grid.Row="0" Grid.RowSpan="2"
                                         Grid.Column="0"
                                         StrokeThickness="0"
                                         BackgroundColor="#33FFFFFF"
@@ -134,18 +126,23 @@
                                            HorizontalOptions="Center"
                                            VerticalOptions="Center"/>
                                 </controls:SquareBorder>
-                                <VerticalStackLayout Grid.Row="1"
-                                                     Grid.Column="1"
-                                                     Spacing="4"
-                                                     VerticalOptions="Start">
-                                    <Label x:Name="TitleLabel"
-                                           Style="{StaticResource Heading3}"
-                                           TextColor="{StaticResource White}"
-                                           LineBreakMode="WordWrap"/>
-                                    <Label x:Name="TimeLabel"
-                                           Style="{StaticResource Body2}"
-                                           TextColor="{StaticResource White}"/>
-                                </VerticalStackLayout>
+                                <Label x:Name="TitleLabel"
+                                       Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
+                                       Style="{StaticResource Heading3}"
+                                       TextColor="{StaticResource White}"
+                                       LineBreakMode="WordWrap"/>
+                                <Label x:Name="TimeLabel"
+                                       Grid.Row="1" Grid.Column="1"
+                                       Style="{StaticResource Body2}"
+                                       TextColor="{StaticResource White}"
+                                       VerticalOptions="Center"/>
+                                <Label x:Name="SeverityBadge"
+                                       Grid.Row="1" Grid.Column="2"
+                                       HorizontalOptions="End"
+                                       VerticalOptions="Center"
+                                       FontFamily="QuicksandSemiBold"
+                                       FontSize="12"
+                                       TextColor="{StaticResource White}"/>
                             </Grid>
                         </Border>
 
