@@ -52,6 +52,15 @@ public class DashboardResponse
     public int UnreadAlertCount { get; set; }
 
     /// <summary>
+    /// Every alert on this member that nobody has closed — new and acknowledged alike, the same
+    /// unresolved set <see cref="HealthStatus"/> is coloured from. The CardiMember card's Alerts
+    /// button pulses while this is above zero (there is something to look at) and colours its
+    /// glyph while <see cref="UnreadAlertCount"/> is (some of it has not been seen), so the two
+    /// counts are the two halves of that button's state and neither can stand in for the other.
+    /// </summary>
+    public int OpenAlertCount { get; set; }
+
+    /// <summary>
     /// Whether this member has a current wellness suggestion on the CardiMember Details Tip card
     /// (<c>GET api/v1/insights/members/{id}/advise</c>). A plain existence-and-freshness check
     /// against the persisted <c>MemberAdvise</c> row — same staleness ceiling as the read endpoint
@@ -59,6 +68,22 @@ public class DashboardResponse
     /// Dashboard card's pulse indicator costs nothing beyond what this response already pays for.
     /// </summary>
     public bool HasAdvise { get; set; }
+
+    /// <summary>
+    /// When the suggestion behind <see cref="HasAdvise"/> was generated; null when there is none.
+    /// The CardiMember card compares it with the moment the caregiver last opened the suggestion
+    /// to tell a fresh one from one already read — the row itself carries no read state, and a
+    /// regeneration is what makes an old suggestion new again.
+    /// </summary>
+    public DateTime? AdviseGeneratedAt { get; set; }
+
+    /// <summary>
+    /// When this member's most recent CardiJournal entry (the family digest) was generated; null
+    /// while none has been. Read the same way as <see cref="AdviseGeneratedAt"/>: the card pulses
+    /// its CardiJournal button while there is an entry to read and colours the glyph until the
+    /// caregiver has opened one at least this new.
+    /// </summary>
+    public DateTime? LatestJournalEntryAt { get; set; }
     public DashboardDeviceState Device { get; set; } = new();
     public DashboardBaselineState Baseline { get; set; } = new();
     public DashboardMetrics? Metrics { get; set; }

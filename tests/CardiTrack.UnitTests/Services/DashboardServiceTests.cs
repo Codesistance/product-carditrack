@@ -19,6 +19,7 @@ public class DashboardServiceTests
     private readonly IRealtimeAssessmentRepository _realtimeAssessments = Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
     private readonly IMemberAdviseRepository _advises = Substitute.For<IMemberAdviseRepository>();
+    private readonly IDigestRepository _digests = Substitute.For<IDigestRepository>();
     private readonly CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage _photoStorage =
         Substitute.For<CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage>();
     private readonly IQuestionnaireService _questionnaires = Substitute.For<IQuestionnaireService>();
@@ -37,6 +38,7 @@ public class DashboardServiceTests
         _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
         _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
         _unitOfWork.MemberAdvises.Returns(_advises);
+        _unitOfWork.Digests.Returns(_digests);
 
         // Defaults: linked user, active member, no devices/data/baseline/alerts.
         SetupLink(canViewHealthData: true);
@@ -58,6 +60,8 @@ public class DashboardServiceTests
         _realtimeAssessments.GetLatestAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((RealtimeAssessment?)null);
         _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns((DigestEntry?)null);
     }
 
     // Composed with the real access service rather than a stub: the link rules under test here
@@ -778,18 +782,97 @@ public class DashboardServiceTests
     [Fact]
     public async Task HasAdvise_IsTrue_ForAFreshRow()
     {
+        var generatedAt = DateTime.UtcNow.AddHours(-2);
         _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[new MemberAdvise
         {
             CardiMemberId = _memberId,
             Summary = "Summary.",
             Suggestion = "Suggestion.",
             GuidelineCited = "WHO adult activity guidance",
-            GeneratedAtUtc = DateTime.UtcNow.AddHours(-2),
+            GeneratedAtUtc = generatedAt,
         }]);
 
         var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
 
         Assert.True(result.HasAdvise);
+        // The card tells a fresh suggestion from a read one by this instant — it must be the
+        // served row's own, not the newest row's, or a stale regeneration could re-colour it.
+        Assert.Equal(generatedAt, result.AdviseGeneratedAt);
+    }
+
+    [Fact]
+    public async Task AdviseGeneratedAt_IsNull_WhenThereIsNoSuggestion()
+    {
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Null(result.AdviseGeneratedAt);
+    }
+
+    /// <summary>
+    /// The CardiJournal button reads this to pulse and to colour; null is "nothing to read yet",
+    /// which is what a member with no family digest must report, not a zero instant.
+    /// </summary>
+    [Fact]
+    public async Task LatestJournalEntryAt_IsTheNewestFamilyDigestsGenerationInstant()
+    {
+        var generatedAt = DateTime.UtcNow.AddHours(-3);
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                Audience = DigestAudience.Family,
+                Text = "A quiet day.",
+                GeneratedAtUtc = generatedAt,
+            });
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(generatedAt, result.LatestJournalEntryAt);
+    }
+
+    [Fact]
+    public async Task LatestJournalEntryAt_IsNull_BeforeAnyEntryExists()
+    {
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Null(result.LatestJournalEntryAt);
+    }
+
+    /// <summary>
+    /// Open and unread are the two halves of the card's Alerts button — the ring and the colour
+    /// — so an acknowledged alert has to count for the first and not the second, the same way it
+    /// colours the hero without sitting on the strip.
+    /// </summary>
+    [Fact]
+    public async Task OpenAlertCount_CountsAcknowledgedAlerts_UnreadDoesNot()
+    {
+        SetupActivityLogs(days: 30);
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(
+        [
+            new Alert
+            {
+                Id = Guid.NewGuid(),
+                CardiMemberId = _memberId,
+                Severity = AlertSeverity.Yellow,
+                Title = "Seen",
+                TriggeredDate = DateTime.UtcNow.AddHours(-2),
+                AcknowledgedDate = DateTime.UtcNow.AddHours(-1),
+            },
+            new Alert
+            {
+                Id = Guid.NewGuid(),
+                CardiMemberId = _memberId,
+                Severity = AlertSeverity.Yellow,
+                Title = "Not yet",
+                TriggeredDate = DateTime.UtcNow.AddMinutes(-30),
+            },
+        ]);
+
+        var result = await CreateSut().GetDashboardAsync(_userId, _memberId);
+
+        Assert.Equal(2, result.OpenAlertCount);
+        Assert.Equal(1, result.UnreadAlertCount);
     }
 
     /// <summary>

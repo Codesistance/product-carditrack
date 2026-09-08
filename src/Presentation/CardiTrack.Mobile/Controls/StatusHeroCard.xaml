@@ -64,22 +64,43 @@
                                     Spacing="8"
                                     VerticalOptions="Center">
 
-                <Border WidthRequest="36" HeightRequest="36"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource SelectedOptionBackground}"
-                        VerticalOptions="Center"
-                        SemanticProperties.Description="CardiJournal"
-                        SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="18"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
+                <!-- Every button in this row now says two things (see ApplyDaybook and its
+                     siblings in the code-behind): the ring pulses while there is something behind
+                     the button to read, and the glyph is coloured until the caregiver has read
+                     it. So CardiJournal gets the same cluster-with-a-ring construction as Alerts
+                     below, and the glyph swaps between its grey and coloured assets rather than
+                     being tinted — MAUI's Image has no tint of its own. -->
+                <Grid x:Name="DaybookCluster"
+                      WidthRequest="36" HeightRequest="36"
+                      VerticalOptions="Center"
+                      SemanticProperties.Description="CardiJournal"
+                      SemanticProperties.Hint="Opens this CardiMember's CardiJournal">
+                    <Grid.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnDaybookTapped"/>
-                    </Border.GestureRecognizers>
-                    <Image Source="icon_tab_journal.svg"
-                           WidthRequest="20" HeightRequest="20"
-                           HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Border>
+                    </Grid.GestureRecognizers>
+
+                    <Border WidthRequest="36" HeightRequest="36"
+                            StrokeThickness="0"
+                            BackgroundColor="{StaticResource SelectedOptionBackground}"
+                            HorizontalOptions="Center" VerticalOptions="Center"
+                            InputTransparent="True">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="18"/>
+                        </Border.StrokeShape>
+                        <Image x:Name="DaybookIcon"
+                               Source="icon_tab_journal.svg"
+                               WidthRequest="20" HeightRequest="20"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Border>
+
+                    <Ellipse x:Name="DaybookPulseRing"
+                             WidthRequest="32" HeightRequest="32"
+                             HorizontalOptions="Center" VerticalOptions="Center"
+                             Stroke="{StaticResource Primary}"
+                             StrokeThickness="2"
+                             Opacity="0"
+                             InputTransparent="True"/>
+                </Grid>
 
                 <!-- Beside the Daybook button, only while a question is waiting on this family (see
                      Apply/ApplyPendingQuestionnaire). Button, pulse ring and count badge share one
@@ -120,7 +141,8 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnQaTapped"/>
                         </Border.GestureRecognizers>
-                        <Image Source="icon_tab_qa.svg"
+                        <Image x:Name="QaIcon"
+                               Source="icon_tab_qa.svg"
                                WidthRequest="20" HeightRequest="20"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
@@ -170,7 +192,8 @@
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="18"/>
                         </Border.StrokeShape>
-                        <Image Source="icon_tab_alerts.svg"
+                        <Image x:Name="AlertsIcon"
+                               Source="icon_tab_alerts.svg"
                                WidthRequest="20" HeightRequest="20"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
@@ -214,7 +237,8 @@
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="18"/>
                         </Border.StrokeShape>
-                        <Image Source="icon_advise.svg"
+                        <Image x:Name="AdviseIcon"
+                               Source="icon_advise.svg"
                                WidthRequest="20" HeightRequest="20"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>

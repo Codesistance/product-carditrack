@@ -623,6 +623,9 @@ public partial class CardiMemberDetailPage : ContentPage
         // beside today's hourly summary reads as the two disagreeing about today.
         AdviseGeneratedLabel.Text = $"Updated {RelativeTime.Format(advise.GeneratedAt.UtcDateTime)}";
         AdviseGeneratedLabel.IsVisible = true;
+        // Rendering it is reading it: the dashboard card's Advise glyph stops being coloured for
+        // this generation whether the caregiver came through that button or scrolled here.
+        AttentionMarks.MarkSeen(AttentionMarks.Advise, _memberId, advise.GeneratedAt.UtcDateTime);
         AdviseCard.IsVisible = true;
     }
 

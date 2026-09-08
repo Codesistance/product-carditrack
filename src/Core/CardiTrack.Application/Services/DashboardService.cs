@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 
 namespace CardiTrack.Application.Services;
@@ -124,8 +125,15 @@ public class DashboardService : IDashboardService
         // The same picker the details card and member chat serve through, so the dot cannot pulse
         // for a row either of them would withhold — it used to light on age alone, including for a
         // row citing no reference that the card is contracted not to render.
-        var hasAdvise = !isPaused && AdvisePicker.PickDefault(
-            await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), DateTime.UtcNow) is not null;
+        var advise = isPaused
+            ? null
+            : AdvisePicker.PickDefault(
+                await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), DateTime.UtcNow);
+
+        // The newest family entry only — its generation instant is all the card wants, to tell
+        // whether the caregiver has read this far. The Journal tab reads the history itself.
+        var latestJournalEntry = await _unitOfWork.Digests.GetLatestAsync(
+            cardiMemberId, DigestAudience.Family, ct);
 
         // GetPendingAsync re-checks access on its own — a second round trip, since access was
         // already required above — but a cheap one against the caller's small set of linked
@@ -155,7 +163,10 @@ public class DashboardService : IDashboardService
             DataFreshness = freshnessTier,
             DataFreshnessMessage = freshnessMessage,
             UnreadAlertCount = unresolvedAlerts.Count(a => a.AcknowledgedDate is null),
-            HasAdvise = hasAdvise,
+            OpenAlertCount = unresolvedAlerts.Count,
+            HasAdvise = advise is not null,
+            AdviseGeneratedAt = advise?.GeneratedAtUtc,
+            LatestJournalEntryAt = latestJournalEntry?.GeneratedAtUtc,
             Device = new DashboardDeviceState
             {
                 HasActiveConnection = connections.Count > 0,

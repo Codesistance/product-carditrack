@@ -362,6 +362,13 @@ public partial class JournalPage : ContentPage
             _hasLoadedOnce = true;
             _hasAnyReviews = _hasAnyReviews || reviews.Count > 0;
 
+            // Landing here is reading the journal, however the caregiver arrived — the dashboard
+            // card's CardiJournal glyph stops being coloured for anything up to the newest entry
+            // on screen. The newest loaded, not "now": the mark is the entry's own instant (see
+            // AttentionMarks), and a filtered list still counts only what it actually showed.
+            if (reviews.Count > 0)
+                AttentionMarks.MarkSeen(AttentionMarks.Journal, _memberId, reviews.Max(r => r.GeneratedAtUtc));
+
             // The filter row appears once the member has ever had a review to filter, and then
             // stays: hiding it on an empty *filtered* result would take away the one control
             // that undoes the emptiness.
