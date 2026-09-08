@@ -72,12 +72,12 @@ A cold boot takes about 30 s. The keyguard dismiss matters: until the first unlo
 
 | Symptom | Fix |
 |---|---|
-| `adb devices` shows `emulator-5554  offline` for more than a minute, `adb kill-server && adb start-server` does not help | The saved snapshot is bad. `taskkill //F //IM qemu-system-x86_64.exe //IM emulator.exe`, delete the `*.lock` files, relaunch with `-no-snapshot-load` (as above). Seen 2026-09-08. |
+| `adb devices` shows `emulator-5554  offline` for more than a minute, `adb kill-server && adb start-server` does not help | The saved snapshot is bad. Kill it — Git Bash: `taskkill //F //IM qemu-system-x86_64.exe //IM emulator.exe` (the doubled slashes stop MSYS turning `/F` into a path); PowerShell/cmd: `taskkill /F /IM qemu-system-x86_64.exe /IM emulator.exe` — then delete the `*.lock` files and relaunch with `-no-snapshot-load` (as above). Seen 2026-09-08. |
 | Screen is 100 % black, focus stuck on `NotificationShade`, logcat says "user not unlocked", `dumpsys user` shows `RUNNING_LOCKED`, and `wm dismiss-keyguard` / `am unlock-user 0` / reboots do nothing | Only known fix: kill the emulator and relaunch with `-wipe-data -no-snapshot` (fresh user data), then reinstall the app. |
 | Nothing renders, or rendering is suspect | Add `-gpu swiftshader_indirect` to the launch line (software rendering, reliable). |
 | Emulator crashed earlier and refuses to start | Delete `~/.android/avd/Pixel_9_Pro.avd/*.lock` — remember `hardware-qemu.ini.lock` is a **directory**, so use `rm -rf`. |
 
-Sanity-check that the screen actually renders before spending time on navigation: take a screencap and check its mean brightness (a black screen is ~0).
+Sanity-check that the screen actually renders before spending time on navigation: take a screencap and check its mean brightness (a black screen is ~0). Needs Pillow (`pip install pillow`).
 
 ```bash
 adb exec-out screencap -p > shot.png

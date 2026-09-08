@@ -240,8 +240,8 @@ PR #8 added region-localized **emergency-phone placeholders** (`CardiTrack.Mobil
 cd src/Presentation/CardiTrack.Mobile
 
 # Android (Windows/macOS/Linux)
-dotnet build -f net10.0-android
-dotnet build -f net10.0-android -t:Run "-p:AdbTarget=-s emulator-5554"   # deploys to + launches on the running emulator/device
+dotnet build -f net10.0-android                                          # compile only (optional — e.g. to warm the build while the emulator boots)
+dotnet build -f net10.0-android -t:Run "-p:AdbTarget=-s emulator-5554"   # compile + deploy to + launch on the running emulator/device
 
 # iOS (macOS only)
 dotnet build -f net10.0-ios
