@@ -241,7 +241,7 @@ cd src/Presentation/CardiTrack.Mobile
 
 # Android (Windows/macOS/Linux)
 dotnet build -f net10.0-android
-dotnet run -f net10.0-android          # deploys to the running emulator/device
+dotnet build -f net10.0-android -t:Run "-p:AdbTarget=-s emulator-5554"   # deploys to + launches on the running emulator/device
 
 # iOS (macOS only)
 dotnet build -f net10.0-ios
@@ -250,6 +250,8 @@ dotnet build -f net10.0-ios -c Release -p:RuntimeIdentifier=ios-arm64 -t:Run
 # Windows (Windows only, unpackaged)
 dotnet build -f net10.0-windows10.0.19041.0
 ```
+
+Starting the emulator, unlocking it, deploying, driving it from `adb`, screenshots, sign-in, and every known pitfall (Fast Deployment, keyguard, bad snapshots, path length) are in the **[Android emulator runbook](../../technical/android_emulator_runbook.md)** — read it before doing UI work against a device.
 
 ### Store builds
 

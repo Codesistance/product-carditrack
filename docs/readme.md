@@ -111,6 +111,9 @@ Operator runbook for configuring the Auth0 tenant per environment (dev, prod) to
 #### [apm_setup_runbook.md](./technical/apm_setup_runbook.md)
 **Observability/APM** — Serilog + OpenTelemetry with a switchable APM engine (`Apm:Engine`; Datadog deployed, console-only when unset locally); token provisioning and setup steps.
 
+#### [android_emulator_runbook.md](./technical/android_emulator_runbook.md)
+**Android emulator runbook** — start/unlock the `Pixel_9_Pro` AVD, build + deploy `CardiTrack.Mobile` with `-t:Run`, drive and screenshot it from `adb`, sign in against dev, and the pitfalls (Fast Deployment vs `pm clear`, keyguard, bad snapshots, `MAX_PATH`, one-build-per-emulator rule for agents).
+
 #### [claude_cloud_environment_setup.md](./technical/claude_cloud_environment_setup.md)
 **Claude Code cloud environment config** — name, network access/domain allowlist, environment variables, and setup script for the "New cloud environment" dialog, so a fresh cloud session builds, runs, and tests `CardiTrack.Server.slnf` with no manual follow-up.
 
