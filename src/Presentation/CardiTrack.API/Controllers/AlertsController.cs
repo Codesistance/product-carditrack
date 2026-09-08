@@ -193,8 +193,8 @@ public class AlertsController : BaseApiController
         if (!TryParseFilter<AlertSeverity>(severity, out var parsedSeverity))
             return Error("That severity isn't one we recognise — use green, yellow, orange or red.");
 
-        if (!TryParseFilter<AlertStatus>(status, out var parsedStatus))
-            return Error("That status isn't one we recognise — use new, acknowledged or resolved.");
+        if (!TryParseFilter<AlertStatusFilter>(status, out var parsedStatus))
+            return Error("That status isn't one we recognise — use new, acknowledged, resolved or open.");
 
         if (from is not null && to is not null && from > to)
             return Error("The start date needs to come before the end date.");

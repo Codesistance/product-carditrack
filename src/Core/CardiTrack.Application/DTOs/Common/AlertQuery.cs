@@ -13,7 +13,7 @@ namespace CardiTrack.Application.DTOs.Common;
 public sealed record AlertQuery(
     IReadOnlyCollection<Guid> CardiMemberIds,
     AlertSeverity? Severity = null,
-    AlertStatus? Status = null,
+    AlertStatusFilter? Status = null,
     DateTime? From = null,
     DateTime? To = null,
     int Limit = AlertQuery.DefaultLimit,

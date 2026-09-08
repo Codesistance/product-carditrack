@@ -38,6 +38,19 @@ public partial class AlertsPage : ContentPage
     /// </summary>
     private const string UnnamedMemberChipLabel = "This CardiMember";
 
+    /// <summary>
+    /// The two halves this screen splits alerts into, as the <c>status</c> filter names them
+    /// (<c>AlertStatusFilter</c>): everything nobody has closed, and everything that is closed.
+    /// Together they are every alert, and no alert is in both — which is what the "View Archived
+    /// Alerts" / "Back to current alerts" toggle promises.
+    /// </summary>
+    private const string OpenStatus = "open";
+
+    private const string ArchivedStatus = "resolved";
+
+    /// <summary>The Unread chip: open, and not yet acknowledged. Narrower than <see cref="OpenStatus"/>.</summary>
+    private const string UnreadStatus = "new";
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
 
@@ -356,18 +369,25 @@ public partial class AlertsPage : ContentPage
         AlertFilter filter, bool showArchived)
     {
         if (showArchived)
-            return (null, "resolved", null);
+            return (null, ArchivedStatus, null);
 
         // Local midnight, not UTC: "Today" has to mean the caregiver's today.
         var todayStart = DateTime.Today;
 
+        // Every chip outside the archive is a view of the *current* alerts, so each one asks for
+        // the open set rather than for everything. They used to send no status at all, which is
+        // "every lifecycle position" — so a resolved alert appeared both here and under "View
+        // Archived Alerts", and, sharing this one page of rows with the open ones, could push an
+        // open alert off the list while it was still colouring that member's dashboard hero. A
+        // caregiver following the summary card's "Alerts has what's still standing" then arrived
+        // at a list the alert was not on. Unread is already narrower than open and stays as it is.
         return filter switch
         {
-            AlertFilter.Unread => (null, "new", null),
-            AlertFilter.Critical => ("red", null, null),
-            AlertFilter.Today => (null, null, todayStart),
-            AlertFilter.ThisWeek => (null, null, todayStart.AddDays(-6)),
-            _ => (null, null, null),
+            AlertFilter.Unread => (null, UnreadStatus, null),
+            AlertFilter.Critical => ("red", OpenStatus, null),
+            AlertFilter.Today => (null, OpenStatus, todayStart),
+            AlertFilter.ThisWeek => (null, OpenStatus, todayStart.AddDays(-6)),
+            _ => (null, OpenStatus, null),
         };
     }
 
@@ -385,10 +405,6 @@ public partial class AlertsPage : ContentPage
         var hasAlerts = alerts.Count > 0;
         GroupsStack.IsVisible = hasAlerts;
         EmptyPanel.IsVisible = !hasAlerts;
-
-        // A dead end otherwise: with no alerts and no way back, an empty archive would trap
-        // the caregiver on a blank screen.
-        ArchiveButton.IsVisible = hasAlerts || _showArchived;
 
         // Nothing to filter when the unfiltered list is genuinely empty — Figma's M1-10b drops
         // the chip row entirely, and an archive listing isn't chip-filtered at all. A member
