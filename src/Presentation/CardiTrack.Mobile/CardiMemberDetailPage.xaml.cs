@@ -79,6 +79,16 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private bool _digestRendered;
 
+    /// <summary>
+    /// The digest the urgency rung and the status note on screen were drawn from, or null when
+    /// this member has none yet. Held rather than used and dropped because both of those read
+    /// the member as well as the digest: <see cref="Apply"/> lands fresh member data on every
+    /// refresh, and without the digest beside it neither could be recomputed there — so a note
+    /// naming an alert that had since been resolved stayed on screen until a *later* digest call
+    /// happened to succeed, and outlived the alert entirely when none did.
+    /// </summary>
+    private DigestResponse? _digest;
+
     /// <summary>Open/close timing of the pause-duration drop down, matching AccordionSection.</summary>
     private const uint PauseDropdownMs = 200;
 
@@ -124,8 +134,13 @@ public partial class CardiMemberDetailPage : ContentPage
                 ? id
                 : Guid.Empty;
             // Whatever summary is on screen belongs to whoever was on screen before. It must not
-            // be the reason the next CardiMember's placeholder is skipped.
+            // be the reason the next CardiMember's placeholder is skipped, and the rung and note
+            // drawn from it must not be read as the next CardiMember's — a stale note claims an
+            // open alert about the relative now named at the top of the page.
             _digestRendered = false;
+            _digest = null;
+            UrgencyRow.IsVisible = false;
+            UrgencyNoteLabel.IsVisible = false;
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
         }
@@ -501,6 +516,12 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryLabel.Text = $"We'll summarise how {NameFormatting.FirstName(member.Name)} is doing here as soon as there's enough data to say something useful.";
         }
 
+        // Both read the member as well as the digest, so they belong to every pass that lands new
+        // member data — not only to the digest's own round trip. HealthStatus is what the note
+        // speaks about, and it is this call that just refreshed it: recomputing here is what
+        // retracts the note in the same pass as the alert it named stops being open.
+        ApplyDigest(member, _digest);
+
         ApplyTrends(member.Metrics);
         ApplyContacts(member);
 
@@ -536,8 +557,9 @@ public partial class CardiMemberDetailPage : ContentPage
             SummaryGeneratedLabel.IsVisible = true;
             _digestRendered = true;
 
-            ApplyUrgency(digest.Urgency);
-            ApplyStatusNote(digest);
+            _digest = digest;
+            if (_member is not null)
+                ApplyDigest(_member, digest);
 
             if (unchanged)
                 return;
@@ -737,6 +759,23 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
+    /// The two digest-derived lines under the summary — the urgency rung and the note that
+    /// reconciles it with the dashboard hero — drawn together from one member and one digest.
+    /// </summary>
+    /// <remarks>
+    /// Together rather than separately because they are one claim read as one paragraph, and a
+    /// pass that refreshed only one of them left the other speaking for a state that had moved.
+    /// Called from <see cref="Apply"/> as well as from the digest's own round trip, so the pair
+    /// is re-derived whenever either half changes; <paramref name="digest"/> is null before this
+    /// member has one, and both lines are then simply absent.
+    /// </remarks>
+    private void ApplyDigest(CardiMemberDetailResponse member, DigestResponse? digest)
+    {
+        ApplyUrgency(digest?.Urgency);
+        ApplyStatusNote(member, digest);
+    }
+
+    /// <summary>
     /// Shows the model's own urgency read beside the summary — alongside, never instead of, the
     /// card's dashboard-driven status colour. Hidden when this generation returned nothing
     /// parseable, the same treatment every optional digest field gets.
@@ -764,15 +803,21 @@ public partial class CardiMemberDetailPage : ContentPage
 
     /// <summary>
     /// The one line that reconciles this card with the dashboard hero on the day the two
-    /// disagree — <see cref="StatusAgreement"/> decides when that is and what it says. Reads the
-    /// member the page already loaded: the digest lands on its own round trip after
-    /// <see cref="Apply"/>, so by the time this runs <see cref="_member"/> is the same response
-    /// the rest of the screen was drawn from, and the periodic refresh re-runs both, so a hero
-    /// that changes colour between digests still moves this line on the next tick.
+    /// disagree — <see cref="StatusAgreement"/> decides when that is and what it says.
     /// </summary>
-    private void ApplyStatusNote(DigestResponse digest)
+    /// <remarks>
+    /// The note names something the caregiver is expected to go and act on ("an alert is still
+    /// open"), so it may only ever describe the member response on screen now. It used to be
+    /// written solely on the digest's own round trip, which left it standing on a member whose
+    /// <c>HealthStatus</c> had since gone green: the alert was resolved, the hero turned, and the
+    /// line under a green "Nothing pressing today" went on naming an alert that no longer existed
+    /// — indefinitely when the next digest call 404'd or failed, since that path deliberately
+    /// leaves the summary card as it is. Both inputs are passed in, and every pass that refreshes
+    /// either re-derives the line, so it is retracted by the same load that retires its subject.
+    /// </remarks>
+    private void ApplyStatusNote(CardiMemberDetailResponse member, DigestResponse? digest)
     {
-        var note = _member is null ? null : StatusAgreement.Note(_member, digest);
+        var note = digest is null ? null : StatusAgreement.Note(member, digest);
         UrgencyNoteLabel.IsVisible = note is not null;
         UrgencyNoteLabel.Text = note;
     }
