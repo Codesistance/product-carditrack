@@ -87,6 +87,29 @@
 
                         <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
 
+                        <!-- Who first, then what: the CardiMember card leads and the severity
+                             banner follows it. The badge — NOTICE / URGENT / CRITICAL — sits in
+                             this card's top-right corner, in the severity's own colour, in a
+                             column of its own so the avatar and the name/type stack keep their
+                             places and alignment exactly as before. -->
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label x:Name="MemberNameLabel"
+                                           Style="{StaticResource Body1SemiBoldDark}"/>
+                                    <Label x:Name="MemberTypeLabel"
+                                           Style="{StaticResource Body2}"/>
+                                </VerticalStackLayout>
+                                <Label x:Name="SeverityBadge"
+                                       Grid.Column="2"
+                                       HorizontalOptions="End"
+                                       VerticalOptions="Start"
+                                       FontFamily="QuicksandSemiBold"
+                                       FontSize="12"/>
+                            </Grid>
+                        </Border>
+
                         <Border x:Name="SeverityBanner"
                                 StrokeThickness="0"
                                 Padding="16,14">
@@ -101,14 +124,13 @@
                                  tile and the white-stroke variants: on a coloured ground the mark
                                  has to bring its own contrast.
 
-                                 NOTICE / URGENT / CRITICAL sits at the end of the date's row,
-                                 opposite the date, rather than on a row of its own above the
-                                 title: up there it was a label floating over nothing, and it
-                                 cost the banner a whole line. The tile spans both rows, from the
-                                 title's top to the date's bottom — the same Fill +
+                                 NOTICE / URGENT / CRITICAL is not on this banner at all: it sits
+                                 in the top-right of the CardiMember card above, where the banner's
+                                 colour has already said how bad it is. The tile spans both rows,
+                                 from the title's top to the date's bottom — the same Fill +
                                  width-bound-to-height treatment the header's back button uses. -->
                             <Grid RowDefinitions="Auto,Auto"
-                                  ColumnDefinitions="Auto,*,Auto"
+                                  ColumnDefinitions="Auto,*"
                                   ColumnSpacing="12"
                                   RowSpacing="4">
                                 <!-- Fill + width-bound-to-height: the tile matches the title and
@@ -127,7 +149,7 @@
                                            VerticalOptions="Center"/>
                                 </controls:SquareBorder>
                                 <Label x:Name="TitleLabel"
-                                       Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
+                                       Grid.Row="0" Grid.Column="1"
                                        Style="{StaticResource Heading3}"
                                        TextColor="{StaticResource White}"
                                        LineBreakMode="WordWrap"/>
@@ -136,25 +158,6 @@
                                        Style="{StaticResource Body2}"
                                        TextColor="{StaticResource White}"
                                        VerticalOptions="Center"/>
-                                <Label x:Name="SeverityBadge"
-                                       Grid.Row="1" Grid.Column="2"
-                                       HorizontalOptions="End"
-                                       VerticalOptions="Center"
-                                       FontFamily="QuicksandSemiBold"
-                                       FontSize="12"
-                                       TextColor="{StaticResource White}"/>
-                            </Grid>
-                        </Border>
-
-                        <Border Style="{StaticResource ElevatedCard}">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
-                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                    <Label x:Name="MemberNameLabel"
-                                           Style="{StaticResource Body1SemiBoldDark}"/>
-                                    <Label x:Name="MemberTypeLabel"
-                                           Style="{StaticResource Body2}"/>
-                                </VerticalStackLayout>
                             </Grid>
                         </Border>
 
