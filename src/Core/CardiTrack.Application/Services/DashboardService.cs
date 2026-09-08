@@ -128,7 +128,7 @@ public class DashboardService : IDashboardService
         var advise = isPaused
             ? null
             : AdvisePicker.PickDefault(
-                await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), DateTime.UtcNow);
+                await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), now);
 
         // The newest family entry only — its generation instant is all the card wants, to tell
         // whether the caregiver has read this far. The Journal tab reads the history itself.

@@ -38,7 +38,7 @@ public static class AttentionMarks
             return false;
 
         var seenTicks = Preferences.Default.Get(Key(kind, memberId), 0L);
-        return contentAt.Ticks > seenTicks;
+        return UtcTicks(contentAt) > seenTicks;
     }
 
     /// <summary>Records that content generated at <paramref name="contentAtUtc"/> has been opened,
@@ -50,9 +50,18 @@ public static class AttentionMarks
             return;
 
         var key = Key(kind, memberId);
-        if (contentAt.Ticks > Preferences.Default.Get(key, 0L))
-            Preferences.Default.Set(key, contentAt.Ticks);
+        var ticks = UtcTicks(contentAt);
+        if (ticks > Preferences.Default.Get(key, 0L))
+            Preferences.Default.Set(key, ticks);
     }
+
+    /// <summary>
+    /// Both sides of the comparison as UTC ticks, whatever <see cref="DateTime.Kind"/> a caller
+    /// handed over: the server's instants deserialise as Utc or Unspecified (already UTC), and a
+    /// Local one from a page would otherwise be off by the device's offset and flip the mark.
+    /// </summary>
+    private static long UtcTicks(DateTime instant) =>
+        (instant.Kind == DateTimeKind.Local ? instant.ToUniversalTime() : instant).Ticks;
 
     /// <summary>The pending question, keyed on its id: unread until this exact question was opened.</summary>
     public static bool IsQuestionUnread(Guid memberId, Guid questionId) =>

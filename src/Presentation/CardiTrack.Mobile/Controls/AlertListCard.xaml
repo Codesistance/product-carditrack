@@ -87,11 +87,7 @@
                        Margin="0,6,0,0"
                        Style="{StaticResource Body2Dark}"
                        MaxLines="2"
-                       LineBreakMode="TailTruncation">
-                    <Label.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnOpenTapped"/>
-                    </Label.GestureRecognizers>
-                </Label>
+                       LineBreakMode="TailTruncation"/>
 
                 <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                       Margin="0,10,0,0"
