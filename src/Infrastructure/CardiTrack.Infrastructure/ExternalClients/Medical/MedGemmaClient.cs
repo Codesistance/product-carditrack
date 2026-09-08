@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.Settings;
@@ -352,19 +353,35 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             {
                 if (requireCompleteContent)
                 {
+                    // Two different faults arrive here wearing the same done_reason, and the
+                    // numbers are what tells them apart. A reply a little over the ceiling wanted
+                    // more room; a reply that fills a ceiling several times the size the operation
+                    // ever needs is the model looping inside the reply grammar, and no ceiling
+                    // ends that. The log says so rather than prescribing a bigger number, and the
+                    // typed exception carries the counts so a caller can stop retrying the prompt.
                     errorType = "truncated";
+                    // done_reason "length" means generation reached num_predict, so when the
+                    // server leaves eval_count out the ceiling is the count — not zero, which
+                    // would read as a reply that produced nothing.
+                    var producedTokens = meta.EvalCount ?? _settings.MaxOutputTokens;
                     _logger.LogError(
                         "MedGemma {Operation} stopped at the token budget rather than finishing "
                         + "(done_reason {DoneReason}): {OutputTokens} output token(s) against a "
                         + "{MaxOutputTokens} ceiling, {InputTokens} prompt token(s) in a "
-                        + "{ContextTokens}-token window. The reply is incomplete. Raise "
-                        + "MaxOutputTokens or ContextTokens for this model slot, or shorten the prompt.",
-                        operationName, meta.DoneReason, meta.EvalCount, _settings.MaxOutputTokens,
+                        + "{ContextTokens}-token window. The reply is incomplete. A structured reply "
+                        + "that fills the whole ceiling is usually a model that did not stop, not one "
+                        + "that needed more room: compare OutputTokens with what this operation normally "
+                        + "produces before raising MaxOutputTokens or ContextTokens for this model slot.",
+                        operationName, meta.DoneReason, producedTokens, _settings.MaxOutputTokens,
                         meta.PromptEvalCount, _settings.ContextTokens);
-                    throw new HttpRequestException(
+                    throw new AiReplyTruncatedException(
                         $"MedGemma {operationName} stopped at the token budget rather than finishing "
-                        + $"({meta.EvalCount} output token(s) against a {_settings.MaxOutputTokens} "
-                        + $"ceiling in a {_settings.ContextTokens}-token window), so the reply is incomplete.");
+                        + $"({producedTokens} output token(s) against a {_settings.MaxOutputTokens} "
+                        + $"ceiling in a {_settings.ContextTokens}-token window), so the reply is incomplete.",
+                        outputTokens: producedTokens,
+                        maxOutputTokens: _settings.MaxOutputTokens,
+                        inputTokens: meta.PromptEvalCount,
+                        contextTokens: _settings.ContextTokens);
                 }
 
                 // Free text: the caller gets what was produced, as before, but the cut is on the

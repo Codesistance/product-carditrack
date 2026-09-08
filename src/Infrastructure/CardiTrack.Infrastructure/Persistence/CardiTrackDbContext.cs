@@ -47,6 +47,9 @@ public class CardiTrackDbContext : DbContext
     public DbSet<MetricAlarm> MetricAlarms => Set<MetricAlarm>();
     public DbSet<MetricAlarmState> MetricAlarmStates => Set<MetricAlarmState>();
 
+    // Members a generation path has stopped asking the model about, and until when
+    public DbSet<MemberAiHold> MemberAiHolds => Set<MemberAiHold>();
+
     // Member chat (Scenario 1)
     public DbSet<MemberChatSession> MemberChatSessions => Set<MemberChatSession>();
     public DbSet<MemberChatTurn> MemberChatTurns => Set<MemberChatTurn>();

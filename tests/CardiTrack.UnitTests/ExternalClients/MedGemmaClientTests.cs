@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
@@ -713,8 +714,9 @@ public class MedGemmaClientTests
     /// The bug this pins: a structured reply cut off at the ceiling used to reach the
     /// deserializer, which reported it as content that "could not be parsed" at whatever byte the
     /// cut landed on — indistinguishable, in a log, from a model emitting nonsense. It is neither
-    /// unparseable nor nonsense; it is unfinished, and the fix is a number, so the error has to
-    /// say so and name the numbers.
+    /// unparseable nor nonsense; it is unfinished, so the error has to say so and name the
+    /// numbers — and, since a reply that fills the whole ceiling is more often a model that did
+    /// not stop than one that needed more room, it must not simply prescribe a bigger ceiling.
     /// </summary>
     [Fact]
     public async Task GenerateStructuredAsync_ReportsTruncation_RatherThanBlamingTheJson()
@@ -723,7 +725,7 @@ public class MedGemmaClientTests
             HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length"));
         var client = CreateClient(handler, out var logger);
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
             () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
 
         Assert.Contains("token budget", ex.Message);
@@ -732,6 +734,55 @@ public class MedGemmaClientTests
         Assert.Contains("token budget", error.Message);
         Assert.Contains(MaxOutputTokens.ToString(), error.Message);
         Assert.Contains(ContextTokens.ToString(), error.Message);
+        Assert.Contains("did not stop", error.Message);
+    }
+
+    /// <summary>
+    /// The exception is typed and carries the counts because a caller has a decision to make
+    /// that the message alone cannot support: whether to ask again. The digest pass holds a
+    /// member whose read did not finish; it needs the numbers, not a string to parse.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_TruncationCarriesTheTokenCounts_AndStaysAnHttpRequestException()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length"));
+        var client = CreateClient(handler, out _);
+
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        // eval_count and prompt_eval_count from the payload; the ceilings from the settings.
+        Assert.Equal(128, ex.OutputTokens);
+        Assert.Equal(412, ex.InputTokens);
+        Assert.Equal(MaxOutputTokens, ex.MaxOutputTokens);
+        Assert.Equal(ContextTokens, ex.ContextTokens);
+        // Every existing catch of a model-call failure keeps working: the chat endpoint's 503,
+        // the pipeline's per-member log-and-continue.
+        Assert.IsAssignableFrom<HttpRequestException>(ex);
+    }
+
+    /// <summary>
+    /// done_reason "length" means the ceiling was reached, so a payload that omits eval_count
+    /// still reports the ceiling as the count — never zero, which would read as a reply that
+    /// produced nothing, the opposite of what happened.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_Truncation_ReportsTheCeiling_WhenTheServerOmitsTheCount()
+    {
+        var payload = StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length")
+            .Replace(",\"eval_count\":128", string.Empty);
+        Assert.DoesNotContain("\"eval_count\"", payload);
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, payload);
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        Assert.Equal(MaxOutputTokens, ex.OutputTokens);
+        Assert.Contains($"{MaxOutputTokens} output token(s)", ex.Message);
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains($"{MaxOutputTokens} output token(s)", error.Message);
     }
 
     /// <summary>Same DPIA invariant as every other failure path: the reply was derived from health
@@ -743,7 +794,7 @@ public class MedGemmaClientTests
             HttpStatusCode.OK, StructuredPayload("""{"summary":"PATIENT-SECRET chest pain at ni""", doneReason: "length"));
         var client = CreateClient(handler, out var logger);
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
             () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
 
         Assert.DoesNotContain("PATIENT-SECRET", ex.Message);
@@ -759,7 +810,7 @@ public class MedGemmaClientTests
             HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length"));
         var client = CreateClient(handler, out _);
 
-        await Assert.ThrowsAsync<HttpRequestException>(
+        await Assert.ThrowsAsync<AiReplyTruncatedException>(
             () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
 
         var span = Assert.Single(capture.Stopped);

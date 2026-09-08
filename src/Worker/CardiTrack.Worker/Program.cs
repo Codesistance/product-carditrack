@@ -82,6 +82,7 @@ builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRe
 builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
+builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();

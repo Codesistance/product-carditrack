@@ -1,5 +1,6 @@
 ﻿using System.Globalization;
 using System.Reflection;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -34,6 +35,7 @@ public class DigestGenerationServiceTests
         Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IMemberQuestionnaireRepository _questionnaires =
         Substitute.For<IMemberQuestionnaireRepository>();
+    private readonly IMemberAiHoldRepository _holds = Substitute.For<IMemberAiHoldRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
     private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
 
@@ -69,9 +71,12 @@ public class DigestGenerationServiceTests
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
         _unitOfWork.MemberQuestionnaires.Returns(_questionnaires);
+        _unitOfWork.MemberAiHolds.Returns(_holds);
 
         // Defaults: one active London-anchored member whose data landed half an hour ago, and who
-        // has never had a summary written.
+        // has never had a summary written — and whom the model has never failed to read.
+        _holds.GetAsync(Arg.Any<Guid>(), Arg.Any<AiHoldPurpose>(), Arg.Any<CancellationToken>())
+            .Returns((MemberAiHold?)null);
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId]);
         _members.GetByIdAsync(_memberId).Returns(Member());
         SetupAnchorTimeZone("Europe/London");
@@ -1530,6 +1535,149 @@ public class DigestGenerationServiceTests
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.CardiMemberId == _memberId), Arg.Any<CancellationToken>());
     }
+
+    // ---- A read the model cannot finish holds the member ----
+
+    /// <summary>
+    /// A structured reply that fills the output ceiling is the model looping inside the reply
+    /// grammar, and the same prompt loops the same way on the next pass. The pass records a hold
+    /// instead of writing anything — no rewrite call is spent on a read that never finished —
+    /// and the member's summary count is simply zero, not an exception out of the loop.
+    /// </summary>
+    [Fact]
+    public async Task TruncatedClinicalRead_HoldsTheMember_AndWritesNoSummary()
+    {
+        GivenTruncatedClinicalRead();
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _holds.Received(1).UpsertAsync(
+            Arg.Is<MemberAiHold>(h =>
+                h.CardiMemberId == _memberId
+                && h.Purpose == AiHoldPurpose.FamilyDigest
+                && h.ConsecutiveFailures == 1
+                && h.LastFailedAtUtc == UtcNow
+                && h.HeldUntilUtc == UtcNow.AddHours(2)
+                && h.Reason == "truncated"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The hold is checked before every other probe and yields to none of the waivers. An alert
+    /// raised since the last summary is the strongest reason the floor has to regenerate, and it
+    /// still does not: the read that would describe the alert is the read that cannot finish.
+    /// </summary>
+    [Fact]
+    public async Task HeldMember_IsSkippedBeforeAnyModelCall_EvenWhenAnAlertWouldWaiveTheFloor()
+    {
+        GivenPreviousSummary(UtcNow.AddHours(-3));
+        GivenAlerts(AnAlert(triggeredAt: UtcNow.AddMinutes(-2), resolved: false));
+        GivenHold(consecutiveFailures: 1, heldUntil: UtcNow.AddMinutes(1));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _medicalAi.DidNotReceive()
+            .GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _digests.DidNotReceive().GetLatestAsync(
+            Arg.Any<Guid>(), Arg.Any<DigestAudience>(), Arg.Any<CancellationToken>());
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The hold ends with the first reply that finishes, whatever its count had climbed to: the
+    /// count is of failures in a row, and a finished read broke the row.
+    /// </summary>
+    [Fact]
+    public async Task ExpiredHold_IsCleared_ByAReadThatFinishes()
+    {
+        GivenHold(consecutiveFailures: 2, heldUntil: UtcNow.AddMinutes(-1));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _holds.Received(1).ClearAsync(_memberId, AiHoldPurpose.FamilyDigest, Arg.Any<CancellationToken>());
+        await _holds.DidNotReceive().UpsertAsync(Arg.Any<MemberAiHold>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExpiredHold_ThenAnotherUnfinishedRead_LengthensTheHold()
+    {
+        GivenHold(consecutiveFailures: 2, heldUntil: UtcNow.AddMinutes(-1));
+        GivenTruncatedClinicalRead();
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _holds.Received(1).UpsertAsync(
+            Arg.Is<MemberAiHold>(h => h.ConsecutiveFailures == 3 && h.HeldUntilUtc == UtcNow.AddHours(8)),
+            Arg.Any<CancellationToken>());
+        await _holds.DidNotReceive().ClearAsync(
+            Arg.Any<Guid>(), Arg.Any<AiHoldPurpose>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The common path pays one read and no write: a member who was never held is never cleared.</summary>
+    [Fact]
+    public async Task UnheldMember_CostsTheHoldTableOnlyARead()
+    {
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _holds.Received(1).GetAsync(_memberId, AiHoldPurpose.FamilyDigest, Arg.Any<CancellationToken>());
+        await _holds.DidNotReceive().ClearAsync(
+            Arg.Any<Guid>(), Arg.Any<AiHoldPurpose>(), Arg.Any<CancellationToken>());
+        await _holds.DidNotReceive().UpsertAsync(Arg.Any<MemberAiHold>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Any other model failure keeps its existing shape — the loop's log-and-continue — and
+    /// leaves the hold table alone: the hold is for a reply that did not finish, not for a host
+    /// that did not answer.
+    /// </summary>
+    [Fact]
+    public async Task OtherModelFailures_DoNotHoldTheMember()
+    {
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("MedGemma generate_structured failed: HTTP 503"));
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _holds.DidNotReceive().UpsertAsync(Arg.Any<MemberAiHold>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(1, 2)]
+    [InlineData(2, 4)]
+    [InlineData(3, 8)]
+    [InlineData(4, 12)]
+    [InlineData(40, 12)]
+    public void HoldFor_DoublesPerConsecutiveFailure_UpToTheCap(int consecutiveFailures, int hours) =>
+        Assert.Equal(TimeSpan.FromHours(hours), DigestGenerationService.HoldFor(consecutiveFailures));
+
+    private void GivenTruncatedClinicalRead() =>
+        _medicalAi.GenerateStructuredAsync<DigestGenerationService.DigestClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new AiReplyTruncatedException(
+                "MedGemma generate_structured stopped at the token budget rather than finishing",
+                outputTokens: 2048, maxOutputTokens: 2048, inputTokens: 1869, contextTokens: 8192));
+
+    private void GivenHold(int consecutiveFailures, DateTime heldUntil) =>
+        _holds.GetAsync(_memberId, AiHoldPurpose.FamilyDigest, Arg.Any<CancellationToken>())
+            .Returns(new MemberAiHold
+            {
+                CardiMemberId = _memberId,
+                Purpose = AiHoldPurpose.FamilyDigest,
+                ConsecutiveFailures = consecutiveFailures,
+                HeldUntilUtc = heldUntil,
+                LastFailedAtUtc = heldUntil.AddHours(-2),
+                Reason = "truncated",
+            });
 
     // ---- Alert state waives the regeneration gates ----
 

@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -312,6 +313,50 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </para>
     /// </remarks>
     private static readonly TimeSpan EarlyDayRegenerationInterval = TimeSpan.FromHours(2);
+
+    /// <summary>
+    /// How long the clinical read is held for a member after the model first fails to finish it.
+    /// Each consecutive failure doubles the hold, up to <see cref="TruncatedReadHoldCap"/>
+    /// (see <see cref="HoldFor"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A structured reply that runs to the output ceiling is the model looping inside the reply
+    /// grammar, not a reply that needed more room: finished clinical reads run to a few hundred
+    /// tokens against a 2048 ceiling. The same prompt loops the same way a few minutes later, and
+    /// before this hold one member's did exactly that on every pass for four days — the
+    /// half-hourly job and the assessor's re-run after each upload between them spending the full
+    /// ceiling's worth of GPU time every few minutes to write nothing, and logging the same error
+    /// each time. Two hours is long enough for the day's readings, and so the prompt, to have moved
+    /// on; the doubling is for a member the model cannot read at all, who then costs a couple of
+    /// calls a day rather than one per pass.
+    /// </para>
+    /// <para>
+    /// Unlike the regeneration floor, no waiver cuts through this: the read that would describe
+    /// an alert is the read that cannot finish. It ends with the first reply that does finish.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan TruncatedReadHold = TimeSpan.FromHours(2);
+
+    /// <summary>The longest a consecutive run of unfinished reads can hold a member for.</summary>
+    private static readonly TimeSpan TruncatedReadHoldCap = TimeSpan.FromHours(12);
+
+    /// <summary>The payload-free label a hold records for a read the model did not finish.</summary>
+    private const string TruncatedHoldReason = "truncated";
+
+    /// <summary>
+    /// The hold after <paramref name="consecutiveFailures"/> unfinished reads in a row:
+    /// <see cref="TruncatedReadHold"/> doubled once per failure after the first, capped at
+    /// <see cref="TruncatedReadHoldCap"/>.
+    /// </summary>
+    internal static TimeSpan HoldFor(int consecutiveFailures)
+    {
+        // Clamped before shifting: the count only ever grows, and a long-held member must not
+        // wrap the shift back to a short hold.
+        var doublings = Math.Clamp(consecutiveFailures - 1, 0, 8);
+        var hold = TruncatedReadHold * (1 << doublings);
+        return hold < TruncatedReadHoldCap ? hold : TruncatedReadHoldCap;
+    }
 
     /// <summary>
     /// How long a family is left alone between questions, measured from the last one <em>asked</em>
@@ -1152,6 +1197,19 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
+        // Before every other probe: a member whose read the model could not finish is skipped
+        // outright until the hold lapses, whatever their readings have done since. See
+        // TruncatedReadHold for why none of the waivers below apply here.
+        var hold = await _unitOfWork.MemberAiHolds.GetAsync(memberId, AiHoldPurpose.FamilyDigest, ct);
+        if (hold is not null && hold.HeldUntilUtc > utcNow)
+        {
+            _logger.LogInformation(
+                "Skipped the summary for CardiMember {CardiMemberId}: the clinical read is held until "
+                + "{HeldUntilUtc:u} after {ConsecutiveFailures} consecutive reply(ies) the model did not finish.",
+                memberId, hold.HeldUntilUtc, hold.ConsecutiveFailures);
+            return false;
+        }
+
         // The member's own last summary answers the remaining gates. The cheap probes (alerts,
         // latest assessment) run first so a force-refresh does not depend on the daily rows;
         // the date-range read below is then what the prompt needs anyway, and what the
@@ -1272,7 +1330,23 @@ public partial class DigestGenerationService : IDigestGenerationService
             {MedicalPromptBlocks.FamilyDigestDailyLines(logs, describedDate, progress)}
             """;
 
-        var clinical = await _medicalAi.GenerateStructuredAsync<DigestClinicalAiResponse>(prompt, ct);
+        DigestClinicalAiResponse clinical;
+        try
+        {
+            clinical = await _medicalAi.GenerateStructuredAsync<DigestClinicalAiResponse>(prompt, ct);
+        }
+        catch (AiReplyTruncatedException ex)
+        {
+            // Handled here rather than left to the loop's catch: the loop would log it and ask
+            // again next pass, which is the retry-into-the-same-loop this hold exists to stop.
+            await HoldClinicalReadAsync(memberId, hold, utcNow, ex, ct);
+            return false;
+        }
+
+        // A finished reply ends the hold, expired or not: the count it carries is of failures in
+        // a row, and this reply broke the row.
+        if (hold is not null)
+            await _unitOfWork.MemberAiHolds.ClearAsync(memberId, AiHoldPurpose.FamilyDigest, ct);
 
         // A blank finding is a transient model hiccup, and there is nothing for the rewrite to
         // work from — returning before spending that call, the same stance Advise takes.
@@ -1412,6 +1486,37 @@ public partial class DigestGenerationService : IDigestGenerationService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Records that the model did not finish this member's clinical read, and for how long the
+    /// pass should stop asking. Logged as an error once per failure rather than once per pass —
+    /// the passes the hold then skips are the noise this replaces — and logged before the row
+    /// is written, so a database fault on the write cannot hide what the model did.
+    /// </summary>
+    private async Task HoldClinicalReadAsync(
+        Guid memberId, MemberAiHold? previousHold, DateTime utcNow, AiReplyTruncatedException ex,
+        CancellationToken ct)
+    {
+        var failures = (previousHold?.ConsecutiveFailures ?? 0) + 1;
+        var heldUntil = utcNow + HoldFor(failures);
+
+        _logger.LogError(ex,
+            "Summary generation for CardiMember {CardiMemberId} stopped: the model did not finish the "
+            + "clinical read ({OutputTokens} output token(s) against a {MaxOutputTokens} ceiling, "
+            + "{InputTokens} prompt token(s)), failure {ConsecutiveFailures} in a row. The read is "
+            + "held until {HeldUntilUtc:u}.",
+            memberId, ex.OutputTokens, ex.MaxOutputTokens, ex.InputTokens, failures, heldUntil);
+
+        await _unitOfWork.MemberAiHolds.UpsertAsync(new MemberAiHold
+        {
+            CardiMemberId = memberId,
+            Purpose = AiHoldPurpose.FamilyDigest,
+            HeldUntilUtc = heldUntil,
+            LastFailedAtUtc = utcNow,
+            ConsecutiveFailures = failures,
+            Reason = TruncatedHoldReason,
+        }, ct);
     }
 
     /// <summary>
