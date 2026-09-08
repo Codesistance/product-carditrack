@@ -72,6 +72,15 @@ the shared string in `TelemetryNames` (CardiTrack.Shared).
   timeout and cold starts) and `gen_ai.client.token.usage` (split by
   `gen_ai.token.type` input/output), behind the same `apm_metrics_enabled` switch as
   every other meter.
+- **Which read it was** — a structured call also carries `carditrack.ai.reply_schema`,
+  the response type it asked for (`DigestClinicalAiResponse`, `ChatRouteAiResponse`, …),
+  on the span and on both metrics; free-text calls carry no such tag. `gen_ai.operation.name`
+  is only the API shape, and a dozen reads share `generate_structured` on one model slot's
+  token ceiling, so this is the dimension that separates them. Split
+  `gen_ai.client.token.usage` by it to get a read's normal output length — the comparison
+  the truncation error asks for before anyone raises `MaxOutputTokens` or `ContextTokens`
+  (a reply filling the whole ceiling is usually a model that did not stop, and raising the
+  ceiling costs every other read on the slot). Bounded cardinality: the values are type names.
 - **Log line** — one Information completion log per call (model, elapsed ms, token
   counts, done_reason, Ollama server-side timings, trace id), enabled by the Serilog
   override `CardiTrack.Infrastructure.ExternalClients.Medical → Information` in the API

@@ -802,6 +802,82 @@ public class MedGemmaClientTests
         Assert.All(logger.Entries, e => Assert.DoesNotContain("chest pain", e.Message));
     }
 
+    /// <summary>
+    /// The gap this pins: every structured read in the solution goes out as
+    /// <c>generate_structured</c> — a dozen of them share the operation name and the slot's one
+    /// output ceiling — so a truncation report that named only the operation could not say which
+    /// read did not finish. That mattered because the report's own advice is to compare the reply
+    /// against what the read normally produces before raising a ceiling, and an undifferentiated
+    /// report gives nothing to compare.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_TruncationReport_NamesTheReplyItAskedFor()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(
+            HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look sta""", doneReason: "length"));
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
+            () => client.GenerateStructuredAsync<TestStructuredResponse>(Prompt));
+
+        // On the exception, so a caller deciding whether to ask again reads which read this was
+        // rather than parsing it out of a message.
+        Assert.Equal(nameof(TestStructuredResponse), ex.ReplySchema);
+        Assert.Contains(nameof(TestStructuredResponse), ex.Message);
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains(nameof(TestStructuredResponse), error.Message);
+    }
+
+    /// <summary>
+    /// The comparison the truncation report asks for is a metric query, not a log search: token
+    /// usage split by reply schema is what says whether 2048 tokens is this read's normal or ten
+    /// times it. A type name is a compile-time constant, so this dimension costs bounded
+    /// cardinality and leaks nothing.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_TagsTheSpanAndTokenMetrics_WithTheReplySchema()
+    {
+        using var capture = new SpanCapture();
+        using var metrics = new MetricCapture();
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(HttpStatusCode.OK, StructuredPayload("""{"summary":"Trends look stable."}"""));
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateStructuredAsync<TestStructuredResponse>(Prompt);
+
+        var span = Assert.Single(capture.Stopped);
+        Assert.Equal(nameof(TestStructuredResponse), span.GetTagItem("carditrack.ai.reply_schema"));
+
+        var duration = Assert.Single(metrics.Doubles, m => m.Instrument == "gen_ai.client.operation.duration");
+        Assert.Equal(nameof(TestStructuredResponse), duration.Tags["carditrack.ai.reply_schema"]);
+        var tokens = metrics.Longs.Where(m => m.Instrument == "gen_ai.client.token.usage").ToList();
+        Assert.Equal(2, tokens.Count);
+        Assert.All(tokens, t => Assert.Equal(nameof(TestStructuredResponse), t.Tags["carditrack.ai.reply_schema"]));
+    }
+
+    /// <summary>
+    /// A free-text call asked for no shape, so it carries no reply-schema tag at all rather than a
+    /// placeholder one — its series stay exactly the dimensions they were before this tag existed.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_CarriesNoReplySchemaTag_BecauseItAsksForNoShape()
+    {
+        using var capture = new SpanCapture();
+        using var metrics = new MetricCapture();
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateAsync(Prompt);
+
+        var span = Assert.Single(capture.Stopped);
+        Assert.Null(span.GetTagItem("carditrack.ai.reply_schema"));
+        var duration = Assert.Single(metrics.Doubles, m => m.Instrument == "gen_ai.client.operation.duration");
+        Assert.False(duration.Tags.ContainsKey("carditrack.ai.reply_schema"));
+        Assert.All(
+            metrics.Longs.Where(m => m.Instrument == "gen_ai.client.token.usage"),
+            t => Assert.False(t.Tags.ContainsKey("carditrack.ai.reply_schema")));
+    }
+
     [Fact]
     public async Task GenerateStructuredAsync_TagsTheSpanAndDurationMetric_AsTruncated()
     {

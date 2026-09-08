@@ -30,13 +30,15 @@ public class AiReplyTruncatedException : HttpRequestException
         int outputTokens,
         int maxOutputTokens,
         int? inputTokens,
-        int contextTokens)
+        int contextTokens,
+        string? replySchema = null)
         : base(message)
     {
         OutputTokens = outputTokens;
         MaxOutputTokens = maxOutputTokens;
         InputTokens = inputTokens;
         ContextTokens = contextTokens;
+        ReplySchema = replySchema;
     }
 
     /// <summary>Tokens the model produced before it was stopped — equal to the ceiling by definition.</summary>
@@ -50,4 +52,18 @@ public class AiReplyTruncatedException : HttpRequestException
 
     /// <summary>The context window the prompt and the reply shared (<c>num_ctx</c>).</summary>
     public int ContextTokens { get; }
+
+    /// <summary>
+    /// The reply the call asked for, by response type name (e.g. <c>DigestClinicalAiResponse</c>) —
+    /// which read this was, not just that some structured read did not finish. Null only if the
+    /// raising client did not name one.
+    /// </summary>
+    /// <remarks>
+    /// Every structured read on a slot shares one output ceiling, so "did this reply need more
+    /// room?" is a question about one read, not about the slot: a month summary and a route
+    /// decision have nothing in common but the number they were cut off at. A type name is safe to
+    /// carry for the same reason the token counts are — it describes the shape asked for, never any
+    /// of the content.
+    /// </remarks>
+    public string? ReplySchema { get; }
 }
