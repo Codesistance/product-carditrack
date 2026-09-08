@@ -9,13 +9,20 @@
          its left edge. That is what makes the severity rail round into the card's corner
          instead of butting against it as a straight bar would.
 
-         The title opens the detail screen. The chevron still expands the preview in place. -->
+         Tapping the card anywhere opens the detail screen — the whole row is the target, not
+         the title alone, which is what it used to be and what left most of a finger-sized card
+         doing nothing. The action buttons and the chevron keep their own taps, which win over
+         this one the same way the hero card's buttons win over its body tap; the chevron still
+         expands the preview in place. -->
     <Border x:Name="SeverityRail"
             StrokeThickness="0"
             Padding="4,0,0,0">
         <Border.StrokeShape>
             <RoundRectangle CornerRadius="20"/>
         </Border.StrokeShape>
+        <Border.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnOpenTapped"/>
+        </Border.GestureRecognizers>
         <Border.Shadow>
             <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.15" Radius="14" Offset="0,4"/>
         </Border.Shadow>
@@ -82,7 +89,7 @@
                        MaxLines="2"
                        LineBreakMode="TailTruncation">
                     <Label.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnExpandTapped"/>
+                        <TapGestureRecognizer Tapped="OnOpenTapped"/>
                     </Label.GestureRecognizers>
                 </Label>
 
