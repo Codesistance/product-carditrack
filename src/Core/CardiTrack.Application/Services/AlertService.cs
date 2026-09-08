@@ -40,7 +40,7 @@ public class AlertService : IAlertService
         Guid requestingUserId,
         Guid? cardiMemberId = null,
         AlertSeverity? severity = null,
-        AlertStatus? status = null,
+        AlertStatusFilter? status = null,
         DateTime? from = null,
         DateTime? to = null,
         int limit = AlertQuery.DefaultLimit,

@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 
@@ -16,7 +17,7 @@ public interface IAlertService
         Guid requestingUserId,
         Guid? cardiMemberId = null,
         AlertSeverity? severity = null,
-        AlertStatus? status = null,
+        AlertStatusFilter? status = null,
         DateTime? from = null,
         DateTime? to = null,
         int limit = 50,

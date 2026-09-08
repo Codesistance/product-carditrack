@@ -41,7 +41,7 @@ Six endpoints are live, serving the mobile Alerts List and the alert detail scre
 Response shape differs from the design below in three ways, all because the implemented `Alert` entity is what it is:
 
 - `type` is the **`AlertType` display name** ("Inactivity", "Heart Rate", "Sleep", "Pattern Break", "Trend"), not the `activity_decline` string taxonomy.
-- `severity` is the lowercase `AlertSeverity` name (`green`/`yellow`/`orange`/`red`), and `status` is derived from `AcknowledgedDate` + `IsResolved` rather than stored — see `AlertStatus`.
+- `severity` is the lowercase `AlertSeverity` name (`green`/`yellow`/`orange`/`red`), and the `status` a row *reports* is derived from `AcknowledgedDate` + `IsResolved` rather than stored — see `AlertStatus`. The `status` a caller *filters* by is `AlertStatusFilter`, which is the same three names plus `open`: a row sits in one lifecycle position, but a filter may name a set, and `open` names `new` and `acknowledged` together. `open` is the set `ComputeHealthStatus` colours the dashboard hero from, so a caller showing "current alerts" should ask for it rather than for everything — an unfiltered page is shared with resolved rows and can run out before an alert the hero is still speaking about.
 - Each summary carries `cardiMemberName`, `emergencyContactPhone` and `emergencyContactName` so the M1-10 card can render its avatar and Call action without a second round-trip. `cardiMemberPhotoUrl` is present but always null: no member photo storage exists yet. `aboutDate` is the civil day the alert is **about** — yesterday for `activity_decline` / `elevated_heart_rate` / `long_term_trend`, the night judged for `irregular_sleep`, the firing day otherwise. The list groups by `aboutDate`, not `triggeredAt`, so a quieter yesterday is not filed under Today because the worker noticed it this afternoon. `triggeredAt` remains the raise instant (relative "2 hours ago" on the card).
 
 **Still not implemented:** status transitions (`PUT .../status`), notes, photos, and history. The M1-11 "More Options" rows follow the same line: `View Detailed Activity Data` and `Share with Family` ship because they need no backend, while `Adjust Baseline`, `Add Note About This Alert` and `Book a Doctor Visit` are absent from the screen entirely — there is no baseline-override endpoint, no `AlertNote` store, and no clinician or consent architecture behind them. Per-CardiMember alert preferences remain unbuilt too, though quiet hours and per-category push muting now exist **at user scope** — see "Sensitivity and preferences" below. Acknowledgment takes no `note`/`actionTaken` — notes would need a schema change (`AlertNote`).
@@ -96,7 +96,7 @@ List all alerts across all accessible CardiMembers.
 |-----------|------|-------------|
 | `cardiMemberId` | string | Filter by specific CardiMember |
 | `severity` | string | `yellow`, `orange`, `red` |
-| `status` | string | `new`, `acknowledged`, `resolved` |
+| `status` | string | `new`, `acknowledged`, `resolved`, `open` (`new` + `acknowledged` — every episode nobody has closed) |
 | `from` | string (ISO 8601) | Start date filter |
 | `to` | string (ISO 8601) | End date filter |
 | `limit` | integer | Max results (default: 50, max: 200) |

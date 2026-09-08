@@ -104,9 +104,12 @@ public class AlertRepository : Repository<Alert>, IAlertRepository
 
         alerts = query.Status switch
         {
-            AlertStatus.New => alerts.Where(a => !a.IsResolved && a.AcknowledgedDate == null),
-            AlertStatus.Acknowledged => alerts.Where(a => !a.IsResolved && a.AcknowledgedDate != null),
-            AlertStatus.Resolved => alerts.Where(a => a.IsResolved),
+            AlertStatusFilter.New => alerts.Where(a => !a.IsResolved && a.AcknowledgedDate == null),
+            AlertStatusFilter.Acknowledged => alerts.Where(a => !a.IsResolved && a.AcknowledgedDate != null),
+            AlertStatusFilter.Resolved => alerts.Where(a => a.IsResolved),
+            // The same predicate GetUnresolvedByCardiMemberAsync reads, so the list a caregiver
+            // is sent to and the set colouring the hero cannot disagree about what is still open.
+            AlertStatusFilter.Open => alerts.Where(a => !a.IsResolved),
             _ => alerts,
         };
 

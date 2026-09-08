@@ -187,7 +187,14 @@
 
                         <!-- Figma's "View Archived Alerts" CTA. There is no archive screen, so
                              it switches this list to resolved alerts in place rather than
-                             pushing one, and flips back the same way. -->
+                             pushing one, and flips back the same way.
+
+                             Always shown, in both directions. It used to hide on an empty list,
+                             back when the list carried resolved rows too and so could stand in
+                             for "is there an archive?". The list now asks for the open alerts
+                             only, so a member whose every episode has been resolved shows an
+                             empty list over a full archive — and hiding the button there would
+                             strand that history behind a screen saying "Nothing to worry about". -->
                         <Button x:Name="ArchiveButton"
                                 Style="{StaticResource AuthGradientButton}"
                                 Clicked="OnArchiveClicked"/>

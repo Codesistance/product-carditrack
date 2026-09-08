@@ -343,7 +343,8 @@ Display names below are the exact `[Display(Name = "...")]` values from `src/Cor
 ### Alerts
 - **AlertType** — Inactivity, Heart Rate, Sleep, Pattern Break, Trend
 - **AlertSeverity** — Green (1), Yellow (2), Orange (3), Red (4)
-- **AlertStatus** — New, Acknowledged, Resolved
+- **AlertStatus** — New, Acknowledged, Resolved (a derived lifecycle *position*: one per row)
+- **AlertStatusFilter** — New, Acknowledged, Resolved, Open (the alert-list `status` query filter, in `CardiTrack.Application.DTOs.Common`; **no Display attributes** — it is a query, not something rendered). Separate from `AlertStatus` on purpose: `Open` names New + Acknowledged together, which no single row can be, so it must not be added to the position enum
 
 ### Notifications & Delivery
 - **NotificationCategory** — Safety, Blocking, Unlock, Account
