@@ -9,7 +9,7 @@
     {
       "date": "2026-09-08",
       "slack_ts": null,
-      "item_count": 1,
+      "item_count": 3,
       "empty_reason": null
     }
   ],
@@ -247,6 +247,24 @@
       "severity": "FYI",
       "category": "devices",
       "brief": "research/queue/2026-09-08-withings-stetho-sense.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "ollama-cve-2026-85180-tensor-ssrf",
+      "title": "Ollama CVE-2026-85180 — unauthenticated SSRF to cloud metadata via tensor-layer pull, bypasses prior fix, still unpatched",
+      "url": "https://github.com/advisories/GHSA-57p7-34ff-7w3w",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-08-ollama-cve-2026-85180-tensor-ssrf.md"
+    },
+    {
+      "date": "2026-09-08",
+      "slug": "google-health-guardian-launch",
+      "title": "Google ships \"Health Guardian\" — passive AI blood-pressure/insulin-resistance/sleep-breathing trends on Fitbit and Pixel Watch",
+      "url": "https://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-08-google-health-guardian-launch.md"
     }
   ]
 }
