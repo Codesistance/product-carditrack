@@ -491,6 +491,19 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return result;
     }
 
+    public async Task<DeviceHistoryRepullResponse> RequestHistoryRepullAsync(
+        Guid cardiMemberId, Guid deviceId, int days, CancellationToken ct = default)
+    {
+        var repull = await PostAsync<HistoryRepullRequest, DeviceHistoryRepullResponse>(
+            $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/history-repull",
+            new HistoryRepullRequest { Days = days },
+            ct);
+        // The queued request is part of the device list's own payload (historyRepull), so a
+        // cached list would still show the action on offer moments after it was taken.
+        await EvictAsync(DeviceKeys(cardiMemberId));
+        return repull;
+    }
+
     /// <summary>What a device coming, going or syncing makes stale: the device list and the two reads that quote it.</summary>
     private static string[] DeviceKeys(Guid cardiMemberId) =>
     [
@@ -498,13 +511,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         ApiPaths.Dashboard(cardiMemberId),
         ApiPaths.CardiMember(cardiMemberId),
     ];
-
-    public Task<DeviceHistoryRepullResponse> RequestHistoryRepullAsync(
-        Guid cardiMemberId, Guid deviceId, int days, CancellationToken ct = default) =>
-        PostAsync<HistoryRepullRequest, DeviceHistoryRepullResponse>(
-            $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/history-repull",
-            new HistoryRepullRequest { Days = days },
-            ct);
 
     public Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default) =>
         PostAsync<ConnectDeviceRequest, OAuthInitiationResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", request, ct);
