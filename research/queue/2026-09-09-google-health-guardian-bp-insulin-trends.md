@@ -13,9 +13,11 @@ a genuinely new cardiac-relevant signal on CardiTrack's load-bearing data path, 
 roadmap-only vendor.
 
 The important caveat: as of this run, blood pressure has **no equivalent field yet in the
-Google Health API v4** discovery document that CardiTrack's `DeviceConnectionService` reads
-from — the feature is visible in Google's own Health app but not yet pullable by third-party
-integrators. This is a "watch and be ready" item, not an integration task today.
+Google Health API v4** discovery document that `GoogleHealthApiClient`
+(`src/Infrastructure/CardiTrack.Infrastructure/ExternalClients/GoogleHealthApiClient.cs`) checks
+every field name and enum member against — the feature is visible in Google's own Health app
+but not yet pullable by third-party integrators. This is a "watch and be ready" item, not an
+integration task today.
 
 ## Sources
 
