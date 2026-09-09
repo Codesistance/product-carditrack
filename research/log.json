@@ -5,6 +5,12 @@
       "slack_ts": null,
       "item_count": 25,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-09",
+      "slack_ts": null,
+      "item_count": 6,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -232,6 +238,60 @@
       "severity": "FYI",
       "category": "competition",
       "brief": "research/queue/2026-09-04-cadence-ai-proactive-care-engine.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "dotnet-sept-2026-servicing-cves",
+      "title": ".NET September 2026 servicing release (10.0.12) fixes 5 CVEs \u2014 none in CardiTrack's live exploit path",
+      "url": "https://github.com/dotnet/announcements/issues/443",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-09-dotnet-sept-2026-servicing-cves.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "google-health-guardian-bp-insulin-trends",
+      "title": "Google \"Health Guardian\" ships BP + insulin-resistance trends to Fitbit/Pixel Watch \u2014 not yet in the Health API",
+      "url": "https://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-09-google-health-guardian-bp-insulin-trends.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "nhs-innovation-accelerator-2027",
+      "title": "NHS Innovation Accelerator (NIA) 2027 Cohort \u2014 up to \u00a330k + 3yr NHS scale-up support, deadline 2026-09-27",
+      "url": "https://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-09-nhs-innovation-accelerator-2027.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "luffu-link-family-caregiving-wearable",
+      "title": "Fitbit founders launch Luffu Link \u2014 family-caregiving wearable directly on CardiTrack's positioning",
+      "url": "https://luffu.com/products/luffu-link",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-09-luffu-link-family-caregiving-wearable.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "mhra-health-bill-reform-amendments",
+      "title": "MHRA regulatory reform amendments tabled in the UK Health Bill \u2014 future domestic licensing pathway enabled",
+      "url": "https://www.gov.uk/government/news/mhra-regulatory-reform-amendments-tabled-in-governments-health-bill",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-09-mhra-health-bill-reform-amendments.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "mhra-manchester-nhs-sandbox",
+      "title": "MHRA and Manchester NHS launch a real-world AI-device evaluation sandbox",
+      "url": "https://www.gov.uk/government/news/mhra-and-manchester-nhs-partner-on-health-innovation-sandbox",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
     }
   ]
 }
