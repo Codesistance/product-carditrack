@@ -31,10 +31,10 @@ public class ProfilePhotoStorageReachTests
         ["src", "Infrastructure", "CardiTrack.Infrastructure", "ExternalClients", "Storage", "GcsProfilePhotoStorage.cs"],
     ];
 
-    private static readonly string[][] ImageSharpAllowedFiles =
+    private static readonly string[][] SkiaAllowedFiles =
     [
         // The only file that may decode caregiver-uploaded bytes.
-        ["src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "ImageSharpProfilePhotoProcessor.cs"],
+        ["src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "SkiaProfilePhotoProcessor.cs"],
     ];
 
     [Fact]
@@ -53,9 +53,9 @@ public class ProfilePhotoStorageReachTests
     }
 
     [Fact]
-    public void ImageSharp_IsReferencedOnlyByTheProfilePhotoProcessor()
+    public void Skia_IsReferencedOnlyByTheProfilePhotoProcessor()
     {
-        AssertSymbolConfinedTo("SixLabors", ImageSharpAllowedFiles);
+        AssertSymbolConfinedTo("SkiaSharp", SkiaAllowedFiles);
     }
 
     private static void AssertSymbolConfinedTo(string symbol, IReadOnlyCollection<string[]> allowedRelativePaths)

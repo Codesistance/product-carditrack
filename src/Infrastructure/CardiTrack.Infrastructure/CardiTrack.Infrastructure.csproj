@@ -32,10 +32,14 @@
     <PackageReference Include="Hl7.Fhir.R4" Version="6.4.0" />
     <PackageReference Include="QuestPDF" Version="2026.8.0" />
     <!-- Re-encodes uploaded photos (validate, downscale, strip EXIF/GPS) before storage.
-         In-process; no network; not a subprocessor. Confined to ImageSharpProfilePhotoProcessor.
-         Pinned to the 3.x line deliberately: 4.x moved to a paid Six Labors license and its
-         missing-license-key MSBuild warning would break the warning-free build gate. -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+         In-process; no network; not a subprocessor. Confined to SkiaProfilePhotoProcessor.
+         MIT, over Google's Skia (BSD-3) - chosen off SixLabors.ImageSharp, whose Split License
+         bills any consumer over 1M USD annual revenue. The decoder is Chrome's, the most fuzzed
+         JPEG/PNG parser available, and this is the one place untrusted bytes are opened.
+         NativeAssets.Linux.NoDependencies is the fontconfig-free native build: the chiseled
+         runtime images carry no fontconfig, and nothing here renders text. -->
+    <PackageReference Include="SkiaSharp" Version="4.152.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.152.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
