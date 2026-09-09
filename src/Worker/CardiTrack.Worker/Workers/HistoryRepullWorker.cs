@@ -110,6 +110,7 @@ public class HistoryRepullWorker : CronBackgroundService
         var cancelled = 0;
         var failed = 0;
         var retrying = 0;
+        var skipped = 0;
 
         foreach (var repullId in dueIds)
         {
@@ -123,13 +124,17 @@ public class HistoryRepullWorker : CronBackgroundService
                 case Outcome.Cancelled: cancelled++; break;
                 case Outcome.Failed: failed++; break;
                 case Outcome.Retrying: retrying++; break;
+                case Outcome.Skipped: skipped++; break;
             }
         }
 
+        // Skipped is reported rather than left out: a request the API closed between the due read
+        // and this pass is a normal race, but a tick whose outcomes did not add up to the count it
+        // announced would read as a swallowed failure to whoever was debugging it.
         _logger.LogInformation(
-            "HistoryRepull complete. Advanced: {Advanced}, completed: {Completed}, cancelled: {Cancelled}, " +
-            "failed: {Failed}, retrying: {Retrying}.",
-            advanced, completed, cancelled, failed, retrying);
+            "HistoryRepull complete of {Due} due. Advanced: {Advanced}, completed: {Completed}, " +
+            "cancelled: {Cancelled}, failed: {Failed}, retrying: {Retrying}, skipped: {Skipped}.",
+            dueIds.Count, advanced, completed, cancelled, failed, retrying, skipped);
     }
 
     /// <summary>
