@@ -396,14 +396,27 @@ public class StatusLineGenerationServiceTests
             + "one on each digest regeneration.");
     }
 
+    /// <summary>
+    /// The budget is a tripwire pinned to the measured length, not headroom, so slack is as much
+    /// a failure as an overrun — and slack is the failure mode that hides. A raw string literal
+    /// carries its file's line endings, so a Windows checkout measures 12 characters longer than
+    /// the LF form the repository stores and the Linux image sends; raising the number to match
+    /// the larger form is what silently bought that headroom once already (#552).
+    /// </summary>
     [Fact]
-    public void TheFixedInstructions_StayWithinTheirBudget()
+    public void TheFixedInstructions_SitExactlyOnTheirBudget_OnEveryCheckout()
     {
+        var measured = StatusLineGenerationService.CurrentStatusInstructionsLength;
+        var budget = StatusLineGenerationService.StatusPromptBudget;
+
         Assert.True(
-            StatusLineGenerationService.CurrentStatusInstructionsLength
-                <= StatusLineGenerationService.StatusPromptBudget,
-            $"The status instructions are {StatusLineGenerationService.CurrentStatusInstructionsLength} "
-            + $"characters against a budget of {StatusLineGenerationService.StatusPromptBudget}.");
+            measured == budget,
+            $"The status instructions measure {measured} characters (LF-normalized) against a "
+            + $"budget of {budget}. Over: trim them, or raise the budget and say what the "
+            + "addition buys. Under: the slack is free headroom this constant exists to deny — "
+            + "lower the budget to what they now measure. A raw string literal carries its "
+            + "file's line endings, so a CRLF checkout measures 12 characters longer; that is "
+            + "why the length is normalized rather than the budget being raised to match it.");
     }
 
     // ── Not spending a model call ───────────────────────────────────────────────

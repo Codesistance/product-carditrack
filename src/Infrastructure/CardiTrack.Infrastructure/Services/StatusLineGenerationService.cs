@@ -73,17 +73,29 @@ public class StatusLineGenerationService
     /// lead-with-observation rule. The data sections sit after this budget; they are not paid
     /// from it.
     /// <para>
-    /// Corrected from 1,161 to the length that reset actually produced. The two-line
-    /// lead-with-observation rule is 12 characters longer than the figure recorded for it, so
-    /// the budget it was reset to had never been met and the guard test has been red since it
-    /// merged — a state push CI cannot report, because this repository gates it off. Nothing
-    /// about the instructions changed here; only the number describing them.
+    /// Measured against the LF form of the instructions, which is what the repository stores and
+    /// what the Linux image compiles and sends. It was briefly raised to 1,173 to quiet a red
+    /// test on a Windows checkout; that was the wrong reading. A C# raw string literal carries
+    /// its source file's physical line endings, so the twelve newlines inside these two literals
+    /// each cost two characters on a CRLF checkout and one everywhere else. The instructions had
+    /// not grown — only the copy on disk had. Raising the number to match the larger form left
+    /// twelve characters of slack in the canonical one, which is exactly the free headroom this
+    /// constant exists to deny, so the measurement below normalizes instead.
     /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_173;
+    internal const int StatusPromptBudget = 1_161;
 
-    /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
-    internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;
+    /// <summary>
+    /// Exposed for the budget test — the instructions themselves stay private.
+    /// </summary>
+    /// <remarks>
+    /// Normalized to LF before measuring, so the budget means the same thing on every checkout.
+    /// Without it the guard is 12 characters tighter on Linux than on Windows, and the platform
+    /// that trips it first is whichever one the author happened to be using. Computed once: the
+    /// instructions are a compile-time constant, so the normalized copy never changes.
+    /// </remarks>
+    internal static int CurrentStatusInstructionsLength { get; } =
+        CurrentStatusInstructions.ReplaceLineEndings("\n").Length;
 
     /// <summary>
     /// Ceiling on the punchy note. Well past the two-to-five words asked for — this is the guard
