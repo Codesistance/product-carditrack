@@ -84,13 +84,24 @@ public partial class NotificationPreferencesPage : ContentPage
                     _prefs = prefs;
                     Render();
                     Panel.IsVisible = true;
+
+                    // The spinner's job ends the moment there is something to read, which on a
+                    // cold load is the saved snapshot rather than the live answer behind it.
+                    // Leaving this to the finally below left saved preferences on screen with a
+                    // spinner still turning above them for the length of the live call — the
+                    // opposite of what the comment at the top of this method promises.
+                    Loading.IsVisible = false;
                 },
                 _feedback,
                 sameAs: SamePayload.Same);
 
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {
+                // The panel goes with the preferences it was drawn from. Leaving it up over a
+                // null _prefs is the worst of both: switches a caregiver can see and move, and
+                // every handler refusing to act on them because there is nothing to save against.
                 _prefs = null;
+                Panel.IsVisible = false;
                 ErrorPanel.IsVisible = true;
             }
         }
