@@ -39,6 +39,15 @@ public interface ITimeSeriesPartitionService
     Task EnsureUpcomingPartitionsAsync(int daysAhead, CancellationToken ct = default);
 
     /// <summary>
+    /// Creates (idempotently) the granular and rollup partitions covering
+    /// <paramref name="from"/> through <paramref name="to"/>, inclusive. For writes that reach
+    /// into the past — a caregiver's history re-pull — where the day's partition may never
+    /// have been created because nothing was syncing then. Only days inside retention are
+    /// worth asking for; a partition past it is dropped on the next maintenance pass.
+    /// </summary>
+    Task EnsurePartitionsForRangeAsync(DateOnly from, DateOnly to, CancellationToken ct = default);
+
+    /// <summary>
     /// Drops partitions wholly past <paramref name="retention"/>. Dropping a partition is the
     /// retention mechanism — instant, and no dead tuples to vacuum.
     /// </summary>

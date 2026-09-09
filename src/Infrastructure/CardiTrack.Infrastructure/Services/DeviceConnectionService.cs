@@ -92,13 +92,38 @@ public class DeviceConnectionService : IDeviceConnectionService
             .GroupBy(l => l.DeviceConnectionId)
             .ToDictionary(g => g.Key, g => g.Count());
 
+        // Likewise one query for every card's latest history re-pull.
+        var latestRepulls = (await _unitOfWork.DeviceHistoryRepulls.GetLatestByConnectionIdsAsync(
+                connections.Select(c => c.Id), ct))
+            .ToDictionary(r => r.DeviceConnectionId);
+
         return new DeviceListResponse
         {
             Devices = connections
                 .Select(c => ToDeviceResponse(
-                    c, updatesByConnection.TryGetValue(c.Id, out var count) ? count : 0))
+                    c,
+                    updatesByConnection.TryGetValue(c.Id, out var count) ? count : 0,
+                    latestRepulls.TryGetValue(c.Id, out var repull) ? repull : null))
                 .ToList()
         };
+    }
+
+    /// <summary>
+    /// The latest re-pull as the card should see it, or null when there is nothing worth
+    /// saying — see <see cref="HistoryRepullWindow.ShouldPresent"/> for the rule. The server
+    /// decides "still worth showing" so the rule can move without a mobile release.
+    /// </summary>
+    private DeviceHistoryRepullResponse? PresentableRepull(DeviceConnection connection, DeviceHistoryRepull? latest)
+    {
+        if (latest is null)
+            return null;
+
+        var cooldown = TimeSpan.FromHours(_providerConfigs.ConfigFor(connection.DeviceType)?.HistoryRepullCooldownHours ?? 0);
+        var now = DateTime.UtcNow;
+
+        return HistoryRepullWindow.ShouldPresent(latest, cooldown, now)
+            ? HistoryRepullWindow.ToResponse(latest, cooldown, now)
+            : null;
     }
 
     public async Task<OAuthInitiationResponse> InitiateConnectionAsync(
@@ -494,7 +519,8 @@ public class DeviceConnectionService : IDeviceConnectionService
         return catalogDevice?.DisplayName ?? deviceType.GetDisplayName();
     }
 
-    private static DeviceResponse ToDeviceResponse(DeviceConnection connection, int todayUpdateCount = 0) => new()
+    private DeviceResponse ToDeviceResponse(
+        DeviceConnection connection, int todayUpdateCount = 0, DeviceHistoryRepull? latestRepull = null) => new()
     {
         DeviceId = connection.Id,
         Provider = ProviderNames.FirstOrDefault(kv => kv.Value == connection.DeviceType).Key
@@ -527,6 +553,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         BatteryStatus = DeviceBattery.IsFresh(connection.BatteryUpdatedAt, DateTime.UtcNow)
             ? connection.BatteryStatus
             : null,
+        HistoryRepull = PresentableRepull(connection, latestRepull),
     };
 
     /// <summary>Scopes are stored as a JSON array; a malformed value must not break the screen.</summary>

@@ -58,16 +58,17 @@ locals {
   device_pull_env_vars = merge([
     for i, p in var.device_pull_params : merge(
       {
-        "DeviceProviders__${i}__Provider"               = p.provider
-        "DeviceProviders__${i}__SyncLookbackDays"       = tostring(p.sync_lookback_days)
-        "DeviceProviders__${i}__BackfillDays"           = tostring(p.backfill_days)
-        "DeviceProviders__${i}__BackfillChunkDays"      = tostring(p.backfill_chunk_days)
-        "DeviceProviders__${i}__AuditLookbackDays"      = tostring(p.audit_lookback_days)
-        "DeviceProviders__${i}__MinPullIntervalMinutes" = tostring(p.min_pull_interval_minutes)
-        "DeviceProviders__${i}__MaxPullIntervalMinutes" = tostring(p.max_pull_interval_minutes)
-        "DeviceProviders__${i}__MaxRequestsPerSecond"   = tostring(p.max_requests_per_second)
-        "DeviceProviders__${i}__DormancyThresholdPulls" = tostring(p.dormancy_threshold_pulls)
-        "DeviceProviders__${i}__DormancyBackoffFactor"  = tostring(p.dormancy_backoff_factor)
+        "DeviceProviders__${i}__Provider"                   = p.provider
+        "DeviceProviders__${i}__SyncLookbackDays"           = tostring(p.sync_lookback_days)
+        "DeviceProviders__${i}__BackfillDays"               = tostring(p.backfill_days)
+        "DeviceProviders__${i}__BackfillChunkDays"          = tostring(p.backfill_chunk_days)
+        "DeviceProviders__${i}__HistoryRepullCooldownHours" = tostring(p.history_repull_cooldown_hours)
+        "DeviceProviders__${i}__AuditLookbackDays"          = tostring(p.audit_lookback_days)
+        "DeviceProviders__${i}__MinPullIntervalMinutes"     = tostring(p.min_pull_interval_minutes)
+        "DeviceProviders__${i}__MaxPullIntervalMinutes"     = tostring(p.max_pull_interval_minutes)
+        "DeviceProviders__${i}__MaxRequestsPerSecond"       = tostring(p.max_requests_per_second)
+        "DeviceProviders__${i}__DormancyThresholdPulls"     = tostring(p.dormancy_threshold_pulls)
+        "DeviceProviders__${i}__DormancyBackoffFactor"      = tostring(p.dormancy_backoff_factor)
       },
       { for j, t in p.device_types : "DeviceProviders__${i}__DeviceTypes__${j}" => t },
       { for j, sc in p.scopes : "DeviceProviders__${i}__Scopes__${j}" => sc },

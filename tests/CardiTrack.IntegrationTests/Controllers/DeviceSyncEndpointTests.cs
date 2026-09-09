@@ -34,8 +34,10 @@ public class DeviceSyncEndpointTests
             Substitute.For<ILogger<DevicesController>>(),
             Substitute.For<IDeviceConnectionService>(),
             _manualSync,
+            Substitute.For<IDeviceHistoryRepullService>(),
             Substitute.For<IValidator<ConnectDeviceRequest>>(),
-            Substitute.For<IValidator<OAuthCallbackRequest>>())
+            Substitute.For<IValidator<OAuthCallbackRequest>>(),
+            Substitute.For<IValidator<HistoryRepullRequest>>())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };

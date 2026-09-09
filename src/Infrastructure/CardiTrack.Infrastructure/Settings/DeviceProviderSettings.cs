@@ -87,6 +87,14 @@ public class DeviceProviderSettings
     public int BackfillChunkDays { get; set; } = 7;
 
     /// <summary>
+    /// How long after a caregiver-requested history re-pull completes the same connection may be
+    /// re-pulled again. A re-pull re-reads up to 90 days at ~18 requests a day, so this is the
+    /// guard on a caregiver spending the wearer's per-user quota by tapping the action twice in
+    /// an afternoon. 0 disables the cooldown. Failed and cancelled re-pulls do not start one.
+    /// </summary>
+    public int HistoryRepullCooldownHours { get; set; } = 48;
+
+    /// <summary>
     /// Window used by the periodic audit pull over a sample of connections. Wider than
     /// <see cref="SyncLookbackDays"/> on purpose: a routine sync can only ever observe revisions
     /// inside its own window, so a provider that amends day 5 is invisible until something looks

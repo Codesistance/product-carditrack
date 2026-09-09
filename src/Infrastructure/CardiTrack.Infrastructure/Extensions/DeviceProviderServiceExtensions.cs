@@ -109,6 +109,15 @@ public static class DeviceProviderServiceExtensions
                         $"greater than 1 when backoff is enabled (found {provider.DormancyBackoffFactor}) — " +
                         "a factor of 1 or less never widens the interval.");
                 }
+
+                // A negative cooldown would read as "always allowed" by accident rather than by
+                // the documented 0; reject it so the intent has to be spelled out.
+                if (provider.HistoryRepullCooldownHours < 0)
+                {
+                    throw new InvalidOperationException(
+                        $"DeviceProviders '{provider.Provider}': HistoryRepullCooldownHours must be " +
+                        $"zero or positive (found {provider.HistoryRepullCooldownHours}); 0 disables the cooldown.");
+                }
             }
         });
 

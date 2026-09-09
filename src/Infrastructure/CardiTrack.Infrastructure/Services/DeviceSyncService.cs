@@ -137,6 +137,45 @@ public class DeviceSyncService : IDeviceSyncService
         await PullWindowAsync(connection, accessToken, lookbackDays, DateOnly.FromDateTime(DateTime.UtcNow));
     }
 
+    public async Task<int> PullHistoryRangeAsync(
+        DeviceConnection connection, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        if (from > to)
+            throw new ArgumentOutOfRangeException(nameof(from), from, "The range must not end before it starts.");
+
+        var providerConfig = ResolveProviderConfig(connection);
+        var accessToken = await _tokenRefresh.RefreshIfExpiredAsync(connection, providerConfig);
+
+        // Newest first, like the backfill — the days a caregiver is looking at land first, and
+        // the Worker records progress as the oldest day reached, so a chunk cut short by a
+        // provider failure resumes from where the stored days end. No try/catch: the caller
+        // owns the retry decision, and no status transition (see IDeviceSyncService).
+        var daysWithData = 0;
+        for (var date = to; date >= from; date = date.AddDays(-1))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, date);
+            if (!snapshot.HasAnyData)
+                continue;
+
+            await StoreDayAsync(connection, snapshot, date);
+            daysWithData++;
+
+            // The granular series too — a re-pull is "everything the provider has for these
+            // days", not just the daily figures. Only for a day whose daily row just landed, so
+            // an hour vector never exists without its daily parent (and an empty day costs no
+            // extra requests). The autonomous backfill skips this because intraday depth is
+            // unverified; here the caregiver asked for it, and a day the provider serves no
+            // intraday data for simply comes back empty.
+            var granularDay = await _deviceApi.GetGranularDayAsync(accessToken, date);
+            if (granularDay is { HasAnyData: true })
+                await _granularIngestion.IngestDayAsync(connection, granularDay, ct);
+        }
+
+        return daysWithData;
+    }
+
     /// <summary>
     /// Reads the wearable's battery from the provider's device registry and stores the last-known
     /// value on the connection. One request, on every pull including a caregiver's manual refresh:

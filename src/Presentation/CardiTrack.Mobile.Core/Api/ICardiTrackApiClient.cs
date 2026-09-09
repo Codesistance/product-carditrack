@@ -318,6 +318,15 @@ public interface ICardiTrackApiClient
     /// dashboard's refresh button does (issue #67).
     /// </summary>
     Task<DeviceSyncResultResponse> SyncDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Asks the API to re-read the last <paramref name="days"/> complete days of one device's
+    /// history in the background — the M1-15 "Re-pull History" action. 202 with the queued
+    /// request; progress then arrives on the device list as <c>historyRepull</c>.
+    /// </summary>
+    Task<DeviceHistoryRepullResponse> RequestHistoryRepullAsync(
+        Guid cardiMemberId, Guid deviceId, int days, CancellationToken ct = default);
+
     Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default);
     Task<DeviceResponse> CompleteDeviceConnectionAsync(string provider, OAuthCallbackRequest request, CancellationToken ct = default);
 

@@ -40,6 +40,7 @@ public class UnitOfWork : IUnitOfWork
     public IMemberAdviseRepository MemberAdvises { get; }
     public IReportRepository Reports { get; }
     public IMemberAiHoldRepository MemberAiHolds { get; }
+    public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -73,7 +74,8 @@ public class UnitOfWork : IUnitOfWork
         IMemberStatusLineRepository memberStatusLines,
         IMemberAdviseRepository memberAdvises,
         IReportRepository reports,
-        IMemberAiHoldRepository memberAiHolds)
+        IMemberAiHoldRepository memberAiHolds,
+        IDeviceHistoryRepullRepository deviceHistoryRepulls)
     {
         _context = context;
         Organizations = organizations;
@@ -107,6 +109,7 @@ public class UnitOfWork : IUnitOfWork
         MemberAdvises = memberAdvises;
         Reports = reports;
         MemberAiHolds = memberAiHolds;
+        DeviceHistoryRepulls = deviceHistoryRepulls;
     }
 
     public async Task<int> SaveChangesAsync()

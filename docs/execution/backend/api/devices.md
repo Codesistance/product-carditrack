@@ -54,11 +54,26 @@ Wrapped in the standard `ApiResponse<T>` envelope; `deviceId` is a raw GUID (no 
       "nextSyncAt": "2026-08-07T09:00:00Z",
       "todayUpdateCount": 4,
       "batteryLevel": 72,
-      "batteryStatus": "High"
+      "batteryStatus": "High",
+      "historyRepull": {
+        "repullId": "2e7a9d1c-3b44-4f0e-9a6b-1d2c3e4f5a6b",
+        "status": "in_progress",
+        "days": 30,
+        "fromDate": "2026-08-10",
+        "toDate": "2026-09-08",
+        "daysDone": 14,
+        "daysWithData": 11,
+        "requestedAt": "2026-09-09T11:52:00Z",
+        "startedAt": "2026-09-09T11:56:00Z",
+        "completedAt": null,
+        "nextAllowedAt": null
+      }
     }
   ]
 }
 ```
+
+`historyRepull` is the connection's latest caregiver-requested history re-pull (see `POST .../devices/{deviceId}/history-repull` below), and is **usually null**: it is present while a request is open (`pending` / `in_progress`), while a `completed` one is still inside the re-pull cooldown — in which case `nextAllowedAt` says when the action is available again — and for **7 days** after a `failed` or `cancelled` one ended, so the caregiver learns the outcome; neither of those blocks re-requesting, so the card offers the action again alongside the notice. The server decides "still worth showing" so the rule can move without a mobile release.
 
 `scopes`, `nextSyncAt` and `todayUpdateCount` back the M1-15 device cards. All three are derived, not stored: scopes are parsed from the connection's scope JSON (a malformed value yields `[]` rather than an error), `nextSyncAt` is `lastSyncedAt + syncFrequencyMinutes` and is therefore an estimate rather than a scheduled job time, and `todayUpdateCount` counts today's activity records attributed to that connection.
 
@@ -291,7 +306,47 @@ Authorization is the **view** tier, not the management tier: refreshing surfaces
 
 **This is not a background job.** It runs inside the request that asked for it, and it reuses the same `IDeviceSyncService` per connection that `WearableSyncWorker` drives, so a manual pull and a scheduled one cannot diverge in what they store. *Scheduled* pulling and all DB polling remain `CardiTrack.Worker`'s alone, per `CLAUDE.md`.
 
-`DeviceSyncService` fetches a trailing window that **ends at today** and reaches back `SyncLookbackDays` complete days, so a manual sync both surfaces today's readings and repairs the days a provider has since revised. A manual sync never extends history further back and never fetches the granular (minute-grain) series — both belong to the Worker's cadence (`SyncScope.WorkerCadence`), so a caregiver's refresh never waits on last month or four extra series. Today's figures are partial by nature: the dashboard reports steps for a day in progress against the member's goal rather than against their whole-day average, since a part-finished day compared with a full one reads as a collapse every morning.
+`DeviceSyncService` fetches a trailing window that **ends at today** and reaches back `SyncLookbackDays` complete days, so a manual sync both surfaces today's readings and repairs the days a provider has since revised. A manual sync never extends history further back and never fetches the granular (minute-grain) series — both belong to the Worker's cadence (`SyncScope.WorkerCadence`), so a caregiver's refresh never waits on last month or four extra series. To reach further back a caregiver asks for a **history re-pull** (next section), which the Worker runs in the background. Today's figures are partial by nature: the dashboard reports steps for a day in progress against the member's goal rather than against their whole-day average, since a part-finished day compared with a full one reads as a collapse every morning.
+
+---
+
+## POST `/api/v1/cardimembers/{id}/devices/{deviceId}/history-repull`
+
+> **Implemented** (M1-15 "Re-pull History"). Fills gaps the routine sync left — days the Worker missed while it was down, or that the provider revised after the trailing window had moved on — by re-reading a caregiver-chosen stretch of one connection's history from its provider.
+
+Request body:
+
+```json
+{ "days": 30 }
+```
+
+`days` is 1–90 and counts **complete** days back from yesterday: today is the routine sync's, pulled every ten minutes already. The mobile app offers 7 / 14 / 30 / 45 / 60 / 75 / 90; the API accepts any value in range.
+
+### Response `202 Accepted`
+
+```json
+{
+  "repullId": "2e7a9d1c-3b44-4f0e-9a6b-1d2c3e4f5a6b",
+  "status": "pending",
+  "days": 30,
+  "fromDate": "2026-08-10",
+  "toDate": "2026-09-08",
+  "daysDone": 0,
+  "daysWithData": 0,
+  "requestedAt": "2026-09-09T11:52:00Z",
+  "startedAt": null,
+  "completedAt": null,
+  "nextAllowedAt": null
+}
+```
+
+**202, not 200** — the request is recorded, not executed. Up to 90 days at ~18 provider calls a day is far too much to run inside a request, and *scheduled pulling belongs to `CardiTrack.Worker` alone* per `CLAUDE.md`, so this endpoint writes a `DeviceHistoryRepull` row and returns; `HistoryRepullWorker` drains it. Progress arrives on `GET .../devices` as `historyRepull` — poll that (the app reloads the list after the tap, on pull-to-refresh and on resume), there is no per-request endpoint.
+
+**What the Worker does with it.** Every ten minutes (offset from the routine pull's minute, so a wearer never pays for both in the same sixty seconds) it advances up to `MaxPerTick` (5) open requests by one chunk of `BackfillChunkDays` (7) days each, **newest first**, so the days a caregiver is looking at land first. Each day fetches the daily snapshot *and* the granular (minute-grain) series — a re-pull is "everything the provider has for these days" — and stores them through the same upsert-and-merge path as every other pull, so a re-pull **fills and refreshes days but never deletes one**: a day the provider has nothing for is left exactly as it was, and is not stored as an empty row. `daysDone` is the oldest day reached counting from `toDate`; a 30-day request is 5 chunks (~50 minutes), a 90-day one is 13 (~2 hours). A chunk cut short by a provider failure counts an attempt and is retried next tick; after three failed attempts the request is `failed`, and everything fetched before that stays. A request is `cancelled` rather than failed when monitoring is paused or the connection stops being syncable after it was queued. Neither outcome moves the connection to `SyncError` — a day the provider refuses two months back says nothing about whether the device works today; the routine sync is what decides that.
+
+Refusals carry their own status. **409** when monitoring is paused (`MONITORING_PAUSED`), the connection is removed / disconnected / waiting on a refused token (`DEVICE_NOT_SYNCABLE` — a `SyncError` connection is still accepted, last time's hiccup being exactly the gap a re-pull fills), or a re-pull for this connection is already open (`REPULL_IN_PROGRESS`); **429** when one *completed* within the cooldown (`REPULL_TOO_SOON`). The cooldown is `HistoryRepullCooldownHours` per provider block — **48 hours** in every environment (`history_repull_cooldown_hours` in tfvars), 0 disables it — and is what bounds the quota a caregiver can spend: 90 days is ~1,600 requests against the wearer's per-user ceiling. Failed and cancelled requests do not start a cooldown. One-open-per-connection is enforced by a partial unique index, not just the pre-insert check, so two caregivers tapping at once get one request and one `REPULL_IN_PROGRESS`. The route also carries an IP rate-limit rule of 10 per hour.
+
+Authorization is the **view** tier, like the manual sync: a relative invited to watch over someone should be able to fill a gap they noticed, and the cooldown — not the tier — is the guard on quota. Denial is 404. The class-level audit attribute records every request against the member.
 
 ---
 

@@ -36,8 +36,10 @@ internal static class AdvisoryLock
     /// <param name="key">
     /// Fixed per job. Postgres namespaces advisory locks by the number alone, so two jobs sharing
     /// a key would silently serialize against each other. Taken so far:
-    /// <c>8_472_100_001</c> (<c>DataCompletenessWorker</c>) and <c>8_472_100_002</c>
-    /// (<c>QuietReassuranceWorker</c>).
+    /// <c>8_472_100_001</c> (<c>DataCompletenessWorker</c>), <c>8_472_100_002</c>
+    /// (<c>QuietReassuranceWorker</c>, and <c>OrphanedPhotoCleanupWorker</c> — a known double
+    /// use, harmless only because their crons never coincide), <c>8_472_100_003</c>
+    /// (<c>ExpiredReportCleanupWorker</c>) and <c>8_472_100_004</c> (<c>HistoryRepullWorker</c>).
     /// </param>
     internal static async Task<bool> TryRunAsync(
         IServiceScopeFactory scopeFactory, long key, Func<Task> work, CancellationToken ct)

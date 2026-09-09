@@ -4,11 +4,12 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-The 16 workers registered today (crons from `appsettings.json`):
+The 17 workers registered today (crons from `appsettings.json`):
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
 | `WearableSyncWorker` | `0 */10 * * * *` (every 10 min) | Polls due device connections and syncs wearable data |
+| `HistoryRepullWorker` | `0 6-59/10 * * * *` (every 10 min, offset) | Executes caregiver-requested history re-pulls (M1-15) — one 7-day chunk per request per tick, up to 5 requests a tick |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `OrphanedPhotoCleanupWorker` | `0 30 3 * * *` (daily 03:30) | Deletes member-photo blobs no active member references (24 h grace) and clears photos left on soft-deleted members — the enforcement backstop behind the API's best-effort deletes |
 | `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
@@ -44,6 +45,7 @@ OAuth token refresh is **not a separate cron job** — it happens inside the syn
 src/Worker/CardiTrack.Worker/
 ├── Workers/
 │   ├── WearableSyncWorker.cs                # Polls + syncs due device connections
+│   ├── HistoryRepullWorker.cs               # Drains caregiver-requested history re-pulls, a chunk at a time
 │   ├── OrphanedOrganizationCleanupWorker.cs # Sweeps orgs with no user/CardiMember
 │   ├── BaselineCalculationWorker.cs         # Recalculates PatternBaseline rows daily
 │   ├── PartitionMaintenanceWorker.cs        # Creates/drops time-series partitions (retention)
@@ -60,6 +62,7 @@ src/Worker/CardiTrack.Worker/
 ├── CronBackgroundService.cs       # Abstract base — parses cron, loops on schedule (+ RunOnStartup)
 ├── WorkerOptions.cs               # { CronExpression, RunOnStartup } options record
 ├── DeviceSyncAuditOptions.cs      # { SampleSize } for the audit worker
+├── HistoryRepullOptions.cs        # { MaxPerTick } for the history re-pull worker
 ├── InactivityDetectionOptions.cs  # Silence threshold + waking-hours window
 ├── PartitionMaintenanceOptions.cs # DaysAhead + the five per-table retention values
 ├── OrphanedPhotoCleanupOptions.cs # DryRun switch for the photo-blob backstop sweep
@@ -218,6 +221,16 @@ It then fetches **today** — so the dashboard's Key Metrics move during the day
 After a successful routine window, the Worker's pulls also **backfill history**: `DeviceConnection.HistoryBackfilledTo` walks backwards from the routine window towards `DeviceProviders:<provider>:BackfillDays` (default **90**) days ago, `BackfillChunkDays` (default **7**) days per pull, newest first. A freshly connected wearable's existing history therefore reaches the 30-day baseline within a couple of hours instead of the baseline waiting a month for new days. The chunking is what keeps this inside the per-wearer request ceiling — a 90-day one-shot would rate-limit partway and start over on the next pull. The frontier advances per day fetched, so an interrupted chunk resumes rather than refetching; days the provider has nothing for are checked but not stored, because an all-null row would count as a "data day" to the baseline coverage gate. Only the Worker opts into this (`SyncScope.WorkerCadence`) — the API's manual sync shares `SyncCardiMemberAsync` at `SyncScope.Routine`, and a caregiver waiting on a refresh must not pay for a chunk of last month.
 
 After the routine window has landed and been marked successful, the worker cadence also fetches each window day's **granular series** — heart rate and SpO2 as timestamped samples, steps and active-zone minutes as intervals, 4 extra requests per day (worker-cadence day cost: **17**). Granular runs outside the success envelope on purpose: it is enrichment, and a transient failure in it must not un-succeed the daily data a caregiver depends on. `GranularDayBucketer` turns them into per-device hour vectors (additive metrics sum within a minute; level metrics take the latest reading), and `GranularIngestionService` stores them and recomputes the member's hourly rollups from the **merged** window — the daily pipeline's raw-then-derived shape, at hour grain. Backfill days stay daily-grain until the intraday-history probe answers how far back the provider serves minute data.
+
+### HistoryRepullWorker
+
+The executor behind M1-15's **Re-pull History** action. The API's `POST .../devices/{deviceId}/history-repull` only records a `DeviceHistoryRepull` row — how many complete days back from yesterday a caregiver wants re-read (1–90) — and returns 202; this worker is the one thing that fetches for it, because scheduled pulling belongs here alone.
+
+- Runs every 10 minutes on the `:06` minute (`0 6-59/10 * * * *`), offset from `WearableSyncWorker` so a wearer never pays for a routine pull and a re-pull chunk in the same sixty seconds. Under advisory lock `8_472_100_004`, for restraint rather than correctness.
+- Each tick advances up to `MaxPerTick` (**5**) open requests — oldest request first — by **one chunk** of `DeviceProviders:<provider>:BackfillChunkDays` (**7**) days, **newest first**, through `IDeviceSyncService.PullHistoryRangeAsync`. Each day fetches the daily snapshot *and* the granular series (the only path that fetches granular history; the day's partitions are created on demand first, since nothing was syncing when they would have been made), and stores them through the same upsert-and-merge writes as every other pull — so a re-pull fills and refreshes days but **never deletes** one, and a day the provider has nothing for is left alone. A 30-day request is 5 chunks (~50 min); 90 days is 13 (~2 h).
+- Progress — `CompletedTo`, the oldest day reached — is written after every chunk, so a crash re-fetches at most one chunk. A chunk that fails on a provider error counts an attempt and is retried next tick; after **3** failed attempts the request is `Failed`, keeping what landed. A request whose member was paused or whose connection stopped being syncable since it was queued is `Cancelled`, not failed.
+- Never stamps `LastSyncDate` or flips the connection to `SyncError`: a day the provider refuses two months back says nothing about whether the device works today. The token refresh it goes through can still mark it `TokenExpired`, deliberately.
+- The device list's `historyRepull` field is how the caregiver watches it; the API's 48-hour per-connection cooldown (`HistoryRepullCooldownHours`) after a completed re-pull is what bounds the quota one caregiver can spend.
 
 ### OrphanedOrganizationCleanupWorker
 
@@ -440,6 +453,10 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
   "Workers": {
     "WearableSyncWorker": {
       "CronExpression": "0 */10 * * * *"
+    },
+    "HistoryRepullWorker": {
+      "CronExpression": "0 6-59/10 * * * *",
+      "MaxPerTick": 5
     },
     "OrphanedOrganizationCleanupWorker": {
       "CronExpression": "0 0 3 * * *"

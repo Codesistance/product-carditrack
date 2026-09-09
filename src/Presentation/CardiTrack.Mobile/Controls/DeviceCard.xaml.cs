@@ -6,12 +6,16 @@ using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile.Controls;
 
-/// <summary>One connected wearable on M1-15, with its refresh / primary / remove actions.</summary>
+/// <summary>One connected wearable on M1-15, with its refresh / re-pull / primary / remove actions.</summary>
 public partial class DeviceCard : ContentView
 {
     public event EventHandler<Guid>? RefreshRequested;
+    public event EventHandler<Guid>? RepullRequested;
     public event EventHandler<Guid>? SetPrimaryRequested;
     public event EventHandler<Guid>? RemoveRequested;
+
+    /// <summary>False while a re-pull is open or its cooldown is in force — the row then only reports.</summary>
+    private bool _canRepull = true;
 
     /// <summary>Raised with the new state when the user opens or closes the sharing detail.</summary>
     public event EventHandler<bool>? SharingExpansionChanged;
@@ -66,6 +70,7 @@ public partial class DeviceCard : ContentView
             };
 
             ApplyBattery(device);
+            ApplyHistoryRepull(device.HistoryRepull);
 
             PrimaryStar.IsVisible = device.IsPrimary;
             PrimarySwitch.IsToggled = device.IsPrimary;
@@ -111,6 +116,34 @@ public partial class DeviceCard : ContentView
         BatteryValue.TextColor = DeviceBattery.IsLow(device.BatteryLevel, device.BatteryStatus)
             ? Color.FromArgb("#C42F2F")
             : Color.FromArgb("#1E8C6E");
+    }
+
+    /// <summary>
+    /// The re-pull row: the action while one may be requested, and the request's progress line
+    /// underneath whenever the server sent one. A card mid-request keeps the row but stops
+    /// offering it — tapping would only earn a 409 — and says so to a screen reader.
+    /// </summary>
+    private void ApplyHistoryRepull(DeviceHistoryRepullResponse? repull)
+    {
+        var now = DateTime.UtcNow;
+        _canRepull = HistoryRepullCopy.CanRequest(repull, now);
+
+        var status = HistoryRepullCopy.StatusLine(repull, now);
+        RepullStatusLabel.Text = status ?? string.Empty;
+        RepullStatusLabel.IsVisible = status is not null;
+        RepullLabel.Opacity = _canRepull ? 1 : 0.5;
+
+        // Genuinely not a control while withheld, rather than a tap that silently does nothing:
+        // a disabled row is announced as such by a screen reader, and the gesture never fires.
+        RepullRow.IsEnabled = _canRepull;
+        RepullRow.InputTransparent = !_canRepull;
+
+        SemanticProperties.SetDescription(RepullRow, status is null
+            ? "Re-pull history"
+            : $"Re-pull history. {status}");
+        SemanticProperties.SetHint(RepullRow, _canRepull
+            ? "Re-reads past days from the device's provider to fill gaps"
+            : string.Empty);
     }
 
     /// <summary>Disables the actions while a request for this card is in flight.</summary>
@@ -319,6 +352,13 @@ public partial class DeviceCard : ContentView
 
     private void OnRefreshTapped(object? sender, TappedEventArgs e) =>
         RefreshRequested?.Invoke(this, _deviceId);
+
+    private void OnRepullTapped(object? sender, TappedEventArgs e)
+    {
+        if (!_canRepull)
+            return;
+        RepullRequested?.Invoke(this, _deviceId);
+    }
 
     private void OnRemoveTapped(object? sender, TappedEventArgs e) =>
         RemoveRequested?.Invoke(this, _deviceId);

@@ -171,11 +171,13 @@ The same query excludes removed and monitoring-paused members — in the query r
 
 ---
 
-## The other two ingestion paths
+## The other three ingestion paths
 
 **Manual sync** — `POST /api/cardimembers/{id}/devices/sync` → `ManualDeviceSyncService`. Requires **view** access (not manage), refused when monitoring is paused, rate-limited by a **1-minute per-member cooldown** in `IDistributedCache`. Provider quota is per-app, not per-user, so one caregiver hammering refresh would spend everyone's budget. It runs the identical `SyncCardiMemberAsync` path.
 
 **Audit pull** — `DeviceSyncAuditWorker`, weekly. Re-fetches a **random sample of 25** connections over **14 days** (`AuditLookbackDays` — the widest range the Google Health API accepts for HR/AZM/calorie rollups). Goes through `AuditSyncAsync`, which shares the pull-and-merge core but **stamps nothing**: no `LastSyncDate` (that would push the connection's next routine pull out by a full interval) and no `SyncError`. A 3-day routine window structurally *cannot observe* a provider amending day 5, so any picture of "how far back data changes" built from routine syncs alone would be an artefact of our own schedule. It still stores what it finds, so late provider corrections are repaired as a side effect of measuring them. Output lands in the `DeviceTypeSyncProfiles` table — one `DeviceTypeSyncProfile` row per `DeviceType`.
+
+**Caregiver history re-pull** — `POST /api/v1/cardimembers/{id}/devices/{deviceId}/history-repull` → `DeviceHistoryRepullService` records a `DeviceHistoryRepull` row (1–90 complete days back from yesterday) and returns **202**; `HistoryRepullWorker` executes it. The routine window only ever re-reads three days back and the backfill walks a connection's history exactly once, so a day the Worker missed while it was down, or that the provider revised late, had no path back into the store — this is that path, on the caregiver's say-so from M1-15. The Worker advances up to `MaxPerTick` (**5**) open requests per tick by one `BackfillChunkDays` (**7**) chunk each, newest first, through `IDeviceSyncService.PullHistoryRangeAsync` — daily snapshot **and** granular series per day (the one path that fetches granular history; partitions for those days are created on demand via `ITimeSeriesPartitionService.EnsurePartitionsForRangeAsync`, since nothing was syncing when they would have been made). Same upsert-and-merge writes, so it fills and refreshes but never deletes; empty days are not stored. Progress (`CompletedTo`, the oldest day reached) is written after every chunk; a failed chunk is retried next tick and the request fails after 3 attempts, keeping what landed. Like the audit, it stamps no `LastSyncDate` and never flips `SyncError`. Gates: view access, monitoring not paused, connection Connected or SyncError, one open request per connection (partial unique index), and a **48-hour** per-connection cooldown after a completed re-pull (`history_repull_cooldown_hours`). Runs on the `:06` minute so a wearer never pays for a routine pull and a chunk in the same minute; under advisory lock `8_472_100_004`.
 
 ---
 
@@ -184,6 +186,7 @@ The same query excludes removed and monitoring-paused members — in the query r
 | Setting | Value | Where |
 |---|---|---|
 | `WearableSyncWorker` cron | `0 */10 * * * *` | `Workers:WearableSyncWorker:CronExpression` |
+| `HistoryRepullWorker` cron / per tick | `0 6-59/10 * * * *` / 5 | `Workers:HistoryRepullWorker` |
 | `OrphanedOrganizationCleanupWorker` cron | `0 0 3 * * *` | `Workers:…:CronExpression` |
 | `BaselineCalculationWorker` cron | `0 30 2 * * *` | `Workers:…:CronExpression` |
 | `DeviceSyncAuditWorker` cron / sample | `0 0 4 * * 0` / 25 | `Workers:DeviceSyncAuditWorker` |
@@ -198,6 +201,7 @@ The same query excludes removed and monitoring-paused members — in the query r
 | `SyncFrequencyMinutes` | 10 | per `DeviceConnection` row |
 | `sync_lookback_days` | 3 | `device_pull_params` tfvars |
 | `backfill_days` / `backfill_chunk_days` | 90 / 7 | `device_pull_params` tfvars |
+| `history_repull_cooldown_hours` | 48 | `device_pull_params` tfvars |
 | `audit_lookback_days` | 14 | `device_pull_params` tfvars |
 | `min_pull_interval_minutes` | 10 | `device_pull_params` tfvars |
 | `max_pull_interval_minutes` | 1440 | `device_pull_params` tfvars |

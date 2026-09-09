@@ -88,15 +88,16 @@ device_pull_params = [
     additional_authorization_params    = { access_type = "offline" } # Without it Google issues no refresh token
     first_consent_authorization_params = { prompt = "consent" }      # First grant only — re-consent is how a refresh token is re-issued
 
-    sync_lookback_days        = 3
-    backfill_days             = 90 # History fetched behind a new connection, a chunk per pull
-    backfill_chunk_days       = 7  # ~91 requests per pull on top of the routine window
-    audit_lookback_days       = 14 # Widest range the Google Health API accepts for HR/AZM/calorie roll-ups
-    min_pull_interval_minutes = 10
-    max_pull_interval_minutes = 1440
-    max_requests_per_second   = 0 # Unset — no app-side governor until the quota is measured
-    dormancy_threshold_pulls  = 0 # 0 disables backoff
-    dormancy_backoff_factor   = 2.0
+    sync_lookback_days            = 3
+    backfill_days                 = 90 # History fetched behind a new connection, a chunk per pull
+    backfill_chunk_days           = 7  # ~91 requests per pull on top of the routine window
+    history_repull_cooldown_hours = 48 # A caregiver may re-pull one connection's history once every two days
+    audit_lookback_days           = 14 # Widest range the Google Health API accepts for HR/AZM/calorie roll-ups
+    min_pull_interval_minutes     = 10
+    max_pull_interval_minutes     = 1440
+    max_requests_per_second       = 0 # Unset — no app-side governor until the quota is measured
+    dormancy_threshold_pulls      = 0 # 0 disables backoff
+    dormancy_backoff_factor       = 2.0
   }
 ]
 

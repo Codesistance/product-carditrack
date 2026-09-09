@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Devices;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
@@ -143,6 +144,7 @@ public partial class DeviceManagementPage : ContentPage
             card.Apply(device);
             card.SetSharingExpanded(_expandedSharing.Contains(id));
             card.RefreshRequested += OnRefreshRequested;
+            card.RepullRequested += OnRepullRequested;
             card.SetPrimaryRequested += OnSetPrimaryRequested;
             card.RemoveRequested += OnRemoveRequested;
             card.SharingExpansionChanged += (_, expanded) =>
@@ -224,6 +226,37 @@ public partial class DeviceManagementPage : ContentPage
         {
             await _api.RefreshDeviceConnectionAsync(_memberId, deviceId);
         }, "Couldn't refresh this connection");
+
+    /// <summary>
+    /// Re-pull History: pick how far back, confirm, queue. Info-styled confirmation rather than
+    /// a warning — nothing is destroyed, a re-pull only fills and refreshes days — but still a
+    /// confirmation, because it spends the wearer's provider quota and blocks another for two
+    /// days. The reload afterwards is what shows "Queued" on the card.
+    /// </summary>
+    private async void OnRepullRequested(object? sender, Guid deviceId)
+    {
+        if (_isBusy)
+            return;
+
+        var name = _deviceNames.TryGetValue(deviceId, out var displayName) ? displayName : "this device";
+        var choice = await _popups.ChooseAsync(
+            $"How far back for {name}?", "Cancel", HistoryRepullCopy.ChoiceLabels());
+        if (HistoryRepullCopy.DaysFor(choice) is not { } days)
+            return;
+
+        var confirmed = await _popups.ConfirmInfoAsync(
+            $"We'll re-read the last {days} days from {name}'s provider in the background. " +
+            $"It takes {HistoryRepullCopy.Estimate(days)}, only fills days that have data, and never removes anything.",
+            "Re-pull history?",
+            "Yes, re-pull");
+        if (!confirmed)
+            return;
+
+        await RunDeviceActionAsync(deviceId, async () =>
+        {
+            await _api.RequestHistoryRepullAsync(_memberId, deviceId, days);
+        }, "Couldn't start the re-pull");
+    }
 
     private async void OnSetPrimaryRequested(object? sender, Guid deviceId) =>
         await RunDeviceActionAsync(deviceId, async () =>
