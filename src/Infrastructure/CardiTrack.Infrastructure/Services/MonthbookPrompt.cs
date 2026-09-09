@@ -1,8 +1,7 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
-using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Infrastructure.Services;
 

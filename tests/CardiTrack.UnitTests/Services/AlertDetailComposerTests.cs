@@ -727,11 +727,11 @@ public class AlertDetailComposerTests
 
     private ActivityLog Log(
         DateOnly date, int? steps = null, int? restingHr = null, int? sleepMinutes = null) => new()
-    {
-        CardiMemberId = _memberId,
-        Date = date,
-        Steps = steps,
-        RestingHeartRate = restingHr,
-        SleepMinutes = sleepMinutes,
-    };
+        {
+            CardiMemberId = _memberId,
+            Date = date,
+            Steps = steps,
+            RestingHeartRate = restingHr,
+            SleepMinutes = sleepMinutes,
+        };
 }

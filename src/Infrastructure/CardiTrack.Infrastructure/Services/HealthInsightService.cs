@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;

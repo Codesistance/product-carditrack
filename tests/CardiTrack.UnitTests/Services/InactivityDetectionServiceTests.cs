@@ -5,7 +5,6 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -338,7 +337,9 @@ public class InactivityDetectionServiceTests
     {
         var deleted = new Alert
         {
-            CardiMemberId = _memberId, AlertType = AlertType.Inactivity, IsResolved = false,
+            CardiMemberId = _memberId,
+            AlertType = AlertType.Inactivity,
+            IsResolved = false,
             IsActive = false,
             MetricValues = """{"rule":"device_silence","thresholdMinutes":120}""",
         };

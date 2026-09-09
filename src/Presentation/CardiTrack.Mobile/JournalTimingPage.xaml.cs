@@ -1,5 +1,4 @@
-﻿using System.Globalization;
-using CardiTrack.Application.DTOs.Requests;
+using System.Globalization;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Offline;

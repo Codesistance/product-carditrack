@@ -3,8 +3,6 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services;
-using CardiTrack.Infrastructure.Settings;
-using Microsoft.Extensions.Caching.Distributed;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;

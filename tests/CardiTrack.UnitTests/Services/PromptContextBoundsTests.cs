@@ -1,5 +1,4 @@
 using CardiTrack.Infrastructure.Services;
-using Xunit;
 
 namespace CardiTrack.UnitTests.Services;
 

@@ -2,7 +2,6 @@ using System.Linq.Expressions;
 using CardiTrack.API.Controllers.Dev;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
-using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Clients;
-using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Shared.Telemetry;
 using Microsoft.Extensions.DependencyInjection;

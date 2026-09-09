@@ -26,15 +26,15 @@ public class DigestRefreshRulesTests
     private static ActivityLog Log(
         DateOnly date, int? steps = null, int? restingHr = null, int? sleepMinutes = null,
         int? avgHr = null, decimal? spo2 = null, decimal? overnightBreathing = null) => new()
-    {
-        Date = date,
-        Steps = steps,
-        RestingHeartRate = restingHr,
-        SleepMinutes = sleepMinutes,
-        AvgHeartRate = avgHr,
-        SpO2Average = spo2,
-        OvernightBreathingRate = overnightBreathing,
-    };
+        {
+            Date = date,
+            Steps = steps,
+            RestingHeartRate = restingHr,
+            SleepMinutes = sleepMinutes,
+            AvgHeartRate = avgHr,
+            SpO2Average = spo2,
+            OvernightBreathingRate = overnightBreathing,
+        };
 
     /// <summary>
     /// The night's row is picked on the presence of a night reading, not on sleep's — the same
@@ -56,11 +56,11 @@ public class DigestRefreshRulesTests
 
     private static RealtimeAssessment Assessment(
         AlertSeverity? severity, double score, DateTime generatedAt) => new()
-    {
-        Severity = severity,
-        HrDeviationScore = score,
-        GeneratedAtUtc = generatedAt,
-    };
+        {
+            Severity = severity,
+            HrDeviationScore = score,
+            GeneratedAtUtc = generatedAt,
+        };
 
     // ── samples indicate a problem ────────────────────────────────────────────
 

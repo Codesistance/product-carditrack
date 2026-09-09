@@ -1,5 +1,4 @@
-﻿using System.ComponentModel;
-using System.Globalization;
+using System.ComponentModel;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -1392,12 +1391,12 @@ public class MemberChatService : IMemberChatService
         CardiMember? member,
         MemberAdvise? advise,
         DateTime utcNow) => new()
-    {
-        Workflow = MemberChatWorkflow.Advise,
-        Reply = CapReply(MemberChatReplies.AdviseReply(
+        {
+            Workflow = MemberChatWorkflow.Advise,
+            Reply = CapReply(MemberChatReplies.AdviseReply(
             NamePlaceholder.FirstName(member?.Name), advise, utcNow, asksForSpecifics)),
-        Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
-    };
+            Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+        };
 
     /// <summary>The message and nothing else — see <see cref="SteerAsync"/> for why no history
     /// travels with it.</summary>
@@ -2029,15 +2028,15 @@ public class MemberChatService : IMemberChatService
 
     private static MemberChatTurnUsage ToUsageRow(
         Guid turnId, AiCallStep step, AiProviderSlot slot, AiUsage usage) => new()
-    {
-        TurnId = turnId,
-        Step = step,
-        ProviderSlot = slot,
-        ModelName = usage.ModelName ?? "unknown",
-        InputTokens = usage.InputTokens,
-        OutputTokens = usage.OutputTokens,
-        DurationMs = usage.DurationMs,
-    };
+        {
+            TurnId = turnId,
+            Step = step,
+            ProviderSlot = slot,
+            ModelName = usage.ModelName ?? "unknown",
+            InputTokens = usage.InputTokens,
+            OutputTokens = usage.OutputTokens,
+            DurationMs = usage.DurationMs,
+        };
 
     private string Reveal(string? stored)
     {

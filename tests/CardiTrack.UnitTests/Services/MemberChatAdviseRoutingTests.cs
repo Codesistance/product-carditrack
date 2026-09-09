@@ -1,10 +1,10 @@
 using CardiTrack.Application.DTOs.Common;
-using Microsoft.Extensions.Logging.Abstractions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -248,7 +248,9 @@ public class MemberChatAdviseRoutingTests
             .Returns(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
                 new MemberChatService.MemberChatClinicalAiResponse
                 {
-                    Analysis = "Steps are near his usual.", ReadingsFrom = null, ReadingsTo = null,
+                    Analysis = "Steps are near his usual.",
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
                 },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())

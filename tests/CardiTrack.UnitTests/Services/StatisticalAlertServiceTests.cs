@@ -3,7 +3,6 @@ using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -479,7 +478,9 @@ public class StatisticalAlertServiceTests
             new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 6000 },
             new ActivityLog
             {
-                CardiMemberId = _memberId, Date = Yesterday.AddDays(1), OvernightBreathingRate = 17m,
+                CardiMemberId = _memberId,
+                Date = Yesterday.AddDays(1),
+                OvernightBreathingRate = 17m,
             });
 
         var raised = await CreateSut().EvaluateAsync(UtcNow);
@@ -544,11 +545,16 @@ public class StatisticalAlertServiceTests
         SetupLogs(
             new ActivityLog
             {
-                CardiMemberId = _memberId, Date = Yesterday, Steps = 6000, HeartRateVariabilityMs = 26m,
+                CardiMemberId = _memberId,
+                Date = Yesterday,
+                Steps = 6000,
+                HeartRateVariabilityMs = 26m,
             },
             new ActivityLog
             {
-                CardiMemberId = _memberId, Date = Yesterday.AddDays(1), HeartRateVariabilityMs = 25m,
+                CardiMemberId = _memberId,
+                Date = Yesterday.AddDays(1),
+                HeartRateVariabilityMs = 25m,
             });
 
         var raised = await CreateSut().EvaluateAsync(UtcNow);

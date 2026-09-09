@@ -1,10 +1,10 @@
-﻿using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
-using Microsoft.Maui.Controls.Shapes;
 using CardiTrack.Mobile.Services;
+using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile;
 

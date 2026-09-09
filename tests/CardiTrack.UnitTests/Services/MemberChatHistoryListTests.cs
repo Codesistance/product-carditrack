@@ -44,19 +44,19 @@ public class MemberChatHistoryListTests
     private MemberChatSessionListing Listing(
         string? storedFirstQuestion, int questionCount, DateTime lastTurnAtUtc,
         string? storedTheme = null) => new()
-    {
-        Session = new MemberChatSession
         {
-            Id = Guid.NewGuid(),
-            UserId = _userId,
-            CardiMemberId = _memberId,
-            StartedAtUtc = lastTurnAtUtc.AddMinutes(-10),
-            LastTurnAtUtc = lastTurnAtUtc,
-            Theme = storedTheme,
-        },
-        FirstQuestionContent = storedFirstQuestion,
-        QuestionCount = questionCount,
-    };
+            Session = new MemberChatSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = _userId,
+                CardiMemberId = _memberId,
+                StartedAtUtc = lastTurnAtUtc.AddMinutes(-10),
+                LastTurnAtUtc = lastTurnAtUtc,
+                Theme = storedTheme,
+            },
+            FirstQuestionContent = storedFirstQuestion,
+            QuestionCount = questionCount,
+        };
 
     [Fact]
     public async Task GetSessions_DecryptsTheOpeningQuestion_AndKeepsTheRepositoryOrder()

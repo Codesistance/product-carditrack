@@ -18,22 +18,22 @@ public class MetricAlarmResolutionTests
     private static MetricAlarm Alarm(
         string name, Guid? memberId = null, Guid? derivedFrom = null,
         bool enabled = true, bool active = true) => new()
-    {
-        OrganizationId = Org,
-        CardiMemberId = memberId,
-        DerivedFromAlarmId = derivedFrom,
-        Name = name,
-        Metric = AlarmMetric.HeartRate,
-        Statistic = AlarmStatistic.Average,
-        Operator = AlarmOperator.GreaterThan,
-        ThresholdKind = AlarmThresholdKind.Absolute,
-        ThresholdValue = 120m,
-        PeriodMinutes = 5,
-        EvaluationPeriods = 1,
-        DatapointsToAlarm = 1,
-        IsEnabled = enabled,
-        IsActive = active,
-    };
+        {
+            OrganizationId = Org,
+            CardiMemberId = memberId,
+            DerivedFromAlarmId = derivedFrom,
+            Name = name,
+            Metric = AlarmMetric.HeartRate,
+            Statistic = AlarmStatistic.Average,
+            Operator = AlarmOperator.GreaterThan,
+            ThresholdKind = AlarmThresholdKind.Absolute,
+            ThresholdValue = 120m,
+            PeriodMinutes = 5,
+            EvaluationPeriods = 1,
+            DatapointsToAlarm = 1,
+            IsEnabled = enabled,
+            IsActive = active,
+        };
 
     [Fact]
     public void AccountDefault_IsInheritedByTheMember()

@@ -1,6 +1,5 @@
-﻿using CardiTrack.Infrastructure.Services;
+using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Services.PromptContext;
-using Xunit;
 
 namespace CardiTrack.UnitTests.Services;
 

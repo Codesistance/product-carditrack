@@ -1,7 +1,6 @@
 using System.Globalization;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
-using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;

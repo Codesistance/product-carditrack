@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -6,8 +6,6 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Infrastructure.Services;
-using CardiTrack.Infrastructure.Settings;
-using Microsoft.Extensions.Caching.Distributed;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;

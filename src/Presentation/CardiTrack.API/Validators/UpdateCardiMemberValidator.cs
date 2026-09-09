@@ -1,5 +1,4 @@
 using CardiTrack.Application.DTOs.Requests;
-using CardiTrack.Application.Services;
 using FluentValidation;
 
 namespace CardiTrack.API.Validators;

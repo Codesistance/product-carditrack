@@ -11,15 +11,15 @@ public class WeatherSnapshotMapperTests
     private static EnvironmentalReading Reading(
         double? temperature = null, string? condition = null, int? humidity = null,
         int? airQualityIndex = null, string? airQualityCategory = null) => new()
-    {
-        CardiMemberId = MemberId,
-        SessionEndUtc = SessionEnd,
-        TemperatureCelsius = temperature,
-        WeatherCondition = condition,
-        RelativeHumidityPercent = humidity,
-        AirQualityIndex = airQualityIndex,
-        AirQualityCategory = airQualityCategory,
-    };
+        {
+            CardiMemberId = MemberId,
+            SessionEndUtc = SessionEnd,
+            TemperatureCelsius = temperature,
+            WeatherCondition = condition,
+            RelativeHumidityPercent = humidity,
+            AirQualityIndex = airQualityIndex,
+            AirQualityCategory = airQualityCategory,
+        };
 
     [Fact]
     public void From_IsNull_WhenConsentNotGranted() =>

@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Charts;
 using Microsoft.Maui.Controls.Shapes;
 

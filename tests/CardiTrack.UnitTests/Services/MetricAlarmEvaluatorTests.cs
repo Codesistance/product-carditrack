@@ -20,19 +20,19 @@ public class MetricAlarmEvaluatorTests
         int evaluationPeriods = 1,
         int datapointsToAlarm = 1,
         AlarmMissingDataTreatment missing = AlarmMissingDataTreatment.Missing) => new()
-    {
-        Name = "Heart rate high",
-        Metric = metric,
-        Statistic = AlarmStatistic.Average,
-        Operator = op,
-        ThresholdKind = kind,
-        ThresholdValue = threshold,
-        PeriodMinutes = 5,
-        EvaluationPeriods = evaluationPeriods,
-        DatapointsToAlarm = datapointsToAlarm,
-        MissingDataTreatment = missing,
-        Severity = AlertSeverity.Orange,
-    };
+        {
+            Name = "Heart rate high",
+            Metric = metric,
+            Statistic = AlarmStatistic.Average,
+            Operator = op,
+            ThresholdKind = kind,
+            ThresholdValue = threshold,
+            PeriodMinutes = 5,
+            EvaluationPeriods = evaluationPeriods,
+            DatapointsToAlarm = datapointsToAlarm,
+            MissingDataTreatment = missing,
+            Severity = AlertSeverity.Orange,
+        };
 
     private static AlarmDatapoint[] Points(params double?[] values) =>
         values.Select(v => new AlarmDatapoint(v)).ToArray();

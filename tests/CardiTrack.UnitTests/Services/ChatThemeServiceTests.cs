@@ -6,7 +6,6 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.UnitTests.Services;
 

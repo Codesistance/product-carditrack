@@ -579,15 +579,15 @@ public class MemberContextSourceTests
         QuestionnaireStatus status, string question, string? answer,
         QuestionnaireScope scope = QuestionnaireScope.TimeScoped, DateTime? expiresAtUtc = null,
         DateTime? answeredAtUtc = null) => new()
-    {
-        Id = Guid.NewGuid(),
-        CardiMemberId = _memberId,
-        QuestionText = PromptContextFactory.Encryption.Encrypt(question),
-        AnswerText = answer is null ? null : PromptContextFactory.Encryption.Encrypt(answer),
-        Status = status,
-        GeneratedAtUtc = UtcNow.AddDays(-1),
-        AnsweredAtUtc = answeredAtUtc,
-        Scope = scope,
-        ExpiresAtUtc = expiresAtUtc,
-    };
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = _memberId,
+            QuestionText = PromptContextFactory.Encryption.Encrypt(question),
+            AnswerText = answer is null ? null : PromptContextFactory.Encryption.Encrypt(answer),
+            Status = status,
+            GeneratedAtUtc = UtcNow.AddDays(-1),
+            AnsweredAtUtc = answeredAtUtc,
+            Scope = scope,
+            ExpiresAtUtc = expiresAtUtc,
+        };
 }

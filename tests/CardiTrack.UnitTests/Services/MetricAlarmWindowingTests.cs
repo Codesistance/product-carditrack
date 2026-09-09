@@ -23,18 +23,18 @@ public class MetricAlarmWindowingTests
         int periodMinutes = 5,
         int evaluationPeriods = 2,
         AlarmContextGate gate = AlarmContextGate.None) => new()
-    {
-        Name = "Test",
-        Metric = metric,
-        Statistic = statistic,
-        Operator = AlarmOperator.GreaterThan,
-        ThresholdKind = AlarmThresholdKind.Absolute,
-        ThresholdValue = 120m,
-        PeriodMinutes = periodMinutes,
-        EvaluationPeriods = evaluationPeriods,
-        DatapointsToAlarm = 1,
-        ContextGate = gate,
-    };
+        {
+            Name = "Test",
+            Metric = metric,
+            Statistic = statistic,
+            Operator = AlarmOperator.GreaterThan,
+            ThresholdKind = AlarmThresholdKind.Absolute,
+            ThresholdValue = 120m,
+            PeriodMinutes = periodMinutes,
+            EvaluationPeriods = evaluationPeriods,
+            DatapointsToAlarm = 1,
+            ContextGate = gate,
+        };
 
     /// <summary>A 60-slot minute series with <paramref name="values"/> placed at <paramref name="at"/>.</summary>
     private static float?[] Series(int at, params float?[] values)

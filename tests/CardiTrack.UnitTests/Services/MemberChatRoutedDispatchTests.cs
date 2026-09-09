@@ -85,7 +85,9 @@ public class MemberChatRoutedDispatchTests
             .Returns(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
                 new MemberChatService.MemberChatClinicalAiResponse
                 {
-                    Analysis = "steady week", ReadingsFrom = null, ReadingsTo = null,
+                    Analysis = "steady week",
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
                 },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -237,7 +239,10 @@ public class MemberChatRoutedDispatchTests
             .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
                 new MemberChatService.InferenceClinicalAiResponse
                 {
-                    Analysis = analysis, ReferencesUsed = [], ReadingsFrom = null, ReadingsTo = null,
+                    Analysis = analysis,
+                    ReferencesUsed = [],
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
                 },
                 new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())

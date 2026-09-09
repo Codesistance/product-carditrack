@@ -5,7 +5,6 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
-using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -311,7 +310,9 @@ public class RealtimeAssessmentServiceTests
         SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72, jumpLast: false));
         var custom = new Alert
         {
-            CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false,
+            CardiMemberId = _memberId,
+            AlertType = AlertType.HeartRate,
+            IsResolved = false,
             MetricValues = $"{{\"rule\":\"{MetricAlarmEngine.CustomRule(Guid.NewGuid())}\"}}",
         };
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([custom]);
@@ -376,7 +377,9 @@ public class RealtimeAssessmentServiceTests
         SetupWindow(HeartRateMinutes(from: 150, to: 209, bpm: 72, jumpLast: false));
         var deleted = new Alert
         {
-            CardiMemberId = _memberId, AlertType = AlertType.HeartRate, IsResolved = false,
+            CardiMemberId = _memberId,
+            AlertType = AlertType.HeartRate,
+            IsResolved = false,
             IsActive = false,
         };
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([deleted]);

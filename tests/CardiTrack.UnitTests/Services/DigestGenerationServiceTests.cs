@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Reflection;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
@@ -14,13 +14,13 @@ using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.UnitTests.Services;
 
-    /// <summary>
-    /// Pins the summary due-ness rules: recomputed whenever the member's readings have moved
-    /// since their last summary but no more often than the regeneration floor — unless the new
-    /// readings are a problem, off the baseline, or a jump from yesterday, or an alert changed.
-    /// Never while paused, never from silence — and one member's failure never costs another
-    /// family theirs.
-    /// </summary>
+/// <summary>
+/// Pins the summary due-ness rules: recomputed whenever the member's readings have moved
+/// since their last summary but no more often than the regeneration floor — unless the new
+/// readings are a problem, off the baseline, or a jump from yesterday, or an alert changed.
+/// Never while paused, never from silence — and one member's failure never costs another
+/// family theirs.
+/// </summary>
 public class DigestGenerationServiceTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();

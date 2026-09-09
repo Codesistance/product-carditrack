@@ -1,4 +1,3 @@
-﻿using System.Reflection;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 

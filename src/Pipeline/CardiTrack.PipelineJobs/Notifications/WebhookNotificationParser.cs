@@ -69,26 +69,26 @@ public static partial class WebhookNotificationParser
                 // The form live traffic uses: a named property holding the bare id.
                 case JProperty { Value: JValue { Type: JTokenType.String } property } p
                     when string.Equals(p.Name, HealthUserIdProperty, StringComparison.OrdinalIgnoreCase):
-                {
-                    // Trimmed, because the id is matched against DeviceConnection.HealthUserId
-                    // exactly: a padded value would miss, count as an unknown user, and produce
-                    // no sync and no error — the same silent shape as the bug this parser is
-                    // being fixed for. These ids are opaque alphanumerics, so any surrounding
-                    // whitespace is incidental and never part of the identity. Trimming first
-                    // also subsumes the empty and whitespace-only cases in one check.
-                    if (property.Value<string>()?.Trim() is { Length: > 0 } id)
-                        ids.Add(id);
-                    break;
-                }
+                    {
+                        // Trimmed, because the id is matched against DeviceConnection.HealthUserId
+                        // exactly: a padded value would miss, count as an unknown user, and produce
+                        // no sync and no error — the same silent shape as the bug this parser is
+                        // being fixed for. These ids are opaque alphanumerics, so any surrounding
+                        // whitespace is incidental and never part of the identity. Trimming first
+                        // also subsumes the empty and whitespace-only cases in one check.
+                        if (property.Value<string>()?.Trim() is { Length: > 0 } id)
+                            ids.Add(id);
+                        break;
+                    }
 
                 // The resource-name form, wherever a string carries one.
                 case JValue { Type: JTokenType.String } value
                     when value.Value<string>() is { } text
                          && UserResourceName().Match(text) is { Success: true } match:
-                {
-                    ids.Add(match.Groups["id"].Value);
-                    break;
-                }
+                    {
+                        ids.Add(match.Groups["id"].Value);
+                        break;
+                    }
             }
         }
 

@@ -35,17 +35,17 @@ public class DigestInterpretationSignalsTests
         int? sleepMinutes = null,
         int? moderateZoneMinutes = null,
         decimal? hrv = null) => new()
-    {
-        Date = date,
-        Steps = steps,
-        RestingHeartRate = restingHr,
-        AvgHeartRate = avgHr,
-        SpO2Average = spo2,
-        BreathingRate = breathing,
-        SleepMinutes = sleepMinutes,
-        ModerateZoneMinutes = moderateZoneMinutes,
-        HeartRateVariabilityMs = hrv,
-    };
+        {
+            Date = date,
+            Steps = steps,
+            RestingHeartRate = restingHr,
+            AvgHeartRate = avgHr,
+            SpO2Average = spo2,
+            BreathingRate = breathing,
+            SleepMinutes = sleepMinutes,
+            ModerateZoneMinutes = moderateZoneMinutes,
+            HeartRateVariabilityMs = hrv,
+        };
 
     /// <summary>
     /// The other half of the still-day picture: not how little they moved in total, but how long

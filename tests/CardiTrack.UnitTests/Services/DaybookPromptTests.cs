@@ -1,4 +1,4 @@
-﻿using CardiTrack.Domain.Common;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -38,32 +38,32 @@ public class DaybookPromptTests
         int? longestSedentaryStretch = null,
         DateTime? sleepStart = null,
         DateTime? sleepEnd = null) => new()
-    {
-        Date = Reviewed,
-        SleepStartTime = sleepStart,
-        SleepEndTime = sleepEnd,
-        Steps = steps,
-        ActiveMinutes = activeMinutes,
-        RestingHeartRate = restingHr,
-        MinHeartRate = minHr,
-        MaxHeartRate = maxHr,
-        SleepMinutes = sleepMinutes,
-        SleepEfficiency = sleepEfficiency,
-        DeepSleepMinutes = deep,
-        RemSleepMinutes = rem,
-        SpO2Average = spo2,
-        SpO2Min = spo2Min,
-        SpO2Max = spo2Max,
-        BreathingRate = breathing,
-        Temperature = temperature,
-        TemperatureBaseline = temperatureBaseline,
-        HeartRateVariabilityMs = hrv,
-        OvernightBreathingRate = overnightBreathing,
-        ModerateZoneMinutes = moderateZoneMinutes,
-        VigorousZoneMinutes = vigorousZoneMinutes,
-        ModerateZoneFloorBpm = moderateZoneFloorBpm,
-        LongestSedentaryStretchMinutes = longestSedentaryStretch,
-    };
+        {
+            Date = Reviewed,
+            SleepStartTime = sleepStart,
+            SleepEndTime = sleepEnd,
+            Steps = steps,
+            ActiveMinutes = activeMinutes,
+            RestingHeartRate = restingHr,
+            MinHeartRate = minHr,
+            MaxHeartRate = maxHr,
+            SleepMinutes = sleepMinutes,
+            SleepEfficiency = sleepEfficiency,
+            DeepSleepMinutes = deep,
+            RemSleepMinutes = rem,
+            SpO2Average = spo2,
+            SpO2Min = spo2Min,
+            SpO2Max = spo2Max,
+            BreathingRate = breathing,
+            Temperature = temperature,
+            TemperatureBaseline = temperatureBaseline,
+            HeartRateVariabilityMs = hrv,
+            OvernightBreathingRate = overnightBreathing,
+            ModerateZoneMinutes = moderateZoneMinutes,
+            VigorousZoneMinutes = vigorousZoneMinutes,
+            ModerateZoneFloorBpm = moderateZoneFloorBpm,
+            LongestSedentaryStretchMinutes = longestSedentaryStretch,
+        };
 
     private static PatternBaseline Baseline() => new()
     {
@@ -480,15 +480,15 @@ public class DaybookPromptTests
 
     private static MetricRollupHourly Rollup(
         GranularMetric metric, int utcHourOffset, float min, float max, float avg, float sum = 0) => new()
-    {
-        Metric = metric,
-        HourStartUtc = DayStartUtc.AddHours(utcHourOffset),
-        Min = min,
-        Max = max,
-        Avg = avg,
-        Sum = sum,
-        SampleCount = 12,
-    };
+        {
+            Metric = metric,
+            HourStartUtc = DayStartUtc.AddHours(utcHourOffset),
+            Min = min,
+            Max = max,
+            Avg = avg,
+            Sum = sum,
+            SampleCount = 12,
+        };
 
     /// <summary>
     /// The hour table is rendered in the member's local clock — the day the account is about —

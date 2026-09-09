@@ -236,7 +236,7 @@ public partial class QuestionnairesPage : ContentPage
 
             if (!_gate.IsCurrent(ticket))
                 return; // a new search or reload started while this page was in flight; drop it —
-                         // it belongs to a list that no longer exists on screen.
+                        // it belongs to a list that no longer exists on screen.
 
             foreach (var questionnaire in result.Answered.Items)
                 _answeredItems.Add(new AnsweredQuestionnaireItem(questionnaire, _memberName));

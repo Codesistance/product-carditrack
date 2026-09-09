@@ -57,21 +57,21 @@ public class AdviseGenerationServiceTests
         string finding = "Steps sit below the member's 30-day usual.",
         string action = "A short daily walk would close the gap.",
         string? cited = "WHO adult activity guidance") => new()
-    {
-        Topic = "Activity",
-        Finding = finding,
-        Action = action,
-        GuidelineCited = cited,
-    };
+        {
+            Topic = "Activity",
+            Finding = finding,
+            Action = action,
+            GuidelineCited = cited,
+        };
 
     private static AdviseGenerationService.AdviseRewriteEntryAiResponse ActivityCopy(
         string summary = "Steps have been below her usual this week.",
         string suggestion = "A short walk after lunch is worth trying.") => new()
-    {
-        Topic = "Activity",
-        Summary = summary,
-        Suggestion = suggestion,
-    };
+        {
+            Topic = "Activity",
+            Summary = summary,
+            Suggestion = suggestion,
+        };
 
     private void ClinicalAnswers(params AdviseGenerationService.AdviseClinicalEntryAiResponse[] entries) =>
         _medicalAi.GenerateStructuredAsync<AdviseGenerationService.AdviseClinicalAiResponse>(
@@ -88,15 +88,15 @@ public class AdviseGenerationServiceTests
         AdviseTopic topic = AdviseTopic.Activity,
         double ageDays = 2,
         int promptVersion = AdviseGenerationService.CurrentPromptVersion) => new()
-    {
-        CardiMemberId = memberId,
-        Topic = topic,
-        Summary = "Old summary.",
-        Suggestion = "Old suggestion.",
-        GuidelineCited = "Old reference",
-        GeneratedAtUtc = DateTime.UtcNow.AddDays(-ageDays),
-        PromptVersion = promptVersion,
-    };
+        {
+            CardiMemberId = memberId,
+            Topic = topic,
+            Summary = "Old summary.",
+            Suggestion = "Old suggestion.",
+            GuidelineCited = "Old reference",
+            GeneratedAtUtc = DateTime.UtcNow.AddDays(-ageDays),
+            PromptVersion = promptVersion,
+        };
 
     /// <summary>The shape the narrowed catch filters for: a DbUpdateException whose inner is
     /// Postgres's unique violation — any other write failure now bubbles.</summary>
