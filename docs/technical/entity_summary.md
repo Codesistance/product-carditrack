@@ -52,6 +52,13 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - `BatteryLevel` / `BatteryStatus` / `BatteryUpdatedAt` — last-known device battery, from the per-pull `pairedDevices` read
 - No FK constraints - uses CardiMemberId (Guid)
 
+#### 5a. **DeviceHistoryRepull**
+- A caregiver's request to re-read a stretch of one connection's history (M1-15 "Re-pull History"): the work order `HistoryRepullWorker` executes and the record of who asked, for what range, and how far it got
+- Contains: DeviceConnectionId, CardiMemberId, RequestedByUserId, FromDate / ToDate (`date`, complete days ending yesterday), CompletedTo (oldest day fetched so far — walks newest-first), DaysWithData, Attempts, Status (`HistoryRepullStatus`, stored as a name), RequestedAt / StartedAt / CompletedAt, FailureReason (payload-free label)
+- **Partial unique index** on DeviceConnectionId where Status is Pending or InProgress — at most one open request per connection, enforced in the database rather than only by the pre-insert check
+- Not soft-deletable: a finished request is history. Carries no health data — dates, counts and status only
+- No FK constraints - uses DeviceConnectionId and CardiMemberId (Guid)
+
 #### 6. **DeviceActivityLog** *(raw)*
 - One day of metrics exactly as a **single device** reported them — **unique on (DeviceConnectionId, Date)**
 - Same ~34 nullable metric columns as ActivityLog; indexed on (CardiMemberId, Date) for the merge read
@@ -213,6 +220,7 @@ The 32 domain enums:
 - **RelationshipType**: Self, Parent, Spouse, Grandparent, Sibling, Child, Other (= 99)
 - **DeviceType**: Fitbit, AppleWatch, Garmin, GalaxyWatch (displays "Samsung Galaxy Watch"), Withings, Oura, Whoop, GooglePixelWatch (= 8), Other (= 99)
 - **DevicePlatform**: Ios, Android (the phone the app runs on, for push tokens — not the wearable)
+- **HistoryRepullStatus**: Pending, InProgress, Completed, Failed, Cancelled — the life of a caregiver-requested history re-pull (`DeviceHistoryRepull`)
 - **ConnectionStatus**: Connected, Disconnected, TokenExpired, AuthError, SyncError (no Pending)
 - **HealthApi**: GoogleHealth, SamsungHealth, GarminConnect, AppleHealth, Withings, Oura, Whoop (which provider API serves a device type)
 - **GranularMetric**: HeartRate, Steps, ActiveZoneMinutes, SpO2 (the four minute-grain series)

@@ -20,22 +20,28 @@ public class DevicesController : BaseApiController
 {
     private readonly IDeviceConnectionService _deviceConnections;
     private readonly IManualDeviceSyncService _manualSync;
+    private readonly IDeviceHistoryRepullService _historyRepull;
     private readonly IValidator<ConnectDeviceRequest> _connectValidator;
     private readonly IValidator<OAuthCallbackRequest> _callbackValidator;
+    private readonly IValidator<HistoryRepullRequest> _repullValidator;
 
     public DevicesController(
         IUserContext userContext,
         ILogger<DevicesController> logger,
         IDeviceConnectionService deviceConnections,
         IManualDeviceSyncService manualSync,
+        IDeviceHistoryRepullService historyRepull,
         IValidator<ConnectDeviceRequest> connectValidator,
-        IValidator<OAuthCallbackRequest> callbackValidator)
+        IValidator<OAuthCallbackRequest> callbackValidator,
+        IValidator<HistoryRepullRequest> repullValidator)
         : base(userContext, logger)
     {
         _deviceConnections = deviceConnections;
         _manualSync = manualSync;
+        _historyRepull = historyRepull;
         _connectValidator = connectValidator;
         _callbackValidator = callbackValidator;
+        _repullValidator = repullValidator;
     }
 
     /// <summary>All wearable connections for one CardiMember (M1-05 / M1-15).</summary>
@@ -147,6 +153,58 @@ public class DevicesController : BaseApiController
         {
             Logger.LogInformation("Manual sync refused with code {Code}", ex.Code);
             var status = ex.Code == ManualSyncUnavailableException.TooSoon
+                ? StatusCodes.Status429TooManyRequests
+                : StatusCodes.Status409Conflict;
+            return Error(ex.Message, status);
+        }
+    }
+
+    /// <summary>
+    /// Queues a re-read of one device's history — the last <c>days</c> complete days — to fill
+    /// gaps the routine sync left (M1-15 "Re-pull History").
+    /// </summary>
+    /// <remarks>
+    /// 202, not 200: the pull is too large to run inside a request (up to 90 days at ~18
+    /// provider calls a day), so this records the request and <c>HistoryRepullWorker</c> in
+    /// <c>CardiTrack.Worker</c> walks it in chunks. Progress surfaces on the device list as
+    /// <c>historyRepull</c>. Refusals carry their own status: 409 when monitoring is paused,
+    /// the device cannot sync, or a re-pull is already open; 429 when one finished too recently.
+    /// </remarks>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/devices/{deviceId:guid}/history-repull")]
+    [ProducesResponseType(typeof(ApiResponse<DeviceHistoryRepullResponse>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<ApiResponse<DeviceHistoryRepullResponse>>> RequestHistoryRepull(
+        Guid cardiMemberId, Guid deviceId, [FromBody] HistoryRepullRequest request, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        var validation = await _repullValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+        {
+            return ValidationFailed(validation);
+        }
+
+        try
+        {
+            var result = await _historyRepull.RequestAsync(
+                UserContext.UserId, cardiMemberId, deviceId, request.Days, ct);
+            return Queued(result, "We're re-pulling this device's history — check back in a little while.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (HistoryRepullUnavailableException ex)
+        {
+            Logger.LogInformation("History re-pull refused with code {Code}", ex.Code);
+            var status = ex.Code == HistoryRepullUnavailableException.TooSoon
                 ? StatusCodes.Status429TooManyRequests
                 : StatusCodes.Status409Conflict;
             return Error(ex.Message, status);

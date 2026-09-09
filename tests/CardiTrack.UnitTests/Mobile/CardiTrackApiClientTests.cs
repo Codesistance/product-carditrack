@@ -1418,6 +1418,29 @@ public class CardiTrackApiClientTests
         Assert.Equal("/api/v1/assistant/prepare", request.Uri!.AbsolutePath);
     }
 
+    [Fact]
+    public async Task RequestHistoryRepull_PostsTheDayCount_AndUnwrapsThe202Envelope()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        var deviceId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.Accepted, """
+            {"success":true,"message":"On it!","data":{"repullId":"8c1f5f64-5717-4562-b3fc-2c963f66afa6",
+             "status":"pending","days":30,"fromDate":"2026-08-10","toDate":"2026-09-08","daysDone":0,
+             "daysWithData":0,"requestedAt":"2026-09-09T12:00:00Z"},"timestamp":"2026-09-09T12:00:00Z"}
+            """);
+
+        var repull = await client.RequestHistoryRepullAsync(memberId, deviceId, 30);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{memberId}/devices/{deviceId}/history-repull", request.Uri!.AbsolutePath);
+        Assert.Contains("\"days\":30", request.Body);
+        Assert.Equal("pending", repull.Status);
+        Assert.Equal(30, repull.Days);
+        Assert.Equal(new DateOnly(2026, 8, 10), repull.FromDate);
+    }
+
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
         IOfflineReadCache? cache = null)
     {

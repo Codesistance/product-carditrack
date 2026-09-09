@@ -42,6 +42,13 @@ public class DeviceResponse
     /// same conditions as <see cref="BatteryLevel"/>.
     /// </summary>
     public string? BatteryStatus { get; set; }
+
+    /// <summary>
+    /// The connection's latest caregiver-requested history re-pull (M1-15 "Re-pull History"),
+    /// while it is worth showing: any open request, or a completed one still inside the
+    /// re-pull cooldown. Null otherwise — a card with nothing here offers the action plainly.
+    /// </summary>
+    public DeviceHistoryRepullResponse? HistoryRepull { get; set; }
 }
 
 public class DeviceListResponse

@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
+        services.AddScoped<IValidator<HistoryRepullRequest>, HistoryRepullValidator>();
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
         services.AddScoped<IValidator<MemberChatMessageRequest>, MemberChatMessageValidator>();
         services.AddScoped<IValidator<GenerateReportRequest>, GenerateReportValidator>();
@@ -101,6 +102,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IReportRepository, CardiTrack.Infrastructure.Repositories.ReportRepository>();
         services.AddScoped<IMemberAdviseRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseRepository>();
         services.AddScoped<IMemberAiHoldRepository, CardiTrack.Infrastructure.Repositories.MemberAiHoldRepository>();
+        services.AddScoped<IDeviceHistoryRepullRepository, CardiTrack.Infrastructure.Repositories.DeviceHistoryRepullRepository>();
 
         // Push delivery spine (notification_engine.md Phase 3) — the API both issues the
         // immediate-attempt send (nudge/alert writing paths, and the internal enqueue endpoint)
@@ -129,6 +131,10 @@ public static class ServiceCollectionExtensions
         // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,
             CardiTrack.Infrastructure.Services.ManualDeviceSyncService>();
+        // Caregiver-requested history re-pull (M1-15). Request-scoped too: this only records
+        // the work order — HistoryRepullWorker in CardiTrack.Worker executes it, per CLAUDE.md.
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceHistoryRepullService,
+            CardiTrack.Infrastructure.Services.DeviceHistoryRepullService>();
 
         // HTTP Client for Auth0 service
         services.AddHttpClient("Auth0Client", client =>

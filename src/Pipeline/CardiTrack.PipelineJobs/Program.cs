@@ -89,6 +89,7 @@ builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineReposito
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
+builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
 // Repositories only, not AddPushServices — the pipeline gets a transport (the internal enqueue
 // endpoint, wired below for the assessor), not a copy of the send stack. See
 // PushServiceExtensions.AddPushServices' remarks.

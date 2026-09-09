@@ -1101,8 +1101,9 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 
 **Context Menu:**
 - Refresh Connection
+- Re-pull History *(as built — no Figma state; needs design sync)*: picks a range (Last 7 / 14 / 30 / 45 / 60 / 75 / 90 days) via the app-styled chooser, confirms with an info-styled popup that names the wait ("about 50 minutes") and that nothing is removed, then `POST .../history-repull` (202). A status line under the action reports the request from `historyRepull` on the device list — "Queued — starts within 10 minutes", "Re-pulling last 30 days · 14 of 30 days done", "Done — 27 of 30 days had data · available again in about 36 hours", "Didn't finish — you can try again", "Stopped — monitoring paused or the device changed" — and the action is withheld (dimmed, not tappable) while a request is open or the 48-hour cooldown is in force. Reasons are never shown.
 - Set as Primary (toggle)
-- View Sync History
+- View Sync History *(designed, not built)*
 - Remove Device (destructive text)
 
 **Expanded Detail (tap card to expand):**

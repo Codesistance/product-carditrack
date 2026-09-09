@@ -46,6 +46,22 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         }
     }
 
+    public async Task EnsurePartitionsForRangeAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        if (from > to)
+            throw new ArgumentOutOfRangeException(nameof(from), from, "The range must not end before it starts.");
+
+        // Only the tables a history re-pull writes: granular hours (daily) and their rollups
+        // (monthly). Assessments, digests and environmental readings are not re-pulled.
+        for (var day = from; day <= to; day = day.AddDays(1))
+            await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateDailyPartitionSql(day), ct);
+
+        var firstMonth = new DateOnly(from.Year, from.Month, 1);
+        var lastMonth = new DateOnly(to.Year, to.Month, 1);
+        for (var month = firstMonth; month <= lastMonth; month = month.AddMonths(1))
+            await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateMonthlyPartitionSql(month), ct);
+    }
+
     public async Task DropExpiredPartitionsAsync(
         PartitionRetention retention, CancellationToken ct = default)
     {

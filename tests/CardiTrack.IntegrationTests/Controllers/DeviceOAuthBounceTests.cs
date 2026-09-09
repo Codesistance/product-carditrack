@@ -32,8 +32,10 @@ public class DeviceOAuthBounceTests
             Substitute.For<ILogger<DevicesController>>(),
             _connections,
             Substitute.For<IManualDeviceSyncService>(),
+            Substitute.For<IDeviceHistoryRepullService>(),
             Substitute.For<IValidator<ConnectDeviceRequest>>(),
-            Substitute.For<IValidator<OAuthCallbackRequest>>())
+            Substitute.For<IValidator<OAuthCallbackRequest>>(),
+            Substitute.For<IValidator<HistoryRepullRequest>>())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };

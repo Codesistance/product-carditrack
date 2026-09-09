@@ -499,6 +499,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         ApiPaths.CardiMember(cardiMemberId),
     ];
 
+    public Task<DeviceHistoryRepullResponse> RequestHistoryRepullAsync(
+        Guid cardiMemberId, Guid deviceId, int days, CancellationToken ct = default) =>
+        PostAsync<HistoryRepullRequest, DeviceHistoryRepullResponse>(
+            $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/history-repull",
+            new HistoryRepullRequest { Days = days },
+            ct);
+
     public Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default) =>
         PostAsync<ConnectDeviceRequest, OAuthInitiationResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", request, ct);
 

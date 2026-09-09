@@ -33,6 +33,7 @@ public interface IUnitOfWork : IDisposable
     IMemberAdviseRepository MemberAdvises { get; }
     IReportRepository Reports { get; }
     IMemberAiHoldRepository MemberAiHolds { get; }
+    IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
 
     Task<int> SaveChangesAsync();
 

@@ -58,6 +58,7 @@ public class TestDatabaseFixture : IAsyncLifetime
         services.AddScoped<IReportRepository, ReportRepository>();
         services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
         services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
+        services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
         services.AddLogging();

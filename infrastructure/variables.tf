@@ -280,15 +280,16 @@ variable "device_pull_params" {
     additional_authorization_params    = optional(map(string), {})
     first_consent_authorization_params = optional(map(string), {})
 
-    sync_lookback_days        = optional(number, 3)
-    backfill_days             = optional(number, 90)
-    backfill_chunk_days       = optional(number, 7)
-    audit_lookback_days       = optional(number, 14)
-    min_pull_interval_minutes = optional(number, 30)
-    max_pull_interval_minutes = optional(number, 1440)
-    max_requests_per_second   = optional(number, 0)
-    dormancy_threshold_pulls  = optional(number, 0)
-    dormancy_backoff_factor   = optional(number, 2.0)
+    sync_lookback_days            = optional(number, 3)
+    backfill_days                 = optional(number, 90)
+    backfill_chunk_days           = optional(number, 7)
+    history_repull_cooldown_hours = optional(number, 48)
+    audit_lookback_days           = optional(number, 14)
+    min_pull_interval_minutes     = optional(number, 30)
+    max_pull_interval_minutes     = optional(number, 1440)
+    max_requests_per_second       = optional(number, 0)
+    dormancy_threshold_pulls      = optional(number, 0)
+    dormancy_backoff_factor       = optional(number, 2.0)
   }))
   default = [{ provider = "GoogleHealth", device_types = ["Fitbit", "GooglePixelWatch"] }]
 
@@ -354,6 +355,14 @@ variable "device_pull_params" {
       p.backfill_days >= 0 && (p.backfill_days == 0 || p.backfill_chunk_days > 0)
     ])
     error_message = "device_pull_params: backfill_days must be >= 0 (0 disables), and backfill_chunk_days must be positive when backfill_days is set."
+  }
+
+  validation {
+    # Mirrors the app's startup check: 0 disables the caregiver re-pull cooldown, negative is a mistake.
+    condition = alltrue([
+      for p in var.device_pull_params : p.history_repull_cooldown_hours >= 0
+    ])
+    error_message = "device_pull_params: history_repull_cooldown_hours must be >= 0 (0 disables the cooldown)."
   }
 }
 

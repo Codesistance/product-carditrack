@@ -37,6 +37,9 @@ public class DeviceConnectionServiceTests
         _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(
             new CardiMember { Id = _memberId, Name = "Dad", IsActive = true });
         _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([]);
+        _unitOfWork.DeviceHistoryRepulls
+            .GetLatestByConnectionIdsAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns([]);
         _unitOfWork.Devices.GetByDeviceTypeAsync(DeviceType.Fitbit).Returns((Device?)null);
         _encryption.Encrypt(Arg.Any<string>()).Returns(c => $"enc({c.Arg<string>()})");
     }
@@ -672,6 +675,71 @@ public class DeviceConnectionServiceTests
 
         Assert.Null(device.BatteryLevel);
         Assert.Null(device.BatteryStatus);
+    }
+
+    [Fact]
+    public async Task GetDevices_EmbedsEachConnectionsOpenRepull_FromOneBatchedRead()
+    {
+        var first = SeedConnection();
+        var second = SeedConnection(deviceType: DeviceType.GooglePixelWatch);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([first, second]);
+        _unitOfWork.DeviceHistoryRepulls
+            .GetLatestByConnectionIdsAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new DeviceHistoryRepull
+                {
+                    DeviceConnectionId = first.Id,
+                    Status = HistoryRepullStatus.InProgress,
+                    FromDate = new DateOnly(2026, 8, 10),
+                    ToDate = new DateOnly(2026, 9, 8),
+                    CompletedTo = new DateOnly(2026, 8, 26),
+                    DaysWithData = 11,
+                },
+            ]);
+
+        var devices = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices;
+
+        await _unitOfWork.DeviceHistoryRepulls.Received(1).GetLatestByConnectionIdsAsync(
+            Arg.Is<IEnumerable<Guid>>(ids => ids.Contains(first.Id) && ids.Contains(second.Id)),
+            Arg.Any<CancellationToken>());
+        var withRepull = devices.Single(d => d.DeviceId == first.Id).HistoryRepull;
+        Assert.NotNull(withRepull);
+        Assert.Equal("in_progress", withRepull.Status);
+        Assert.Equal(14, withRepull.DaysDone);
+        Assert.Equal(30, withRepull.Days);
+        Assert.Null(devices.Single(d => d.DeviceId == second.Id).HistoryRepull);
+    }
+
+    [Fact]
+    public async Task GetDevices_ShowsACompletedRepullOnlyWhileItsCooldownStillBlocksAnother()
+    {
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        var completed = new DeviceHistoryRepull
+        {
+            DeviceConnectionId = connection.Id,
+            Status = HistoryRepullStatus.Completed,
+            FromDate = new DateOnly(2026, 8, 10),
+            ToDate = new DateOnly(2026, 9, 8),
+            CompletedTo = new DateOnly(2026, 8, 10),
+            CompletedAt = DateTime.UtcNow.AddHours(-2),
+        };
+        _unitOfWork.DeviceHistoryRepulls
+            .GetLatestByConnectionIdsAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns([completed]);
+
+        var inside = (await CreateSut(c => c.HistoryRepullCooldownHours = 48).GetDevicesAsync(_userId, _memberId))
+            .Devices.Single().HistoryRepull;
+        Assert.NotNull(inside);
+        Assert.Equal("completed", inside.Status);
+        Assert.NotNull(inside.NextAllowedAt);
+
+        // Past the cooldown, a finished request is history: the card offers the action plainly.
+        completed.CompletedAt = DateTime.UtcNow.AddHours(-49);
+        var past = (await CreateSut(c => c.HistoryRepullCooldownHours = 48).GetDevicesAsync(_userId, _memberId))
+            .Devices.Single().HistoryRepull;
+        Assert.Null(past);
     }
 
     [Fact]

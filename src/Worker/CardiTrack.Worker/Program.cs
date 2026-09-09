@@ -83,6 +83,7 @@ builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineReposito
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
+builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -111,6 +112,13 @@ builder.Services.AddGoogleHealthProvider();
 
 // Background workers
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
+
+// Drains caregiver-requested history re-pulls (M1-15). The API only records the request; this
+// is the one executor, per the CLAUDE.md rule that scheduled pulling lives here. MaxPerTick
+// shares the worker's config section, like the audit sample.
+builder.Services.AddWorker<HistoryRepullWorker>(configuration, nameof(HistoryRepullWorker));
+builder.Services.Configure<HistoryRepullOptions>(
+    configuration.GetSection($"Workers:{nameof(HistoryRepullWorker)}"));
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
 builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(BaselineCalculationWorker));
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
