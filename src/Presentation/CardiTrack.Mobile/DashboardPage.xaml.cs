@@ -455,13 +455,13 @@ public partial class DashboardPage : ContentPage
             PausedBannerLabel.Text = $"Monitoring is paused until {until} — we're not collecting data or raising alerts.";
         }
 
-        OfflineBanner.ApplyFrom(_api, _dashboardCall);
+        SavedBanner.ApplyFrom(_api, _dashboardCall);
 
         // Stale banner (M1-09c). Suppressed while paused: data is meant to be stale then,
         // and "pull down to check in" would be advice we can't honour. Also suppressed while
         // offline — the offline banner already says the data is last-known-good.
         var isStale = !data.MonitoringPaused
-            && !OfflineBanner.IsVisible
+            && !SavedBanner.IsVisible
             && data.LastSyncedAt is { } synced
             && DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc) > StaleThreshold;
         var wasStale = StaleBanner.IsVisible;

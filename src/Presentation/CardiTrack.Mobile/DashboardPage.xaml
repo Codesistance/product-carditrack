@@ -165,7 +165,7 @@
 
                         <!-- Offline last-known-good (M4-03a, brought forward). Replaces the
                              stale "pull down" copy while the live call cannot reach the API. -->
-                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+                        <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <!-- Stale data banner (M1-09c) -->
                         <Border x:Name="StaleBanner"
@@ -376,7 +376,7 @@
              quick fade in code-behind, matching the popup scrims' timing. -->
         <BoxView x:Name="ExitHintScrim"
                  Grid.RowSpan="4"
-                 Color="#80343434"
+                 Color="{StaticResource ScrimOverlay}"
                  IsVisible="False"
                  InputTransparent="True"/>
 

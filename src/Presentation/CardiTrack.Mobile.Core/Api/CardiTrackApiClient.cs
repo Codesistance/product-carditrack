@@ -58,82 +58,177 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         PostAsync<CreateCardiMemberRequest, CardiMemberResponse>("api/Onboarding/cardimember", request, ct);
 
     public Task<List<CardiMemberResponse>> GetCardiMembersAsync(CancellationToken ct = default) =>
-        GetAsync<List<CardiMemberResponse>>("api/Onboarding/cardimembers", ct);
+        GetAsync<List<CardiMemberResponse>>(ApiPaths.CardiMembers, ct);
+
+    public Task<List<CardiMemberResponse>?> PeekCardiMembersAsync(CancellationToken ct = default) =>
+        PeekAsync<List<CardiMemberResponse>>(ApiPaths.CardiMembers, ct);
 
     public Task<CardiMemberDetailResponse> GetCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<CardiMemberDetailResponse>($"api/v1/cardimembers/{cardiMemberId}", ct);
+        GetAsync<CardiMemberDetailResponse>(ApiPaths.CardiMember(cardiMemberId), ct);
 
-    public Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
-        Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default) =>
-        SendAsync<UpdateCardiMemberRequest, CardiMemberDetailResponse>(
-            HttpMethod.Put, $"api/v1/cardimembers/{cardiMemberId}", request, ct);
+    public Task<CardiMemberDetailResponse?> PeekCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<CardiMemberDetailResponse>(ApiPaths.CardiMember(cardiMemberId), ct);
 
-    public Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}", ct);
+    public async Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
+        Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default)
+    {
+        var updated = await SendAsync<UpdateCardiMemberRequest, CardiMemberDetailResponse>(
+            HttpMethod.Put, ApiPaths.CardiMember(cardiMemberId), request, ct);
+        await EvictAsync(MemberProfileKeys(cardiMemberId));
+        return updated;
+    }
 
-    public Task<MonitoringPauseResponse> PauseMonitoringAsync(
-        Guid cardiMemberId, PauseMonitoringRequest request, CancellationToken ct = default) =>
-        PostAsync<PauseMonitoringRequest, MonitoringPauseResponse>(
+    public async Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, ApiPaths.CardiMember(cardiMemberId), ct);
+        // Every key for this member the client can spell. Parameterised list pages (a filtered
+        // alert list, a journal search) cannot be enumerated without an index and age out
+        // within IOfflineReadCache.Lifetime or at sign-out; the plain ones go now.
+        await EvictAsync(
+            ApiPaths.CardiMember(cardiMemberId),
+            ApiPaths.Dashboard(cardiMemberId),
+            ApiPaths.Devices(cardiMemberId),
+            ApiPaths.AlertPreferences(cardiMemberId),
+            ApiPaths.MemberAlarms(cardiMemberId),
+            ApiPaths.JournalSettings(cardiMemberId),
+            ApiPaths.CurrentStatus(cardiMemberId),
+            ApiPaths.Digest(cardiMemberId),
+            ApiPaths.Advise(cardiMemberId),
+            ApiPaths.Questionnaires(cardiMemberId, null, DefaultQuestionnairePage, DefaultQuestionnairePageSize),
+            ApiPaths.Alerts(null, null, null, null, null, cardiMemberId),
+            ApiPaths.CardiMembers,
+            ApiPaths.NotificationSummary);
+    }
+
+    public async Task<MonitoringPauseResponse> PauseMonitoringAsync(
+        Guid cardiMemberId, PauseMonitoringRequest request, CancellationToken ct = default)
+    {
+        var paused = await PostAsync<PauseMonitoringRequest, MonitoringPauseResponse>(
             $"api/v1/cardimembers/{cardiMemberId}/pause", request, ct);
+        await EvictAsync(MemberProfileKeys(cardiMemberId));
+        return paused;
+    }
 
-    public Task<MonitoringPauseResponse> ResumeMonitoringAsync(
-        Guid cardiMemberId, CancellationToken ct = default) =>
-        SendAsync<MonitoringPauseResponse>(
+    public async Task<MonitoringPauseResponse> ResumeMonitoringAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var resumed = await SendAsync<MonitoringPauseResponse>(
             HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/pause", ct);
+        await EvictAsync(MemberProfileKeys(cardiMemberId));
+        return resumed;
+    }
 
     public Task<AlertPreferencesResponse> GetAlertPreferencesAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<AlertPreferencesResponse>($"api/v1/cardimembers/{cardiMemberId}/alert-preferences", ct);
+        GetAsync<AlertPreferencesResponse>(ApiPaths.AlertPreferences(cardiMemberId), ct);
 
-    public Task<AlertRuleSettingResponse> SetAlertRuleEnabledAsync(
-        Guid cardiMemberId, string ruleId, bool enabled, CancellationToken ct = default) =>
-        SendAsync<SetAlertRuleEnabledRequest, AlertRuleSettingResponse>(
+    public Task<AlertPreferencesResponse?> PeekAlertPreferencesAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<AlertPreferencesResponse>(ApiPaths.AlertPreferences(cardiMemberId), ct);
+
+    public async Task<AlertRuleSettingResponse> SetAlertRuleEnabledAsync(
+        Guid cardiMemberId, string ruleId, bool enabled, CancellationToken ct = default)
+    {
+        var setting = await SendAsync<SetAlertRuleEnabledRequest, AlertRuleSettingResponse>(
             HttpMethod.Patch,
             $"api/v1/cardimembers/{cardiMemberId}/alert-preferences/rules/{Uri.EscapeDataString(ruleId)}",
             new SetAlertRuleEnabledRequest { Enabled = enabled },
             ct);
+        await EvictAsync(ApiPaths.AlertPreferences(cardiMemberId));
+        return setting;
+    }
 
     public Task<AlarmCatalogueResponse> GetAlarmCatalogueAsync(CancellationToken ct = default) =>
-        GetAsync<AlarmCatalogueResponse>("api/v1/alarms/catalogue", ct);
+        GetAsync<AlarmCatalogueResponse>(ApiPaths.AlarmCatalogue, ct);
+
+    public Task<AlarmCatalogueResponse?> PeekAlarmCatalogueAsync(CancellationToken ct = default) =>
+        PeekAsync<AlarmCatalogueResponse>(ApiPaths.AlarmCatalogue, ct);
 
     public Task<IReadOnlyList<MetricAlarmResponse>> GetMemberAlarmsAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<IReadOnlyList<MetricAlarmResponse>>($"api/v1/cardimembers/{cardiMemberId}/alarms", ct);
+        GetAsync<IReadOnlyList<MetricAlarmResponse>>(ApiPaths.MemberAlarms(cardiMemberId), ct);
 
-    public Task<MetricAlarmResponse> CreateMemberAlarmAsync(
-        Guid cardiMemberId, SaveMetricAlarmRequest request, CancellationToken ct = default) =>
-        SendAsync<SaveMetricAlarmRequest, MetricAlarmResponse>(
-            HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/alarms", request, ct);
+    public Task<IReadOnlyList<MetricAlarmResponse>?> PeekMemberAlarmsAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<IReadOnlyList<MetricAlarmResponse>>(ApiPaths.MemberAlarms(cardiMemberId), ct);
 
-    public Task<MetricAlarmResponse> SaveMemberAlarmAsync(
-        Guid cardiMemberId, Guid alarmId, SaveMetricAlarmRequest request, CancellationToken ct = default) =>
-        SendAsync<SaveMetricAlarmRequest, MetricAlarmResponse>(
+    public async Task<MetricAlarmResponse> CreateMemberAlarmAsync(
+        Guid cardiMemberId, SaveMetricAlarmRequest request, CancellationToken ct = default)
+    {
+        var created = await SendAsync<SaveMetricAlarmRequest, MetricAlarmResponse>(
+            HttpMethod.Post, ApiPaths.MemberAlarms(cardiMemberId), request, ct);
+        await EvictAsync(ApiPaths.MemberAlarms(cardiMemberId));
+        return created;
+    }
+
+    public async Task<MetricAlarmResponse> SaveMemberAlarmAsync(
+        Guid cardiMemberId, Guid alarmId, SaveMetricAlarmRequest request, CancellationToken ct = default)
+    {
+        var saved = await SendAsync<SaveMetricAlarmRequest, MetricAlarmResponse>(
             HttpMethod.Put, $"api/v1/cardimembers/{cardiMemberId}/alarms/{alarmId}", request, ct);
+        await EvictAsync(ApiPaths.MemberAlarms(cardiMemberId));
+        return saved;
+    }
 
-    public Task DeleteMemberAlarmAsync(
-        Guid cardiMemberId, Guid alarmId, CancellationToken ct = default) =>
-        SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/alarms/{alarmId}", ct);
+    public async Task DeleteMemberAlarmAsync(
+        Guid cardiMemberId, Guid alarmId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/alarms/{alarmId}", ct);
+        await EvictAsync(ApiPaths.MemberAlarms(cardiMemberId));
+    }
 
     public Task<JournalSettingsResponse> GetJournalSettingsAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<JournalSettingsResponse>($"api/v1/cardimembers/{cardiMemberId}/journal-settings", ct);
+        GetAsync<JournalSettingsResponse>(ApiPaths.JournalSettings(cardiMemberId), ct);
 
-    public Task<JournalSettingsResponse> UpdateJournalSettingsAsync(
-        Guid cardiMemberId, UpdateJournalSettingsRequest request, CancellationToken ct = default) =>
-        SendAsync<UpdateJournalSettingsRequest, JournalSettingsResponse>(
-            HttpMethod.Put, $"api/v1/cardimembers/{cardiMemberId}/journal-settings", request, ct);
+    public Task<JournalSettingsResponse?> PeekJournalSettingsAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<JournalSettingsResponse>(ApiPaths.JournalSettings(cardiMemberId), ct);
+
+    public async Task<JournalSettingsResponse> UpdateJournalSettingsAsync(
+        Guid cardiMemberId, UpdateJournalSettingsRequest request, CancellationToken ct = default)
+    {
+        var settings = await SendAsync<UpdateJournalSettingsRequest, JournalSettingsResponse>(
+            HttpMethod.Put, ApiPaths.JournalSettings(cardiMemberId), request, ct);
+        await EvictAsync(ApiPaths.JournalSettings(cardiMemberId));
+        return settings;
+    }
 
     public Task<DashboardResponse> GetDashboardAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<DashboardResponse>($"api/v1/cardimembers/{cardiMemberId}/dashboard", ct);
+        GetAsync<DashboardResponse>(ApiPaths.Dashboard(cardiMemberId), ct);
+
+    public Task<DashboardResponse?> PeekDashboardAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<DashboardResponse>(ApiPaths.Dashboard(cardiMemberId), ct);
 
     public Task<CurrentStatusMessageResponse> GetCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<CurrentStatusMessageResponse>($"api/v1/insights/members/{cardiMemberId}/status", ct);
+        GetAsync<CurrentStatusMessageResponse>(ApiPaths.CurrentStatus(cardiMemberId), ct);
 
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<DigestResponse>($"api/v1/insights/members/{cardiMemberId}/digest", ct);
+        GetAsync<DigestResponse>(ApiPaths.Digest(cardiMemberId), ct);
+
+    public Task<DigestResponse?> PeekDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<DigestResponse>(ApiPaths.Digest(cardiMemberId), ct);
 
     public Task<AdviseResponse> GetAdviseAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<AdviseResponse>($"api/v1/insights/members/{cardiMemberId}/advise", ct);
+        GetAsync<AdviseResponse>(ApiPaths.Advise(cardiMemberId), ct);
+
+    public Task<AdviseResponse?> PeekAdviseAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<AdviseResponse>(ApiPaths.Advise(cardiMemberId), ct);
+
+    /// <summary>
+    /// The first page of a member's questions as every screen asks for it — the detail screen's
+    /// call takes the defaults, and the questionnaires screen's own constant matches them.
+    /// </summary>
+    private const int DefaultQuestionnairePage = 1;
+    private const int DefaultQuestionnairePageSize = 20;
+
+    /// <summary>The keys a change to one member's profile or monitoring state makes stale.</summary>
+    private static string[] MemberProfileKeys(Guid cardiMemberId) =>
+    [
+        ApiPaths.CardiMember(cardiMemberId),
+        ApiPaths.Dashboard(cardiMemberId),
+        ApiPaths.CardiMembers,
+    ];
 
     /// <summary>
     /// The one call in this client whose answer nobody reads. It returns 202 the moment the API
@@ -215,58 +310,89 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         string? search = null,
         DateOnly? from = null,
         string? urgency = null,
-        CancellationToken ct = default)
-    {
-        var query = $"?limit={limit}&audience={cadence.WireValue()}";
-        if (!string.IsNullOrWhiteSpace(search))
-            query += $"&search={Uri.EscapeDataString(search.Trim())}";
-        if (from is { } fromDay)
-            query += $"&from={fromDay:yyyy-MM-dd}";
-        if (!string.IsNullOrWhiteSpace(urgency))
-            query += $"&urgency={Uri.EscapeDataString(urgency)}";
+        CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<DigestResponse>>(
+            ApiPaths.JournalEntries(cardiMemberId, cadence, limit, search, from, urgency), ct);
 
-        return GetAsync<IReadOnlyList<DigestResponse>>(
-            $"api/v1/insights/members/{cardiMemberId}/digests{query}", ct);
-    }
+    public Task<IReadOnlyList<DigestResponse>?> PeekJournalEntriesAsync(
+        Guid cardiMemberId,
+        JournalCadence cadence,
+        int limit,
+        string? search = null,
+        DateOnly? from = null,
+        string? urgency = null,
+        CancellationToken ct = default) =>
+        PeekAsync<IReadOnlyList<DigestResponse>>(
+            ApiPaths.JournalEntries(cardiMemberId, cadence, limit, search, from, urgency), ct);
 
     public Task<DigestResponse> GetJournalEntryAsync(
         Guid cardiMemberId,
         JournalCadence cadence,
         DateOnly localDate,
         CancellationToken ct = default) =>
-        GetAsync<DigestResponse>(
-            $"api/v1/insights/members/{cardiMemberId}/digest?date={localDate:yyyy-MM-dd}"
-            + $"&audience={cadence.WireValue()}", ct);
+        GetAsync<DigestResponse>(ApiPaths.JournalEntry(cardiMemberId, cadence, localDate), ct);
+
+    public Task<DigestResponse?> PeekJournalEntryAsync(
+        Guid cardiMemberId,
+        JournalCadence cadence,
+        DateOnly localDate,
+        CancellationToken ct = default) =>
+        PeekAsync<DigestResponse>(ApiPaths.JournalEntry(cardiMemberId, cadence, localDate), ct);
 
     public Task<QuestionnairesPageResponse> GetQuestionnairesAsync(
         Guid cardiMemberId,
         string? search = null,
-        int page = 1,
-        int pageSize = 20,
-        CancellationToken ct = default)
-    {
-        var query = $"?page={page}&pageSize={pageSize}";
-        if (!string.IsNullOrWhiteSpace(search))
-            query += $"&search={Uri.EscapeDataString(search)}";
+        int page = DefaultQuestionnairePage,
+        int pageSize = DefaultQuestionnairePageSize,
+        CancellationToken ct = default) =>
+        GetAsync<QuestionnairesPageResponse>(ApiPaths.Questionnaires(cardiMemberId, search, page, pageSize), ct);
 
-        return GetAsync<QuestionnairesPageResponse>(
-            $"api/v1/cardimembers/{cardiMemberId}/questionnaires{query}", ct);
+    public Task<QuestionnairesPageResponse?> PeekQuestionnairesAsync(
+        Guid cardiMemberId,
+        string? search = null,
+        int page = DefaultQuestionnairePage,
+        int pageSize = DefaultQuestionnairePageSize,
+        CancellationToken ct = default) =>
+        PeekAsync<QuestionnairesPageResponse>(ApiPaths.Questionnaires(cardiMemberId, search, page, pageSize), ct);
+
+    public async Task<QuestionnaireResponse> AnswerQuestionnaireAsync(
+        Guid questionnaireId, AnswerQuestionnaireRequest request, CancellationToken ct = default)
+    {
+        var answered = await SendAsync<AnswerQuestionnaireRequest, QuestionnaireResponse>(
+            HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/answer", request, ct);
+        await EvictAsync(QuestionnaireKeys(answered));
+        return answered;
     }
 
-    public Task<QuestionnaireResponse> AnswerQuestionnaireAsync(
-        Guid questionnaireId, AnswerQuestionnaireRequest request, CancellationToken ct = default) =>
-        SendAsync<AnswerQuestionnaireRequest, QuestionnaireResponse>(
-            HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/answer", request, ct);
-
-    public Task<QuestionnaireResponse> DismissQuestionnaireAsync(
-        Guid questionnaireId, CancellationToken ct = default) =>
-        SendAsync<QuestionnaireResponse>(
+    public async Task<QuestionnaireResponse> DismissQuestionnaireAsync(
+        Guid questionnaireId, CancellationToken ct = default)
+    {
+        var dismissed = await SendAsync<QuestionnaireResponse>(
             HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/dismiss", ct);
+        await EvictAsync(QuestionnaireKeys(dismissed));
+        return dismissed;
+    }
 
-    public Task<QuestionnaireResponse> ExpireQuestionnaireAsync(
-        Guid questionnaireId, CancellationToken ct = default) =>
-        SendAsync<QuestionnaireResponse>(
+    public async Task<QuestionnaireResponse> ExpireQuestionnaireAsync(
+        Guid questionnaireId, CancellationToken ct = default)
+    {
+        var expired = await SendAsync<QuestionnaireResponse>(
             HttpMethod.Put, $"api/v1/questionnaires/{questionnaireId}/expire", ct);
+        await EvictAsync(QuestionnaireKeys(expired));
+        return expired;
+    }
+
+    /// <summary>
+    /// A question answered, skipped or retired changes the member's first page of questions and
+    /// the dashboard and detail cards that surface the pending one. The member id comes off the
+    /// response, since the call itself only knows the question.
+    /// </summary>
+    private static string[] QuestionnaireKeys(QuestionnaireResponse questionnaire) =>
+    [
+        ApiPaths.Questionnaires(questionnaire.CardiMemberId, null, DefaultQuestionnairePage, DefaultQuestionnairePageSize),
+        ApiPaths.Dashboard(questionnaire.CardiMemberId),
+        ApiPaths.CardiMember(questionnaire.CardiMemberId),
+    ];
 
     public Task DeleteQuestionnaireAsync(Guid questionnaireId, CancellationToken ct = default) =>
         SendNoDataAsync(HttpMethod.Delete, $"api/v1/questionnaires/{questionnaireId}", ct);
@@ -279,7 +405,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         int? limit = null,
         Guid? cardiMemberId = null,
         CancellationToken ct = default) =>
-        GetAsync<AlertListResponse>(AlertsPath(severity, status, from, to, limit, cardiMemberId), ct);
+        GetAsync<AlertListResponse>(ApiPaths.Alerts(severity, status, from, to, limit, cardiMemberId), ct);
 
     public Task<AlertListResponse?> PeekAlertsAsync(
         string? severity = null,
@@ -291,66 +417,87 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         CancellationToken ct = default) =>
         // The same key the live call writes under, so a peek can only ever answer the exact
         // question the screen is about to ask the API — never a neighbouring filter's page.
-        TryReadCacheAsync<AlertListResponse>(
-            AlertsPath(severity, status, from, to, limit, cardiMemberId), new CacheOrigin(), ct);
-
-    private static string AlertsPath(
-        string? severity, string? status, DateTime? from, DateTime? to, int? limit, Guid? cardiMemberId)
-    {
-        var filters = new List<string>();
-        if (!string.IsNullOrWhiteSpace(severity)) filters.Add($"severity={Uri.EscapeDataString(severity)}");
-        if (!string.IsNullOrWhiteSpace(status)) filters.Add($"status={Uri.EscapeDataString(status)}");
-        // Round-trip ("O") keeps the offset on the wire, so a "Today" filter set on a phone in
-        // Lagos isn't reinterpreted as UTC midnight by the server.
-        if (from is { } f) filters.Add($"from={Uri.EscapeDataString(f.ToString("O"))}");
-        if (to is { } t) filters.Add($"to={Uri.EscapeDataString(t.ToString("O"))}");
-        if (limit is { } l) filters.Add($"limit={l}");
-
-        // The member-scoped route rather than a cardiMemberId query on the collection: both exist
-        // and both apply the same access check (AlertsController.ListAsync), but the route says in
-        // the path whose alerts these are, which is what the audit trail records.
-        var basePath = cardiMemberId is { } memberId
-            ? $"api/v1/cardimembers/{memberId}/alerts"
-            : "api/v1/alerts";
-        return filters.Count == 0 ? basePath : $"{basePath}?{string.Join("&", filters)}";
-    }
+        PeekAsync<AlertListResponse>(ApiPaths.Alerts(severity, status, from, to, limit, cardiMemberId), ct);
 
     public Task<AlertDetailResponse> GetAlertAsync(Guid alertId, CancellationToken ct = default) =>
-        GetAsync<AlertDetailResponse>($"api/v1/alerts/{alertId}", ct);
+        GetAsync<AlertDetailResponse>(ApiPaths.Alert(alertId), ct);
 
-    public Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(
-        Guid alertId, CancellationToken ct = default) =>
-        SendAsync<AlertAcknowledgementResponse>(
+    public Task<AlertDetailResponse?> PeekAlertAsync(Guid alertId, CancellationToken ct = default) =>
+        PeekAsync<AlertDetailResponse>(ApiPaths.Alert(alertId), ct);
+
+    // Alert mutations evict the detail only. The list keys are parameterised by filter and the
+    // dashboard by a member id these calls do not have; both screens re-fetch live on every
+    // landing and tick, and the alerts list already masks the gap with its pending-deletes set.
+    public async Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(
+        Guid alertId, CancellationToken ct = default)
+    {
+        var acknowledged = await SendAsync<AlertAcknowledgementResponse>(
             HttpMethod.Post, $"api/v1/alerts/{alertId}/acknowledge", ct);
+        await EvictAsync(ApiPaths.Alert(alertId));
+        return acknowledged;
+    }
 
-    public Task<AlertAcknowledgementResponse> UnacknowledgeAlertAsync(
-        Guid alertId, CancellationToken ct = default) =>
-        SendAsync<AlertAcknowledgementResponse>(
+    public async Task<AlertAcknowledgementResponse> UnacknowledgeAlertAsync(
+        Guid alertId, CancellationToken ct = default)
+    {
+        var unacknowledged = await SendAsync<AlertAcknowledgementResponse>(
             HttpMethod.Delete, $"api/v1/alerts/{alertId}/acknowledge", ct);
+        await EvictAsync(ApiPaths.Alert(alertId));
+        return unacknowledged;
+    }
 
-    public Task DeleteAlertAsync(Guid alertId, CancellationToken ct = default) =>
-        SendNoDataAsync(HttpMethod.Delete, $"api/v1/alerts/{alertId}", ct);
+    public async Task DeleteAlertAsync(Guid alertId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, ApiPaths.Alert(alertId), ct);
+        await EvictAsync(ApiPaths.Alert(alertId));
+    }
 
     public Task<DeviceListResponse> GetDevicesAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<DeviceListResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", ct);
+        GetAsync<DeviceListResponse>(ApiPaths.Devices(cardiMemberId), ct);
 
-    public Task DisconnectDeviceAsync(Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
-        SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}", ct);
+    public Task<DeviceListResponse?> PeekDevicesAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<DeviceListResponse>(ApiPaths.Devices(cardiMemberId), ct);
 
-    public Task<DeviceResponse> SetPrimaryDeviceAsync(
-        Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
-        SendAsync<DeviceResponse>(
+    public async Task DisconnectDeviceAsync(Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}", ct);
+        await EvictAsync(DeviceKeys(cardiMemberId));
+    }
+
+    public async Task<DeviceResponse> SetPrimaryDeviceAsync(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        var device = await SendAsync<DeviceResponse>(
             HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/primary", ct);
+        await EvictAsync(DeviceKeys(cardiMemberId));
+        return device;
+    }
 
-    public Task<DeviceResponse> RefreshDeviceConnectionAsync(
-        Guid cardiMemberId, Guid deviceId, CancellationToken ct = default) =>
-        SendAsync<DeviceResponse>(
+    public async Task<DeviceResponse> RefreshDeviceConnectionAsync(
+        Guid cardiMemberId, Guid deviceId, CancellationToken ct = default)
+    {
+        var device = await SendAsync<DeviceResponse>(
             HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/devices/{deviceId}/refresh", ct);
+        await EvictAsync(DeviceKeys(cardiMemberId));
+        return device;
+    }
 
-    public Task<DeviceSyncResultResponse> SyncDevicesAsync(
-        Guid cardiMemberId, CancellationToken ct = default) =>
-        SendAsync<DeviceSyncResultResponse>(
+    public async Task<DeviceSyncResultResponse> SyncDevicesAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var result = await SendAsync<DeviceSyncResultResponse>(
             HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/devices/sync", ct);
+        await EvictAsync(DeviceKeys(cardiMemberId));
+        return result;
+    }
+
+    /// <summary>What a device coming, going or syncing makes stale: the device list and the two reads that quote it.</summary>
+    private static string[] DeviceKeys(Guid cardiMemberId) =>
+    [
+        ApiPaths.Devices(cardiMemberId),
+        ApiPaths.Dashboard(cardiMemberId),
+        ApiPaths.CardiMember(cardiMemberId),
+    ];
 
     public Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default) =>
         PostAsync<ConnectDeviceRequest, OAuthInitiationResponse>($"api/v1/cardimembers/{cardiMemberId}/devices", request, ct);
@@ -369,50 +516,81 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         string? category = null,
         bool? owned = null,
         int? limit = null,
-        CancellationToken ct = default)
-    {
-        var filters = new List<string>();
-        if (!string.IsNullOrWhiteSpace(state)) filters.Add($"state={Uri.EscapeDataString(state)}");
-        if (!string.IsNullOrWhiteSpace(category)) filters.Add($"category={Uri.EscapeDataString(category)}");
-        if (owned is { } o) filters.Add($"owned={(o ? "true" : "false")}");
-        if (limit is { } l) filters.Add($"limit={l}");
+        CancellationToken ct = default) =>
+        GetAsync<NotificationListResponse>(ApiPaths.Notifications(state, category, owned, limit), ct);
 
-        var path = filters.Count == 0
-            ? "api/v1/notifications"
-            : $"api/v1/notifications?{string.Join("&", filters)}";
-        return GetAsync<NotificationListResponse>(path, ct);
-    }
+    public Task<NotificationListResponse?> PeekNotificationsAsync(
+        string? state = null,
+        string? category = null,
+        bool? owned = null,
+        int? limit = null,
+        CancellationToken ct = default) =>
+        PeekAsync<NotificationListResponse>(ApiPaths.Notifications(state, category, owned, limit), ct);
 
     public Task<NotificationSummaryResponse> GetNotificationSummaryAsync(CancellationToken ct = default) =>
-        GetAsync<NotificationSummaryResponse>("api/v1/notifications/summary", ct);
+        GetAsync<NotificationSummaryResponse>(ApiPaths.NotificationSummary, ct);
 
-    public Task MarkNotificationSeenAsync(Guid notificationId, CancellationToken ct = default) =>
-        SendNoDataAsync(HttpMethod.Post, $"api/v1/notifications/{notificationId}/seen", ct);
+    public Task<NotificationSummaryResponse?> PeekNotificationSummaryAsync(CancellationToken ct = default) =>
+        PeekAsync<NotificationSummaryResponse>(ApiPaths.NotificationSummary, ct);
 
-    public Task<NotificationResponse> SnoozeNotificationAsync(
-        Guid notificationId, TimeSpan? duration = null, CancellationToken ct = default) =>
-        PostAsync<SnoozeNotificationBody, NotificationResponse>(
+    public async Task MarkNotificationSeenAsync(Guid notificationId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Post, $"api/v1/notifications/{notificationId}/seen", ct);
+        await EvictAsync(NotificationKeys);
+    }
+
+    public async Task<NotificationResponse> SnoozeNotificationAsync(
+        Guid notificationId, TimeSpan? duration = null, CancellationToken ct = default)
+    {
+        var snoozed = await PostAsync<SnoozeNotificationBody, NotificationResponse>(
             $"api/v1/notifications/{notificationId}/snooze",
             // Omitted rather than zero: the server falls back to the rule's own default, which is
             // the right answer when the user taps "not now" without picking a length.
             new SnoozeNotificationBody { Duration = duration?.ToString("c") },
             ct);
+        await EvictAsync(NotificationKeys);
+        return snoozed;
+    }
 
-    public Task DismissNotificationAsync(
-        Guid notificationId, bool acknowledgedConsequence = false, CancellationToken ct = default) =>
-        SendNoDataAsync(
+    public async Task DismissNotificationAsync(
+        Guid notificationId, bool acknowledgedConsequence = false, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(
             HttpMethod.Post, $"api/v1/notifications/{notificationId}/dismiss",
             new DismissNotificationBody { AcknowledgedConsequence = acknowledgedConsequence },
             ct);
+        await EvictAsync(NotificationKeys);
+    }
 
     public Task<List<NotificationMuteResponse>> GetNotificationMutesAsync(CancellationToken ct = default) =>
-        GetAsync<List<NotificationMuteResponse>>("api/v1/notifications/mutes", ct);
+        GetAsync<List<NotificationMuteResponse>>(ApiPaths.NotificationMutes, ct);
 
-    public Task RemoveNotificationMuteAsync(Guid muteId, CancellationToken ct = default) =>
-        SendNoDataAsync(HttpMethod.Delete, $"api/v1/notifications/mutes/{muteId}", ct);
+    public Task<List<NotificationMuteResponse>?> PeekNotificationMutesAsync(CancellationToken ct = default) =>
+        PeekAsync<List<NotificationMuteResponse>>(ApiPaths.NotificationMutes, ct);
 
-    public Task ResetNotificationMutesAsync(CancellationToken ct = default) =>
-        SendNoDataAsync(HttpMethod.Post, "api/v1/notifications/mutes/reset", ct);
+    public async Task RemoveNotificationMuteAsync(Guid muteId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, $"api/v1/notifications/mutes/{muteId}", ct);
+        await EvictAsync(NotificationKeys);
+    }
+
+    public async Task ResetNotificationMutesAsync(CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Post, "api/v1/notifications/mutes/reset", ct);
+        await EvictAsync(NotificationKeys);
+    }
+
+    /// <summary>
+    /// What any change to a notification makes stale: the open inbox (the only list the app
+    /// reads — NotificationsPage asks for state=Open), the badge summary, and the mutes a
+    /// snooze or dismissal may have added to.
+    /// </summary>
+    private static readonly string[] NotificationKeys =
+    [
+        ApiPaths.Notifications("Open", null, null, null),
+        ApiPaths.NotificationSummary,
+        ApiPaths.NotificationMutes,
+    ];
 
     public Task UpdateTimeZoneAsync(string timeZoneId, CancellationToken ct = default) =>
         SendNoDataAsync(
@@ -437,12 +615,19 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             new AckDeliveryRequest { AckToken = ackToken }, ct);
 
     public Task<NotificationPreferenceResponse> GetNotificationPreferencesAsync(CancellationToken ct = default) =>
-        GetAsync<NotificationPreferenceResponse>("api/v1/notifications/preferences", ct);
+        GetAsync<NotificationPreferenceResponse>(ApiPaths.NotificationPreferences, ct);
 
-    public Task<NotificationPreferenceResponse> UpdateNotificationPreferencesAsync(
-        UpdateNotificationPreferenceRequest request, CancellationToken ct = default) =>
-        SendAsync<UpdateNotificationPreferenceRequest, NotificationPreferenceResponse>(
-            HttpMethod.Put, "api/v1/notifications/preferences", request, ct);
+    public Task<NotificationPreferenceResponse?> PeekNotificationPreferencesAsync(CancellationToken ct = default) =>
+        PeekAsync<NotificationPreferenceResponse>(ApiPaths.NotificationPreferences, ct);
+
+    public async Task<NotificationPreferenceResponse> UpdateNotificationPreferencesAsync(
+        UpdateNotificationPreferenceRequest request, CancellationToken ct = default)
+    {
+        var preferences = await SendAsync<UpdateNotificationPreferenceRequest, NotificationPreferenceResponse>(
+            HttpMethod.Put, ApiPaths.NotificationPreferences, request, ct);
+        await EvictAsync(ApiPaths.NotificationPreferences);
+        return preferences;
+    }
 
     private sealed class SnoozeNotificationBody
     {
@@ -478,6 +663,20 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return call;
     }
 
+    /// <summary>
+    /// The cache-only twin of <see cref="GetAsync{T}"/>: the device's last answer to exactly
+    /// this path, or null, without going near the network. Its origin is filed the same way, so
+    /// <see cref="OriginOf"/> on the returned task says when the snapshot was saved — which is
+    /// what a screen showing it needs to say out loud.
+    /// </summary>
+    private Task<T?> PeekAsync<T>(string path, CancellationToken ct)
+    {
+        var origin = new CacheOrigin();
+        var call = TryReadCacheAsync<T>(path, origin, ct);
+        _origins.AddOrUpdate(call, origin);
+        return call;
+    }
+
     private async Task<T> GetCoreAsync<T>(string path, CacheOrigin origin, bool allowNullData, CancellationToken ct)
     {
         HttpResponseMessage response;
@@ -494,6 +693,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
                 return cached;
 
             throw NetworkError("GET", path, ex, ct);
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            // The server says it is gone. A snapshot that outlived it would be served on the
+            // next landing as if it were still there — a removed member's dashboard, a deleted
+            // alert — so the device forgets it in the same breath.
+            await EvictAsync(path);
+            throw await MapErrorAsync("GET", path, response, ct);
         }
 
         if (!response.IsSuccessStatusCode)
@@ -656,6 +864,30 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Offline cache write failed for GET {Path}", path);
+        }
+    }
+
+    /// <summary>
+    /// Drops the snapshots a successful mutation has made stale. Best-effort and uncancellable:
+    /// the server has already changed, so a screen's cancel after the fact must not leave the
+    /// device holding the old answer, and a cache that cannot delete must not turn a mutation
+    /// that succeeded into one that appears to have failed.
+    /// </summary>
+    private async Task EvictAsync(params string[] keys)
+    {
+        if (_cache is null)
+            return;
+
+        foreach (var key in keys)
+        {
+            try
+            {
+                await _cache.RemoveAsync(key, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Offline cache eviction failed for GET {Path}", key);
+            }
         }
     }
 

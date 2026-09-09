@@ -100,7 +100,7 @@ public partial class DeviceManagementPage : ContentPage
             EmptyDetailLabel.Text =
                 $"Connect a wearable so CardiTrack can start watching over {NameFormatting.FirstName(_member.Name)}.";
             Render(devices.Devices);
-            OfflineBanner.ApplyFrom(_api, memberTask, devicesTask);
+            SavedBanner.ApplyFrom(_api, memberTask, devicesTask);
             SetState(loaded: true);
             _lastLoadedUtc = DateTime.UtcNow;
         }

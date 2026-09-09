@@ -1,8 +1,9 @@
 ﻿namespace CardiTrack.Mobile.Core.Api;
 
 /// <summary>
-/// Where one GET's payload came from: the live API, or the on-device cache because the live
-/// call could not reach it.
+/// Where one GET's payload came from: the live API, or the on-device cache — because the live
+/// call could not reach it, or because the call was a cache-only peek. For a peek,
+/// <see cref="CachedAt"/> is when the snapshot it returned was saved, and null when it had none.
 /// </summary>
 /// <remarks>
 /// One of these belongs to one call, and is reached through

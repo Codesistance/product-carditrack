@@ -85,7 +85,7 @@
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
 
-                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+                        <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <!-- Who first, then what: the CardiMember card leads and the severity
                              banner follows it. The badge — NOTICE / URGENT / CRITICAL — sits in

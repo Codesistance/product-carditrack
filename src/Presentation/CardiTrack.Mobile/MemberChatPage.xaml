@@ -37,7 +37,7 @@
         </Style>
     </ContentView.Resources>
 
-    <Grid x:Name="Scrim" BackgroundColor="#80343434">
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
         </Grid.GestureRecognizers>

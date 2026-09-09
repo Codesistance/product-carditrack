@@ -131,7 +131,7 @@
                     <!-- ── Loaded ── -->
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
 
-                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+                        <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <!-- Profile: name, age/relationship, then the data-pipeline freshness
                              dot + last-contact age. Three rows next to the avatar, so the
