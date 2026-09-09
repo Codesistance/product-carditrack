@@ -143,11 +143,11 @@ public partial class JournalPage : ContentPage
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        await LoadAsync(force: true);
         Refresher.IsRefreshing = false;
     }
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(AppShell.DashboardRoute);
@@ -203,7 +203,7 @@ public partial class JournalPage : ContentPage
     /// </remarks>
     private async Task SwitchCadenceAsync(JournalCadence cadence)
     {
-        if (_cadence == cadence || _gate.IsLoading)
+        if (_cadence == cadence)
             return;
 
         _cadence = cadence;
@@ -305,17 +305,23 @@ public partial class JournalPage : ContentPage
     /// <summary>
     /// A different question — cadence, member, search, urgency or window — drops the list on
     /// screen first, so the load that follows puts up the saved answer to the new question (or
-    /// the loading panel) rather than leaving the old list under a filter it does not match.
+    /// the loading panel) rather than leaving the old list under a filter it does not match. It
+    /// supersedes whatever is running: the caregiver has just asked something else, and a tap
+    /// that did nothing because a slow load happened to be in flight is a tap they will repeat.
     /// </summary>
     private Task ReloadForNewQuestionAsync()
     {
         _lastReviews = null;
-        return LoadAsync();
+        return LoadAsync(force: true);
     }
 
-    private async Task LoadAsync(bool silent = false)
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping — for anything the caregiver
+    /// asked for by hand. Unattended loads wait their turn.
+    /// </param>
+    private async Task LoadAsync(bool silent = false, bool force = false)
     {
-        if (_gate.IsLoading)
+        if (_gate.IsLoading && !force)
             return;
         var ticket = _gate.Begin();
 
@@ -332,7 +338,7 @@ public partial class JournalPage : ContentPage
                 _pendingMemberId = null;
                 if (_members.Count == 0)
                 {
-                    _members = await _api.GetCardiMembersAsync();
+                    _members = await MembersAsync(ticket);
                     if (!_gate.IsCurrent(ticket))
                         return;
                 }
@@ -354,7 +360,7 @@ public partial class JournalPage : ContentPage
             // account once there is more than one to choose between.
             if (_memberId == Guid.Empty)
             {
-                _members = await _api.GetCardiMembersAsync();
+                _members = await MembersAsync(ticket);
                 if (!_gate.IsCurrent(ticket))
                     return;
                 var member = PrimaryCardiMember.From(_members);
@@ -437,6 +443,22 @@ public partial class JournalPage : ContentPage
             _gate.Release(ticket);
             Refresher.IsRefreshing = false;
         }
+    }
+
+    /// <summary>
+    /// The account's members, from the device if it has them. Resolving whose journal this is
+    /// must not itself be a round trip: it happens before the entries can even be peeked, so a
+    /// network call here would put the whole screen back behind the network on a cold start —
+    /// the wait this page exists to remove. The saved list is enough to name the primary member
+    /// and to size the chooser; the entries fetched under it are the live read, and the next
+    /// load's own member fetch corrects the list if it has changed.
+    /// </summary>
+    private async Task<IReadOnlyList<CardiMemberResponse>> MembersAsync(LoadTicket ticket)
+    {
+        if (await _api.PeekCardiMembersAsync(ticket.Token) is { Count: > 0 } saved)
+            return saved;
+
+        return await _api.GetCardiMembersAsync(ticket.Token);
     }
 
     /// <summary>One list of reviews onto the page — the same for a saved list and a live one.</summary>

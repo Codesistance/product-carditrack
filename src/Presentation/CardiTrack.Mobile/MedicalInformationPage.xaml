@@ -132,7 +132,7 @@
         <!-- Chat from anywhere; the code-behind feeds it this page's member. -->
         <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="1"/>
 
-        <!-- The second-long "Updating…" while saved notes is replaced by live data — last, so it
+        <!-- The second-long "Updating…" while saved notes are replaced by live data — last, so it
              covers everything. See UpdatingOverlay. -->
         <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="2"/>
     </Grid>
