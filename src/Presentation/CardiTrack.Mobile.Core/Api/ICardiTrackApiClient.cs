@@ -398,6 +398,9 @@ public interface ICardiTrackApiClient
     /// <summary>
     /// Queues an export. Returns immediately with a report id to poll.
     /// </summary>
+    Task<ExportConsentResponse> RecordExportConsentAsync(
+        RecordExportConsentRequest request, CancellationToken ct = default);
+
     Task<ReportQueuedResponse> GenerateReportAsync(
         GenerateReportRequest request, CancellationToken ct = default);
 

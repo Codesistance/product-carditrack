@@ -59,6 +59,26 @@ public sealed class AuthService : IAuthService
         AccessTokenAudience.Warn(_logger, tokens.AccessToken, _options.Audience, "sign-in");
     }
 
+    public async Task<bool> VerifyPasswordAsync(string password, CancellationToken ct = default)
+    {
+        var email = CurrentUserEmail;
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrEmpty(password))
+            return false;
+
+        try
+        {
+            // Discard the tokens: this is a proof, not a sign-in. Saving them would
+            // rotate the session mid-export and drop the caregiver back to login.
+            _ = await _auth0.LoginAsync(email, password, ct);
+            return true;
+        }
+        catch (AuthException ex) when (ex.Code is AuthErrorCode.InvalidCredentials
+            or AuthErrorCode.TooManyAttempts)
+        {
+            return false;
+        }
+    }
+
     public async Task SignInWithProviderAsync(string connection, CancellationToken ct = default)
     {
         var verifier = Pkce.CreateVerifier();

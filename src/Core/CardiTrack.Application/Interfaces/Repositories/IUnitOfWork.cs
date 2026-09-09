@@ -32,6 +32,7 @@ public interface IUnitOfWork : IDisposable
     IMemberStatusLineRepository MemberStatusLines { get; }
     IMemberAdviseRepository MemberAdvises { get; }
     IReportRepository Reports { get; }
+    IExportConsentRepository ExportConsents { get; }
     IMemberAiHoldRepository MemberAiHolds { get; }
     IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
 

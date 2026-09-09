@@ -18,7 +18,7 @@ namespace CardiTrack.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -1159,6 +1159,101 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasKey("CardiMemberId", "SessionStartUtc");
 
                     b.ToTable("EnvironmentalReadings", (string)null);
+                });
+
+            modelBuilder.Entity("CardiTrack.Domain.Entities.ExportConsent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.PrimitiveCollection<List<Guid>>("CardiMemberIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateOnly>("DateRangeFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("DateRangeTo")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("IncludeAlerts")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IncludeDevices")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IncludeJournals")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IncludeMetrics")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IncludeNotices")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IncludeTrends")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("JournalAudience")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateOnly?>("JournalEntryDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PolicySha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid?>("ReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("OwnerUserId", "Id");
+
+                    b.ToTable("ExportConsents", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.GranularMetricHour", b =>

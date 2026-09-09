@@ -126,4 +126,10 @@ public interface IPopupService
     /// </summary>
     Task<QuestionPopupResult> ShowPendingQuestionAsync(
         QuestionnaireResponse questionnaire, string? memberFirstName);
+
+    /// <summary>
+    /// Asks for the account password. Returns the typed password, or null when
+    /// cancelled. The caller verifies it — this popup does not call Auth0.
+    /// </summary>
+    Task<string?> AskPasswordAsync(string title, string message);
 }

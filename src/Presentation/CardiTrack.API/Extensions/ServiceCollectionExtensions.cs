@@ -4,6 +4,8 @@ using CardiTrack.API.Validators;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Repositories;
@@ -29,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
         services.AddScoped<IValidator<MemberChatMessageRequest>, MemberChatMessageValidator>();
         services.AddScoped<IValidator<GenerateReportRequest>, GenerateReportValidator>();
+        services.AddScoped<IValidator<RecordExportConsentRequest>, RecordExportConsentValidator>();
         return services;
     }
 
@@ -100,6 +103,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemberChatTurnUsageRepository, CardiTrack.Infrastructure.Repositories.MemberChatTurnUsageRepository>();
         services.AddScoped<IMemberStatusLineRepository, CardiTrack.Infrastructure.Repositories.MemberStatusLineRepository>();
         services.AddScoped<IReportRepository, CardiTrack.Infrastructure.Repositories.ReportRepository>();
+        services.AddScoped<IExportConsentRepository, CardiTrack.Infrastructure.Repositories.ExportConsentRepository>();
+        services.AddScoped<IExportConsentService, ExportConsentService>();
         services.AddScoped<IMemberAdviseRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseRepository>();
         services.AddScoped<IMemberAiHoldRepository, CardiTrack.Infrastructure.Repositories.MemberAiHoldRepository>();
         services.AddScoped<IDeviceHistoryRepullRepository, CardiTrack.Infrastructure.Repositories.DeviceHistoryRepullRepository>();

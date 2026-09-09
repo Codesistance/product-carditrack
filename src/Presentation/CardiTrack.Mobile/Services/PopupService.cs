@@ -123,6 +123,26 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<string?> AskPasswordAsync(string title, string message) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return null;
+
+            var prompt = new AppPasswordPage(title, message);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(prompt, animated: false);
+                return await prompt.Result;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     public Task<QuestionPopupResult> ShowPendingQuestionAsync(
         QuestionnaireResponse questionnaire, string? memberFirstName) =>
         MainThread.InvokeOnMainThreadAsync(async () =>

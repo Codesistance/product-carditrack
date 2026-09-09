@@ -635,6 +635,16 @@ public partial class JournalPage : ContentPage
         return card;
     }
 
+    private async void OnExportJournalsClicked(object? sender, EventArgs e)
+    {
+        if (_memberId == Guid.Empty)
+            return;
+
+        await Shell.Current.GoToAsync(
+            $"{ExportHealthDataPage.Route}?memberId={_memberId}&journalsOnly=true"
+            + $"&cadence={_cadence.WireValue()}");
+    }
+
     /// <summary>What one entry of this cadence covers, as a caregiver would say it.</summary>
     internal static string PeriodNoun(JournalCadence cadence) => cadence switch
     {

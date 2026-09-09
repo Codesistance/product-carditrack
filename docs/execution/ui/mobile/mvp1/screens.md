@@ -1087,11 +1087,12 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 - **One delivery action, not three.** "Save or share" opens the native share sheet, which on both iOS and Android *is* the route to Save to Files / Save to Drive as well as to mail and messaging — a separate "Save to Device" button would open the same sheet. "Email to…" is not built: mailing PHI from the server is its own subsystem (provider, address verification, abuse limits) and is not MVP 1 scope. An **Open** action sits beside it so a PDF can be read without leaving the app.
 - **No preview.** "Preview Export" is not built; the estimated file size is, computed from the period and format.
 - **No plan gate.** Nothing is gated by plan in R1, so the form opens for every account; the Complete Care upsell panel and `GET /api/v1/reports/availability` were removed on 2026-09-07 and return with subscriptions in R2.
-- **Data selection is three checkboxes**, not five: activity/heart rate/sleep travel together on one daily row, and there is no notes feature to include.
+- **Data selection is six checkboxes**, not five: activity/heart rate/sleep travel together on one daily row; graphs (PDF), alerts, journals, notices, and device types are separate. There is still no notes feature to include.
+- **Two pop-ups before generate**, not a new screen: accept responsibility, then password or biometrics. The API records the confirmation; the password is checked against Auth0 on the device and is never posted to CardiTrack.
 - **HL7 v2 is not offered** — MVP 2, and refused by the API's validator.
 - Progress is an indeterminate spinner: the API reports no percentage (`progressPercent` is always null).
 
-**Entry points as built:** M1-13 CardiMember Detail ("Export Data", scoped to that member) and Settings → Account ("Export health data", which asks who). M2-03 Trend Charts is R2.
+**Entry points as built:** M1-13 CardiMember Detail ("Export Data", scoped to that member), Settings → Account ("Export health data", which asks who), the journal list ("Export journals"), and a journal entry ("Export this entry"). M2-03 Trend Charts is R2.
 
 ---
 

@@ -140,8 +140,17 @@
                             <controls:CheckField x:Name="MetricsCheck" IsChecked="True"
                                                  Text="Activity, heart rate and sleep"
                                                  CheckedChanged="OnSelectionChanged"/>
+                            <controls:CheckField x:Name="TrendsCheck" IsChecked="True"
+                                                 Text="Graphs for the selected days (PDF)"
+                                                 CheckedChanged="OnSelectionChanged"/>
                             <controls:CheckField x:Name="AlertsCheck" IsChecked="True"
                                                  Text="Alerts and events"
+                                                 CheckedChanged="OnSelectionChanged"/>
+                            <controls:CheckField x:Name="JournalsCheck"
+                                                 Text="Journals (Daybook, Weekbook, Monthbook)"
+                                                 CheckedChanged="OnSelectionChanged"/>
+                            <controls:CheckField x:Name="NoticesCheck"
+                                                 Text="Notices (device and account gaps)"
                                                  CheckedChanged="OnSelectionChanged"/>
                             <controls:CheckField x:Name="DevicesCheck"
                                                  Text="Which devices the readings came from"

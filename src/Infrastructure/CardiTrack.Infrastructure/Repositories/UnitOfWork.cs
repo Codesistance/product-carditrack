@@ -39,6 +39,7 @@ public class UnitOfWork : IUnitOfWork
     public IMemberStatusLineRepository MemberStatusLines { get; }
     public IMemberAdviseRepository MemberAdvises { get; }
     public IReportRepository Reports { get; }
+    public IExportConsentRepository ExportConsents { get; }
     public IMemberAiHoldRepository MemberAiHolds { get; }
     public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
 
@@ -74,6 +75,7 @@ public class UnitOfWork : IUnitOfWork
         IMemberStatusLineRepository memberStatusLines,
         IMemberAdviseRepository memberAdvises,
         IReportRepository reports,
+        IExportConsentRepository exportConsents,
         IMemberAiHoldRepository memberAiHolds,
         IDeviceHistoryRepullRepository deviceHistoryRepulls)
     {
@@ -108,6 +110,7 @@ public class UnitOfWork : IUnitOfWork
         MemberStatusLines = memberStatusLines;
         MemberAdvises = memberAdvises;
         Reports = reports;
+        ExportConsents = exportConsents;
         MemberAiHolds = memberAiHolds;
         DeviceHistoryRepulls = deviceHistoryRepulls;
     }

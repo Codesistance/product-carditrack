@@ -52,6 +52,28 @@ public class NotificationRepository : Repository<Notification>, INotificationRep
             .Take(limit)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Notification>> GetForExportAsync(
+        Guid userId,
+        Guid cardiMemberId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct = default)
+    {
+        var start = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var endExclusive = to.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        return await _dbSet
+            .AsNoTracking()
+            .Where(n => n.UserId == userId
+                        && n.IsActive
+                        && n.CardiMemberId == cardiMemberId
+                        && n.FirstDetectedDate >= start
+                        && n.FirstDetectedDate < endExclusive)
+            .OrderBy(n => n.FirstDetectedDate)
+            .ThenBy(n => n.Id)
+            .ToListAsync(ct);
+    }
+
     public async Task<int> CountAsync(
         Guid userId,
         NotificationState? state,

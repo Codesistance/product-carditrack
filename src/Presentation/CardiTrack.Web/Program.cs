@@ -73,6 +73,7 @@ try
     builder.Services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
     builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
     builder.Services.AddScoped<IReportRepository, ReportRepository>();
+    builder.Services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
     builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
     builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
     builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();

@@ -182,6 +182,9 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
   - Delivery options: save to device, share via system share sheet, email to self
   - Clear format explanations ("FHIR R4 is accepted by most US patient portals and EHR systems")
   - Export confirmation with file size estimate
+  - Sections include graphs (PDF), journals, alerts, and notices alongside readings
+  - Every export is gated by pop-up questions: accept responsibility, then prove it with the login password (Auth0, on-device) or this device's fingerprint / face unlock. The confirmation is recorded; the password never leaves the device for CardiTrack
+  - The journal list and a single entry can open M1-17 with journals already ticked (and, from an entry, that day pinned)
 - **Screens:** M1-17 (Health Data Export)
 
 ---

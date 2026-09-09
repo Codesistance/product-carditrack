@@ -33,7 +33,9 @@ public class ReportRendererTests
         string memberName = "Margaret Doe",
         IReadOnlyList<ActivityLog>? logs = null,
         IReadOnlyList<Alert>? alerts = null,
-        IReadOnlyList<DeviceConnection>? devices = null) =>
+        IReadOnlyList<DeviceConnection>? devices = null,
+        IReadOnlyList<DigestEntry>? journals = null,
+        IReadOnlyList<Notification>? notices = null) =>
         new(
             [
                 new ReportMemberData(
@@ -47,7 +49,9 @@ public class ReportRendererTests
                     },
                     logs ?? [FullDay()],
                     alerts ?? [],
-                    devices ?? [])
+                    devices ?? [],
+                    journals ?? [],
+                    notices ?? [])
             ],
             new DateOnly(2026, 2, 7),
             new DateOnly(2026, 3, 9),
@@ -88,6 +92,26 @@ public class ReportRendererTests
         Severity = AlertSeverity.Orange,
         AlertType = AlertType.HeartRate,
         TriggeredDate = new DateTime(2026, 2, 15, 8, 0, 0, DateTimeKind.Utc)
+    };
+
+    private static DigestEntry BuildJournal() => new()
+    {
+        CardiMemberId = MemberId,
+        LocalDate = new DateOnly(2026, 2, 10),
+        Audience = DigestAudience.Daybook,
+        Headline = "A settled night",
+        Text = "Sleep held near their usual.",
+        GeneratedAtUtc = new DateTime(2026, 2, 11, 2, 0, 0, DateTimeKind.Utc)
+    };
+
+    private static Notification BuildNotice() => new()
+    {
+        CardiMemberId = MemberId,
+        RuleCode = "DEVICE_STALE_LONG",
+        TitleKey = "notices.device_stale_long.title",
+        Category = NotificationCategory.Blocking,
+        State = NotificationState.Open,
+        FirstDetectedDate = new DateTime(2026, 2, 20, 8, 0, 0, DateTimeKind.Utc)
     };
 
     private static DeviceConnection BuildDevice() => new()
@@ -256,6 +280,32 @@ public class ReportRendererTests
         var csv = await RenderCsvAsync(BuildData(alerts: [alert]));
 
         Assert.Contains("'=cmd", csv);
+    }
+
+    [Fact]
+    public async Task Csv_IncludesJournalText_AndLabelsItAsAi()
+    {
+        var csv = await RenderCsvAsync(
+            BuildData(journals: [BuildJournal()]),
+            new ReportSections(IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false,
+                IncludeJournals: true));
+
+        Assert.Contains("A settled night", csv);
+        Assert.Contains("Sleep held near their usual.", csv);
+        Assert.Contains("CardiTrack AI", csv);
+        Assert.DoesNotContain("warfarin", csv);
+    }
+
+    [Fact]
+    public async Task Csv_IncludesNoticeRuleCodes_NeverTitleKeys()
+    {
+        var csv = await RenderCsvAsync(
+            BuildData(notices: [BuildNotice()]),
+            new ReportSections(IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false,
+                IncludeNotices: true));
+
+        Assert.Contains("DEVICE_STALE_LONG", csv);
+        Assert.DoesNotContain("notices.device_stale_long.title", csv);
     }
 
     // ── FHIR R4 ─────────────────────────────────────────────────────────────────
@@ -503,6 +553,23 @@ public class ReportRendererTests
             .RenderAsync(BuildData(logs: []), AllSections, "Summary.");
 
         Assert.Equal("%PDF", Encoding.ASCII.GetString(rendered.Content, 0, 4));
+    }
+
+    [Fact]
+    public async Task Pdf_RendersJournalsAndNotices_WithoutFreeTextWePromisedToKeepOut()
+    {
+        var rendered = await new PdfReportRenderer().RenderAsync(
+            BuildData(journals: [BuildJournal()], notices: [BuildNotice()]),
+            new ReportSections(
+                IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true,
+                IncludeTrends: true, IncludeJournals: true, IncludeNotices: true),
+            "Summary.");
+
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(rendered.Content, 0, 4));
+        var bytes = Encoding.ASCII.GetString(rendered.Content);
+        Assert.DoesNotContain("warfarin", bytes);
+        Assert.DoesNotContain("1948-04-12", bytes);
+        Assert.DoesNotContain("notices.device_stale_long.title", bytes);
     }
 
     [Fact]

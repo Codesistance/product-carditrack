@@ -28,7 +28,9 @@ public record ReportMemberData(
     CardiMember Member,
     IReadOnlyList<ActivityLog> ActivityLogs,
     IReadOnlyList<Alert> Alerts,
-    IReadOnlyList<DeviceConnection> Devices);
+    IReadOnlyList<DeviceConnection> Devices,
+    IReadOnlyList<DigestEntry> Journals,
+    IReadOnlyList<Notification> Notices);
 
 /// <summary>
 /// Which parts of the record the caregiver ticked on M1-17. Mirrors the request flags, so a
@@ -37,7 +39,10 @@ public record ReportMemberData(
 public record ReportSections(
     bool IncludeMetrics,
     bool IncludeAlerts,
-    bool IncludeDevices);
+    bool IncludeDevices,
+    bool IncludeTrends = false,
+    bool IncludeJournals = false,
+    bool IncludeNotices = false);
 
 /// <summary>
 /// A rendered export, ready to store and serve.

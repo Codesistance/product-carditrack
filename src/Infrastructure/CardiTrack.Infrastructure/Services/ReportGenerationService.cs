@@ -37,6 +37,7 @@ public class ReportGenerationService : IReportGenerationService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IReportStorage _storage;
     private readonly ICardiMemberAccessService _access;
+    private readonly IExportConsentService _consent;
     private readonly ReportStorageOptions _options;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ReportGenerationService> _logger;
@@ -45,6 +46,7 @@ public class ReportGenerationService : IReportGenerationService
         IUnitOfWork unitOfWork,
         IReportStorage storage,
         ICardiMemberAccessService access,
+        IExportConsentService consent,
         ReportStorageOptions options,
         IServiceScopeFactory scopeFactory,
         ILogger<ReportGenerationService> logger)
@@ -52,6 +54,7 @@ public class ReportGenerationService : IReportGenerationService
         _unitOfWork = unitOfWork;
         _storage = storage;
         _access = access;
+        _consent = consent;
         _options = options;
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -78,6 +81,11 @@ public class ReportGenerationService : IReportGenerationService
             // when they ask, and a slow generation must not quietly shorten that window.
             ExpiresAt = now.Add(_options.Retention)
         };
+
+        // Id is assigned in the entity constructor, so the consent can name the report
+        // before the row is written. Consume first: a refused token must not leave a
+        // Pending report sitting in the table.
+        await _consent.ConsumeAsync(requestingUserId, request.ConsentToken ?? "", request, report.Id);
 
         await _unitOfWork.Reports.AddAsync(report);
         await _unitOfWork.SaveChangesAsync();
@@ -188,9 +196,14 @@ public class ReportGenerationService : IReportGenerationService
                 ?? throw new NotSupportedException(
                     $"No renderer is registered for report format {report.Format}.");
 
-            var data = await GatherAsync(unitOfWork, request);
+            var data = await GatherAsync(unitOfWork, request, report.OwnerUserId);
             var sections = new ReportSections(
-                request.IncludeMetrics, request.IncludeAlerts, request.IncludeDevices);
+                request.IncludeMetrics,
+                request.IncludeAlerts,
+                request.IncludeDevices,
+                request.IncludeTrends,
+                request.IncludeJournals,
+                request.IncludeNotices);
 
             var narrative = await BuildNarrativeAsync(generativeAi, data, report.Format);
             var rendered = await renderer.RenderAsync(data, sections, narrative);
@@ -238,7 +251,7 @@ public class ReportGenerationService : IReportGenerationService
     /// Reads everything the export covers, once, in request order.
     /// </summary>
     private static async Task<ReportDataSet> GatherAsync(
-        IUnitOfWork unitOfWork, GenerateReportRequest request)
+        IUnitOfWork unitOfWork, GenerateReportRequest request, Guid ownerUserId)
     {
         var members = new List<ReportMemberData>(request.CardiMemberIds.Count);
 
@@ -271,10 +284,71 @@ public class ReportGenerationService : IReportGenerationService
                 ? (await unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(memberId)).ToList()
                 : [];
 
-            members.Add(new ReportMemberData(member, logs, alerts, devices));
+            var journals = request.IncludeJournals
+                ? await GatherJournalsAsync(unitOfWork, memberId, request)
+                : [];
+
+            var notices = request.IncludeNotices
+                ? await GatherNoticesAsync(
+                    unitOfWork, ownerUserId, memberId, request.DateRangeFrom, request.DateRangeTo)
+                : [];
+
+            members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices));
         }
 
         return new ReportDataSet(members, request.DateRangeFrom, request.DateRangeTo, request.Title);
+    }
+
+    /// <summary>
+    /// Daybook / Weekbook / Monthbook only — the Family running digest is a live glance,
+    /// not a finished book a clinician would be handed.
+    /// </summary>
+    private static async Task<IReadOnlyList<DigestEntry>> GatherJournalsAsync(
+        IUnitOfWork unitOfWork, Guid memberId, GenerateReportRequest request)
+    {
+        if (!ReportJournalScope.DayIsInRange(
+                request.JournalEntryDate, request.DateRangeFrom, request.DateRangeTo))
+            return [];
+
+        var audiences = request.JournalAudience is { } single
+            ? ReportJournalScope.IsFinishedBook(single)
+                ? new[] { single }
+                : Array.Empty<DigestAudience>()
+            : ReportJournalScope.FinishedBooks;
+
+        var from = request.JournalEntryDate ?? request.DateRangeFrom;
+        var to = request.JournalEntryDate ?? request.DateRangeTo;
+        var entries = new List<DigestEntry>();
+
+        foreach (var audience in audiences)
+        {
+            if (request.JournalEntryDate is { } date)
+            {
+                var one = await unitOfWork.Digests.GetLatestByDateAsync(memberId, date, audience);
+                if (one is not null)
+                    entries.Add(one);
+                continue;
+            }
+
+            entries.AddRange(await unitOfWork.Digests.GetHistoryAsync(
+                memberId, audience, limit: 400, from: from, to: to));
+        }
+
+        return entries
+            .OrderBy(e => e.LocalDate)
+            .ThenBy(e => e.Audience)
+            .ToList();
+    }
+
+    private static async Task<IReadOnlyList<Notification>> GatherNoticesAsync(
+        IUnitOfWork unitOfWork,
+        Guid ownerUserId,
+        Guid memberId,
+        DateOnly from,
+        DateOnly to)
+    {
+        return await unitOfWork.Notifications.GetForExportAsync(
+            ownerUserId, memberId, from, to);
     }
 
     /// <summary>

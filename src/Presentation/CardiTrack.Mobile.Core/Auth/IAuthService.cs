@@ -4,6 +4,13 @@ public interface IAuthService
 {
     Task SignInAsync(string email, string password, CancellationToken ct = default);
 
+    /// <summary>
+    /// Checks the password against Auth0 without replacing the current session.
+    /// Used as the step-up for export consent. False when the password is wrong
+    /// or the account has no password (social-only).
+    /// </summary>
+    Task<bool> VerifyPasswordAsync(string password, CancellationToken ct = default);
+
     /// <summary>Signs in via Auth0 Universal Login in the system browser (Authorization Code
     /// + PKCE) for a social connection — Auth0Options.GoogleConnection / AppleConnection.
     /// Covers both sign-in and sign-up: the provider flow is the same operation.</summary>
