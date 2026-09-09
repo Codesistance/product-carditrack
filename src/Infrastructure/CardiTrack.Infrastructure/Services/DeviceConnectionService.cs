@@ -109,10 +109,9 @@ public class DeviceConnectionService : IDeviceConnectionService
     }
 
     /// <summary>
-    /// The latest re-pull as the card should see it: an open one always, a completed one only
-    /// while its cooldown still blocks another, nothing otherwise. A card with nothing here
-    /// offers the action plainly; the server decides "still worth showing" so the rule can move
-    /// without a mobile release.
+    /// The latest re-pull as the card should see it, or null when there is nothing worth
+    /// saying — see <see cref="HistoryRepullWindow.ShouldPresent"/> for the rule. The server
+    /// decides "still worth showing" so the rule can move without a mobile release.
     /// </summary>
     private DeviceHistoryRepullResponse? PresentableRepull(DeviceConnection connection, DeviceHistoryRepull? latest)
     {
@@ -121,10 +120,9 @@ public class DeviceConnectionService : IDeviceConnectionService
 
         var cooldown = TimeSpan.FromHours(_providerConfigs.ConfigFor(connection.DeviceType)?.HistoryRepullCooldownHours ?? 0);
         var now = DateTime.UtcNow;
-        var response = HistoryRepullWindow.ToResponse(latest, cooldown, now);
 
-        return latest.IsOpen || response.NextAllowedAt is not null
-            ? response
+        return HistoryRepullWindow.ShouldPresent(latest, cooldown, now)
+            ? HistoryRepullWindow.ToResponse(latest, cooldown, now)
             : null;
     }
 

@@ -743,6 +743,35 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
+    public async Task GetDevices_ShowsARecentFailedRepull_SoTheCaregiverLearnsTheOutcome()
+    {
+        var connection = SeedConnection();
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        _unitOfWork.DeviceHistoryRepulls
+            .GetLatestByConnectionIdsAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new DeviceHistoryRepull
+                {
+                    DeviceConnectionId = connection.Id,
+                    Status = HistoryRepullStatus.Failed,
+                    FromDate = new DateOnly(2026, 8, 10),
+                    ToDate = new DateOnly(2026, 9, 8),
+                    CompletedTo = new DateOnly(2026, 8, 26),
+                    CompletedAt = DateTime.UtcNow.AddHours(-3),
+                    FailureReason = "GoogleHealthApiException (HTTP 503)",
+                },
+            ]);
+
+        var repull = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices.Single().HistoryRepull;
+
+        Assert.NotNull(repull);
+        Assert.Equal("failed", repull.Status);
+        // A failure never starts a cooldown — the action stays available beside the notice.
+        Assert.Null(repull.NextAllowedAt);
+    }
+
+    [Fact]
     public async Task GetDevices_ToleratesMalformedScopes()
     {
         var connection = SeedConnection();

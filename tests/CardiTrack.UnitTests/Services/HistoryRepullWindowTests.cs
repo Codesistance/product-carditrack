@@ -123,6 +123,39 @@ public class HistoryRepullWindowTests
     }
 
     [Fact]
+    public void ShouldPresent_KeepsOpenRequests_CooledDownCompletions_AndRecentFailures()
+    {
+        var now = new DateTime(2026, 9, 9, 12, 0, 0, DateTimeKind.Utc);
+        var cooldown = TimeSpan.FromHours(48);
+
+        var open = Repull(7);
+        open.Status = HistoryRepullStatus.InProgress;
+        Assert.True(HistoryRepullWindow.ShouldPresent(open, cooldown, now));
+
+        var completedRecently = Repull(7);
+        completedRecently.Status = HistoryRepullStatus.Completed;
+        completedRecently.CompletedAt = now.AddHours(-47);
+        Assert.True(HistoryRepullWindow.ShouldPresent(completedRecently, cooldown, now));
+
+        var completedLongAgo = Repull(7);
+        completedLongAgo.Status = HistoryRepullStatus.Completed;
+        completedLongAgo.CompletedAt = now.AddHours(-49);
+        Assert.False(HistoryRepullWindow.ShouldPresent(completedLongAgo, cooldown, now));
+
+        // A failure outlives the cooldown it never started: the caregiver has to be able to
+        // find out that it did not finish.
+        var failedThisWeek = Repull(7);
+        failedThisWeek.Status = HistoryRepullStatus.Failed;
+        failedThisWeek.CompletedAt = now.AddDays(-6);
+        Assert.True(HistoryRepullWindow.ShouldPresent(failedThisWeek, cooldown, now));
+
+        var cancelledLastMonth = Repull(7);
+        cancelledLastMonth.Status = HistoryRepullStatus.Cancelled;
+        cancelledLastMonth.CompletedAt = now.AddDays(-8);
+        Assert.False(HistoryRepullWindow.ShouldPresent(cancelledLastMonth, cooldown, now));
+    }
+
+    [Fact]
     public void ToResponse_ReportsProgressAndTheRequestedDayCount()
     {
         var repull = Repull(30);

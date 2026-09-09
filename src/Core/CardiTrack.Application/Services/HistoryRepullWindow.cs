@@ -24,6 +24,37 @@ public static class HistoryRepullWindow
     /// </summary>
     public const int MaxDays = 90;
 
+    /// <summary>
+    /// How long a failed or cancelled request stays on the device card after it ended. Long
+    /// enough that a caregiver who tapped in the morning and looks again at the weekend still
+    /// learns the outcome; short enough that a month-old failure is not the first thing the
+    /// card says about a device that has been fine since.
+    /// </summary>
+    public static readonly TimeSpan FailureNoticeFor = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// Whether the device list should carry this request at all: an open one always; a
+    /// completed one while its cooldown still blocks another; a failed or cancelled one for
+    /// <see cref="FailureNoticeFor"/> after it ended, so the caregiver learns the outcome
+    /// even though neither blocks re-requesting. Nothing otherwise — the card then offers the
+    /// action plainly.
+    /// </summary>
+    public static bool ShouldPresent(DeviceHistoryRepull repull, TimeSpan cooldown, DateTime utcNow)
+    {
+        if (repull.IsOpen)
+            return true;
+
+        if (repull.CompletedAt is not { } endedAt)
+            return false;
+
+        return repull.Status switch
+        {
+            HistoryRepullStatus.Completed => endedAt + cooldown > utcNow,
+            HistoryRepullStatus.Failed or HistoryRepullStatus.Cancelled => endedAt + FailureNoticeFor > utcNow,
+            _ => false,
+        };
+    }
+
     /// <summary>The wire strings the API reports a request's status as.</summary>
     public static string StatusWire(HistoryRepullStatus status) => status switch
     {

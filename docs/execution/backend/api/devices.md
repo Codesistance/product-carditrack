@@ -73,7 +73,7 @@ Wrapped in the standard `ApiResponse<T>` envelope; `deviceId` is a raw GUID (no 
 }
 ```
 
-`historyRepull` is the connection's latest caregiver-requested history re-pull (see `POST .../devices/{deviceId}/history-repull` below), and is **usually null**: it is present only while a request is open (`pending` / `in_progress`) or while a `completed` one is still inside the re-pull cooldown — in which case `nextAllowedAt` says when the action is available again. A `failed` or `cancelled` request is shown until the cooldown-free moment it would be retryable, i.e. never, so the card offers the action again at once. The server decides "still worth showing" so the rule can move without a mobile release.
+`historyRepull` is the connection's latest caregiver-requested history re-pull (see `POST .../devices/{deviceId}/history-repull` below), and is **usually null**: it is present while a request is open (`pending` / `in_progress`), while a `completed` one is still inside the re-pull cooldown — in which case `nextAllowedAt` says when the action is available again — and for **7 days** after a `failed` or `cancelled` one ended, so the caregiver learns the outcome; neither of those blocks re-requesting, so the card offers the action again alongside the notice. The server decides "still worth showing" so the rule can move without a mobile release.
 
 `scopes`, `nextSyncAt` and `todayUpdateCount` back the M1-15 device cards. All three are derived, not stored: scopes are parsed from the connection's scope JSON (a malformed value yields `[]` rather than an error), `nextSyncAt` is `lastSyncedAt + syncFrequencyMinutes` and is therefore an estimate rather than a scheduled job time, and `todayUpdateCount` counts today's activity records attributed to that connection.
 

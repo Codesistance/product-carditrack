@@ -133,6 +133,11 @@ public partial class DeviceCard : ContentView
         RepullStatusLabel.IsVisible = status is not null;
         RepullLabel.Opacity = _canRepull ? 1 : 0.5;
 
+        // Genuinely not a control while withheld, rather than a tap that silently does nothing:
+        // a disabled row is announced as such by a screen reader, and the gesture never fires.
+        RepullRow.IsEnabled = _canRepull;
+        RepullRow.InputTransparent = !_canRepull;
+
         SemanticProperties.SetDescription(RepullRow, status is null
             ? "Re-pull history"
             : $"Re-pull history. {status}");
