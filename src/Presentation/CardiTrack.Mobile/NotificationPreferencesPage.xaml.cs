@@ -86,12 +86,7 @@ public partial class NotificationPreferencesPage : ContentPage
                     Panel.IsVisible = true;
                 },
                 _feedback,
-                sameAs: (a, b) =>
-                    a.QuietHoursStart == b.QuietHoursStart
-                    && a.QuietHoursEnd == b.QuietHoursEnd
-                    && a.ShowDetailsOnLockScreen == b.ShowDetailsOnLockScreen
-                    && a.MutedCategories.OrderBy(c => c, StringComparer.Ordinal)
-                        .SequenceEqual(b.MutedCategories.OrderBy(c => c, StringComparer.Ordinal), StringComparer.Ordinal));
+                sameAs: SamePayload.Same);
 
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {

@@ -111,7 +111,7 @@ public partial class AlertSettingsPage : ContentPage
                     Render(prefs);
                 },
                 _feedback,
-                sameAs: SameRules);
+                sameAs: SamePayload.Same);
 
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {
@@ -126,27 +126,6 @@ public partial class AlertSettingsPage : ContentPage
         {
             _gate.Release(ticket);
         }
-    }
-
-    /// <summary>
-    /// The same rules in the same state. Rebuilding the rows is what a re-render costs here, and
-    /// a caregiver mid-flip should not have the switch rebuilt under their finger for an answer
-    /// that says exactly what the one on screen already does.
-    /// </summary>
-    private static bool SameRules(AlertPreferencesResponse a, AlertPreferencesResponse b)
-    {
-        var left = a.Clusters.SelectMany(c => c.Rules).ToList();
-        var right = b.Clusters.SelectMany(c => c.Rules).ToList();
-        if (left.Count != right.Count)
-            return false;
-
-        for (var i = 0; i < left.Count; i++)
-        {
-            if (left[i].Id != right[i].Id || left[i].Enabled != right[i].Enabled)
-                return false;
-        }
-
-        return true;
     }
 
     private void Render(AlertPreferencesResponse prefs)

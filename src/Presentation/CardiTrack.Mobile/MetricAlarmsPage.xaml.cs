@@ -116,7 +116,7 @@ public partial class MetricAlarmsPage : ContentPage
                     Render(alarms);
                 },
                 _feedback,
-                sameAs: SameAlarms);
+                sameAs: SamePayload.Same);
 
             // The list has to go when there is nothing behind it, not just be covered. This page
             // reloads — returning from the builder clears the cache, and a successful toggle
@@ -137,21 +137,6 @@ public partial class MetricAlarmsPage : ContentPage
         {
             _gate.Release(ticket);
         }
-    }
-
-    /// <summary>The same alarms, in the same state — rebuilding the rows is what a re-render costs.</summary>
-    private static bool SameAlarms(IReadOnlyList<MetricAlarmResponse> a, IReadOnlyList<MetricAlarmResponse> b)
-    {
-        if (a.Count != b.Count)
-            return false;
-
-        for (var i = 0; i < a.Count; i++)
-        {
-            if (a[i].Id != b[i].Id || a[i].IsEnabled != b[i].IsEnabled)
-                return false;
-        }
-
-        return true;
     }
 
     private void Render(IReadOnlyList<MetricAlarmResponse> alarms)

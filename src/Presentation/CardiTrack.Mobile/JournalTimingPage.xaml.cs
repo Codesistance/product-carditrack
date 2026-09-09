@@ -97,11 +97,7 @@ public partial class JournalTimingPage : ContentPage
                     Render(settings);
                 },
                 _feedback,
-                sameAs: (a, b) =>
-                    a.EffectiveDaybookLocalTime == b.EffectiveDaybookLocalTime
-                    && a.EffectiveWeekbookLocalTime == b.EffectiveWeekbookLocalTime
-                    && a.EffectiveMonthbookLocalTime == b.EffectiveMonthbookLocalTime
-                    && a.EffectiveWeekStartsOn == b.EffectiveWeekStartsOn);
+                sameAs: SamePayload.Same);
 
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {
