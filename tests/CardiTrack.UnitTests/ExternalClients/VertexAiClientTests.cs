@@ -203,9 +203,9 @@ public class VertexAiClientTests
         Assert.Equal(nameof(TestPlanShape), span.GetTagItem("carditrack.ai.reply_schema"));
         var duration = Assert.Single(metrics.Doubles, m => m.Instrument == "gen_ai.client.operation.duration");
         Assert.Equal(nameof(TestPlanShape), duration.Tags["carditrack.ai.reply_schema"]);
-        Assert.All(
-            metrics.Longs.Where(m => m.Instrument == "gen_ai.client.token.usage"),
-            t => Assert.Equal(nameof(TestPlanShape), t.Tags["carditrack.ai.reply_schema"]));
+        var tokens = metrics.Longs.Where(m => m.Instrument == "gen_ai.client.token.usage").ToList();
+        Assert.Equal(2, tokens.Count);
+        Assert.All(tokens, t => Assert.Equal(nameof(TestPlanShape), t.Tags["carditrack.ai.reply_schema"]));
     }
 
     [Fact]
