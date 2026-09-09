@@ -1,6 +1,7 @@
 using System.Globalization;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
+using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -95,6 +96,9 @@ public class PdfReportRenderer : IReportRenderer
 
                 if (sections.IncludeMetrics)
                 {
+                    if (sections.IncludeTrends && member.ActivityLogs.Count > 0)
+                        column.Item().Element(e => Charts(e, member, data.From, data.To));
+
                     if (member.ActivityLogs.Count > 0)
                         column.Item().Element(e => DailyTable(e, member));
                     else
@@ -106,6 +110,18 @@ public class PdfReportRenderer : IReportRenderer
                 {
                     column.Item().Text("Alerts").SemiBold();
                     column.Item().Element(e => AlertsTable(e, member));
+                }
+
+                if (sections.IncludeJournals && member.Journals.Count > 0)
+                {
+                    column.Item().Text("Journals").SemiBold();
+                    column.Item().Element(e => Journals(e, member));
+                }
+
+                if (sections.IncludeNotices && member.Notices.Count > 0)
+                {
+                    column.Item().Text("Notices").SemiBold();
+                    column.Item().Element(e => NoticesTable(e, member));
                 }
             }
         });
@@ -124,7 +140,7 @@ public class PdfReportRenderer : IReportRenderer
     private static string Provenance(ReportMemberData member, ReportSections sections)
     {
         var age = AgeAt(member.Member.DateOfBirth, DateOnly.FromDateTime(DateTime.UtcNow));
-        var line = $"Age {age}   ·   {member.ActivityLogs.Count} day(s) with readings";
+        var line = $"Age {age}   ·   {SexLabel(member.Member.Gender)}   ·   {member.ActivityLogs.Count} day(s) with readings";
 
         if (!sections.IncludeDevices || member.Devices.Count == 0)
             return line;
@@ -167,6 +183,100 @@ public class PdfReportRenderer : IReportRenderer
                 BodyCell(table.Cell(), Figure(log.SpO2Average, "%"));
             }
         });
+
+    private static void Charts(IContainer container, ReportMemberData member, DateOnly from, DateOnly to)
+    {
+        container.Column(column =>
+        {
+            column.Spacing(8);
+            ChartBlock(column, "Steps", member.ActivityLogs, log => log.Steps, from, to);
+            ChartBlock(column, "Resting heart rate (bpm)", member.ActivityLogs, log => log.RestingHeartRate, from, to);
+            ChartBlock(column, "Sleep (minutes)", member.ActivityLogs, log => log.SleepMinutes, from, to);
+            ChartBlock(column, "SpO₂ (%)", member.ActivityLogs, log => (double?)log.SpO2Average, from, to);
+        });
+    }
+
+    private static void ChartBlock(
+        ColumnDescriptor column,
+        string title,
+        IReadOnlyList<ActivityLog> logs,
+        Func<ActivityLog, double?> read,
+        DateOnly from,
+        DateOnly to)
+    {
+        var png = ReportChartRenderer.Line(logs, read, from, to);
+        if (png is null)
+            return;
+
+        column.Item().Text(title).FontSize(9).SemiBold();
+        column.Item().Image(png);
+    }
+
+    private static void Journals(IContainer container, ReportMemberData member) =>
+        container.Column(column =>
+        {
+            column.Spacing(10);
+            foreach (var entry in member.Journals)
+            {
+                column.Item().Text(
+                        $"{BookName(entry.Audience)}  ·  {entry.LocalDate:d MMMM yyyy}"
+                        + (string.IsNullOrWhiteSpace(entry.Headline) ? "" : $"  ·  {entry.Headline}"))
+                    .SemiBold().FontSize(10);
+                column.Item().Text(entry.Text.Trim()).LineHeight(1.35f);
+                column.Item().Text(
+                        "This journal was written by CardiTrack's AI assistant. It is not a clinical assessment.")
+                    .FontSize(8).Italic().FontColor(Colors.Grey.Darken1);
+            }
+        });
+
+    private static void NoticesTable(IContainer container, ReportMemberData member) =>
+        container.Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.RelativeColumn(2);
+                columns.RelativeColumn(2);
+                columns.RelativeColumn(4);
+                columns.RelativeColumn(2);
+            });
+
+            table.Header(header =>
+            {
+                HeaderCell(header.Cell(), "Date");
+                HeaderCell(header.Cell(), "Category");
+                HeaderCell(header.Cell(), "Notice");
+                HeaderCell(header.Cell(), "State");
+            });
+
+            foreach (var notice in member.Notices)
+            {
+                BodyCell(table.Cell(), notice.FirstDetectedDate.ToString("d MMM yyyy", CultureInfo.InvariantCulture));
+                BodyCell(table.Cell(), notice.Category.ToString());
+                BodyCell(table.Cell(), NoticeLabel(notice.RuleCode));
+                BodyCell(table.Cell(), notice.State.ToString());
+            }
+        });
+
+    private static string BookName(DigestAudience audience) => audience switch
+    {
+        DigestAudience.Weekbook => "Weekbook",
+        DigestAudience.Monthbook => "Monthbook",
+        _ => "Daybook"
+    };
+
+    /// <summary>
+    /// Rule codes are catalogue keys (<c>DEVICE_STALE_LONG</c>), not caregiver free text.
+    /// Rendered as words so the table is readable without becoming a localization dump.
+    /// </summary>
+    private static string NoticeLabel(string ruleCode) =>
+        ruleCode.Replace("_", " ", StringComparison.Ordinal);
+
+    private static string SexLabel(Gender gender) => gender switch
+    {
+        Gender.Male => "Male",
+        Gender.Female => "Female",
+        _ => "not stated"
+    };
 
     private static void AlertsTable(IContainer container, ReportMemberData member) =>
         container.Table(table =>

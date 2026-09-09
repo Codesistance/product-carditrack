@@ -2,7 +2,7 @@
 
 Handles async generation and download of health summary reports for doctor visits. Report generation is asynchronous.
 
-**Implementation status:** all three endpoints are **implemented**, and **PDF, CSV and FHIR R4 render for real** (MVP 1). HL7 v2 is **MVP 2** and is rejected at validation rather than accepted and silently ignored.
+**Implementation status:** all four endpoints are **implemented**, and **PDF, CSV and FHIR R4 render for real** (MVP 1). HL7 v2 is **MVP 2** and is rejected at validation rather than accepted and silently ignored. Every generate call must present a short-lived consent token from `POST /api/v1/reports/consent`.
 
 How generation works:
 
@@ -14,15 +14,60 @@ How generation works:
 - **Not plan-gated.** Nothing in CardiTrack is gated by plan today (R1 is trial-only; subscriptions ship in R2), so export is open to every signed-in caregiver. The `IEntitlementService` that gated it on 2026-09-06 was removed on 2026-09-07. When gating arrives, the read paths (status, download) should stay ungated — a plan that lapses after generation must not strip a caregiver of a record they already asked for.
 - **Business validation** now exists (`GenerateReportValidator`): **max 5 CardiMembers**, **max 365-day range**, no duplicate members, at least one section, and an MVP 1 format.
 - **Privacy:** the **AI narrative is generated only for PDF**. Because it goes to the public Gemini endpoint, member names are pseudonymised as "Patient A", "Patient B", … before the model call and swapped back only after the response returns. The model never sees a real name. **CSV and FHIR R4 make no model call at all.**
-- **No free text crosses into any export** — no medical notes, no alert message bodies, no caregiver device labels ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §70, §85).
+- **No caregiver free text crosses into any export** — no medical notes, no alert message bodies, no caregiver device labels ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §70, §85). Journals are CardiTrack-generated AI text and may be included on PDF/CSV when ticked; each entry is labelled as AI. Notices export `RuleCode` / category / state, never localized `TitleKey` bodies.
+- **Recorded consent.** The password is verified on the device against Auth0 and is **never sent to CardiTrack**. The API records only that the caregiver accepted responsibility and which proof they used (`Password` or `Biometric`). The token is single-use, owner-scoped, bound to the request fingerprint, and expires in two minutes.
 
 **User Stories:** 2.3 (Trend Charts & Historical Data — export), 6.3 (Health Data Export), 9.2 (Printable Reports)
 
 ---
 
+## POST `/api/v1/reports/consent`
+
+Records that the caregiver accepted responsibility for this exact export and proved it (password or biometrics, verified on the device). Returns a compact `"N"` token the generate call must present.
+
+**Priority:** P0 | **Auth Required:** Yes
+
+### Request Body
+
+The same snapshot generate will send — members, dates, format, and section flags — plus how they proved it:
+
+```json
+{
+  "cardiMemberIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "dateRangeFrom": "2026-07-07",
+  "dateRangeTo": "2026-08-07",
+  "format": 1,
+  "includeMetrics": true,
+  "includeTrends": true,
+  "includeAlerts": true,
+  "includeJournals": true,
+  "includeNotices": true,
+  "includeDevices": false,
+  "method": 1,
+  "acceptedResponsibility": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| snapshot fields | — | Yes | Same ceilings as generate (members, range, format, at least one section) |
+| `method` | integer enum | Yes | `ExportConsentMethod`: Password=1, Biometric=2 |
+| `acceptedResponsibility` | boolean | Yes | Must be `true` — the client only sends this after the responsibility popup |
+
+### Response `200 OK`
+
+```json
+{
+  "consentToken": "8f14e45fceea167a5a36dedd4bea2543",
+  "expiresAt": "2026-08-07T10:02:00Z"
+}
+```
+
+---
+
 ## POST `/api/v1/reports`
 
-Queue async generation of a health summary report for one or more CardiMembers. Returns a report ID to poll. (There is no `/generate` suffix.)
+Queue async generation of a health summary report for one or more CardiMembers. Returns a report ID to poll. (There is no `/generate` suffix.) A generate without a matching unused consent token is **400**.
 
 **Priority:** P0 | **Auth Required:** Yes
 
@@ -41,8 +86,11 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
   "includeMetrics": true,
   "includeTrends": true,
   "includeAlerts": true,
+  "includeJournals": true,
+  "includeNotices": true,
   "includeNotes": false,
   "includeDevices": false,
+  "consentToken": "8f14e45fceea167a5a36dedd4bea2543",
   "title": "Health Summary for Dr. Smith Visit"
 }
 ```
@@ -56,13 +104,17 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 | `fhirProfile` | string | No | Default `"us-core"`, which is the shape the FHIR renderer emits. Other values are not yet honoured |
 | `fhirResources` | string array | No | Default `["Patient", "Observation", "Device"]` — the three the bundle carries. Not yet used to narrow the bundle |
 | `includeMetrics` | boolean | No | Include daily activity metrics (default `true`) |
-| `includeTrends` | boolean | No | Default `true`; currently has no effect |
+| `includeTrends` | boolean | No | Default `true`. On PDF, draws line charts for the selected days (gaps for missing days, never zeros). Ignored by CSV and FHIR |
 | `includeAlerts` | boolean | No | Include alert history in range (default `true`) |
+| `includeJournals` | boolean | No | Include Daybook / Weekbook / Monthbook entries in range (default `false`). The live Family glance is never exported |
+| `includeNotices` | boolean | No | Include the completeness inbox (stale device, battery, …) first-detected in range (default `false`) |
+| `journalEntryDate` / `journalAudience` | date / enum | No | When both are set, journals are scoped to that one entry rather than every book in the range |
 | `includeNotes` | boolean | No | Default `false`; no notes feature exists |
 | `includeDevices` | boolean | No | Include device provenance — device **types** only, never caregiver labels (default `false`) |
+| `consentToken` | string | Yes | Token from `POST /api/v1/reports/consent` for this same snapshot |
 | `title` | string | No | Rendered onto the PDF cover; ignored by CSV and FHIR |
 
-`GenerateReportValidator` enforces the rules above. At least one of `includeMetrics` / `includeAlerts` / `includeDevices` must be true, and for `format: 3` (FHIR R4) at least one of `includeMetrics` / `includeDevices` must be true — see the FHIR note under the download endpoint.
+`GenerateReportValidator` enforces the rules above. At least one of `includeMetrics` / `includeAlerts` / `includeDevices` / `includeJournals` / `includeNotices` must be true, and for `format: 3` (FHIR R4) at least one of `includeMetrics` / `includeDevices` must be true — journals and notices are PDF/CSV only. See the FHIR note under the download endpoint.
 
 ### Response `202 Accepted` (wrapped in `ApiResponse<T>`)
 
@@ -86,7 +138,7 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 
 | Status | When |
 |--------|------|
-| 400 | A business rule failed — too many members, a range over 365 days, duplicate members, no sections, or HL7 v2 |
+| 400 | A business rule failed — too many members, a range over 365 days, duplicate members, no sections, HL7 v2, a missing/expired/mismatched consent token |
 | 404 | A requested CardiMember ID is unknown **or not readable by the caller** — deliberately indistinguishable |
 
 ---
@@ -174,8 +226,8 @@ The filename's subject is a slug of the member's name for a single-member export
 
 What each format contains:
 
-- **PDF** — the AI narrative (labelled as AI-generated), then a daily table per member, then alerts. A confidentiality footer and page numbers on every page, because printed pages get separated. A reading the device never reported prints as an em dash, never a zero.
-- **CSV** — one row per member per day for the daily metrics, then an alerts block, then a devices block, separated by blank lines. UTF-8 **with a BOM** (without it Excel on Windows mangles non-ASCII names); invariant numbers and ISO dates. A missing reading is an empty cell, never a zero.
+- **PDF** — the AI narrative (labelled as AI-generated), then age and sex (not date of birth), optional trend charts for the selected days, a daily table per member, then alerts, journals (each labelled as AI), and notices. A confidentiality footer and page numbers on every page, because printed pages get separated. A reading the device never reported prints as an em dash, never a zero.
+- **CSV** — one row per member per day for the daily metrics, then an alerts block, then a devices block, then journals and notices when ticked, separated by blank lines. UTF-8 **with a BOM** (without it Excel on Windows mangles non-ASCII names); invariant numbers and ISO dates. A missing reading is an empty cell, never a zero.
 - **FHIR R4** — a `collection` `Bundle` of `Patient`, `Device` and one `Observation` per metric per day, LOINC-coded with UCUM units, every resource labelled `R` (restricted). Resource ids are real GUIDs, because `urn:uuid:` is a registered scheme and a strict parser rejects anything else. A reading with no agreed LOINC code is omitted rather than given an invented one. **Alerts are not in the bundle in MVP 1** — they are CardiTrack's own statistical findings, and `DetectedIssue`, `Flag` and an `Observation` of the triggering reading each imply a different clinical meaning to the receiving system. A FHIR request whose only selected section is alerts is **refused with 400** rather than answered with a lone `Patient`; ticking alerts alongside readings is accepted and the readings are returned.
 
 > **Still not implemented:** HL7 v2 (MVP 2, rejected at validation), LOINC/CCD (MVP 2), SNOMED CT (MVP 3), and `X-HIPAA-Confidential` response headers.
@@ -193,4 +245,4 @@ Both messages are **fixed caregiver-facing copy** and never echo the requested i
 
 **Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [User Stories 2.3, 9.2](../../ui/mobile/user_stories.md)
 
-**Last Updated:** September 6, 2026
+**Last Updated:** September 9, 2026

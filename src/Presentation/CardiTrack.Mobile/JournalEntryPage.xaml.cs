@@ -158,6 +158,21 @@ public partial class JournalEntryPage : ContentPage
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(AppShell.JournalRoute);
 
+    /// <summary>
+    /// Opens M1-17 already scoped to this one entry — journals only, this day
+    /// (or week/month), this book. The caregiver still confirms responsibility
+    /// there; this button does not export on its own.
+    /// </summary>
+    private async void OnExportClicked(object? sender, EventArgs e)
+    {
+        if (_memberId == Guid.Empty || _date == default)
+            return;
+
+        await Shell.Current.GoToAsync(
+            $"{ExportHealthDataPage.Route}?memberId={_memberId}&journalsOnly=true"
+            + $"&journalDate={_date:yyyy-MM-dd}&cadence={_cadence.WireValue()}");
+    }
+
     /// <param name="force">
     /// Supersedes a load already in flight rather than skipping — for anything the caregiver
     /// asked for by hand. A gesture that did nothing because a slow request happened to be

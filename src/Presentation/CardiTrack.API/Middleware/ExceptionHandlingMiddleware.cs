@@ -48,6 +48,7 @@ public class ExceptionHandlingMiddleware
             DuplicateEmailException => (HttpStatusCode.Conflict, exception.Message),
             // A refused profile photo upload — likewise authored for end users.
             InvalidProfilePhotoException => (HttpStatusCode.BadRequest, exception.Message),
+            ExportConsentException => (HttpStatusCode.BadRequest, exception.Message),
             _ => (HttpStatusCode.InternalServerError, "Something went wrong on our end. Please try again in a moment.")
         };
 

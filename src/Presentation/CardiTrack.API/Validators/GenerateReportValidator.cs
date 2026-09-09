@@ -56,8 +56,13 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
 
         // Every section off would produce a file with a header and nothing under it.
         RuleFor(x => x)
-            .Must(x => x.IncludeMetrics || x.IncludeAlerts || x.IncludeDevices)
+            .Must(x => x.IncludeMetrics || x.IncludeAlerts || x.IncludeDevices
+                       || x.IncludeJournals || x.IncludeNotices)
                 .WithMessage("Choose at least one kind of data to include");
+
+        RuleFor(x => x.ConsentToken)
+            .NotEmpty()
+            .WithMessage("Confirm you accept responsibility before exporting");
 
         // FHIR R4 does not carry alerts in MVP 1 (see FhirR4ReportRenderer), so a bundle asked
         // for with only alerts ticked would be a lone Patient resource — a "successful" export

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -28,6 +29,9 @@ public class ReportGenerationServiceTests
     private readonly InMemoryReportStorage _storage = new();
     private readonly RecordingRenderer _renderer = new(ReportFormat.Pdf);
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
+    private readonly IExportConsentService _consent = Substitute.For<IExportConsentService>();
+    private readonly IDigestRepository _digests = Substitute.For<IDigestRepository>();
+    private readonly INotificationRepository _notifications = Substitute.For<INotificationRepository>();
     private readonly ReportStorageOptions _options = new();
 
     private readonly Guid _userId = Guid.NewGuid();
@@ -40,6 +44,8 @@ public class ReportGenerationServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.DeviceConnections.Returns(_devices);
+        _unitOfWork.Digests.Returns(_digests);
+        _unitOfWork.Notifications.Returns(_notifications);
         _unitOfWork.Reports.Returns(_reports);
 
         // Defaults: known member, no logs, no alerts, AI returns a fixed narrative.
@@ -75,7 +81,7 @@ public class ReportGenerationServiceTests
     }
 
     private ReportGenerationService CreateSut() =>
-        new(_unitOfWork, _storage, _access, _options, BuildScopeFactory(),
+        new(_unitOfWork, _storage, _access, _consent, _options, BuildScopeFactory(),
             Substitute.For<ILogger<ReportGenerationService>>());
 
     /// <summary>Makes the access service refuse the given member, as it does for an unlinked user.</summary>
@@ -91,14 +97,23 @@ public class ReportGenerationServiceTests
     private GenerateReportRequest BuildRequest(
         ReportFormat format = ReportFormat.Pdf,
         bool includeMetrics = true,
-        bool includeAlerts = true) => new()
+        bool includeAlerts = true,
+        bool includeJournals = false,
+        bool includeNotices = false,
+        DateOnly? journalEntryDate = null,
+        DigestAudience? journalAudience = null) => new()
         {
             CardiMemberIds = [_memberId],
             DateRangeFrom = new DateOnly(2026, 2, 7),
             DateRangeTo = new DateOnly(2026, 3, 9),
             Format = format,
             IncludeMetrics = includeMetrics,
-            IncludeAlerts = includeAlerts
+            IncludeAlerts = includeAlerts,
+            IncludeJournals = includeJournals,
+            IncludeNotices = includeNotices,
+            JournalEntryDate = journalEntryDate,
+            JournalAudience = journalAudience,
+            ConsentToken = "consent-token"
         };
 
     /// <summary>
@@ -162,6 +177,43 @@ public class ReportGenerationServiceTests
         Assert.Equal(new DateOnly(2026, 3, 9), status.Metadata.DateRangeTo);
 
         gate.SetResult("done");
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ConsumesTheConsentToken_BeforeWritingTheReport()
+    {
+        var gate = HoldGeneration();
+        var request = BuildRequest();
+
+        var queued = await CreateSut().GenerateAsync(_userId, request);
+
+        await _consent.Received(1).ConsumeAsync(
+            _userId,
+            "consent-token",
+            request,
+            Arg.Is<Guid>(id => id != Guid.Empty),
+            Arg.Any<CancellationToken>());
+        Assert.Single(_reports.All);
+
+        gate.SetResult("done");
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WritesNoReport_WhenConsentIsRefused()
+    {
+        _consent.ConsumeAsync(
+                Arg.Any<Guid>(),
+                Arg.Any<string>(),
+                Arg.Any<GenerateReportRequest>(),
+                Arg.Any<Guid>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new ExportConsentException(
+                "That confirmation expired — please confirm again.")));
+
+        await Assert.ThrowsAsync<ExportConsentException>(() =>
+            CreateSut().GenerateAsync(_userId, BuildRequest()));
+
+        Assert.Empty(_reports.All);
     }
 
     [Fact]
@@ -461,7 +513,7 @@ public class ReportGenerationServiceTests
         // should not wait on an inference, or fail when the provider is down.
         var renderer = new RecordingRenderer(format);
         var sut = new ReportGenerationService(
-            _unitOfWork, _storage, _access, _options,
+            _unitOfWork, _storage, _access, _consent, _options,
             BuildScopeFactoryFor(renderer), Substitute.For<ILogger<ReportGenerationService>>());
 
         var queued = await sut.GenerateAsync(_userId, BuildRequest(format));
@@ -513,6 +565,109 @@ public class ReportGenerationServiceTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().GenerateAsync(_userId, request));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_LoadsFinishedJournals_AndNeverTheFamilyGlance()
+    {
+        var daybook = new DigestEntry
+        {
+            CardiMemberId = _memberId,
+            LocalDate = new DateOnly(2026, 2, 10),
+            Audience = DigestAudience.Daybook,
+            Headline = "A settled night",
+            Text = "Sleep held near their usual.",
+            GeneratedAtUtc = new DateTime(2026, 2, 11, 2, 0, 0, DateTimeKind.Utc)
+        };
+        _digests.GetHistoryAsync(
+                _memberId, DigestAudience.Daybook, 400,
+                Arg.Any<string?>(), Arg.Any<DateOnly?>(), Arg.Any<DateOnly?>(),
+                Arg.Any<DigestUrgency?>(), Arg.Any<CancellationToken>())
+            .Returns([daybook]);
+        _digests.GetHistoryAsync(
+                _memberId, DigestAudience.Weekbook, 400,
+                Arg.Any<string?>(), Arg.Any<DateOnly?>(), Arg.Any<DateOnly?>(),
+                Arg.Any<DigestUrgency?>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        _digests.GetHistoryAsync(
+                _memberId, DigestAudience.Monthbook, 400,
+                Arg.Any<string?>(), Arg.Any<DateOnly?>(), Arg.Any<DateOnly?>(),
+                Arg.Any<DigestUrgency?>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(includeJournals: true));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        var journals = Assert.Single(_renderer.LastData!.Members).Journals;
+        Assert.Equal(daybook, Assert.Single(journals));
+        await _digests.DidNotReceive().GetHistoryAsync(
+            Arg.Any<Guid>(), DigestAudience.Family, Arg.Any<int>(),
+            Arg.Any<string?>(), Arg.Any<DateOnly?>(), Arg.Any<DateOnly?>(),
+            Arg.Any<DigestUrgency?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_LoadsOneJournalEntry_WhenADayAndBookAreNamed()
+    {
+        var day = new DateOnly(2026, 2, 10);
+        var entry = new DigestEntry
+        {
+            CardiMemberId = _memberId,
+            LocalDate = day,
+            Audience = DigestAudience.Weekbook,
+            Text = "The week held.",
+            GeneratedAtUtc = new DateTime(2026, 2, 16, 2, 0, 0, DateTimeKind.Utc)
+        };
+        _digests.GetLatestByDateAsync(_memberId, day, DigestAudience.Weekbook, Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(
+            includeJournals: true,
+            journalEntryDate: day,
+            journalAudience: DigestAudience.Weekbook));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(entry, Assert.Single(Assert.Single(_renderer.LastData!.Members).Journals));
+        await _digests.DidNotReceive().GetHistoryAsync(
+            Arg.Any<Guid>(), Arg.Any<DigestAudience>(), Arg.Any<int>(),
+            Arg.Any<string?>(), Arg.Any<DateOnly?>(), Arg.Any<DateOnly?>(),
+            Arg.Any<DigestUrgency?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_LoadsNoticesInTheDateRange_WithoutTitleKeys()
+    {
+        var inside = new Notification
+        {
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            RuleCode = "DEVICE_STALE_LONG",
+            TitleKey = "notices.device_stale_long.title",
+            Category = NotificationCategory.Blocking,
+            State = NotificationState.Open,
+            FirstDetectedDate = new DateTime(2026, 2, 20, 8, 0, 0, DateTimeKind.Utc)
+        };
+        var outside = new Notification
+        {
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            RuleCode = "DEVICE_STALE_LONG",
+            TitleKey = "notices.device_stale_long.title",
+            Category = NotificationCategory.Blocking,
+            State = NotificationState.Open,
+            FirstDetectedDate = new DateTime(2026, 1, 2, 8, 0, 0, DateTimeKind.Utc)
+        };
+        _notifications.QueryAsync(
+                _userId, null, null, _memberId, null, 200, 0, Arg.Any<CancellationToken>())
+            .Returns([inside, outside]);
+
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(includeNotices: true));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(inside, Assert.Single(Assert.Single(_renderer.LastData!.Members).Notices));
     }
 
     [Fact]

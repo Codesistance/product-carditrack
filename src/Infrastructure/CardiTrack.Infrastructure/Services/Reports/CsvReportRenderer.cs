@@ -65,6 +65,18 @@ public class CsvReportRenderer : IReportRenderer
                 WriteDevices(csv, data);
             }
 
+            if (sections.IncludeJournals && data.Members.Any(m => m.Journals.Count > 0))
+            {
+                csv.NextRecord();
+                WriteJournals(csv, data);
+            }
+
+            if (sections.IncludeNotices && data.Members.Any(m => m.Notices.Count > 0))
+            {
+                csv.NextRecord();
+                WriteNotices(csv, data);
+            }
+
             csv.Flush();
         }
 
@@ -190,6 +202,47 @@ public class CsvReportRenderer : IReportRenderer
                 csv.WriteField(device.ConnectionStatus.ToString());
                 csv.WriteField(device.ConnectedDate?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
                 csv.WriteField(device.LastSyncDate?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
+                csv.NextRecord();
+            }
+        }
+    }
+
+    private static void WriteJournals(CsvWriter csv, ReportDataSet data)
+    {
+        foreach (var header in new[] { "Member", "Book", "LocalDate", "Headline", "Text", "Urgency" })
+            csv.WriteField(header);
+        csv.NextRecord();
+
+        foreach (var member in data.Members)
+        {
+            foreach (var entry in member.Journals)
+            {
+                WriteText(csv, member.Member.Name);
+                csv.WriteField(entry.Audience.ToString());
+                csv.WriteField(entry.LocalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                WriteText(csv, entry.Headline);
+                WriteText(csv, entry.Text);
+                csv.WriteField(entry.Urgency?.ToString());
+                csv.NextRecord();
+            }
+        }
+    }
+
+    private static void WriteNotices(CsvWriter csv, ReportDataSet data)
+    {
+        foreach (var header in new[] { "Member", "FirstDetectedUtc", "Category", "RuleCode", "State" })
+            csv.WriteField(header);
+        csv.NextRecord();
+
+        foreach (var member in data.Members)
+        {
+            foreach (var notice in member.Notices)
+            {
+                WriteText(csv, member.Member.Name);
+                csv.WriteField(notice.FirstDetectedDate.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
+                csv.WriteField(notice.Category.ToString());
+                csv.WriteField(notice.RuleCode);
+                csv.WriteField(notice.State.ToString());
                 csv.NextRecord();
             }
         }

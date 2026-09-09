@@ -169,6 +169,10 @@
                                HorizontalTextAlignment="Start"
                                LineBreakMode="WordWrap"/>
 
+                        <Button Text="Export this entry"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                Clicked="OnExportClicked"/>
+
                     </VerticalStackLayout>
                 </Grid>
             </ScrollView>

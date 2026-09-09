@@ -64,6 +64,12 @@ public class CardiTrackDbContext : DbContext
     // the export bucket (docs/infrastructure.md — files never in the database).
     public DbSet<Report> Reports => Set<Report>();
 
+    /// <summary>
+    /// Recorded "I accept responsibility" step-ups that authorize one export.
+    /// Append-only aside from the consume stamp.
+    /// </summary>
+    public DbSet<ExportConsent> ExportConsents => Set<ExportConsent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

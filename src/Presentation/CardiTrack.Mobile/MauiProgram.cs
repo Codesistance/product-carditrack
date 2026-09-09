@@ -120,6 +120,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IBrowserAuthenticator, WebBrowserAuthenticator>();
         builder.Services.AddSingleton<IPushDeviceRegistrationService, PushDeviceRegistrationService>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
+        builder.Services.AddSingleton<IDeviceBiometric, DeviceBiometric>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
 
         // Singleton so the "already reported" set outlives the pages that consult it — the member

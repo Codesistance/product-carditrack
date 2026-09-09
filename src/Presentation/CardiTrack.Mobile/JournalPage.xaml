@@ -151,6 +151,12 @@
                              Padding="20,20,20,0"
                              IsVisible="False">
 
+            <Button Text="Export journals"
+                    Style="{StaticResource SecondaryOutlineButton}"
+                    FontSize="14"
+                    HeightRequest="40"
+                    Clicked="OnExportJournalsClicked"/>
+
             <!-- Same treatment as the questionnaires archive search. Server-side and debounced:
                  the search runs over the whole history, not the loaded page. -->
             <Border Style="{StaticResource AuthEntryBorder}" HeightRequest="48">

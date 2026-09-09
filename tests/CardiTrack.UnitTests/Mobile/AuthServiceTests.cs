@@ -212,4 +212,35 @@ public class AuthServiceTests
         await _store.Received(1).ClearAsync();
         await cache.Received(1).ClearAsync(Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task VerifyPassword_ProvesAgainstAuth0_WithoutSavingTokens()
+    {
+        var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
+        _auth0.LoginAsync("a@b.com", "pw", Arg.Any<CancellationToken>()).Returns(tokens);
+        var sut = CreateSut();
+        await sut.SignInAsync("a@b.com", "pw");
+        _store.ClearReceivedCalls();
+
+        var proof = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
+        _auth0.LoginAsync("a@b.com", "pw", Arg.Any<CancellationToken>()).Returns(proof);
+
+        Assert.True(await sut.VerifyPasswordAsync("pw"));
+        await _store.DidNotReceive().SaveAsync(Arg.Any<AuthTokens>());
+    }
+
+    [Fact]
+    public async Task VerifyPassword_ReturnsFalse_OnInvalidCredentials()
+    {
+        var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
+        _auth0.LoginAsync("a@b.com", "pw", Arg.Any<CancellationToken>()).Returns(tokens);
+        var sut = CreateSut();
+        await sut.SignInAsync("a@b.com", "pw");
+
+        _auth0.LoginAsync("a@b.com", "wrong", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new AuthException(AuthErrorCode.InvalidCredentials, "denied"));
+
+        Assert.False(await sut.VerifyPasswordAsync("wrong"));
+        await _store.Received(1).SaveAsync(tokens);
+    }
 }

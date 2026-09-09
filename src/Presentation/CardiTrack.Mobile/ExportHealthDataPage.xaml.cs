@@ -1,7 +1,9 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Services;
 using Microsoft.Maui.Controls.Shapes;
@@ -22,6 +24,9 @@ namespace CardiTrack.Mobile;
 /// </para>
 /// </remarks>
 [QueryProperty(nameof(MemberId), "memberId")]
+[QueryProperty(nameof(JournalsOnly), "journalsOnly")]
+[QueryProperty(nameof(JournalDate), "journalDate")]
+[QueryProperty(nameof(Cadence), "cadence")]
 public partial class ExportHealthDataPage : ContentPage
 {
     public const string Route = "exporthealthdata";
@@ -52,9 +57,14 @@ public partial class ExportHealthDataPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly IAuthService _auth;
+    private readonly IDeviceBiometric _biometric;
     private readonly Dictionary<ReportFormat, Border> _formatCards = [];
 
     private Guid _memberId;
+    private bool _journalsOnly;
+    private DateOnly? _journalDate;
+    private DigestAudience? _journalAudience;
     private List<CardiMemberResponse> _members = [];
     private ReportFormat _selectedFormat = ReportFormat.Pdf;
     private CancellationTokenSource? _generation;
@@ -62,11 +72,17 @@ public partial class ExportHealthDataPage : ContentPage
     private string? _readyPath;
     private bool _isLoading;
 
-    public ExportHealthDataPage(ICardiTrackApiClient api, IPopupService popups)
+    public ExportHealthDataPage(
+        ICardiTrackApiClient api,
+        IPopupService popups,
+        IAuthService auth,
+        IDeviceBiometric biometric)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _auth = auth;
+        _biometric = biometric;
 
         BuildFormatCards();
     }
@@ -76,6 +92,31 @@ public partial class ExportHealthDataPage : ContentPage
         set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
             ? id
             : Guid.Empty;
+    }
+
+    public string JournalsOnly
+    {
+        set => _journalsOnly = string.Equals(
+            Uri.UnescapeDataString(value ?? string.Empty), "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public string JournalDate
+    {
+        set => _journalDate = DateOnly.TryParse(
+            Uri.UnescapeDataString(value ?? string.Empty), out var date)
+            ? date
+            : null;
+    }
+
+    public string Cadence
+    {
+        set => _journalAudience = JournalCadenceExtensions.ParseCadence(
+            Uri.UnescapeDataString(value ?? string.Empty)) switch
+        {
+            JournalCadence.Weekbook => DigestAudience.Weekbook,
+            JournalCadence.Monthbook => DigestAudience.Monthbook,
+            _ => DigestAudience.Daybook
+        };
     }
 
     protected override void OnAppearing()
@@ -160,6 +201,22 @@ public partial class ExportHealthDataPage : ContentPage
         FromPicker.MaximumDate = today;
         ToPicker.MaximumDate = today;
 
+        if (_journalsOnly)
+        {
+            JournalsCheck.IsChecked = true;
+            MetricsCheck.IsChecked = false;
+            TrendsCheck.IsChecked = false;
+            AlertsCheck.IsChecked = false;
+            NoticesCheck.IsChecked = false;
+            DevicesCheck.IsChecked = false;
+            if (_journalDate is { } journalDay)
+            {
+                var day = journalDay.ToDateTime(TimeOnly.MinValue);
+                FromPicker.Date = day;
+                ToPicker.Date = day;
+            }
+        }
+
         SelectFormat(ReportFormat.Pdf);
         UpdateEstimate();
     }
@@ -236,7 +293,8 @@ public partial class ExportHealthDataPage : ContentPage
     private void UpdateEstimate()
     {
         var days = (SelectedTo - SelectedFrom).Days + 1;
-        var anySection = MetricsCheck.IsChecked || AlertsCheck.IsChecked || DevicesCheck.IsChecked;
+        var anySection = MetricsCheck.IsChecked || AlertsCheck.IsChecked || DevicesCheck.IsChecked
+                         || JournalsCheck.IsChecked || NoticesCheck.IsChecked;
 
         if (days <= 0)
         {
@@ -286,6 +344,10 @@ public partial class ExportHealthDataPage : ContentPage
         if (member is null)
             return;
 
+        var consent = await ConfirmExportAsync(member);
+        if (consent is null)
+            return;
+
         _generation?.Cancel();
         _generation = new CancellationTokenSource();
         var ct = _generation.Token;
@@ -297,17 +359,8 @@ public partial class ExportHealthDataPage : ContentPage
 
         try
         {
-            var queued = await _api.GenerateReportAsync(new GenerateReportRequest
-            {
-                CardiMemberIds = [member.Id],
-                DateRangeFrom = DateOnly.FromDateTime(SelectedFrom),
-                DateRangeTo = DateOnly.FromDateTime(SelectedTo),
-                Format = _selectedFormat,
-                IncludeMetrics = MetricsCheck.IsChecked,
-                IncludeAlerts = AlertsCheck.IsChecked,
-                IncludeDevices = DevicesCheck.IsChecked,
-                Title = $"{member.Name} — health export"
-            }, ct);
+            var request = BuildRequest(member, consent);
+            var queued = await _api.GenerateReportAsync(request, ct);
 
             var status = await PollUntilReadyAsync(queued.ReportId, ct);
 
@@ -481,6 +534,143 @@ public partial class ExportHealthDataPage : ContentPage
     }
 
     // ── Plumbing ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Two pop-up questions: accept responsibility, then prove it with a password
+    /// or this device's fingerprint / face unlock. Returns the minted token, or
+    /// null when the caregiver backed out or the proof failed.
+    /// </summary>
+    private async Task<string?> ConfirmExportAsync(CardiMemberResponse member)
+    {
+        var accepted = await _popups.ConfirmWarningAsync(
+            ExportConsentPolicy.Text,
+            ExportConsentPolicy.Title,
+            ExportConsentPolicy.ConfirmPrompt,
+            "Not now");
+        if (!accepted)
+            return null;
+
+        var method = await ChooseStepUpAsync();
+        if (method is null)
+            return null;
+
+        if (method == ExportConsentMethod.Password)
+        {
+            var password = await _popups.AskPasswordAsync(
+                "Confirm it's you",
+                "Enter the password you use to sign in to CardiTrack.");
+            if (password is null)
+                return null;
+
+            if (!await _auth.VerifyPasswordAsync(password))
+            {
+                await _popups.ShowErrorAsync(
+                    "That password didn't match. Try again, or use this device's fingerprint or face unlock.",
+                    "Couldn't confirm");
+                return null;
+            }
+        }
+        else if (!await _biometric.AuthenticateAsync("Confirm this export"))
+        {
+            await _popups.ShowErrorAsync(
+                "We couldn't confirm with fingerprint or face unlock. Try your password instead.",
+                "Couldn't confirm");
+            return null;
+        }
+
+        try
+        {
+            var recorded = await _api.RecordExportConsentAsync(new RecordExportConsentRequest
+            {
+                CardiMemberIds = [member.Id],
+                DateRangeFrom = DateOnly.FromDateTime(SelectedFrom),
+                DateRangeTo = DateOnly.FromDateTime(SelectedTo),
+                Format = _selectedFormat,
+                IncludeMetrics = MetricsCheck.IsChecked,
+                IncludeTrends = TrendsCheck.IsChecked,
+                IncludeAlerts = AlertsCheck.IsChecked,
+                IncludeJournals = JournalsCheck.IsChecked,
+                IncludeNotices = NoticesCheck.IsChecked,
+                IncludeDevices = DevicesCheck.IsChecked,
+                JournalEntryDate = ScopedJournalDate(),
+                JournalAudience = ScopedJournalAudience(),
+                Method = method.Value,
+                AcceptedResponsibility = true
+            });
+            return recorded.ConsentToken;
+        }
+        catch (ApiException ex)
+        {
+            await _popups.ShowErrorAsync(ex.Message, "Couldn't confirm");
+            return null;
+        }
+    }
+
+    private async Task<ExportConsentMethod?> ChooseStepUpAsync()
+    {
+        if (_biometric.IsAvailable)
+        {
+            var choice = await _popups.ChooseAsync(
+                "How do you want to confirm?",
+                "Cancel",
+                "Password",
+                "Fingerprint or face unlock");
+            return choice switch
+            {
+                "Password" => ExportConsentMethod.Password,
+                "Fingerprint or face unlock" => ExportConsentMethod.Biometric,
+                _ => null
+            };
+        }
+
+        var usePassword = await _popups.ConfirmInfoAsync(
+            "Enter the password you use to sign in. This device has no fingerprint or face unlock set up.",
+            "Confirm with your password",
+            "Continue",
+            "Cancel");
+        return usePassword ? ExportConsentMethod.Password : null;
+    }
+
+    private GenerateReportRequest BuildRequest(CardiMemberResponse member, string consentToken) => new()
+    {
+        CardiMemberIds = [member.Id],
+        DateRangeFrom = DateOnly.FromDateTime(SelectedFrom),
+        DateRangeTo = DateOnly.FromDateTime(SelectedTo),
+        Format = _selectedFormat,
+        IncludeMetrics = MetricsCheck.IsChecked,
+        IncludeTrends = TrendsCheck.IsChecked,
+        IncludeAlerts = AlertsCheck.IsChecked,
+        IncludeJournals = JournalsCheck.IsChecked,
+        IncludeNotices = NoticesCheck.IsChecked,
+        IncludeDevices = DevicesCheck.IsChecked,
+        JournalEntryDate = ScopedJournalDate(),
+        JournalAudience = ScopedJournalAudience(),
+        ConsentToken = consentToken,
+        Title = $"{member.Name} — health export"
+    };
+
+    /// <summary>
+    /// One journal entry only when the caregiver still has that day selected
+    /// and journals ticked. Changing the dates drops the pin so the range they
+    /// can see is the range that is exported.
+    /// </summary>
+    private DateOnly? ScopedJournalDate()
+    {
+        if (!JournalsCheck.IsChecked || _journalDate is not { } day)
+            return null;
+
+        return DateOnly.FromDateTime(SelectedFrom) == day
+            && DateOnly.FromDateTime(SelectedTo) == day
+            ? day
+            : null;
+    }
+
+    /// <summary>
+    /// The book the journal list or entry sent us here for. Dropped if they
+    /// untick journals — a metrics-only export must not stay scoped to one book.
+    /// </summary>
+    private DigestAudience? ScopedJournalAudience() =>
+        JournalsCheck.IsChecked && _journalsOnly ? _journalAudience : null;
 
     /// <summary>
     /// The pickers' dates, which the control exposes as nullable. Both are set in

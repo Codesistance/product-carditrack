@@ -15,17 +15,54 @@ namespace CardiTrack.API.Controllers;
 public class ReportsController : BaseApiController
 {
     private readonly IReportGenerationService _reportService;
+    private readonly IExportConsentService _consent;
     private readonly IValidator<GenerateReportRequest> _generateValidator;
+    private readonly IValidator<RecordExportConsentRequest> _consentValidator;
 
     public ReportsController(
         IUserContext userContext,
         ILogger<ReportsController> logger,
         IReportGenerationService reportService,
-        IValidator<GenerateReportRequest> generateValidator)
+        IExportConsentService consent,
+        IValidator<GenerateReportRequest> generateValidator,
+        IValidator<RecordExportConsentRequest> consentValidator)
         : base(userContext, logger)
     {
         _reportService = reportService;
+        _consent = consent;
         _generateValidator = generateValidator;
+        _consentValidator = consentValidator;
+    }
+
+    /// <summary>
+    /// Records that the caregiver accepted responsibility for this export and
+    /// proved it (password or biometrics). Returns a short-lived token the
+    /// generate call must present.
+    /// </summary>
+    [HttpPost("consent")]
+    [ProducesResponseType(typeof(ApiResponse<ExportConsentResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<ExportConsentResponse>>> RecordConsent(
+        [FromBody] RecordExportConsentRequest request, CancellationToken ct)
+    {
+        if (NotSignedIn(out var signInError))
+            return signInError;
+
+        var validation = await _consentValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        try
+        {
+            var recorded = await _consent.RecordAsync(UserContext.UserId, request, ct);
+            return Success(recorded, "Confirmed — we can prepare the export now.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
     }
 
     /// <summary>Enqueue a report for generation. Returns 202 immediately with a report ID to poll.</summary>

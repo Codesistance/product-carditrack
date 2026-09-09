@@ -906,6 +906,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     // ---- Health data export (M1-17, Story 6.3) ----
 
+    public Task<ExportConsentResponse> RecordExportConsentAsync(
+        RecordExportConsentRequest request, CancellationToken ct = default) =>
+        PostAsync<RecordExportConsentRequest, ExportConsentResponse>("api/v1/reports/consent", request, ct);
+
     public Task<ReportQueuedResponse> GenerateReportAsync(
         GenerateReportRequest request, CancellationToken ct = default) =>
         PostAsync<GenerateReportRequest, ReportQueuedResponse>("api/v1/reports", request, ct);
