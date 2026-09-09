@@ -383,21 +383,25 @@ public partial class DashboardPage : ContentPage
                     SetState(DashboardState.Loaded);
                 },
                 _feedback);
-            _lastOutcome = outcome;
 
             switch (outcome.Result)
             {
                 case RefreshResult.Superseded:
+                    // Recorded only for a load that still owns the screen. A superseded one
+                    // writing here would let the older answer speak for the newer load — and
+                    // SyncAndReloadAsync reads this to decide whether to report a sync refusal.
                     return;
                 case RefreshResult.NothingAndFailed:
                     // Nothing to show — or a 404 over a snapshot, which means the member is gone
                     // and their saved dashboard must not stand in for them.
+                    _lastOutcome = outcome;
                     _lastData = null;
                     ErrorDetailLabel.Text = outcome.Error!.Message;
                     SetState(DashboardState.Error);
                     return;
             }
 
+            _lastOutcome = outcome;
             ApplyStaleBanner(_lastData!, outcome);
             if (!outcome.IsFresh)
             {

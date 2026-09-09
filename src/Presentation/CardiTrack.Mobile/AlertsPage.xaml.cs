@@ -274,15 +274,21 @@ public partial class AlertsPage : ContentPage
             }
 
             if (outcome.IsFresh)
+            {
                 _lastLoadedUtc = DateTime.UtcNow;
+
+                // Housekeeping only when the alerts themselves came from the API. The nudge
+                // section is a second call to the same server this load just reached; asking it
+                // over saved data means a request that will fail the same way, and its failure
+                // hides a section that may already be showing something worth reading.
+                loadNudges = true;
+            }
             else if (!silent && outcome.Error is not null)
             {
                 // Alerts already on screen: a failed refresh must not blank a list someone
                 // may be acting on, so say so and leave it.
                 await _popups.ShowWarningAsync(outcome.Error.Message, "Couldn't refresh");
             }
-
-            loadNudges = true;
         }
         finally
         {
