@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -39,11 +40,15 @@ public partial class AlertSettingsPage : ContentPage
     /// <summary>Rule id currently waiting on a PATCH — blocks overlapping toggles.</summary>
     private string? _toggleInFlight;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     public AlertSettingsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -86,17 +91,44 @@ public partial class AlertSettingsPage : ContentPage
 
     private async Task LoadAsync()
     {
+        if (_gate.IsLoading)
+            return;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
+
         try
         {
-            _prefs = await _api.GetAlertPreferencesAsync(_memberId);
-            Render(_prefs);
+            // These switches are the caregiver's own settings — they change only when someone
+            // changes them — so the saved set goes up at once and the live one confirms it
+            // behind. An identical answer is left alone rather than redrawn under an overlay.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _prefs is null ? ct => _api.PeekAlertPreferencesAsync(memberId, ct) : null,
+                fetch: ct => _api.GetAlertPreferencesAsync(memberId, ct),
+                render: prefs =>
+                {
+                    _prefs = prefs;
+                    Render(prefs);
+                },
+                _feedback,
+                sameAs: SamePayload.Same);
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                // The panel goes with the data it was drawn from: values a caregiver can
+                // see and tap, over a null field every handler early-returns on, is worse
+                // than an honest error panel on its own.
+                _prefs = null;
+                SettingsPanel.IsVisible = false;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
+                LoadingSpinner.IsVisible = false;
+                LoadingSpinner.IsRunning = false;
+                ErrorPanel.IsVisible = true;
+            }
         }
-        catch (ApiException ex)
+        finally
         {
-            ErrorDetailLabel.Text = ex.Message;
-            LoadingSpinner.IsVisible = false;
-            LoadingSpinner.IsRunning = false;
-            ErrorPanel.IsVisible = true;
+            _gate.Release(ticket);
         }
     }
 
@@ -259,6 +291,18 @@ public partial class AlertSettingsPage : ContentPage
                 _applying = false;
                 return;
             }
+
+            // The caregiver has changed something, and this page became interactive on a saved
+            // snapshot — so a live load issued before the change may still be in flight, carrying
+            // the state as it was. Its render would put the switch back and leave the screen
+            // disagreeing with the server about whether an alert is on. Drop it; what happens
+            // next is authoritative.
+            //
+            // The banner goes with it. A cancelled run never reaches Completed, so the "checking for
+            // updates…" it put up would otherwise stay there for good — over a screen that is about
+            // to show exactly what the caregiver just saved, which is the most current thing on it.
+            _gate.CancelInFlight();
+            SavedBanner.Hide();
 
             var previous = !args.Value;
             _toggleInFlight = rule.Id;

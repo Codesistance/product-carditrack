@@ -123,19 +123,59 @@ public partial class EditCardiMemberPage : ContentPage
 
     private async Task LoadAsync()
     {
-        SetState(loading: true);
+        if (_member is null)
+            SetState(loading: true);
+
         try
         {
-            _member = await _api.GetCardiMemberAsync(_memberId);
+            // The profile the device already holds fills the form at once — a caregiver who came
+            // here to change a phone number should not watch an empty form while the values they
+            // are about to edit are fetched.
+            if (_member is null && await _api.PeekCardiMemberAsync(_memberId) is { } saved)
+            {
+                _member = saved;
+                ChatBot.MemberId = _memberId;
+                ChatBot.MemberFirstName = NameFormatting.FirstName(saved.Name);
+                Fill(saved);
+                SetState(form: true);
+                await ApplyFocusAsync();
+            }
+
+            var member = await _api.GetCardiMemberAsync(_memberId);
+
+            // What they have typed is theirs. HasUnsavedChanges compares the form against the
+            // profile it was filled from, so anything they have changed makes this true and the
+            // live answer is kept off the form — it is only ever the same values again unless
+            // somebody edited this member elsewhere, and even then their draft wins.
+            //
+            // The live answer is dropped whole, _member included: that field IS "the profile this
+            // form was filled from", which is what every later unsaved-changes check — the cancel
+            // confirmation, Save's own diff — measures against. Moving it while the form still
+            // shows the old values would silently re-baseline those checks mid-edit and could let
+            // a caregiver leave believing they had changed nothing.
+            if (HasUnsavedChanges())
+                return;
+
+            _member = member;
             ChatBot.MemberId = _memberId;
-            ChatBot.MemberFirstName = NameFormatting.FirstName(_member.Name);
-            Fill(_member);
+            ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+            Fill(member);
             SetState(form: true);
             await ApplyFocusAsync();
         }
         catch (ApiException ex)
         {
-            ErrorDetailLabel.Text = ex.Message;
+            // A form already filled from the device stays — Save reports its own failure.
+            // Except when the server says the member is gone: keeping their profile up would
+            // offer edits to somebody who no longer exists, and every Save would fail. The same
+            // rule the read screens follow — a 404 over a snapshot drops it.
+            if (_member is not null && !ex.IsNotFound)
+                return;
+
+            _member = null;
+            ErrorDetailLabel.Text = ex.IsNotFound
+                ? "This person's profile is no longer available."
+                : ex.Message;
             SetState(error: true);
         }
     }

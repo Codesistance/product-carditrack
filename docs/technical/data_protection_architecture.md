@@ -332,6 +332,7 @@ Periods marked ⚖ are engineering **proposals** requiring legal ratification (D
 | Push tokens (`PushDeviceToken`) | Postgres clinical | **30 days after disable** | **Hard delete** — never soft-retained | Tier 1 device identifier; a disabled token has no operational value and every retained day is exposure ([notification_engine.md](./notification_engine.md) §7.2 C2) |
 | Notifications + delivery outbox | Postgres clinical | ⚖ 180 d resolved / 90 d delivered | Hard delete. Rows hold no names — `TemplateData` is counters only, names resolve from the vault at render time | Keeps the completeness-nudge surface out of the identifier↔clinical join that finding #1 describes |
 | AI pipeline results (`RealtimeAssessments`, `DigestEntries`, `EnvironmentalReadings`) | Postgres clinical (partitioned) | Per [llm_design.md](../llm_design.md): assessments 90 d, **digests and CardiJournal entries 7 mo**, environmental 90 d — **enforced today** by `PartitionMaintenanceWorker` partition drops. The journal window is the longest history any plan sells plus margin, applied uniformly — the minimisation trade-off that makes is DPIA open item **OI-14** | Partition drop; erasure = delete by `CardiMemberId` | Per-user LSTM model blobs were descoped with the LSTM (2026-08-10) — no model-weight artifacts exist |
+| On-device read cache (mobile) | Caregiver's phone — encrypted files in the app sandbox (`FileSystem.AppDataDirectory/offline-cache`) | **7 days** rolling from the write (`IOfflineReadCache.Lifetime`); an older entry is dropped on read, never served | **Wiped and the key rotated on sign-out** (`AuthService.SignOutAsync`). A successful mutation evicts the keys it makes stale; a 404 evicts its own | The last successful body of each `GET` the app made, so a screen opens on what the caregiver last saw rather than on a spinner. It is a copy of data that caregiver is already authorised to read, held on their own device: AES-256-GCM per file, key in the platform keystore (Keychain / Android Keystore), **fail-closed** — a device that cannot encrypt does not cache. Not a second store of record and never synced anywhere |
 | APM/telemetry (Datadog/Better Stack) | SaaS | ⚖ 30 days — configure in-product retention; **stop shipping raw member GUIDs in paths** (scrub processor, §7) | Provider-side expiry | |
 | DB backups | Cloud SQL | 7 days (`cloud_sql.tf:92`) — becomes the erasure bound (§6) | Automatic expiry | |
 
@@ -486,7 +487,20 @@ CREATE TABLE compliance.erasure_ledger (
                 (runbook + automated post-restore hook): after any restore,
                 re-run the sweep for every erasure_ledger row with
                 erased_at > restore point, matching on subject_hash.
-11. CONFIRM    Notify requester; mark completed.
+11. DEVICE     Client copies. A caregiver's phone may hold this member in its
+                encrypted read cache (§5.1). The app evicts the keys it can name
+                when the member is removed through it, and every entry expires
+                within 7 days or at sign-out — but a *server-side* erasure cannot
+                reach a device, and parameterised list keys (a filtered alert list,
+                a journal search) are not enumerable without an index the client
+                deliberately does not keep. So the bound is: **≤7 days on any phone
+                already signed in, and only for data that caregiver was authorised
+                to read.** Nothing is served from it that the server would refuse
+                today — the app re-authorises on every live call. Closing the window
+                completely needs a decrypt-scan eviction (`RemoveWhereAsync`) or a
+                push-triggered wipe; deferred, and worth revisiting if the retention
+                window is ever lengthened.
+12. CONFIRM    Notify requester; mark completed.
 ```
 
 User (caregiver) erasure follows the same pattern via `SubjectDataMap.ByUser`: delete the `Users` row, **Auth0 Management API `DELETE /api/v2/users/{auth0UserId}`** (extends the existing `Auth0ManagementClient`, `ExternalClients/Auth0ManagementClient.cs`), null `acknowledged_by`/`resolved_by` references, delete push tokens/preferences. If the user is an org's last admin, the request escalates to organization closure (product flow needed — D4).

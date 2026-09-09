@@ -728,7 +728,7 @@ Each device card:
 - Large card with gradient background colored by status
 - CardiMember photo (circular, large)
 - Name and age: "[Name], 78"
-- Large status indicator — the four-tier labels below are the **fallback** while `GetCurrentStatusAsync` is in flight. After load, a **single AI sentence** (under 15 words) replaces them. **"Loading" appears only after 1.5 s**, so a fast response never flashes the word.
+- Large status indicator — the four-tier labels below are the **fallback** while `GetCurrentStatusAsync` is in flight. After load, a **single AI sentence** (under 15 words) replaces them. **"Loading" appears only after 1.5 s**, so a fast response never flashes the word. Distinct from the one-second "Updating…" overlay, which is not a wait at all: it marks a saved answer being replaced by a live one, and never appears on a cold load or a background tick.
 - Weather chip (as-built) → `WeatherPopupPage` (session weather for a GPS-tagged exercise, not live)
 
 | Status | Label | Icon |
@@ -809,7 +809,7 @@ Whole percent from 1% up, a tenth below it ("↓0.3%"): a skin temperature 0.1°
 **States (8 as built):**
 - **M1-09a — Loading:** Skeleton/shimmer cards
 - **M1-09b — Normal:** Full data displayed
-- **M1-09c — Stale data / offline:** Cached data with banner: "Last update was X hours ago — pull down to check in". **Suppressed while monitoring is paused** — the data is meant to be stale then, and "pull down to check in" is advice the app can't honour.
+- **M1-09c — Stale data / offline:** two different things, said differently. **Stale sync** (the server has data, but the wearable last reported hours ago): "Last update was X hours ago — pull down to check in". **Saved data** (what is on screen came off the device while the live read runs, fails, or finds no network): the `SavedDataBanner` says which — "Showing data saved 10 minutes ago — checking for updates…", "You're offline — showing data saved …", or "Couldn't refresh — showing data saved …" — and a one-second `UpdatingOverlay` marks the moment live data replaces it. The stale-sync banner is **suppressed while monitoring is paused** (the data is meant to be stale then, and "pull down to check in" is advice the app can't honour) **and while saved data is on screen** (the pull it advises cannot reach a server the banner above it just said was unreachable).
 - **Monitoring paused:** amber banner naming the resume time; hero shows the paused status
 - **M1-09d — No device connected:** Prompt card: "Connect [Name]'s device so CardiTrack can start watching over them" → M1-05
 - **M1-09e — Baseline learning:** Shows progress bar instead of "% of normal" comparisons

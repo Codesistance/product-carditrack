@@ -67,6 +67,7 @@
                                    Margin="0,24"/>
 
                 <VerticalStackLayout x:Name="SettingsPanel" IsVisible="False" Spacing="14">
+                    <controls:SavedDataBanner x:Name="SavedBanner"/>
                     <!-- What a switch does, said once above the sections rather than once per
                          cluster: it is the same sentence for every rule on the page. -->
                     <Label x:Name="IntroLabel" Style="{StaticResource Body2}"/>
@@ -87,5 +88,9 @@
 
             </VerticalStackLayout>
         </ScrollView>
+
+        <!-- The second-long "Updating…" while saved alert settings are replaced by live data —
+             last, so it covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="2"/>
     </Grid>
 </ContentPage>

@@ -64,6 +64,7 @@
                                    Margin="0,24"/>
 
                 <VerticalStackLayout x:Name="AlarmsPanel" IsVisible="False" Spacing="14">
+                    <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                     <Label x:Name="IntroLabel" Style="{StaticResource Body2}"/>
 
@@ -107,5 +108,9 @@
 
             </VerticalStackLayout>
         </ScrollView>
+
+        <!-- The second-long "Updating…" while a saved alarm list is replaced by live data —
+             last, so it covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="2"/>
     </Grid>
 </ContentPage>

@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -44,11 +45,15 @@ public partial class MetricAlarmsPage : ContentPage
     /// <summary>Alarm currently waiting on a save — blocks overlapping toggles.</summary>
     private Guid? _toggleInFlight;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     public MetricAlarmsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -89,25 +94,53 @@ public partial class MetricAlarmsPage : ContentPage
         await LoadAsync();
     }
 
-    private async Task LoadAsync()
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping. The reload after a save is
+    /// the caller that needs it: the list it replaces may hold ids the server has just
+    /// retired, so skipping it would leave the next tap aimed at one of them.
+    /// </param>
+    private async Task LoadAsync(bool force = false)
     {
+        if (_gate.IsLoading && !force)
+            return;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
+
         try
         {
-            _alarms = await _api.GetMemberAlarmsAsync(_memberId);
-            Render(_alarms);
+            // Alarms the caregiver set themselves: the saved list goes up at once on a landing
+            // with nothing on screen, and the live one confirms it behind. A toggle that just
+            // succeeded evicts the key (see the client), so the reload it triggers is live.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _alarms is null ? ct => _api.PeekMemberAlarmsAsync(memberId, ct) : null,
+                fetch: ct => _api.GetMemberAlarmsAsync(memberId, ct),
+                render: alarms =>
+                {
+                    _alarms = alarms;
+                    Render(alarms);
+                },
+                _feedback,
+                sameAs: SamePayload.Same);
+
+            // The list has to go when there is nothing behind it, not just be covered. This page
+            // reloads — returning from the builder clears the cache, and a successful toggle
+            // calls this directly — so a failure here can land on top of a list that is already
+            // rendered. What it must never do is leave stale alarms up unmarked; a saved-only
+            // outcome is marked by the banner, which is the honest version of the same thing.
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                _alarms = null;
+                AlarmsPanel.IsVisible = false;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
+                LoadingSpinner.IsVisible = false;
+                LoadingSpinner.IsRunning = false;
+                ErrorPanel.IsVisible = true;
+            }
         }
-        catch (ApiException ex)
+        finally
         {
-            // The list has to go, not just be covered. This page reloads — returning from the
-            // builder clears the cache, and a successful toggle calls this directly — so a failure
-            // here can land on top of a list that is already rendered, and leaving it up would show
-            // a caregiver stale alarms beside an error saying the alarms could not be loaded.
-            _alarms = null;
-            AlarmsPanel.IsVisible = false;
-            ErrorDetailLabel.Text = ex.Message;
-            LoadingSpinner.IsVisible = false;
-            LoadingSpinner.IsRunning = false;
-            ErrorPanel.IsVisible = true;
+            _gate.Release(ticket);
         }
     }
 
@@ -237,6 +270,18 @@ public partial class MetricAlarmsPage : ContentPage
             return;
         }
 
+        // The caregiver has changed something, and this page became interactive on a saved
+        // snapshot — so a live load issued before the change may still be in flight, carrying
+        // the state as it was. Its render would put the switch back and leave the screen
+        // disagreeing with the server about whether an alert is on. Drop it; what happens
+        // next is authoritative.
+        //
+        // The banner goes with it. A cancelled run never reaches Completed, so the "checking for
+        // updates…" it put up would otherwise stay there for good — over a screen that is about
+        // to show exactly what the caregiver just saved, which is the most current thing on it.
+        _gate.CancelInFlight();
+        SavedBanner.Hide();
+
         var previous = !enabled;
         _toggleInFlight = alarm.Id;
         toggle.IsEnabled = false;
@@ -250,7 +295,7 @@ public partial class MetricAlarmsPage : ContentPage
             // different row — switching an opt-out back on puts the account default back, under
             // the default's own id — and the count in the crowding notice has moved either way.
             // A list left as it was would send the next tap at an id that no longer exists.
-            await LoadAsync();
+            await LoadAsync(force: true);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {

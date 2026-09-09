@@ -453,10 +453,15 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **I want to** view recent health data even when offline
 - **So that** I can check on my parent anywhere
 - **Acceptance Criteria:**
-  - Local SQLite cache of last 7 days
-  - Clear "Offline" indicator
-  - Data syncs when connection restored
-  - Offline alert queue (show pending alerts)
+  - ✅ Last 7 days of what was read, held on the device — **shipped 2026-09-09**, as one
+    encrypted file per request rather than SQLite. Every read screen now opens on it and
+    refreshes behind, so this delivers more than the story asked: the wait is gone whether
+    or not there is a connection
+  - ✅ Clear "Offline" indicator — shipped as a three-state saved-data banner (checking /
+    offline / couldn't refresh), so saved data is never mistaken for live
+  - ⬜ Data syncs when connection restored — reads do; **writes made offline are still not
+    queued**, which is the remaining half of this story
+  - ⬜ Offline alert queue (show pending alerts)
 
 **Story 10.2: Biometric Login**
 - **As a** mobile user accessing health data frequently
@@ -665,7 +670,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - [ ] Story 3.3: Alert acknowledgment & notes
 - [ ] Story 4.1: Family member invitations
 - [ ] Story 6.1: Subscription management _(moved from P0 — R2/MVP 2 per the release matrix)_
-- [ ] Story 10.1: Mobile offline support
+- [~] Story 10.1: Mobile offline support — **read half shipped** (cache-first reads, 2026-09-09); write/sync queue outstanding
 - [ ] Story 12.1: Lab results capture
 - [ ] Story 12.2: Medical insights from lab results
 

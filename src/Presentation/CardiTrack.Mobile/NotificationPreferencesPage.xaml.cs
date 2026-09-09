@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -33,11 +34,15 @@ public partial class NotificationPreferencesPage : ContentPage
     private bool _rendering;
     private bool _saving;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     public NotificationPreferencesPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         BuildCategoryRows();
     }
 
@@ -54,22 +59,56 @@ public partial class NotificationPreferencesPage : ContentPage
 
     private async Task LoadAsync()
     {
-        Loading.IsVisible = true;
-        Panel.IsVisible = false;
+        if (_gate.IsLoading)
+            return;
+        var ticket = _gate.Begin();
+
+        // The spinner only for a screen with nothing on it: a reload behind saved preferences
+        // must not take them away to show a spinner and put the same ones back.
+        var cold = _prefs is null;
+        if (cold)
+        {
+            Loading.IsVisible = true;
+            Panel.IsVisible = false;
+        }
         ErrorPanel.IsVisible = false;
+
         try
         {
-            _prefs = await _api.GetNotificationPreferencesAsync();
-            Render();
-            Panel.IsVisible = true;
-        }
-        catch (ApiException)
-        {
-            ErrorPanel.IsVisible = true;
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: cold ? ct => _api.PeekNotificationPreferencesAsync(ct) : null,
+                fetch: ct => _api.GetNotificationPreferencesAsync(ct),
+                render: prefs =>
+                {
+                    _prefs = prefs;
+                    Render();
+                    Panel.IsVisible = true;
+
+                    // The spinner's job ends the moment there is something to read, which on a
+                    // cold load is the saved snapshot rather than the live answer behind it.
+                    // Leaving this to the finally below left saved preferences on screen with a
+                    // spinner still turning above them for the length of the live call — the
+                    // opposite of what the comment at the top of this method promises.
+                    Loading.IsVisible = false;
+                },
+                _feedback,
+                sameAs: SamePayload.Same);
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                // The panel goes with the preferences it was drawn from. Leaving it up over a
+                // null _prefs is the worst of both: switches a caregiver can see and move, and
+                // every handler refusing to act on them because there is nothing to save against.
+                _prefs = null;
+                Panel.IsVisible = false;
+                ErrorPanel.IsVisible = true;
+            }
         }
         finally
         {
             Loading.IsVisible = false;
+            _gate.Release(ticket);
         }
     }
 
@@ -197,6 +236,18 @@ public partial class NotificationPreferencesPage : ContentPage
 
         // A toggle flipped while a save is in flight has already moved on screen; snap it back
         // to what the server holds rather than let it look saved until the other save returns.
+        // The caregiver has changed something, and this page became interactive on a saved
+        // snapshot — so a live load issued before the change may still be in flight, carrying
+        // the state as it was. Its render would put the switch back and leave the screen
+        // disagreeing with the server about whether an alert is on. Drop it; what happens
+        // next is authoritative.
+        //
+        // The banner goes with it. A cancelled run never reaches Completed, so the "checking for
+        // updates…" it put up would otherwise stay there for good — over a screen that is about
+        // to show exactly what the caregiver just saved, which is the most current thing on it.
+        _gate.CancelInFlight();
+        SavedBanner.Hide();
+
         if (_saving)
         {
             Render();
