@@ -396,16 +396,6 @@ public class StatusLineGenerationServiceTests
             + "one on each digest regeneration.");
     }
 
-    [Fact]
-    public void TheFixedInstructions_StayWithinTheirBudget()
-    {
-        Assert.True(
-            StatusLineGenerationService.CurrentStatusInstructionsLength
-                <= StatusLineGenerationService.StatusPromptBudget,
-            $"The status instructions are {StatusLineGenerationService.CurrentStatusInstructionsLength} "
-            + $"characters against a budget of {StatusLineGenerationService.StatusPromptBudget}.");
-    }
-
     /// <summary>
     /// The budget is a tripwire pinned to the measured length, not headroom, so slack is as much
     /// a failure as an overrun — and slack is the failure mode that hides. A raw string literal
