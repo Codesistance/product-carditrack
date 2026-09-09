@@ -5,13 +5,19 @@
       "slack_ts": null,
       "item_count": 25,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-09",
+      "slack_ts": null,
+      "item_count": 6,
+      "empty_reason": null
     }
   ],
   "items": [
     {
       "date": "2026-09-04",
       "slug": "google-health-fitbit-legacy-sunset",
-      "title": "Legacy Fitbit Web API hard-sunsets 2026-09-30 (26 days) \u2014 no token carryover",
+      "title": "Legacy Fitbit Web API hard-sunsets 2026-09-30 (26 days) — no token carryover",
       "url": "https://developers.google.com/health/migration",
       "severity": "CRITICAL",
       "category": "dependencies",
@@ -20,7 +26,7 @@
     {
       "date": "2026-09-04",
       "slug": "google-health-oauth-restricted-scopes",
-      "title": "Google Health API scopes are now Restricted (`googlehealth.*`) \u2014 mandatory privacy review, queue backing up ahead of Sept 30",
+      "title": "Google Health API scopes are now Restricted (`googlehealth.*`) — mandatory privacy review, queue backing up ahead of Sept 30",
       "url": "https://developers.google.com/health/scopes",
       "severity": "CRITICAL",
       "category": "dependencies",
@@ -38,7 +44,7 @@
     {
       "date": "2026-09-04",
       "slug": "auth0-native-callback-deprecation",
-      "title": "Auth0 native-app callback change already live since 2026-04-28 \u2014 extra login prompt unless migrated to HTTPS callbacks",
+      "title": "Auth0 native-app callback change already live since 2026-04-28 — extra login prompt unless migrated to HTTPS callbacks",
       "url": "https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations/migrate-to-non-verifiable-callback-uri-end-user-confirmation",
       "severity": "CRITICAL",
       "category": "dependencies",
@@ -47,7 +53,7 @@
     {
       "date": "2026-09-04",
       "slug": "ollama-cve-2026-7482-bleeding-llama",
-      "title": "Ollama CVE-2026-7482 \"Bleeding Llama\" \u2014 unauthenticated info-disclosure, fixed in 0.17.1; MedGemma image is unpinned (`ollama/ollama:latest`)",
+      "title": "Ollama CVE-2026-7482 \"Bleeding Llama\" — unauthenticated info-disclosure, fixed in 0.17.1; MedGemma image is unpinned (`ollama/ollama:latest`)",
       "url": "https://github.com/advisories/GHSA-x8qc-fggm-mpqg",
       "severity": "CRITICAL",
       "category": "dependencies",
@@ -56,7 +62,7 @@
     {
       "date": "2026-09-04",
       "slug": "medgemma-ecg-reasoning-benchmark",
-      "title": "New benchmark: MedGemma near-zero on multi-step ECG reasoning chains \u2014 validates CardiTrack's \"MedGemma only narrates\" design",
+      "title": "New benchmark: MedGemma near-zero on multi-step ECG reasoning chains — validates CardiTrack's \"MedGemma only narrates\" design",
       "url": "https://arxiv.org/abs/2603.14326",
       "severity": "FYI",
       "category": "models",
@@ -74,7 +80,7 @@
     {
       "date": "2026-09-04",
       "slug": "haidef-terms-revision-unverified",
-      "title": "Health AI Developer Foundations Terms of Use page shows a mid-2026 revision date \u2014 content unverified, needs manual diff",
+      "title": "Health AI Developer Foundations Terms of Use page shows a mid-2026 revision date — content unverified, needs manual diff",
       "url": "https://developers.google.com/health-ai-developer-foundations/terms",
       "severity": "FYI",
       "category": "models",
@@ -101,7 +107,7 @@
     {
       "date": "2026-09-04",
       "slug": "fda-cds-software-guidance-2026",
-      "title": "FDA revises Clinical Decision Support Software guidance \u2014 carve-out stays HCP-facing only",
+      "title": "FDA revises Clinical Decision Support Software guidance — carve-out stays HCP-facing only",
       "url": "https://www.fda.gov/regulatory-information/search-fda-guidance-documents/clinical-decision-support-software",
       "severity": "FYI",
       "category": "regulation",
@@ -128,7 +134,7 @@
     {
       "date": "2026-09-04",
       "slug": "mhra-ai-airlock-phase2",
-      "title": "MHRA AI Airlock Phase 2 complete \u2014 dedicated AI-in-medical-devices framework expected later in 2026",
+      "title": "MHRA AI Airlock Phase 2 complete — dedicated AI-in-medical-devices framework expected later in 2026",
       "url": "https://www.gov.uk/government/publications/ai-airlock-sandbox-phase-2-programme-report",
       "severity": "FYI",
       "category": "regulation",
@@ -137,7 +143,7 @@
     {
       "date": "2026-09-04",
       "slug": "nhs-productivity-challenge-sovereign-ai",
-      "title": "NHS Productivity Challenge (Sovereign AI R&D Procurement) \u2014 \u00a3100m UK scheme, first round closes 2026-10-01",
+      "title": "NHS Productivity Challenge (Sovereign AI R&D Procurement) — £100m UK scheme, first round closes 2026-10-01",
       "url": "https://www.gov.uk/government/news/100-million-competition-to-back-british-ai-companies-to-fix-public-services",
       "severity": "HIGH",
       "category": "grants",
@@ -146,7 +152,7 @@
     {
       "date": "2026-09-04",
       "slug": "eit-health-transformative-healthcare-instrument",
-      "title": "EIT Health Transformative Healthcare Instrument 2026 \u2014 \u20ac300k-500k, no consortium required, deadline 2026-09-16",
+      "title": "EIT Health Transformative Healthcare Instrument 2026 — €300k-500k, no consortium required, deadline 2026-09-16",
       "url": "https://eithealth.eu/opportunity/transformative-healthcare-instrument/",
       "severity": "HIGH",
       "category": "grants",
@@ -155,7 +161,7 @@
     {
       "date": "2026-09-04",
       "slug": "eit-health-innovation-uptake-2026",
-      "title": "EIT Health Innovation Uptake Call 2026 \u2014 up to \u20ac650k, deadline 2026-09-16 (multi-country consortium required)",
+      "title": "EIT Health Innovation Uptake Call 2026 — up to €650k, deadline 2026-09-16 (multi-country consortium required)",
       "url": "https://eithealth.eu/opportunity/innovation-uptake/",
       "severity": "HIGH",
       "category": "grants",
@@ -164,7 +170,7 @@
     {
       "date": "2026-09-04",
       "slug": "eic-accelerator-open",
-      "title": "EIC Accelerator (Open) \u2014 rolling grant up to ~\u20ac2.5m (UK: grant-only track), next cutoff 2026-10-06",
+      "title": "EIC Accelerator (Open) — rolling grant up to ~€2.5m (UK: grant-only track), next cutoff 2026-10-06",
       "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en",
       "severity": "FYI",
       "category": "grants",
@@ -182,7 +188,7 @@
     {
       "date": "2026-09-04",
       "slug": "whoop-fda-ecg-bp-cleared",
-      "title": "FDA drops enforcement against Whoop \u2014 FDA-cleared ECG/AFib + Blood Pressure Insights now live",
+      "title": "FDA drops enforcement against Whoop — FDA-cleared ECG/AFib + Blood Pressure Insights now live",
       "url": "https://www.statnews.com/2026/06/23/fda-drops-enforcement-against-wearable-maker-whoop/",
       "severity": "HIGH",
       "category": "devices",
@@ -200,7 +206,7 @@
     {
       "date": "2026-09-04",
       "slug": "fitbit-air-launch",
-      "title": "Fitbit Air launched \u2014 $99 screenless tracker with AFib alerts, on CardiTrack's existing platform",
+      "title": "Fitbit Air launched — $99 screenless tracker with AFib alerts, on CardiTrack's existing platform",
       "url": "https://blog.google/products-and-platforms/devices/fitbit/fitbit-air/",
       "severity": "FYI",
       "category": "devices",
@@ -209,7 +215,7 @@
     {
       "date": "2026-09-04",
       "slug": "aktiia-hilo-band-cuffless-bp",
-      "title": "Aktiia's Hilo Band \u2014 first FDA-cleared OTC cuffless blood-pressure wearable",
+      "title": "Aktiia's Hilo Band — first FDA-cleared OTC cuffless blood-pressure wearable",
       "url": "https://www.biospace.com/press-releases/aktiias-hilo-band-becomes-first-cuffless-blood-pressure-monitor-cleared-by-fda-for-over-the-counter-use",
       "severity": "FYI",
       "category": "devices",
@@ -218,7 +224,7 @@
     {
       "date": "2026-09-04",
       "slug": "ejenta-heart-failure-agentic-ai",
-      "title": "Ejenta \u2014 NASA-derived agentic AI for heart-failure remote monitoring, Best in Show at HIMSS26",
+      "title": "Ejenta — NASA-derived agentic AI for heart-failure remote monitoring, Best in Show at HIMSS26",
       "url": "https://swaay.health/2026/03/26/best-of-show-himss26/",
       "severity": "HIGH",
       "category": "competition",
@@ -227,11 +233,65 @@
     {
       "date": "2026-09-04",
       "slug": "cadence-ai-proactive-care-engine",
-      "title": "Cadence AI Proactive Care Engine scales nationally for Medicare \u2014 clinical/EMR workflow, not family-caregiver-facing",
+      "title": "Cadence AI Proactive Care Engine scales nationally for Medicare — clinical/EMR workflow, not family-caregiver-facing",
       "url": "https://www.cadence.care/post/cadence-launches-ai-powered-proactive-care-engine-bringing-advanced-primary-care-management-to-medicare-patients-nationwide",
       "severity": "FYI",
       "category": "competition",
       "brief": "research/queue/2026-09-04-cadence-ai-proactive-care-engine.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "dotnet-sept-2026-servicing-cves",
+      "title": ".NET September 2026 servicing release (10.0.12) fixes 6 CVEs — none in CardiTrack's live exploit path",
+      "url": "https://github.com/dotnet/announcements/issues/443",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-09-dotnet-sept-2026-servicing-cves.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "google-health-guardian-bp-insulin-trends",
+      "title": "Google \"Health Guardian\" ships BP + insulin-resistance trends to Fitbit/Pixel Watch — not yet in the Health API",
+      "url": "https://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-09-google-health-guardian-bp-insulin-trends.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "nhs-innovation-accelerator-2027",
+      "title": "NHS Innovation Accelerator (NIA) 2027 Cohort — up to £30k + 3yr NHS scale-up support, deadline 2026-09-27",
+      "url": "https://nhsaccelerator.com/apply-for-nia-fellowship/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-09-nhs-innovation-accelerator-2027.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "luffu-link-family-caregiving-wearable",
+      "title": "Fitbit founders launch Luffu Link — family-caregiving wearable directly on CardiTrack's positioning",
+      "url": "https://techcrunch.com/2026/08/25/fitbit-founders-launch-luffu-link-an-lte-health-and-safety-band/",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-09-luffu-link-family-caregiving-wearable.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "mhra-health-bill-reform-amendments",
+      "title": "MHRA regulatory reform amendments tabled in the UK Health Bill — future domestic licensing pathway enabled",
+      "url": "https://www.gov.uk/government/news/mhra-regulatory-reform-amendments-tabled-in-governments-health-bill",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-09-mhra-health-bill-reform-amendments.md"
+    },
+    {
+      "date": "2026-09-09",
+      "slug": "mhra-manchester-nhs-sandbox",
+      "title": "MHRA and Manchester NHS launch a real-world AI-device evaluation sandbox",
+      "url": "https://www.gov.uk/government/news/mhra-and-manchester-nhs-partner-on-health-innovation-sandbox",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
     }
   ]
 }
