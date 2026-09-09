@@ -144,13 +144,17 @@ public class DeviceHistoryRepullService : IDeviceHistoryRepullService
     private static string Describe(TimeSpan wait)
     {
         // Hours up to two days — the same wording HistoryRepullCopy uses on the card, so the
-        // refusal and the status line under the action agree.
+        // refusal and the status line under the action agree. The hours branch is inclusive of
+        // 48 because the hours are rounded up: a 47-and-a-bit-hour wait becomes 48, and with an
+        // exclusive bound it would fall through and read "in about 2 days" — the least precise
+        // wording at the one boundary a 48-hour cooldown actually produces. Days are rounded
+        // rather than ceilinged for the same reason: 49 hours is about two days, not three.
         var hours = (int)Math.Ceiling(wait.TotalHours);
         return hours switch
         {
             <= 1 => "in about an hour",
-            < 48 => $"in about {hours} hours",
-            _ => $"in about {(int)Math.Ceiling(wait.TotalDays)} days",
+            <= 48 => $"in about {hours} hours",
+            _ => $"in about {(int)Math.Round(wait.TotalDays, MidpointRounding.AwayFromZero)} days",
         };
     }
 }

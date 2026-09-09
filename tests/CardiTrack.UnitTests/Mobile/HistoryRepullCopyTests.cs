@@ -79,6 +79,27 @@ public class HistoryRepullCopyTests
         Assert.False(HistoryRepullCopy.CanRequest(done, Now));
     }
 
+    /// <summary>
+    /// The hours are rounded up, so the bound that ends them has to include 48 — otherwise a
+    /// wait of 47 hours and a bit becomes 48 and falls into the days branch, sending the
+    /// freshest cooldown a 48-hour setting can produce to the vaguest wording it has.
+    /// </summary>
+    [Theory]
+    [InlineData(47.1, "available again in about 48 hours")]
+    [InlineData(47.9, "available again in about 48 hours")]
+    [InlineData(36, "available again in about 36 hours")]
+    [InlineData(0.5, "available again in about an hour")]
+    public void StatusLine_KeepsHoursRightUpToTheCooldownsCeiling(double hoursAway, string expected)
+    {
+        var done = new DeviceHistoryRepullResponse
+        {
+            Status = "completed", Days = 30, DaysDone = 30, DaysWithData = 27,
+            NextAllowedAt = Now.AddHours(hoursAway),
+        };
+
+        Assert.EndsWith(expected, HistoryRepullCopy.StatusLine(done, Now));
+    }
+
     [Fact]
     public void StatusLine_ForACompletedRequestPastTheCooldown_OffersTheActionAgain()
     {

@@ -80,13 +80,17 @@ public static class HistoryRepullCopy
             return null;
 
         // Hours up to two days: with a 48-hour cooldown nearly every wait is under that, and
-        // "about 30 hours" tells a caregiver more than "about 2 days" would.
-        var hours = (int)Math.Ceiling((next - utcNow).TotalHours);
+        // "about 30 hours" tells a caregiver more than "about 2 days" would. Inclusive of 48
+        // because the hours are rounded up — a 47-and-a-bit-hour wait becomes 48, and an
+        // exclusive bound would send exactly the freshest cooldown to the vaguest wording.
+        // Days are rounded rather than ceilinged: 49 hours is about two days, not three.
+        var wait = next - utcNow;
+        var hours = (int)Math.Ceiling(wait.TotalHours);
         return hours switch
         {
             <= 1 => "in about an hour",
-            < 48 => $"in about {hours} hours",
-            _ => $"in about {(int)Math.Ceiling((next - utcNow).TotalDays)} days",
+            <= 48 => $"in about {hours} hours",
+            _ => $"in about {(int)Math.Round(wait.TotalDays, MidpointRounding.AwayFromZero)} days",
         };
     }
 }
