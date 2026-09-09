@@ -209,7 +209,7 @@ public class CsvReportRenderer : IReportRenderer
 
     private static void WriteJournals(CsvWriter csv, ReportDataSet data)
     {
-        foreach (var header in new[] { "Member", "Book", "LocalDate", "Headline", "Text", "Urgency" })
+        foreach (var header in new[] { "Member", "Book", "LocalDate", "Headline", "Text", "Urgency", "Provenance" })
             csv.WriteField(header);
         csv.NextRecord();
 
@@ -223,6 +223,7 @@ public class CsvReportRenderer : IReportRenderer
                 WriteText(csv, entry.Headline);
                 WriteText(csv, entry.Text);
                 csv.WriteField(entry.Urgency?.ToString());
+                csv.WriteField("CardiTrack AI");
                 csv.NextRecord();
             }
         }

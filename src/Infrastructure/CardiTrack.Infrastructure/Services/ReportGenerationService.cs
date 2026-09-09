@@ -341,23 +341,8 @@ public class ReportGenerationService : IReportGenerationService
         DateOnly from,
         DateOnly to)
     {
-        var rows = await unitOfWork.Notifications.QueryAsync(
-            ownerUserId,
-            state: null,
-            category: null,
-            cardiMemberId: memberId,
-            owned: null,
-            limit: 200,
-            offset: 0);
-
-        return rows
-            .Where(n =>
-            {
-                var day = DateOnly.FromDateTime(n.FirstDetectedDate);
-                return day >= from && day <= to;
-            })
-            .OrderBy(n => n.FirstDetectedDate)
-            .ToList();
+        return await unitOfWork.Notifications.GetForExportAsync(
+            ownerUserId, memberId, from, to);
     }
 
     /// <summary>

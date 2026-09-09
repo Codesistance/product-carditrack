@@ -13,14 +13,23 @@ public sealed class DeviceBiometric : IDeviceBiometric
     {
         get
         {
-            var context = Android.App.Application.Context;
-            var manager = (Android.Hardware.Biometrics.BiometricManager)
-                context.GetSystemService(Android.Content.Context.BiometricService)!;
-            var authenticators =
-                Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricStrong
-                | Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricWeak;
-            return manager.CanAuthenticate(authenticators)
-                == Android.Hardware.Biometrics.BiometricManager.BiometricSuccess;
+            try
+            {
+                var context = Android.App.Application.Context;
+                if (context.GetSystemService(Android.Content.Context.BiometricService)
+                    is not Android.Hardware.Biometrics.BiometricManager manager)
+                    return false;
+
+                var authenticators =
+                    Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricStrong
+                    | Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricWeak;
+                return manager.CanAuthenticate(authenticators)
+                    == Android.Hardware.Biometrics.BiometricManager.BiometricSuccess;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
     }
 

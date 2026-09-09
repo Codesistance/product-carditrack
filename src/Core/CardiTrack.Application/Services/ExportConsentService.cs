@@ -92,10 +92,8 @@ public class ExportConsentService : IExportConsentService
                 "The export no longer matches what you confirmed. Please confirm again.");
         }
 
-        consent.ConsumedAt = now;
-        consent.ReportId = reportId;
-        _unitOfWork.ExportConsents.Update(consent);
-        await _unitOfWork.SaveChangesAsync();
+        if (!await _unitOfWork.ExportConsents.TryConsumeAsync(id, requestingUserId, reportId, now, ct))
+            throw new ExportConsentException("That confirmation was already used — please confirm again.");
     }
 
     private static GenerateReportRequest ToGenerateRequest(RecordExportConsentRequest request) => new()

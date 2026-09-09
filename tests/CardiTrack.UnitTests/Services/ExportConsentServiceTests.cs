@@ -31,6 +31,22 @@ public class ExportConsentServiceTests
                 var owner = ci.ArgAt<Guid>(1);
                 return Task.FromResult(_rows.FirstOrDefault(c => c.Id == id && c.OwnerUserId == owner));
             });
+        _consents.TryConsumeAsync(
+                Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var id = ci.ArgAt<Guid>(0);
+                var owner = ci.ArgAt<Guid>(1);
+                var reportId = ci.ArgAt<Guid>(2);
+                var now = ci.ArgAt<DateTime>(3);
+                var row = _rows.FirstOrDefault(c =>
+                    c.Id == id && c.OwnerUserId == owner && c.ConsumedAt is null && c.ExpiresAt > now);
+                if (row is null)
+                    return Task.FromResult(false);
+                row.ConsumedAt = now;
+                row.ReportId = reportId;
+                return Task.FromResult(true);
+            });
     }
 
     private ExportConsentService CreateSut() => new(_unitOfWork, _access);

@@ -22,6 +22,18 @@ public interface INotificationRepository : IRepository<Notification>
         int offset,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Every notice for this caregiver and member whose first-detected UTC day
+    /// falls in <paramref name="from"/>–<paramref name="to"/>, inclusive.
+    /// Date-filtered in the query so an export is not capped by the inbox page.
+    /// </summary>
+    Task<IReadOnlyList<Notification>> GetForExportAsync(
+        Guid userId,
+        Guid cardiMemberId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct = default);
+
     Task<int> CountAsync(
         Guid userId,
         NotificationState? state,

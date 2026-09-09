@@ -292,6 +292,7 @@ public class ReportRendererTests
 
         Assert.Contains("A settled night", csv);
         Assert.Contains("Sleep held near their usual.", csv);
+        Assert.Contains("CardiTrack AI", csv);
         Assert.DoesNotContain("warfarin", csv);
     }
 

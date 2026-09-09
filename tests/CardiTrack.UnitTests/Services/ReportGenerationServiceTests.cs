@@ -659,15 +659,18 @@ public class ReportGenerationServiceTests
             State = NotificationState.Open,
             FirstDetectedDate = new DateTime(2026, 1, 2, 8, 0, 0, DateTimeKind.Utc)
         };
-        _notifications.QueryAsync(
-                _userId, null, null, _memberId, null, 200, 0, Arg.Any<CancellationToken>())
-            .Returns([inside, outside]);
+        _notifications.GetForExportAsync(
+                _userId, _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
+            .Returns([inside]);
 
         var sut = CreateSut();
         var queued = await sut.GenerateAsync(_userId, BuildRequest(includeNotices: true));
         await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
         Assert.Equal(inside, Assert.Single(Assert.Single(_renderer.LastData!.Members).Notices));
+        await _notifications.Received(1).GetForExportAsync(
+            _userId, _memberId, new DateOnly(2026, 2, 7), new DateOnly(2026, 3, 9),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
