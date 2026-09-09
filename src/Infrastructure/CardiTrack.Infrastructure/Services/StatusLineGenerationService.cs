@@ -72,8 +72,15 @@ public class StatusLineGenerationService
     /// Reset to the measured length after the steps-priming prohibition was replaced by the
     /// lead-with-observation rule. The data sections sit after this budget; they are not paid
     /// from it.
+    /// <para>
+    /// Corrected from 1,161 to the length that reset actually produced. The two-line
+    /// lead-with-observation rule is 12 characters longer than the figure recorded for it, so
+    /// the budget it was reset to had never been met and the guard test has been red since it
+    /// merged — a state push CI cannot report, because this repository gates it off. Nothing
+    /// about the instructions changed here; only the number describing them.
+    /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_161;
+    internal const int StatusPromptBudget = 1_173;
 
     /// <summary>Exposed for the budget test — the instructions themselves stay private.</summary>
     internal static int CurrentStatusInstructionsLength => CurrentStatusInstructions.Length;
