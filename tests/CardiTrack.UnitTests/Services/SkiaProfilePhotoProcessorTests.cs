@@ -391,6 +391,30 @@ public class SkiaProfilePhotoProcessorTests
         Assert.Equal(500, reloaded.Height);
     }
 
+    [Theory]
+    // Ratios that do not divide evenly, so the scale factor is irrational in float terms.
+    [InlineData(2048, 1000)]
+    [InlineData(1707, 999)]
+    [InlineData(1365, 767)]
+    [InlineData(3000, 1237)]
+    public void DownscaledImage_ReachesItsOwnEdges(int width, int height)
+    {
+        // The processor fills white before drawing, so anything that leaves the drawn image
+        // short of its bitmap shows up as a white line down the right or bottom edge. Sampling
+        // the last row and column keeps that honest as the transform changes — a solid source
+        // must still be solid at its edges.
+        var input = BuildImage(width, height);
+
+        var output = CreateSut().Process(input);
+
+        using var reloaded = Decode(output);
+        var right = reloaded.GetPixel(reloaded.Width - 1, reloaded.Height / 2);
+        var bottom = reloaded.GetPixel(reloaded.Width / 2, reloaded.Height - 1);
+
+        Assert.True(right.Red is > 150 and < 250, $"right edge is not the fill colour: {right}");
+        Assert.True(bottom.Red is > 150 and < 250, $"bottom edge is not the fill colour: {bottom}");
+    }
+
     [Fact]
     public void SmallerImage_IsNeverUpscaled()
     {

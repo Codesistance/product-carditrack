@@ -54,7 +54,7 @@ public class SkiaProfilePhotoProcessor : IProfilePhotoProcessor
         if (!LooksLikeJpegOrPng(uploadBytes.Span))
             throw new InvalidProfilePhotoException("Photos must be JPEG or PNG images.");
 
-        using var data = SKData.CreateCopy(uploadBytes.ToArray());
+        using var data = SKData.CreateCopy(uploadBytes.Span);
 
         // Header-only: this parses the stream's metadata and allocates no pixel buffer, which is
         // what lets the dimension guard below run before a decompression bomb can cost anything.
@@ -111,6 +111,13 @@ public class SkiaProfilePhotoProcessor : IProfilePhotoProcessor
         var targetWidth = Math.Max(1, (int)Math.Round(uprightWidth * scale));
         var targetHeight = Math.Max(1, (int)Math.Round(uprightHeight * scale));
 
+        // Scale from the rounded targets rather than reusing `scale`, so the factor is derived
+        // from the dimensions actually allocated and the image lands on them exactly. Rounding
+        // and the float conversion each shift the factor by a fraction of a pixel; the resampler
+        // covers that in practice, but there is no reason to depend on it.
+        var scaleX = (float)targetWidth / uprightWidth;
+        var scaleY = (float)targetHeight / uprightHeight;
+
         var info = new SKImageInfo(targetWidth, targetHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
         var destination = new SKBitmap(info);
 
@@ -119,7 +126,7 @@ public class SkiaProfilePhotoProcessor : IProfilePhotoProcessor
             using var canvas = new SKCanvas(destination);
             canvas.Clear(FlattenBackground);
             canvas.SetMatrix(SKMatrix.Concat(
-                SKMatrix.CreateScale((float)scale, (float)scale),
+                SKMatrix.CreateScale(scaleX, scaleY),
                 OrientationMatrix(origin, source.Width, source.Height)));
 
             using var sourceImage = SKImage.FromBitmap(source);
