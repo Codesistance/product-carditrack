@@ -140,8 +140,16 @@ public static class SnapshotRefresh
             if (!gate.IsCurrent(ticket))
                 return RefreshOutcome.Superseded;
 
-            // A 404 over a snapshot means the thing is gone; the snapshot must not outlive it.
-            if (saved is null || ex.IsNotFound)
+            // A 404 says the thing is gone, and nothing may outlive it — not a snapshot this run
+            // put up, and not content the screen was already showing.
+            //
+            // Otherwise the screen keeps whatever it has. A null peek IS the caller saying "this
+            // is already drawn" — that is the only reason to skip the snapshot and replace in
+            // place — so reading it that way is what stops a refresh failure blanking a screen
+            // somebody is reading. Without it every tick, resume and pull that met a 5xx
+            // reported "nothing to show" over a full screen.
+            var hasContent = peek is null || saved is not null;
+            if (ex.IsNotFound || !hasContent)
                 return Complete(feedback, new RefreshOutcome(RefreshResult.NothingAndFailed, null, ex));
 
             return Complete(feedback, new RefreshOutcome(

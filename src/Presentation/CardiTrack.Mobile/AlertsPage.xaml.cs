@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -58,13 +59,14 @@ public partial class AlertsPage : ContentPage
 
     private bool _isLoading;
     private bool _showArchived;
-    private CancellationTokenSource? _loadCts;
+
     /// <summary>
-    /// Bumps on every new load so a slow response from a cancelled request cannot paint over the
-    /// chip the caregiver just tapped — CTS cancellation alone is not enough when the HTTP call
-    /// has already completed and its continuation is queued behind the UI thread.
+    /// Which load is the current one. A slow response from a superseded request must not paint
+    /// over the chip the caregiver just tapped — cancellation alone is not enough when the HTTP
+    /// call has already completed and its continuation is queued behind the UI thread.
     /// </summary>
-    private int _loadGeneration;
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private AlertListResponse? _lastData;
     private readonly HashSet<Guid> _pendingDeletes = [];
@@ -118,6 +120,7 @@ public partial class AlertsPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         Filters.FilterChanged += OnFilterChanged;
         Filters.MemberFilterCleared += OnMemberFilterCleared;
         ApplyArchiveButtonText();
@@ -217,110 +220,90 @@ public partial class AlertsPage : ContentPage
         if (_isLoading && !force)
             return;
 
-        // Cancel can throw if a previous finally already disposed the source while another
-        // caller still held the field — that used to abort the new load before SetState, so the
-        // chip highlighted and the list never moved (#308) and the pull spinner never cleared (#307).
-        CancelInFlightLoad();
-
-        var cts = new CancellationTokenSource();
-        _loadCts = cts;
-        var generation = ++_loadGeneration;
+        // Begin supersedes whatever is in flight — a chip tap must win over a slow load (#308) —
+        // and the gate's own check after every await is what stops the loser painting. It used to
+        // be a hand-rolled generation counter and a CTS this page disposed itself, which could
+        // abort the new load before SetState (#307, #308); the gate owns that now.
+        var ticket = _gate.Begin();
         _isLoading = true;
 
         // Capture the chip at request start so a later tap cannot let this response paint under
-        // a different filter — the generation check drops the whole load if it was superseded.
+        // a different filter — the gate drops the whole load if it was superseded.
         var requestedFilter = Filters.Selected;
         var showArchived = _showArchived;
         var (severity, status, from) = QueryFor(requestedFilter, showArchived);
+        var memberFilterId = _memberFilterId;
 
         var loadNudges = false;
         try
         {
             // Nothing on the wall yet — a cold start, or a chip or member filter that has just
-            // changed the question. Put up the page the device last saved for this exact query,
-            // if it has one, and fetch the live one behind it. The list used to open onto the
-            // loading card on every landing while the previous answer sat encrypted on the
-            // device; the loading card is now only for a query the device has never answered.
-            // The saved rows can only be the new query's, because the cache is keyed by it, so
-            // this is not the stale-rows-under-a-new-chip bug (#308) coming back.
+            // changed the question. The page the device last saved for this exact query goes up
+            // first and the live one is fetched behind it; the loading card is only for a query
+            // the device has never answered. The saved rows can only be the new query's, because
+            // the cache is keyed by it, so this is not the stale-rows-under-a-new-chip bug (#308)
+            // coming back. Loading first, before the peek: the previous query's rows (or its
+            // error) must not sit under the newly chosen chip for even the frame the cache read
+            // takes.
             if (_lastData is null)
-            {
-                // Loading first, before the peek is awaited: the previous query's rows (or its
-                // error) must not sit under the newly chosen chip for even the frame the cache
-                // read takes (#308). A saved page then replaces the skeleton within that read.
                 SetState(AlertsState.Loading);
-                var saved = await _api.PeekAlertsAsync(
-                    severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
-                if (IsStale(generation, cts))
-                    return;
 
-                if (saved is not null)
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _lastData is null
+                    ? ct => _api.PeekAlertsAsync(severity, status, from, cardiMemberId: memberFilterId, ct: ct)
+                    : null,
+                fetch: ct => _api.GetAlertsAsync(severity, status, from, cardiMemberId: memberFilterId, ct: ct),
+                render: data =>
                 {
-                    _lastData = saved;
-                    Render(saved);
+                    _lastData = data;
+                    Render(data);
                     SetState(AlertsState.Loaded);
-                }
-            }
+                },
+                _feedback);
 
-            var call = _api.GetAlertsAsync(
-                severity, status, from, cardiMemberId: _memberFilterId, ct: cts.Token);
-            var data = await call;
-            if (IsStale(generation, cts))
-                return;
-
-            _lastData = data;
-            _lastLoadedUtc = DateTime.UtcNow;
-            Render(data);
-            SavedBanner.ApplyFrom(_api, call);
-            SetState(AlertsState.Loaded);
-            loadNudges = true;
-        }
-        catch (OperationCanceledException) when (IsStale(generation, cts))
-        {
-            // Cancellation during the HTTP body read is not wrapped as ApiException — treat it
-            // the same as a superseded transport cancel so fire-and-forget callers stay quiet.
-        }
-        catch (ApiException ex)
-        {
-            // A superseded request reports its cancellation as a transport failure. That is
-            // this page's own doing, so it must not surface as "no connection".
-            if (IsStale(generation, cts))
-                return;
-
-            if (_lastData is null)
+            switch (outcome.Result)
             {
-                ErrorDetailLabel.Text = ex.Message;
-                SetState(AlertsState.Error);
+                case RefreshResult.Superseded:
+                    return;
+                case RefreshResult.NothingAndFailed:
+                    _lastData = null;
+                    ErrorDetailLabel.Text = outcome.Error!.Message;
+                    SetState(AlertsState.Error);
+                    return;
             }
-            else if (!silent)
+
+            if (outcome.IsFresh)
+            {
+                _lastLoadedUtc = DateTime.UtcNow;
+
+                // Housekeeping only when the alerts themselves came from the API. The nudge
+                // section is a second call to the same server this load just reached; asking it
+                // over saved data means a request that will fail the same way, and its failure
+                // hides a section that may already be showing something worth reading.
+                loadNudges = true;
+            }
+            else if (!silent && outcome.Error is not null)
             {
                 // Alerts already on screen: a failed refresh must not blank a list someone
                 // may be acting on, so say so and leave it.
-                await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
+                await _popups.ShowWarningAsync(outcome.Error.Message, "Couldn't refresh");
             }
         }
         finally
         {
             // Release the list's loading state before housekeeping. Nudges used to sit inside the
             // try, so a hung summary call left pull-to-refresh spinning and blocked the next chip
-            // load's finally from looking like the owner of the spinner (#307 / #308).
-            //
-            // Leave `_loadCts` pointing at this source until nudges finish so a newer load can
-            // still Cancel() them — only clear the loading flags here.
-            if (generation == _loadGeneration && ReferenceEquals(_loadCts, cts))
+            // load's finally from looking like the owner of the spinner (#307 / #308). The gate
+            // itself is released only after the nudges, so a newer load can still cancel them.
+            if (_gate.IsCurrent(ticket))
             {
                 _isLoading = false;
                 Refresher.IsRefreshing = false;
             }
 
-            // `return` above still runs this finally, then exits the method — dispose here so a
-            // superseded load cannot leak its CTS. A successful load disposes after nudges below.
             if (!loadNudges)
-            {
-                if (ReferenceEquals(_loadCts, cts))
-                    _loadCts = null;
-                cts.Dispose();
-            }
+                _gate.Release(ticket);
         }
 
         if (!loadNudges)
@@ -328,38 +311,17 @@ public partial class AlertsPage : ContentPage
 
         // After the alerts, and isolated from them: this screen's job is health events, and a
         // failure fetching housekeeping must never cost the caregiver the list they came for.
-        // Still uses this load's token so a newer chip tap cancels the summary in flight.
+        // Still uses this load's ticket so a newer chip tap cancels the summary in flight.
         try
         {
-            if (!IsStale(generation, cts))
-                await LoadNudgeSectionAsync(generation, cts.Token);
+            if (_gate.IsCurrent(ticket))
+                await LoadNudgeSectionAsync(ticket);
         }
         finally
         {
-            if (ReferenceEquals(_loadCts, cts))
-                _loadCts = null;
-            cts.Dispose();
+            _gate.Release(ticket);
         }
     }
-
-    private void CancelInFlightLoad()
-    {
-        var inFlight = _loadCts;
-        if (inFlight is null)
-            return;
-
-        try
-        {
-            inFlight.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Already finished disposing — treat as cancelled.
-        }
-    }
-
-    private bool IsStale(int generation, CancellationTokenSource cts) =>
-        generation != _loadGeneration || cts.IsCancellationRequested;
 
     /// <summary>
     /// The chip selection as wire filters. Archived overrides the chips entirely — it is a
@@ -763,12 +725,12 @@ public partial class AlertsPage : ContentPage
     /// Fills the "Also needs your attention" section — data-completeness items, kept in their own
     /// block below the health alerts rather than mixed into them.
     /// </summary>
-    private async Task LoadNudgeSectionAsync(int generation, CancellationToken ct)
+    private async Task LoadNudgeSectionAsync(LoadTicket ticket)
     {
         try
         {
-            var summary = await _api.GetNotificationSummaryAsync(ct);
-            if (generation != _loadGeneration)
+            var summary = await _api.GetNotificationSummaryAsync(ticket.Token);
+            if (!_gate.IsCurrent(ticket))
                 return;
 
             NudgeStack.Clear();
@@ -789,17 +751,17 @@ public partial class AlertsPage : ContentPage
             NudgeSection.IsVisible = items.Count > 0;
             NudgeSeeAllLink.IsVisible = summary.OpenCount > items.Count;
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested || generation != _loadGeneration)
+        catch (OperationCanceledException) when (!_gate.IsCurrent(ticket))
         {
             // Superseded mid-read — leave whatever the newer load paints.
         }
-        catch (ApiException) when (ct.IsCancellationRequested || generation != _loadGeneration)
+        catch (ApiException) when (!_gate.IsCurrent(ticket))
         {
             // Superseded — leave whatever the newer load paints; do not blank the section.
         }
         catch (ApiException)
         {
-            if (generation != _loadGeneration)
+            if (!_gate.IsCurrent(ticket))
                 return;
 
             NudgeSection.IsVisible = false;

@@ -414,5 +414,9 @@
                        HorizontalTextAlignment="Center"/>
             </HorizontalStackLayout>
         </Border>
+
+        <!-- The second-long "Updating…" while a saved dashboard is replaced by live data — last,
+             so it covers everything including the nav bar. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="4"/>
     </Grid>
 </ContentPage>
