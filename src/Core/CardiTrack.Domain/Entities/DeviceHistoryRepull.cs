@@ -49,8 +49,10 @@ public class DeviceHistoryRepull : BaseEntity
     public int DaysWithData { get; set; }
 
     /// <summary>
-    /// Chunk attempts that ended in a provider failure. The Worker retries a failed chunk on its
-    /// next pass and gives up on the request once this reaches its ceiling.
+    /// Chunk attempts that ended in a provider failure, <em>since the last one that landed</em>.
+    /// The Worker retries a failed chunk on its next pass and gives up on the request once this
+    /// reaches its ceiling; a successful chunk resets it, because progress ends the run-up to
+    /// giving up.
     /// </summary>
     public int Attempts { get; set; }
 
@@ -64,9 +66,17 @@ public class DeviceHistoryRepull : BaseEntity
     public DateTime? CompletedAt { get; set; }
 
     /// <summary>
-    /// A short, payload-free label for why a request failed or was cancelled — an exception type
+    /// A short, payload-free label for the most recent thing that went wrong — an exception type
     /// name or a refusal code, never a provider response body.
     /// </summary>
+    /// <remarks>
+    /// Set on a terminal <see cref="HistoryRepullStatus.Failed"/> or
+    /// <see cref="HistoryRepullStatus.Cancelled"/>, and also while a request is still
+    /// <see cref="HistoryRepullStatus.InProgress"/> after a chunk the Worker means to retry — so
+    /// on an open request it reads as "what stopped the last attempt", not "why this ended".
+    /// Cleared by the next chunk that lands, so a finished request never carries the reason for
+    /// a failure it went on to recover from.
+    /// </remarks>
     public string? FailureReason { get; set; }
 
     /// <summary>Whether the Worker still has something to do for this request.</summary>

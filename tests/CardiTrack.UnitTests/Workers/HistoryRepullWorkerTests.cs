@@ -226,6 +226,22 @@ public class HistoryRepullWorkerTests
     }
 
     [Fact]
+    public async Task Sweep_ChunkThatLands_ClearsWhatTheRetriedOnesLeftBehind()
+    {
+        // Otherwise a request that stumbled once and then finished reads for good as a completed
+        // request that also failed, and sits two-thirds of the way to giving up.
+        var repull = Stage(30, HistoryRepullStatus.InProgress, completedTo: new DateOnly(2026, 9, 2));
+        repull.Attempts = 2;
+        repull.FailureReason = "GoogleHealthApiException (HTTP 503)";
+
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        Assert.Null(repull.FailureReason);
+        Assert.Equal(0, repull.Attempts);
+        Assert.Equal(new DateOnly(2026, 8, 26), repull.CompletedTo);
+    }
+
+    [Fact]
     public async Task Sweep_GivesUp_OnTheThirdFailedAttempt()
     {
         var repull = Stage(30, HistoryRepullStatus.InProgress, completedTo: new DateOnly(2026, 9, 2));

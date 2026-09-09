@@ -207,6 +207,13 @@ public class HistoryRepullWorker : CronBackgroundService
             repull.DaysWithData += daysWithData;
             repull.UpdatedDate = _time.GetUtcNow().UtcDateTime;
 
+            // A chunk that landed clears what the retried ones left behind. Otherwise a request
+            // that stumbled once and then finished carries the reason it stumbled for good, and
+            // reads afterwards as a completed request that also failed. The attempt count goes
+            // with it: it is the run-up to giving up, and progress ended that run-up.
+            repull.FailureReason = null;
+            repull.Attempts = 0;
+
             var done = HistoryRepullWindow.IsComplete(repull);
             if (done)
             {
