@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Enums;
 using FluentValidation;
 
@@ -43,6 +44,21 @@ public class RecordExportConsentValidator : AbstractValidator<RecordExportConsen
                 .WithMessage("FHIR R4 exports carry readings and devices — tick one of those too, "
                     + "or choose PDF or CSV to export journals, alerts or notices")
             .When(x => x.Format == ReportFormat.FhirR4);
+
+        RuleFor(x => x)
+            .Must(x => ExportJournalRules.ScopeMatchesJournalsFlag(
+                x.IncludeJournals, x.JournalAudience, x.JournalEntryDate))
+                .WithMessage(ExportJournalRules.ScopeNeedsJournals);
+
+        RuleFor(x => x.JournalAudience)
+            .Must(ExportJournalRules.AudienceIsAllowed)
+                .WithMessage(ExportJournalRules.FinishedBooksOnly);
+
+        RuleFor(x => x)
+            .Must(x => ReportJournalScope.DayIsInRange(
+                x.JournalEntryDate, x.DateRangeFrom, x.DateRangeTo))
+                .WithMessage(ExportJournalRules.DayInRange)
+            .When(x => x.DateRangeTo >= x.DateRangeFrom);
 
         RuleFor(x => x.AcceptedResponsibility)
             .Equal(true)

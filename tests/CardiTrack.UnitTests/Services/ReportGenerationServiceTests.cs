@@ -608,6 +608,39 @@ public class ReportGenerationServiceTests
     }
 
     [Fact]
+    public async Task GenerateAsync_IgnoresACraftedFamilyGlanceAudience()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(
+            includeJournals: true,
+            journalAudience: DigestAudience.Family));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Empty(Assert.Single(_renderer.LastData!.Members).Journals);
+        await _digests.DidNotReceive().GetHistoryAsync(
+            Arg.Any<Guid>(), DigestAudience.Family, Arg.Any<int>(),
+            Arg.Any<string?>(), Arg.Any<DateOnly?>(), Arg.Any<DateOnly?>(),
+            Arg.Any<DigestUrgency?>(), Arg.Any<CancellationToken>());
+        await _digests.DidNotReceive().GetLatestByDateAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), DigestAudience.Family, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_IgnoresAJournalDayOutsideTheRange()
+    {
+        var sut = CreateSut();
+        var queued = await sut.GenerateAsync(_userId, BuildRequest(
+            includeJournals: true,
+            journalEntryDate: new DateOnly(2025, 12, 1),
+            journalAudience: DigestAudience.Daybook));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Empty(Assert.Single(_renderer.LastData!.Members).Journals);
+        await _digests.DidNotReceive().GetLatestByDateAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DigestAudience>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GenerateAsync_LoadsOneJournalEntry_WhenADayAndBookAreNamed()
     {
         var day = new DateOnly(2026, 2, 10);

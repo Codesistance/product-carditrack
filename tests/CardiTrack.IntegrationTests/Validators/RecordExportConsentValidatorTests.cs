@@ -53,4 +53,47 @@ public class RecordExportConsentValidatorTests
 
         Assert.False(_validator.Validate(request).IsValid);
     }
+
+    [Fact]
+    public void Rejects_TheLiveFamilyGlance()
+    {
+        var request = new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf,
+            IncludeJournals = true,
+            JournalAudience = DigestAudience.Family,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true
+        };
+
+        var result = _validator.Validate(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("live glance"));
+    }
+
+    [Fact]
+    public void Rejects_AJournalDayOutsideTheRange()
+    {
+        var request = new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf,
+            IncludeJournals = true,
+            JournalEntryDate = new DateOnly(2025, 12, 1),
+            JournalAudience = DigestAudience.Daybook,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true
+        };
+
+        var result = _validator.Validate(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("inside the date range"));
+    }
 }

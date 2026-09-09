@@ -22,6 +22,8 @@ public class GenerateReportValidatorTests
         bool includeDevices = false,
         bool includeJournals = false,
         bool includeNotices = false,
+        DateOnly? journalEntryDate = null,
+        DigestAudience? journalAudience = null,
         string? consentToken = "consent-token") => new()
         {
             CardiMemberIds = memberIds ?? [Guid.NewGuid()],
@@ -33,6 +35,8 @@ public class GenerateReportValidatorTests
             IncludeDevices = includeDevices,
             IncludeJournals = includeJournals,
             IncludeNotices = includeNotices,
+            JournalEntryDate = journalEntryDate,
+            JournalAudience = journalAudience,
             ConsentToken = consentToken
         };
 
@@ -257,5 +261,64 @@ public class GenerateReportValidatorTests
     {
         Assert.False(_validator.Validate(Build(consentToken: null)).IsValid);
         Assert.False(_validator.Validate(Build(consentToken: "")).IsValid);
+    }
+
+    [Theory]
+    [InlineData(DigestAudience.Family)]
+    [InlineData(DigestAudience.Wearer)]
+    public void Rejects_ALiveGlanceJournalAudience(DigestAudience audience)
+    {
+        var result = _validator.Validate(Build(
+            includeJournals: true, journalAudience: audience));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("live glance"));
+    }
+
+    [Theory]
+    [InlineData(DigestAudience.Daybook)]
+    [InlineData(DigestAudience.Weekbook)]
+    [InlineData(DigestAudience.Monthbook)]
+    public void Accepts_AFinishedJournalBook(DigestAudience audience)
+    {
+        Assert.True(_validator.Validate(Build(
+            includeJournals: true, journalAudience: audience)).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_AJournalDayOutsideTheRange()
+    {
+        var result = _validator.Validate(Build(
+            from: new DateOnly(2026, 2, 7),
+            to: new DateOnly(2026, 3, 9),
+            includeJournals: true,
+            journalEntryDate: new DateOnly(2026, 1, 1),
+            journalAudience: DigestAudience.Daybook));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("inside the date range"));
+    }
+
+    [Fact]
+    public void Accepts_AJournalDayOnTheRangeBoundary()
+    {
+        var from = new DateOnly(2026, 2, 7);
+        Assert.True(_validator.Validate(Build(
+            from: from,
+            to: new DateOnly(2026, 3, 9),
+            includeJournals: true,
+            journalEntryDate: from,
+            journalAudience: DigestAudience.Daybook)).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_AJournalScopeWhenJournalsAreOff()
+    {
+        var result = _validator.Validate(Build(
+            includeJournals: false,
+            journalAudience: DigestAudience.Daybook));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("when journals are included"));
     }
 }

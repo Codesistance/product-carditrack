@@ -108,7 +108,7 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 | `includeAlerts` | boolean | No | Include alert history in range (default `true`) |
 | `includeJournals` | boolean | No | Include Daybook / Weekbook / Monthbook entries in range (default `false`). The live Family glance is never exported |
 | `includeNotices` | boolean | No | Include the completeness inbox (stale device, battery, …) first-detected in range (default `false`) |
-| `journalEntryDate` / `journalAudience` | date / enum | No | When both are set, journals are scoped to that one entry rather than every book in the range |
+| `journalEntryDate` / `journalAudience` | date / enum | No | When both are set, journals are scoped to that one entry rather than every book in the range. `journalAudience` must be Daybook / Weekbook / Monthbook (`Family` and `Wearer` are 400). A pinned day must fall inside `dateRangeFrom`–`dateRangeTo`. Either field without `includeJournals` is 400 |
 | `includeNotes` | boolean | No | Default `false`; no notes feature exists |
 | `includeDevices` | boolean | No | Include device provenance — device **types** only, never caregiver labels (default `false`) |
 | `consentToken` | string | Yes | Token from `POST /api/v1/reports/consent` for this same snapshot |

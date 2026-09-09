@@ -35,9 +35,16 @@ public sealed class DeviceBiometric : IDeviceBiometric
 
     public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
     {
-        var tcs = new TaskCompletionSource<bool>();
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (ct.IsCancellationRequested)
+        {
+            tcs.TrySetResult(false);
+            return tcs.Task;
+        }
+
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            CancellationTokenRegistration registration = default;
             try
             {
                 var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity
@@ -62,10 +69,25 @@ public sealed class DeviceBiometric : IDeviceBiometric
                 var callback = new PromptCallback(tcs);
                 var executor = AndroidX.Core.Content.ContextCompat.GetMainExecutor(activity);
                 var prompt = new Android.Hardware.Biometrics.BiometricPrompt(activity, executor, callback);
+                registration = ct.Register(() =>
+                {
+                    try
+                    {
+                        prompt.CancelAuthentication();
+                    }
+                    catch (Exception)
+                    {
+                        // Prompt already dismissed.
+                    }
+
+                    callback.Complete(false);
+                });
+                callback.Attach(registration);
                 prompt.Authenticate(info);
             }
             catch (Exception)
             {
+                registration.Dispose();
                 tcs.TrySetResult(false);
             }
         });
@@ -75,12 +97,22 @@ public sealed class DeviceBiometric : IDeviceBiometric
     private sealed class PromptCallback : Android.Hardware.Biometrics.BiometricPrompt.AuthenticationCallback
     {
         private readonly TaskCompletionSource<bool> _tcs;
+        private CancellationTokenRegistration _registration;
 
         public PromptCallback(TaskCompletionSource<bool> tcs) => _tcs = tcs;
 
+        public void Attach(CancellationTokenRegistration registration) =>
+            _registration = registration;
+
+        public void Complete(bool value)
+        {
+            _registration.Dispose();
+            _tcs.TrySetResult(value);
+        }
+
         public override void OnAuthenticationSucceeded(
             Android.Hardware.Biometrics.BiometricPrompt.AuthenticationResult result) =>
-            _tcs.TrySetResult(true);
+            Complete(true);
 
         public override void OnAuthenticationFailed()
         {
@@ -89,12 +121,16 @@ public sealed class DeviceBiometric : IDeviceBiometric
         }
 
         public override void OnAuthenticationError(int errorCode, Java.Lang.ICharSequence? errString) =>
-            _tcs.TrySetResult(false);
+            Complete(false);
     }
 #else
     public bool IsAvailable => false;
 
-    public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default) =>
-        Task.FromResult(false);
+    public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
+    {
+        _ = reason;
+        _ = ct;
+        return Task.FromResult(false);
+    }
 #endif
 }

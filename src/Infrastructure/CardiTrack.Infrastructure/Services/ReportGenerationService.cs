@@ -306,9 +306,15 @@ public class ReportGenerationService : IReportGenerationService
     private static async Task<IReadOnlyList<DigestEntry>> GatherJournalsAsync(
         IUnitOfWork unitOfWork, Guid memberId, GenerateReportRequest request)
     {
+        if (!ReportJournalScope.DayIsInRange(
+                request.JournalEntryDate, request.DateRangeFrom, request.DateRangeTo))
+            return [];
+
         var audiences = request.JournalAudience is { } single
-            ? new[] { single }
-            : new[] { DigestAudience.Daybook, DigestAudience.Weekbook, DigestAudience.Monthbook };
+            ? ReportJournalScope.IsFinishedBook(single)
+                ? new[] { single }
+                : Array.Empty<DigestAudience>()
+            : ReportJournalScope.FinishedBooks;
 
         var from = request.JournalEntryDate ?? request.DateRangeFrom;
         var to = request.JournalEntryDate ?? request.DateRangeTo;

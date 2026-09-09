@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Enums;
 using FluentValidation;
 
@@ -63,6 +64,21 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
         RuleFor(x => x.ConsentToken)
             .NotEmpty()
             .WithMessage("Confirm you accept responsibility before exporting");
+
+        RuleFor(x => x)
+            .Must(x => ExportJournalRules.ScopeMatchesJournalsFlag(
+                x.IncludeJournals, x.JournalAudience, x.JournalEntryDate))
+                .WithMessage(ExportJournalRules.ScopeNeedsJournals);
+
+        RuleFor(x => x.JournalAudience)
+            .Must(ExportJournalRules.AudienceIsAllowed)
+                .WithMessage(ExportJournalRules.FinishedBooksOnly);
+
+        RuleFor(x => x)
+            .Must(x => ReportJournalScope.DayIsInRange(
+                x.JournalEntryDate, x.DateRangeFrom, x.DateRangeTo))
+                .WithMessage(ExportJournalRules.DayInRange)
+            .When(x => x.DateRangeTo >= x.DateRangeFrom);
 
         // FHIR R4 does not carry alerts in MVP 1 (see FhirR4ReportRenderer), so a bundle asked
         // for with only alerts ticked would be a lone Patient resource — a "successful" export
