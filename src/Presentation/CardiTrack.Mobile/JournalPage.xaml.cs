@@ -453,6 +453,14 @@ public partial class JournalPage : ContentPage
     /// and to size the chooser; the entries fetched under it are the live read, and the next
     /// load's own member fetch corrects the list if it has changed.
     /// </summary>
+    /// <remarks>
+    /// A saved <em>empty</em> list deliberately does not count, unlike every other peek in the
+    /// app. Empty means "this account watches nobody", which the caller answers by painting the
+    /// "add the person you care about" panel and returning — so nothing else on that pass goes
+    /// and checks. A stale empty snapshot would therefore strand a caregiver who does have a
+    /// member on the one screen state that says they have none, until they left and came back.
+    /// One round trip is the right price for not doing that.
+    /// </remarks>
     private async Task<IReadOnlyList<CardiMemberResponse>> MembersAsync(LoadTicket ticket)
     {
         if (await _api.PeekCardiMembersAsync(ticket.Token) is { Count: > 0 } saved)
