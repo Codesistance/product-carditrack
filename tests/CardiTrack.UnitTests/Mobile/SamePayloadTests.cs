@@ -73,6 +73,43 @@ public class SamePayloadTests
         Assert.True(SamePayload.Same<Prefs?>(null, null));
     }
 
+    private sealed record Member(string Name, string? PhotoUrl, string? MedicalNotes);
+
+    private sealed record Page(Member Member, IReadOnlyList<Member> Others);
+
+    /// <summary>
+    /// The signed photo URL is minted per request. Left in the comparison it would make every
+    /// member payload differ from itself, so a screen showing the same profile would redraw under
+    /// an "Updating…" on every single refresh.
+    /// </summary>
+    [Fact]
+    public void Same_WhenOnlyTheSignedPhotoUrlDiffers()
+    {
+        var a = new Member("Dad", "https://storage.example/photo?sig=aaa&exp=1", "None");
+        var b = new Member("Dad", "https://storage.example/photo?sig=bbb&exp=2", "None");
+
+        Assert.True(SamePayload.Same(a, b));
+    }
+
+    [Fact]
+    public void Same_WhenTheSignedPhotoUrlDiffersDeepInThePayload()
+    {
+        var a = new Page(new Member("Dad", "sig-a", null), [new Member("Mum", "sig-a", null)]);
+        var b = new Page(new Member("Dad", "sig-b", null), [new Member("Mum", "sig-c", null)]);
+
+        Assert.True(SamePayload.Same(a, b));
+    }
+
+    /// <summary>Ignoring the URL must not make the comparison blind to the rest of the member.</summary>
+    [Fact]
+    public void Different_WhenAnotherMemberFieldChangesAlongsideThePhotoUrl()
+    {
+        var a = new Member("Dad", "sig-a", "None");
+        var b = new Member("Dad", "sig-b", "Allergic to penicillin");
+
+        Assert.False(SamePayload.Same(a, b));
+    }
+
     /// <summary>Order is the server's and part of the answer — a reordered list is a redraw.</summary>
     [Fact]
     public void Different_WhenTheOrderChanges()
