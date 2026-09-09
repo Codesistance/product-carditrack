@@ -35,6 +35,8 @@ public class ProfilePhotoStorageReachTests
     [
         // The only file that may decode caregiver-uploaded bytes.
         ["src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "SkiaProfilePhotoProcessor.cs"],
+        // Export charts: our own daily readings, never an upload. No network, no signed URL.
+        ["src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "Reports", "ReportChartRenderer.cs"],
     ];
 
     [Fact]
@@ -53,7 +55,7 @@ public class ProfilePhotoStorageReachTests
     }
 
     [Fact]
-    public void Skia_IsReferencedOnlyByTheProfilePhotoProcessor()
+    public void Skia_IsReferencedOnlyByTheProfilePhotoProcessor_AndExportCharts()
     {
         AssertSymbolConfinedTo("SkiaSharp", SkiaAllowedFiles);
     }
