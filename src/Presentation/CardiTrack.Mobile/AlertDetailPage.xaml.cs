@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Charts;
 using CardiTrack.Mobile.Services;
 
@@ -23,23 +24,19 @@ public partial class AlertDetailPage : ContentPage
     private readonly IPopupService _popups;
 
     private Guid _alertId;
-    private bool _isLoading;
     private bool _returningFromPopup;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private AlertDetailResponse? _alert;
 
-    /// <summary>
-    /// The load the offline banner speaks for, kept so the banner can ask where that call's
-    /// payload came from rather than reading the origin of whichever GET finished last —
-    /// see <see cref="CacheOrigin"/>.
-    /// </summary>
-    private Task<AlertDetailResponse>? _alertCall;
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
 
     public AlertDetailPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
         this.RefreshEvery(PeriodicRefresh.LiveDataInterval, RefreshUnattendedAsync);
     }
@@ -87,44 +84,58 @@ public partial class AlertDetailPage : ContentPage
 
     private async Task LoadAsync(bool silent = false)
     {
-        if (_isLoading || _alertId == Guid.Empty)
+        if (_gate.IsLoading || _alertId == Guid.Empty)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
+        var alertId = _alertId;
 
         if (_alert is null)
             SetState(loading: true);
 
         try
         {
-            _alertCall = _api.GetAlertAsync(_alertId);
-            _alert = await _alertCall;
-            _lastLoadedUtc = DateTime.UtcNow;
-            Apply(_alert);
-            SetState(loaded: true);
-        }
-        catch (ApiException ex)
-        {
-            if (_alert is null)
+            // The device's saved copy of this alert goes up first on a landing with nothing on
+            // screen; the live one replaces it under the overlay. The 30-second tick and a pull
+            // already have the alert up and replace it in place.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _alert is null ? ct => _api.PeekAlertAsync(alertId, ct) : null,
+                fetch: ct => _api.GetAlertAsync(alertId, ct),
+                render: alert =>
+                {
+                    _alert = alert;
+                    Apply(alert);
+                    SetState(loaded: true);
+                },
+                _feedback);
+
+            switch (outcome.Result)
             {
-                ErrorDetailLabel.Text = ex.Message;
-                SetState(error: true);
+                case RefreshResult.Superseded:
+                    return;
+                case RefreshResult.NothingAndFailed:
+                    // Nothing to show — or a 404 over a snapshot: the alert was deleted
+                    // elsewhere, and its saved copy must not outlive it.
+                    _alert = null;
+                    ErrorDetailLabel.Text = outcome.Error!.Message;
+                    SetState(error: true);
+                    return;
             }
-            else if (!silent)
-            {
-                await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
-            }
+
+            if (outcome.IsFresh)
+                _lastLoadedUtc = DateTime.UtcNow;
+            else if (!silent && outcome.Error is not null)
+                await _popups.ShowWarningAsync(outcome.Error.Message, "Couldn't refresh");
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
             Refresher.IsRefreshing = false;
         }
     }
 
     private void Apply(AlertDetailResponse alert)
     {
-        SavedBanner.ApplyFrom(_api, _alertCall);
-
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var firstName = NameFormatting.FirstName(alert.CardiMemberName);
         ChatBot.MemberId = alert.CardiMemberId;

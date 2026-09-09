@@ -4,6 +4,7 @@ using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
@@ -61,17 +62,12 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private bool _focusAdvise;
 
-    private bool _isLoading;
     private bool _isBusy;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private CardiMemberDetailResponse? _member;
 
-    /// <summary>
-    /// The load the offline banner speaks for, kept so the banner can ask where that call's
-    /// payload came from rather than reading the origin of whichever GET finished last —
-    /// see <see cref="CacheOrigin"/>.
-    /// </summary>
-    private Task<CardiMemberDetailResponse>? _memberCall;
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
 
     /// <summary>
     /// Whether a generated summary is currently on screen. Guards the placeholder — see
@@ -110,6 +106,7 @@ public partial class CardiMemberDetailPage : ContentPage
         _api = api;
         _popups = popups;
         _questionValidity = questionValidity;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         BuildPauseDurations();
         PendingQuestionCard.AnswerSubmitted += OnQuestionAnswered;
         PendingQuestionCard.DismissRequested += OnQuestionDismissed;
@@ -221,7 +218,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </param>
     private async Task LoadAsync(bool silent = false)
     {
-        if (_isLoading)
+        if (_gate.IsLoading)
             return;
 
         // A navigation that couldn't carry a member id must not turn into traffic: with the
@@ -235,35 +232,63 @@ public partial class CardiMemberDetailPage : ContentPage
             return;
         }
 
-        _isLoading = true;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
 
         if (_member is null)
             SetState(loading: true);
 
+        // Taken when the caregiver left if they left, and only otherwise from where the page
+        // sits now. Captured once, ahead of both renders, so the saved snapshot and the live
+        // answer put the caregiver back in the same place.
+        var anchor = _anchorOnLeaving ?? CaptureScrollAnchor();
+        _anchorOnLeaving = null;
+
+        // Only this pass honours it. Every restore below re-asserts the same target, so the
+        // suggestion holds its place while the digest above it rewrites itself; by the pass
+        // after, the caregiver is sitting on that card and the ordinary anchor keeps them
+        // there without any help.
+        var focusAdvise = _focusAdvise;
+        _focusAdvise = false;
+
         try
         {
-            _memberCall = _api.GetCardiMemberAsync(_memberId);
-            _member = await _memberCall;
-            _lastLoadedUtc = DateTime.UtcNow;
-            ChatBot.MemberId = _memberId;
-            ChatBot.MemberFirstName = NameFormatting.FirstName(_member.Name);
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _member is null ? ct => _api.PeekCardiMemberAsync(memberId, ct) : null,
+                fetch: ct => _api.GetCardiMemberAsync(memberId, ct),
+                render: member =>
+                {
+                    _member = member;
+                    ChatBot.MemberId = memberId;
+                    ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+                    Apply(member);
+                    SetState(loaded: true);
+                    _ = RestoreScrollAnchorAsync(anchor, focusAdvise);
+                },
+                _feedback);
 
-            // Taken when the caregiver left if they left, and only otherwise from where the page
-            // sits now. By the time this runs the pop has already re-measured the page, so a
-            // reading taken here is of a scroll position that has moved.
-            var anchor = _anchorOnLeaving ?? CaptureScrollAnchor();
-            _anchorOnLeaving = null;
+            switch (outcome.Result)
+            {
+                case RefreshResult.Superseded:
+                    return;
+                case RefreshResult.NothingAndFailed:
+                    // Nothing to show — or a 404 over a snapshot, which means the member is gone
+                    // (or was never this caregiver's) and the saved page must not stand in.
+                    _member = null;
+                    ErrorDetailLabel.Text = outcome.Error!.Message;
+                    SetState(error: true);
+                    return;
+            }
 
-            // Only this pass honours it. Every restore below re-asserts the same target, so the
-            // suggestion holds its place while the digest above it rewrites itself; by the pass
-            // after, the caregiver is sitting on that card and the ordinary anchor keeps them
-            // there without any help.
-            var focusAdvise = _focusAdvise;
-            _focusAdvise = false;
-
-            Apply(_member);
-            SetState(loaded: true);
-            _ = RestoreScrollAnchorAsync(anchor, focusAdvise);
+            if (outcome.IsFresh)
+                _lastLoadedUtc = DateTime.UtcNow;
+            else if (!silent && outcome.Error is not null)
+            {
+                // Something is already on screen and the banner says it is saved; the caregiver
+                // asked for this refresh, so the reason it did not happen is said as well.
+                await _popups.ShowWarningAsync(outcome.Error.Message, "Couldn't refresh");
+            }
 
             // Fire-and-forget, not awaited: Apply already rendered the placeholder summary
             // copy, and the digest read is a separate round trip that shouldn't hold up the
@@ -272,22 +297,9 @@ public partial class CardiMemberDetailPage : ContentPage
             // height of it — the digest rewrites the summary, the questionnaires add or remove a
             // whole card — so the anchor is re-asserted as each one finishes rather than only
             // after Apply. Restoring is a no-op when nothing moved.
-            _ = LoadThenRestoreAsync(LoadDigestAsync(_memberId), anchor, focusAdvise);
-            _ = LoadThenRestoreAsync(LoadAdviseAsync(_memberId), anchor, focusAdvise);
-            _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(_memberId), anchor, focusAdvise);
-        }
-        catch (ApiException ex)
-        {
-            if (_member is null)
-            {
-                ErrorDetailLabel.Text = ex.Message;
-                SetState(error: true);
-            }
-            else if (!silent)
-            {
-                // Something is already on screen; a failed refresh shouldn't blank it.
-                await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
-            }
+            _ = LoadThenRestoreAsync(LoadDigestAsync(memberId), anchor, focusAdvise);
+            _ = LoadThenRestoreAsync(LoadAdviseAsync(memberId), anchor, focusAdvise);
+            _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(memberId), anchor, focusAdvise);
         }
         catch (Exception ex)
         {
@@ -306,7 +318,7 @@ public partial class CardiMemberDetailPage : ContentPage
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
         }
     }
 
@@ -455,8 +467,6 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void Apply(CardiMemberDetailResponse member)
     {
-        SavedBanner.ApplyFrom(_api, _memberCall);
-
         Avatar.Apply(member.Name, member.PhotoUrl);
         NameLabel.Text = member.Name;
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";
@@ -537,42 +547,54 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         try
         {
+            // The device's saved summary first, when nothing is up yet, so the card reads as
+            // written rather than as a placeholder for the round trip; the live one lands on top
+            // and only re-fades when the words actually moved. No overlay for these follow-up
+            // loads — the page's own replacement already had one.
+            if (!_digestRendered && await _api.PeekDigestAsync(memberId) is { } saved && memberId == _memberId)
+                ApplyDigest(saved);
+
             var digest = await _api.GetDigestAsync(memberId);
             if (memberId != _memberId)
                 return;
 
-            // The headline is generated with the summary and describes this particular one. A
-            // digest stored before headlines existed has none, so the card falls back to naming
-            // what it is rather than rendering a blank title.
-            var headline = string.IsNullOrWhiteSpace(digest.Headline) ? "Latest Summary" : digest.Headline;
-            var unchanged = _digestRendered
-                            && SummaryTitleLabel.Text == headline
-                            && SummaryLabel.Text == digest.Text;
-
-            SummaryTitleLabel.Text = headline;
-            SummaryLabel.Text = digest.Text;
-            SummaryGeneratedLabel.Text = $"Updated {RelativeTime.Format(digest.GeneratedAtUtc)}";
-            SummaryGeneratedLabel.IsVisible = true;
-            _digestRendered = true;
-
-            _digest = digest;
-            if (_member is not null)
-                ApplyUrgency(digest?.Urgency);
-
-            if (unchanged)
-                return;
-
-            // Reads as an update rather than a flicker, and only when the words actually moved —
-            // same treatment as the dashboard's status hero.
-            SummaryTitleLabel.Opacity = 0;
-            SummaryLabel.Opacity = 0;
-            _ = SummaryTitleLabel.FadeToAsync(1, 150, Easing.CubicOut);
-            _ = SummaryLabel.FadeToAsync(1, 150, Easing.CubicOut);
+            ApplyDigest(digest);
         }
         catch (ApiException)
         {
             // Placeholder copy stays — see the field's own comment in Apply().
         }
+    }
+
+    private void ApplyDigest(DigestResponse digest)
+    {
+        // The headline is generated with the summary and describes this particular one. A
+        // digest stored before headlines existed has none, so the card falls back to naming
+        // what it is rather than rendering a blank title.
+        var headline = string.IsNullOrWhiteSpace(digest.Headline) ? "Latest Summary" : digest.Headline;
+        var unchanged = _digestRendered
+                        && SummaryTitleLabel.Text == headline
+                        && SummaryLabel.Text == digest.Text;
+
+        SummaryTitleLabel.Text = headline;
+        SummaryLabel.Text = digest.Text;
+        SummaryGeneratedLabel.Text = $"Updated {RelativeTime.Format(digest.GeneratedAtUtc)}";
+        SummaryGeneratedLabel.IsVisible = true;
+        _digestRendered = true;
+
+        _digest = digest;
+        if (_member is not null)
+            ApplyUrgency(digest?.Urgency);
+
+        if (unchanged)
+            return;
+
+        // Reads as an update rather than a flicker, and only when the words actually moved —
+        // same treatment as the dashboard's status hero.
+        SummaryTitleLabel.Opacity = 0;
+        SummaryLabel.Opacity = 0;
+        _ = SummaryTitleLabel.FadeToAsync(1, 150, Easing.CubicOut);
+        _ = SummaryLabel.FadeToAsync(1, 150, Easing.CubicOut);
     }
 
     /// <summary>
@@ -586,6 +608,10 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         try
         {
+            // Saved suggestion first when the card is not up yet; the live one lands on top.
+            if (!AdviseCard.IsVisible && await _api.PeekAdviseAsync(memberId) is { } saved && memberId == _memberId)
+                ApplyAdvise(saved);
+
             var advise = await _api.GetAdviseAsync(memberId);
             if (memberId != _memberId)
                 return;
@@ -644,40 +670,53 @@ public partial class CardiMemberDetailPage : ContentPage
 
         try
         {
+            // The saved page first when no card is up yet — a question the device already holds
+            // is on screen at once — and the live page on top of it. The validity check below
+            // runs on both, which is what stops a saved question about a day that has ended
+            // being asked again.
+            if (!PendingQuestionCard.IsVisible && !QuestionsRow.IsVisible
+                && await _api.PeekQuestionnairesAsync(memberId) is { } saved && memberId == _memberId)
+                ApplyQuestionnaires(saved);
+
             var result = await _api.GetQuestionnairesAsync(memberId);
             if (memberId != _memberId)
                 return;
 
-            QuestionsRow.IsVisible = result.HasAny;
-
-            // Checked before it is drawn, not trusted because the API sent it. A card held on
-            // screen across midnight, or a page served from the offline cache after a night with no
-            // signal, both hand us a "did they feel tired today?" about a day that has ended. The
-            // service also tells the server, so the row stops blocking the next question.
-            var pending = _questionValidity.Verify(result.Pending);
-            if (pending is null)
-            {
-                PendingQuestionCard.IsVisible = false;
-                return;
-            }
-
-            var alreadyShowing = PendingQuestionCard.IsVisible
-                                 && PendingQuestionCard.Questionnaire?.Id == pending.Id;
-
-            PendingQuestionCard.Apply(pending, NameFormatting.FirstName(_member?.Name));
-            PendingQuestionCard.IsVisible = true;
-
-            if (alreadyShowing)
-                return;
-
-            // Reads as the question arriving rather than as a flicker — the summary's treatment.
-            PendingQuestionCard.Opacity = 0;
-            _ = PendingQuestionCard.FadeToAsync(1, 150, Easing.CubicOut);
+            ApplyQuestionnaires(result);
         }
         catch (ApiException)
         {
             // No card, no row, no error state: the page is complete without either.
         }
+    }
+
+    private void ApplyQuestionnaires(QuestionnairesPageResponse result)
+    {
+        QuestionsRow.IsVisible = result.HasAny;
+
+        // Checked before it is drawn, not trusted because the API sent it. A card held on
+        // screen across midnight, or a page served from the offline cache after a night with no
+        // signal, both hand us a "did they feel tired today?" about a day that has ended. The
+        // service also tells the server, so the row stops blocking the next question.
+        var pending = _questionValidity.Verify(result.Pending);
+        if (pending is null)
+        {
+            PendingQuestionCard.IsVisible = false;
+            return;
+        }
+
+        var alreadyShowing = PendingQuestionCard.IsVisible
+                             && PendingQuestionCard.Questionnaire?.Id == pending.Id;
+
+        PendingQuestionCard.Apply(pending, NameFormatting.FirstName(_member?.Name));
+        PendingQuestionCard.IsVisible = true;
+
+        if (alreadyShowing)
+            return;
+
+        // Reads as the question arriving rather than as a flicker — the summary's treatment.
+        PendingQuestionCard.Opacity = 0;
+        _ = PendingQuestionCard.FadeToAsync(1, 150, Easing.CubicOut);
     }
 
     private async void OnQuestionAnswered(object? sender, string answer)

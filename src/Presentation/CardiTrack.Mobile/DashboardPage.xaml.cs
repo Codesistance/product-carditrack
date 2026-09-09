@@ -53,18 +53,20 @@ public partial class DashboardPage : ContentPage
 
     private enum DashboardState { Loading, Loaded, NoMember, Error }
 
-    private bool _isLoading;
     private bool _isSyncing;
     private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private DashboardResponse? _lastData;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     /// <summary>
-    /// The load the offline banner speaks for, kept so the banner can ask where that call's
-    /// payload came from rather than reading the origin of whichever GET finished last —
-    /// see <see cref="CacheOrigin"/>.
+    /// How the last dashboard load ended — whether what is on screen reached the API or came
+    /// off the device — for the paths that have to speak for that load rather than for whichever
+    /// GET finished last (see <see cref="SyncAndReloadAsync"/>).
     /// </summary>
-    private Task<DashboardResponse>? _dashboardCall;
+    private RefreshOutcome? _lastOutcome;
     private Guid? _currentSleepAlertId;
 
     public DashboardPage(
@@ -80,6 +82,7 @@ public partial class DashboardPage : ContentPage
         _popups = popups;
         _statusLines = statusLines;
         _questionValidity = questionValidity;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         HeroCard.MemberTapped += (_, _) => OpenMemberDetails();
         HeroCard.DaybookTapped += OnDaybookTapped;
         HeroCard.AlertsTapped += OnHeroAlertsTapped;
@@ -331,16 +334,18 @@ public partial class DashboardPage : ContentPage
         // Asks about the reload just above, not about whichever GET happened to finish
         // last: the banner this defers to speaks for that same load. No load at all means
         // nothing is standing in for the sync error, so it is said.
-        if (syncError is not null
-            && (_dashboardCall is null || _api.OriginOf(_dashboardCall) is not { WasCached: true }))
+        if (syncError is not null && _lastOutcome is not { Result: RefreshResult.SavedOnlyOffline })
             await _popups.ShowInfoAsync(syncError, "Couldn't check in");
     }
 
     private async Task LoadAsync(bool force)
     {
-        if (_isLoading)
+        // Never supersedes: every unattended path funnels here, and a tick landing during a pull
+        // would otherwise cancel the pull. What the caregiver asks for by hand goes through
+        // SyncAndReloadAsync, which waits its turn.
+        if (_gate.IsLoading)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
 
         if (_lastData is null)
             SetState(DashboardState.Loading);
@@ -348,29 +353,66 @@ public partial class DashboardPage : ContentPage
         try
         {
             var memberId = await ResolveMemberIdAsync(force);
+            if (!_gate.IsCurrent(ticket))
+                return;
             if (memberId is null)
             {
                 SetState(DashboardState.NoMember);
                 return;
             }
 
-            _dashboardCall = _api.GetDashboardAsync(memberId.Value);
-            var data = await _dashboardCall;
-            Apply(data);
+            // On a landing with nothing on screen, the device's last dashboard for this member
+            // goes up first and the live one replaces it under the overlay. A resume, a tick or a
+            // pull already has a dashboard up and replaces it in place.
+            var id = memberId.Value;
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _lastData is null ? ct => _api.PeekDashboardAsync(id, ct) : null,
+                fetch: ct => _api.GetDashboardAsync(id, ct),
+                render: data =>
+                {
+                    Apply(data);
 
-            // Committed only once it is actually on screen. Both catches below read _lastData as
-            // "there is already a dashboard here worth keeping", which is only true after Apply
-            // has run: assigning it first meant a fault part-way through Apply left the field set
-            // over a screen that had never been filled in, and the error paths then protected a
-            // skeleton instead of replacing it.
-            _lastData = data;
+                    // Committed only once it is actually on screen. Everything below reads
+                    // _lastData as "there is already a dashboard here worth keeping", which is
+                    // only true after Apply has run: assigning it first meant a fault part-way
+                    // through Apply left the field set over a screen that had never been filled
+                    // in, and the error paths then protected a skeleton instead of replacing it.
+                    _lastData = data;
+                    SetState(DashboardState.Loaded);
+                },
+                _feedback);
+            _lastOutcome = outcome;
+
+            switch (outcome.Result)
+            {
+                case RefreshResult.Superseded:
+                    return;
+                case RefreshResult.NothingAndFailed:
+                    // Nothing to show — or a 404 over a snapshot, which means the member is gone
+                    // and their saved dashboard must not stand in for them.
+                    _lastData = null;
+                    ErrorDetailLabel.Text = outcome.Error!.Message;
+                    SetState(DashboardState.Error);
+                    return;
+            }
+
+            ApplyStaleBanner(_lastData!, outcome);
+            if (!outcome.IsFresh)
+            {
+                // Saved data is on screen and the banner says so. Nothing more is asked of the
+                // server: a status line generated over a dashboard the API could not serve would
+                // be a guess dressed as a reading, and a failed refresh over existing data stays
+                // quiet — that beats blanking the dashboard.
+                return;
+            }
+
             _lastLoadedUtc = DateTime.UtcNow;
-            SetState(DashboardState.Loaded);
 
             // Fire-and-forget, not awaited: the hero card already shows its static per-tier
             // copy, and a MedGemma call can take a few seconds — nothing about the dashboard
             // should wait on it, including the pull-to-refresh spinner below.
-            _ = LoadCurrentStatusAsync(data);
+            _ = LoadCurrentStatusAsync(_lastData!);
 
             // Loaded after the dashboard rather than alongside it: a caregiver opens this screen
             // to see how their relative is, and housekeeping must never delay that answer or take
@@ -379,13 +421,13 @@ public partial class DashboardPage : ContentPage
         }
         catch (ApiException ex)
         {
+            // The member list behind ResolveMemberIdAsync failing; the dashboard read itself
+            // reports through its outcome above.
             if (_lastData is null)
             {
                 ErrorDetailLabel.Text = ex.Message;
                 SetState(DashboardState.Error);
             }
-            // With data already on screen, keep it — pull-to-refresh failing quietly
-            // beats blanking the dashboard.
         }
         catch (Exception ex)
         {
@@ -404,7 +446,7 @@ public partial class DashboardPage : ContentPage
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
         }
     }
 
@@ -453,42 +495,6 @@ public partial class DashboardPage : ContentPage
                 ? DateTime.SpecifyKind(pausedUntil, DateTimeKind.Utc).ToLocalTime().ToString("MMM d, h:mm tt")
                 : "further notice";
             PausedBannerLabel.Text = $"Monitoring is paused until {until} — we're not collecting data or raising alerts.";
-        }
-
-        SavedBanner.ApplyFrom(_api, _dashboardCall);
-
-        // Stale banner (M1-09c). Suppressed while paused: data is meant to be stale then,
-        // and "pull down to check in" would be advice we can't honour. Also suppressed while
-        // offline — the offline banner already says the data is last-known-good.
-        var isStale = !data.MonitoringPaused
-            && !SavedBanner.IsVisible
-            && data.LastSyncedAt is { } synced
-            && DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc) > StaleThreshold;
-        var wasStale = StaleBanner.IsVisible;
-        StaleBanner.IsVisible = isStale;
-        if (isStale)
-        {
-            StaleBannerLabel.Text =
-                $"Last update was {RelativeTime.Format(data.LastSyncedAt!.Value)} — pull down to check in";
-
-            // Only fade on the transition into "stale" — re-applying the same state on every
-            // 5-minute auto-refresh would otherwise re-fade a banner that's already visible.
-            // Already-stale still forces full opacity rather than leaving it untouched: a fade
-            // interrupted by the app backgrounding mid-animation would otherwise strand the
-            // banner semi-transparent until it leaves and re-enters the stale state.
-            if (!wasStale)
-            {
-                StaleBanner.Opacity = 0;
-                _ = StaleBanner.FadeToAsync(1, 180, Easing.CubicOut);
-            }
-            else
-            {
-                StaleBanner.Opacity = 1;
-            }
-        }
-        else
-        {
-            StaleBanner.Opacity = 0;
         }
 
         // No device (M1-09d)
@@ -569,6 +575,48 @@ public partial class DashboardPage : ContentPage
             card.Apply(alert);
             card.AlertTapped += OnAlertTapped;
             AlertsStack.Add(card);
+        }
+    }
+
+    /// <summary>
+    /// The stale banner (M1-09c), decided once the load has ended rather than inside
+    /// <see cref="Apply"/>, because it depends on how the load ended. Suppressed while paused:
+    /// data is meant to be stale then, and "pull down to check in" would be advice we can't
+    /// honour. Suppressed while what is on screen is saved data: the saved-data banner already
+    /// says it is last-known-good, and a pull cannot reach the server that banner says is out of
+    /// reach.
+    /// </summary>
+    private void ApplyStaleBanner(DashboardResponse data, RefreshOutcome outcome)
+    {
+        var isStale = !data.MonitoringPaused
+            && outcome.IsFresh
+            && data.LastSyncedAt is { } synced
+            && DateTime.UtcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc) > StaleThreshold;
+        var wasStale = StaleBanner.IsVisible;
+        StaleBanner.IsVisible = isStale;
+        if (isStale)
+        {
+            StaleBannerLabel.Text =
+                $"Last update was {RelativeTime.Format(data.LastSyncedAt!.Value)} — pull down to check in";
+
+            // Only fade on the transition into "stale" — re-applying the same state on every
+            // auto-refresh would otherwise re-fade a banner that's already visible.
+            // Already-stale still forces full opacity rather than leaving it untouched: a fade
+            // interrupted by the app backgrounding mid-animation would otherwise strand the
+            // banner semi-transparent until it leaves and re-enters the stale state.
+            if (!wasStale)
+            {
+                StaleBanner.Opacity = 0;
+                _ = StaleBanner.FadeToAsync(1, 180, Easing.CubicOut);
+            }
+            else
+            {
+                StaleBanner.Opacity = 1;
+            }
+        }
+        else
+        {
+            StaleBanner.Opacity = 0;
         }
     }
 

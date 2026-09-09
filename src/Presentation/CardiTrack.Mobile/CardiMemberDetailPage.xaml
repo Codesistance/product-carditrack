@@ -859,5 +859,9 @@
         <!-- Chat from anywhere — alongside this page's "Ask about their readings" row, which
              stays: the row is the discoverable entry, the floating bot is the consistent one. -->
         <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="1"/>
+
+        <!-- The second-long "Updating…" while a saved snapshot is replaced by live data — last,
+             so it covers everything including the nav bar. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="3"/>
     </Grid>
 </ContentPage>

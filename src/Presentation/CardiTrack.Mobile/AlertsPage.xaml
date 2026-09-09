@@ -232,5 +232,9 @@
         <!-- Chat from anywhere: no single-member context on this cross-member list, so the
              launcher resolves the account's members itself on tap — see ChatBotLauncher. -->
         <controls:ChatBotLauncher Grid.Row="2"/>
+
+        <!-- The second-long "Updating…" while a saved page is replaced by live data — last, so
+             it covers everything including the chips and the nav bar. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="4"/>
     </Grid>
 </ContentPage>
