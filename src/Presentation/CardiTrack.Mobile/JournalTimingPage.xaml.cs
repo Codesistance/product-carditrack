@@ -101,7 +101,11 @@ public partial class JournalTimingPage : ContentPage
 
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {
+                // The panel goes with the data it was drawn from: values a caregiver can
+                // see and tap, over a null field every handler early-returns on, is worse
+                // than an honest error panel on its own.
                 _settings = null;
+                SettingsPanel.IsVisible = false;
                 ErrorDetailLabel.Text = outcome.Error!.Message;
                 LoadingSpinner.IsVisible = false;
                 LoadingSpinner.IsRunning = false;

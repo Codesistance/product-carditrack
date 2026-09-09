@@ -49,17 +49,24 @@ public partial class SettingsPage : ContentPage
     /// </summary>
     private async Task LoadNotificationSummaryAsync()
     {
+        // Tracked for this run rather than read off the label: Settings is a tab, so the label
+        // may still hold the line a previous visit wrote. Asking whether it is empty would let
+        // that stale line survive a run in which nothing was read at all.
+        var wrote = false;
         try
         {
             if (await _api.PeekNotificationPreferencesAsync() is { } saved)
+            {
                 ApplyNotificationSummary(saved);
+                wrote = true;
+            }
 
             ApplyNotificationSummary(await _api.GetNotificationPreferencesAsync());
         }
         catch (ApiException)
         {
-            // Only when nothing was written above: a saved line beats the generic one.
-            if (string.IsNullOrEmpty(NotificationSummary.Text))
+            // Only when this run wrote nothing: a line from the device beats the generic one.
+            if (!wrote)
                 NotificationSummary.Text = "Quiet hours, lock-screen detail, what to hear about";
         }
     }
