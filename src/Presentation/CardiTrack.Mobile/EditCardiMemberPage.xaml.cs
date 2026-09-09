@@ -166,10 +166,16 @@ public partial class EditCardiMemberPage : ContentPage
         catch (ApiException ex)
         {
             // A form already filled from the device stays — Save reports its own failure.
-            if (_member is not null)
+            // Except when the server says the member is gone: keeping their profile up would
+            // offer edits to somebody who no longer exists, and every Save would fail. The same
+            // rule the read screens follow — a 404 over a snapshot drops it.
+            if (_member is not null && !ex.IsNotFound)
                 return;
 
-            ErrorDetailLabel.Text = ex.Message;
+            _member = null;
+            ErrorDetailLabel.Text = ex.IsNotFound
+                ? "This person's profile is no longer available."
+                : ex.Message;
             SetState(error: true);
         }
     }

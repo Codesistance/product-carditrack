@@ -275,7 +275,12 @@ public partial class MetricAlarmsPage : ContentPage
         // the state as it was. Its render would put the switch back and leave the screen
         // disagreeing with the server about whether an alert is on. Drop it; what happens
         // next is authoritative.
+        //
+        // The banner goes with it. A cancelled run never reaches Completed, so the "checking for
+        // updates…" it put up would otherwise stay there for good — over a screen that is about
+        // to show exactly what the caregiver just saved, which is the most current thing on it.
         _gate.CancelInFlight();
+        SavedBanner.Hide();
 
         var previous = !enabled;
         _toggleInFlight = alarm.Id;

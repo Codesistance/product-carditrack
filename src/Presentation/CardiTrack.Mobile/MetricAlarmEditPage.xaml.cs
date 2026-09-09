@@ -154,10 +154,17 @@ public partial class MetricAlarmEditPage : ContentPage
         {
             // A form already built from the device stays: it is the same catalogue the live call
             // failed to fetch, and the caregiver can fill it in. Save reports its own failure.
-            if (_loaded)
+            // A 404 is different — the server is saying the alarm or the member is gone, and an
+            // edit form over something that no longer exists can only end in a failed Save.
+            if (_loaded && !ex.IsNotFound)
                 return;
 
-            ErrorDetailLabel.Text = ex.Message;
+            _loaded = false;
+            FormPanel.IsVisible = false;
+            SaveButton.IsVisible = false;
+            ErrorDetailLabel.Text = ex.IsNotFound
+                ? "This alert is no longer available."
+                : ex.Message;
             LoadingSpinner.IsVisible = false;
             LoadingSpinner.IsRunning = false;
             ErrorPanel.IsVisible = true;
