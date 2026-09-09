@@ -5,9 +5,10 @@
 
 ## Summary
 
-.NET shipped its September 2026 Patch Tuesday servicing release (SDK 10.0.111/10.0.400,
-runtime/ASP.NET Core/EF Core 10.0.12) fixing five CVEs (69304, 71328, 69522, 58649, 69806 —
-corrected from an initial miscount of six against the five sourced below). CardiTrack pins
+.NET shipped its September 2026 Patch Tuesday servicing release (SDK 10.0.111 and 10.0.400,
+runtime/ASP.NET Core/EF Core 10.0.12) fixing five CVEs (CVE-2026-69304, CVE-2026-71328,
+CVE-2026-69522, CVE-2026-58649, CVE-2026-69806 — corrected from an initial miscount of six
+against the five sourced below). CardiTrack pins
 `Microsoft.EntityFrameworkCore` (and `.Design`/`.Relational`) at `10.0.11` in
 `CardiTrack.Infrastructure.csproj` and `Microsoft.AspNetCore.Authentication.JwtBearer` at
 `10.0.11` in `CardiTrack.API.csproj` — not every project in the solution references either
@@ -23,11 +24,11 @@ None of the five CVEs land on CardiTrack's actual shipped topology:
   `Microsoft.AspNetCore.Server.IISIntegration`. CardiTrack runs Linux containers on Cloud Run,
   not IIS out-of-process hosting — does not apply.
 - **CVE-2026-71328 / CVE-2026-69522** (CVSS 8.8, heap overflow in
-  `Microsoft.DiaSymReader.Native` via malicious PDB files) is a build-tooling path — exposure
-  requires processing an untrusted PDB, which no CardiTrack pipeline does.
+  `Microsoft.DiaSymReader.Native` via malicious PDB files) sit on a build-tooling path —
+  exposure requires processing an untrusted PDB, which no CardiTrack pipeline does.
 - **CVE-2026-58649 / CVE-2026-69806** (`dotnet watch` BrowserRefreshServer/AspireServerService
-  info disclosure and code injection) is a dev inner-loop tool, never runs in a shipped
-  container.
+  info disclosure and code injection) affect a dev inner-loop tool that never runs in a
+  shipped container.
 
 So this is a routine patch-hygiene bump, not an active exploit path — hence HIGH rather than
 CRITICAL: worth doing on the next dependency-bump PR, not a fire drill.
