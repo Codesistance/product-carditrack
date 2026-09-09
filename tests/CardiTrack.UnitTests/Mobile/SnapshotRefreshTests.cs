@@ -244,6 +244,68 @@ public class SnapshotRefreshTests
         Assert.Empty(cache.Items);
     }
 
+    /// <summary>
+    /// A screen that already has content passes no peek — that is what a null peek means. A
+    /// refresh failure there must leave what is on screen alone; reporting "nothing to show"
+    /// would have every page blank itself on the first 5xx after it had loaded.
+    /// </summary>
+    [Fact]
+    public async Task ReportsSavedOnlyHttpError_WhenTheScreenAlreadyHasContentAndTheRefreshFails()
+    {
+        var (api, http) = CreateSut(new MemoryOfflineCache());
+        http.Enqueue(HttpStatusCode.InternalServerError, """{"success":false,"message":"boom","timestamp":"2026-08-01T00:00:00Z"}""");
+        var gate = new LoadGate();
+        var renders = 0;
+
+        var outcome = await SnapshotRefresh.RunAsync(
+            api, gate, gate.Begin(),
+            peek: null,
+            fetch: ct => api.GetCardiMembersAsync(ct),
+            render: _ => renders++,
+            Substitute.For<IRefreshFeedback>());
+
+        Assert.Equal(RefreshResult.SavedOnlyHttpError, outcome.Result);
+        Assert.True(outcome.HasContent);
+        Assert.Equal(0, renders);
+    }
+
+    [Fact]
+    public async Task ReportsSavedOnlyOffline_WhenTheScreenAlreadyHasContentAndThereIsNoNetwork()
+    {
+        var (api, http) = CreateSut(new MemoryOfflineCache());
+        http.Throws(new HttpRequestException("offline"));
+        var gate = new LoadGate();
+
+        var outcome = await SnapshotRefresh.RunAsync(
+            api, gate, gate.Begin(),
+            peek: null,
+            fetch: ct => api.GetCardiMembersAsync(ct),
+            render: _ => { },
+            Substitute.For<IRefreshFeedback>());
+
+        Assert.Equal(RefreshResult.SavedOnlyOffline, outcome.Result);
+        Assert.True(outcome.HasContent);
+    }
+
+    /// <summary>The one thing that does take a loaded screen down: the server saying it is gone.</summary>
+    [Fact]
+    public async Task ReportsNothingAndFailed_On404_EvenWhenTheScreenAlreadyHasContent()
+    {
+        var (api, http) = CreateSut(new MemoryOfflineCache());
+        http.Enqueue(HttpStatusCode.NotFound, """{"success":false,"message":"gone","timestamp":"2026-08-01T00:00:00Z"}""");
+        var gate = new LoadGate();
+
+        var outcome = await SnapshotRefresh.RunAsync(
+            api, gate, gate.Begin(),
+            peek: null,
+            fetch: ct => api.GetCardiMembersAsync(ct),
+            render: _ => { },
+            Substitute.For<IRefreshFeedback>());
+
+        Assert.Equal(RefreshResult.NothingAndFailed, outcome.Result);
+        Assert.False(outcome.HasContent);
+    }
+
     [Fact]
     public async Task ReportsNothingAndFailed_WhenThereIsNoSnapshotAndTheCallFails()
     {
