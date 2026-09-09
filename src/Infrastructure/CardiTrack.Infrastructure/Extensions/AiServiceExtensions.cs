@@ -613,14 +613,17 @@ public static class AiServiceExtensions
     /// below -1 is not a value Ollama defines (-1 is "the whole context", 0 is "off"). Either is
     /// far more likely a typo than an intention, and the symptom it would otherwise produce — a
     /// model that loops until its ceiling — is exactly the one these settings exist to stop.
+    /// The penalty must also be finite: the binder accepts "Infinity", and System.Text.Json
+    /// refuses to serialise a non-finite double, which would fail every request at send time
+    /// rather than the host at boot.
     /// </summary>
     private static void RequireRepetitionGuard(
         string section, string penaltyKey, string windowKey, double repeatPenalty, int repeatLastN)
     {
-        if (double.IsNaN(repeatPenalty) || repeatPenalty < 1.0)
+        if (!double.IsFinite(repeatPenalty) || repeatPenalty < 1.0)
         {
             throw new InvalidOperationException(Message(section, penaltyKey,
-                $"must be 1.0 (off) or greater (found {repeatPenalty}). Below 1.0 rewards repetition."));
+                $"must be a finite number, 1.0 (off) or greater (found {repeatPenalty}). Below 1.0 rewards repetition."));
         }
 
         if (repeatLastN < -1)

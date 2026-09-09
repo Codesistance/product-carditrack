@@ -606,6 +606,13 @@ variable "medgemma_repeat_last_n" {
     condition     = var.medgemma_repeat_last_n >= -1
     error_message = "medgemma_repeat_last_n must be -1 (whole context), 0 (off) or a positive token count."
   }
+
+  # It binds to an int in AI__Private__RepeatLastN; a fraction would stringify into an env var
+  # the .NET binder cannot parse, and the host would refuse to start after the revision deployed.
+  validation {
+    condition     = floor(var.medgemma_repeat_last_n) == var.medgemma_repeat_last_n
+    error_message = "medgemma_repeat_last_n must be a whole number of tokens."
+  }
 }
 
 # ── Public AI provider (reports and chat) ─────────────────────────────────────

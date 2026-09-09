@@ -575,6 +575,7 @@ public class AiServiceExtensionsTests
     /// </summary>
     [Theory]
     [InlineData("AI:Private", "RepeatPenalty", "0.9")]
+    [InlineData("AI:Private", "RepeatPenalty", "Infinity")]
     [InlineData("AI:Private", "RepeatLastN", "-2")]
     [InlineData("AI:Rewrite", "RepeatPenalty", "0.9")]
     [InlineData("AI:Rewrite", "RepeatLastN", "-2")]

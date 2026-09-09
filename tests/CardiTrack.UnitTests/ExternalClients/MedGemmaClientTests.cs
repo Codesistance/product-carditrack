@@ -42,10 +42,12 @@ public class MedGemmaClientTests
     /// <inheritdoc cref="ContextTokens"/>
     private const int MaxOutputTokens = 2048;
 
-    /// <inheritdoc cref="ContextTokens"/>
+    /// <summary>The repetition penalty <see cref="CreateClient"/> configures — asserted against
+    /// rather than hard-coded at each call site, for the same reason as <see cref="ContextTokens"/>.</summary>
     private const double RepeatPenalty = 1.15;
 
-    /// <inheritdoc cref="ContextTokens"/>
+    /// <summary>The repetition look-back <see cref="CreateClient"/> configures — see
+    /// <see cref="RepeatPenalty"/>.</summary>
     private const int RepeatLastN = 512;
 
     /// <summary>Realistic non-streaming /api/generate payload; durations are nanoseconds.</summary>
