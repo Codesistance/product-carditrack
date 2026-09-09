@@ -236,12 +236,12 @@ public partial class NotificationPreferencesPage : ContentPage
 
         // A toggle flipped while a save is in flight has already moved on screen; snap it back
         // to what the server holds rather than let it look saved until the other save returns.
-            // The caregiver has changed something, and this page became interactive on a saved
-            // snapshot — so a live load issued before the change may still be in flight, carrying
-            // the state as it was. Its render would put the switch back and leave the screen
-            // disagreeing with the server about whether an alert is on. Drop it; what happens
-            // next is authoritative.
-            _gate.CancelInFlight();
+        // The caregiver has changed something, and this page became interactive on a saved
+        // snapshot — so a live load issued before the change may still be in flight, carrying
+        // the state as it was. Its render would put the switch back and leave the screen
+        // disagreeing with the server about whether an alert is on. Drop it; what happens
+        // next is authoritative.
+        _gate.CancelInFlight();
 
         if (_saving)
         {
