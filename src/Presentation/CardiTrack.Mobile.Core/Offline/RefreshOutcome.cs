@@ -28,7 +28,11 @@ public enum RefreshResult
 
     /// <summary>
     /// Nothing to show: there was no snapshot and the live call failed — or there was one and
-    /// the API said the thing no longer exists, which a snapshot must not contradict.
+    /// the API said the thing no longer exists, which a snapshot must not contradict. In that
+    /// second case the snapshot <em>has been rendered</em>: the screen must now put its error
+    /// state over it (and drop its own copy of the data), the same way it would for a cold
+    /// failure. The run does not un-render — only the screen knows what its error state is.
+    /// <see cref="RefreshOutcome.HasContent"/> is false for exactly this reason.
     /// </summary>
     NothingAndFailed,
 
