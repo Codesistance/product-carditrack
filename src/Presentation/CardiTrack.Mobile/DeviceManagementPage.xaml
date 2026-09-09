@@ -101,7 +101,7 @@
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
 
-                        <controls:OfflineStatusBanner x:Name="OfflineBanner"/>
+                        <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <VerticalStackLayout Spacing="2">
                             <Label Text="Devices List" Style="{StaticResource Heading2}"/>

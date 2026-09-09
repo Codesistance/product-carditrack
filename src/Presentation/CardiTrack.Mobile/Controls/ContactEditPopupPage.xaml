@@ -9,7 +9,7 @@
          two fields this record is made of, and nothing else. A caregiver fixing an emergency
          number should not have to walk the whole M1-14 profile form to reach it, and every other
          field on that form is a field they can get wrong on the way past. -->
-    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
         </Grid.GestureRecognizers>

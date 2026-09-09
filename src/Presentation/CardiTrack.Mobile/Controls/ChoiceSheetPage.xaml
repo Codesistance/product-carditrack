@@ -8,7 +8,7 @@
          a field opens reads as the same object as a confirmation. The body is the difference: rows
          rather than buttons, because this list has a current answer and a row can carry the tick
          that says which. The chooser's buttons are for questions that have none yet. -->
-    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
         </Grid.GestureRecognizers>

@@ -123,7 +123,7 @@ public partial class AlertDetailPage : ContentPage
 
     private void Apply(AlertDetailResponse alert)
     {
-        OfflineBanner.ApplyFrom(_api, _alertCall);
+        SavedBanner.ApplyFrom(_api, _alertCall);
 
         var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
         var firstName = NameFormatting.FirstName(alert.CardiMemberName);

@@ -50,6 +50,9 @@
     <Color x:Key="SkeletonGray">#E7EBF0</Color>
     <Color x:Key="SleepPurple">#7C6FDC</Color>
     <Color x:Key="StaleBannerBackground">#FFF7E8</Color>
+    <!-- The dim behind every popup and in-page overlay: HeadingText at 50%. One token, so a new
+         overlay dims the screen the same amount as the popups it has to sit alongside. -->
+    <Color x:Key="ScrimOverlay">#80343434</Color>
 
     <!-- ── Surface tokens (Figma 101:2805) ──
          Every screen floats its cards on this tinted ground rather than on white, which is why

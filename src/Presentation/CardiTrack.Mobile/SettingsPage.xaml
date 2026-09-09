@@ -258,7 +258,7 @@
              watching", wherever it is about to happen. -->
         <BoxView x:Name="ExitHintScrim"
                  Grid.Row="1"
-                 Color="#80343434"
+                 Color="{StaticResource ScrimOverlay}"
                  IsVisible="False"
                  InputTransparent="True"/>
         <Border x:Name="ExitHintBanner"

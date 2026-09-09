@@ -404,6 +404,60 @@ public interface ICardiTrackApiClient
     /// authorized and audited like every other read of health data.
     /// </summary>
     Task<ReportFile> DownloadReportAsync(string reportId, CancellationToken ct = default);
+
+    // ---- Cache-only peeks ----
+    //
+    // Each is the device's last saved answer to exactly the question its Get twin asks — the
+    // same arguments produce the same key — or null when there is none, it has aged out, or the
+    // device cannot read it. Never touches the network. For a screen to put on the wall while the
+    // live call runs behind it (Offline.SnapshotRefresh); OriginOf on the returned task says when
+    // the snapshot was saved. PeekAlertsAsync above is the original of the pattern.
+
+    Task<List<CardiMemberResponse>?> PeekCardiMembersAsync(CancellationToken ct = default);
+    Task<CardiMemberDetailResponse?> PeekCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<DashboardResponse?> PeekDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<AlertDetailResponse?> PeekAlertAsync(Guid alertId, CancellationToken ct = default);
+    Task<DigestResponse?> PeekDigestAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<AdviseResponse?> PeekAdviseAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<DigestResponse>?> PeekJournalEntriesAsync(
+        Guid cardiMemberId,
+        JournalCadence cadence,
+        int limit,
+        string? search = null,
+        DateOnly? from = null,
+        string? urgency = null,
+        CancellationToken ct = default);
+
+    Task<DigestResponse?> PeekJournalEntryAsync(
+        Guid cardiMemberId,
+        JournalCadence cadence,
+        DateOnly localDate,
+        CancellationToken ct = default);
+
+    Task<QuestionnairesPageResponse?> PeekQuestionnairesAsync(
+        Guid cardiMemberId,
+        string? search = null,
+        int page = 1,
+        int pageSize = 20,
+        CancellationToken ct = default);
+
+    Task<DeviceListResponse?> PeekDevicesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    Task<NotificationListResponse?> PeekNotificationsAsync(
+        string? state = null,
+        string? category = null,
+        bool? owned = null,
+        int? limit = null,
+        CancellationToken ct = default);
+
+    Task<NotificationSummaryResponse?> PeekNotificationSummaryAsync(CancellationToken ct = default);
+    Task<AlertPreferencesResponse?> PeekAlertPreferencesAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<IReadOnlyList<MetricAlarmResponse>?> PeekMemberAlarmsAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<AlarmCatalogueResponse?> PeekAlarmCatalogueAsync(CancellationToken ct = default);
+    Task<JournalSettingsResponse?> PeekJournalSettingsAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<NotificationPreferenceResponse?> PeekNotificationPreferencesAsync(CancellationToken ct = default);
+    Task<List<NotificationMuteResponse>?> PeekNotificationMutesAsync(CancellationToken ct = default);
 }
 
 /// <summary>A downloaded export: the bytes, and what to call them when saving or sharing.</summary>

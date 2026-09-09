@@ -844,6 +844,329 @@ public class CardiTrackApiClientTests
         Assert.Null(client.OriginOf(Task.FromResult(0)));
     }
 
+    // ── Cache-only peeks ────────────────────────────────────────────────────────
+    //
+    // Every read screen puts the device's saved answer up before the live call returns. A peek
+    // must answer exactly the question its Get twin asks — the same arguments, the same key —
+    // and must say when that answer was saved, because the screen has to say so out loud.
+
+    private const string EmptyObjectEnvelope =
+        """{"success":true,"message":"ok","data":{},"timestamp":"2026-08-01T00:00:00Z"}""";
+
+    private const string EmptyListEnvelope =
+        """{"success":true,"message":"ok","data":[],"timestamp":"2026-08-01T00:00:00Z"}""";
+
+    [Fact]
+    public async Task PeekDashboard_ReturnsWhatTheLiveCallSaved_WithoutTouchingTheApi()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"cardiMemberId":"%ID%","cardiMemberName":"Dad"},
+             "timestamp":"2026-08-01T00:00:00Z"}
+            """.Replace("%ID%", memberId.ToString()));
+        await client.GetDashboardAsync(memberId);
+        var requestsAfterLiveCall = http.Requests.Count;
+
+        var saved = await client.PeekDashboardAsync(memberId);
+
+        Assert.NotNull(saved);
+        Assert.Equal(memberId, saved!.CardiMemberId);
+        Assert.Equal(requestsAfterLiveCall, http.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Peek_FilesTheSnapshotsDate_UnderThePeekTask()
+    {
+        var cache = new MemoryOfflineCache();
+        var savedAt = DateTimeOffset.UtcNow.AddHours(-3);
+        cache.Items["api/v1/notifications/summary"] = new OfflineCacheEntry(EmptyObjectEnvelope, savedAt);
+        var (client, _) = CreateSut(cache);
+
+        var peek = client.PeekNotificationSummaryAsync();
+        await peek;
+
+        var origin = client.OriginOf(peek);
+        Assert.NotNull(origin);
+        Assert.True(origin!.WasCached);
+        Assert.Equal(savedAt, origin.CachedAt);
+    }
+
+    [Fact]
+    public async Task Peek_FilesAnOriginWithNoDate_WhenThereIsNoSnapshot()
+    {
+        var (client, http) = CreateSut(new MemoryOfflineCache());
+
+        var peek = client.PeekNotificationSummaryAsync();
+        var saved = await peek;
+
+        Assert.Null(saved);
+        Assert.Empty(http.Requests);
+        var origin = client.OriginOf(peek);
+        Assert.NotNull(origin);
+        Assert.False(origin!.WasCached);
+    }
+
+    [Fact]
+    public async Task PeekAlerts_StillReportsItsOrigin_NowThatItSharesThePathBuilder()
+    {
+        var cache = new MemoryOfflineCache();
+        var savedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        cache.Items["api/v1/alerts?severity=red"] = new OfflineCacheEntry(
+            """{"success":true,"message":"ok","data":{"alerts":[],"total":0,"unreadCount":0},"timestamp":"2026-08-01T00:00:00Z"}""",
+            savedAt);
+        var (client, _) = CreateSut(cache);
+
+        var peek = client.PeekAlertsAsync(severity: "red");
+        Assert.NotNull(await peek);
+        Assert.Equal(savedAt, client.OriginOf(peek)!.CachedAt);
+    }
+
+    /// <summary>
+    /// Every peek and its live twin, called with the same arguments, must agree on the key. One
+    /// case per pair rather than one test per pair: the list is the assertion, and a new GET that
+    /// gains a peek is added here or the peek is not covered.
+    /// </summary>
+    [Fact]
+    public async Task EveryPeek_UsesTheSameKeyAsItsLiveTwin()
+    {
+        var memberId = Guid.NewGuid();
+        var alertId = Guid.NewGuid();
+        var day = new DateOnly(2026, 8, 1);
+        var digestEnvelope = """
+            {"success":true,"message":"ok","data":{"cardiMemberId":"%M%","localDate":"2026-08-01","audience":"daybook",
+             "text":"Fine.","generatedAtUtc":"2026-08-01T22:00:00Z"},"timestamp":"2026-08-01T00:00:00Z"}
+            """.Replace("%M%", memberId.ToString());
+        var digestListEnvelope = digestEnvelope.Replace("\"data\":{", "\"data\":[{").Replace("},\"timestamp\"", "}],\"timestamp\"");
+        var adviseEnvelope = """
+            {"success":true,"message":"ok","data":{"cardiMemberId":"%M%","summary":"s","suggestion":"t",
+             "generatedAt":"2026-08-01T22:00:00Z"},"timestamp":"2026-08-01T00:00:00Z"}
+            """.Replace("%M%", memberId.ToString());
+
+        var pairs = new (string Name, string Envelope, Func<ICardiTrackApiClient, Task> Live, Func<ICardiTrackApiClient, Task<object?>> Peek)[]
+        {
+            ("CardiMembers", EmptyListEnvelope, api => api.GetCardiMembersAsync(), async api => await api.PeekCardiMembersAsync()),
+            ("CardiMember", EmptyObjectEnvelope, api => api.GetCardiMemberAsync(memberId), async api => await api.PeekCardiMemberAsync(memberId)),
+            ("Dashboard", EmptyObjectEnvelope, api => api.GetDashboardAsync(memberId), async api => await api.PeekDashboardAsync(memberId)),
+            ("Alert", EmptyObjectEnvelope, api => api.GetAlertAsync(alertId), async api => await api.PeekAlertAsync(alertId)),
+            ("Alerts", EmptyObjectEnvelope,
+                api => api.GetAlertsAsync("red", "new", cardiMemberId: memberId),
+                async api => await api.PeekAlertsAsync("red", "new", cardiMemberId: memberId)),
+            ("Digest", digestEnvelope, api => api.GetDigestAsync(memberId), async api => await api.PeekDigestAsync(memberId)),
+            ("Advise", adviseEnvelope, api => api.GetAdviseAsync(memberId), async api => await api.PeekAdviseAsync(memberId)),
+            ("JournalEntries", digestListEnvelope,
+                api => api.GetJournalEntriesAsync(memberId, JournalCadence.Weekbook, 30, "sleep", day, "watch"),
+                async api => await api.PeekJournalEntriesAsync(memberId, JournalCadence.Weekbook, 30, "sleep", day, "watch")),
+            ("JournalEntry", digestEnvelope,
+                api => api.GetJournalEntryAsync(memberId, JournalCadence.Daybook, day),
+                async api => await api.PeekJournalEntryAsync(memberId, JournalCadence.Daybook, day)),
+            ("Questionnaires", EmptyObjectEnvelope,
+                api => api.GetQuestionnairesAsync(memberId, "walk", 2, 10),
+                async api => await api.PeekQuestionnairesAsync(memberId, "walk", 2, 10)),
+            ("Devices", EmptyObjectEnvelope, api => api.GetDevicesAsync(memberId), async api => await api.PeekDevicesAsync(memberId)),
+            ("Notifications", EmptyObjectEnvelope,
+                api => api.GetNotificationsAsync("Open", "safety", true, 5),
+                async api => await api.PeekNotificationsAsync("Open", "safety", true, 5)),
+            ("NotificationSummary", EmptyObjectEnvelope, api => api.GetNotificationSummaryAsync(), async api => await api.PeekNotificationSummaryAsync()),
+            ("AlertPreferences", EmptyObjectEnvelope, api => api.GetAlertPreferencesAsync(memberId), async api => await api.PeekAlertPreferencesAsync(memberId)),
+            ("MemberAlarms", EmptyListEnvelope, api => api.GetMemberAlarmsAsync(memberId), async api => await api.PeekMemberAlarmsAsync(memberId)),
+            ("AlarmCatalogue", EmptyObjectEnvelope, api => api.GetAlarmCatalogueAsync(), async api => await api.PeekAlarmCatalogueAsync()),
+            ("JournalSettings", EmptyObjectEnvelope, api => api.GetJournalSettingsAsync(memberId), async api => await api.PeekJournalSettingsAsync(memberId)),
+            ("NotificationPreferences", EmptyObjectEnvelope, api => api.GetNotificationPreferencesAsync(), async api => await api.PeekNotificationPreferencesAsync()),
+            ("NotificationMutes", EmptyListEnvelope, api => api.GetNotificationMutesAsync(), async api => await api.PeekNotificationMutesAsync()),
+        };
+
+        foreach (var (name, envelope, live, peek) in pairs)
+        {
+            var cache = new MemoryOfflineCache();
+            var (client, http) = CreateSut(cache);
+            http.Enqueue(HttpStatusCode.OK, envelope);
+
+            await live(client);
+            Assert.True(cache.Items.Count == 1, $"{name}: the live call should have saved exactly one entry");
+            var requests = http.Requests.Count;
+
+            var saved = await peek(client);
+
+            Assert.True(saved is not null, $"{name}: the peek did not find what the live call saved — the keys differ");
+            Assert.True(http.Requests.Count == requests, $"{name}: the peek touched the network");
+        }
+    }
+
+    // ── Eviction ────────────────────────────────────────────────────────────────
+    //
+    // A mutation that succeeded makes some saved answers wrong. The client drops the ones it can
+    // name, so the next landing's peek cannot put a pre-edit profile or a deleted alarm on the wall.
+
+    [Fact]
+    public async Task Get_EvictsTheKey_On404()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        cache.Items[$"api/v1/cardimembers/{memberId}/dashboard"] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.NotFound, """{"success":false,"message":"gone","timestamp":"2026-08-01T00:00:00Z"}""");
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.GetDashboardAsync(memberId));
+
+        Assert.True(ex.IsNotFound);
+        Assert.DoesNotContain($"api/v1/cardimembers/{memberId}/dashboard", cache.Items.Keys);
+    }
+
+    [Fact]
+    public async Task UpdateCardiMember_EvictsTheProfileDashboardAndMemberList()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        var untouched = $"api/v1/cardimembers/{memberId}/alarms";
+        foreach (var key in new[]
+                 {
+                     $"api/v1/cardimembers/{memberId}",
+                     $"api/v1/cardimembers/{memberId}/dashboard",
+                     "api/Onboarding/cardimembers",
+                     untouched,
+                 })
+            cache.Items[key] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, EmptyObjectEnvelope);
+
+        await client.UpdateCardiMemberAsync(memberId, new UpdateCardiMemberRequest());
+
+        Assert.Equal([untouched], cache.Items.Keys);
+    }
+
+    [Fact]
+    public async Task RemoveCardiMember_EvictsEveryKeyItCanName()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        var otherMember = Guid.NewGuid();
+        var expectedGone = new[]
+        {
+            $"api/v1/cardimembers/{memberId}",
+            $"api/v1/cardimembers/{memberId}/dashboard",
+            $"api/v1/cardimembers/{memberId}/devices",
+            $"api/v1/cardimembers/{memberId}/alert-preferences",
+            $"api/v1/cardimembers/{memberId}/alarms",
+            $"api/v1/cardimembers/{memberId}/journal-settings",
+            $"api/v1/insights/members/{memberId}/status",
+            $"api/v1/insights/members/{memberId}/digest",
+            $"api/v1/insights/members/{memberId}/advise",
+            $"api/v1/cardimembers/{memberId}/questionnaires?page=1&pageSize=20",
+            $"api/v1/cardimembers/{memberId}/alerts",
+            "api/Onboarding/cardimembers",
+            "api/v1/notifications/summary",
+        };
+        var kept = $"api/v1/cardimembers/{otherMember}/dashboard";
+        foreach (var key in expectedGone.Append(kept))
+            cache.Items[key] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.NoContent, "");
+
+        await client.RemoveCardiMemberAsync(memberId);
+
+        Assert.Equal([kept], cache.Items.Keys);
+    }
+
+    [Fact]
+    public async Task SaveMemberAlarm_EvictsTheMembersAlarmList()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        cache.Items[$"api/v1/cardimembers/{memberId}/alarms"] = new OfflineCacheEntry(EmptyListEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, EmptyObjectEnvelope);
+
+        await client.SaveMemberAlarmAsync(memberId, Guid.NewGuid(), new SaveMetricAlarmRequest());
+
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
+    public async Task AnswerQuestionnaire_EvictsUsingTheMemberIdFromTheResponse()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        foreach (var key in new[]
+                 {
+                     $"api/v1/cardimembers/{memberId}/questionnaires?page=1&pageSize=20",
+                     $"api/v1/cardimembers/{memberId}/dashboard",
+                     $"api/v1/cardimembers/{memberId}",
+                 })
+            cache.Items[key] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"id":"%Q%","cardiMemberId":"%M%"},"timestamp":"2026-08-01T00:00:00Z"}
+            """.Replace("%Q%", Guid.NewGuid().ToString()).Replace("%M%", memberId.ToString()));
+
+        await client.AnswerQuestionnaireAsync(Guid.NewGuid(), new AnswerQuestionnaireRequest());
+
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
+    public async Task DismissNotification_EvictsTheOpenInboxSummaryAndMutes()
+    {
+        var cache = new MemoryOfflineCache();
+        foreach (var key in new[]
+                 {
+                     "api/v1/notifications?state=Open",
+                     "api/v1/notifications/summary",
+                     "api/v1/notifications/mutes",
+                 })
+            cache.Items[key] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.NoContent, "");
+
+        await client.DismissNotificationAsync(Guid.NewGuid());
+
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
+    public async Task UpdateNotificationPreferences_EvictsThePreferences()
+    {
+        var cache = new MemoryOfflineCache();
+        cache.Items["api/v1/notifications/preferences"] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, EmptyObjectEnvelope);
+
+        await client.UpdateNotificationPreferencesAsync(new UpdateNotificationPreferenceRequest());
+
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
+    public async Task Mutation_DoesNotEvict_WhenTheServerRefused()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        cache.Items[$"api/v1/cardimembers/{memberId}"] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.BadRequest, """{"success":false,"message":"no","timestamp":"2026-08-01T00:00:00Z"}""");
+
+        await Assert.ThrowsAsync<ApiException>(() =>
+            client.UpdateCardiMemberAsync(memberId, new UpdateCardiMemberRequest()));
+
+        Assert.Single(cache.Items);
+    }
+
+    [Fact]
+    public async Task Eviction_IsBestEffort_WhenTheCacheCannotDelete()
+    {
+        var cache = new MemoryOfflineCache { RemoveThrows = new IOException("disk") };
+        var memberId = Guid.NewGuid();
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, EmptyObjectEnvelope);
+
+        // The server has already changed; a cache that cannot forget must not make the save
+        // look as though it failed.
+        var updated = await client.UpdateCardiMemberAsync(memberId, new UpdateCardiMemberRequest());
+
+        Assert.NotNull(updated);
+    }
+
     // ── Member chat ─────────────────────────────────────────────────────────────
     //
     // sessions/current is the one read whose "nothing there" is a 200 with a null `data` —
@@ -1104,29 +1427,4 @@ public class CardiTrackApiClientTests
         return (client, http);
     }
 
-    private sealed class MemoryOfflineCache : IOfflineReadCache
-    {
-        public Dictionary<string, OfflineCacheEntry> Items { get; } = new(StringComparer.Ordinal);
-
-        public Task SaveAsync(string key, string payload, CancellationToken ct = default)
-        {
-            Items[key] = new OfflineCacheEntry(payload, DateTimeOffset.UtcNow);
-            return Task.CompletedTask;
-        }
-
-        public Task<OfflineCacheEntry?> TryGetAsync(string key, CancellationToken ct = default) =>
-            Task.FromResult(Items.TryGetValue(key, out var entry) ? entry : null);
-
-        public Task RemoveAsync(string key, CancellationToken ct = default)
-        {
-            Items.Remove(key);
-            return Task.CompletedTask;
-        }
-
-        public Task ClearAsync(CancellationToken ct = default)
-        {
-            Items.Clear();
-            return Task.CompletedTask;
-        }
-    }
 }

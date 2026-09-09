@@ -7,7 +7,7 @@
     <!-- Same shell as AppPopupPage/AppChooserPage (scrim, card, entry animation), so a third
          popup still reads as the same object as the other two. Only the body differs: a small
          table of readings instead of a message or a list of choices. -->
-    <Grid x:Name="Scrim" BackgroundColor="#80343434" Opacity="0">
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
         </Grid.GestureRecognizers>

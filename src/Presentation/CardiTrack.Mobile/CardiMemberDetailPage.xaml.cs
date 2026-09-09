@@ -455,7 +455,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void Apply(CardiMemberDetailResponse member)
     {
-        OfflineBanner.ApplyFrom(_api, _memberCall);
+        SavedBanner.ApplyFrom(_api, _memberCall);
 
         Avatar.Apply(member.Name, member.PhotoUrl);
         NameLabel.Text = member.Name;
