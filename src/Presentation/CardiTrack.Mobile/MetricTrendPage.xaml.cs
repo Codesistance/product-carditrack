@@ -134,7 +134,10 @@ public partial class MetricTrendPage : ContentPage
                     Apply(member);
                 },
                 _feedback,
-                sameAs: SamePayload.Same);
+                // What Apply draws: the member's name and the metric series behind the chart.
+                // Everything else on the member payload — notes, contacts, weather, baseline —
+                // would otherwise redraw this chart for a change it does not show.
+                sameAs: (a, b) => SamePayload.Same(new { a.Name, a.Metrics }, new { b.Name, b.Metrics }));
 
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {

@@ -105,7 +105,12 @@ public partial class MedicalInformationPage : ContentPage
                     SetState(loaded: true);
                 },
                 _feedback,
-                sameAs: SamePayload.Same);
+                // What Apply draws, and only that: a member payload changes whenever a sync
+                // lands, and notes that have not moved must not flash "Updating…" for it.
+                // Compared whole rather than field by field, so nothing inside these can slip past.
+                sameAs: (a, b) => SamePayload.Same(
+                    new { a.Name, a.MedicalNotes, a.IsPrimaryCaregiver },
+                    new { b.Name, b.MedicalNotes, b.IsPrimaryCaregiver }));
 
             // Keep whatever is already on screen — a failed refresh must not blank notes somebody
             // may be reading (the banner says they are saved) — and only offer the error when

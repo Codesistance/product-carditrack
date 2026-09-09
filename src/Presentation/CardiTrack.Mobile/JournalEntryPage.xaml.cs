@@ -224,7 +224,12 @@ public partial class JournalEntryPage : ContentPage
                     SetState(loaded: true);
                 },
                 _feedback,
-                sameAs: SamePayload.Same);
+                // The whole review — it is the page — plus only what the charts draw from the
+                // member. A finished day's entry never changes, so this page should be silent on
+                // reopening unless the fortnight behind it has actually moved.
+                sameAs: (a, b) => SamePayload.Same(
+                    new { a.Review, a.Member?.Name, a.Member?.Metrics },
+                    new { b.Review, b.Member?.Name, b.Member?.Metrics }));
 
             switch (outcome.Result)
             {
