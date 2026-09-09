@@ -340,10 +340,11 @@ public partial class DashboardPage : ContentPage
 
     private async Task LoadAsync(bool force)
     {
-        // Never supersedes: every unattended path funnels here, and a tick landing during a pull
-        // would otherwise cancel the pull. What the caregiver asks for by hand goes through
-        // SyncAndReloadAsync, which waits its turn.
-        if (_gate.IsLoading)
+        // An unattended load — a tick, a resume, arriving on the screen — waits its turn behind
+        // whatever is already running. A forced one supersedes it: the caregiver pulling the
+        // screen down has just asked for the current state, and the device sync that ran before
+        // this reload means the answer in flight is already the older one.
+        if (_gate.IsLoading && !force)
             return;
         var ticket = _gate.Begin();
 
