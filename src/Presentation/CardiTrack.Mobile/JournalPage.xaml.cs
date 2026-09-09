@@ -425,8 +425,19 @@ public partial class JournalPage : ContentPage
                 await _popups.ShowWarningAsync(outcome.Error.Message, "Couldn't refresh");
             }
         }
+        catch (OperationCanceledException) when (!_gate.IsCurrent(ticket))
+        {
+            // The member resolution above runs outside SnapshotRefresh on this load's token, so
+            // a newer load cancelling this one surfaces here as a raw cancellation — the cache
+            // read rethrows it rather than dressing it as a transport failure. It is this page's
+            // own doing and there is nothing to report; the newer load paints.
+        }
         catch (ApiException ex)
         {
+            // A superseded request can also report its cancellation as a transport failure.
+            if (!_gate.IsCurrent(ticket))
+                return;
+
             // The member list above; the entries read reports through its outcome.
             if (_lastReviews is null)
             {
@@ -440,8 +451,11 @@ public partial class JournalPage : ContentPage
         }
         finally
         {
+            // Only the load that still owns the screen clears the pull spinner. A superseded one
+            // stopping it would take the spinner off a pull that is still running.
+            if (_gate.IsCurrent(ticket))
+                Refresher.IsRefreshing = false;
             _gate.Release(ticket);
-            Refresher.IsRefreshing = false;
         }
     }
 

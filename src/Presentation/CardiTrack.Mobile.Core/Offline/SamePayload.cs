@@ -40,10 +40,13 @@ public static class SamePayload
         {
             return JsonSerializer.Serialize(a, Options) == JsonSerializer.Serialize(b, Options);
         }
-        catch (NotSupportedException)
+        catch (Exception ex) when (ex is NotSupportedException or JsonException or InvalidOperationException)
         {
             // A payload this cannot serialize is one we cannot call unchanged. Redrawing is
-            // always safe; claiming equality is not.
+            // always safe; claiming equality is not — and throwing is worst of all, since this
+            // runs inside a screen's load and would take the page down over a comparison that
+            // only ever decides whether to skip work. Converter faults, cycles and max-depth all
+            // land here.
             return false;
         }
     }
