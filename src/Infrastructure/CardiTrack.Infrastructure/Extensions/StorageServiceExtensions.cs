@@ -31,7 +31,7 @@ public static class StorageServiceExtensions
 
         // Singletons: the processor is stateless, and the storage adapter's GCS client, URL
         // signer and log-once flag are all meant to live for the process.
-        services.AddSingleton<IProfilePhotoProcessor, ImageSharpProfilePhotoProcessor>();
+        services.AddSingleton<IProfilePhotoProcessor, SkiaProfilePhotoProcessor>();
         services.AddSingleton<IProfilePhotoStorage, GcsProfilePhotoStorage>();
 
         return services;
