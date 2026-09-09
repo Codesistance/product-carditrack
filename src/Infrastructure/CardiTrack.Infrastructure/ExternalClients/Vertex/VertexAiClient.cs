@@ -137,7 +137,12 @@ public class VertexAiClient : IExternalAiClient
             operationName: "generate_structured",
             request: BuildRequest(SingleUserTurn(fullPrompt), schemaText),
             parseContent: content => DeserializeStructured<T>(content, "generate_structured"),
-            ct);
+            ct,
+            // Same reason as MedGemma's: the operation name is the API shape, shared by every
+            // structured read, and the reads behind it differ in what a normal reply costs. A
+            // reply schema on both providers is what keeps one query able to answer "what does
+            // this read usually produce" for a read either slot can serve.
+            replySchema: typeof(T).Name);
         return new AiGenerationResult<T>(result, usage);
     }
 
@@ -189,11 +194,16 @@ public class VertexAiClient : IExternalAiClient
     /// value only, because an empty string handed to member chat would read as the model having
     /// nothing to say rather than the platform having refused to say it.
     /// </summary>
+    /// <param name="replySchema">
+    /// The response type a structured call asked for, by name — see
+    /// <see cref="AiTelemetry.ReplySchemaTag"/>. Null for a free-text call.
+    /// </param>
     private async Task<(TResult Result, AiUsage Usage)> SendInstrumentedCoreAsync<TResult>(
         string operationName,
         VertexRequest request,
         Func<string, TResult> parseContent,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? replySchema = null)
     {
         using var activity = AiTelemetry.Source.StartActivity(
             $"{operationName} {_options.Model}", ActivityKind.Client);
@@ -201,6 +211,8 @@ public class VertexAiClient : IExternalAiClient
         activity?.SetTag(AiTelemetry.ProviderNameTag, ProviderName);
         activity?.SetTag(AiTelemetry.SystemTag, ProviderName);
         activity?.SetTag(AiTelemetry.RequestModelTag, _options.Model);
+        if (replySchema is not null)
+            activity?.SetTag(AiTelemetry.ReplySchemaTag, replySchema);
 
         var stopwatch = Stopwatch.StartNew();
         string? errorType = null;
@@ -237,7 +249,7 @@ public class VertexAiClient : IExternalAiClient
             if (usageMeta?.PromptTokenCount is { } inputTokens)
             {
                 activity?.SetTag(AiTelemetry.InputTokensTag, inputTokens);
-                AiTelemetry.TokenUsage.Record(inputTokens, TokenTags(operationName, "input"));
+                AiTelemetry.TokenUsage.Record(inputTokens, TokenTags(operationName, "input", replySchema));
             }
             // Thinking tokens are generated output and billed as such, so they fold into the
             // output count rather than disappearing from the persisted per-turn usage.
@@ -249,7 +261,7 @@ public class VertexAiClient : IExternalAiClient
             if (outputTokens is { } output)
             {
                 activity?.SetTag(AiTelemetry.OutputTokensTag, output);
-                AiTelemetry.TokenUsage.Record(output, TokenTags(operationName, "output"));
+                AiTelemetry.TokenUsage.Record(output, TokenTags(operationName, "output", replySchema));
             }
 
             ThrowIfBlocked(parsed, operationName, ref errorType);
@@ -301,7 +313,7 @@ public class VertexAiClient : IExternalAiClient
         }
         finally
         {
-            var durationTags = TokenlessTags(operationName);
+            var durationTags = TokenlessTags(operationName, replySchema);
             if (errorType is not null)
                 durationTags.Add(AiTelemetry.ErrorTypeTag, errorType);
             AiTelemetry.OperationDuration.Record(stopwatch.Elapsed.TotalSeconds, durationTags);
@@ -452,19 +464,29 @@ public class VertexAiClient : IExternalAiClient
         return null;
     }
 
-    private TagList TokenTags(string operationName, string tokenType)
+    private TagList TokenTags(string operationName, string tokenType, string? replySchema = null)
     {
-        var tags = TokenlessTags(operationName);
+        var tags = TokenlessTags(operationName, replySchema);
         tags.Add(AiTelemetry.TokenTypeTag, tokenType);
         return tags;
     }
 
-    private TagList TokenlessTags(string operationName) => new()
+    /// <remarks>
+    /// The reply schema is tagged only when the call named one, so free-text series keep the
+    /// dimensions they already have — the same rule <see cref="Medical.MedGemmaClient"/> follows.
+    /// </remarks>
+    private TagList TokenlessTags(string operationName, string? replySchema = null)
     {
-        { AiTelemetry.OperationNameTag, operationName },
-        { AiTelemetry.ProviderNameTag, ProviderName },
-        { AiTelemetry.RequestModelTag, _options.Model },
-    };
+        var tags = new TagList
+        {
+            { AiTelemetry.OperationNameTag, operationName },
+            { AiTelemetry.ProviderNameTag, ProviderName },
+            { AiTelemetry.RequestModelTag, _options.Model },
+        };
+        if (replySchema is not null)
+            tags.Add(AiTelemetry.ReplySchemaTag, replySchema);
+        return tags;
+    }
 
     // Requests serialize through PostAsJsonAsync = System.Text.Json, so request records use
     // [JsonPropertyName]. Responses deserialize through JsonUtility = Newtonsoft, so response

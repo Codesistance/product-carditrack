@@ -221,7 +221,13 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             selectContent: response => response.Response,
             parseContent: content => DeserializeStructured<T>(content, "generate_structured"),
             ct,
-            requireCompleteContent: true);
+            requireCompleteContent: true,
+            // Which read this is. Every structured call in the solution goes out as
+            // "generate_structured" — the operation name is the API shape, and there are a dozen
+            // reads behind it sharing one output ceiling — so without the response type nothing
+            // downstream can say a daily clinical read stopped at the budget rather than "a
+            // structured call somewhere did".
+            replySchema: typeof(T).Name);
         return new CardiTrack.Application.DTOs.Common.AiGenerationResult<T>(result, usage);
     }
 
@@ -284,6 +290,11 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     /// and letting it reach the deserializer turns a budget problem into a parse error pointing
     /// at whatever byte the cut happened to land on.
     /// </param>
+    /// <param name="replySchema">
+    /// The response type the call asked for, by name — see <see cref="AiTelemetry.ReplySchemaTag"/>
+    /// for why the operation name alone is not enough to tell one structured read from another.
+    /// Null for a free-text call, which then emits exactly the signals it does today.
+    /// </param>
     private async Task<(TResult Result, CardiTrack.Application.DTOs.Common.AiUsage Usage)> SendInstrumentedCoreAsync<TResponse, TResult>(
         string operationName,
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
@@ -292,7 +303,8 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         CancellationToken ct,
         bool allowEmptyContent = false,
         int maxAttempts = MaxAttempts,
-        bool requireCompleteContent = false)
+        bool requireCompleteContent = false,
+        string? replySchema = null)
         where TResponse : OllamaResponseMetadata
     {
         using var activity = AiTelemetry.Source.StartActivity(
@@ -301,6 +313,8 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         activity?.SetTag(AiTelemetry.ProviderNameTag, ProviderName);
         activity?.SetTag(AiTelemetry.SystemTag, ProviderName);
         activity?.SetTag(AiTelemetry.RequestModelTag, _settings.Model);
+        if (replySchema is not null)
+            activity?.SetTag(AiTelemetry.ReplySchemaTag, replySchema);
 
         var stopwatch = Stopwatch.StartNew();
         string? errorType = null;
@@ -337,12 +351,12 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
             if (meta.PromptEvalCount is { } inputTokens)
             {
                 activity?.SetTag(AiTelemetry.InputTokensTag, inputTokens);
-                AiTelemetry.TokenUsage.Record(inputTokens, TokenTags(operationName, "input"));
+                AiTelemetry.TokenUsage.Record(inputTokens, TokenTags(operationName, "input", replySchema));
             }
             if (meta.EvalCount is { } outputTokens)
             {
                 activity?.SetTag(AiTelemetry.OutputTokensTag, outputTokens);
-                AiTelemetry.TokenUsage.Record(outputTokens, TokenTags(operationName, "output"));
+                AiTelemetry.TokenUsage.Record(outputTokens, TokenTags(operationName, "output", replySchema));
             }
 
             // Ollama reports "length" when generation stopped because the budget ran out rather
@@ -364,24 +378,33 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
                     // server leaves eval_count out the ceiling is the count — not zero, which
                     // would read as a reply that produced nothing.
                     var producedTokens = meta.EvalCount ?? _settings.MaxOutputTokens;
+                    // ReplySchema is what makes the comparison this line asks for possible: the
+                    // ceiling belongs to the model slot, but "what this normally produces" belongs
+                    // to the individual read, and every read on the slot arrives here under the
+                    // same operation name. Naming it also points at the prompt to look at.
                     _logger.LogError(
-                        "MedGemma {Operation} stopped at the token budget rather than finishing "
-                        + "(done_reason {DoneReason}): {OutputTokens} output token(s) against a "
-                        + "{MaxOutputTokens} ceiling, {InputTokens} prompt token(s) in a "
+                        "MedGemma {Operation} of {ReplySchema} stopped at the token budget rather "
+                        + "than finishing (done_reason {DoneReason}): {OutputTokens} output token(s) "
+                        + "against a {MaxOutputTokens} ceiling, {InputTokens} prompt token(s) in a "
                         + "{ContextTokens}-token window. The reply is incomplete. A structured reply "
                         + "that fills the whole ceiling is usually a model that did not stop, not one "
-                        + "that needed more room: compare OutputTokens with what this operation normally "
-                        + "produces before raising MaxOutputTokens or ContextTokens for this model slot.",
-                        operationName, meta.DoneReason, producedTokens, _settings.MaxOutputTokens,
-                        meta.PromptEvalCount, _settings.ContextTokens);
+                        + "that needed more room: compare OutputTokens with what this reply schema "
+                        + "normally produces (gen_ai.client.token.usage, split by "
+                        + "carditrack.ai.reply_schema) before raising MaxOutputTokens or ContextTokens "
+                        + "for this model slot — the ceiling is shared with every other read on it.",
+                        operationName, replySchema ?? "an unnamed reply", meta.DoneReason,
+                        producedTokens, _settings.MaxOutputTokens, meta.PromptEvalCount,
+                        _settings.ContextTokens);
                     throw new AiReplyTruncatedException(
-                        $"MedGemma {operationName} stopped at the token budget rather than finishing "
-                        + $"({producedTokens} output token(s) against a {_settings.MaxOutputTokens} "
-                        + $"ceiling in a {_settings.ContextTokens}-token window), so the reply is incomplete.",
+                        $"MedGemma {operationName} of {replySchema ?? "an unnamed reply"} stopped at "
+                        + $"the token budget rather than finishing ({producedTokens} output token(s) "
+                        + $"against a {_settings.MaxOutputTokens} ceiling in a "
+                        + $"{_settings.ContextTokens}-token window), so the reply is incomplete.",
                         outputTokens: producedTokens,
                         maxOutputTokens: _settings.MaxOutputTokens,
                         inputTokens: meta.PromptEvalCount,
-                        contextTokens: _settings.ContextTokens);
+                        contextTokens: _settings.ContextTokens,
+                        replySchema: replySchema);
                 }
 
                 // Free text: the caller gets what was produced, as before, but the cut is on the
@@ -440,7 +463,7 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         }
         finally
         {
-            var durationTags = TokenlessTags(operationName);
+            var durationTags = TokenlessTags(operationName, replySchema);
             if (errorType is not null)
                 durationTags.Add(AiTelemetry.ErrorTypeTag, errorType);
             AiTelemetry.OperationDuration.Record(stopwatch.Elapsed.TotalSeconds, durationTags);
@@ -590,9 +613,9 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         return null;
     }
 
-    private TagList TokenTags(string operationName, string tokenType)
+    private TagList TokenTags(string operationName, string tokenType, string? replySchema = null)
     {
-        var tags = TokenlessTags(operationName);
+        var tags = TokenlessTags(operationName, replySchema);
         tags.Add(AiTelemetry.TokenTypeTag, tokenType);
         return tags;
     }
@@ -607,12 +630,24 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         NumPredict = _settings.MaxOutputTokens,
     };
 
-    private TagList TokenlessTags(string operationName) => new()
+    /// <remarks>
+    /// <paramref name="replySchema"/> is added as a tag only when the call named one, so a
+    /// free-text call's series keep exactly the dimensions they have today while a structured
+    /// read's token histogram becomes splittable per read — which is what turns "2048 tokens
+    /// against a 2048 ceiling" into "2048 where this read averages 300".
+    /// </remarks>
+    private TagList TokenlessTags(string operationName, string? replySchema = null)
     {
-        { AiTelemetry.OperationNameTag, operationName },
-        { AiTelemetry.ProviderNameTag, ProviderName },
-        { AiTelemetry.RequestModelTag, _settings.Model },
-    };
+        var tags = new TagList
+        {
+            { AiTelemetry.OperationNameTag, operationName },
+            { AiTelemetry.ProviderNameTag, ProviderName },
+            { AiTelemetry.RequestModelTag, _settings.Model },
+        };
+        if (replySchema is not null)
+            tags.Add(AiTelemetry.ReplySchemaTag, replySchema);
+        return tags;
+    }
 
     /// <summary>Ollama reports durations in nanoseconds.</summary>
     private static long? NsToMs(long? nanoseconds) =>

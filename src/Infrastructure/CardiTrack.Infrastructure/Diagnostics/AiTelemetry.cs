@@ -60,4 +60,32 @@ public static class AiTelemetry
     public const string OutputTokensTag = "gen_ai.usage.output_tokens";
     public const string TokenTypeTag = "gen_ai.token.type";
     public const string ErrorTypeTag = "error.type";
+
+    /// <summary>
+    /// Which structured reply a call asked for — the response type's name, e.g.
+    /// <c>DigestClinicalAiResponse</c>. Set on structured calls only; a free-text call carries no
+    /// such tag at all rather than a placeholder one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not a semantic convention: GenAI's <c>gen_ai.operation.name</c> names the API shape
+    /// (<c>generate_structured</c>), which every structured read in the solution shares, and
+    /// <c>gen_ai.output.type</c> only says "json". Neither separates a daily summary's clinical
+    /// read from a chat router's route decision, and those are different operations in every sense
+    /// that matters here: different prompt sizes, different reply lengths, different normal.
+    /// </para>
+    /// <para>
+    /// That separation is what makes a token report actionable. A structured reply that stopped at
+    /// the output ceiling is either a read that needed more room or a model that did not stop, and
+    /// the two are told apart by comparing the reply against what <em>that read</em> normally
+    /// produces — a comparison a single undifferentiated <c>generate_structured</c> series cannot
+    /// support.
+    /// </para>
+    /// <para>
+    /// Privacy (DPIA): the value is a compile-time type name, so it carries no prompt text or
+    /// model output — the same standard as every other tag here. Cardinality is bounded by the
+    /// number of response types in the solution.
+    /// </para>
+    /// </remarks>
+    public const string ReplySchemaTag = "carditrack.ai.reply_schema";
 }

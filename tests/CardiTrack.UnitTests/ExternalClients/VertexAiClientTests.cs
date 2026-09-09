@@ -177,6 +177,37 @@ public class VertexAiClientTests
         Assert.Equal(128, Assert.Single(tokens, t => Equals(t.Tags["gen_ai.token.type"], "output")).Value);
     }
 
+    /// <summary>
+    /// The reply-schema dimension has to hold on both providers, not just the one where a
+    /// truncation report first exposed the need for it: the rewrite slot's reads can be served by
+    /// Vertex or by Ollama, and a dimension present on one of them cannot answer "what does this
+    /// read normally produce" for either.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_TagsTheSpanAndTokenMetrics_WithTheReplySchema()
+    {
+        using var capture = new SpanCapture();
+        using var metrics = new MetricCapture();
+        var payload =
+            """
+            {"candidates":[{"content":{"role":"model","parts":[{"text":"{\"sources\":[\"Digest\"],\"recentActivityDays\":3}"}]},
+             "finishReason":"STOP"}],
+             "usageMetadata":{"promptTokenCount":100,"candidatesTokenCount":20},"modelVersion":"gemini-2.5-flash-lite-001"}
+            """;
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, payload);
+        var client = CreateClient(handler, out _);
+
+        await client.GenerateStructuredAsync<TestPlanShape>(Prompt);
+
+        var span = Assert.Single(capture.Stopped);
+        Assert.Equal(nameof(TestPlanShape), span.GetTagItem("carditrack.ai.reply_schema"));
+        var duration = Assert.Single(metrics.Doubles, m => m.Instrument == "gen_ai.client.operation.duration");
+        Assert.Equal(nameof(TestPlanShape), duration.Tags["carditrack.ai.reply_schema"]);
+        var tokens = metrics.Longs.Where(m => m.Instrument == "gen_ai.client.token.usage").ToList();
+        Assert.Equal(2, tokens.Count);
+        Assert.All(tokens, t => Assert.Equal(nameof(TestPlanShape), t.Tags["carditrack.ai.reply_schema"]));
+    }
+
     [Fact]
     public async Task GenerateStructuredAsync_SendsTheSchemaAsResponseJsonSchema_AndDeserializes()
     {
