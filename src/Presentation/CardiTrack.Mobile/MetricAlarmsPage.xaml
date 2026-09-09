@@ -109,7 +109,7 @@
             </VerticalStackLayout>
         </ScrollView>
 
-        <!-- The second-long "Updating…" while a saved alarm list are replaced by live data —
+        <!-- The second-long "Updating…" while a saved alarm list is replaced by live data —
              last, so it covers everything. See UpdatingOverlay. -->
         <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="2"/>
     </Grid>

@@ -147,11 +147,14 @@ public partial class EditCardiMemberPage : ContentPage
             // profile it was filled from, so anything they have changed makes this true and the
             // live answer is kept off the form — it is only ever the same values again unless
             // somebody edited this member elsewhere, and even then their draft wins.
+            //
+            // The live answer is dropped whole, _member included: that field IS "the profile this
+            // form was filled from", which is what every later unsaved-changes check — the cancel
+            // confirmation, Save's own diff — measures against. Moving it while the form still
+            // shows the old values would silently re-baseline those checks mid-edit and could let
+            // a caregiver leave believing they had changed nothing.
             if (HasUnsavedChanges())
-            {
-                _member = member;
                 return;
-            }
 
             _member = member;
             ChatBot.MemberId = _memberId;
