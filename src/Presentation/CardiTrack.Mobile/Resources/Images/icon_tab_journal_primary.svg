@@ -1,0 +1,9 @@
+<!-- The CardiJournal button's unread state: icon_tab_journal.svg's page, solid Primary with the
+     rules reversed out in white. Solid rather than a recoloured outline so "there is something new
+     here" reads at a glance across the row — an outline in a second colour looked like a hover. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="4" y="2" width="16" height="20" rx="3.5" fill="#1884DC"/>
+  <path d="M9 8.5h6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <path d="M9 12.5h6" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <path d="M9 16.5h3" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+</svg>

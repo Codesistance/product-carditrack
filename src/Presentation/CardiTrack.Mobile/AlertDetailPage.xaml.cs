@@ -153,6 +153,8 @@ public partial class AlertDetailPage : ContentPage
 
         SeverityBanner.BackgroundColor = (Color)resources[bannerKey];
         SeverityBadge.Text = badge;
+        // On the white member card now, so it wears the banner's colour rather than white on it.
+        SeverityBadge.TextColor = (Color)resources[bannerKey];
         ReasonIcon.Source = ReasonIconFor(alert.Reason);
         TitleLabel.Text = alert.Title;
         TimeLabel.Text = FormatWhen(alert);

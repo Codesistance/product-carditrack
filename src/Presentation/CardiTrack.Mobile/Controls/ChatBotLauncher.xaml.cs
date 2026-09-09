@@ -6,9 +6,9 @@ namespace CardiTrack.Mobile.Controls;
 /// <summary>
 /// Code-behind for the floating member-chat launcher — see the XAML's remarks for what it is.
 /// The pulse animation follows the host page's Appearing/Disappearing (an animation looping on a
-/// backgrounded page is wasted battery), drag position is session-only (resets to docked
-/// bottom-end on the next page load), and the chat overlay is layered into the nearest ancestor
-/// Grid — which, placed as these hosts place it, is the page's root grid.
+/// backgrounded page is wasted battery), drag position is shared by every launcher in the app
+/// for the session (see <see cref="s_sharedX"/>), and the chat overlay is layered into the
+/// nearest ancestor Grid — which, placed as these hosts place it, is the page's root grid.
 /// </summary>
 public partial class ChatBotLauncher : ContentView
 {
@@ -23,12 +23,25 @@ public partial class ChatBotLauncher : ContentView
     private CancellationTokenSource? _pulseCts;
     private bool _resolving;
 
+    /// <summary>
+    /// Where the launcher is, app-wide. Every page hosts its own instance, and each used to
+    /// start docked bottom-end — so a caregiver who had dragged it out of the way on the
+    /// Dashboard found it back in the way on Details, and back again on the next page. One
+    /// position for the session: wherever the last drag left it is where the next page shows it.
+    /// Relative to the docked corner, the same on every host, so the same numbers land it in
+    /// the same place. Not persisted across launches — the content it was moved off will not
+    /// be the same content tomorrow.
+    /// </summary>
+    private static double s_sharedX;
+    private static double s_sharedY;
+
     public ChatBotLauncher()
     {
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
+
 
     private void OnLoaded(object? sender, EventArgs e)
     {
@@ -41,7 +54,38 @@ public partial class ChatBotLauncher : ContentView
             _page.Appearing += OnPageAppearing;
             _page.Disappearing += OnPageDisappearing;
         }
+        TakeSharedPosition();
         StartPulse();
+    }
+
+    /// <summary>
+    /// Puts this instance where the last drag on any page left the launcher. Clamped against
+    /// this page, since a spot that fitted a taller host may not fit this one — and clamped
+    /// again once the page has a size, because at Loaded it can still be measuring at zero and
+    /// the clamp would pin everything to the dock.
+    /// </summary>
+    private void TakeSharedPosition()
+    {
+        Place();
+        if (_page is { } page && page.Width <= 0)
+        {
+            void OnSized(object? s, EventArgs e)
+            {
+                page.SizeChanged -= OnSized;
+                Place();
+            }
+            page.SizeChanged += OnSized;
+        }
+
+        void Place()
+        {
+            _baseX = ClampX(s_sharedX);
+            _baseY = ClampY(s_sharedY);
+            _heldX = _baseX;
+            _heldY = _baseY;
+            TranslationX = _baseX;
+            TranslationY = _baseY;
+        }
     }
 
     private void OnUnloaded(object? sender, EventArgs e)
@@ -171,52 +215,170 @@ public partial class ChatBotLauncher : ContentView
 
     // ── Drag ────────────────────────────────────────────────────────────────────
 
+    private const string FollowAnimation = "chat-follow";
+    private const string GlideAnimation = "chat-glide";
+    private const string LiftAnimation = "chat-lift";
+
+    /// <summary>How far behind the finger the button trails, in ms. Long enough to feel like
+    /// weight, short enough that it never reads as lag under a slow drag.</summary>
+    private const uint FollowMs = 160;
+
+    /// <summary>How much of the last velocity the release carries — a flick moves it a few
+    /// button-widths, a gentle let-go barely more than where it was.</summary>
+    private const double ThrowMs = 260;
+    private const uint GlideMs = 560;
+
+    /// <summary>The button grows a little under the finger, the way a picked-up thing comes
+    /// toward you, and settles back as the glide ends.</summary>
+    private const double LiftScale = 1.1;
+
     /// <summary>Where the drag started, relative to the docked position — needed because
     /// PanUpdated reports totals from gesture start, not deltas since the last event.</summary>
     private double _baseX;
     private double _baseY;
 
-    /// <summary>Where the current drag is actually holding — the last position a Running event
-    /// applied. Committed as the new base when the gesture ends, because the platform handlers
-    /// raise Completed/Canceled through the (status, gestureId) constructor, whose TotalX/TotalY
-    /// are always 0: trusting the terminal event's totals reset the base to the dock on every
-    /// release, so the button visibly stayed put but snapped home the moment the next drag's
-    /// first Running event applied "base + total".</summary>
+    /// <summary>Where the finger currently says the button should be — the last position a
+    /// Running event resolved to, clamped. The button eases toward it rather than jumping to it
+    /// (see <see cref="FollowTo"/>). Read back when the gesture ends, because the platform
+    /// handlers raise Completed/Canceled through the (status, gestureId) constructor, whose
+    /// TotalX/TotalY are always 0: trusting the terminal event's totals reset the base to the
+    /// dock on every release, so the button visibly stayed put but snapped home the moment the
+    /// next drag's first Running event applied "base + total".</summary>
     private double _heldX;
     private double _heldY;
 
-    /// <summary>Drags the launcher off whatever it's obstructing. Position is session-only: it
-    /// resets to docked bottom-end next time the page loads, rather than persisting a spot that
-    /// might not make sense once the content underneath has changed.</summary>
+    /// <summary>The finger's speed over the last few events, in dp per millisecond, smoothed so
+    /// one jittery sample cannot fling the button. What the release glide is thrown with.</summary>
+    private double _velocityX;
+    private double _velocityY;
+    private long _lastSampleAt;
+
+    /// <summary>
+    /// Drags the launcher off whatever it's obstructing. Where it lands is shared with every
+    /// other page's launcher for the rest of the session (<see cref="s_sharedX"/>).
+    /// </summary>
+    /// <remarks>
+    /// It used to set TranslationX/Y straight from each Running event, and felt stiff: the events
+    /// arrive every 16–50 ms (measured on the emulator), so the button stepped after the finger
+    /// at 20–30 fps and then stopped dead on release. Now the button lifts under the finger,
+    /// each event only moves the target it trails toward with a little weight, and letting go
+    /// throws it along the finger's last velocity into a long settle — a drag that flows rather
+    /// than one that ratchets.
+    /// </remarks>
     private void OnPanUpdated(object? sender, PanUpdatedEventArgs e)
     {
         switch (e.StatusType)
         {
             case GestureStatus.Started:
+                // Grabbing the button mid-glide takes it from wherever it actually is, not from
+                // where the glide was going to leave it — otherwise the first Running event would
+                // snap it to the glide's destination and it would jump under the finger.
+                this.AbortAnimation(FollowAnimation);
+                this.AbortAnimation(GlideAnimation);
+                Lift(LiftScale, 140);
+                _baseX = TranslationX;
+                _baseY = TranslationY;
                 // A pan that ends before any Running event fires must commit the spot the button
                 // is already on, not whatever the previous gesture left in the held fields.
                 _heldX = _baseX;
                 _heldY = _baseY;
+                _velocityX = 0;
+                _velocityY = 0;
+                _lastSampleAt = Environment.TickCount64;
                 break;
 
             case GestureStatus.Running:
-                _heldX = ClampX(_baseX + e.TotalX);
-                _heldY = ClampY(_baseY + e.TotalY);
-                TranslationX = _heldX;
-                TranslationY = _heldY;
+                var x = ClampX(_baseX + e.TotalX);
+                var y = ClampY(_baseY + e.TotalY);
+                var now = Environment.TickCount64;
+                var elapsed = now - _lastSampleAt;
+                if (elapsed > 0)
+                {
+                    // Exponential smoothing rather than the raw last delta: two events 16 ms
+                    // apart with a 1 dp jitter between them would otherwise read as a fling.
+                    const double weight = 0.5;
+                    _velocityX = weight * (x - _heldX) / elapsed + (1 - weight) * _velocityX;
+                    _velocityY = weight * (y - _heldY) / elapsed + (1 - weight) * _velocityY;
+                }
+                _lastSampleAt = now;
+                _heldX = x;
+                _heldY = y;
+                FollowTo(x, y);
                 break;
 
             case GestureStatus.Completed:
             case GestureStatus.Canceled:
                 // Both terminal states keep the button wherever the drag was actually holding —
                 // an interrupted drag (an incoming call, a system gesture) should still leave it
-                // wherever the caregiver had visibly moved it to.
-                _baseX = _heldX;
-                _baseY = _heldY;
-                TranslationX = _baseX;
-                TranslationY = _baseY;
+                // wherever the caregiver had visibly moved it to — and then let it run on a
+                // little. A finger that paused before lifting has no throw left in it.
+                if (Environment.TickCount64 - _lastSampleAt > 80)
+                {
+                    _velocityX = 0;
+                    _velocityY = 0;
+                }
+                GlideFrom(_heldX, _heldY);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Eases the button from wherever it is toward the finger's latest position over
+    /// <see cref="FollowMs"/>. Every event restarts it from the button's current spot, so a
+    /// finger that keeps moving keeps the button in one continuous, slightly trailing motion
+    /// instead of a series of steps.
+    /// </summary>
+    private void FollowTo(double x, double y)
+    {
+        this.AbortAnimation(GlideAnimation);
+        this.AbortAnimation(FollowAnimation);
+        var fromX = TranslationX;
+        var fromY = TranslationY;
+        new Animation(v =>
+        {
+            TranslationX = fromX + (x - fromX) * v;
+            TranslationY = fromY + (y - fromY) * v;
+        }, 0, 1, Easing.SinOut).Commit(this, FollowAnimation, 16, FollowMs);
+    }
+
+    private void Lift(double scale, uint ms)
+    {
+        this.AbortAnimation(LiftAnimation);
+        var from = Scale;
+        new Animation(v => Scale = from + (scale - from) * v, 0, 1, Easing.CubicOut)
+            .Commit(this, LiftAnimation, 16, ms);
+    }
+
+    /// <summary>
+    /// The release: carries the button on along the last velocity for a beat and decelerates
+    /// into the clamped bounds, so a flick lands it somewhere further and a gentle let-go just
+    /// settles. The destination becomes the base the next drag starts from.
+    /// </summary>
+    private void GlideFrom(double x, double y)
+    {
+        this.AbortAnimation(FollowAnimation);
+        this.AbortAnimation(GlideAnimation);
+
+        var toX = ClampX(x + _velocityX * ThrowMs);
+        var toY = ClampY(y + _velocityY * ThrowMs);
+        _baseX = toX;
+        _baseY = toY;
+        _heldX = toX;
+        _heldY = toY;
+        s_sharedX = toX;
+        s_sharedY = toY;
+
+        var fromX = TranslationX;
+        var fromY = TranslationY;
+        // Quartic rather than cubic: fast off the finger, then a long, soft deceleration —
+        // most of the distance is covered in the first third and the rest is the settle. The
+        // lift comes down over the same glide, so the button lands as it stops.
+        new Animation(v =>
+        {
+            TranslationX = fromX + (toX - fromX) * v;
+            TranslationY = fromY + (toY - fromY) * v;
+        }, 0, 1, new Easing(v => 1 - Math.Pow(1 - v, 4))).Commit(this, GlideAnimation, 16, GlideMs);
+        Lift(1, GlideMs);
     }
 
     // Clamped against the host page's bounds, same constants DashboardPage used: the button can
@@ -225,12 +387,12 @@ public partial class ChatBotLauncher : ContentView
     private double ClampX(double x)
     {
         var width = _page?.Width ?? Width;
-        return Math.Max(-(width - 76), Math.Min(20, x));
+        return width <= 0 ? x : Math.Max(-(width - 76), Math.Min(20, x));
     }
 
     private double ClampY(double y)
     {
         var height = _page?.Height ?? Height;
-        return Math.Max(-(height - 220), Math.Min(0, y));
+        return height <= 0 ? y : Math.Max(-(height - 220), Math.Min(0, y));
     }
 }

@@ -1,0 +1,9 @@
+<!-- The Advise button's unread state: icon_advise.svg's two stars, solid Primary. Filled and
+     also stroked in the same colour with round joins, so the pinched waists keep the width the
+     outline version has instead of thinning to a thread. -->
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M10 7.3 Q10.6 13.2 16.5 13.8 Q10.6 14.4 10 20.3 Q9.4 14.4 3.5 13.8 Q9.4 13.2 10 7.3 Z"
+        fill="#1884DC" stroke="#1884DC" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M18 3.1 Q18.4 6.2 21.5 6.6 Q18.4 7 18 10.1 Q17.6 7 14.5 6.6 Q17.6 6.2 18 3.1 Z"
+        fill="#1884DC" stroke="#1884DC" stroke-width="1.7" stroke-linejoin="round"/>
+</svg>
