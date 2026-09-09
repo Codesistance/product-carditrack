@@ -1,4 +1,4 @@
-# .NET September 2026 servicing release (10.0.12) — six CVEs, none in CardiTrack's live exploit path
+# .NET September 2026 servicing release (10.0.12) — five CVEs, none in CardiTrack's live exploit path
 
 **Severity:** HIGH
 **Category:** dependencies
@@ -6,13 +6,14 @@
 ## Summary
 
 .NET shipped its September 2026 Patch Tuesday servicing release (SDK 10.0.111/10.0.400,
-runtime/ASP.NET Core/EF Core 10.0.12) fixing six CVEs. CardiTrack pins
+runtime/ASP.NET Core/EF Core 10.0.12) fixing five CVEs (69304, 71328, 69522, 58649, 69806 —
+corrected from an initial miscount of six against the five sourced below). CardiTrack pins
 `Microsoft.AspNetCore.Authentication.JwtBearer`, `Microsoft.EntityFrameworkCore` and related
 packages at `10.0.11` across every `.csproj`, and the Docker images build from
 `mcr.microsoft.com/dotnet/sdk:10.0` / `aspnet:10.0-noble-chiseled-extra` (floating minor tag —
 picks up 10.0.12 on next rebuild).
 
-None of the six CVEs land on CardiTrack's actual shipped topology:
+None of the five CVEs land on CardiTrack's actual shipped topology:
 
 - **CVE-2026-69304** (CVSS 5.9, unauthenticated DoS via decompression bomb) is scoped to
   `Microsoft.AspNetCore.Server.IISIntegration`. CardiTrack runs Linux containers on Cloud Run,
@@ -38,7 +39,7 @@ CRITICAL: worth doing on the next dependency-bump PR, not a fire drill.
 ## Why flagged
 
 CVEs in a package family pinned across every project in the solution. Even though none of the
-six exploit paths apply to CardiTrack's Cloud Run/Linux deployment shape, staying on a patched
+five exploit paths apply to CardiTrack's Cloud Run/Linux deployment shape, staying on a patched
 minor keeps future defense-in-depth intact and costs one version-bump PR.
 
 ## Question to answer next
