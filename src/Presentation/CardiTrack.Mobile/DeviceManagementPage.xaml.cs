@@ -65,11 +65,11 @@ public partial class DeviceManagementPage : ContentPage
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        await LoadAsync(force: true);
         Refresher.IsRefreshing = false;
     }
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     /// <summary>
     /// The app returning to the foreground reloads the device list — a connection that dropped
@@ -84,9 +84,14 @@ public partial class DeviceManagementPage : ContentPage
     /// <param name="silent">
     /// Suppresses the "Couldn't refresh" popup for loads the user did not ask for.
     /// </param>
-    private async Task LoadAsync(bool silent = false)
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping — a pull, a retry, and the
+    /// re-read after a device action, which replaces rows whose ids the server may have just
+    /// changed. Only the unattended resume waits its turn.
+    /// </param>
+    private async Task LoadAsync(bool silent = false, bool force = false)
     {
-        if (_gate.IsLoading)
+        if (_gate.IsLoading && !force)
             return;
         var ticket = _gate.Begin();
         var memberId = _memberId;
@@ -235,7 +240,7 @@ public partial class DeviceManagementPage : ContentPage
             if (result.ExitedToDashboard)
                 return;
 
-            await LoadAsync();
+            await LoadAsync(force: true);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
@@ -335,13 +340,13 @@ public partial class DeviceManagementPage : ContentPage
         try
         {
             await action();
-            await LoadAsync();
+            await LoadAsync(force: true);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, errorTitle);
             // Re-read state so a half-applied toggle doesn't linger on screen.
-            await LoadAsync();
+            await LoadAsync(force: true);
         }
         catch (ApiException)
         {
