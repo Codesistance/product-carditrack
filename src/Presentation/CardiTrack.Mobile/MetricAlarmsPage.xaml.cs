@@ -94,9 +94,14 @@ public partial class MetricAlarmsPage : ContentPage
         await LoadAsync();
     }
 
-    private async Task LoadAsync()
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping. The reload after a save is
+    /// the caller that needs it: the list it replaces may hold ids the server has just
+    /// retired, so skipping it would leave the next tap aimed at one of them.
+    /// </param>
+    private async Task LoadAsync(bool force = false)
     {
-        if (_gate.IsLoading)
+        if (_gate.IsLoading && !force)
             return;
         var ticket = _gate.Begin();
         var memberId = _memberId;
@@ -265,6 +270,13 @@ public partial class MetricAlarmsPage : ContentPage
             return;
         }
 
+        // The caregiver has changed something, and this page became interactive on a saved
+        // snapshot — so a live load issued before the change may still be in flight, carrying
+        // the state as it was. Its render would put the switch back and leave the screen
+        // disagreeing with the server about whether an alert is on. Drop it; what happens
+        // next is authoritative.
+        _gate.CancelInFlight();
+
         var previous = !enabled;
         _toggleInFlight = alarm.Id;
         toggle.IsEnabled = false;
@@ -278,7 +290,7 @@ public partial class MetricAlarmsPage : ContentPage
             // different row — switching an opt-out back on puts the account default back, under
             // the default's own id — and the count in the crowding notice has moved either way.
             // A list left as it was would send the next tap at an id that no longer exists.
-            await LoadAsync();
+            await LoadAsync(force: true);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {

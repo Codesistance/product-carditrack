@@ -292,6 +292,13 @@ public partial class AlertSettingsPage : ContentPage
                 return;
             }
 
+            // The caregiver has changed something, and this page became interactive on a saved
+            // snapshot — so a live load issued before the change may still be in flight, carrying
+            // the state as it was. Its render would put the switch back and leave the screen
+            // disagreeing with the server about whether an alert is on. Drop it; what happens
+            // next is authoritative.
+            _gate.CancelInFlight();
+
             var previous = !args.Value;
             _toggleInFlight = rule.Id;
             toggle.IsEnabled = false;
