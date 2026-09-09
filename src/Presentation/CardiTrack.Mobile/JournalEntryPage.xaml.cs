@@ -2,6 +2,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Charts;
 using CardiTrack.Mobile.Services;
 
@@ -36,10 +37,21 @@ public partial class JournalEntryPage : ContentPage
 
     private Guid _memberId;
     private DateOnly _date;
-    private bool _isLoading;
     private bool _returningFromPopup;
-    private bool _hasLoadedOnce;
     private bool _headerPersonalised;
+
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
+    /// <summary>
+    /// What one load reads: the review is the page; the member is the charts, and may be absent
+    /// — a charts fetch that failed hides the section rather than costing the caregiver the
+    /// review they came for.
+    /// </summary>
+    private sealed record EntryLoad(DigestResponse Review, CardiMemberDetailResponse? Member);
+
+    /// <summary>The last load put on screen, saved or live — null until something is.</summary>
+    private EntryLoad? _last;
 
     /// <summary>
     /// Which book this entry is. Defaults to the Daybook so a link that predates the cadence
@@ -60,6 +72,7 @@ public partial class JournalEntryPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -147,61 +160,100 @@ public partial class JournalEntryPage : ContentPage
 
     private async Task LoadAsync()
     {
-        if (_isLoading || _memberId == Guid.Empty || _date == default)
+        if (_gate.IsLoading || _memberId == Guid.Empty || _date == default)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
+        var (memberId, cadence, date) = (_memberId, _cadence, _date);
 
-        if (!_hasLoadedOnce)
+        if (_last is null)
             SetState(loading: true);
 
         try
         {
             // The review is the page; the member detail is the charts. Sequential rather than
             // parallel so a failure has one story — and the charts degrade to absent rather than
-            // costing the caregiver the review they came for.
-            var review = await _api.GetJournalEntryAsync(_memberId, _cadence, _date);
-            Apply(review);
+            // costing the caregiver the review they came for. A finished day's entry never
+            // changes, so when the live answer is the saved one over again nothing is redrawn and
+            // nothing is announced; only the charts' window moving on counts as new.
+            var outcome = await SnapshotRefresh.RunAsync<EntryLoad>(
+                _api, _gate, ticket,
+                peek: _last is null
+                    ? async (ct, scope) =>
+                    {
+                        var review = await scope.Track(_api.PeekJournalEntryAsync(memberId, cadence, date, ct));
+                        if (review is null)
+                            return null;
+                        var member = await scope.Track(_api.PeekCardiMemberAsync(memberId, ct));
+                        return new EntryLoad(review, member);
+                    }
+                    : null,
+                fetch: async (ct, scope) =>
+                {
+                    var review = await scope.Track(_api.GetJournalEntryAsync(memberId, cadence, date, ct));
+                    CardiMemberDetailResponse? member = null;
+                    try
+                    {
+                        // Not tracked: the review is what the page is, so the review's provenance
+                        // is the page's — charts served from the device beside a live review are
+                        // still charts, not a reason to call the page offline.
+                        member = await _api.GetCardiMemberAsync(memberId, ct);
+                    }
+                    catch (ApiException) when (!ct.IsCancellationRequested)
+                    {
+                        // The review stands on its own; the charts section hides itself.
+                    }
+                    return new EntryLoad(review, member);
+                },
+                render: load =>
+                {
+                    _last = load;
+                    Apply(load.Review);
+                    ApplyMember(load.Member);
+                    SetState(loaded: true);
+                },
+                _feedback,
+                sameAs: (a, b) => a.Review.GeneratedAtUtc == b.Review.GeneratedAtUtc
+                    && a.Member?.LastSyncedAt == b.Member?.LastSyncedAt);
 
-            try
+            switch (outcome.Result)
             {
-                var member = await _api.GetCardiMemberAsync(_memberId);
-                ChatBot.MemberId = _memberId;
-                ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
-                if (!_headerPersonalised)
-                    ApplyHeaderName(NameFormatting.FirstName(member.Name));
-                ApplyTrends(member.Metrics);
-            }
-            catch (ApiException)
-            {
-                // The review stands on its own; a charts fetch that failed hides the section
-                // rather than replacing a loaded review with an error panel.
-                TrendsTitle.IsVisible = false;
-                TrendsHost.IsVisible = false;
-                AwarenessFooter.IsVisible = false;
+                case RefreshResult.Superseded:
+                    return;
+                case RefreshResult.NothingAndFailed:
+                    _last = null;
+                    ErrorDetailLabel.Text = outcome.Error!.IsNotFound
+                        ? $"No {cadence.EntryName()} was written for this {JournalPage.PeriodNoun(cadence)}."
+                        : outcome.Error.Message;
+                    SetState(error: true);
+                    return;
             }
 
-            _hasLoadedOnce = true;
-            SetState(loaded: true);
-        }
-        catch (ApiException ex)
-        {
-            if (!_hasLoadedOnce)
-            {
-                ErrorDetailLabel.Text = ex.IsNotFound
-                    ? $"No {_cadence.EntryName()} was written for this {JournalPage.PeriodNoun(_cadence)}."
-                    : ex.Message;
-                SetState(error: true);
-            }
-            else
-            {
-                await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
-            }
+            if (outcome.IsSavedOnly && outcome.Error is not null)
+                await _popups.ShowWarningAsync(outcome.Error.Message, "Couldn't refresh");
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
             Refresher.IsRefreshing = false;
         }
+    }
+
+    /// <summary>The charts half of a load, or their absence when the member could not be read.</summary>
+    private void ApplyMember(CardiMemberDetailResponse? member)
+    {
+        if (member is null)
+        {
+            TrendsTitle.IsVisible = false;
+            TrendsHost.IsVisible = false;
+            AwarenessFooter.IsVisible = false;
+            return;
+        }
+
+        ChatBot.MemberId = _memberId;
+        ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+        if (!_headerPersonalised)
+            ApplyHeaderName(NameFormatting.FirstName(member.Name));
+        ApplyTrends(member.Metrics);
     }
 
     private void Apply(DigestResponse review)

@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -27,12 +28,15 @@ public partial class MedicalInformationPage : ContentPage
 
     private Guid _memberId;
     private CardiMemberDetailResponse? _member;
-    private bool _isLoading;
+
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
 
     public MedicalInformationPage(ICardiTrackApiClient api)
     {
         InitializeComponent();
         _api = api;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -73,26 +77,38 @@ public partial class MedicalInformationPage : ContentPage
 
     private async Task LoadAsync()
     {
-        if (_isLoading)
+        if (_gate.IsLoading)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
 
         if (_member is null)
             SetState(loading: true);
 
         try
         {
-            _member = await _api.GetCardiMemberAsync(_memberId);
-            Apply(_member);
-            SetState(loaded: true);
-        }
-        catch (ApiException ex)
-        {
+            // The saved profile first on a landing with nothing on screen, the live one behind
+            // it. Notes rarely change, so identical notes are left alone rather than flashed.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _member is null ? ct => _api.PeekCardiMemberAsync(memberId, ct) : null,
+                fetch: ct => _api.GetCardiMemberAsync(memberId, ct),
+                render: member =>
+                {
+                    _member = member;
+                    Apply(member);
+                    SetState(loaded: true);
+                },
+                _feedback,
+                sameAs: (a, b) => a.MedicalNotes == b.MedicalNotes && a.IsPrimaryCaregiver == b.IsPrimaryCaregiver);
+
             // Keep whatever is already on screen — a failed refresh must not blank notes somebody
-            // may be reading — and only offer the error when there is nothing behind it.
-            if (_member is null)
+            // may be reading (the banner says they are saved) — and only offer the error when
+            // there is nothing behind it, or when the member is gone.
+            if (outcome.Result == RefreshResult.NothingAndFailed)
             {
-                ErrorDetailLabel.Text = ex.Message;
+                _member = null;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
                 SetState(error: true);
             }
         }
@@ -113,7 +129,7 @@ public partial class MedicalInformationPage : ContentPage
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
         }
     }
 

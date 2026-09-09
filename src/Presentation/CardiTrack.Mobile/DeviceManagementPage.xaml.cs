@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Devices;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 
@@ -26,17 +27,26 @@ public partial class DeviceManagementPage : ContentPage
     private readonly HashSet<Guid> _expandedSharing = [];
 
     private Guid _memberId;
-    private bool _isLoading;
     private bool _isBusy;
     private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private CardiMemberDetailResponse? _member;
+
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
+    /// <summary>What one load of this page reads: the member heads the list of their devices.</summary>
+    private sealed record DeviceLoad(CardiMemberDetailResponse Member, DeviceListResponse Devices);
+
+    /// <summary>The last load put on screen, saved or live — null until something is.</summary>
+    private DeviceLoad? _last;
 
     public DeviceManagementPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
@@ -76,52 +86,77 @@ public partial class DeviceManagementPage : ContentPage
     /// </param>
     private async Task LoadAsync(bool silent = false)
     {
-        if (_isLoading)
+        if (_gate.IsLoading)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
 
-        if (_cards.Count == 0)
+        if (_last is null)
             SetState(loading: true);
 
         try
         {
             // The member is fetched alongside the devices so the list can be headed by whose
-            // devices these are — M1-15 groups by CardiMember. WhenAll rather than awaiting in
-            // turn: if the first call fails, awaiting it alone would leave the second task's
-            // exception unobserved.
-            var memberTask = _api.GetCardiMemberAsync(_memberId);
-            var devicesTask = _api.GetDevicesAsync(_memberId);
-            await Task.WhenAll(memberTask, devicesTask);
-            _member = await memberTask;
-            var devices = await devicesTask;
+            // devices these are — M1-15 groups by CardiMember. The device's saved pair goes up
+            // first on a landing with nothing on screen, and only when both halves are saved:
+            // half a page is not a page. WhenAll rather than awaiting in turn on the live side:
+            // if the first call fails, awaiting it alone would leave the second task's exception
+            // unobserved.
+            var outcome = await SnapshotRefresh.RunAsync<DeviceLoad>(
+                _api, _gate, ticket,
+                peek: _last is null
+                    ? async (ct, scope) =>
+                    {
+                        var member = await scope.Track(_api.PeekCardiMemberAsync(memberId, ct));
+                        var devices = await scope.Track(_api.PeekDevicesAsync(memberId, ct));
+                        return member is null || devices is null ? null : new DeviceLoad(member, devices);
+                    }
+                    : null,
+                fetch: async (ct, scope) =>
+                {
+                    var memberTask = scope.Track(_api.GetCardiMemberAsync(memberId, ct));
+                    var devicesTask = scope.Track(_api.GetDevicesAsync(memberId, ct));
+                    await Task.WhenAll(memberTask, devicesTask);
+                    return new DeviceLoad(await memberTask, await devicesTask);
+                },
+                render: load =>
+                {
+                    _last = load;
+                    _member = load.Member;
+                    ChatBot.MemberId = memberId;
+                    ChatBot.MemberFirstName = NameFormatting.FirstName(load.Member.Name);
+                    MemberSubtitleLabel.Text = $"{load.Member.Name} • CardiMember";
+                    EmptyDetailLabel.Text =
+                        $"Connect a wearable so CardiTrack can start watching over {NameFormatting.FirstName(load.Member.Name)}.";
+                    Render(load.Devices.Devices);
+                    SetState(loaded: true);
+                },
+                _feedback);
 
-            ChatBot.MemberId = _memberId;
-            ChatBot.MemberFirstName = NameFormatting.FirstName(_member.Name);
-            MemberSubtitleLabel.Text = $"{_member.Name} • CardiMember";
-            EmptyDetailLabel.Text =
-                $"Connect a wearable so CardiTrack can start watching over {NameFormatting.FirstName(_member.Name)}.";
-            Render(devices.Devices);
-            SavedBanner.ApplyFrom(_api, memberTask, devicesTask);
-            SetState(loaded: true);
-            _lastLoadedUtc = DateTime.UtcNow;
-        }
-        catch (ApiException ex)
-        {
-            if (_cards.Count == 0)
+            switch (outcome.Result)
             {
-                ErrorDetailLabel.Text = ex.Message;
-                SetState(error: true);
+                case RefreshResult.Superseded:
+                    return;
+                case RefreshResult.NothingAndFailed:
+                    _last = null;
+                    _member = null;
+                    ErrorDetailLabel.Text = outcome.Error!.Message;
+                    SetState(error: true);
+                    return;
             }
-            else if (!silent && !ex.IsSessionExpired)
+
+            if (outcome.IsFresh)
+                _lastLoadedUtc = DateTime.UtcNow;
+            else if (!silent && outcome.Error is { IsSessionExpired: false } error)
             {
                 // An expired session is already taking the user back to sign-in — a popup
                 // here would only land on top of that page explaining nothing.
-                await _popups.ShowWarningAsync(ex.Message, "Couldn't refresh");
+                await _popups.ShowWarningAsync(error.Message, "Couldn't refresh");
             }
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
         }
     }
 

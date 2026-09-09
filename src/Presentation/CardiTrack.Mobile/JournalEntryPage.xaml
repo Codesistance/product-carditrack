@@ -87,6 +87,7 @@
                     </VerticalStackLayout>
 
                     <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+                        <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                         <!-- The entry itself: when, what it was about, the account, and the
                              suggestion beneath it. How soon it asks for attention is the rail
@@ -177,5 +178,9 @@
 
         <!-- Chat from anywhere; the code-behind feeds it this entry's member. -->
         <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="1"/>
+
+        <!-- The second-long "Updating…" while a saved entry is replaced by live data — last, so it
+             covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="3"/>
     </Grid>
 </ContentPage>

@@ -20,7 +20,7 @@
          the shaded gaps, their tooltips, the legend and the baseline rule are all its own, and a
          copy would be a second thing to keep in step. Full-bleed, like every page. -->
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
@@ -65,7 +65,9 @@
                                       Grid.Row="1"
                                       Margin="20,16,20,0"/>
 
-        <Grid Grid.Row="2" Padding="20,14,20,20">
+        <controls:SavedDataBanner x:Name="SavedBanner" Grid.Row="2" Margin="20,14,20,0"/>
+
+        <Grid Grid.Row="3" Padding="20,14,20,20">
             <VerticalStackLayout x:Name="SkeletonPanel" IsVisible="False" VerticalOptions="Fill">
                 <controls:SkeletonView HeightRequest="320"/>
             </VerticalStackLayout>
@@ -88,6 +90,10 @@
         </Grid>
 
         <!-- Chat from anywhere; the code-behind feeds it this trend's member. -->
-        <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="2"/>
+        <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="3"/>
+
+        <!-- The second-long "Updating…" while a saved series is replaced by live data — last, so it
+             covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="4"/>
     </Grid>
 </ContentPage>

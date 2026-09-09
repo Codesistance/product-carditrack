@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -37,12 +38,15 @@ public partial class MetricTrendPage : ContentPage
     private int _days = TrendWindowSelector.DefaultDays;
     private MetricTrend? _trend;
     private CardiMemberDetailResponse? _member;
-    private bool _isLoading;
+
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
 
     public MetricTrendPage(ICardiTrackApiClient api)
     {
         InitializeComponent();
         _api = api;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         WindowPicker.WindowChanged += OnWindowChanged;
 
         // This card is the expanded view; offering to expand it again would push another copy of
@@ -108,23 +112,34 @@ public partial class MetricTrendPage : ContentPage
 
     private async Task LoadAsync()
     {
-        if (_isLoading)
+        if (_gate.IsLoading)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
 
         if (_member is null)
             SetState(loading: true);
 
         try
         {
-            _member = await _api.GetCardiMemberAsync(_memberId);
-            Apply(_member);
-        }
-        catch (ApiException ex)
-        {
-            if (_member is null)
+            // The saved profile's series first, the live one behind it. The chart refreshes in
+            // place, so the second render is cheap; when nothing new has synced it is skipped.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _member is null ? ct => _api.PeekCardiMemberAsync(memberId, ct) : null,
+                fetch: ct => _api.GetCardiMemberAsync(memberId, ct),
+                render: member =>
+                {
+                    _member = member;
+                    Apply(member);
+                },
+                _feedback,
+                sameAs: (a, b) => a.LastSyncedAt == b.LastSyncedAt);
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
             {
-                ErrorDetailLabel.Text = ex.Message;
+                _member = null;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
                 SetState(error: true);
             }
         }
@@ -141,7 +156,7 @@ public partial class MetricTrendPage : ContentPage
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
         }
     }
 

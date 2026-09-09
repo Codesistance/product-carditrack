@@ -167,5 +167,9 @@
 
         <!-- Chat from anywhere; the code-behind feeds it this page's member. -->
         <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="1"/>
+
+        <!-- The second-long "Updating…" while a saved device list is replaced by live data — last, so it
+             covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="3"/>
     </Grid>
 </ContentPage>
