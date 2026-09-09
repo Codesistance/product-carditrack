@@ -8,15 +8,16 @@ namespace CardiTrack.Mobile.Core.Offline;
 public interface IRefreshFeedback
 {
     /// <summary>
-    /// A saved snapshot has just been rendered and the live call is in flight.
+    /// A saved snapshot is about to be rendered and the live call will run behind it.
     /// <paramref name="savedAt"/> is when the snapshot was written, or null if the store could
-    /// not say.
+    /// not say. Raised before the render, so the screen is never showing saved data unmarked.
     /// </summary>
     void SavedShown(DateTimeOffset? savedAt);
 
     /// <summary>
     /// Called immediately before the fresh render replaces a snapshot the caregiver has been
-    /// reading. The overlay goes up here, so the replacement happens under it.
+    /// reading. The overlay goes up and the saved-data mark comes down here, so the
+    /// replacement happens under the one and the fresh render is not drawn as saved.
     /// </summary>
     void Replacing();
 

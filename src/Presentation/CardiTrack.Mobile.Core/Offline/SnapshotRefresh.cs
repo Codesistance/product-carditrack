@@ -92,9 +92,13 @@ public static class SnapshotRefresh
 
                 if (saved is not null)
                 {
+                    // The banner first, then the snapshot under it: a screen must never have
+                    // saved health data up, even for a frame, without saying so — and a render
+                    // that reads the banner's state to decide its own (the dashboard's
+                    // stale-sync notice) needs it already set.
                     savedAt = peekScope.OldestCachedAt(api);
-                    render(saved);
                     feedback.SavedShown(savedAt);
+                    render(saved);
                 }
             }
 

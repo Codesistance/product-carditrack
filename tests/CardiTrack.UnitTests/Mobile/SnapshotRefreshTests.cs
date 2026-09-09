@@ -45,7 +45,8 @@ public class SnapshotRefreshTests
         Assert.Equal(RefreshResult.FreshReplacedSaved, outcome.Result);
         Assert.True(outcome.IsFresh);
         Assert.Equal(["Saved", "Fresh"], rendered);
-        Assert.Equal(["render:Saved", "saved-shown", "replacing", "render:Fresh", "completed"], order);
+        // The mark goes up before the snapshot is drawn, never after it.
+        Assert.Equal(["saved-shown", "render:Saved", "replacing", "render:Fresh", "completed"], order);
         feedback.Received().SavedShown(savedAt);
         feedback.Received().Completed(Arg.Is<RefreshOutcome>(o => o.Result == RefreshResult.FreshReplacedSaved));
     }

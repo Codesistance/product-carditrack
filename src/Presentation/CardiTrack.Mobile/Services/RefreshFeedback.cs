@@ -26,9 +26,13 @@ public sealed class RefreshFeedback : IRefreshFeedback
         _banner?.Show(SavedDataState.Checking, savedAt);
 
     // Fire-and-forget on purpose: the run calls this immediately before the fresh render, and
-    // awaiting the overlay's whole second here would hold that render up behind it.
-    public void Replacing() =>
+    // awaiting the overlay's whole second here would hold that render up behind it. The banner
+    // comes down in the same breath, so a render that reads it sees the fresh state.
+    public void Replacing()
+    {
+        _banner?.Hide();
         _ = _overlay?.ShowAsync();
+    }
 
     public void Completed(RefreshOutcome outcome) =>
         _banner?.Apply(outcome);
