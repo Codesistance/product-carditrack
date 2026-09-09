@@ -57,6 +57,15 @@ public partial class QuestionnairesPage : ContentPage
     /// <summary>The ticket of the last first-page load, which every "load more" under it checks.</summary>
     private LoadTicket _ticket;
 
+    /// <summary>
+    /// Cancels pages of answers still being fetched when the list they belong to is replaced.
+    /// Its own source rather than the load's: a <see cref="LoadTicket"/>'s token dies with the
+    /// load that owns it — <see cref="LoadGate.Release"/> disposes it — and paging deliberately
+    /// outlives the first-page load it started under, so passing that token to an HTTP call
+    /// after the fact would be using a disposed source.
+    /// </summary>
+    private CancellationTokenSource? _pagingCts;
+
     public QuestionnairesPage(
         ICardiTrackApiClient api, IPopupService popups, IQuestionValidityService questionValidity)
     {
@@ -154,6 +163,11 @@ public partial class QuestionnairesPage : ContentPage
         ChatBot.MemberFirstName = NameFormatting.FirstName(_memberName);
         var ticket = _gate.Begin();
         _ticket = ticket;
+
+        // Whatever page of answers was still arriving belongs to the list about to be replaced.
+        _pagingCts?.Cancel();
+        _pagingCts?.Dispose();
+        _pagingCts = new CancellationTokenSource();
         if (showSkeleton)
             SetState(loading: true);
         _currentPage = 1;
@@ -207,6 +221,7 @@ public partial class QuestionnairesPage : ContentPage
             return;
 
         var ticket = _ticket;
+        var paging = _pagingCts?.Token ?? CancellationToken.None;
         _isLoadingMore = true;
         LoadMoreSkeleton.IsVisible = true;
         try
@@ -217,7 +232,7 @@ public partial class QuestionnairesPage : ContentPage
             // answers unusable — it stops it. Dropping the result on arrival was already correct;
             // this stops paying for it on a caregiver's data while they wait for what they asked.
             var result = await _api.GetQuestionnairesAsync(
-                _memberId, _searchTerm, nextPage, PageSize, ticket.Token);
+                _memberId, _searchTerm, nextPage, PageSize, paging);
 
             if (!_gate.IsCurrent(ticket))
                 return; // a new search or reload started while this page was in flight; drop it —
