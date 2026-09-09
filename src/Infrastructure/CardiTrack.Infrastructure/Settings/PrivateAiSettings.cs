@@ -47,6 +47,30 @@ public class PrivateAiSettings : IMedGemmaModelSettings
     /// </remarks>
     public int MaxOutputTokens { get; set; } = 2048;
 
+    /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.RepeatPenalty" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// 1.15 rather than Ollama's 1.1: every clinical read that ran to the ceiling (dev, 6-9
+    /// September 2026) was the same sentence block repeated verbatim, at the default penalty,
+    /// and a Weekbook read looped on a 25-token sentence the default window did cover — so the
+    /// strength was short as well as the window. Modest, because a clinical read legitimately
+    /// reuses "than usual", the units and the figures it is reading; a penalty strong enough to
+    /// forbid that would degrade the reads that finish to rescue the ones that do not.
+    /// </remarks>
+    public double RepeatPenalty { get; set; } = 1.15;
+
+    /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.RepeatLastN" path="/summary"/>
+    /// </summary>
+    /// <remarks>
+    /// 512 rather than Ollama's 64: the block a looping digest read repeats is about 170 tokens
+    /// (seven sentences of readings), so the default window had already scrolled past the start
+    /// of the block by the time it came round again. 512 covers three of them and stays well
+    /// over a finished read, which is under 400 tokens on a typical day.
+    /// </remarks>
+    public int RepeatLastN { get; set; } = 512;
+
     // CurrentStatusBudgetSeconds was removed with the batch move: the status line is generated
     // by the pipeline (StatusLineGenerationService) and served from its persisted row, so no
     // request waits on a generation and the budget has nothing left to protect.

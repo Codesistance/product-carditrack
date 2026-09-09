@@ -578,6 +578,36 @@ variable "medgemma_max_output_tokens" {
   }
 }
 
+# The repetition guard. Every clinical read that ran to the ceiling in dev (6-9 September 2026)
+# was the 4B model restating one block of sentences verbatim until num_predict ended it, at
+# Ollama's own defaults (penalty 1.1 over the last 64 tokens): the repeated block was ~170 tokens,
+# so the default window never contained the repetition it was meant to see. Variables rather than
+# constants because the right strength is a measurement, not a derivation — a penalty strong
+# enough to forbid "than usual" twice would degrade the reads that finish — and an environment
+# that measures either effect adjusts it here without a code change. Mirrors
+# PrivateAiSettings.RepeatPenalty / RepeatLastN.
+variable "medgemma_repeat_penalty" {
+  description = "Ollama repeat_penalty for MedGemma calls — 1.0 is off; above it discourages a token already in the recent window"
+  type        = number
+  default     = 1.15
+
+  validation {
+    condition     = var.medgemma_repeat_penalty >= 1.0
+    error_message = "medgemma_repeat_penalty must be 1.0 (off) or greater; below 1.0 rewards repetition."
+  }
+}
+
+variable "medgemma_repeat_last_n" {
+  description = "Ollama repeat_last_n for MedGemma calls — how many recent tokens the repeat penalty looks back over (-1 = whole context, 0 = off)"
+  type        = number
+  default     = 512
+
+  validation {
+    condition     = var.medgemma_repeat_last_n >= -1
+    error_message = "medgemma_repeat_last_n must be -1 (whole context), 0 (off) or a positive token count."
+  }
+}
+
 # ── Public AI provider (reports and chat) ─────────────────────────────────────
 # Off-estate by definition, and swappable: changing kind + model + the key secret moves
 # reports and chat to another provider without a code change. The medical path is not

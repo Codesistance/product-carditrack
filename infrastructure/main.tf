@@ -121,6 +121,8 @@ module "deployments" {
       "AI__Private__TimeoutSeconds"         = tostring(var.medgemma_timeout_seconds)
       "AI__Private__ContextTokens"          = tostring(var.medgemma_context_tokens)
       "AI__Private__MaxOutputTokens"        = tostring(var.medgemma_max_output_tokens)
+      "AI__Private__RepeatPenalty"          = tostring(var.medgemma_repeat_penalty)
+      "AI__Private__RepeatLastN"            = tostring(var.medgemma_repeat_last_n)
       # MedGemma authorises callers by IAM, so every request needs an OIDC token. Set for every host
       # that receives AI__Private__BaseUrl, including the aggregator, which carries the config
       # without calling the model — AiServiceExtensions refuses to start a host whose BaseUrl is a
@@ -290,6 +292,8 @@ module "deployments" {
     "AI__Private__TimeoutSeconds"   = tostring(var.medgemma_timeout_seconds)
     "AI__Private__ContextTokens"    = tostring(var.medgemma_context_tokens)
     "AI__Private__MaxOutputTokens"  = tostring(var.medgemma_max_output_tokens)
+    "AI__Private__RepeatPenalty"    = tostring(var.medgemma_repeat_penalty)
+    "AI__Private__RepeatLastN"      = tostring(var.medgemma_repeat_last_n)
     "AI__Private__UseIdentityToken" = "true"
     # Dev-only clinical inspection logging — same switch and same start-up guard as the API.
     "AI__Private__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
@@ -324,6 +328,8 @@ module "deployments" {
       "AI__Private__TimeoutSeconds"   = tostring(var.medgemma_timeout_seconds)
       "AI__Private__ContextTokens"    = tostring(var.medgemma_context_tokens)
       "AI__Private__MaxOutputTokens"  = tostring(var.medgemma_max_output_tokens)
+      "AI__Private__RepeatPenalty"    = tostring(var.medgemma_repeat_penalty)
+      "AI__Private__RepeatLastN"      = tostring(var.medgemma_repeat_last_n)
       "AI__Private__UseIdentityToken" = "true"
       # Same rewrite-slot settings as the API block above. The aggregator binds the
       # section without calling the model, so under VertexGemini its runtime identity carries

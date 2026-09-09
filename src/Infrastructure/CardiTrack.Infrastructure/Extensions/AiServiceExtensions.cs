@@ -314,6 +314,8 @@ public static class AiServiceExtensions
         RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.MaxOutputTokens));
         RequireOutputFitsContext(ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.MaxOutputTokens),
             nameof(PrivateAiSettings.ContextTokens), settings.MaxOutputTokens, settings.ContextTokens);
+        RequireRepetitionGuard(ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.RepeatPenalty),
+            nameof(PrivateAiSettings.RepeatLastN), settings.RepeatPenalty, settings.RepeatLastN);
         RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.PrivateSectionName, nameof(PrivateAiSettings.BaseUrl));
 
         RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.PrivateSectionName, settings.BaseUrl, settings.UseIdentityToken);
@@ -383,6 +385,8 @@ public static class AiServiceExtensions
             RequireNoClinicalLoggingInProduction(ConfigurationKeys.AI.RewriteSectionName, settings.LogClinicalOutput, configuration);
             RequireOutputFitsContext(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens),
                 nameof(RewriteAiSettings.ContextTokens), settings.MaxOutputTokens, settings.ContextTokens);
+            RequireRepetitionGuard(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.RepeatPenalty),
+                nameof(RewriteAiSettings.RepeatLastN), settings.RepeatPenalty, settings.RepeatLastN);
             RequireAbsoluteUrl(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
             RequireCoherentIdentityTokenMode(ConfigurationKeys.AI.RewriteSectionName, settings.BaseUrl, settings.UseIdentityToken);
         }
@@ -600,6 +604,29 @@ public static class AiServiceExtensions
             throw new InvalidOperationException(Message(section, outputKey,
                 $"is {maxOutputTokens}, which leaves no room for a prompt inside {contextKey} "
                 + $"({contextTokens}). The completion is drawn from the same window as the prompt."));
+        }
+    }
+
+    /// <summary>
+    /// The repetition guard has two readings Ollama accepts that a configuration almost never
+    /// means. A penalty below 1.0 rewards repetition rather than discouraging it, and a window
+    /// below -1 is not a value Ollama defines (-1 is "the whole context", 0 is "off"). Either is
+    /// far more likely a typo than an intention, and the symptom it would otherwise produce — a
+    /// model that loops until its ceiling — is exactly the one these settings exist to stop.
+    /// </summary>
+    private static void RequireRepetitionGuard(
+        string section, string penaltyKey, string windowKey, double repeatPenalty, int repeatLastN)
+    {
+        if (double.IsNaN(repeatPenalty) || repeatPenalty < 1.0)
+        {
+            throw new InvalidOperationException(Message(section, penaltyKey,
+                $"must be 1.0 (off) or greater (found {repeatPenalty}). Below 1.0 rewards repetition."));
+        }
+
+        if (repeatLastN < -1)
+        {
+            throw new InvalidOperationException(Message(section, windowKey,
+                $"must be -1 (the whole context window), 0 (off) or a positive token count (found {repeatLastN})."));
         }
     }
 

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -40,6 +41,12 @@ public class MedGemmaClientTests
 
     /// <inheritdoc cref="ContextTokens"/>
     private const int MaxOutputTokens = 2048;
+
+    /// <inheritdoc cref="ContextTokens"/>
+    private const double RepeatPenalty = 1.15;
+
+    /// <inheritdoc cref="ContextTokens"/>
+    private const int RepeatLastN = 512;
 
     /// <summary>Realistic non-streaming /api/generate payload; durations are nanoseconds.</summary>
     private const string GeneratePayload =
@@ -694,6 +701,8 @@ public class MedGemmaClientTests
         var body = Assert.Single(handler.Requests).Body!;
         Assert.Contains($"\"num_ctx\":{ContextTokens}", body);
         Assert.Contains($"\"num_predict\":{MaxOutputTokens}", body);
+        Assert.Contains($"\"repeat_penalty\":{RepeatPenalty.ToString(CultureInfo.InvariantCulture)}", body);
+        Assert.Contains($"\"repeat_last_n\":{RepeatLastN}", body);
     }
 
     [Fact]
@@ -708,6 +717,8 @@ public class MedGemmaClientTests
         var body = Assert.Single(handler.Requests).Body!;
         Assert.Contains($"\"num_ctx\":{ContextTokens}", body);
         Assert.Contains($"\"num_predict\":{MaxOutputTokens}", body);
+        Assert.Contains($"\"repeat_penalty\":{RepeatPenalty.ToString(CultureInfo.InvariantCulture)}", body);
+        Assert.Contains($"\"repeat_last_n\":{RepeatLastN}", body);
     }
 
     /// <summary>
@@ -855,6 +866,8 @@ public class MedGemmaClientTests
             TimeoutSeconds = 300,
             ContextTokens = ContextTokens,
             MaxOutputTokens = MaxOutputTokens,
+            RepeatPenalty = RepeatPenalty,
+            RepeatLastN = RepeatLastN,
         };
         logger = new ListLogger();
         time = new InstantRetryTimeProvider();

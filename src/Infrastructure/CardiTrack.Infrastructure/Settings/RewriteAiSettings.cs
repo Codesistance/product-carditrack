@@ -68,6 +68,20 @@ public class RewriteAiSettings : IMedGemmaModelSettings
     public int ContextTokens { get; set; } = 12288;
 
     /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.RepeatPenalty" path="/summary"/>
+    /// Ollama kind only — the Vertex kind has no equivalent request parameter. Same default and
+    /// the same reasoning as <see cref="PrivateAiSettings.RepeatPenalty"/>: a small model served
+    /// by Ollama loops the same way whichever slot it is on.
+    /// </summary>
+    public double RepeatPenalty { get; set; } = 1.15;
+
+    /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.RepeatLastN" path="/summary"/>
+    /// Ollama kind only — see <see cref="PrivateAiSettings.RepeatLastN"/>.
+    /// </summary>
+    public int RepeatLastN { get; set; } = 512;
+
+    /// <summary>
     /// <inheritdoc cref="IMedGemmaModelSettings.LogClinicalOutput" path="/summary"/>
     /// </summary>
     /// <remarks>
