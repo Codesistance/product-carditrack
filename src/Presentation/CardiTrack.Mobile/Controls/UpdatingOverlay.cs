@@ -118,14 +118,19 @@ public sealed class UpdatingOverlay : Grid
         }
         catch (OperationCanceledException)
         {
-            // A newer show, or Hide, owns the state now.
-            return;
+            // A newer show, or Hide, owns the state now — the check below sees that and
+            // leaves the overlay alone.
         }
-
-        if (ReferenceEquals(_hold, cts))
+        finally
         {
-            _hold = null;
-            Conceal();
+            if (ReferenceEquals(_hold, cts))
+            {
+                _hold = null;
+                Conceal();
+            }
+
+            // Ours to dispose on every path: whoever cancelled it has already dropped it.
+            cts.Dispose();
         }
     }
 
