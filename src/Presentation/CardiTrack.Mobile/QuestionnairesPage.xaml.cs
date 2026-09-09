@@ -212,7 +212,12 @@ public partial class QuestionnairesPage : ContentPage
         try
         {
             var nextPage = _currentPage + 1;
-            var result = await _api.GetQuestionnairesAsync(_memberId, _searchTerm, nextPage, PageSize);
+
+            // On the load's own token, so a new search or reload does not just make this page of
+            // answers unusable — it stops it. Dropping the result on arrival was already correct;
+            // this stops paying for it on a caregiver's data while they wait for what they asked.
+            var result = await _api.GetQuestionnairesAsync(
+                _memberId, _searchTerm, nextPage, PageSize, ticket.Token);
 
             if (!_gate.IsCurrent(ticket))
                 return; // a new search or reload started while this page was in flight; drop it —
@@ -223,6 +228,12 @@ public partial class QuestionnairesPage : ContentPage
 
             _currentPage = nextPage;
             _hasMorePages = result.Answered.HasMore;
+        }
+        catch (Exception ex) when (ex is ApiException or OperationCanceledException && !_gate.IsCurrent(ticket))
+        {
+            // This page was cancelled by a newer search or reload, which reaches here as a
+            // transport failure. It says nothing about whether the list now on screen has more
+            // to give, so it must not be the reason paging stops for that list.
         }
         catch (ApiException)
         {
