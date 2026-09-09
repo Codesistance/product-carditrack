@@ -129,8 +129,11 @@ public partial class AlertDetailPage : ContentPage
         }
         finally
         {
+            // Only the load that still owns the screen clears the pull spinner. A superseded one
+            // stopping it would take the spinner off a pull that is still running.
+            if (_gate.IsCurrent(ticket))
+                Refresher.IsRefreshing = false;
             _gate.Release(ticket);
-            Refresher.IsRefreshing = false;
         }
     }
 

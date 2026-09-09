@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Services;
 
@@ -20,8 +21,8 @@ public partial class NotificationsPage : ContentPage
 
     private enum PageState { Loading, Loaded, Empty, Error }
 
-    private bool _isLoading;
-    private CancellationTokenSource? _loadCts;
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
     private NotificationListResponse? _lastData;
 
@@ -30,6 +31,7 @@ public partial class NotificationsPage : ContentPage
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
     }
 
@@ -56,49 +58,50 @@ public partial class NotificationsPage : ContentPage
 
     private async Task LoadAsync(bool force = false)
     {
-        if (_isLoading && !force)
+        if (_gate.IsLoading && !force)
             return;
-
-        _loadCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _loadCts = cts;
-        _isLoading = true;
+        var ticket = _gate.Begin();
 
         if (_lastData is null)
             SetState(PageState.Loading);
 
         try
         {
-            var data = await _api.GetNotificationsAsync(
-                state: nameof(NotificationState.Open), ct: cts.Token);
+            // The inbox the device last saved goes up first on a landing with nothing on screen;
+            // the live one replaces it under the overlay. A resume or a pull replaces in place.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _lastData is null
+                    ? ct => _api.PeekNotificationsAsync(state: nameof(NotificationState.Open), ct: ct)
+                    : null,
+                fetch: ct => _api.GetNotificationsAsync(state: nameof(NotificationState.Open), ct: ct),
+                render: data =>
+                {
+                    _lastData = data;
+                    Render(data);
+                },
+                _feedback);
 
-            if (cts.IsCancellationRequested)
-                return;
-
-            _lastData = data;
-            _lastLoadedUtc = DateTime.UtcNow;
-            Render(data);
-        }
-        catch (ApiException ex)
-        {
-            // A superseded request surfaces its cancellation as a transport failure; that is this
-            // page's own doing and must not be shown to the user as "no connection".
-            if (cts.IsCancellationRequested)
-                return;
-
-            if (_lastData is null)
+            switch (outcome.Result)
             {
-                ErrorDetailLabel.Text = ex.Message;
-                SetState(PageState.Error);
+                case RefreshResult.Superseded:
+                    return;
+                case RefreshResult.NothingAndFailed:
+                    _lastData = null;
+                    ErrorDetailLabel.Text = outcome.Error!.Message;
+                    SetState(PageState.Error);
+                    return;
             }
+
+            if (outcome.IsFresh)
+                _lastLoadedUtc = DateTime.UtcNow;
+            // Saved-only: the banner says so; a failed refresh over an inbox stays quiet, as before.
         }
         finally
         {
-            if (!cts.IsCancellationRequested)
-            {
-                _isLoading = false;
+            if (_gate.IsCurrent(ticket))
                 Refresher.IsRefreshing = false;
-            }
+            _gate.Release(ticket);
         }
     }
 
@@ -117,7 +120,6 @@ public partial class NotificationsPage : ContentPage
             FamilyList.Add(BuildCard(notification));
 
         FamilySection.IsVisible = family.Count > 0;
-        SavedBanner.ApplyFrom(_api);
         SubtitleLabel.Text = owned.Count switch
         {
             0 => "You're all set",

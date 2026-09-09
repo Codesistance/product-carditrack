@@ -243,6 +243,8 @@
                      RefreshColor="{StaticResource Primary}"
                      Refreshing="OnPullToRefresh">
             <ScrollView>
+                <VerticalStackLayout>
+                <controls:SavedDataBanner x:Name="SavedBanner" Margin="20,20,20,0"/>
                 <Grid Padding="20,20,20,24">
 
                     <!-- Loading: three quiet placeholder cards rather than a spinner, so the
@@ -287,6 +289,7 @@
                     <VerticalStackLayout x:Name="ReviewsHost" Spacing="14" IsVisible="False"/>
 
                 </Grid>
+                </VerticalStackLayout>
             </ScrollView>
         </RefreshView>
 
@@ -294,5 +297,9 @@
 
         <!-- Chat from anywhere; the code-behind feeds it the selected member. -->
         <controls:ChatBotLauncher x:Name="ChatBot" Grid.Row="3"/>
+
+        <!-- The second-long "Updating…" while a saved list is replaced by live data — last, so it
+             covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="5"/>
     </Grid>
 </ContentPage>

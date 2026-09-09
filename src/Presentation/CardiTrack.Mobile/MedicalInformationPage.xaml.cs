@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -27,12 +28,15 @@ public partial class MedicalInformationPage : ContentPage
 
     private Guid _memberId;
     private CardiMemberDetailResponse? _member;
-    private bool _isLoading;
+
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
 
     public MedicalInformationPage(ICardiTrackApiClient api)
     {
         InitializeComponent();
         _api = api;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -51,11 +55,11 @@ public partial class MedicalInformationPage : ContentPage
     private async void OnBackTapped(object? sender, EventArgs e) =>
         await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        await LoadAsync(force: true);
         Refresher.IsRefreshing = false;
     }
 
@@ -71,28 +75,50 @@ public partial class MedicalInformationPage : ContentPage
         Shell.Current.GoToAsync(
             $"{EditCardiMemberPage.Route}?memberId={_memberId}&focus={Uri.EscapeDataString(EditCardiMemberPage.FocusMedical)}");
 
-    private async Task LoadAsync()
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping — for anything the caregiver
+    /// asked for by hand. A gesture that did nothing because a slow request happened to be
+    /// running is a gesture they will make again.
+    /// </param>
+    private async Task LoadAsync(bool force = false)
     {
-        if (_isLoading)
+        if (_gate.IsLoading && !force)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
 
         if (_member is null)
             SetState(loading: true);
 
         try
         {
-            _member = await _api.GetCardiMemberAsync(_memberId);
-            Apply(_member);
-            SetState(loaded: true);
-        }
-        catch (ApiException ex)
-        {
+            // The saved profile first on a landing with nothing on screen, the live one behind
+            // it. Notes rarely change, so identical notes are left alone rather than flashed.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _member is null ? ct => _api.PeekCardiMemberAsync(memberId, ct) : null,
+                fetch: ct => _api.GetCardiMemberAsync(memberId, ct),
+                render: member =>
+                {
+                    _member = member;
+                    Apply(member);
+                    SetState(loaded: true);
+                },
+                _feedback,
+                // What Apply draws, and only that: a member payload changes whenever a sync
+                // lands, and notes that have not moved must not flash "Updating…" for it.
+                // Compared whole rather than field by field, so nothing inside these can slip past.
+                sameAs: (a, b) => SamePayload.Same(
+                    new { a.Name, a.MedicalNotes, a.IsPrimaryCaregiver },
+                    new { b.Name, b.MedicalNotes, b.IsPrimaryCaregiver }));
+
             // Keep whatever is already on screen — a failed refresh must not blank notes somebody
-            // may be reading — and only offer the error when there is nothing behind it.
-            if (_member is null)
+            // may be reading (the banner says they are saved) — and only offer the error when
+            // there is nothing behind it, or when the member is gone.
+            if (outcome.Result == RefreshResult.NothingAndFailed)
             {
-                ErrorDetailLabel.Text = ex.Message;
+                _member = null;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
                 SetState(error: true);
             }
         }
@@ -113,7 +139,7 @@ public partial class MedicalInformationPage : ContentPage
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
         }
     }
 

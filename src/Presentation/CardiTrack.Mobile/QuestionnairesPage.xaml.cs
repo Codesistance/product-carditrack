@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
 
@@ -46,11 +47,24 @@ public partial class QuestionnairesPage : ContentPage
     private bool _isBusy;
     private CancellationTokenSource? _searchDebounceCts;
 
-    /// <summary>Bumped by every <see cref="LoadAsync"/> call. A response — from that call or from a
-    /// <see cref="LoadMoreAsync"/> started under it — is only applied if this hasn't moved on by the
-    /// time it arrives, so a slow, superseded request can't paint stale results over a newer search,
-    /// refresh, or pending answer.</summary>
-    private int _loadGeneration;
+    /// <summary>Superseded by every <see cref="LoadAsync"/> call. A response — from that call or from
+    /// a <see cref="LoadMoreAsync"/> started under it — is only applied if the gate has not moved on
+    /// by the time it arrives, so a slow, superseded request can't paint stale results over a newer
+    /// search, refresh, or pending answer.</summary>
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
+    /// <summary>The ticket of the last first-page load, which every "load more" under it checks.</summary>
+    private LoadTicket _ticket;
+
+    /// <summary>
+    /// Cancels pages of answers still being fetched when the list they belong to is replaced.
+    /// Its own source rather than the load's: a <see cref="LoadTicket"/>'s token dies with the
+    /// load that owns it — <see cref="LoadGate.Release"/> disposes it — and paging deliberately
+    /// outlives the first-page load it started under, so passing that token to an HTTP call
+    /// after the fact would be using a disposed source.
+    /// </summary>
+    private CancellationTokenSource? _pagingCts;
 
     public QuestionnairesPage(
         ICardiTrackApiClient api, IPopupService popups, IQuestionValidityService questionValidity)
@@ -59,6 +73,7 @@ public partial class QuestionnairesPage : ContentPage
         _api = api;
         _popups = popups;
         _questionValidity = questionValidity;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
 
         AnsweredList.ItemsSource = _answeredItems;
         PendingCard.AnswerSubmitted += OnPendingAnswered;
@@ -146,39 +161,55 @@ public partial class QuestionnairesPage : ContentPage
     {
         ChatBot.MemberId = _memberId;
         ChatBot.MemberFirstName = NameFormatting.FirstName(_memberName);
-        var generation = ++_loadGeneration;
+        var ticket = _gate.Begin();
+        _ticket = ticket;
+
+        // Whatever page of answers was still arriving belongs to the list about to be replaced.
+        _pagingCts?.Cancel();
+        _pagingCts?.Dispose();
+        _pagingCts = new CancellationTokenSource();
         if (showSkeleton)
             SetState(loading: true);
         _currentPage = 1;
+        var (memberId, search) = (_memberId, _searchTerm);
 
         try
         {
-            var result = await _api.GetQuestionnairesAsync(_memberId, _searchTerm, _currentPage, PageSize);
-            if (generation != _loadGeneration)
-                return; // superseded by a newer load; its own response will paint the page.
+            // The saved first page for this exact search goes up first when nothing meaningful is
+            // on screen (a cold open, a retry); a search edit or a pull already has a list up and
+            // swaps the contents in place. Later pages never peek — they append to a live list.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: showSkeleton ? ct => _api.PeekQuestionnairesAsync(memberId, search, 1, PageSize, ct) : null,
+                fetch: ct => _api.GetQuestionnairesAsync(memberId, search, 1, PageSize, ct),
+                render: result =>
+                {
+                    ApplyHeader(result);
 
-            ApplyHeader(result);
+                    _answeredItems.Clear();
+                    foreach (var questionnaire in result.Answered.Items)
+                        _answeredItems.Add(new AnsweredQuestionnaireItem(questionnaire, _memberName));
 
-            _answeredItems.Clear();
-            foreach (var questionnaire in result.Answered.Items)
-                _answeredItems.Add(new AnsweredQuestionnaireItem(questionnaire, _memberName));
+                    _hasMorePages = result.Answered.HasMore;
+                    EmptyPanel.IsVisible = result.Answered.TotalCount == 0;
+                    if (EmptyPanel.IsVisible)
+                        ApplyEmptyStateText();
 
-            _hasMorePages = result.Answered.HasMore;
-            EmptyPanel.IsVisible = result.Answered.TotalCount == 0;
-            if (EmptyPanel.IsVisible)
-                ApplyEmptyStateText();
+                    SetState(loaded: true);
+                    if (resetScroll && _answeredItems.Count > 0)
+                        AnsweredList.ScrollTo(0, position: ScrollToPosition.Start, animate: false);
+                },
+                _feedback);
 
-            SetState(loaded: true);
-            if (resetScroll && _answeredItems.Count > 0)
-                AnsweredList.ScrollTo(0, position: ScrollToPosition.Start, animate: false);
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                ErrorDetailLabel.Text = outcome.Error!.Message;
+                SetState(error: true);
+            }
         }
-        catch (ApiException ex)
+        finally
         {
-            if (generation != _loadGeneration)
-                return;
-
-            ErrorDetailLabel.Text = ex.Message;
-            SetState(error: true);
+            _gate.Release(ticket);
         }
     }
 
@@ -189,15 +220,21 @@ public partial class QuestionnairesPage : ContentPage
         if (_isLoadingMore || !_hasMorePages)
             return;
 
-        var generation = _loadGeneration;
+        var ticket = _ticket;
+        var paging = _pagingCts?.Token ?? CancellationToken.None;
         _isLoadingMore = true;
         LoadMoreSkeleton.IsVisible = true;
         try
         {
             var nextPage = _currentPage + 1;
-            var result = await _api.GetQuestionnairesAsync(_memberId, _searchTerm, nextPage, PageSize);
 
-            if (generation != _loadGeneration)
+            // On the load's own token, so a new search or reload does not just make this page of
+            // answers unusable — it stops it. Dropping the result on arrival was already correct;
+            // this stops paying for it on a caregiver's data while they wait for what they asked.
+            var result = await _api.GetQuestionnairesAsync(
+                _memberId, _searchTerm, nextPage, PageSize, paging);
+
+            if (!_gate.IsCurrent(ticket))
                 return; // a new search or reload started while this page was in flight; drop it —
                          // it belongs to a list that no longer exists on screen.
 
@@ -206,6 +243,12 @@ public partial class QuestionnairesPage : ContentPage
 
             _currentPage = nextPage;
             _hasMorePages = result.Answered.HasMore;
+        }
+        catch (Exception ex) when (ex is ApiException or OperationCanceledException && !_gate.IsCurrent(ticket))
+        {
+            // This page was cancelled by a newer search or reload, which reaches here as a
+            // transport failure. It says nothing about whether the list now on screen has more
+            // to give, so it must not be the reason paging stops for that list.
         }
         catch (ApiException)
         {
