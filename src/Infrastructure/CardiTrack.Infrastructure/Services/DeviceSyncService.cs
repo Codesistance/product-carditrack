@@ -156,17 +156,18 @@ public class DeviceSyncService : IDeviceSyncService
             ct.ThrowIfCancellationRequested();
 
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, date);
-            if (snapshot.HasAnyData)
-            {
-                await StoreDayAsync(connection, snapshot, date);
-                daysWithData++;
-            }
+            if (!snapshot.HasAnyData)
+                continue;
+
+            await StoreDayAsync(connection, snapshot, date);
+            daysWithData++;
 
             // The granular series too — a re-pull is "everything the provider has for these
-            // days", not just the daily figures. Sequential after the daily row, so an hour
-            // vector never exists without its daily parent. The autonomous backfill skips this
-            // because intraday depth is unverified; here the caregiver asked for it, and a day
-            // the provider serves no intraday data for simply comes back empty.
+            // days", not just the daily figures. Only for a day whose daily row just landed, so
+            // an hour vector never exists without its daily parent (and an empty day costs no
+            // extra requests). The autonomous backfill skips this because intraday depth is
+            // unverified; here the caregiver asked for it, and a day the provider serves no
+            // intraday data for simply comes back empty.
             var granularDay = await _deviceApi.GetGranularDayAsync(accessToken, date);
             if (granularDay is { HasAnyData: true })
                 await _granularIngestion.IngestDayAsync(connection, granularDay, ct);

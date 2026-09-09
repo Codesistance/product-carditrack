@@ -106,6 +106,19 @@ public class DeviceSyncServiceHistoryRangeTests
     }
 
     [Fact]
+    public async Task PullHistoryRange_SkipsTheGranularSeries_ForADayWithNoDailyRow()
+    {
+        // An hour vector must never exist without its daily parent — and an empty day should
+        // not cost the five granular requests either.
+        _deviceApi.GetHealthSnapshotAsync(Arg.Any<string>(), new DateOnly(2026, 8, 29)).Returns(Snapshot(steps: null));
+
+        await CreateSut().PullHistoryRangeAsync(_connection, From, To);
+
+        await _deviceApi.Received(6).GetGranularDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+        await _deviceApi.DidNotReceive().GetGranularDayAsync(Arg.Any<string>(), new DateOnly(2026, 8, 29));
+    }
+
+    [Fact]
     public async Task PullHistoryRange_IngestsTheGranularSeries_ForDaysThatHaveThem()
     {
         var granular = new DeviceGranularDay(
