@@ -12,3 +12,4 @@
 ## UI
 - **All pages/screens are full-bleed** — edge-to-edge backgrounds and content (safe-area insets for system UI only). Do not wrap pages in rounded cards/sheets or other page-level clipped chrome.
 - Corner radius belongs on **components** (buttons, inputs, chips, logos, in-layout cards), never on the page shell.
+- **Mobile UI work is verified on the Android emulator** — follow `docs/technical/android_emulator_runbook.md` (start/unlock, `-t:Run` deploy, screenshots, one deployed build per emulator when several branches are in flight).
