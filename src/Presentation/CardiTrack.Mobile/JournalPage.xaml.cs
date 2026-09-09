@@ -402,7 +402,7 @@ public partial class JournalPage : ContentPage
                     RenderReviews(reviews);
                 },
                 _feedback,
-                sameAs: SameReviews);
+                sameAs: SamePayload.Same);
 
             switch (outcome.Result)
             {
@@ -516,20 +516,6 @@ public partial class JournalPage : ContentPage
 
         Render(reviews);
         SetState(loaded: true);
-    }
-
-    /// <summary>The same entries, by identity and generation — the order is the server's and stable.</summary>
-    private static bool SameReviews(IReadOnlyList<DigestResponse> a, IReadOnlyList<DigestResponse> b)
-    {
-        if (a.Count != b.Count)
-            return false;
-        for (var i = 0; i < a.Count; i++)
-        {
-            if (a[i].LocalDate != b[i].LocalDate || a[i].GeneratedAtUtc != b[i].GeneratedAtUtc)
-                return false;
-        }
-
-        return true;
     }
 
     private void Render(IReadOnlyList<DigestResponse> reviews)

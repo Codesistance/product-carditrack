@@ -149,18 +149,25 @@ public partial class JournalEntryPage : ContentPage
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        await LoadAsync(force: true);
         Refresher.IsRefreshing = false;
     }
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(AppShell.JournalRoute);
 
-    private async Task LoadAsync()
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping — for anything the caregiver
+    /// asked for by hand. A gesture that did nothing because a slow request happened to be
+    /// running is a gesture they will make again.
+    /// </param>
+    private async Task LoadAsync(bool force = false)
     {
-        if (_gate.IsLoading || _memberId == Guid.Empty || _date == default)
+        if (_memberId == Guid.Empty || _date == default)
+            return;
+        if (_gate.IsLoading && !force)
             return;
         var ticket = _gate.Begin();
         var (memberId, cadence, date) = (_memberId, _cadence, _date);
@@ -183,7 +190,12 @@ public partial class JournalEntryPage : ContentPage
                         var review = await scope.Track(_api.PeekJournalEntryAsync(memberId, cadence, date, ct));
                         if (review is null)
                             return null;
-                        var member = await scope.Track(_api.PeekCardiMemberAsync(memberId, ct));
+                        // Not tracked, for the same reason the live member call below is not:
+                        // the review is what this page is, so the review's provenance is the
+                        // page's. Tracking the charts would date the banner from whichever of
+                        // the two was saved longer ago and could call the page offline over a
+                        // review the device saved a minute earlier.
+                        var member = await _api.PeekCardiMemberAsync(memberId, ct);
                         return new EntryLoad(review, member);
                     }
                     : null,
@@ -212,8 +224,7 @@ public partial class JournalEntryPage : ContentPage
                     SetState(loaded: true);
                 },
                 _feedback,
-                sameAs: (a, b) => a.Review.GeneratedAtUtc == b.Review.GeneratedAtUtc
-                    && a.Member?.LastSyncedAt == b.Member?.LastSyncedAt);
+                sameAs: SamePayload.Same);
 
             switch (outcome.Result)
             {

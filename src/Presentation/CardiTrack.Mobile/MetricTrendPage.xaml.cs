@@ -134,7 +134,7 @@ public partial class MetricTrendPage : ContentPage
                     Apply(member);
                 },
                 _feedback,
-                sameAs: (a, b) => a.LastSyncedAt == b.LastSyncedAt);
+                sameAs: SamePayload.Same);
 
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {

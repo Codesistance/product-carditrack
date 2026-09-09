@@ -55,11 +55,11 @@ public partial class MedicalInformationPage : ContentPage
     private async void OnBackTapped(object? sender, EventArgs e) =>
         await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        await LoadAsync(force: true);
         Refresher.IsRefreshing = false;
     }
 
@@ -75,9 +75,14 @@ public partial class MedicalInformationPage : ContentPage
         Shell.Current.GoToAsync(
             $"{EditCardiMemberPage.Route}?memberId={_memberId}&focus={Uri.EscapeDataString(EditCardiMemberPage.FocusMedical)}");
 
-    private async Task LoadAsync()
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping — for anything the caregiver
+    /// asked for by hand. A gesture that did nothing because a slow request happened to be
+    /// running is a gesture they will make again.
+    /// </param>
+    private async Task LoadAsync(bool force = false)
     {
-        if (_gate.IsLoading)
+        if (_gate.IsLoading && !force)
             return;
         var ticket = _gate.Begin();
         var memberId = _memberId;
@@ -100,7 +105,7 @@ public partial class MedicalInformationPage : ContentPage
                     SetState(loaded: true);
                 },
                 _feedback,
-                sameAs: (a, b) => a.MedicalNotes == b.MedicalNotes && a.IsPrimaryCaregiver == b.IsPrimaryCaregiver);
+                sameAs: SamePayload.Same);
 
             // Keep whatever is already on screen — a failed refresh must not blank notes somebody
             // may be reading (the banner says they are saved) — and only offer the error when
