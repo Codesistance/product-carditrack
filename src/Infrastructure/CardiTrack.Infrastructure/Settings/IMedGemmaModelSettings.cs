@@ -33,6 +33,23 @@ public interface IMedGemmaModelSettings
     int MaxOutputTokens { get; }
 
     /// <summary>
+    /// Ollama's <c>repeat_penalty</c> — how strongly a token already in the recent window is
+    /// discouraged from being produced again. 1.0 is off. Sent explicitly because the server's
+    /// own default (1.1) was measured too weak to stop a 4B model that has started restating
+    /// itself inside a grammar-constrained string field, where nothing in the grammar can end
+    /// the sentence for it.
+    /// </summary>
+    double RepeatPenalty { get; }
+
+    /// <summary>
+    /// Ollama's <c>repeat_last_n</c> — how many recent tokens <see cref="RepeatPenalty"/> looks
+    /// back over. 0 disables it; -1 means the whole context window. Sent explicitly because the
+    /// server's default (64) is shorter than the block a looping clinical read repeats, so the
+    /// penalty never saw the repetition it exists to stop.
+    /// </summary>
+    int RepeatLastN { get; }
+
+    /// <summary>
     /// Inspection switch: when true, <see cref="ExternalClients.Medical.MedGemmaClient"/> writes
     /// every prompt it sends and every completion it receives to the log, verbatim. This is the
     /// one sanctioned exception to the client's privacy invariant, exists so the clinical output

@@ -568,6 +568,43 @@ public class AiServiceExtensionsTests
     }
 
     /// <summary>
+    /// Ollama accepts both of these and a configuration almost never means either: a penalty
+    /// below 1.0 rewards repetition, and a look-back below -1 is undefined. The symptom either
+    /// would produce is the one the settings exist to stop — a model looping to its ceiling —
+    /// so a boot is the right place to refuse them.
+    /// </summary>
+    [Theory]
+    [InlineData("AI:Private", "RepeatPenalty", "0.9")]
+    [InlineData("AI:Private", "RepeatPenalty", "Infinity")]
+    [InlineData("AI:Private", "RepeatLastN", "-2")]
+    [InlineData("AI:Rewrite", "RepeatPenalty", "0.9")]
+    [InlineData("AI:Rewrite", "RepeatLastN", "-2")]
+    public void AddAiServices_Throws_WhenTheRepetitionGuardIsOutOfRange(string section, string key, string value)
+    {
+        var config = Config();
+        config[$"{section}:{key}"] = value;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains($"{section}:{key}", ex.Message);
+    }
+
+    /// <summary>The two values Ollama defines as special — off, and the whole window — boot.</summary>
+    [Theory]
+    [InlineData("1.0", "0")]
+    [InlineData("1.0", "-1")]
+    public void AddAiServices_AcceptsTheRepetitionGuardsDefinedEdges(string penalty, string lastN)
+    {
+        var config = Config();
+        config["AI:Private:RepeatPenalty"] = penalty;
+        config["AI:Private:RepeatLastN"] = lastN;
+
+        var provider = Resolve(config);
+
+        Assert.NotNull(provider.GetRequiredKeyedService<IExternalAiClient>("MedicalProvider"));
+    }
+
+    /// <summary>
     /// The Vertex kind has no context window to configure — it is a property of the model, not a
     /// request parameter — so the key is neither required nor read on that branch. Both shapes a
     /// deployment can actually present are pinned: absent, and left behind at a value the Ollama

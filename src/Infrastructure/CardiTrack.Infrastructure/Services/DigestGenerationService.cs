@@ -75,8 +75,8 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         Respond with:
         - finding: what the readings show, read against the usual pattern and against how much
-          they moved, ending on what they indicate. Say plainly when a reading is missing rather
-          than filling the gap.
+          they moved, ending on what they indicate — at most 150 words, and never the same
+          reading twice. Say plainly when a reading is missing rather than filling the gap.
         - urgency: how soon the family should act on today's readings — one of watch (nothing
           pressing), check-in (worth a call today), concerning (worth prompt attention), or
           act-now (worth acting on right away). Judge only from the readings and computed observations below; never invent
@@ -2227,9 +2227,10 @@ public partial class DigestGenerationService : IDigestGenerationService
     {
         [Description(
             "What the readings show, read against the usual pattern and against how much they "
-            + "moved, ending on what they indicate. Clinical terms are correct here: this is read "
-            + "by the model that writes the family's summary, not by a family. Say plainly when a "
-            + "reading is missing rather than filling the gap.")]
+            + "moved, ending on what they indicate — at most 150 words, and never the same "
+            + "reading twice. Clinical terms are correct here: this is read by the model that "
+            + "writes the family's summary, not by a family. Say plainly when a reading is "
+            + "missing rather than filling the gap.")]
         public required string Finding { get; init; }
 
         [Description(

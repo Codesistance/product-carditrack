@@ -621,13 +621,16 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     }
 
     /// <summary>
-    /// The token budget every request carries. Read per call rather than cached so a settings
-    /// object that can be re-read stays authoritative, the same way <c>Model</c> is.
+    /// The token budget and the repetition guard every request carries. Read per call rather
+    /// than cached so a settings object that can be re-read stays authoritative, the same way
+    /// <c>Model</c> is.
     /// </summary>
     private OllamaOptions TokenBudget() => new()
     {
         NumCtx = _settings.ContextTokens,
         NumPredict = _settings.MaxOutputTokens,
+        RepeatPenalty = _settings.RepeatPenalty,
+        RepeatLastN = _settings.RepeatLastN,
     };
 
     /// <remarks>
@@ -696,9 +699,12 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     }
 
     /// <summary>
-    /// Ollama's per-request model parameters. Only the two that decide whether a reply can finish
-    /// are set: everything else (temperature, top_p, the sampler) belongs to the model tag's own
-    /// Modelfile, where it is versioned with the weights rather than with this client.
+    /// Ollama's per-request model parameters. Only the four that decide whether a reply can
+    /// finish are set — the window and ceiling that give it room, and the repetition penalty
+    /// that stops a small model restating itself until the ceiling ends it. Everything else
+    /// (temperature, top_p, the sampler) is left to the model tag. The tags this platform serves
+    /// are pulled straight from Hugging Face with no Modelfile of their own, which is why the
+    /// repetition guard is a request option here and not a line in one.
     /// </summary>
     private record OllamaOptions
     {
@@ -707,6 +713,12 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
 
         /// <summary>Ceiling on the completion alone.</summary>
         [JsonPropertyName("num_predict")] public required int NumPredict { get; init; }
+
+        /// <summary>See <see cref="IMedGemmaModelSettings.RepeatPenalty"/>.</summary>
+        [JsonPropertyName("repeat_penalty")] public required double RepeatPenalty { get; init; }
+
+        /// <summary>See <see cref="IMedGemmaModelSettings.RepeatLastN"/>.</summary>
+        [JsonPropertyName("repeat_last_n")] public required int RepeatLastN { get; init; }
     }
 
     private record OllamaMessage
