@@ -8,6 +8,19 @@ namespace CardiTrack.Infrastructure.Repositories;
 
 public class DeviceHistoryRepullRepository : Repository<DeviceHistoryRepull>, IDeviceHistoryRepullRepository
 {
+    /// <summary>
+    /// The statuses that count as open — the Worker still has work to do for the request.
+    /// </summary>
+    /// <remarks>
+    /// An array with <c>Contains</c>, the same shape <c>DeviceConnectionRepository</c> uses for
+    /// its syncable statuses, because it translates to a SQL <c>IN</c>. A helper method reads
+    /// better and does not translate at all: EF cannot see inside it, so the query throws at
+    /// runtime rather than failing to compile. This list and the partial indexes' filters in
+    /// <c>DeviceHistoryRepullConfiguration</c> must name the same statuses.
+    /// </remarks>
+    private static readonly HistoryRepullStatus[] OpenStatuses =
+        [HistoryRepullStatus.Pending, HistoryRepullStatus.InProgress];
+
     public DeviceHistoryRepullRepository(CardiTrackDbContext context) : base(context)
     {
     }
@@ -17,7 +30,7 @@ public class DeviceHistoryRepullRepository : Repository<DeviceHistoryRepull>, ID
     {
         return await _dbSet
             .AsNoTracking()
-            .Where(r => r.DeviceConnectionId == deviceConnectionId && IsOpen(r.Status))
+            .Where(r => r.DeviceConnectionId == deviceConnectionId && OpenStatuses.Contains(r.Status))
             .OrderByDescending(r => r.RequestedAt)
             .FirstOrDefaultAsync(ct);
     }
@@ -39,33 +52,26 @@ public class DeviceHistoryRepullRepository : Repository<DeviceHistoryRepull>, ID
         if (ids.Count == 0)
             return [];
 
-        // One query, then the newest per connection picked in memory: a member has a handful of
-        // connections and each gains at most a row every couple of days, so the rows here are
-        // few, and the (DeviceConnectionId, RequestedAt desc) index serves the read. A DISTINCT
-        // ON query is the upgrade if that ever stops being true.
-        var rows = await _dbSet
+        // One row per connection, chosen in the database rather than by loading the history and
+        // picking in memory. The device list is read on every visit to the screen and on every
+        // app resume, and these rows accumulate for the life of the connection, so a read that
+        // scales with how many re-pulls a member has ever asked for would get slower for exactly
+        // the caregivers who use the feature. The (DeviceConnectionId, RequestedAt desc) index
+        // serves this directly.
+        return await _dbSet
             .AsNoTracking()
             .Where(r => ids.Contains(r.DeviceConnectionId))
-            .OrderByDescending(r => r.RequestedAt)
-            .ToListAsync(ct);
-
-        return rows
             .GroupBy(r => r.DeviceConnectionId)
-            .Select(g => g.First())
-            .ToList();
+            .Select(g => g.OrderByDescending(r => r.RequestedAt).First())
+            .ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<DeviceHistoryRepull>> GetDueAsync(int limit, CancellationToken ct = default)
     {
         return await _dbSet
-            .Where(r => IsOpen(r.Status))
+            .Where(r => OpenStatuses.Contains(r.Status))
             .OrderBy(r => r.RequestedAt)
             .Take(limit)
             .ToListAsync(ct);
     }
-
-    // Written as a comparison on the enum so EF translates it against the stored names; the
-    // entity's IsOpen is a computed property and cannot be used in a query.
-    private static bool IsOpen(HistoryRepullStatus status) =>
-        status == HistoryRepullStatus.Pending || status == HistoryRepullStatus.InProgress;
 }
