@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -33,11 +34,15 @@ public partial class NotificationPreferencesPage : ContentPage
     private bool _rendering;
     private bool _saving;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     public NotificationPreferencesPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
         BuildCategoryRows();
     }
 
@@ -54,22 +59,50 @@ public partial class NotificationPreferencesPage : ContentPage
 
     private async Task LoadAsync()
     {
-        Loading.IsVisible = true;
-        Panel.IsVisible = false;
+        if (_gate.IsLoading)
+            return;
+        var ticket = _gate.Begin();
+
+        // The spinner only for a screen with nothing on it: a reload behind saved preferences
+        // must not take them away to show a spinner and put the same ones back.
+        var cold = _prefs is null;
+        if (cold)
+        {
+            Loading.IsVisible = true;
+            Panel.IsVisible = false;
+        }
         ErrorPanel.IsVisible = false;
+
         try
         {
-            _prefs = await _api.GetNotificationPreferencesAsync();
-            Render();
-            Panel.IsVisible = true;
-        }
-        catch (ApiException)
-        {
-            ErrorPanel.IsVisible = true;
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: cold ? ct => _api.PeekNotificationPreferencesAsync(ct) : null,
+                fetch: ct => _api.GetNotificationPreferencesAsync(ct),
+                render: prefs =>
+                {
+                    _prefs = prefs;
+                    Render();
+                    Panel.IsVisible = true;
+                },
+                _feedback,
+                sameAs: (a, b) =>
+                    a.QuietHoursStart == b.QuietHoursStart
+                    && a.QuietHoursEnd == b.QuietHoursEnd
+                    && a.ShowDetailsOnLockScreen == b.ShowDetailsOnLockScreen
+                    && a.MutedCategories.OrderBy(c => c, StringComparer.Ordinal)
+                        .SequenceEqual(b.MutedCategories.OrderBy(c => c, StringComparer.Ordinal), StringComparer.Ordinal));
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                _prefs = null;
+                ErrorPanel.IsVisible = true;
+            }
         }
         finally
         {
             Loading.IsVisible = false;
+            _gate.Release(ticket);
         }
     }
 

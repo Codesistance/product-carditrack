@@ -2,6 +2,7 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Journal;
 using CardiTrack.Mobile.Services;
 
@@ -35,11 +36,15 @@ public partial class JournalTimingPage : ContentPage
     private JournalSettingsResponse? _settings;
     private bool _saving;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     public JournalTimingPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -73,17 +78,43 @@ public partial class JournalTimingPage : ContentPage
 
     private async Task LoadAsync()
     {
+        if (_gate.IsLoading)
+            return;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
+
         try
         {
-            _settings = await _api.GetJournalSettingsAsync(_memberId);
-            Render(_settings);
+            // Times the caregiver set themselves: the saved answer is almost always the right
+            // one, so it goes up at once and the live call confirms it behind.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _settings is null ? ct => _api.PeekJournalSettingsAsync(memberId, ct) : null,
+                fetch: ct => _api.GetJournalSettingsAsync(memberId, ct),
+                render: settings =>
+                {
+                    _settings = settings;
+                    Render(settings);
+                },
+                _feedback,
+                sameAs: (a, b) =>
+                    a.EffectiveDaybookLocalTime == b.EffectiveDaybookLocalTime
+                    && a.EffectiveWeekbookLocalTime == b.EffectiveWeekbookLocalTime
+                    && a.EffectiveMonthbookLocalTime == b.EffectiveMonthbookLocalTime
+                    && a.EffectiveWeekStartsOn == b.EffectiveWeekStartsOn);
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                _settings = null;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
+                LoadingSpinner.IsVisible = false;
+                LoadingSpinner.IsRunning = false;
+                ErrorPanel.IsVisible = true;
+            }
         }
-        catch (ApiException ex)
+        finally
         {
-            ErrorDetailLabel.Text = ex.Message;
-            LoadingSpinner.IsVisible = false;
-            LoadingSpinner.IsRunning = false;
-            ErrorPanel.IsVisible = true;
+            _gate.Release(ticket);
         }
     }
 

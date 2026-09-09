@@ -42,6 +42,13 @@ public partial class MetricAlarmEditPage : ContentPage
     private AlarmDraft? _draft;
     private bool _loaded;
 
+    /// <summary>
+    /// Whether the caregiver has changed anything on the form. Set by every change handler, past
+    /// the guard that tells their edits from the ones the page makes itself, and read by the load
+    /// so a live answer arriving behind a saved one cannot rebuild the form under their hands.
+    /// </summary>
+    private bool _touched;
+
     /// <summary>Guards every handler while we rebuild the pickers from the draft.</summary>
     private bool _applying;
 
@@ -98,6 +105,22 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         try
         {
+            // The options a custom alert may be built from do not change between two openings of
+            // this form, and neither does the alarm being edited unless somebody edits it — so
+            // the device's own copies build the form at once, and the live pair rebuilds it
+            // behind, if the caregiver has not started filling it in by then.
+            if (await _api.PeekAlarmCatalogueAsync() is { } savedCatalogue)
+            {
+                var savedExisting = _alarmId is { } savedId
+                    ? (await _api.PeekMemberAlarmsAsync(_memberId))?.FirstOrDefault(a => a.Id == savedId)
+                    : null;
+
+                // Never a saved *new* alarm form over an edit whose alarm the device does not
+                // hold: that would offer to create where the caregiver asked to change.
+                if (_alarmId is null || savedExisting is not null)
+                    Build(savedCatalogue, savedExisting);
+            }
+
             var catalogue = await _api.GetAlarmCatalogueAsync();
 
             MetricAlarmResponse? existing = null;
@@ -119,38 +142,58 @@ public partial class MetricAlarmEditPage : ContentPage
                 }
             }
 
-            _draft = new AlarmDraft(catalogue, existing);
-            _loaded = true;
+            // A form somebody has started filling in is theirs. The live answer here is almost
+            // always the saved one over again — a catalogue and one alarm — so taking their
+            // half-built alert away to redraw it identically would be the refresh doing harm.
+            if (_touched)
+                return;
 
-            _provenance = existing?.Provenance;
-
-            HeaderTitle.Text = existing is null ? "New Custom Alert" : "Edit Custom Alert";
-
-            // An inherited alarm is the account's, not this member's, so there is nothing here to
-            // delete — switching it off on the list writes the opt-out, which is what "not for this
-            // person" means. Offering Remove would send a caregiver to a 404 for asking a
-            // reasonable question. An override, on the other hand, can be removed: that puts the
-            // account's own setting back.
-            DeleteButton.IsVisible = existing is not null && _provenance != AlarmProvenance.Inherited;
-            DeleteButton.Text = _provenance == AlarmProvenance.Overridden
-                ? "Use the account setting instead"
-                : "Remove this alert";
-
-            LoadingSpinner.IsVisible = false;
-            LoadingSpinner.IsRunning = false;
-            FormPanel.IsVisible = true;
-            SaveButton.IsVisible = true;
-
-            BuildPickers();
-            Refresh();
+            Build(catalogue, existing);
         }
         catch (ApiException ex)
         {
+            // A form already built from the device stays: it is the same catalogue the live call
+            // failed to fetch, and the caregiver can fill it in. Save reports its own failure.
+            if (_loaded)
+                return;
+
             ErrorDetailLabel.Text = ex.Message;
             LoadingSpinner.IsVisible = false;
             LoadingSpinner.IsRunning = false;
             ErrorPanel.IsVisible = true;
         }
+    }
+
+    /// <summary>
+    /// Puts one catalogue-and-alarm pair onto the form — the same for the device's saved pair and
+    /// for the live one.
+    /// </summary>
+    private void Build(AlarmCatalogueResponse catalogue, MetricAlarmResponse? existing)
+    {
+        _draft = new AlarmDraft(catalogue, existing);
+        _loaded = true;
+
+        _provenance = existing?.Provenance;
+
+        HeaderTitle.Text = existing is null ? "New Custom Alert" : "Edit Custom Alert";
+
+        // An inherited alarm is the account's, not this member's, so there is nothing here to
+        // delete — switching it off on the list writes the opt-out, which is what "not for this
+        // person" means. Offering Remove would send a caregiver to a 404 for asking a
+        // reasonable question. An override, on the other hand, can be removed: that puts the
+        // account's own setting back.
+        DeleteButton.IsVisible = existing is not null && _provenance != AlarmProvenance.Inherited;
+        DeleteButton.Text = _provenance == AlarmProvenance.Overridden
+            ? "Use the account setting instead"
+            : "Remove this alert";
+
+        LoadingSpinner.IsVisible = false;
+        LoadingSpinner.IsRunning = false;
+        FormPanel.IsVisible = true;
+        SaveButton.IsVisible = true;
+
+        BuildPickers();
+        Refresh();
     }
 
     /// <summary>The pickers whose contents never change — everything else is rebuilt by <see cref="Refresh"/>.</summary>
@@ -330,6 +373,8 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_applying || _draft is null)
             return;
 
+        _touched = true;
+
         _draft.Request.Name = e.NewTextValue ?? string.Empty;
         Refresh();
     }
@@ -338,6 +383,8 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         if (_applying || _draft is null || MetricPicker.SelectedIndex < 0)
             return;
+
+        _touched = true;
 
         _draft.SelectMetric(_draft.Metrics[MetricPicker.SelectedIndex].Metric);
         Refresh();
@@ -348,6 +395,8 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_applying || _draft is null || StatisticPicker.SelectedIndex < 0)
             return;
 
+        _touched = true;
+
         _draft.Request.Statistic = _draft.Statistics[StatisticPicker.SelectedIndex];
         Refresh();
     }
@@ -356,6 +405,8 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         if (_applying || _draft is null || OperatorPicker.SelectedIndex < 0)
             return;
+
+        _touched = true;
 
         _draft.Request.Operator = OperatorPicker.SelectedIndex switch
         {
@@ -372,6 +423,8 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_applying || _draft is null || ThresholdKindPicker.SelectedIndex < 0)
             return;
 
+        _touched = true;
+
         _draft.SelectThresholdKind(_draft.ThresholdKinds[ThresholdKindPicker.SelectedIndex]);
         Refresh();
     }
@@ -380,6 +433,8 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         if (_applying || _draft is null)
             return;
+
+        _touched = true;
 
         // Deliberately not clamped or rewritten while typing: pulling "4" up to the minimum the
         // moment it is typed makes "45" impossible to enter. Validation says what is wrong, and
@@ -396,6 +451,8 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_applying || _draft is null || PeriodPicker.SelectedIndex < 0)
             return;
 
+        _touched = true;
+
         _draft.SelectPeriod(_draft.Periods[PeriodPicker.SelectedIndex]);
         Refresh();
     }
@@ -404,6 +461,8 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         if (_applying || _draft is null)
             return;
+
+        _touched = true;
 
         _draft.SelectEvaluationPeriods((int)e.NewValue);
         Refresh();
@@ -414,6 +473,8 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_applying || _draft is null)
             return;
 
+        _touched = true;
+
         _draft.SelectDatapointsToAlarm((int)e.NewValue);
         Refresh();
     }
@@ -423,6 +484,8 @@ public partial class MetricAlarmEditPage : ContentPage
         if (_applying || _draft is null)
             return;
 
+        _touched = true;
+
         _draft.Request.ContextGate = e.Value ? AlarmContextGate.Inactive : AlarmContextGate.None;
         Refresh();
     }
@@ -431,6 +494,8 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         if (_applying || _draft is null || SeverityPicker.SelectedIndex < 0)
             return;
+
+        _touched = true;
 
         _draft.Request.Severity = SeverityPicker.SelectedIndex switch
         {
@@ -448,6 +513,8 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         if (_applying || _draft is null || MissingDataPicker.SelectedIndex < 0)
             return;
+
+        _touched = true;
 
         _draft.Request.MissingDataTreatment = MissingDataPicker.SelectedIndex switch
         {

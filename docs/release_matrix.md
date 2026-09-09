@@ -69,7 +69,8 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 | Export — LOINC/CCD | R3 | R3 | R3 | Complete Care | ⬜ Not started |
 | Activity/audit log endpoint (Admin) | R3 | R3 | R3 | — | ⬜ Not started |
 | Biometric login (local gate) | R4 | R4 | — | — | ⬜ Not started |
-| Offline support + sync queue | R4 | R4 | R4 (PWA) | — | ⬜ Not started |
+| Offline read cache (cache-first reads) | R1 | R1 | — | — | ✅ Shipped (mobile) |
+| Offline write/sync queue | R4 | R4 | R4 (PWA) | — | ⬜ Not started |
 | Push notification inline actions | R4 | R4 | R4 (browser) | — | ⬜ Not started |
 | Home-screen widget / PWA install | R4 | R4 | R4 | — | ⬜ Not started |
 | Apple Watch — **via Google Health only** (HealthKit bridge retired) | n/a | R3 (picker mapping) | n/a | — | 🔶 **Decided 2026-09-05: no dedicated integration.** Apple offers no server-side connection; readings arrive when the wearer shares Apple Health into the Google Health app, and the live GoogleHealth engine reads them. Remaining: map `AppleWatch` into the GoogleHealth `DeviceTypes` so the picker routes it to the Google connect flow, and a live-device check of which metrics Apple passes through ([devices.md](./execution/backend/api/devices.md) "Devices that arrive via Google Health") |

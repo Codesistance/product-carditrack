@@ -123,18 +123,49 @@ public partial class EditCardiMemberPage : ContentPage
 
     private async Task LoadAsync()
     {
-        SetState(loading: true);
+        if (_member is null)
+            SetState(loading: true);
+
         try
         {
-            _member = await _api.GetCardiMemberAsync(_memberId);
+            // The profile the device already holds fills the form at once — a caregiver who came
+            // here to change a phone number should not watch an empty form while the values they
+            // are about to edit are fetched.
+            if (_member is null && await _api.PeekCardiMemberAsync(_memberId) is { } saved)
+            {
+                _member = saved;
+                ChatBot.MemberId = _memberId;
+                ChatBot.MemberFirstName = NameFormatting.FirstName(saved.Name);
+                Fill(saved);
+                SetState(form: true);
+                await ApplyFocusAsync();
+            }
+
+            var member = await _api.GetCardiMemberAsync(_memberId);
+
+            // What they have typed is theirs. HasUnsavedChanges compares the form against the
+            // profile it was filled from, so anything they have changed makes this true and the
+            // live answer is kept off the form — it is only ever the same values again unless
+            // somebody edited this member elsewhere, and even then their draft wins.
+            if (HasUnsavedChanges())
+            {
+                _member = member;
+                return;
+            }
+
+            _member = member;
             ChatBot.MemberId = _memberId;
-            ChatBot.MemberFirstName = NameFormatting.FirstName(_member.Name);
-            Fill(_member);
+            ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
+            Fill(member);
             SetState(form: true);
             await ApplyFocusAsync();
         }
         catch (ApiException ex)
         {
+            // A form already filled from the device stays — Save reports its own failure.
+            if (_member is not null)
+                return;
+
             ErrorDetailLabel.Text = ex.Message;
             SetState(error: true);
         }

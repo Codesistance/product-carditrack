@@ -40,12 +40,33 @@ public partial class SettingsPage : ContentPage
         _ = LoadNotificationSummaryAsync();
     }
 
-    /// <summary>The row's one line says what is set, so the page answers before it is tapped.</summary>
+    /// <summary>
+    /// The row's one line says what is set, so the page answers before it is tapped. The device's
+    /// saved preferences write it at once and the live ones correct it behind — silently, with no
+    /// banner or overlay: this is a subtitle echoing the caregiver's own settings, not health data
+    /// standing in for something current, and a scrim over the whole of Settings for one line
+    /// would be exactly the flash the saved copy exists to remove.
+    /// </summary>
     private async Task LoadNotificationSummaryAsync()
     {
         try
         {
-            var prefs = await _api.GetNotificationPreferencesAsync();
+            if (await _api.PeekNotificationPreferencesAsync() is { } saved)
+                ApplyNotificationSummary(saved);
+
+            ApplyNotificationSummary(await _api.GetNotificationPreferencesAsync());
+        }
+        catch (ApiException)
+        {
+            // Only when nothing was written above: a saved line beats the generic one.
+            if (string.IsNullOrEmpty(NotificationSummary.Text))
+                NotificationSummary.Text = "Quiet hours, lock-screen detail, what to hear about";
+        }
+    }
+
+    private void ApplyNotificationSummary(NotificationPreferenceResponse prefs)
+    {
+        {
             var quiet = prefs.QuietHoursStart is { } start && prefs.QuietHoursEnd is { } end
                 ? $"Quiet {start:HH:mm} – {end:HH:mm}"
                 : "No quiet hours";
@@ -60,10 +81,6 @@ public partial class SettingsPage : ContentPage
                 var n => $"{n} kinds muted",
             };
             NotificationSummary.Text = $"{quiet} · {muted}";
-        }
-        catch (ApiException)
-        {
-            NotificationSummary.Text = "Quiet hours, lock-screen detail, what to hear about";
         }
     }
 
@@ -159,15 +176,25 @@ public partial class SettingsPage : ContentPage
     /// </summary>
     private async Task LoadMutesAsync()
     {
+        var showedSaved = false;
         try
         {
-            var mutes = await _api.GetNotificationMutesAsync();
-            RenderMutes(mutes);
+            // The saved list first, so the card is there as the page opens; the live one
+            // corrects it behind. Silent, for the same reason the summary line above is.
+            if (await _api.PeekNotificationMutesAsync() is { } saved)
+            {
+                RenderMutes(saved);
+                showedSaved = true;
+            }
+
+            RenderMutes(await _api.GetNotificationMutesAsync());
         }
         catch (ApiException)
         {
-            // Settings must still open if this call fails; the section simply does not appear.
-            MutesCard.IsVisible = false;
+            // Settings must still open if this call fails; the section simply does not appear —
+            // unless the device's own list is already showing, which is better than nothing.
+            if (!showedSaved)
+                MutesCard.IsVisible = false;
         }
     }
 

@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -39,11 +40,15 @@ public partial class AlertSettingsPage : ContentPage
     /// <summary>Rule id currently waiting on a PATCH — blocks overlapping toggles.</summary>
     private string? _toggleInFlight;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     public AlertSettingsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -86,18 +91,62 @@ public partial class AlertSettingsPage : ContentPage
 
     private async Task LoadAsync()
     {
+        if (_gate.IsLoading)
+            return;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
+
         try
         {
-            _prefs = await _api.GetAlertPreferencesAsync(_memberId);
-            Render(_prefs);
+            // These switches are the caregiver's own settings — they change only when someone
+            // changes them — so the saved set goes up at once and the live one confirms it
+            // behind. An identical answer is left alone rather than redrawn under an overlay.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _prefs is null ? ct => _api.PeekAlertPreferencesAsync(memberId, ct) : null,
+                fetch: ct => _api.GetAlertPreferencesAsync(memberId, ct),
+                render: prefs =>
+                {
+                    _prefs = prefs;
+                    Render(prefs);
+                },
+                _feedback,
+                sameAs: SameRules);
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                _prefs = null;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
+                LoadingSpinner.IsVisible = false;
+                LoadingSpinner.IsRunning = false;
+                ErrorPanel.IsVisible = true;
+            }
         }
-        catch (ApiException ex)
+        finally
         {
-            ErrorDetailLabel.Text = ex.Message;
-            LoadingSpinner.IsVisible = false;
-            LoadingSpinner.IsRunning = false;
-            ErrorPanel.IsVisible = true;
+            _gate.Release(ticket);
         }
+    }
+
+    /// <summary>
+    /// The same rules in the same state. Rebuilding the rows is what a re-render costs here, and
+    /// a caregiver mid-flip should not have the switch rebuilt under their finger for an answer
+    /// that says exactly what the one on screen already does.
+    /// </summary>
+    private static bool SameRules(AlertPreferencesResponse a, AlertPreferencesResponse b)
+    {
+        var left = a.Clusters.SelectMany(c => c.Rules).ToList();
+        var right = b.Clusters.SelectMany(c => c.Rules).ToList();
+        if (left.Count != right.Count)
+            return false;
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            if (left[i].Id != right[i].Id || left[i].Enabled != right[i].Enabled)
+                return false;
+        }
+
+        return true;
     }
 
     private void Render(AlertPreferencesResponse prefs)

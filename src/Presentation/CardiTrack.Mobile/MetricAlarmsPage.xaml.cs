@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -44,11 +45,15 @@ public partial class MetricAlarmsPage : ContentPage
     /// <summary>Alarm currently waiting on a save — blocks overlapping toggles.</summary>
     private Guid? _toggleInFlight;
 
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+
     public MetricAlarmsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     public string MemberId
@@ -91,24 +96,62 @@ public partial class MetricAlarmsPage : ContentPage
 
     private async Task LoadAsync()
     {
+        if (_gate.IsLoading)
+            return;
+        var ticket = _gate.Begin();
+        var memberId = _memberId;
+
         try
         {
-            _alarms = await _api.GetMemberAlarmsAsync(_memberId);
-            Render(_alarms);
+            // Alarms the caregiver set themselves: the saved list goes up at once on a landing
+            // with nothing on screen, and the live one confirms it behind. A toggle that just
+            // succeeded evicts the key (see the client), so the reload it triggers is live.
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _alarms is null ? ct => _api.PeekMemberAlarmsAsync(memberId, ct) : null,
+                fetch: ct => _api.GetMemberAlarmsAsync(memberId, ct),
+                render: alarms =>
+                {
+                    _alarms = alarms;
+                    Render(alarms);
+                },
+                _feedback,
+                sameAs: SameAlarms);
+
+            // The list has to go when there is nothing behind it, not just be covered. This page
+            // reloads — returning from the builder clears the cache, and a successful toggle
+            // calls this directly — so a failure here can land on top of a list that is already
+            // rendered. What it must never do is leave stale alarms up unmarked; a saved-only
+            // outcome is marked by the banner, which is the honest version of the same thing.
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                _alarms = null;
+                AlarmsPanel.IsVisible = false;
+                ErrorDetailLabel.Text = outcome.Error!.Message;
+                LoadingSpinner.IsVisible = false;
+                LoadingSpinner.IsRunning = false;
+                ErrorPanel.IsVisible = true;
+            }
         }
-        catch (ApiException ex)
+        finally
         {
-            // The list has to go, not just be covered. This page reloads — returning from the
-            // builder clears the cache, and a successful toggle calls this directly — so a failure
-            // here can land on top of a list that is already rendered, and leaving it up would show
-            // a caregiver stale alarms beside an error saying the alarms could not be loaded.
-            _alarms = null;
-            AlarmsPanel.IsVisible = false;
-            ErrorDetailLabel.Text = ex.Message;
-            LoadingSpinner.IsVisible = false;
-            LoadingSpinner.IsRunning = false;
-            ErrorPanel.IsVisible = true;
+            _gate.Release(ticket);
         }
+    }
+
+    /// <summary>The same alarms, in the same state — rebuilding the rows is what a re-render costs.</summary>
+    private static bool SameAlarms(IReadOnlyList<MetricAlarmResponse> a, IReadOnlyList<MetricAlarmResponse> b)
+    {
+        if (a.Count != b.Count)
+            return false;
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (a[i].Id != b[i].Id || a[i].IsEnabled != b[i].IsEnabled)
+                return false;
+        }
+
+        return true;
     }
 
     private void Render(IReadOnlyList<MetricAlarmResponse> alarms)
