@@ -272,23 +272,6 @@
                                     <Label x:Name="UrgencyLabel"
                                            Style="{StaticResource Message}"/>
                                 </HorizontalStackLayout>
-
-                                <!-- Why this card and the dashboard hero can disagree, on the day
-                                     they do. The hero's colour is the worst open alert; the rung
-                                     above is the model's read of today's readings on their own —
-                                     two writers, and a caregiver who has just come from a yellow
-                                     hero to a green rung is told which is which rather than left
-                                     to pick one. Hidden when they agree, which is most days. Body
-                                     rather than Message: it is about the rung, not the rung. -->
-                                <!-- Footnote-sized, the same 12 and muted colour as the Advise
-                                     card's guideline line below: both are the small print under a
-                                     verdict, and reading one larger than the other made the note
-                                     look like a second verdict. -->
-                                <Label x:Name="UrgencyNoteLabel"
-                                       FontSize="12"
-                                       TextColor="{StaticResource MutedText}"
-                                       LineBreakMode="WordWrap"
-                                       IsVisible="False"/>
                             </VerticalStackLayout>
                         </Border>
 
