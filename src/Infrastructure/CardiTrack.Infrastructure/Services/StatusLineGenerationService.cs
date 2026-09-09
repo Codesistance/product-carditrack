@@ -91,9 +91,10 @@ public class StatusLineGenerationService
     /// <remarks>
     /// Normalized to LF before measuring, so the budget means the same thing on every checkout.
     /// Without it the guard is 12 characters tighter on Linux than on Windows, and the platform
-    /// that trips it first is whichever one the author happened to be using.
+    /// that trips it first is whichever one the author happened to be using. Computed once: the
+    /// instructions are a compile-time constant, so the normalized copy never changes.
     /// </remarks>
-    internal static int CurrentStatusInstructionsLength =>
+    internal static int CurrentStatusInstructionsLength { get; } =
         CurrentStatusInstructions.ReplaceLineEndings("\n").Length;
 
     /// <summary>

@@ -416,9 +416,17 @@ public class StatusLineGenerationServiceTests
     [Fact]
     public void TheFixedInstructions_SitExactlyOnTheirBudget_OnEveryCheckout()
     {
-        Assert.Equal(
-            StatusLineGenerationService.StatusPromptBudget,
-            StatusLineGenerationService.CurrentStatusInstructionsLength);
+        var measured = StatusLineGenerationService.CurrentStatusInstructionsLength;
+        var budget = StatusLineGenerationService.StatusPromptBudget;
+
+        Assert.True(
+            measured == budget,
+            $"The status instructions measure {measured} characters (LF-normalized) against a "
+            + $"budget of {budget}. Over: trim them, or raise the budget and say what the "
+            + "addition buys. Under: the slack is free headroom this constant exists to deny — "
+            + "lower the budget to what they now measure. A raw string literal carries its "
+            + "file's line endings, so a CRLF checkout measures 12 characters longer; that is "
+            + "why the length is normalized rather than the budget being raised to match it.");
     }
 
     // ── Not spending a model call ───────────────────────────────────────────────
