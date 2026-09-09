@@ -194,10 +194,12 @@ public class HistoryRepullWorker : CronBackgroundService
         try
         {
             // A day two months back may never have had its granular partition created — nothing
-            // was syncing then. Idempotent, and only the Worker registers the port; the API's
-            // copy of the sync engine never reaches this path.
-            if (scope.ServiceProvider.GetService<ITimeSeriesPartitionService>() is { } partitions)
-                await partitions.EnsurePartitionsForRangeAsync(from, to, ct);
+            // was syncing then. Idempotent, and required rather than optional: this job only
+            // runs in the Worker, which registers the port, and a host that somehow lacks it
+            // should say so here rather than let the chunk fail on a missing-partition insert
+            // several requests deep.
+            var partitions = scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>();
+            await partitions.EnsurePartitionsForRangeAsync(from, to, ct);
 
             var daysWithData = await syncService.PullHistoryRangeAsync(connection, from, to, ct);
 

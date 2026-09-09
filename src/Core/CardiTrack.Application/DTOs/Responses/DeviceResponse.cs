@@ -45,8 +45,11 @@ public class DeviceResponse
 
     /// <summary>
     /// The connection's latest caregiver-requested history re-pull (M1-15 "Re-pull History"),
-    /// while it is worth showing: any open request, or a completed one still inside the
-    /// re-pull cooldown. Null otherwise — a card with nothing here offers the action plainly.
+    /// while it is worth showing: any open request, a completed one still inside the re-pull
+    /// cooldown, or a failed or cancelled one that ended within
+    /// <see cref="Services.HistoryRepullWindow.FailureNoticeFor"/>, so the caregiver learns the
+    /// outcome. Null otherwise — a card with nothing here offers the action plainly. See
+    /// <see cref="Services.HistoryRepullWindow.ShouldPresent"/> for the rule itself.
     /// </summary>
     public DeviceHistoryRepullResponse? HistoryRepull { get; set; }
 }

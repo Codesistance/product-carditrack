@@ -219,7 +219,9 @@ public class DeviceHistoryRepullServiceTests
         var response = await CreateSut().RequestAsync(_userId, _memberId, _connection.Id, 30);
 
         Assert.NotNull(saved);
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // From the row's own stamp, not a second clock read: the service derives both from one
+        // "now", so a test that read UtcNow again would disagree with it across UTC midnight.
+        var today = DateOnly.FromDateTime(saved.RequestedAt);
         Assert.Equal(today.AddDays(-1), saved.ToDate);
         Assert.Equal(today.AddDays(-30), saved.FromDate);
         Assert.Equal(HistoryRepullStatus.Pending, saved.Status);
