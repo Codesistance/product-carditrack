@@ -259,21 +259,60 @@ public class SkiaProfilePhotoProcessorTests
         Assert.Equal(swapsAxes ? 400 : 200, reloaded.Height);
     }
 
+    /// <summary>Left half red, right half blue — so a rotation is visible in the pixels, not just the shape.</summary>
+    private static byte[] BuildTwoToneImage(int width, int height)
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.Blue);
+            using var paint = new SKPaint { Color = SKColors.Red };
+            canvas.DrawRect(new SKRect(0, 0, width / 2f, height), paint);
+        }
+
+        return Encode(bitmap, asPng: false);
+    }
+
+    [Theory]
+    // orientation, expected output size, a point that must be red, a point that must be blue.
+    // Source is 2048x1000 in every case, so the downscale is always engaged alongside the turn.
+    //
+    // 6 (90° cw)  upright is 1000x2048, scaled by 1024/2048 -> 500x1024; the source's left edge
+    //             becomes the top, so red is the top half.
+    // 8 (270° cw) same shape, opposite turn — red is the bottom half.
+    // 3 (180°)    no axis swap, so 2048x1000 scales to 1024x500; red crosses to the right half.
+    [InlineData(6, 500, 1024, 250, 200, 250, 824)]
+    [InlineData(8, 500, 1024, 250, 824, 250, 200)]
+    [InlineData(3, 1024, 500, 800, 250, 200, 250)]
+    public void RotationAndDownscale_ComposeInOneStep(
+        int orientation, int expectedWidth, int expectedHeight,
+        int redX, int redY, int blueX, int blueY)
+    {
+        // The orientation and the scale are multiplied into a single matrix, and neither factor
+        // is the identity here. Rotation-only and downscale-only cases both pass with the two
+        // composed in the wrong order, or with the target size computed before the axis swap —
+        // this is the case that does not.
+        var input = WithExifSegment(BuildTwoToneImage(2048, 1000), BuildOrientationExif(orientation));
+
+        var output = CreateSut().Process(input);
+
+        using var reloaded = Decode(output);
+        Assert.Equal(expectedWidth, reloaded.Width);
+        Assert.Equal(expectedHeight, reloaded.Height);
+
+        var red = reloaded.GetPixel(redX, redY);
+        var blue = reloaded.GetPixel(blueX, blueY);
+        Assert.True(red.Red > 150 && red.Blue < 100, $"expected red at ({redX},{redY}), got {red}");
+        Assert.True(blue.Blue > 150 && blue.Red < 100, $"expected blue at ({blueX},{blueY}), got {blue}");
+    }
+
     [Fact]
     public void ExifOrientation_MovesThePixelsThemselves_NotJustTheDimensions()
     {
         // Left half red, right half blue. Orientation 6 is a 90° clockwise turn, which puts the
         // source's left edge along the destination's top — so red must end up as the top half.
         // Dimensions alone would pass with the rotation applied backwards; pixels will not.
-        using var bitmap = new SKBitmap(new SKImageInfo(40, 20, SKColorType.Rgba8888, SKAlphaType.Premul));
-        using (var canvas = new SKCanvas(bitmap))
-        {
-            canvas.Clear(SKColors.Blue);
-            using var paint = new SKPaint { Color = SKColors.Red };
-            canvas.DrawRect(new SKRect(0, 0, 20, 20), paint);
-        }
-
-        var input = WithExifSegment(Encode(bitmap, asPng: false), BuildOrientationExif(6));
+        var input = WithExifSegment(BuildTwoToneImage(40, 20), BuildOrientationExif(6));
 
         var output = CreateSut().Process(input);
 
