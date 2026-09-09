@@ -29,7 +29,8 @@ roster view in the current design. Worth a product look regardless of Luffu spec
 
 ## Sources
 
-- https://techcrunch.com/2026/08/25/fitbit-founders-launch-luffu-link-an-lte-health-and-safety-band/ (TechCrunch, primary launch coverage, 2026-08-25)
+- https://luffu.com/products/luffu-link (Luffu's own product page — primary)
+- https://techcrunch.com/2026/08/25/fitbit-founders-launch-luffu-link-an-lte-health-and-safety-band/ (TechCrunch, launch coverage, 2026-08-25)
 - https://www.dezeen.com/2026/09/04/fitbit-luffu-link-ai-powered-wristband-health-family/ (Dezeen, continued coverage inside this run's window, 2026-09-04)
 
 ## Why flagged

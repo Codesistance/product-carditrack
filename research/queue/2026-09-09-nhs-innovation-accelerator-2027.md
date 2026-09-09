@@ -19,8 +19,10 @@ NHS-side deployment or outcomes evidence to point to.
 
 ## Sources
 
-- https://nhsaccelerator.com/apply-for-nia-fellowship/ (official application page)
-- https://innovation.nhs.uk/news/apply-now-for-the-nhs-innovation-accelerator-nia-2026-cohort/ (NHS England's own notice)
+- https://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/ (official application page — states the 2026-09-27 deadline and 2027-cohort priority areas)
+
+(The prior draft of this brief also cited an innovation.nhs.uk notice, which turned out to be
+about the 2026 cohort, not 2027 — dropped as a mismatch rather than corroboration.)
 
 ## Why flagged
 
