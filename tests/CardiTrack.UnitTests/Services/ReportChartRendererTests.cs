@@ -150,6 +150,35 @@ public class ReportChartRendererTests
     }
 
     [Fact]
+    public void NiceAxis_KeepsWholeTicks_ForAnIntegerMetricFlatAtZero()
+    {
+        // The open 1–2–5 sequence lands on 0.5 for a series flat at zero, and four such ticks
+        // printed through an integer format read "0, 0, 1, 2" — an axis that repeats itself.
+        // A metric counted in whole units names a ladder that has no fraction in it.
+        var steps = new double[] { 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000 };
+
+        var axis = ReportChartRenderer.NiceAxis(0, 0, steps);
+
+        Assert.True(axis.Step >= 1, $"An integer metric must not tick by {axis.Step}.");
+        Assert.Equal(0, axis.Min);
+        Assert.Equal(axis.Step, Math.Round(axis.Step));
+    }
+
+    [Fact]
+    public void NiceAxis_StillRoundsARealRange_OnTheSameLadder()
+    {
+        // The ladder must not cost the ordinary case its round numbers: a month of steps keeps
+        // the 0–8,000 axis it had on the open sequence.
+        var steps = new double[] { 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000 };
+
+        var axis = ReportChartRenderer.NiceAxis(1344, 6177, steps);
+
+        Assert.Equal(0, axis.Min);
+        Assert.Equal(8000, axis.Max);
+        Assert.Equal(2000, axis.Step);
+    }
+
+    [Fact]
     public void NiceAxis_UsesTheMetricsOwnSteps_WhenGiven()
     {
         // Sleep is in minutes: 1-2-5 would tick every 50 minutes, which nobody reads. In the

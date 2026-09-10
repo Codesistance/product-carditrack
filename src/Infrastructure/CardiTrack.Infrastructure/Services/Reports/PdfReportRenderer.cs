@@ -54,8 +54,10 @@ public class PdfReportRenderer : IReportRenderer
 
     private static readonly Metric[] Metrics =
     [
-        new("Steps", "steps a day", "#1884DC", log => log.Steps, v => v.ToString("N0", CultureInfo.InvariantCulture)),
-        new("Resting heart rate", "bpm", "#E53E3E", log => log.RestingHeartRate, v => v.ToString("0", CultureInfo.InvariantCulture)),
+        new("Steps", "steps a day", "#1884DC", log => log.Steps, v => v.ToString("N0", CultureInfo.InvariantCulture),
+            TickSteps: [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000]),
+        new("Resting heart rate", "bpm", "#E53E3E", log => log.RestingHeartRate, v => v.ToString("0", CultureInfo.InvariantCulture),
+            TickSteps: [1, 2, 5, 10, 20, 25, 50]),
         new("Sleep", "a night", "#7C6FDC", log => log.SleepMinutes, v => SleepFigure((int)Math.Round(v)), TickSteps: [15, 30, 60, 120, 240]),
         new("Blood oxygen (SpO₂)", "%", "#1F8A72", log => (double?)log.SpO2Average, v => v.ToString("0.#", CultureInfo.InvariantCulture)),
     ];
@@ -147,7 +149,7 @@ public class PdfReportRenderer : IReportRenderer
             }
 
             if (!string.IsNullOrWhiteSpace(narrative))
-                column.Item().PaddingTop(22).Element(s => Summary(s, narrative));
+                Section(column, "Summary", e => Summary(e, narrative));
 
             foreach (var member in data.Members)
             {
@@ -314,11 +316,15 @@ public class PdfReportRenderer : IReportRenderer
 
     // ── Narrative ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The narrative under its own heading — laid out through <see cref="Section"/> like every
+    /// other section, so the word "Summary" cannot strand itself at the foot of a page with the
+    /// paragraph it introduces overleaf.
+    /// </summary>
     private static void Summary(IContainer container, string narrative) =>
-        container.Column(column =>
+        container.PaddingTop(8).Column(column =>
         {
-            column.Item().Element(e => SectionTitle(e, "Summary"));
-            column.Item().PaddingTop(8).Element(e => Markdown(e, narrative));
+            column.Item().Element(e => Markdown(e, narrative));
 
             // Attribution sits with the text it qualifies, not in a footnote a reader skips.
             column.Item().PaddingTop(10).Element(AiAttribution);
@@ -723,8 +729,12 @@ public class PdfReportRenderer : IReportRenderer
     }
 
     /// <summary>One charted, tiled metric: where it comes from, its colour, and how a value prints.</summary>
-    /// <param name="TickSteps">Axis steps in the metric's unit, where the 1–2–5 sequence would
-    /// read oddly; null for the default.</param>
+    /// <param name="TickSteps">Axis steps in the metric's unit. Every metric counted in whole
+    /// units names its own ladder, because the open 1–2–5 sequence can land on a fraction —
+    /// a member flat at zero steps produced a 0.5 step, and four ticks printed through an integer
+    /// format read "0, 0, 1, 2". Sleep names one for a second reason: it is stored in minutes and
+    /// is read in half hours, not in fifties. Null leaves a metric on the open sequence, which is
+    /// right where fractions are meaningful — SpO₂ prints a decimal.</param>
     private sealed record Metric(
         string Title,
         string Unit,
