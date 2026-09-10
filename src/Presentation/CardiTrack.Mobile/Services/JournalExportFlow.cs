@@ -116,9 +116,16 @@ public sealed class JournalExportFlow : IJournalExportFlow
                 busy.Hide();
                 await OfferDeliveryAsync(file, path);
             }
+            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+            {
+                // We cancelled this wait — the caregiver left, or a newer export replaced it.
+            }
             catch (OperationCanceledException)
             {
-                // Left the page, or the caregiver cancelled.
+                busy.Hide();
+                await _popups.ShowErrorAsync(
+                    "We couldn't finish that export. Please try again.",
+                    "Couldn't export");
             }
             catch (ApiException ex)
             {

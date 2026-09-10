@@ -171,7 +171,7 @@ public partial class JournalEntryPage : ContentPage
         if (_memberId == Guid.Empty || _date == default)
             return;
 
-        var name = _memberFirstName ?? _cadence.EntryName();
+        var name = _memberFirstName ?? "CardiJournal";
         await _export.RunAsync(
             _memberId,
             name,
