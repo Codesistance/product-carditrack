@@ -407,7 +407,7 @@ internal sealed class TrendChartDrawable : IDrawable
     private const float HorizontalInset = 6f;
 
     private const int GridRows = 4;
-    private const float LineThickness = 3f;
+    private const float LineThickness = 1.5f;
     private const float MarkerRadius = 3.5f;
     private const float LatestMarkerRadius = 5f;
 
