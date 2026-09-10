@@ -24,9 +24,6 @@ namespace CardiTrack.Mobile;
 /// </para>
 /// </remarks>
 [QueryProperty(nameof(MemberId), "memberId")]
-[QueryProperty(nameof(JournalsOnly), "journalsOnly")]
-[QueryProperty(nameof(JournalDate), "journalDate")]
-[QueryProperty(nameof(Cadence), "cadence")]
 public partial class ExportHealthDataPage : ContentPage
 {
     public const string Route = "exporthealthdata";
@@ -62,9 +59,6 @@ public partial class ExportHealthDataPage : ContentPage
     private readonly Dictionary<ReportFormat, Border> _formatCards = [];
 
     private Guid _memberId;
-    private bool _journalsOnly;
-    private DateOnly? _journalDate;
-    private DigestAudience? _journalAudience;
     private List<CardiMemberResponse> _members = [];
     private ReportFormat _selectedFormat = ReportFormat.Pdf;
     private CancellationTokenSource? _generation;
@@ -92,31 +86,6 @@ public partial class ExportHealthDataPage : ContentPage
         set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
             ? id
             : Guid.Empty;
-    }
-
-    public string JournalsOnly
-    {
-        set => _journalsOnly = string.Equals(
-            Uri.UnescapeDataString(value ?? string.Empty), "true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    public string JournalDate
-    {
-        set => _journalDate = DateOnly.TryParse(
-            Uri.UnescapeDataString(value ?? string.Empty), out var date)
-            ? date
-            : null;
-    }
-
-    public string Cadence
-    {
-        set => _journalAudience = JournalCadenceExtensions.ParseCadence(
-            Uri.UnescapeDataString(value ?? string.Empty)) switch
-        {
-            JournalCadence.Weekbook => DigestAudience.Weekbook,
-            JournalCadence.Monthbook => DigestAudience.Monthbook,
-            _ => DigestAudience.Daybook
-        };
     }
 
     protected override void OnAppearing()
@@ -200,22 +169,6 @@ public partial class ExportHealthDataPage : ContentPage
         FromPicker.Date = today.AddDays(-29);
         FromPicker.MaximumDate = today;
         ToPicker.MaximumDate = today;
-
-        if (_journalsOnly)
-        {
-            JournalsCheck.IsChecked = true;
-            MetricsCheck.IsChecked = false;
-            TrendsCheck.IsChecked = false;
-            AlertsCheck.IsChecked = false;
-            NoticesCheck.IsChecked = false;
-            DevicesCheck.IsChecked = false;
-            if (_journalDate is { } journalDay)
-            {
-                var day = journalDay.ToDateTime(TimeOnly.MinValue);
-                FromPicker.Date = day;
-                ToPicker.Date = day;
-            }
-        }
 
         SelectFormat(ReportFormat.Pdf);
         UpdateEstimate();
@@ -592,8 +545,6 @@ public partial class ExportHealthDataPage : ContentPage
                 IncludeJournals = JournalsCheck.IsChecked,
                 IncludeNotices = NoticesCheck.IsChecked,
                 IncludeDevices = DevicesCheck.IsChecked,
-                JournalEntryDate = ScopedJournalDate(),
-                JournalAudience = ScopedJournalAudience(),
                 Method = method.Value,
                 AcceptedResponsibility = true
             });
@@ -643,34 +594,9 @@ public partial class ExportHealthDataPage : ContentPage
         IncludeJournals = JournalsCheck.IsChecked,
         IncludeNotices = NoticesCheck.IsChecked,
         IncludeDevices = DevicesCheck.IsChecked,
-        JournalEntryDate = ScopedJournalDate(),
-        JournalAudience = ScopedJournalAudience(),
         ConsentToken = consentToken,
         Title = $"{member.Name} — health export"
     };
-
-    /// <summary>
-    /// One journal entry only when the caregiver still has that day selected
-    /// and journals ticked. Changing the dates drops the pin so the range they
-    /// can see is the range that is exported.
-    /// </summary>
-    private DateOnly? ScopedJournalDate()
-    {
-        if (!JournalsCheck.IsChecked || _journalDate is not { } day)
-            return null;
-
-        return DateOnly.FromDateTime(SelectedFrom) == day
-            && DateOnly.FromDateTime(SelectedTo) == day
-            ? day
-            : null;
-    }
-
-    /// <summary>
-    /// The book the journal list or entry sent us here for. Dropped if they
-    /// untick journals — a metrics-only export must not stay scoped to one book.
-    /// </summary>
-    private DigestAudience? ScopedJournalAudience() =>
-        JournalsCheck.IsChecked && _journalsOnly ? _journalAudience : null;
 
     /// <summary>
     /// The pickers' dates, which the control exposes as nullable. Both are set in

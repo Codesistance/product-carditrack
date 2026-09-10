@@ -64,22 +64,28 @@
             </Grid>
         </controls:HeaderBand>
 
-        <!-- Which book is being read. Its own row above the filters, and visible whether or not
-             the member has any entries yet: a caregiver whose Daybooks have not started is
-             exactly the one who needs to see that weeks exist. Deliberately outside FilterPanel,
-             which hides itself on an empty history — this is navigation between series, not a
-             filter within one.
+        <!-- Which book is being read, with export of every entry in that book on the
+             opposite side. Visible whether or not the member has any entries yet: a
+             caregiver whose Daybooks have not started is exactly the one who needs to
+             see that weeks exist. Deliberately outside FilterPanel, which hides itself
+             on an empty history — this is navigation between series, not a filter within
+             one.
 
              Three segments now the Monthbook writes: each one selects a series something
-             actually produces. -->
+             actually produces. The clipboard is the same glyph M1-13 uses for export. -->
+        <Grid x:Name="CadenceRow"
+              Grid.Row="1"
+              ColumnDefinitions="*,Auto"
+              ColumnSpacing="12"
+              Margin="20,16,20,0"
+              IsVisible="False">
         <Border x:Name="CadencePanel"
-                Grid.Row="1"
-                Margin="20,16,20,0"
+                Grid.Column="0"
                 Padding="4"
                 StrokeThickness="0"
                 BackgroundColor="{StaticResource SelectedOptionBackground}"
                 HorizontalOptions="Start"
-                IsVisible="False">
+                VerticalOptions="Center">
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="14"/>
             </Border.StrokeShape>
@@ -141,6 +147,30 @@
             </Grid>
         </Border>
 
+        <Border x:Name="ExportHit"
+                Grid.Column="1"
+                HeightRequest="40"
+                WidthRequest="40"
+                StrokeThickness="0"
+                BackgroundColor="{StaticResource SelectedOptionBackground}"
+                VerticalOptions="Center"
+                HorizontalOptions="End"
+                SemanticProperties.Description="Export all Daybooks"
+                SemanticProperties.Hint="Saves every Daybook in the selected time window">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnExportTapped"/>
+            </Border.GestureRecognizers>
+            <Image Source="icon_clipboard.svg"
+                   WidthRequest="20"
+                   HeightRequest="20"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center"/>
+        </Border>
+        </Grid>
+
         <!-- Search and the two filter chips sit outside the scroller so narrowing the list stays
              reachable while it is scrolled — the same reason the alert chips do. Hidden until the
              member has any entry at all: a filter row over a first-days empty state is a control
@@ -150,12 +180,6 @@
                              Spacing="12"
                              Padding="20,20,20,0"
                              IsVisible="False">
-
-            <Button Text="Export journals"
-                    Style="{StaticResource SecondaryOutlineButton}"
-                    FontSize="14"
-                    HeightRequest="40"
-                    Clicked="OnExportJournalsClicked"/>
 
             <!-- Same treatment as the questionnaires archive search. Server-side and debounced:
                  the search runs over the whole history, not the loaded page. -->

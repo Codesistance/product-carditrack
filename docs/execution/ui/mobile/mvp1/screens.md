@@ -145,6 +145,9 @@ The dashboard's Add-Member action (empty state and add-member button) pushes M1-
 ```
 Entry points:
   [M1-13 CardiMember Detail] → "Export Data" ──> [M1-17 Health Data Export]
+  [Settings] → "Export health data" ──> [M1-17 Health Data Export]
+  [CardiJournal list] → clipboard beside Days/Weeks/Months ──> consent pop-ups → file
+  [CardiJournal entry] → clipboard in the header ──> consent pop-ups → file
 
                                   [M1-17 Health Data Export]
                                             │
@@ -1092,7 +1095,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 - **HL7 v2 is not offered** — MVP 2, and refused by the API's validator.
 - Progress is an indeterminate spinner: the API reports no percentage (`progressPercent` is always null).
 
-**Entry points as built:** M1-13 CardiMember Detail ("Export Data", scoped to that member), Settings → Account ("Export health data", which asks who), the journal list ("Export journals"), and a journal entry ("Export this entry"). M2-03 Trend Charts is R2.
+**Entry points as built:** M1-13 CardiMember Detail ("Export Data", scoped to that member) and Settings → Account ("Export health data", which asks who). CardiJournal exports from the list (every book of the selected Days / Weeks / Months group) and from an open entry (that one book) without opening this screen. M2-03 Trend Charts is R2.
 
 ---
 
