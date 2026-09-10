@@ -9,6 +9,10 @@ namespace CardiTrack.Mobile.Services;
 public sealed class DeviceBiometric : IDeviceBiometric
 {
 #if ANDROID
+    private const Android.Hardware.Biometrics.BiometricManagerAuthenticators Allowed =
+        Android.Hardware.Biometrics.BiometricManagerAuthenticators.BiometricStrong
+        | Android.Hardware.Biometrics.BiometricManagerAuthenticators.BiometricWeak;
+
     public bool IsAvailable
     {
         get
@@ -20,11 +24,8 @@ public sealed class DeviceBiometric : IDeviceBiometric
                     is not Android.Hardware.Biometrics.BiometricManager manager)
                     return false;
 
-                var authenticators =
-                    Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricStrong
-                    | Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricWeak;
-                return manager.CanAuthenticate(authenticators)
-                    == Android.Hardware.Biometrics.BiometricManager.BiometricSuccess;
+                return manager.CanAuthenticate((int)Allowed)
+                    == Android.Hardware.Biometrics.BiometricCode.Success;
             }
             catch (Exception)
             {
@@ -44,36 +45,34 @@ public sealed class DeviceBiometric : IDeviceBiometric
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            CancellationTokenRegistration registration = default;
+            PromptCallback? callback = null;
             try
             {
-                var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity
-                    as AndroidX.AppCompat.App.AppCompatActivity;
-                if (activity is null)
+                var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+                var executor = activity?.MainExecutor;
+                if (activity is null || executor is null)
                 {
                     tcs.TrySetResult(false);
                     return;
                 }
 
-                var authenticators =
-                    Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricStrong
-                    | Android.Hardware.Biometrics.BiometricManager.Authenticators.BiometricWeak;
+                callback = new PromptCallback(tcs);
 
-                var info = new Android.Hardware.Biometrics.BiometricPrompt.PromptInfo.Builder()
+                // The prompt refuses to build without a negative button unless
+                // device credential is an allowed authenticator, which it isn't.
+                var prompt = new Android.Hardware.Biometrics.BiometricPrompt.Builder(activity)
                     .SetTitle("Confirm it's you")
                     .SetSubtitle(reason)
-                    .SetNegativeButtonText("Cancel")
-                    .SetAllowedAuthenticators(authenticators)
+                    .SetAllowedAuthenticators((int)Allowed)
+                    .SetNegativeButton("Cancel", executor, new CancelListener(callback))
                     .Build();
 
-                var callback = new PromptCallback(tcs);
-                var executor = AndroidX.Core.Content.ContextCompat.GetMainExecutor(activity);
-                var prompt = new Android.Hardware.Biometrics.BiometricPrompt(activity, executor, callback);
-                registration = ct.Register(() =>
+                var signal = new Android.OS.CancellationSignal();
+                callback.Attach(signal, ct.Register(() =>
                 {
                     try
                     {
-                        prompt.CancelAuthentication();
+                        signal.Cancel();
                     }
                     catch (Exception)
                     {
@@ -81,37 +80,59 @@ public sealed class DeviceBiometric : IDeviceBiometric
                     }
 
                     callback.Complete(false);
-                });
-                callback.Attach(registration);
-                prompt.Authenticate(info);
+                }));
+
+                prompt.Authenticate(signal, executor, callback);
             }
             catch (Exception)
             {
-                registration.Dispose();
+                callback?.Complete(false);
                 tcs.TrySetResult(false);
             }
         });
         return tcs.Task;
     }
 
+    private sealed class CancelListener :
+        Java.Lang.Object, Android.Content.IDialogInterfaceOnClickListener
+    {
+        private readonly PromptCallback _callback;
+
+        public CancelListener(PromptCallback callback) => _callback = callback;
+
+        public void OnClick(Android.Content.IDialogInterface? dialog, int which) =>
+            _callback.Complete(false);
+    }
+
     private sealed class PromptCallback : Android.Hardware.Biometrics.BiometricPrompt.AuthenticationCallback
     {
         private readonly TaskCompletionSource<bool> _tcs;
+        private Android.OS.CancellationSignal? _signal;
         private CancellationTokenRegistration _registration;
 
         public PromptCallback(TaskCompletionSource<bool> tcs) => _tcs = tcs;
 
-        public void Attach(CancellationTokenRegistration registration) =>
+        public void Attach(Android.OS.CancellationSignal signal, CancellationTokenRegistration registration)
+        {
+            _signal = signal;
             _registration = registration;
+
+            // A token cancelled before Register returns runs Complete without
+            // these; tidy them up here instead of leaking the signal.
+            if (_tcs.Task.IsCompleted)
+                Complete(false);
+        }
 
         public void Complete(bool value)
         {
             _registration.Dispose();
+            _signal?.Dispose();
+            _signal = null;
             _tcs.TrySetResult(value);
         }
 
         public override void OnAuthenticationSucceeded(
-            Android.Hardware.Biometrics.BiometricPrompt.AuthenticationResult result) =>
+            Android.Hardware.Biometrics.BiometricPrompt.AuthenticationResult? result) =>
             Complete(true);
 
         public override void OnAuthenticationFailed()
@@ -120,7 +141,10 @@ public sealed class DeviceBiometric : IDeviceBiometric
             // "not this finger" as a finished refusal while the sheet is still up.
         }
 
-        public override void OnAuthenticationError(int errorCode, Java.Lang.ICharSequence? errString) =>
+        // errorCode is enumified by the binding; an int parameter overrides nothing.
+        public override void OnAuthenticationError(
+            Android.Hardware.Biometrics.BiometricErrorCode errorCode,
+            Java.Lang.ICharSequence? errString) =>
             Complete(false);
     }
 #else
