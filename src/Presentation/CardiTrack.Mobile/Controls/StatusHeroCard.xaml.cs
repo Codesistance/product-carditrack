@@ -5,20 +5,14 @@ namespace CardiTrack.Mobile.Controls;
 
 public partial class StatusHeroCard : ContentView
 {
-    private const string QaPulseAnimation = "qa-pulse";
-    private const string AdvisePulseAnimation = "advise-pulse";
-    private const string AlertsPulseAnimation = "alerts-pulse";
-    private const string DaybookPulseAnimation = "daybook-pulse";
-
     /// <summary>
     /// The state behind the four content buttons, kept so a tap can mark what it opened as read
-    /// (see <see cref="AttentionMarks"/>) and the pulse predicates can ask whether there is still
-    /// something to pulse about. Each button says two things: the ring pulses while there is
-    /// something behind it to read, and the glyph is coloured until the caregiver has read it.
-    /// Reading takes the colour away and leaves the ring going.
+    /// (see <see cref="AttentionMarks"/>). Each button says one thing: the glyph is solid and
+    /// coloured while there is something behind it the caregiver has not taken in, and plain once
+    /// they have. Nothing animates — a row of rings going round on every landing was four things
+    /// moving for a card whose whole job is to be read at a glance.
     /// </summary>
     private Guid _memberId;
-    private bool _hasDaybook;
     private DateTime? _latestJournalEntryAt;
     private DateTime? _adviseGeneratedAt;
     private Guid? _pendingQuestionId;
@@ -30,14 +24,6 @@ public partial class StatusHeroCard : ContentView
     public event EventHandler<WeatherSnapshotResponse>? WeatherTapped;
 
     private WeatherSnapshotResponse? _weather;
-
-    /// <summary>
-    /// Whether this member has an alert nobody has closed yet — read by the alerts pulse's
-    /// repeat predicate. A field rather than the button's visibility, which is what the Q&amp;A and
-    /// Advise loops ask: the Alerts button is always on the card, so its visibility says nothing
-    /// about whether the ring should still be going round.
-    /// </summary>
-    private bool _hasOpenAlerts;
 
     /// <summary>
     /// Who and which tier <see cref="Apply"/> last rendered, so a late-arriving
@@ -63,16 +49,6 @@ public partial class StatusHeroCard : ContentView
     public StatusHeroCard()
     {
         InitializeComponent();
-        // Same lifecycle discipline as PendingBotIndicator: a card taken off-screen while a
-        // question or a suggestion is still pending must not leave its animation looping in the
-        // background.
-        Unloaded += (_, _) =>
-        {
-            StopQaPulse();
-            StopAdvisePulse();
-            StopAlertsPulse();
-            StopDaybookPulse();
-        };
     }
 
     public void Apply(DashboardResponse data)
@@ -83,7 +59,7 @@ public partial class StatusHeroCard : ContentView
         _memberId = data.CardiMemberId;
         ApplyDaybook(data.LatestJournalEntryAt);
         ApplyAdvise(data.HasAdvise, data.AdviseGeneratedAt);
-        ApplyOpenAlerts(data.OpenAlertCount, data.UnreadAlertCount);
+        ApplyOpenAlerts(data.UnreadAlertCount);
 
         // Headline first, sentence second: the headline is the whole state in three or four
         // words, so a caregiver who reads nothing else has still read the answer.
@@ -133,21 +109,16 @@ public partial class StatusHeroCard : ContentView
 
     /// <summary>
     /// Shows or hides the Q&amp;A button beside the Daybook one, from
-    /// <see cref="DashboardResponse.PendingQuestionnaire"/>. Starts the pulse while a question is
-    /// waiting, stops it otherwise — <see cref="OnQaTapped"/> is what a caregiver taps into to
-    /// answer it.
+    /// <see cref="DashboardResponse.PendingQuestionnaire"/> — <see cref="OnQaTapped"/> is what a
+    /// caregiver taps into to answer it.
     /// </summary>
     private void ApplyPendingQuestionnaire(QuestionnaireResponse? pending)
     {
-        var hasPending = pending is not null;
-        QaCluster.IsVisible = hasPending;
+        QaCluster.IsVisible = pending is not null;
         _pendingQuestionId = pending?.Id;
 
         if (pending is null)
-        {
-            StopQaPulse();
             return;
-        }
 
         // Coloured until this exact question has been opened — answering or dismissing it is
         // what takes the button away altogether, so "read" here is only ever "looked at".
@@ -158,32 +129,6 @@ public partial class StatusHeroCard : ContentView
         // this still reads correctly if that ever stops being true.
         QaBadgeLabel.Text = "1";
         SemanticProperties.SetDescription(QaBorder, "Questions, 1 waiting");
-        StartQaPulse();
-    }
-
-    /// <summary>
-    /// Same construction as <see cref="PendingBotIndicator"/>'s breathing ring, scaled to stay
-    /// inside QaCluster's own 42x42 bounds rather than growing past them — this button sits in a
-    /// row with Alerts right beside it, with no room for a ring to spill into.
-    /// </summary>
-    private void StartQaPulse()
-    {
-        this.AbortAnimation(QaPulseAnimation);
-
-        var pulse = new Animation
-        {
-            { 0.00, 0.50, new Animation(v => QaPulseRing.Opacity = v, 0.0, 0.6, Easing.SinInOut) },
-            { 0.50, 1.00, new Animation(v => QaPulseRing.Opacity = v, 0.6, 0.0, Easing.SinInOut) },
-            { 0.00, 0.50, new Animation(v => QaPulseRing.Scale = v, 0.9, 1.05, Easing.SinInOut) },
-            { 0.50, 1.00, new Animation(v => QaPulseRing.Scale = v, 1.05, 0.9, Easing.SinInOut) },
-        };
-        pulse.Commit(this, QaPulseAnimation, length: 1400, repeat: () => IsLoaded && QaCluster.IsVisible);
-    }
-
-    private void StopQaPulse()
-    {
-        this.AbortAnimation(QaPulseAnimation);
-        QaPulseRing.Opacity = 0;
     }
 
     private void SetQaGlyph(bool unread) =>
@@ -191,7 +136,7 @@ public partial class StatusHeroCard : ContentView
 
     /// <summary>
     /// Shows or hides the Advise button at the end of the row, from
-    /// <see cref="DashboardResponse.HasAdvise"/>, and pulses it while a suggestion is waiting.
+    /// <see cref="DashboardResponse.HasAdvise"/>.
     /// Hidden outright when there is none: the button's whole job is to open the "Something to try"
     /// card, and that card is itself hidden on Details when nothing was suggested —
     /// a button always on screen would be a dead end most days.
@@ -202,49 +147,11 @@ public partial class StatusHeroCard : ContentView
         _adviseGeneratedAt = generatedAtUtc;
 
         if (!hasAdvise)
-        {
-            StopAdvisePulse();
             return;
-        }
 
         // Coloured while the suggestion on offer is newer than the last one this caregiver
         // opened; a regeneration is what makes it new again (AttentionMarks).
         SetAdviseGlyph(AttentionMarks.IsUnread(AttentionMarks.Advise, _memberId, generatedAtUtc));
-
-        // Started only when one isn't already running, rather than restarted on every Apply the
-        // way QaCluster's is: the dashboard reloads itself every thirty seconds, and each restart
-        // snaps the ring back to its first frame — a stutter, on the one thing here whose whole
-        // job is to move. Asking the animation rather than tracking the previous visibility is
-        // what also makes this self-heal: the Unloaded handler stops the loop, and the reload
-        // that follows a caregiver coming back to this tab starts it again.
-        if (!this.AnimationIsRunning(AdvisePulseAnimation))
-            StartAdvisePulse();
-    }
-
-    /// <summary>
-    /// The ring blooms out from behind the glyph and fades, the way
-    /// <see cref="PendingBotIndicator"/>'s does — but bounded to the button's own 36, since
-    /// Alerts sits directly beside it and the card's edge directly after it. 32 at 1.06 is 33.9
-    /// across, plus a 2 stroke, which is the widest it can grow without touching either.
-    /// </summary>
-    private void StartAdvisePulse()
-    {
-        this.AbortAnimation(AdvisePulseAnimation);
-
-        var pulse = new Animation
-        {
-            { 0.00, 0.75, new Animation(v => AdvisePulseRing.Scale = v, 0.6, 1.06) },
-            { 0.00, 0.15, new Animation(v => AdvisePulseRing.Opacity = v, 0.0, 0.55) },
-            { 0.15, 0.75, new Animation(v => AdvisePulseRing.Opacity = v, 0.55, 0.0) },
-        };
-        pulse.Commit(this, AdvisePulseAnimation, length: 1600,
-            repeat: () => IsLoaded && AdviseCluster.IsVisible);
-    }
-
-    private void StopAdvisePulse()
-    {
-        this.AbortAnimation(AdvisePulseAnimation);
-        AdvisePulseRing.Opacity = 0;
     }
 
     private void SetAdviseGlyph(bool unread) =>
@@ -253,122 +160,47 @@ public partial class StatusHeroCard : ContentView
     /// <summary>
     /// The CardiJournal button, from <see cref="DashboardResponse.LatestJournalEntryAt"/>. Always
     /// on the card — it is the way to this member's journal whether or not anything is in it —
-    /// so, like Alerts, only the ring and the glyph's colour come and go: the ring pulses while
-    /// there is an entry to read at all, and the glyph is coloured until the caregiver has opened
-    /// one at least that new (<see cref="AttentionMarks"/>).
+    /// so, like Alerts, only the glyph's colour comes and goes: coloured until the caregiver has
+    /// opened an entry at least as new as the latest one (<see cref="AttentionMarks"/>).
     /// </summary>
     private void ApplyDaybook(DateTime? latestEntryAtUtc)
     {
         _latestJournalEntryAt = latestEntryAtUtc;
-        _hasDaybook = latestEntryAtUtc is not null;
 
         var unread = AttentionMarks.IsUnread(AttentionMarks.Journal, _memberId, latestEntryAtUtc);
         SetDaybookGlyph(unread);
         SemanticProperties.SetDescription(DaybookCluster, unread ? "CardiJournal, new entry" : "CardiJournal");
-
-        if (!_hasDaybook)
-        {
-            StopDaybookPulse();
-            return;
-        }
-
-        // Not restarted on every 30-second reload, for the reason ApplyAdvise gives.
-        if (!this.AnimationIsRunning(DaybookPulseAnimation))
-            StartDaybookPulse();
     }
 
     private void SetDaybookGlyph(bool unread) =>
         DaybookIcon.Source = unread ? "icon_tab_journal_primary.svg" : "icon_tab_journal.svg";
 
-    /// <summary>The same bloom and bounds as <see cref="StartAdvisePulse"/>, in Primary: an entry
-    /// to read is an invitation, not an alarm.</summary>
-    private void StartDaybookPulse()
-    {
-        this.AbortAnimation(DaybookPulseAnimation);
-
-        var pulse = new Animation
-        {
-            { 0.00, 0.75, new Animation(v => DaybookPulseRing.Scale = v, 0.6, 1.06) },
-            { 0.00, 0.15, new Animation(v => DaybookPulseRing.Opacity = v, 0.0, 0.55) },
-            { 0.15, 0.75, new Animation(v => DaybookPulseRing.Opacity = v, 0.55, 0.0) },
-        };
-        pulse.Commit(this, DaybookPulseAnimation, length: 1600,
-            repeat: () => IsLoaded && _hasDaybook);
-    }
-
-    private void StopDaybookPulse()
-    {
-        this.AbortAnimation(DaybookPulseAnimation);
-        DaybookPulseRing.Opacity = 0;
-    }
-
     /// <summary>
-    /// Pulses the Alerts button while this CardiMember has an alert nobody has closed —
-    /// <see cref="DashboardResponse.OpenAlertCount"/>, the same unresolved set the hero's colour
-    /// reads — and colours the glyph red while any of them is still unread
-    /// (<see cref="DashboardResponse.UnreadAlertCount"/>, the set the Recent Alerts strip below
-    /// shows and the header bell's badge counts). The button itself never hides: it is how a
-    /// caregiver reaches this member's alerts either way.
+    /// Colours the Alerts glyph while this CardiMember has an alert nobody has acknowledged —
+    /// <see cref="DashboardResponse.UnreadAlertCount"/>, which the server counts as the unresolved
+    /// alerts with no <c>AcknowledgedDate</c>, the same set the Recent Alerts strip below shows and
+    /// the header bell's badge counts. The button itself never hides: it is how a caregiver reaches
+    /// this member's alerts either way.
     /// </summary>
     /// <remarks>
-    /// Acknowledging takes the colour away; resolving is what stops the ring. The colour is a
-    /// request for attention and acknowledging is the caregiver answering it, but an episode
-    /// nobody has closed is still open — it is what keeps the card yellow — and the ring says so
-    /// without asking them again to do something they have already done.
+    /// Acknowledging is what takes the colour away, not resolving. The colour is a request for
+    /// attention, and acknowledging is the caregiver answering it; an episode they have already
+    /// answered must not keep asking, even while it stays open on the alerts list and keeps the
+    /// card's own status colour. That wider unresolved set is still what
+    /// <see cref="DashboardResponse.OpenAlertCount"/> carries, for the readers that want it.
     /// </remarks>
-    private void ApplyOpenAlerts(int openCount, int unreadCount)
+    private void ApplyOpenAlerts(int unreadCount)
     {
-        // Unread implies open. An API older than OpenAlertCount sends it as 0, and reading that
-        // literally would stop the ring for an alert the same response says is unread.
-        _hasOpenAlerts = Math.Max(openCount, unreadCount) > 0;
         AlertsIcon.Source = unreadCount > 0 ? "icon_tab_alerts_unread.svg" : "icon_tab_alerts.svg";
 
-        // The count lives on the header's badge, not here — but a screen reader gets no ring at
-        // all, so this is the only place it can hear that this member is the reason it is moving.
+        // The count lives on the header's badge, not here — but the glyph's colour is not
+        // something a screen reader can see, so this is the only place it can hear it.
         SemanticProperties.SetDescription(AlertsCluster, unreadCount switch
         {
             <= 0 => "Alerts",
             1 => "Alerts, 1 unread",
             _ => $"Alerts, {unreadCount} unread",
         });
-
-        if (!_hasOpenAlerts)
-        {
-            StopAlertsPulse();
-            return;
-        }
-
-        // Started only when one isn't already running, for the same reason ApplyAdvise does it:
-        // the dashboard reloads every thirty seconds and each restart would snap the ring back to
-        // its first frame.
-        if (!this.AnimationIsRunning(AlertsPulseAnimation))
-            StartAlertsPulse();
-    }
-
-    /// <summary>
-    /// The same bloom as <see cref="StartAdvisePulse"/> and bounded the same way — 32 at 1.06 plus
-    /// a 2 stroke is the widest ring these 36 will hold — but red rather than Primary, and slower.
-    /// Advise is an offer and this is an unanswered alert, so the two must not read as the same
-    /// invitation sitting twice in one row.
-    /// </summary>
-    private void StartAlertsPulse()
-    {
-        this.AbortAnimation(AlertsPulseAnimation);
-
-        var pulse = new Animation
-        {
-            { 0.00, 0.75, new Animation(v => AlertsPulseRing.Scale = v, 0.6, 1.06) },
-            { 0.00, 0.15, new Animation(v => AlertsPulseRing.Opacity = v, 0.0, 0.7) },
-            { 0.15, 0.75, new Animation(v => AlertsPulseRing.Opacity = v, 0.7, 0.0) },
-        };
-        pulse.Commit(this, AlertsPulseAnimation, length: 1800,
-            repeat: () => IsLoaded && _hasOpenAlerts);
-    }
-
-    private void StopAlertsPulse()
-    {
-        this.AbortAnimation(AlertsPulseAnimation);
-        AlertsPulseRing.Opacity = 0;
     }
 
     /// <summary>Icon-and-temperature chip beside the name. Hidden outright rather than shown

@@ -90,6 +90,7 @@
                                Style="{StaticResource AuthEntry}"
                                Placeholder="Your Name"
                                ReturnType="Next"
+                               controls:FieldAutofill.Enabled="True"
                                TextChanged="OnFormFieldChanged"
                                Focused="OnEntryFocused"
                                Unfocused="OnEntryUnfocused"/>
@@ -104,6 +105,7 @@
                                Placeholder="Your email"
                                Keyboard="Email"
                                ReturnType="Next"
+                               controls:FieldAutofill.Enabled="True"
                                TextChanged="OnFormFieldChanged"
                                Focused="OnEntryFocused"
                                Unfocused="OnEntryUnfocused"/>
@@ -120,6 +122,7 @@
                                    Placeholder="At least 8 characters"
                                    IsPassword="True"
                                    ReturnType="Next"
+                                   controls:FieldAutofill.Enabled="True"
                                    TextChanged="OnPasswordTextChanged"
                                    Focused="OnEntryFocused"
                                    Unfocused="OnEntryUnfocused"/>
@@ -160,6 +163,7 @@
                                    Placeholder="Re-enter password"
                                    IsPassword="True"
                                    ReturnType="Done"
+                                   controls:FieldAutofill.Enabled="True"
                                    TextChanged="OnFormFieldChanged"
                                    Focused="OnEntryFocused"
                                    Unfocused="OnEntryUnfocused"/>

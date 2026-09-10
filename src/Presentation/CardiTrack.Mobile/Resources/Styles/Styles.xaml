@@ -405,6 +405,25 @@
          Tighter than a card, too — these are four controls in a row, not four surfaces, and the
          row reads better when they do not each claim a card's worth of height. Each tile brings
          its own BackgroundColor; only the emergency action wears red. -->
+    <!-- The icon-only member of the quick-action family: a page's own actions (Member Details'
+         alerts and edit, CardiJournal's export). Same tint and the same soft halo as the labelled
+         tiles above, so an action reads as an action wherever it sits; 12 rather than 18 because
+         a radius drawn for a 60-tall tile turns a 40 square into a circle, and these are chips,
+         not pills. One style, so the next page's action cannot invent a third shape. -->
+    <Style x:Key="IconActionChip" TargetType="Border">
+        <Setter Property="WidthRequest" Value="40"/>
+        <Setter Property="HeightRequest" Value="40"/>
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="BackgroundColor" Value="{StaticResource QuickActionTint}"/>
+        <Setter Property="VerticalOptions" Value="Center"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="12"/>
+        </Setter>
+        <Setter Property="Shadow">
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.30" Radius="10" Offset="0,3"/>
+        </Setter>
+    </Style>
+
     <Style x:Key="QuickActionTile" TargetType="Border">
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="6,12,6,9"/>

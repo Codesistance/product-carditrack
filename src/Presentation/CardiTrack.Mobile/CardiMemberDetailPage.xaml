@@ -57,13 +57,7 @@
                      the other way out of this screen rather than competing with the member's own
                      details for the middle of the page. -->
                 <HorizontalStackLayout Grid.Column="2" Spacing="10" VerticalOptions="Start">
-                    <Border WidthRequest="40" HeightRequest="40"
-                            StrokeThickness="0"
-                            BackgroundColor="{StaticResource White}"
-                            VerticalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12"/>
-                        </Border.StrokeShape>
+                    <Border Style="{StaticResource IconActionChip}">
                         <ImageButton Source="icon_bell.svg"
                                      WidthRequest="20" HeightRequest="20"
                                      BackgroundColor="Transparent"
@@ -75,14 +69,7 @@
                     <!-- Named on the Border, not the button inside it: hiding the button alone
                          left its white chip behind as an empty square for everyone who isn't the
                          primary caregiver. -->
-                    <Border x:Name="EditButton"
-                            WidthRequest="40" HeightRequest="40"
-                            StrokeThickness="0"
-                            BackgroundColor="{StaticResource White}"
-                            VerticalOptions="Center">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12"/>
-                        </Border.StrokeShape>
+                    <Border x:Name="EditButton" Style="{StaticResource IconActionChip}">
                         <ImageButton Source="icon_edit.svg"
                                      WidthRequest="20" HeightRequest="20"
                                      BackgroundColor="Transparent"

@@ -53,10 +53,10 @@ public class DashboardResponse
 
     /// <summary>
     /// Every alert on this member that nobody has closed — new and acknowledged alike, the same
-    /// unresolved set <see cref="HealthStatus"/> is coloured from. The CardiMember card's Alerts
-    /// button pulses while this is above zero (there is something to look at) and colours its
-    /// glyph while <see cref="UnreadAlertCount"/> is (some of it has not been seen), so the two
-    /// counts are the two halves of that button's state and neither can stand in for the other.
+    /// unresolved set <see cref="HealthStatus"/> is coloured from. Distinct from
+    /// <see cref="UnreadAlertCount"/>, which is the unacknowledged part of it: the CardiMember
+    /// card's Alerts glyph reads that narrower set, because acknowledging is the caregiver
+    /// answering the request for attention even though the episode stays open.
     /// </summary>
     public int OpenAlertCount { get; set; }
 

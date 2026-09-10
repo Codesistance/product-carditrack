@@ -37,6 +37,7 @@
                                Placeholder="Your email"
                                Keyboard="Email"
                                ReturnType="Next"
+                               controls:FieldAutofill.Enabled="True"
                                TextChanged="OnCredentialsChanged"
                                Focused="OnEntryFocused"
                                Unfocused="OnEntryUnfocused"/>
@@ -52,6 +53,7 @@
                                    Placeholder="Enter your password"
                                    IsPassword="True"
                                    ReturnType="Done"
+                                   controls:FieldAutofill.Enabled="True"
                                    TextChanged="OnCredentialsChanged"
                                    Focused="OnEntryFocused"
                                    Unfocused="OnEntryUnfocused"/>

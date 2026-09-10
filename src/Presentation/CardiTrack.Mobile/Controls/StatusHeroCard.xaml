@@ -92,25 +92,14 @@
                                WidthRequest="20" HeightRequest="20"
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
-
-                    <Ellipse x:Name="DaybookPulseRing"
-                             WidthRequest="32" HeightRequest="32"
-                             HorizontalOptions="Center" VerticalOptions="Center"
-                             Stroke="{StaticResource Primary}"
-                             StrokeThickness="2"
-                             Opacity="0"
-                             InputTransparent="True"/>
                 </Grid>
 
                 <!-- Beside the Daybook button, only while a question is waiting on this family (see
-                     Apply/ApplyPendingQuestionnaire). Button, pulse ring and count badge share one
-                     42x42 cell so the badge can sit proud of the button's top-right corner without
-                     any of it crossing this control's own top edge — a superscript hung outside the
-                     layout with a negative translation was drawn half-cut, because the row it sits in
-                     is the first thing in the card and there is nothing above it to overflow into.
-                     The ring, likewise, pulses behind the icon rather than growing past it, the way
-                     PendingBotIndicator's does — Alerts sits right beside this, with no room to
-                     spill into.
+                     Apply/ApplyPendingQuestionnaire). Button and count badge share one 42x42 cell so
+                     the badge can sit proud of the button's top-right corner without any of it
+                     crossing this control's own top edge — a superscript hung outside the layout
+                     with a negative translation was drawn half-cut, because the row it sits in is
+                     the first thing in the card and there is nothing above it to overflow into.
                      The -3 margin is that 42 paying for itself: the cell is 3 wider than the 36
                      face on each side, so without it this button's face would sit 11 from its
                      neighbours where every other pair sits 8. The badge has 5 of the gap left to
@@ -120,14 +109,6 @@
                       Margin="-3,0"
                       VerticalOptions="Center"
                       IsVisible="False">
-                    <Ellipse x:Name="QaPulseRing"
-                             WidthRequest="34" HeightRequest="34"
-                             HorizontalOptions="Center" VerticalOptions="Center"
-                             Stroke="{StaticResource Primary}"
-                             StrokeThickness="2"
-                             Opacity="0"
-                             InputTransparent="True"/>
-
                     <Border x:Name="QaBorder"
                             WidthRequest="36" HeightRequest="36"
                             StrokeThickness="0"
@@ -198,27 +179,17 @@
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
 
-                    <Ellipse x:Name="AlertsPulseRing"
-                             WidthRequest="32" HeightRequest="32"
-                             HorizontalOptions="Center" VerticalOptions="Center"
-                             Stroke="{StaticResource StatusRed}"
-                             StrokeThickness="2"
-                             Opacity="0"
-                             InputTransparent="True"/>
                 </Grid>
 
                 <!-- Advise: last in the row, only while this member has a fresh "Something to try"
                      suggestion waiting (DashboardResponse.HasAdvise). It was a corner badge on the avatar until
-                     now — a dot that pulsed at something without saying what, and with nothing to tap.
+                     now — a dot that drew the eye without saying what at, and with nothing to tap.
                      As a button it says both: the same 36 face and 20 glyph as CardiJournal and Alerts
                      beside it, and a tap that lands on the suggestion itself.
 
                      The cell is 36, the face's own size — there is no badge to hang, so it needs
                      no margin of its own to sit 8 from Alerts and flush with the card's right
-                     edge. The ring pulses *over* the button face rather than behind it,
-                     because a 36 face is opaque: QaCluster's ring is 34 behind a 36 border and only
-                     its outer sliver ever shows. Blooming outward from the glyph keeps the whole
-                     animation inside those 36 and still reads. -->
+                     edge. -->
                 <Grid x:Name="AdviseCluster"
                       WidthRequest="36" HeightRequest="36"
                       VerticalOptions="Center"
@@ -243,13 +214,6 @@
                                HorizontalOptions="Center" VerticalOptions="Center"/>
                     </Border>
 
-                    <Ellipse x:Name="AdvisePulseRing"
-                             WidthRequest="32" HeightRequest="32"
-                             HorizontalOptions="Center" VerticalOptions="Center"
-                             Stroke="{StaticResource Primary}"
-                             StrokeThickness="2"
-                             Opacity="0"
-                             InputTransparent="True"/>
                 </Grid>
 
             </HorizontalStackLayout>
