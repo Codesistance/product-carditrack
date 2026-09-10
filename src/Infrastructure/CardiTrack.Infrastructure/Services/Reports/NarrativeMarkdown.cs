@@ -138,7 +138,7 @@ internal static class NarrativeMarkdown
 
     private static bool TryListItem(string line, out bool ordered, out string text)
     {
-        if (line.Length > 2 && line[0] is '-' or '*' or '+' or '•' && line[1] == ' ')
+        if (line.Length > 2 && (line[0] is '-' or '*' or '+' or '•') && line[1] == ' ')
         {
             ordered = false;
             text = line[2..].Trim();
@@ -150,7 +150,7 @@ internal static class NarrativeMarkdown
             digits++;
 
         if (digits is > 0 and <= 3 && digits + 1 < line.Length
-            && line[digits] is '.' or ')' && line[digits + 1] == ' ')
+            && (line[digits] is '.' or ')') && line[digits + 1] == ' ')
         {
             ordered = true;
             text = line[(digits + 2)..].Trim();

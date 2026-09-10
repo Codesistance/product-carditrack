@@ -38,6 +38,27 @@ public class ReportFontsTests
     }
 
     [Fact]
+    public void Register_SkipsAFileThatWillNotLoad_RatherThanFailingStartup()
+    {
+        // This runs at service startup, not on a request path. A truncated copy of a face costs
+        // one script its glyphs in an export; letting it throw would cost the whole API its boot.
+        var directory = Directory.CreateTempSubdirectory("carditrack-fonts-").FullName;
+        try
+        {
+            File.WriteAllBytes(Path.Combine(directory, "NotoSansTruncated-Regular.ttf"), [0x00, 0x01, 0x00]);
+
+            var exception = Record.Exception(() => ReportFonts.Register(directory));
+
+            Assert.Null(exception);
+            Assert.Equal(0, ReportFonts.Register(directory));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Families_LeadWithLato_AndNameEachScriptOnce()
     {
         // Lato is what QuestPDF bundles and what every Latin page is set in; it must come first

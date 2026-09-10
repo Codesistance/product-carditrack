@@ -103,7 +103,7 @@ public class PdfReportRenderer : IReportRenderer
                 });
 
                 row.RelativeItem().AlignRight().AlignBottom().Text(
-                        $"{data.From:d MMM yyyy} – {data.To:d MMM yyyy}")
+                        $"{Date(data.From, "d MMM yyyy")} – {Date(data.To, "d MMM yyyy")}")
                     .FontSize(9).FontColor(Secondary);
             });
         });
@@ -196,8 +196,8 @@ public class PdfReportRenderer : IReportRenderer
 
             var days = data.To.DayNumber - data.From.DayNumber + 1;
             column.Item().PaddingTop(4).Text(
-                    $"{data.From:d MMMM yyyy} to {data.To:d MMMM yyyy}  ·  {days} days  ·  "
-                    + $"Prepared {DateTime.UtcNow:d MMMM yyyy}")
+                    $"{Date(data.From, "d MMMM yyyy")} to {Date(data.To, "d MMMM yyyy")}"
+                    + $"  ·  {days} days  ·  Prepared {Date(DateTime.UtcNow, "d MMMM yyyy")}")
                 .FontSize(10).FontColor(Secondary);
         });
 
@@ -653,6 +653,19 @@ public class PdfReportRenderer : IReportRenderer
         var words = ruleCode.Replace("_", " ", StringComparison.Ordinal).ToLowerInvariant();
         return words.Length == 0 ? words : char.ToUpperInvariant(words[0]) + words[1..];
     }
+
+    /// <summary>
+    /// Every date in the document, in one culture. The tables and the chart axes were already
+    /// invariant and the header was not, so a service running under a non-English culture printed
+    /// a localised header above English axis labels — two languages on one page of a document a
+    /// clinician reads. Invariant rather than the caregiver's locale because no locale reaches
+    /// this renderer; when one does, it belongs here, in one place.
+    /// </summary>
+    private static string Date(DateOnly date, string format) =>
+        date.ToString(format, CultureInfo.InvariantCulture);
+
+    private static string Date(DateTime date, string format) =>
+        date.ToString(format, CultureInfo.InvariantCulture);
 
     private static string SexLabel(Gender gender) => gender switch
     {

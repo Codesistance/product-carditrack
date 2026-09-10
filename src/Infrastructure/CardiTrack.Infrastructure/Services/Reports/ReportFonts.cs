@@ -55,10 +55,18 @@ public static class ReportFonts
     private static readonly string[] Extensions = [".ttf", ".otf", ".ttc"];
 
     /// <summary>
-    /// Registers every font file in the directory with QuestPDF and returns how many it found. A
-    /// missing directory is the normal case outside the image — a developer machine has its own
-    /// fonts, and the tests need none — so it registers nothing rather than failing startup.
+    /// Registers every font file in the directory with QuestPDF and returns how many it
+    /// registered. A missing directory is the normal case outside the image — a developer machine
+    /// has its own fonts, and the tests need none — so it registers nothing rather than failing
+    /// startup.
     /// </summary>
+    /// <remarks>
+    /// A file that will not load is skipped rather than thrown, because of where this runs: at
+    /// service startup, on a path that has nothing to do with serving a request. A truncated copy
+    /// or an unreadable file costs one script its glyphs in an export; letting it escape would
+    /// cost the whole API its boot. The count is of files actually registered, so a caller that
+    /// expects a known set can tell that something was skipped.
+    /// </remarks>
     public static int Register(string? directory = null)
     {
         directory ??= Path.Combine(AppContext.BaseDirectory, Directory);
@@ -71,9 +79,20 @@ public static class ReportFonts
             if (!Extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 continue;
 
-            using var stream = File.OpenRead(file);
-            FontManager.RegisterFont(stream);
-            registered++;
+            try
+            {
+                using var stream = File.OpenRead(file);
+                FontManager.RegisterFont(stream);
+                registered++;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // Unreadable, or not the font its extension claims. The filter is this broad
+                // because QuestPDF signals a malformed face with a bare
+                // Exception("Cannot decode the provided font file") — a type-based filter would
+                // let exactly the likeliest failure through. Memory pressure is not a font
+                // problem, so it still stops startup.
+            }
         }
 
         return registered;
