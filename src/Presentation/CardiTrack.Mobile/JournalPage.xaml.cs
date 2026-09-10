@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Export;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -64,6 +65,7 @@ public partial class JournalPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly IJournalExportFlow _export;
 
     private bool _returningFromPopup;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
@@ -108,11 +110,12 @@ public partial class JournalPage : ContentPage
                 : null;
     }
 
-    public JournalPage(ICardiTrackApiClient api, IPopupService popups)
+    public JournalPage(ICardiTrackApiClient api, IPopupService popups, IJournalExportFlow export)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _export = export;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
         RenderCadence();
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
@@ -227,6 +230,12 @@ public partial class JournalPage : ContentPage
         };
 
         SearchEntry.Placeholder = $"Search the {_cadence.EntryName()}s";
+
+        SemanticProperties.SetDescription(
+            ExportHit, $"Export all {_cadence.EntryName()}s");
+        SemanticProperties.SetHint(
+            ExportHit,
+            $"Saves every {_cadence.EntryName()} in the selected time window");
     }
 
     /// <summary>
@@ -502,7 +511,7 @@ public partial class JournalPage : ContentPage
 
         // Shown as soon as there is a member to read about, empty history or not: a caregiver
         // waiting on their first entries is the one who most needs to see that weeks exist.
-        CadencePanel.IsVisible = true;
+        CadenceRow.IsVisible = true;
 
         if (reviews.Count == 0)
         {
@@ -635,14 +644,25 @@ public partial class JournalPage : ContentPage
         return card;
     }
 
-    private async void OnExportJournalsClicked(object? sender, EventArgs e)
+    private async void OnExportTapped(object? sender, TappedEventArgs e)
     {
         if (_memberId == Guid.Empty)
             return;
 
-        await Shell.Current.GoToAsync(
-            $"{ExportHealthDataPage.Route}?memberId={_memberId}&journalsOnly=true"
-            + $"&cadence={_cadence.WireValue()}");
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var (from, to) = JournalExportRequests.Window(today, _windowDays);
+        var name = _members.FirstOrDefault(m => m.Id == _memberId)?.Name
+            ?? _memberFirstName
+            ?? "CardiJournal";
+
+        await _export.RunAsync(
+            _memberId,
+            name,
+            from,
+            to,
+            JournalExportRequests.Audience(_cadence),
+            entryDate: null,
+            Updating);
     }
 
     /// <summary>What one entry of this cadence covers, as a caregiver would say it.</summary>

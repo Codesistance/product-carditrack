@@ -17,7 +17,7 @@
     <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
 
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
@@ -56,6 +56,23 @@
                            Opacity="0.85"
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
+
+                <controls:SquareBorder x:Name="ExportHit"
+                        Grid.Column="2"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill"
+                        SemanticProperties.Description="Export this Daybook"
+                        SemanticProperties.Hint="Saves this one entry">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnExportTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_clipboard_white.svg" WidthRequest="20" HeightRequest="20"/>
+                </controls:SquareBorder>
             </Grid>
         </controls:HeaderBand>
 
@@ -168,10 +185,6 @@
                                TextColor="{StaticResource MutedText}"
                                HorizontalTextAlignment="Start"
                                LineBreakMode="WordWrap"/>
-
-                        <Button Text="Export this entry"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                Clicked="OnExportClicked"/>
 
                     </VerticalStackLayout>
                 </Grid>

@@ -16,11 +16,12 @@ namespace CardiTrack.Mobile.Controls;
 /// the very refresh that just finished. The exit hint on the dashboard is the same shape.
 /// </para>
 /// <para>
-/// It swallows taps for its second. The content under it is mid-replacement — a list that is
-/// about to reflow — and a tap that landed on the old row and acted on the new one is worse than
-/// a tap that did nothing. Deliberately shown only on a saved-to-fresh transition, never on a cold
-/// load (the skeleton speaks there) and never on a background tick (a dashboard that flashed this
-/// every thirty seconds would be the flash the cache exists to remove).
+/// The timed show swallows taps for its second. The content under it is mid-replacement — a
+/// list that is about to reflow — and a tap that landed on the old row and acted on the new
+/// one is worse than a tap that did nothing. The timed show is for a saved-to-fresh
+/// transition, never a cold load (the skeleton speaks there) and never a background tick.
+/// <see cref="ShowUntilHiddenAsync"/> is the same scrim held until the page hides it, for a
+/// wait the page owns (preparing an export).
 /// </para>
 /// </remarks>
 public sealed class UpdatingOverlay : Grid
@@ -33,6 +34,7 @@ public sealed class UpdatingOverlay : Grid
     private const uint FadeOutMs = 100;
 
     private readonly ActivityIndicator _spinner;
+    private readonly Label _message;
     private CancellationTokenSource? _hold;
 
     public UpdatingOverlay()
@@ -54,12 +56,12 @@ public sealed class UpdatingOverlay : Grid
         // Decorative — the words are the message.
         AutomationProperties.SetIsInAccessibleTree(_spinner, false);
 
-        var label = new Label
+        _message = new Label
         {
             Text = "Updating…",
             VerticalOptions = LayoutOptions.Center,
         };
-        ControlResources.ApplyStyle(label, "Body1SemiBoldDark");
+        ControlResources.ApplyStyle(_message, "Body1SemiBoldDark");
 
         var card = new Border
         {
@@ -72,7 +74,7 @@ public sealed class UpdatingOverlay : Grid
             Content = new HorizontalStackLayout
             {
                 Spacing = 12,
-                Children = { _spinner, label },
+                Children = { _spinner, _message },
             },
         };
         if (ControlResources.Brush("CardShadowBrush") is { } shadow)
@@ -98,16 +100,9 @@ public sealed class UpdatingOverlay : Grid
         _hold?.Cancel();
         var cts = new CancellationTokenSource();
         _hold = cts;
+        _message.Text = "Updating…";
 
-        if (!IsVisible)
-        {
-            Opacity = 0;
-            IsVisible = true;
-            _spinner.IsRunning = true;
-            Announce();
-        }
-        if (Opacity < 1)
-            _ = this.FadeToAsync(1, FadeInMs);
+        Appear("Updating…");
 
         try
         {
@@ -134,6 +129,32 @@ public sealed class UpdatingOverlay : Grid
         }
     }
 
+    /// <summary>
+    /// Stays up until <see cref="Hide"/> — for a wait the page owns, like preparing an export.
+    /// Cancels a timed <see cref="ShowAsync"/> without blinking the scrim off.
+    /// </summary>
+    public Task ShowUntilHiddenAsync(string message)
+    {
+        _hold?.Cancel();
+        _hold = null;
+        _message.Text = message;
+        Appear(message);
+        return Task.CompletedTask;
+    }
+
+    private void Appear(string announcement)
+    {
+        if (!IsVisible)
+        {
+            Opacity = 0;
+            IsVisible = true;
+            _spinner.IsRunning = true;
+            Announce(announcement);
+        }
+        if (Opacity < 1)
+            _ = this.FadeToAsync(1, FadeInMs);
+    }
+
     public void Hide()
     {
         _hold?.Cancel();
@@ -148,11 +169,11 @@ public sealed class UpdatingOverlay : Grid
         _spinner.IsRunning = false;
     }
 
-    private static void Announce()
+    private static void Announce(string message)
     {
         try
         {
-            SemanticScreenReader.Default.Announce("Updating");
+            SemanticScreenReader.Default.Announce(message);
         }
         catch (Exception)
         {

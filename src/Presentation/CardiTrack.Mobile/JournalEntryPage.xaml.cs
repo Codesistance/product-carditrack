@@ -2,8 +2,9 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
-using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Charts;
+using CardiTrack.Mobile.Core.Export;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -34,6 +35,7 @@ public partial class JournalEntryPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly IJournalExportFlow _export;
 
     private Guid _memberId;
     private DateOnly _date;
@@ -67,11 +69,12 @@ public partial class JournalEntryPage : ContentPage
         ? TrendAwareness.MonthWindowDays
         : TrendAwareness.WindowDays;
 
-    public JournalEntryPage(ICardiTrackApiClient api, IPopupService popups)
+    public JournalEntryPage(ICardiTrackApiClient api, IPopupService popups, IJournalExportFlow export)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _export = export;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
@@ -96,6 +99,7 @@ public partial class JournalEntryPage : ContentPage
             HeaderTitle.Text = _headerPersonalised && _memberFirstName is { } name
                 ? $"{name}'s {_cadence.EntryName()}"
                 : _cadence.EntryName();
+            DescribeExport();
         }
     }
 
@@ -159,18 +163,29 @@ public partial class JournalEntryPage : ContentPage
         await this.GoBackAsync(AppShell.JournalRoute);
 
     /// <summary>
-    /// Opens M1-17 already scoped to this one entry — journals only, this day
-    /// (or week/month), this book. The caregiver still confirms responsibility
-    /// there; this button does not export on its own.
+    /// This one entry — journals only, this day (or week/month), this book.
+    /// Consent is the two pop-ups; the file never goes through M1-17.
     /// </summary>
-    private async void OnExportClicked(object? sender, EventArgs e)
+    private async void OnExportTapped(object? sender, TappedEventArgs e)
     {
         if (_memberId == Guid.Empty || _date == default)
             return;
 
-        await Shell.Current.GoToAsync(
-            $"{ExportHealthDataPage.Route}?memberId={_memberId}&journalsOnly=true"
-            + $"&journalDate={_date:yyyy-MM-dd}&cadence={_cadence.WireValue()}");
+        var name = _memberFirstName ?? "CardiJournal";
+        await _export.RunAsync(
+            _memberId,
+            name,
+            _date,
+            _date,
+            JournalExportRequests.Audience(_cadence),
+            _date,
+            Updating);
+    }
+
+    private void DescribeExport()
+    {
+        SemanticProperties.SetDescription(ExportHit, $"Export this {_cadence.EntryName()}");
+        SemanticProperties.SetHint(ExportHit, "Saves this one entry");
     }
 
     /// <param name="force">
