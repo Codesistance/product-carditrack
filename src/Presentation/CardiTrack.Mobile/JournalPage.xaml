@@ -148,18 +148,11 @@
         </Border>
 
         <Border x:Name="ExportHit"
+                Style="{StaticResource IconActionChip}"
                 Grid.Column="1"
-                HeightRequest="40"
-                WidthRequest="40"
-                StrokeThickness="0"
-                BackgroundColor="{StaticResource SelectedOptionBackground}"
-                VerticalOptions="Center"
                 HorizontalOptions="End"
                 SemanticProperties.Description="Export all Daybooks"
                 SemanticProperties.Hint="Saves every Daybook in the selected time window">
-            <Border.StrokeShape>
-                <RoundRectangle CornerRadius="20"/>
-            </Border.StrokeShape>
             <Border.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnExportTapped"/>
             </Border.GestureRecognizers>
