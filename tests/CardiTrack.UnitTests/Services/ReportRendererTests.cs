@@ -573,6 +573,32 @@ public class ReportRendererTests
     }
 
     [Fact]
+    public async Task Pdf_RendersAMarkdownNarrative_WithTrendCharts()
+    {
+        // The shape the model actually returns — headings, bold, bullets — through the parser,
+        // laid out over the vector charts and their overlaid labels. What is asserted is that the
+        // whole path renders; the parser's own tests pin what each mark becomes.
+        var logs = Enumerable.Range(0, 14)
+            .Select(i => new ActivityLog
+            {
+                CardiMemberId = MemberId,
+                Date = new DateOnly(2026, 2, 7).AddDays(i),
+                Steps = i == 6 ? null : 4000 + i * 90,
+                RestingHeartRate = 64 + i % 4,
+                SleepMinutes = 380 + i * 5,
+                SpO2Average = 96m
+            })
+            .ToList();
+
+        var rendered = await new PdfReportRenderer().RenderAsync(
+            BuildData(logs: logs),
+            new ReportSections(IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true, IncludeTrends: true),
+            "## Overall\n\nA **steady** fortnight.\n\n- Steps rose\n- Sleep held\n\n1. Mention it");
+
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(rendered.Content, 0, 4));
+    }
+
+    [Fact]
     public async Task Pdf_RendersALongPeriodAcrossPages()
     {
         var logs = Enumerable.Range(0, 200)
