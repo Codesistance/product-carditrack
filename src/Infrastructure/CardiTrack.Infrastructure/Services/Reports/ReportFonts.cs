@@ -29,8 +29,11 @@ namespace CardiTrack.Infrastructure.Services.Reports;
 /// </remarks>
 public static class ReportFonts
 {
-    /// <summary>The directory under the application root the image copies fonts into.</summary>
-    public const string Directory = "fonts";
+    /// <summary>
+    /// The directory under the application root the image copies fonts into — the other half of
+    /// the Dockerfile's <c>COPY --from=fonts /fonts ./fonts</c>. Named, not spelled twice.
+    /// </summary>
+    public const string DirectoryName = "fonts";
 
     /// <summary>
     /// The fallback chain, most specific first: Lato for everything it has, then Noto Sans for
@@ -69,12 +72,12 @@ public static class ReportFonts
     /// </remarks>
     public static int Register(string? directory = null)
     {
-        directory ??= Path.Combine(AppContext.BaseDirectory, Directory);
-        if (!System.IO.Directory.Exists(directory))
+        var fontsDirectory = directory ?? Path.Combine(AppContext.BaseDirectory, DirectoryName);
+        if (!Directory.Exists(fontsDirectory))
             return 0;
 
         var registered = 0;
-        foreach (var file in System.IO.Directory.EnumerateFiles(directory).OrderBy(f => f, StringComparer.Ordinal))
+        foreach (var file in Directory.EnumerateFiles(fontsDirectory).OrderBy(f => f, StringComparer.Ordinal))
         {
             if (!Extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 continue;
