@@ -458,10 +458,16 @@ public partial class DashboardPage : ContentPage
     private async Task<Guid?> ResolveMemberIdAsync(bool force)
     {
         var cached = Preferences.Default.Get(PrimaryMemberIdKey, string.Empty);
-        if (!force && Guid.TryParse(cached, out var cachedId))
-            return cachedId;
+        var remembered = Guid.TryParse(cached, out var cachedId) ? cachedId : (Guid?)null;
+        if (!force && remembered is { } id)
+            return id;
 
-        var primary = PrimaryCardiMember.From(await _api.GetCardiMembersAsync());
+        // A forced resolve re-reads the list, but it does not get to change the subject: the
+        // remembered member is still the one being shown, and it is only given up when the list
+        // no longer has it. Without this the refresh that follows a pull, a questionnaire answer
+        // or the wizard silently moves the dashboard to whichever member happens to sort first,
+        // and then writes that choice to PrimaryMemberIdKey, so it sticks.
+        var primary = PrimaryCardiMember.From(await _api.GetCardiMembersAsync(), remembered);
         if (primary is null)
         {
             Preferences.Default.Remove(PrimaryMemberIdKey);

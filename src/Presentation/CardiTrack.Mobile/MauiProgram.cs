@@ -51,6 +51,10 @@ public static class MauiProgram
         // The fields draw their own edge (AuthEntryBorder); the platform's underline was a second one.
         Controls.FieldChrome.RemoveNativeUnderline();
 
+        // Autofill belongs to this account's own credentials, not to a CardiMember's details —
+        // off everywhere but the fields that ask for it.
+        Controls.FieldAutofill.ApplyPolicy();
+
         // Push delivery spine (notification_engine.md Phase 3). No Windows support — the two
         // Cloud Run env vars this needs (Notifications__AckTokenKey etc.) are server-side only;
         // there is nothing platform-specific to configure here on that target, so it is simply
