@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-10",
+      "slack_ts": null,
+      "item_count": 2,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,24 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-10",
+      "slug": "garmin-developer-program-onboarding-paused",
+      "title": "Garmin Connect Developer Program: new-partner onboarding paused, no reopening date",
+      "url": "https://developer.garmin.com/gc-developer-program/program-faq/",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-10-garmin-developer-program-onboarding-paused.md"
+    },
+    {
+      "date": "2026-09-10",
+      "slug": "google-health-guardian-september-rollout-breathing-emergency",
+      "title": "Health Guardian ships this month (Sept 2026) + new breathing-emergency detection — still not in the Google Health API",
+      "url": "https://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-10-google-health-guardian-september-rollout-breathing-emergency.md"
     }
   ]
 }
