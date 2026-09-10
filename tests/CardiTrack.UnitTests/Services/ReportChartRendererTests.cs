@@ -1,3 +1,4 @@
+using System.Globalization;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Services.Reports;
 
@@ -11,7 +12,10 @@ public class ReportChartRendererTests
     private static ReportChartRenderer.Chart? Steps(
         IReadOnlyList<ActivityLog> logs, DateOnly from, DateOnly to) =>
         ReportChartRenderer.Line(
-            logs, log => log.Steps, from, to, "#1884DC", v => v.ToString("N0"), Width, Height);
+            logs, log => log.Steps, from, to, "#1884DC",
+            // Invariant, like the renderer's own metrics: the assertions below name the exact
+            // label text, and a runner under another culture groups thousands differently.
+            v => v.ToString("N0", CultureInfo.InvariantCulture), Width, Height);
 
     [Fact]
     public void Line_ReturnsNothing_WhenEveryReadingIsMissing()

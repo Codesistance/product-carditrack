@@ -202,15 +202,16 @@ public class PdfReportRenderer : IReportRenderer
         });
 
     /// <summary>
-    /// Who the document is about, and where the numbers came from — device types only, never the
-    /// caregiver's label for a device (docs/technical/data_protection_architecture.md §70).
+    /// The facts under a member's name: who the document is about, and where the numbers came
+    /// from — device types only, never the caregiver's label for a device
+    /// (docs/technical/data_protection_architecture.md §70).
     /// </summary>
-    /// <summary>
-    /// The facts under a member's name. Each one is only stated where the export actually carries
-    /// the data behind it: a caregiver who unticked metrics gets no readings gathered at all, and
-    /// "0 days with readings" printed over that absence would report a healthy member as an
-    /// inactive one — the same mistake as printing a zero for a day the watch was not worn.
-    /// </summary>
+    /// <remarks>
+    /// Each fact is only stated where the export actually carries the data behind it. A caregiver
+    /// who unticked metrics gets no readings gathered at all, and "0 days with readings" printed
+    /// over that absence would report a healthy member as an inactive one — the same mistake as
+    /// printing a zero for a day the watch was not worn.
+    /// </remarks>
     internal static IReadOnlyList<string> MemberFacts(ReportMemberData member, ReportSections sections)
     {
         var age = AgeAt(member.Member.DateOfBirth, DateOnly.FromDateTime(DateTime.UtcNow));
