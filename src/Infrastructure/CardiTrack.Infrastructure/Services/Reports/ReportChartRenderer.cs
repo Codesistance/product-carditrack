@@ -190,6 +190,10 @@ internal static class ReportChartRenderer
     internal static (double Min, double Max, double Step) NiceAxis(
         double min, double max, IReadOnlyList<double>? steps = null)
     {
+        // Held before the flat-series adjustment below moves it: the zero clamp at the end asks
+        // whether the *readings* were ever negative, not whether the padding went below zero.
+        var lowestReading = min;
+
         if (max - min < 1e-9)
         {
             // A flat series still needs a range to sit in; a few percent either side keeps it
@@ -226,8 +230,10 @@ internal static class ReportChartRenderer
         if (axisMax - max < step * 0.1)
             axisMax += step;
 
-        // Steps, minutes and percentages have no negative side; a floor below zero is a lie.
-        if (axisMin < 0 && min >= 0)
+        // Steps, minutes and percentages have no negative side; a floor below zero is a lie. It
+        // matters most for the case that looks least interesting — a member flat at zero steps
+        // all window, whose chart would otherwise tick down to -2,000.
+        if (axisMin < 0 && lowestReading >= 0)
             axisMin = 0;
 
         return (axisMin, axisMax, step);

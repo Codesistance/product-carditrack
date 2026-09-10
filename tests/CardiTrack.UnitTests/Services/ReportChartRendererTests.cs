@@ -125,6 +125,27 @@ public class ReportChartRendererTests
     }
 
     [Fact]
+    public void NiceAxis_NeverTicksBelowZero_ForAFlatSeriesOfZeros()
+    {
+        // A member who did not move all window. The floor clamp asks whether the readings were
+        // ever negative, not whether the padding around a flat series went below zero — steps
+        // ticking down to -2,000 is a chart that contradicts its own metric.
+        var axis = ReportChartRenderer.NiceAxis(0, 0);
+
+        Assert.Equal(0, axis.Min);
+        Assert.True(axis.Max > 0, "A flat series still needs a range above the floor.");
+    }
+
+    [Fact]
+    public void NiceAxis_KeepsANegativeFloor_WhenAReadingIsActuallyNegative()
+    {
+        // The clamp is about metrics that cannot go below zero, not about hiding real values.
+        var axis = ReportChartRenderer.NiceAxis(-4, 6);
+
+        Assert.True(axis.Min < 0);
+    }
+
+    [Fact]
     public void NiceAxis_UsesTheMetricsOwnSteps_WhenGiven()
     {
         // Sleep is in minutes: 1-2-5 would tick every 50 minutes, which nobody reads. In the

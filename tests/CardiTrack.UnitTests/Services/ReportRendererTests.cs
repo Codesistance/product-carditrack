@@ -599,6 +599,32 @@ public class ReportRendererTests
     }
 
     [Fact]
+    public void Pdf_DoesNotClaimZeroDaysOfReadings_WhenMetricsWereNotExported()
+    {
+        // The gather does not load logs at all when the caregiver unticks metrics, so counting
+        // them here would print "0 days with readings" over a member who has plenty — reporting
+        // an exclusion as an absence, in a document a clinician may act on.
+        var member = BuildData(logs: []).Members[0];
+
+        var facts = PdfReportRenderer.MemberFacts(
+            member,
+            new ReportSections(IncludeMetrics: false, IncludeAlerts: true, IncludeDevices: true));
+
+        Assert.DoesNotContain(facts, f => f.Contains("days with readings", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Pdf_CountsTheDaysWithReadings_WhenMetricsWereExported()
+    {
+        var member = BuildData(logs: [FullDay(), EmptyDay()]).Members[0];
+
+        var facts = PdfReportRenderer.MemberFacts(member, AllSections);
+
+        // Two days gathered, one of them a day the watch was not worn.
+        Assert.Contains("1 day with readings", facts);
+    }
+
+    [Fact]
     public async Task Pdf_RendersALongPeriodAcrossPages()
     {
         var logs = Enumerable.Range(0, 200)

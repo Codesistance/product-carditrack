@@ -205,7 +205,13 @@ public class PdfReportRenderer : IReportRenderer
     /// Who the document is about, and where the numbers came from — device types only, never the
     /// caregiver's label for a device (docs/technical/data_protection_architecture.md §70).
     /// </summary>
-    private static void MemberBanner(IContainer container, ReportMemberData member, ReportSections sections)
+    /// <summary>
+    /// The facts under a member's name. Each one is only stated where the export actually carries
+    /// the data behind it: a caregiver who unticked metrics gets no readings gathered at all, and
+    /// "0 days with readings" printed over that absence would report a healthy member as an
+    /// inactive one — the same mistake as printing a zero for a day the watch was not worn.
+    /// </summary>
+    internal static IReadOnlyList<string> MemberFacts(ReportMemberData member, ReportSections sections)
     {
         var age = AgeAt(member.Member.DateOfBirth, DateOnly.FromDateTime(DateTime.UtcNow));
         var facts = new List<string> { $"Age {age}", SexLabel(member.Member.Gender) };
@@ -219,8 +225,18 @@ public class PdfReportRenderer : IReportRenderer
             facts.Add("Source: " + string.Join(", ", types));
         }
 
-        var measured = member.ActivityLogs.Count(HasAnyReading);
-        facts.Add(measured == 1 ? "1 day with readings" : $"{measured} days with readings");
+        if (sections.IncludeMetrics)
+        {
+            var measured = member.ActivityLogs.Count(HasAnyReading);
+            facts.Add(measured == 1 ? "1 day with readings" : $"{measured} days with readings");
+        }
+
+        return facts;
+    }
+
+    private static void MemberBanner(IContainer container, ReportMemberData member, ReportSections sections)
+    {
+        var facts = MemberFacts(member, sections);
 
         container
             .Background(Tint).CornerRadius(6)
