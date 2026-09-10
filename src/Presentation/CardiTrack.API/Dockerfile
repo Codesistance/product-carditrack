@@ -37,6 +37,27 @@ RUN dotnet publish "CardiTrack.API.csproj" -c Release -o /app/publish \
 # Create logs directory in publish stage (chiseled final stage has no shell)
 RUN mkdir -p /app/publish/logs
 
+# Stage 2b: Fonts for the PDF export. QuestPDF bundles Lato (Latin, Greek, Cyrillic); a
+# member's name can be in any script, and the chiseled runtime has no fonts at all, so a
+# subset of Noto Sans rides along under /app/fonts and ReportFonts registers it at startup.
+# One face per script, Regular and Bold where a weight is used — about 4 MB. Noto Sans CJK
+# is left out on purpose (20 MB on disk, ~70 MB resident); see ReportFonts.cs to add it.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS fonts
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /fonts \
+    && cd /usr/share/fonts/truetype/noto \
+    && cp NotoSans-Regular.ttf NotoSans-Bold.ttf NotoSans-Italic.ttf NotoSans-BoldItalic.ttf \
+          NotoSansArabic-Regular.ttf NotoSansArabic-Bold.ttf \
+          NotoSansHebrew-Regular.ttf NotoSansHebrew-Bold.ttf \
+          NotoSansDevanagari-Regular.ttf NotoSansDevanagari-Bold.ttf \
+          NotoSansBengali-Regular.ttf NotoSansGurmukhi-Regular.ttf NotoSansTamil-Regular.ttf \
+          NotoSansThai-Regular.ttf NotoSansArmenian-Regular.ttf NotoSansGeorgian-Regular.ttf \
+          NotoSansSymbols2-Regular.ttf \
+          /fonts/ \
+    && cp /usr/share/doc/fonts-noto-core/copyright /fonts/NOTO-LICENSE
+
 # Stage 3: Runtime - Chiseled Ubuntu (Ultra-minimal, non-root, distroless-like)
 # The "-extra" variant (vs. plain "-chiseled") adds ICU and tzdata — the plain chiseled
 # base has no timezone database, so TimeZoneInfo.TryFindSystemTimeZoneById fails for every
@@ -53,6 +74,7 @@ WORKDIR /app
 
 # Copy published files (including pre-created logs dir) with correct ownership
 COPY --chown=1654:1654 --from=publish /app/publish .
+COPY --chown=1654:1654 --from=fonts /fonts ./fonts
 
 # Expose ports (non-privileged ports since running as non-root)
 EXPOSE 8080

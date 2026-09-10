@@ -33,10 +33,9 @@ public class ProfilePhotoStorageReachTests
 
     private static readonly string[][] SkiaAllowedFiles =
     [
-        // The only file that may decode caregiver-uploaded bytes.
+        // The only file that may decode caregiver-uploaded bytes. The export charts once drew
+        // with SkiaSharp too; they are vector SVG now, so this list is back to one adapter.
         ["src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "SkiaProfilePhotoProcessor.cs"],
-        // Export charts: our own daily readings, never an upload. No network, no signed URL.
-        ["src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "Reports", "ReportChartRenderer.cs"],
     ];
 
     [Fact]
