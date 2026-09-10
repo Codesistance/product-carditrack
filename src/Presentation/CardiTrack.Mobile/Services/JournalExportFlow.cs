@@ -116,10 +116,6 @@ public sealed class JournalExportFlow : IJournalExportFlow
                 busy.Hide();
                 await OfferDeliveryAsync(file, path);
             }
-            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
-            {
-                // We cancelled this wait — the caregiver left, or a newer export replaced it.
-            }
             catch (OperationCanceledException)
             {
                 busy.Hide();
