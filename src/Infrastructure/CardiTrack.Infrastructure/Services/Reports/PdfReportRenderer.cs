@@ -79,7 +79,9 @@ public class PdfReportRenderer : IReportRenderer
                 page.Size(PageSizes.A4);
                 page.MarginHorizontal(MarginHorizontalCm, Unit.Centimetre);
                 page.MarginVertical(MarginVerticalCm, Unit.Centimetre);
-                page.DefaultTextStyle(t => t.FontSize(10).FontColor(Body).LineHeight(1.3f));
+                page.DefaultTextStyle(t => t
+                    .FontFamily(ReportFonts.Families)
+                    .FontSize(10).FontColor(Body).LineHeight(1.3f));
 
                 page.Header().Element(h => ComposeHeader(h, data));
                 page.Content().Element(c => ComposeContent(c, data, sections, narrative));

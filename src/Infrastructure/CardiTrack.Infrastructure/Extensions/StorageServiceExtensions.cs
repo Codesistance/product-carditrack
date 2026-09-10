@@ -71,6 +71,10 @@ public static class StorageServiceExtensions
         // this ships to a paying-scale deployment.
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
+        // The image ships Noto Sans for scripts Lato lacks; elsewhere the directory is absent and
+        // this is a no-op. See ReportFonts for why registering alone is not the whole story.
+        ReportFonts.Register();
+
         // Singletons: every renderer is stateless.
         services.AddSingleton<IReportRenderer, PdfReportRenderer>();
         services.AddSingleton<IReportRenderer, CsvReportRenderer>();
