@@ -181,7 +181,7 @@ public partial class AlertDetailPage : ContentPage
         MemberTypeLabel.Text = alert.Type;
         MessageLabel.Text = alert.Message;
 
-        ApplyChart(alert.Chart);
+        ApplyChart(alert);
         ApplyComparison(alert.Comparison, alert.Severity);
         ApplyContext(alert, firstName);
         ApplyAcknowledgement(alert);
@@ -210,8 +210,9 @@ public partial class AlertDetailPage : ContentPage
         _ => "icon_reason_monitoring_white.svg",
     };
 
-    private void ApplyChart(AlertChartResponse? chart)
+    private void ApplyChart(AlertDetailResponse alert)
     {
+        var chart = alert.Chart;
         if (chart is null || chart.Series.Count < 2)
         {
             ChartCard.IsVisible = false;
@@ -266,17 +267,46 @@ public partial class AlertDetailPage : ContentPage
             baseline,
             reference is not null ? (double)reference.Low : null,
             reference is not null ? (double)reference.High : null);
+
+        // Same tap-to-inspect the member-detail, chat and journal charts already give. This page
+        // was the one host that drew the points and then ignored a tap on them.
+        Chart.Interactive = true;
+        Chart.ValueFormatter = v => AlertChartKey.Value(chart, (decimal)v);
+        var flagged = AlertChartKey.FlaggedDates(chart, alert.AboutDate);
+        var flagColor = flagged.Count == 0 ? null : SeverityInk(alert.Severity);
+        SemanticProperties.SetHint(Chart, flagged.Count == 0
+            ? "Tap a reading to see its value"
+            : "Tap a reading to see its value. The coloured point is the day this alert is about.");
         Chart.Render(
             chart.Series,
             scale,
             ink,
             showMarkers: chart.Series.Count <= MarkerPointLimit,
             baseline: chart.Baseline,
-            reference: reference);
+            reference: reference,
+            flaggedDates: flagged,
+            flagColor: flagColor);
 
         var key = AlertChartKey.For(chart);
         ChartBaselineLabel.IsVisible = key is not null;
         ChartBaselineLabel.Text = key ?? string.Empty;
+    }
+
+    /// <summary>
+    /// The banner's own ink, reused on the flagged chart point so the colour on the line and the
+    /// colour on the card cannot disagree about how serious this day is.
+    /// </summary>
+    private static Color SeverityInk(string severity)
+    {
+        var key = severity switch
+        {
+            "red" => "StatusRed",
+            "orange" => "StatusOrange",
+            "yellow" => "StatusYellow",
+            "green" => "StatusGreen",
+            _ => "StatusUnknown",
+        };
+        return MetricStatus.Resource(key, Colors.Gray);
     }
 
     private void ApplyComparison(AlertComparisonResponse? comparison, string severity)

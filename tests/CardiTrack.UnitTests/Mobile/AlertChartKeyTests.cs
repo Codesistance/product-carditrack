@@ -107,4 +107,82 @@ public class AlertChartKeyTests
 
         Assert.Equal("42", AlertChartKey.Value(chart, 42m));
     }
+
+    [Fact]
+    public void FlagsTheAboutDay_WhenItLandsOnExactlyOneReading()
+    {
+        var about = new DateOnly(2026, 9, 10);
+        var chart = new AlertChartResponse
+        {
+            Series =
+            [
+                new MetricPoint { Date = about.AddDays(-1), Value = 3.3m },
+                new MetricPoint { Date = about, Value = 5.9m },
+                new MetricPoint { Date = about.AddDays(1), Value = 3.1m },
+            ],
+        };
+
+        var flagged = AlertChartKey.FlaggedDates(chart, about);
+
+        Assert.Equal(about, Assert.Single(flagged));
+    }
+
+    [Fact]
+    public void FlagsNothing_WhenTheAboutDayHasNoReading()
+    {
+        var about = new DateOnly(2026, 9, 10);
+        var chart = new AlertChartResponse
+        {
+            Series =
+            [
+                new MetricPoint { Date = about.AddDays(-1), Value = 3.3m },
+                new MetricPoint { Date = about, Value = null },
+            ],
+        };
+
+        Assert.Empty(AlertChartKey.FlaggedDates(chart, about));
+    }
+
+    /// <summary>
+    /// Realtime heart-rate windows stamp every sample with the same civil day. Colouring that day
+    /// would turn the whole hour amber, which is not "the reading this alert is about".
+    /// </summary>
+    [Fact]
+    public void FlagsNothing_WhenSeveralSamplesShareTheAboutDay()
+    {
+        var about = new DateOnly(2026, 9, 10);
+        var chart = new AlertChartResponse
+        {
+            Series =
+            [
+                new MetricPoint { Date = about, Value = 88m },
+                new MetricPoint { Date = about, Value = 94m },
+                new MetricPoint { Date = about, Value = 101m },
+            ],
+        };
+
+        Assert.Empty(AlertChartKey.FlaggedDates(chart, about));
+    }
+
+    [Fact]
+    public void FlagsNothing_WhenTheAboutDayIsUnset()
+    {
+        var chart = new AlertChartResponse
+        {
+            Series = [new MetricPoint { Date = new DateOnly(2026, 9, 10), Value = 5.9m }],
+        };
+
+        Assert.Empty(AlertChartKey.FlaggedDates(chart, default));
+    }
+
+    [Fact]
+    public void FlagsNothing_WhenTheAboutDayIsNotOnTheChart()
+    {
+        var chart = new AlertChartResponse
+        {
+            Series = [new MetricPoint { Date = new DateOnly(2026, 9, 9), Value = 5.9m }],
+        };
+
+        Assert.Empty(AlertChartKey.FlaggedDates(chart, new DateOnly(2026, 9, 10)));
+    }
 }

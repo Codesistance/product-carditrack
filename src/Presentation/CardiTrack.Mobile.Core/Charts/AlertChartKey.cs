@@ -5,7 +5,8 @@ namespace CardiTrack.Mobile.Core.Charts;
 /// <summary>
 /// The one line under the alert detail chart that says what its two marks are: the dashed rule at
 /// the member's own usual, and — for a metric a standards body publishes a range for — the shaded
-/// band behind the line.
+/// band behind the line. Also names which plotted reading is the day this alert is about, so the
+/// chart can colour that point without the page re-deriving the rule.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -23,6 +24,8 @@ namespace CardiTrack.Mobile.Core.Charts;
 /// </remarks>
 public static class AlertChartKey
 {
+    private static readonly IReadOnlySet<DateOnly> NoFlaggedDates = new HashSet<DateOnly>();
+
     /// <summary>Between the two entries when the chart carries both.</summary>
     public const string Separator = "  ·  ";
 
@@ -47,6 +50,27 @@ public static class AlertChartKey
         }
 
         return entries.Count == 0 ? null : string.Join(Separator, entries);
+    }
+
+    /// <summary>
+    /// The civil day this alert is about, when it lands on exactly one plotted reading. Empty when
+    /// the day is missing, unreported, or shared by more than one sample — a granular hour reuses
+    /// one date across every point, and colouring that date would paint the whole hour rather than
+    /// the reading the alert is about.
+    /// </summary>
+    public static IReadOnlySet<DateOnly> FlaggedDates(AlertChartResponse chart, DateOnly aboutDate)
+    {
+        if (aboutDate == default)
+            return NoFlaggedDates;
+
+        var hits = 0;
+        foreach (var point in chart.Series)
+        {
+            if (point.Date == aboutDate && point.Value is not null)
+                hits++;
+        }
+
+        return hits == 1 ? new HashSet<DateOnly> { aboutDate } : NoFlaggedDates;
     }
 
     /// <summary>
