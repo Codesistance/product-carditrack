@@ -19,5 +19,5 @@ public interface IDeviceBiometric
     Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default);
 
     /// <summary>Opens the OS screen where fingerprint or face unlock is turned on.</summary>
-    Task OpenEnrollmentSettingsAsync();
+    Task<bool> OpenEnrollmentSettingsAsync();
 }

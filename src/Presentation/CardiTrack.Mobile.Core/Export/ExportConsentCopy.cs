@@ -16,7 +16,8 @@ public static class ExportConsentCopy
 
     /// <summary>
     /// Settings line. Dates are the device's local day so "In force until"
-    /// matches the caption's "Given …" rather than UTC.
+    /// matches the caption's "Given …" rather than UTC. A standing grant whose
+    /// wording has changed is still stoppable, but is not described as in force.
     /// </summary>
     public static string HistorySummary(ExportConsentHistoryItem item)
     {
@@ -31,7 +32,11 @@ public static class ExportConsentCopy
             return $"Stopped on {Day(revoked)} · {proof}";
 
         if (item.CanRevoke && item.RememberUntil is { } until)
-            return $"In force until {Day(until)} · {proof}";
+        {
+            return item.CanReuse
+                ? $"In force until {Day(until)} · {proof}"
+                : $"Needs a new confirmation · kept until {Day(until)} · {proof}";
+        }
 
         if (item.RememberUntil is { } remembered)
             return $"Kept until {Day(remembered)} · {proof}";

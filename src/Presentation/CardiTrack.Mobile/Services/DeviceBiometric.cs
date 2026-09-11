@@ -27,7 +27,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
         }
     }
 
-    public Task OpenEnrollmentSettingsAsync()
+    public Task<bool> OpenEnrollmentSettingsAsync()
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         MainThread.BeginInvokeOnMainThread(() =>
@@ -216,7 +216,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
         }
     }
 
-    public Task OpenEnrollmentSettingsAsync()
+    public Task<bool> OpenEnrollmentSettingsAsync()
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         MainThread.BeginInvokeOnMainThread(() =>
@@ -285,7 +285,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
 
     public bool CanEnroll => false;
 
-    public Task OpenEnrollmentSettingsAsync() => Task.CompletedTask;
+    public Task<bool> OpenEnrollmentSettingsAsync() => Task.FromResult(false);
 
     public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
     {

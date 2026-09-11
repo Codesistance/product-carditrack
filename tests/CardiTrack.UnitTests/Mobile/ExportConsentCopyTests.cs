@@ -48,4 +48,28 @@ public class ExportConsentCopyTests
         Assert.Contains("fingerprint or face unlock", summary);
         Assert.DoesNotContain("server UTC line", summary);
     }
+
+    [Fact]
+    public void HistorySummary_DoesNotSayInForce_WhenThePolicyTextHasChanged()
+    {
+        var until = new DateTimeOffset(2026, 9, 18, 15, 0, 0, TimeSpan.Zero);
+        var item = new ExportConsentHistoryItem
+        {
+            Id = Guid.NewGuid(),
+            RecordedAt = new DateTimeOffset(2026, 9, 11, 15, 0, 0, TimeSpan.Zero),
+            Method = ExportConsentMethod.Password,
+            RememberFor = ExportConsentRememberFor.OneWeek,
+            RememberUntil = until,
+            CanRevoke = true,
+            CanReuse = false,
+            Reused = false,
+            Summary = "server line"
+        };
+
+        var summary = ExportConsentCopy.HistorySummary(item);
+
+        Assert.Contains("Needs a new confirmation", summary);
+        Assert.Contains(until.ToLocalTime().ToString("d MMM yyyy"), summary);
+        Assert.DoesNotContain("In force", summary);
+    }
 }

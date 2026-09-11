@@ -23,21 +23,26 @@ public interface IExportConsentFlow
 
 public sealed class ExportConsentFlow : IExportConsentFlow
 {
+    private static readonly TimeSpan EnrollmentResumeWait = TimeSpan.FromMinutes(5);
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly IAuthService _auth;
     private readonly IDeviceBiometric _biometric;
+    private readonly IAppResumeNotifier _resumes;
 
     public ExportConsentFlow(
         ICardiTrackApiClient api,
         IPopupService popups,
         IAuthService auth,
-        IDeviceBiometric biometric)
+        IDeviceBiometric biometric,
+        IAppResumeNotifier resumes)
     {
         _api = api;
         _popups = popups;
         _auth = auth;
         _biometric = biometric;
+        _resumes = resumes;
     }
 
     public async Task<ExportConsentOutcome?> ConfirmAsync(
@@ -163,10 +168,9 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         if (!open)
             return ProofPreference.Password;
 
-        await _biometric.OpenEnrollmentSettingsAsync();
+        if (!await OpenEnrollmentAndWaitAsync())
+            return ProofPreference.Password;
 
-        // Settings launches without waiting for enrollment. Ask again after they
-        // return, then re-check — IsAvailable is still false while Settings is open.
         var useNow = await _popups.ConfirmInfoAsync(
             "If fingerprint or face unlock is on now, use it for this export. Otherwise we'll use your password.",
             "Use fingerprint or face unlock?",
@@ -175,6 +179,38 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         return useNow && _biometric.IsAvailable
             ? ProofPreference.Biometric
             : ProofPreference.Password;
+    }
+
+    /// <summary>
+    /// Settings' StartActivity/OpenUrl returns as soon as the OS screen launches.
+    /// Wait for the app to resume before asking whether to use biometrics, otherwise
+    /// the follow-up popup opens over Settings and IsAvailable is still false.
+    /// </summary>
+    private async Task<bool> OpenEnrollmentAndWaitAsync()
+    {
+        var resumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnResumed(object? sender, EventArgs e) => resumed.TrySetResult();
+        _resumes.Resumed += OnResumed;
+        try
+        {
+            if (!await _biometric.OpenEnrollmentSettingsAsync())
+                return false;
+
+            try
+            {
+                await resumed.Task.WaitAsync(EnrollmentResumeWait);
+            }
+            catch (TimeoutException)
+            {
+                // They stayed in Settings; the follow-up still re-checks IsAvailable.
+            }
+
+            return true;
+        }
+        finally
+        {
+            _resumes.Resumed -= OnResumed;
+        }
     }
 
     private async Task<ExportConsentRememberFor?> ChooseRememberForAsync()

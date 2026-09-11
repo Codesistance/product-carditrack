@@ -104,6 +104,12 @@ public partial class ExportHealthDataPage : ContentPage
     {
         base.OnDisappearing();
 
+        // Consent popups (and the password sheet) are PushModalAsync. That disappears this
+        // page without the caregiver leaving it — same handshake as OnAppearing. Cancelling
+        // the generation token then would abort the export they just confirmed.
+        if (_popups.IsShowing)
+            return;
+
         // Leaving the page abandons the poll. The report still finishes server-side; there is
         // just no longer anyone here to hand it to.
         _generation?.Cancel();
@@ -299,13 +305,19 @@ public partial class ExportHealthDataPage : ContentPage
         _exporting = true;
         ExportButton.IsEnabled = false;
         _generation?.Cancel();
-        _generation = new CancellationTokenSource();
-        var ct = _generation.Token;
+        _generation = null;
         try
         {
-            var consent = await ConfirmExportAsync(member, ct);
-            if (consent is null || ct.IsCancellationRequested)
+            // The generation CTS starts after confirmation. Creating it first meant every
+            // consent modal's OnDisappearing cancelled the token, so Export never generated.
+            var consent = await ConfirmExportAsync(member);
+            if (consent is null)
                 return;
+            if (Handler is null || Window is null)
+                return;
+
+            _generation = new CancellationTokenSource();
+            var ct = _generation.Token;
 
             GeneratingDetailLabel.Text = consent.Reused
                 ? "Using your earlier confirmation — we're preparing the copy."
@@ -504,9 +516,8 @@ public partial class ExportHealthDataPage : ContentPage
     /// Responsibility, how long to keep it, then password or fingerprint / face
     /// unlock — or a standing grant reused with the caregiver told so.
     /// </summary>
-    private Task<ExportConsentOutcome?> ConfirmExportAsync(
-        CardiMemberResponse member, CancellationToken ct) =>
-        _consent.ConfirmAsync(BuildRequest(member, consentToken: ""), ct);
+    private Task<ExportConsentOutcome?> ConfirmExportAsync(CardiMemberResponse member) =>
+        _consent.ConfirmAsync(BuildRequest(member, consentToken: ""));
 
     private GenerateReportRequest BuildRequest(CardiMemberResponse member, string consentToken) => new()
     {
