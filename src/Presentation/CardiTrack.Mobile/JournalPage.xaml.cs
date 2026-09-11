@@ -137,6 +137,8 @@ public partial class JournalPage : ContentPage
     {
         base.OnDisappearing();
         _returningFromPopup = _popups.IsShowing;
+        if (!_popups.IsShowing && !ScreenRefresh.IsOnScreen(this))
+            _export.Cancel();
     }
 
     private Task RefreshUnattendedAsync() =>

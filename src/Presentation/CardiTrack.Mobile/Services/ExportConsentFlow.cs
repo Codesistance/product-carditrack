@@ -144,7 +144,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         if (rememberFor is null || ct.IsCancellationRequested)
             return null;
 
-        var method = await ProveAsync(preference);
+        var method = await ProveAsync(preference, ct);
         if (method is null || ct.IsCancellationRequested)
             return null;
 
@@ -260,17 +260,21 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             : ExportConsentRememberFor.ThisExport;
     }
 
-    private async Task<ExportConsentMethod?> ProveAsync(ProofPreference preference)
+    private async Task<ExportConsentMethod?> ProveAsync(
+        ProofPreference preference, CancellationToken ct)
     {
         if (preference == ProofPreference.Biometric && _biometric.IsAvailable)
         {
             if (await _biometric.AuthenticateAsync("Confirm this export"))
                 return ExportConsentMethod.Biometric;
 
+            if (ct.IsCancellationRequested)
+                return null;
+
             await _popups.ShowErrorAsync(
                 "We couldn't confirm with fingerprint or face unlock. Try your password instead.",
                 "Couldn't confirm");
-            return await ProvePasswordAsync();
+            return await ProvePasswordAsync(ct);
         }
 
         if (!_biometric.IsAvailable)
@@ -280,22 +284,32 @@ public sealed class ExportConsentFlow : IExportConsentFlow
                 "Confirm with your password",
                 "Continue",
                 "Cancel");
-            return usePassword ? await ProvePasswordAsync() : null;
+            return usePassword ? await ProvePasswordAsync(ct) : null;
         }
 
-        return await ProvePasswordAsync();
+        return await ProvePasswordAsync(ct);
     }
 
-    private async Task<ExportConsentMethod?> ProvePasswordAsync()
+    private async Task<ExportConsentMethod?> ProvePasswordAsync(CancellationToken ct)
     {
         var password = await _popups.AskPasswordAsync(
             "Confirm it's you",
             "Enter the password you use to sign in to CardiTrack.");
-        if (password is null)
+        if (password is null || ct.IsCancellationRequested)
             return null;
 
-        if (await _auth.VerifyPasswordAsync(password))
-            return ExportConsentMethod.Password;
+        try
+        {
+            if (await _auth.VerifyPasswordAsync(password, ct))
+                return ExportConsentMethod.Password;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+
+        if (ct.IsCancellationRequested)
+            return null;
 
         await _popups.ShowErrorAsync(
             "That password didn't match. Try again, or use this device's fingerprint or face unlock.",

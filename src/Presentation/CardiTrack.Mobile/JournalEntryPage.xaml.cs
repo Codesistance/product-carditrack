@@ -149,6 +149,8 @@ public partial class JournalEntryPage : ContentPage
     {
         base.OnDisappearing();
         _returningFromPopup = _popups.IsShowing;
+        if (!_popups.IsShowing && !ScreenRefresh.IsOnScreen(this))
+            _export.Cancel();
     }
 
     private async void OnPullToRefresh(object? sender, EventArgs e)

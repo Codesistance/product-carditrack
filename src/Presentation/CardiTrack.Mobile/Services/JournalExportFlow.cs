@@ -25,6 +25,9 @@ public interface IJournalExportFlow
         DigestAudience audience,
         DateOnly? entryDate,
         UpdatingOverlay busy);
+
+    /// <summary>Abandons an in-flight journal export when its page is actually left.</summary>
+    void Cancel();
 }
 
 public sealed class JournalExportFlow : IJournalExportFlow
@@ -39,6 +42,7 @@ public sealed class JournalExportFlow : IJournalExportFlow
     private readonly IPopupService _popups;
     private readonly IExportConsentFlow _consent;
     private bool _running;
+    private CancellationTokenSource? _run;
 
     public JournalExportFlow(
         ICardiTrackApiClient api,
@@ -49,6 +53,8 @@ public sealed class JournalExportFlow : IJournalExportFlow
         _popups = popups;
         _consent = consent;
     }
+
+    public void Cancel() => _run?.Cancel();
 
     public async Task RunAsync(
         Guid memberId,
@@ -62,6 +68,9 @@ public sealed class JournalExportFlow : IJournalExportFlow
         if (memberId == Guid.Empty || _running)
             return;
         _running = true;
+        _run?.Cancel();
+        _run = new CancellationTokenSource();
+        var ct = _run.Token;
 
         try
         {
@@ -70,7 +79,7 @@ public sealed class JournalExportFlow : IJournalExportFlow
                 "Cancel",
                 PdfChoice,
                 CsvChoice);
-            if (formatChoice is null)
+            if (formatChoice is null || ct.IsCancellationRequested)
                 return;
 
             var format = formatChoice == CsvChoice ? ReportFormat.Csv : ReportFormat.Pdf;
@@ -80,8 +89,8 @@ public sealed class JournalExportFlow : IJournalExportFlow
 
             var snapshot = JournalExportRequests.Generate(
                 memberId, title, from, to, format, audience, entryDate, consentToken: "");
-            var consent = await _consent.ConfirmAsync(snapshot);
-            if (consent is null)
+            var consent = await _consent.ConfirmAsync(snapshot, ct);
+            if (consent is null || ct.IsCancellationRequested)
                 return;
 
             DiscardCachedExports();
@@ -92,39 +101,40 @@ public sealed class JournalExportFlow : IJournalExportFlow
                         ? "We're writing the summary…"
                         : "Preparing your export…");
 
-            using var cts = new CancellationTokenSource();
             try
             {
                 var request = JournalExportRequests.Generate(
                     memberId, title, from, to, format, audience, entryDate, consent.Token);
-                var queued = await _api.GenerateReportAsync(request, cts.Token);
-                var status = await PollUntilReadyAsync(queued.ReportId, cts.Token);
+                var queued = await _api.GenerateReportAsync(request, ct);
+                var status = await PollUntilReadyAsync(queued.ReportId, ct);
 
                 if (status is null || status.Status != ReportStatus.Ready)
                 {
                     busy.Hide();
-                    await _popups.ShowErrorAsync(
-                        status?.Error ?? "We couldn't finish that export. Please try again.",
-                        "Couldn't export");
+                    if (!ct.IsCancellationRequested)
+                    {
+                        await _popups.ShowErrorAsync(
+                            status?.Error ?? "We couldn't finish that export. Please try again.",
+                            "Couldn't export");
+                    }
+
                     return;
                 }
 
-                var file = await _api.DownloadReportAsync(queued.ReportId, cts.Token);
-                var path = await WriteToCacheAsync(file, cts.Token);
+                var file = await _api.DownloadReportAsync(queued.ReportId, ct);
+                var path = await WriteToCacheAsync(file, ct);
                 busy.Hide();
                 await OfferDeliveryAsync(file, path);
             }
             catch (OperationCanceledException)
             {
                 busy.Hide();
-                await _popups.ShowErrorAsync(
-                    "We couldn't finish that export. Please try again.",
-                    "Couldn't export");
             }
             catch (ApiException ex)
             {
                 busy.Hide();
-                await _popups.ShowErrorAsync(ex.Message, "Couldn't export");
+                if (!ct.IsCancellationRequested)
+                    await _popups.ShowErrorAsync(ex.Message, "Couldn't export");
             }
             finally
             {

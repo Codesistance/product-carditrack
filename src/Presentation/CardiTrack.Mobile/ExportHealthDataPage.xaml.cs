@@ -93,7 +93,12 @@ public partial class ExportHealthDataPage : ContentPage
         // caregiver is part-way through filling in. Returning from OS Settings during enrollment
         // does the same while _exporting is still true — LoadAsync would reset the dates and
         // toggles the consent token was fingerprinted against.
-        if (_popups.IsShowing || _exporting)
+        if (_popups.IsShowing)
+            return;
+
+        // Consent/enrollment: keep the form. A cancelled generation must reload —
+        // returning before finally runs would otherwise leave GeneratingPanel up.
+        if (_exporting && _generation is not { IsCancellationRequested: true })
             return;
 
         // Nor reload on the way back from the share sheet — the finished export is the point.
