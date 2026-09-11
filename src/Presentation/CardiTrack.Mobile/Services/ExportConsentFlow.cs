@@ -199,7 +199,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         if (!open || ct.IsCancellationRequested)
             return ProofPreference.Password;
 
-        if (!await OpenEnrollmentAndWaitAsync(ct))
+        if (!await OpenEnrollmentAndWaitAsync(ct) || ct.IsCancellationRequested)
             return ProofPreference.Password;
 
         var useNow = await _popups.ConfirmInfoAsync(

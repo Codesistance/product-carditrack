@@ -123,6 +123,8 @@ public sealed class JournalExportFlow : IJournalExportFlow
 
                 var file = await _api.DownloadReportAsync(queued.ReportId, ct);
                 var path = await WriteToCacheAsync(file, ct);
+                if (ct.IsCancellationRequested)
+                    return;
                 busy.Hide();
                 await OfferDeliveryAsync(file, path);
             }

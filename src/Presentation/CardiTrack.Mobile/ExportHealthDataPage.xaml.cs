@@ -374,6 +374,8 @@ public partial class ExportHealthDataPage : ContentPage
             }
             catch (ApiException ex)
             {
+                if (ct.IsCancellationRequested)
+                    return;
                 FailedDetailLabel.Text = ex.Message;
                 ShowOnly(FailedPanel);
             }
