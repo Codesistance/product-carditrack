@@ -110,10 +110,11 @@ public sealed class TrendChart : GraphicsView
         else
         {
             // Tapping the already-selected reading dismisses its callout — the second tap means
-            // "put it away", not "tell me again". Identity is the series slot, not the civil day:
-            // a realtime hour stamps every sample with the same date, and comparing dates would
-            // treat a tap on the last minute as a tap on the first.
-            if (_drawable.SelectedSeriesIndex == nearest.Value.SeriesIndex)
+            // "put it away", not "tell me again". Identity is the sample currently shown, not the
+            // stored slot alone: a rolling window can reuse that slot for a different day while
+            // ResolveSelectedIndex still holds the old date, and comparing only the index would
+            // treat a tap on the new day as a dismiss.
+            if (_drawable.IsSelected(nearest.Value))
                 _drawable.ClearSelection();
             else
                 _drawable.Select(nearest.Value);
@@ -413,6 +414,25 @@ internal sealed class TrendChartDrawable : IDrawable
     {
         SelectedDate = point.Date;
         SelectedSeriesIndex = point.SeriesIndex;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="point"/> is the sample the callout is currently naming — the
+    /// rebuilt one, not the stored slot. A rolling window can keep the selected day and move it
+    /// to a new index, while the old index now holds a different day; comparing the stored slot
+    /// would then treat a tap on that new day as a dismiss.
+    /// </summary>
+    public bool IsSelected(ChartDataPoint point)
+    {
+        if (SelectedDate is not { } date)
+            return false;
+
+        var index = ResolveSelectedIndex(date);
+        if (index < 0)
+            return false;
+
+        var shown = _dataPoints[index];
+        return shown.SeriesIndex == point.SeriesIndex && shown.Date == point.Date;
     }
 
     /// <summary>
@@ -730,8 +750,20 @@ internal sealed class TrendChartDrawable : IDrawable
         var pill = new RectF((float)x, (float)y, width, height);
         canvas.FillColor = ink;
         canvas.FillRoundedRectangle(pill, height / 2);
-        canvas.FontColor = Colors.White;
+        canvas.FontColor = CalloutForeground(ink);
         canvas.DrawString(label, pill, HorizontalAlignment.Center, VerticalAlignment.Center);
+    }
+
+    /// <summary>
+    /// White on the metric inks (and on CRITICAL red); dark on NOTICE yellow and URGENT orange,
+    /// whose fills are too light for white at the callout's 10px size.
+    /// </summary>
+    private static Color CalloutForeground(Color fill)
+    {
+        var luminance = 0.2126f * fill.Red + 0.7152f * fill.Green + 0.0722f * fill.Blue;
+        return luminance > 0.45f
+            ? MetricStatus.Resource("HeadingText", Colors.Black)
+            : Colors.White;
     }
 
     /// <summary>
