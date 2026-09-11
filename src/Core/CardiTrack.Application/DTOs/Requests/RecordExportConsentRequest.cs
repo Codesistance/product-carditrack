@@ -28,4 +28,10 @@ public class RecordExportConsentRequest
     public required ExportConsentMethod Method { get; init; }
 
     public bool AcceptedResponsibility { get; init; }
+
+    /// <summary>
+    /// How long this confirmation may authorize later exports. Omitted or
+    /// <see cref="ExportConsentRememberFor.ThisExport"/> keeps today's two-minute token.
+    /// </summary>
+    public ExportConsentRememberFor RememberFor { get; init; } = ExportConsentRememberFor.ThisExport;
 }

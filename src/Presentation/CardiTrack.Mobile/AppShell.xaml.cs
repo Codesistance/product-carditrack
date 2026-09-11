@@ -45,6 +45,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(MetricAlarmsPage.Route, typeof(MetricAlarmsPage));
         Routing.RegisterRoute(MetricAlarmEditPage.Route, typeof(MetricAlarmEditPage));
         Routing.RegisterRoute(NotificationPreferencesPage.Route, typeof(NotificationPreferencesPage));
+        Routing.RegisterRoute(ExportConsentsPage.Route, typeof(ExportConsentsPage));
 
 #if ANDROID || IOS
         WirePush();

@@ -1,10 +1,8 @@
 using System.Globalization;
 using CardiTrack.Application.DTOs.Responses;
-using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
-using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Export;
 
 namespace CardiTrack.Mobile.Services;
@@ -39,20 +37,17 @@ public sealed class JournalExportFlow : IJournalExportFlow
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
-    private readonly IAuthService _auth;
-    private readonly IDeviceBiometric _biometric;
+    private readonly IExportConsentFlow _consent;
     private bool _running;
 
     public JournalExportFlow(
         ICardiTrackApiClient api,
         IPopupService popups,
-        IAuthService auth,
-        IDeviceBiometric biometric)
+        IExportConsentFlow consent)
     {
         _api = api;
         _popups = popups;
-        _auth = auth;
-        _biometric = biometric;
+        _consent = consent;
     }
 
     public async Task RunAsync(
@@ -83,22 +78,25 @@ public sealed class JournalExportFlow : IJournalExportFlow
                 ? $"{memberName} — {audience}, {day.ToString("d MMM yyyy", CultureInfo.InvariantCulture)}"
                 : $"{memberName} — {audience}s";
 
-            var consent = await ConfirmAsync(
-                memberId, from, to, format, audience, entryDate);
+            var snapshot = JournalExportRequests.Generate(
+                memberId, title, from, to, format, audience, entryDate, consentToken: "");
+            var consent = await _consent.ConfirmAsync(snapshot);
             if (consent is null)
                 return;
 
             DiscardCachedExports();
             await busy.ShowUntilHiddenAsync(
-                format == ReportFormat.Pdf
-                    ? "We're writing the summary…"
-                    : "Preparing your export…");
+                consent.Reused
+                    ? "Using your earlier confirmation…"
+                    : format == ReportFormat.Pdf
+                        ? "We're writing the summary…"
+                        : "Preparing your export…");
 
             using var cts = new CancellationTokenSource();
             try
             {
                 var request = JournalExportRequests.Generate(
-                    memberId, title, from, to, format, audience, entryDate, consent);
+                    memberId, title, from, to, format, audience, entryDate, consent.Token);
                 var queued = await _api.GenerateReportAsync(request, cts.Token);
                 var status = await PollUntilReadyAsync(queued.ReportId, cts.Token);
 
@@ -137,89 +135,6 @@ public sealed class JournalExportFlow : IJournalExportFlow
         {
             _running = false;
         }
-    }
-
-    private async Task<string?> ConfirmAsync(
-        Guid memberId,
-        DateOnly from,
-        DateOnly to,
-        ReportFormat format,
-        DigestAudience audience,
-        DateOnly? entryDate)
-    {
-        var accepted = await _popups.ConfirmWarningAsync(
-            ExportConsentPolicy.Text,
-            ExportConsentPolicy.Title,
-            ExportConsentPolicy.ConfirmPrompt,
-            "Not now");
-        if (!accepted)
-            return null;
-
-        var method = await ChooseStepUpAsync();
-        if (method is null)
-            return null;
-
-        if (method == ExportConsentMethod.Password)
-        {
-            var password = await _popups.AskPasswordAsync(
-                "Confirm it's you",
-                "Enter the password you use to sign in to CardiTrack.");
-            if (password is null)
-                return null;
-
-            if (!await _auth.VerifyPasswordAsync(password))
-            {
-                await _popups.ShowErrorAsync(
-                    "That password didn't match. Try again, or use this device's fingerprint or face unlock.",
-                    "Couldn't confirm");
-                return null;
-            }
-        }
-        else if (!await _biometric.AuthenticateAsync("Confirm this export"))
-        {
-            await _popups.ShowErrorAsync(
-                "We couldn't confirm with fingerprint or face unlock. Try your password instead.",
-                "Couldn't confirm");
-            return null;
-        }
-
-        try
-        {
-            var recorded = await _api.RecordExportConsentAsync(
-                JournalExportRequests.Consent(
-                    memberId, from, to, format, audience, entryDate, method.Value));
-            return recorded.ConsentToken;
-        }
-        catch (ApiException ex)
-        {
-            await _popups.ShowErrorAsync(ex.Message, "Couldn't confirm");
-            return null;
-        }
-    }
-
-    private async Task<ExportConsentMethod?> ChooseStepUpAsync()
-    {
-        if (_biometric.IsAvailable)
-        {
-            var choice = await _popups.ChooseAsync(
-                "How do you want to confirm?",
-                "Cancel",
-                "Password",
-                "Fingerprint or face unlock");
-            return choice switch
-            {
-                "Password" => ExportConsentMethod.Password,
-                "Fingerprint or face unlock" => ExportConsentMethod.Biometric,
-                _ => null
-            };
-        }
-
-        var usePassword = await _popups.ConfirmInfoAsync(
-            "Enter the password you use to sign in. This device has no fingerprint or face unlock set up.",
-            "Confirm with your password",
-            "Continue",
-            "Cancel");
-        return usePassword ? ExportConsentMethod.Password : null;
     }
 
     private async Task<ReportStatusResponse?> PollUntilReadyAsync(

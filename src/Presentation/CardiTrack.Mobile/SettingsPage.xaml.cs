@@ -98,6 +98,9 @@ public partial class SettingsPage : ContentPage
     private async void OnExportHealthDataTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync(ExportHealthDataPage.Route);
 
+    private async void OnExportConsentsTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync(ExportConsentsPage.Route);
+
     private async void OnChangePasswordTapped(object? sender, TappedEventArgs e)
     {
         var email = _authService.CurrentUserEmail;

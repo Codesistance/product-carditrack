@@ -69,4 +69,28 @@ public class ExportConsentPolicyTests
             ExportConsentPolicy.Sha256Hex);
         Assert.Equal(64, ExportConsentPolicy.Sha256Hex.Length);
     }
+
+    [Theory]
+    [InlineData(ExportConsentRememberFor.ThisExport, null)]
+    [InlineData(ExportConsentRememberFor.OneWeek, 7)]
+    [InlineData(ExportConsentRememberFor.TwoWeeks, 14)]
+    [InlineData(ExportConsentRememberFor.OneMonth, 30)]
+    public void RememberDuration_CapsAtAMonth(ExportConsentRememberFor rememberFor, int? days)
+    {
+        var duration = ExportConsentPolicy.RememberDuration(rememberFor);
+        if (days is null)
+            Assert.Null(duration);
+        else
+            Assert.Equal(TimeSpan.FromDays(days.Value), duration);
+    }
+
+    [Fact]
+    public void ReuseNotice_AlwaysNamesTheReuse_AndPointsAtSettings()
+    {
+        var notice = ExportConsentPolicy.ReuseNotice("11 Sep 2026", "25 Sep 2026");
+
+        Assert.Contains("We're using the confirmation you gave on 11 Sep 2026", notice);
+        Assert.Contains("It stays in force until 25 Sep 2026", notice);
+        Assert.Contains("You can stop this in Settings", notice);
+    }
 }

@@ -906,9 +906,33 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     // ---- Health data export (M1-17, Story 6.3) ----
 
-    public Task<ExportConsentResponse> RecordExportConsentAsync(
-        RecordExportConsentRequest request, CancellationToken ct = default) =>
-        PostAsync<RecordExportConsentRequest, ExportConsentResponse>("api/v1/reports/consent", request, ct);
+    public async Task<ExportConsentResponse> RecordExportConsentAsync(
+        RecordExportConsentRequest request, CancellationToken ct = default)
+    {
+        var recorded = await PostAsync<RecordExportConsentRequest, ExportConsentResponse>(
+            "api/v1/reports/consent", request, ct);
+        await EvictAsync("api/v1/reports/consents");
+        return recorded;
+    }
+
+    public async Task<ExportConsentResponse> ReuseExportConsentAsync(
+        GenerateReportRequest request, CancellationToken ct = default)
+    {
+        var recorded = await PostAsync<GenerateReportRequest, ExportConsentResponse>(
+            "api/v1/reports/consent/reuse", request, ct);
+        await EvictAsync("api/v1/reports/consents");
+        return recorded;
+    }
+
+    public Task<List<ExportConsentHistoryItem>> GetExportConsentsAsync(
+        CancellationToken ct = default) =>
+        GetAsync<List<ExportConsentHistoryItem>>("api/v1/reports/consents", ct);
+
+    public async Task RevokeExportConsentAsync(Guid consentId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, $"api/v1/reports/consents/{consentId}", ct);
+        await EvictAsync("api/v1/reports/consents");
+    }
 
     public Task<ReportQueuedResponse> GenerateReportAsync(
         GenerateReportRequest request, CancellationToken ct = default) =>

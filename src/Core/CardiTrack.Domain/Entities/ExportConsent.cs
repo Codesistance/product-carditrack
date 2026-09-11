@@ -10,14 +10,21 @@ namespace CardiTrack.Domain.Entities;
 /// <para>
 /// Append-only: a used or expired row is never updated except to stamp
 /// <see cref="ConsumedAt"/> and <see cref="ReportId"/> when the matching
-/// <c>POST /api/v1/reports</c> consumes it. Withdrawal is "do not export again",
+/// <c>POST /api/v1/reports</c> consumes it, or <see cref="RevokedAt"/> when
+/// the caregiver stops a standing grant. Withdrawal is "do not export again",
 /// not an edit of this row.
 /// </para>
 /// <para>
 /// The id (compact <c>"N"</c> form) is the consent token the client must send
-/// with the generate request. It is short-lived and single-use, and is bound
-/// to the request fingerprint so a token minted for one member/period/section
+/// with the generate request. That token is short-lived and single-use, and is
+/// bound to the request fingerprint so a token minted for one member/period/section
 /// set cannot authorize a different export.
+/// </para>
+/// <para>
+/// A standing grant (<see cref="RememberUntil"/> in the future, not revoked,
+/// <see cref="ReusedFromConsentId"/> null) may mint later tokens for different
+/// snapshots without another step-up. Each reuse is a new row pointing at this
+/// one, so the trail still names every export.
 /// </para>
 /// </remarks>
 public class ExportConsent : BaseEntity
@@ -60,6 +67,23 @@ public class ExportConsent : BaseEntity
     public string RequestFingerprint { get; set; } = string.Empty;
 
     public ExportConsentMethod Method { get; set; }
+
+    public ExportConsentRememberFor RememberFor { get; set; } = ExportConsentRememberFor.ThisExport;
+
+    /// <summary>
+    /// When a standing grant may last be reused. Null means this row only
+    /// authorizes the matching generate (the two-minute <see cref="ExpiresAt"/>).
+    /// </summary>
+    public DateTime? RememberUntil { get; set; }
+
+    /// <summary>
+    /// The standing grant this token was minted from. Null on the original
+    /// confirmation. A reuse still gets its own fingerprint and consume stamp.
+    /// </summary>
+    public Guid? ReusedFromConsentId { get; set; }
+
+    /// <summary>When the caregiver stopped a standing grant. Null means it was not revoked.</summary>
+    public DateTime? RevokedAt { get; set; }
 
     public DateTime ExpiresAt { get; set; }
 

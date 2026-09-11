@@ -90,6 +90,7 @@ These screens ship in the current app but have **no Figma M1 frame — needs des
 | NotificationsPage | Data-completeness / nudge inbox — reached from the dashboard's "Complete the picture" section ("See all") |
 | JournalPage | The **Journal** tab (CardiJournal) — a **Days / Weeks / Months** control switches between the Daybook, Weekbook and Monthbook series, newest first, searchable and filterable; a card opens the entry's page. Took the Family tab's slot |
 | JournalEntryPage | One entry in full — Daybook or Weekbook, selected by `?cadence=` — with the fortnight's source-tagged trend charts and counted awareness lines beneath it |
+| ExportConsentsPage | Settings: stop a kept export confirmation, and read every earlier one |
 
 Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without-figma-m1-frames-1) below.
 

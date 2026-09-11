@@ -1,9 +1,7 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
-using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
-using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Services;
 using Microsoft.Maui.Controls.Shapes;
@@ -54,8 +52,7 @@ public partial class ExportHealthDataPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
-    private readonly IAuthService _auth;
-    private readonly IDeviceBiometric _biometric;
+    private readonly IExportConsentFlow _consent;
     private readonly Dictionary<ReportFormat, Border> _formatCards = [];
 
     private Guid _memberId;
@@ -69,14 +66,12 @@ public partial class ExportHealthDataPage : ContentPage
     public ExportHealthDataPage(
         ICardiTrackApiClient api,
         IPopupService popups,
-        IAuthService auth,
-        IDeviceBiometric biometric)
+        IExportConsentFlow consent)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
-        _auth = auth;
-        _biometric = biometric;
+        _consent = consent;
 
         BuildFormatCards();
     }
@@ -305,14 +300,16 @@ public partial class ExportHealthDataPage : ContentPage
         _generation = new CancellationTokenSource();
         var ct = _generation.Token;
 
-        GeneratingDetailLabel.Text = _selectedFormat == ReportFormat.Pdf
-            ? "We're writing the summary — this usually takes under a minute."
-            : "This usually takes a few seconds.";
+        GeneratingDetailLabel.Text = consent.Reused
+            ? "Using your earlier confirmation — we're preparing the copy."
+            : _selectedFormat == ReportFormat.Pdf
+                ? "We're writing the summary — this usually takes under a minute."
+                : "This usually takes a few seconds.";
         ShowOnly(GeneratingPanel);
 
         try
         {
-            var request = BuildRequest(member, consent);
+            var request = BuildRequest(member, consent.Token);
             var queued = await _api.GenerateReportAsync(request, ct);
 
             var status = await PollUntilReadyAsync(queued.ReportId, ct);
@@ -489,98 +486,11 @@ public partial class ExportHealthDataPage : ContentPage
     // ── Plumbing ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Two pop-up questions: accept responsibility, then prove it with a password
-    /// or this device's fingerprint / face unlock. Returns the minted token, or
-    /// null when the caregiver backed out or the proof failed.
+    /// Responsibility, how long to keep it, then password or fingerprint / face
+    /// unlock — or a standing grant reused with the caregiver told so.
     /// </summary>
-    private async Task<string?> ConfirmExportAsync(CardiMemberResponse member)
-    {
-        var accepted = await _popups.ConfirmWarningAsync(
-            ExportConsentPolicy.Text,
-            ExportConsentPolicy.Title,
-            ExportConsentPolicy.ConfirmPrompt,
-            "Not now");
-        if (!accepted)
-            return null;
-
-        var method = await ChooseStepUpAsync();
-        if (method is null)
-            return null;
-
-        if (method == ExportConsentMethod.Password)
-        {
-            var password = await _popups.AskPasswordAsync(
-                "Confirm it's you",
-                "Enter the password you use to sign in to CardiTrack.");
-            if (password is null)
-                return null;
-
-            if (!await _auth.VerifyPasswordAsync(password))
-            {
-                await _popups.ShowErrorAsync(
-                    "That password didn't match. Try again, or use this device's fingerprint or face unlock.",
-                    "Couldn't confirm");
-                return null;
-            }
-        }
-        else if (!await _biometric.AuthenticateAsync("Confirm this export"))
-        {
-            await _popups.ShowErrorAsync(
-                "We couldn't confirm with fingerprint or face unlock. Try your password instead.",
-                "Couldn't confirm");
-            return null;
-        }
-
-        try
-        {
-            var recorded = await _api.RecordExportConsentAsync(new RecordExportConsentRequest
-            {
-                CardiMemberIds = [member.Id],
-                DateRangeFrom = DateOnly.FromDateTime(SelectedFrom),
-                DateRangeTo = DateOnly.FromDateTime(SelectedTo),
-                Format = _selectedFormat,
-                IncludeMetrics = MetricsCheck.IsChecked,
-                IncludeTrends = TrendsCheck.IsChecked,
-                IncludeAlerts = AlertsCheck.IsChecked,
-                IncludeJournals = JournalsCheck.IsChecked,
-                IncludeNotices = NoticesCheck.IsChecked,
-                IncludeDevices = DevicesCheck.IsChecked,
-                Method = method.Value,
-                AcceptedResponsibility = true
-            });
-            return recorded.ConsentToken;
-        }
-        catch (ApiException ex)
-        {
-            await _popups.ShowErrorAsync(ex.Message, "Couldn't confirm");
-            return null;
-        }
-    }
-
-    private async Task<ExportConsentMethod?> ChooseStepUpAsync()
-    {
-        if (_biometric.IsAvailable)
-        {
-            var choice = await _popups.ChooseAsync(
-                "How do you want to confirm?",
-                "Cancel",
-                "Password",
-                "Fingerprint or face unlock");
-            return choice switch
-            {
-                "Password" => ExportConsentMethod.Password,
-                "Fingerprint or face unlock" => ExportConsentMethod.Biometric,
-                _ => null
-            };
-        }
-
-        var usePassword = await _popups.ConfirmInfoAsync(
-            "Enter the password you use to sign in. This device has no fingerprint or face unlock set up.",
-            "Confirm with your password",
-            "Continue",
-            "Cancel");
-        return usePassword ? ExportConsentMethod.Password : null;
-    }
+    private Task<ExportConsentOutcome?> ConfirmExportAsync(CardiMemberResponse member) =>
+        _consent.ConfirmAsync(BuildRequest(member, consentToken: ""));
 
     private GenerateReportRequest BuildRequest(CardiMemberResponse member, string consentToken) => new()
     {

@@ -31,6 +31,35 @@ public class ExportConsentServiceTests
                 var owner = ci.ArgAt<Guid>(1);
                 return Task.FromResult(_rows.FirstOrDefault(c => c.Id == id && c.OwnerUserId == owner));
             });
+        _consents.GetActiveStandingAsync(
+                Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var owner = ci.ArgAt<Guid>(0);
+                var now = ci.ArgAt<DateTime>(1);
+                var sha = ci.ArgAt<string>(2);
+                var grant = _rows
+                    .Where(c =>
+                        c.OwnerUserId == owner
+                        && c.ReusedFromConsentId is null
+                        && c.RevokedAt is null
+                        && c.RememberUntil is { } until
+                        && until > now
+                        && c.PolicySha256 == sha)
+                    .OrderByDescending(c => c.CreatedDate)
+                    .FirstOrDefault();
+                return Task.FromResult(grant);
+            });
+        _consents.ListForOwnerAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var owner = ci.ArgAt<Guid>(0);
+                IReadOnlyList<ExportConsent> list =
+                [
+                    .. _rows.Where(c => c.OwnerUserId == owner).OrderByDescending(c => c.CreatedDate)
+                ];
+                return Task.FromResult(list);
+            });
         _consents.TryConsumeAsync(
                 Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
@@ -47,13 +76,51 @@ public class ExportConsentServiceTests
                 row.ReportId = reportId;
                 return Task.FromResult(true);
             });
+        _consents.TryRevokeAsync(
+                Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var id = ci.ArgAt<Guid>(0);
+                var owner = ci.ArgAt<Guid>(1);
+                var now = ci.ArgAt<DateTime>(2);
+                var row = _rows.FirstOrDefault(c =>
+                    c.Id == id
+                    && c.OwnerUserId == owner
+                    && c.ReusedFromConsentId is null
+                    && c.RevokedAt is null
+                    && c.RememberUntil is { } until
+                    && until > now);
+                if (row is null)
+                    return Task.FromResult(false);
+                row.RevokedAt = now;
+                return Task.FromResult(true);
+            });
+        _consents.RevokeActiveStandingAsync(
+                Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var owner = ci.ArgAt<Guid>(0);
+                var now = ci.ArgAt<DateTime>(1);
+                foreach (var row in _rows.Where(c =>
+                             c.OwnerUserId == owner
+                             && c.ReusedFromConsentId is null
+                             && c.RevokedAt is null
+                             && c.RememberUntil is { } until
+                             && until > now))
+                {
+                    row.RevokedAt = now;
+                }
+
+                return Task.CompletedTask;
+            });
     }
 
     private ExportConsentService CreateSut() => new(_unitOfWork, _access);
 
     private RecordExportConsentRequest RecordRequest(
         bool accepted = true,
-        bool includeJournals = false) => new()
+        bool includeJournals = false,
+        ExportConsentRememberFor rememberFor = ExportConsentRememberFor.ThisExport) => new()
     {
         CardiMemberIds = [_memberId],
         DateRangeFrom = new DateOnly(2026, 2, 7),
@@ -61,7 +128,8 @@ public class ExportConsentServiceTests
         Format = ReportFormat.Pdf,
         IncludeJournals = includeJournals,
         Method = ExportConsentMethod.Password,
-        AcceptedResponsibility = accepted
+        AcceptedResponsibility = accepted,
+        RememberFor = rememberFor
     };
 
     private GenerateReportRequest GenerateRequest(bool includeJournals = false) => new()
@@ -131,6 +199,121 @@ public class ExportConsentServiceTests
 
         Assert.Contains("no longer matches", mismatch.Message);
         Assert.Null(Assert.Single(_rows).ConsumedAt);
+    }
+
+    [Fact]
+    public async Task RecordAsync_RemembersForAWeek_WithoutSpendingTheStandingGrant()
+    {
+        var recorded = await CreateSut().RecordAsync(
+            _userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+
+        var row = Assert.Single(_rows);
+        Assert.Equal(ExportConsentRememberFor.OneWeek, row.RememberFor);
+        Assert.NotNull(row.RememberUntil);
+        Assert.True(row.RememberUntil > DateTime.UtcNow.AddDays(6));
+        Assert.True(row.RememberUntil <= DateTime.UtcNow.AddDays(8));
+        Assert.Equal(recorded.RememberUntil!.Value.UtcDateTime, row.RememberUntil.Value, TimeSpan.FromSeconds(1));
+        Assert.Null(row.RevokedAt);
+        Assert.Null(row.ReusedFromConsentId);
+    }
+
+    [Fact]
+    public async Task RecordAsync_ANewStandingGrant_StopsThePreviousOne()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneMonth));
+        var first = Assert.Single(_rows);
+
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+
+        Assert.Equal(2, _rows.Count);
+        Assert.NotNull(first.RevokedAt);
+        Assert.Null(_rows[1].RevokedAt);
+        Assert.Equal(ExportConsentRememberFor.OneWeek, _rows[1].RememberFor);
+    }
+
+    [Fact]
+    public async Task ReuseAsync_MintsAChild_BoundToTheNewSnapshot_AndNamesTheReuse()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.TwoWeeks));
+        var grant = Assert.Single(_rows);
+        grant.ConsumedAt = DateTime.UtcNow;
+
+        var reused = await CreateSut().ReuseAsync(_userId, GenerateRequest(includeJournals: true));
+
+        Assert.True(reused.Reused);
+        Assert.Equal(grant.Id, reused.ReusedFromConsentId);
+        Assert.Contains("We're using the confirmation you gave on", reused.ReuseNotice);
+        Assert.Contains("You can stop this in Settings", reused.ReuseNotice);
+
+        Assert.Equal(2, _rows.Count);
+        var child = _rows[1];
+        Assert.Equal(grant.Id, child.ReusedFromConsentId);
+        Assert.Equal(grant.Method, child.Method);
+        Assert.Equal(ExportConsentPolicy.Fingerprint(GenerateRequest(includeJournals: true)), child.RequestFingerprint);
+        Assert.NotEqual(grant.Id.ToString("N"), reused.ConsentToken);
+    }
+
+    [Fact]
+    public async Task ReuseAsync_ThrowsWhenThereIsNothingToReuse()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest());
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().ReuseAsync(_userId, GenerateRequest()));
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_RefusesAReuse_OnceTheGrantWasStopped()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+        var grant = Assert.Single(_rows);
+        var reused = await CreateSut().ReuseAsync(_userId, GenerateRequest());
+        grant.RevokedAt = DateTime.UtcNow;
+
+        var stopped = await Assert.ThrowsAsync<ExportConsentException>(() =>
+            CreateSut().ConsumeAsync(_userId, reused.ConsentToken, GenerateRequest(), Guid.NewGuid()));
+
+        Assert.Contains("no longer in force", stopped.Message);
+        Assert.Null(_rows[1].ConsumedAt);
+    }
+
+    [Fact]
+    public async Task ListAsync_MarksAStandingGrantRevocable_AndAReuseAsReused()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneMonth));
+        await CreateSut().ReuseAsync(_userId, GenerateRequest());
+
+        var history = await CreateSut().ListAsync(_userId);
+
+        Assert.Equal(2, history.Count);
+        var reuse = Assert.Single(history, h => h.Reused);
+        Assert.False(reuse.CanRevoke);
+        Assert.False(reuse.CanReuse);
+        Assert.Contains("Reused an earlier confirmation", reuse.Summary);
+
+        var grant = Assert.Single(history, h => h.CanRevoke);
+        Assert.True(grant.CanReuse);
+        Assert.Contains("In force until", grant.Summary);
+    }
+
+    [Fact]
+    public async Task RevokeAsync_StopsTheStandingGrant()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+        var grant = Assert.Single(_rows);
+
+        await CreateSut().RevokeAsync(_userId, grant.Id);
+
+        Assert.NotNull(grant.RevokedAt);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().ReuseAsync(_userId, GenerateRequest()));
+    }
+
+    [Fact]
+    public async Task RevokeAsync_UnknownIsNotFound()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().RevokeAsync(_userId, Guid.NewGuid()));
     }
 
     [Fact]

@@ -67,5 +67,9 @@ public class RecordExportConsentValidator : AbstractValidator<RecordExportConsen
         RuleFor(x => x.Method)
             .IsInEnum()
             .WithMessage("Confirm with your password or this device's fingerprint or face unlock");
+
+        RuleFor(x => x.RememberFor)
+            .IsInEnum()
+            .WithMessage("Choose how long to keep this confirmation");
     }
 }

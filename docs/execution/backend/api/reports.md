@@ -15,7 +15,7 @@ How generation works:
 - **Business validation** now exists (`GenerateReportValidator`): **max 5 CardiMembers**, **max 365-day range**, no duplicate members, at least one section, and an MVP 1 format.
 - **Privacy:** the **AI narrative is generated only for PDF**. Because it goes to the public Gemini endpoint, member names are pseudonymised as "Patient A", "Patient B", … before the model call and swapped back only after the response returns. The model never sees a real name. **CSV and FHIR R4 make no model call at all.**
 - **No caregiver free text crosses into any export** — no medical notes, no alert message bodies, no caregiver device labels ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §70, §85). Journals are CardiTrack-generated AI text and may be included on PDF/CSV when ticked; each entry is labelled as AI. Notices export `RuleCode` / category / state, never localized `TitleKey` bodies.
-- **Recorded consent.** The password is verified on the device against Auth0 and is **never sent to CardiTrack**. The API records only that the caregiver accepted responsibility and which proof they used (`Password` or `Biometric`). The token is single-use, owner-scoped, bound to the request fingerprint, and expires in two minutes.
+- **Recorded consent.** The password is verified on the device against Auth0 and is **never sent to CardiTrack**. The API records only that the caregiver accepted responsibility and which proof they used (`Password` or `Biometric`). The generate token is single-use, owner-scoped, bound to the request fingerprint, and expires in two minutes. On the consent prompt the caregiver may also keep that confirmation for **1 week, 2 weeks, or 1 month** (30 days). A standing grant authorizes later exports without another step-up; each reuse mints a fresh two-minute token, is written as its own row (so the audit trail names every export), and the API/client **always tell the caregiver the confirmation is being reused**. Settings lists every confirmation and can stop a standing grant. A changed policy hash cannot be reused — they confirm again.
 
 **User Stories:** 2.3 (Trend Charts & Historical Data — export), 6.3 (Health Data Export), 9.2 (Printable Reports)
 
@@ -53,15 +53,84 @@ The same snapshot generate will send — members, dates, format, and section fla
 | snapshot fields | — | Yes | Same ceilings as generate (members, range, format, at least one section) |
 | `method` | integer enum | Yes | `ExportConsentMethod`: Password=1, Biometric=2 |
 | `acceptedResponsibility` | boolean | Yes | Must be `true` — the client only sends this after the responsibility popup |
+| `rememberFor` | integer enum | No | `ExportConsentRememberFor`: ThisExport=1 (default), OneWeek=2, TwoWeeks=3, OneMonth=4 (30 days). A value other than ThisExport keeps a standing grant the next export may reuse |
 
 ### Response `200 OK`
 
 ```json
 {
   "consentToken": "8f14e45fceea167a5a36dedd4bea2543",
-  "expiresAt": "2026-08-07T10:02:00Z"
+  "expiresAt": "2026-08-07T10:02:00Z",
+  "reused": false,
+  "rememberUntil": null
 }
 ```
+
+---
+
+## POST `/api/v1/reports/consent/reuse`
+
+Mints a two-minute generate token from an in-force standing grant for this snapshot. **404** when there is none to reuse (expired, revoked, or the policy text has changed) — the client then runs the full confirmation. The envelope **message** and `reuseNotice` always say that an earlier confirmation is being reused.
+
+**Priority:** P0 | **Auth Required:** Yes
+
+### Request Body
+
+The same snapshot generate will send (members, dates, format, section flags). `consentToken` is ignored.
+
+### Response `200 OK`
+
+```json
+{
+  "consentToken": "8f14e45fceea167a5a36dedd4bea2543",
+  "expiresAt": "2026-08-07T10:02:00Z",
+  "reused": true,
+  "reusedFromConsentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "originalConsentedAt": "2026-08-01T10:00:00Z",
+  "rememberUntil": "2026-08-15T10:00:00Z",
+  "reuseNotice": "We're using the confirmation you gave on 1 Aug 2026. It stays in force until 15 Aug 2026. You can stop this in Settings."
+}
+```
+
+---
+
+## GET `/api/v1/reports/consents`
+
+Every confirmation this caregiver has given, newest first. Settings uses this list: standing grants with `canRevoke` can be stopped; `canReuse` is the grant the next export will offer to reuse.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+### Response `200 OK`
+
+```json
+[
+  {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "recordedAt": "2026-08-01T10:00:00Z",
+    "method": 2,
+    "rememberFor": 3,
+    "rememberUntil": "2026-08-15T10:00:00Z",
+    "revokedAt": null,
+    "consumedAt": "2026-08-01T10:00:20Z",
+    "reused": false,
+    "canRevoke": true,
+    "canReuse": true,
+    "summary": "In force until 15 Aug 2026 · fingerprint or face unlock"
+  }
+]
+```
+
+---
+
+## DELETE `/api/v1/reports/consents/{consentId}`
+
+Stops a standing grant. Later exports must confirm again. Copies already made are unchanged. **404** when the id is unknown, not theirs, or is not a standing grant they can stop.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+### Response `200 OK`
+
+Envelope message: `"That confirmation is no longer in force."`
 
 ---
 
@@ -245,4 +314,4 @@ Both messages are **fixed caregiver-facing copy** and never echo the requested i
 
 **Related:** [readme.md](readme.md) | [health-data.md](health-data.md) | [User Stories 2.3, 9.2](../../ui/mobile/user_stories.md)
 
-**Last Updated:** September 9, 2026
+**Last Updated:** September 11, 2026

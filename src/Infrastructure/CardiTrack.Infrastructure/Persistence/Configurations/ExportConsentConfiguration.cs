@@ -29,6 +29,11 @@ public class ExportConsentConfiguration : IEntityTypeConfiguration<ExportConsent
             .HasMaxLength(20)
             .IsRequired();
 
+        builder.Property(c => c.RememberFor)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
         builder.Property(c => c.JournalAudience)
             .HasConversion<string>()
             .HasMaxLength(20);
@@ -36,6 +41,8 @@ public class ExportConsentConfiguration : IEntityTypeConfiguration<ExportConsent
         builder.Property(c => c.PolicyVersion).HasMaxLength(80).IsRequired();
         builder.Property(c => c.PolicySha256).HasMaxLength(64).IsRequired();
         builder.Property(c => c.RequestFingerprint).HasMaxLength(64).IsRequired();
+
+        builder.HasIndex(c => new { c.OwnerUserId, c.RememberUntil });
 
         builder.Property(c => c.CreatedDate).HasDefaultValueSql("NOW()");
     }

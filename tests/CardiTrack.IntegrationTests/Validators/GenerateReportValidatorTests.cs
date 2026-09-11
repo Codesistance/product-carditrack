@@ -321,4 +321,12 @@ public class GenerateReportValidatorTests
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("when journals are included"));
     }
+
+    [Fact]
+    public void Reuse_AcceptsASnapshotWithoutAToken()
+    {
+        var reuse = new ReuseExportConsentValidator();
+        Assert.True(reuse.Validate(Build(consentToken: null)).IsValid);
+        Assert.True(reuse.Validate(Build(consentToken: "")).IsValid);
+    }
 }
