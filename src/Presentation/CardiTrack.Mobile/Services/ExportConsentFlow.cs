@@ -23,8 +23,6 @@ public interface IExportConsentFlow
 
 public sealed class ExportConsentFlow : IExportConsentFlow
 {
-    private static readonly TimeSpan EnrollmentResumeWait = TimeSpan.FromMinutes(5);
-
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly IAuthService _auth;
@@ -48,11 +46,18 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     public async Task<ExportConsentOutcome?> ConfirmAsync(
         GenerateReportRequest snapshot, CancellationToken ct = default)
     {
-        var reused = await TryReuseAsync(snapshot, ct);
-        if (reused is not null)
-            return reused;
+        try
+        {
+            var reused = await TryReuseAsync(snapshot, ct);
+            if (reused is not null)
+                return reused;
 
-        return await RecordFreshAsync(snapshot, ct);
+            return await RecordFreshAsync(snapshot, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     private async Task<ExportConsentOutcome?> TryReuseAsync(
@@ -82,6 +87,8 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             "Using your earlier confirmation",
             "Continue",
             "Confirm again");
+        if (ct.IsCancellationRequested)
+            return null;
         if (!keep)
             return await RecordFreshAsync(snapshot, ct);
 
@@ -104,22 +111,24 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     private async Task<ExportConsentOutcome?> RecordFreshAsync(
         GenerateReportRequest snapshot, CancellationToken ct)
     {
-        var preference = await OfferBiometricsAsync();
+        var preference = await OfferBiometricsAsync(ct);
+        if (ct.IsCancellationRequested)
+            return null;
 
         var accepted = await _popups.ConfirmWarningAsync(
             ExportConsentPolicy.Text,
             ExportConsentPolicy.Title,
             ExportConsentPolicy.ConfirmPrompt,
             "Not now");
-        if (!accepted)
+        if (!accepted || ct.IsCancellationRequested)
             return null;
 
         var rememberFor = await ChooseRememberForAsync();
-        if (rememberFor is null)
+        if (rememberFor is null || ct.IsCancellationRequested)
             return null;
 
         var method = await ProveAsync(preference);
-        if (method is null)
+        if (method is null || ct.IsCancellationRequested)
             return null;
 
         try
@@ -145,7 +154,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     /// When the device can do fingerprint or face unlock, ask to use it — or
     /// to turn it on — before the responsibility prompt.
     /// </summary>
-    private async Task<ProofPreference> OfferBiometricsAsync()
+    private async Task<ProofPreference> OfferBiometricsAsync(CancellationToken ct)
     {
         if (_biometric.IsAvailable)
         {
@@ -165,10 +174,10 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             "Turn on fingerprint or face unlock?",
             "Open settings",
             "Not now");
-        if (!open)
+        if (!open || ct.IsCancellationRequested)
             return ProofPreference.Password;
 
-        if (!await OpenEnrollmentAndWaitAsync())
+        if (!await OpenEnrollmentAndWaitAsync(ct))
             return ProofPreference.Password;
 
         var useNow = await _popups.ConfirmInfoAsync(
@@ -185,8 +194,10 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     /// Settings' StartActivity/OpenUrl returns as soon as the OS screen launches.
     /// Wait for the app to resume before asking whether to use biometrics, otherwise
     /// the follow-up popup opens over Settings and IsAvailable is still false.
+    /// A timeout that then continued the flow would still open popups over Settings;
+    /// leave waits until resume or the page-lifetime token is cancelled.
     /// </summary>
-    private async Task<bool> OpenEnrollmentAndWaitAsync()
+    private async Task<bool> OpenEnrollmentAndWaitAsync(CancellationToken ct)
     {
         var resumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnResumed(object? sender, EventArgs e) => resumed.TrySetResult();
@@ -196,16 +207,12 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             if (!await _biometric.OpenEnrollmentSettingsAsync())
                 return false;
 
-            try
-            {
-                await resumed.Task.WaitAsync(EnrollmentResumeWait);
-            }
-            catch (TimeoutException)
-            {
-                // They stayed in Settings; the follow-up still re-checks IsAvailable.
-            }
-
+            await resumed.Task.WaitAsync(ct);
             return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
         finally
         {

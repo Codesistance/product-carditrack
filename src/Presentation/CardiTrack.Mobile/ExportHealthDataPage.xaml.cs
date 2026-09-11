@@ -59,6 +59,7 @@ public partial class ExportHealthDataPage : ContentPage
     private List<CardiMemberResponse> _members = [];
     private ReportFormat _selectedFormat = ReportFormat.Pdf;
     private CancellationTokenSource? _generation;
+    private CancellationTokenSource? _page;
     private ReportFile? _ready;
     private string? _readyPath;
     private bool _isLoading;
@@ -89,8 +90,10 @@ public partial class ExportHealthDataPage : ContentPage
         base.OnAppearing();
 
         // A popup closing raises OnAppearing again; reloading then would throw away a form the
-        // caregiver is part-way through filling in.
-        if (_popups.IsShowing)
+        // caregiver is part-way through filling in. Returning from OS Settings during enrollment
+        // does the same while _exporting is still true — LoadAsync would reset the dates and
+        // toggles the consent token was fingerprinted against.
+        if (_popups.IsShowing || _exporting)
             return;
 
         // Nor reload on the way back from the share sheet — the finished export is the point.
@@ -113,6 +116,11 @@ public partial class ExportHealthDataPage : ContentPage
         // Leaving the page abandons the poll. The report still finishes server-side; there is
         // just no longer anyone here to hand it to.
         _generation?.Cancel();
+
+        // Page-lifetime token is for the consent HTTP waits, not for popup/native UI.
+        // Native biometric also disappears this page while it is still CurrentPage.
+        if (!ScreenRefresh.IsOnScreen(this))
+            _page?.Cancel();
     }
 
     // ── Loading ─────────────────────────────────────────────────────────────────
@@ -306,14 +314,19 @@ public partial class ExportHealthDataPage : ContentPage
         ExportButton.IsEnabled = false;
         _generation?.Cancel();
         _generation = null;
+        _page?.Cancel();
+        _page = new CancellationTokenSource();
+        var pageCt = _page.Token;
         try
         {
-            // The generation CTS starts after confirmation. Creating it first meant every
-            // consent modal's OnDisappearing cancelled the token, so Export never generated.
-            var consent = await ConfirmExportAsync(member);
+            // Snapshot first: OnAppearing after Settings must not rebuild generate from
+            // reset controls. The generation CTS starts after confirmation — creating it
+            // first meant every consent modal's OnDisappearing cancelled the export.
+            var snapshot = BuildRequest(member, consentToken: "");
+            var consent = await ConfirmExportAsync(snapshot, pageCt);
             if (consent is null)
                 return;
-            if (Handler is null || Window is null)
+            if (!ScreenRefresh.IsOnScreen(this))
                 return;
 
             _generation = new CancellationTokenSource();
@@ -328,8 +341,8 @@ public partial class ExportHealthDataPage : ContentPage
 
             try
             {
-                var request = BuildRequest(member, consent.Token);
-                var queued = await _api.GenerateReportAsync(request, ct);
+                var queued = await _api.GenerateReportAsync(
+                    WithConsentToken(snapshot, consent.Token), ct);
 
                 var status = await PollUntilReadyAsync(queued.ReportId, ct);
 
@@ -516,8 +529,37 @@ public partial class ExportHealthDataPage : ContentPage
     /// Responsibility, how long to keep it, then password or fingerprint / face
     /// unlock — or a standing grant reused with the caregiver told so.
     /// </summary>
-    private Task<ExportConsentOutcome?> ConfirmExportAsync(CardiMemberResponse member) =>
-        _consent.ConfirmAsync(BuildRequest(member, consentToken: ""));
+    private async Task<ExportConsentOutcome?> ConfirmExportAsync(
+        GenerateReportRequest snapshot, CancellationToken ct)
+    {
+        try
+        {
+            return await _consent.ConfirmAsync(snapshot, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    private static GenerateReportRequest WithConsentToken(
+        GenerateReportRequest snapshot, string consentToken) => new()
+    {
+        CardiMemberIds = snapshot.CardiMemberIds,
+        DateRangeFrom = snapshot.DateRangeFrom,
+        DateRangeTo = snapshot.DateRangeTo,
+        Format = snapshot.Format,
+        IncludeMetrics = snapshot.IncludeMetrics,
+        IncludeTrends = snapshot.IncludeTrends,
+        IncludeAlerts = snapshot.IncludeAlerts,
+        IncludeJournals = snapshot.IncludeJournals,
+        IncludeNotices = snapshot.IncludeNotices,
+        IncludeDevices = snapshot.IncludeDevices,
+        JournalEntryDate = snapshot.JournalEntryDate,
+        JournalAudience = snapshot.JournalAudience,
+        ConsentToken = consentToken,
+        Title = snapshot.Title
+    };
 
     private GenerateReportRequest BuildRequest(CardiMemberResponse member, string consentToken) => new()
     {
@@ -563,6 +605,10 @@ public partial class ExportHealthDataPage : ContentPage
         }
     }
 
-    private async void OnBackClicked(object? sender, EventArgs e) =>
+    private async void OnBackClicked(object? sender, EventArgs e)
+    {
+        _page?.Cancel();
+        _generation?.Cancel();
         await Shell.Current.GoToAsync("..");
+    }
 }

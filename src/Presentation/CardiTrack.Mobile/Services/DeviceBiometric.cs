@@ -230,7 +230,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
                 UIKit.UIApplication.SharedApplication.OpenUrl(
                     url,
                     new UIKit.UIApplicationOpenUrlOptions(),
-                    _ => tcs.TrySetResult(true));
+                    opened => tcs.TrySetResult(opened));
             }
             catch (Exception)
             {
