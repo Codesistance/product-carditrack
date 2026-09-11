@@ -401,6 +401,18 @@ public interface ICardiTrackApiClient
     Task<ExportConsentResponse> RecordExportConsentAsync(
         RecordExportConsentRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Mints a token from the named in-force standing grant. 404 when that grant
+    /// cannot be reused — the caller then runs the full confirmation.
+    /// </summary>
+    Task<ExportConsentResponse> ReuseExportConsentAsync(
+        Guid consentId, GenerateReportRequest request, CancellationToken ct = default);
+
+    Task<List<ExportConsentHistoryItem>> GetExportConsentsAsync(
+        CancellationToken ct = default);
+
+    Task RevokeExportConsentAsync(Guid consentId, CancellationToken ct = default);
+
     Task<ReportQueuedResponse> GenerateReportAsync(
         GenerateReportRequest request, CancellationToken ct = default);
 

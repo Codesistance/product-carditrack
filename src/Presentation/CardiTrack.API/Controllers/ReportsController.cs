@@ -1,11 +1,14 @@
 using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
+using CardiTrack.API.Validators;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Domain.Enums;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CardiTrack.API.Controllers;
 
@@ -18,6 +21,7 @@ public class ReportsController : BaseApiController
     private readonly IExportConsentService _consent;
     private readonly IValidator<GenerateReportRequest> _generateValidator;
     private readonly IValidator<RecordExportConsentRequest> _consentValidator;
+    private readonly ReuseExportConsentValidator _reuseValidator;
 
     public ReportsController(
         IUserContext userContext,
@@ -25,13 +29,15 @@ public class ReportsController : BaseApiController
         IReportGenerationService reportService,
         IExportConsentService consent,
         IValidator<GenerateReportRequest> generateValidator,
-        IValidator<RecordExportConsentRequest> consentValidator)
+        IValidator<RecordExportConsentRequest> consentValidator,
+        ReuseExportConsentValidator reuseValidator)
         : base(userContext, logger)
     {
         _reportService = reportService;
         _consent = consent;
         _generateValidator = generateValidator;
         _consentValidator = consentValidator;
+        _reuseValidator = reuseValidator;
     }
 
     /// <summary>
@@ -44,6 +50,7 @@ public class ReportsController : BaseApiController
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<ExportConsentResponse>>> RecordConsent(
         [FromBody] RecordExportConsentRequest request, CancellationToken ct)
     {
@@ -56,8 +63,97 @@ public class ReportsController : BaseApiController
 
         try
         {
-            var recorded = await _consent.RecordAsync(UserContext.UserId, request, ct);
+            var recorded = await RecordStandingOrRetryAsync(request, ct);
             return Success(recorded, "Confirmed — we can prepare the export now.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (DbUpdateException)
+        {
+            return Error(
+                "That confirmation couldn't be saved just then — please try again.",
+                StatusCodes.Status409Conflict);
+        }
+    }
+
+    /// <summary>
+    /// Two concurrent remembered confirmations can both pass revoke and then
+    /// collide on the one-standing-grant index. Retry once so the loser
+    /// revokes the winner and inserts, matching "a new grant stops the previous".
+    /// </summary>
+    private async Task<ExportConsentResponse> RecordStandingOrRetryAsync(
+        RecordExportConsentRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return await _consent.RecordAsync(UserContext.UserId, request, ct);
+        }
+        catch (DbUpdateException) when (request.RememberFor != ExportConsentRememberFor.ThisExport)
+        {
+            return await _consent.RecordAsync(UserContext.UserId, request, ct);
+        }
+    }
+
+    /// <summary>
+    /// Mints a two-minute token from the named in-force standing grant for this
+    /// snapshot. The client must tell the caregiver the confirmation is being reused.
+    /// </summary>
+    [HttpPost("consents/{consentId:guid}/reuse")]
+    [AuditHealthDataAccess("ReuseExportConsent")]
+    [ProducesResponseType(typeof(ApiResponse<ExportConsentResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<ExportConsentResponse>>> ReuseConsent(
+        Guid consentId, [FromBody] GenerateReportRequest request, CancellationToken ct)
+    {
+        if (NotSignedIn(out var signInError))
+            return signInError;
+
+        var validation = await _reuseValidator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return ValidationFailed(validation);
+
+        try
+        {
+            var reused = await _consent.ReuseAsync(UserContext.UserId, consentId, request, ct);
+            return Success(reused, reused.ReuseNotice ?? "We're using your earlier confirmation.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>Every confirmation this caregiver has given, newest first.</summary>
+    [HttpGet("consents")]
+    [ProducesResponseType(typeof(ApiResponse<IReadOnlyList<ExportConsentHistoryItem>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ExportConsentHistoryItem>>>> ListConsents(
+        CancellationToken ct)
+    {
+        if (NotSignedIn(out var signInError))
+            return signInError;
+
+        return Success(await _consent.ListAsync(UserContext.UserId, ct));
+    }
+
+    /// <summary>Stops a standing grant. Later exports must confirm again.</summary>
+    [HttpDelete("consents/{consentId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<object>>> RevokeConsent(Guid consentId, CancellationToken ct)
+    {
+        if (NotSignedIn(out var signInError))
+            return signInError;
+
+        try
+        {
+            await _consent.RevokeAsync(UserContext.UserId, consentId, ct);
+            return Success("That confirmation is no longer in force.");
         }
         catch (KeyNotFoundException ex)
         {

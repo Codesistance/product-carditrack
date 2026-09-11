@@ -1,5 +1,6 @@
 using CardiTrack.API.Controllers;
 using CardiTrack.API.Infrastructure.UserContext;
+using CardiTrack.API.Validators;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
@@ -45,7 +46,8 @@ public class ReportsEndpointTests
             _reports,
             _consent,
             _validator,
-            _consentValidator)
+            _consentValidator,
+            new ReuseExportConsentValidator())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
@@ -107,5 +109,96 @@ public class ReportsEndpointTests
         var envelope = Assert.IsType<ApiResponse<ExportConsentResponse>>(ok.Value);
         Assert.True(envelope.Success);
         Assert.Equal("aabbccdd", envelope.Data!.ConsentToken);
+    }
+
+    [Fact]
+    public async Task RecordConsent_RetriesOnce_WhenTheStandingGrantIndexCollides()
+    {
+        _consent.RecordAsync(Arg.Any<Guid>(), Arg.Any<RecordExportConsentRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ => throw new Microsoft.EntityFrameworkCore.DbUpdateException(),
+                _ => new ExportConsentResponse
+                {
+                    ConsentToken = "retried",
+                    ExpiresAt = new DateTimeOffset(2026, 9, 9, 12, 2, 0, TimeSpan.Zero)
+                });
+
+        var result = await CreateSut().RecordConsent(new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 8, 9),
+            DateRangeTo = new DateOnly(2026, 9, 7),
+            Format = ReportFormat.Pdf,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true,
+            RememberFor = ExportConsentRememberFor.OneWeek
+        }, default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<ExportConsentResponse>>(ok.Value);
+        Assert.Equal("retried", envelope.Data!.ConsentToken);
+        await _consent.Received(2).RecordAsync(
+            Arg.Any<Guid>(), Arg.Any<RecordExportConsentRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReuseConsent_Answers200_WithTheReuseNamedInTheEnvelope()
+    {
+        _consent.ReuseAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<GenerateReportRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new ExportConsentResponse
+            {
+                ConsentToken = "reusedtoken",
+                ExpiresAt = new DateTimeOffset(2026, 9, 11, 12, 2, 0, TimeSpan.Zero),
+                Reused = true,
+                ReuseNotice = "We're using the confirmation you gave on 4 Sep 2026. It stays in force until 18 Sep 2026. You can stop this in Settings."
+            });
+
+        var result = await CreateSut().ReuseConsent(Guid.NewGuid(), AnyRequest(), default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<ExportConsentResponse>>(ok.Value);
+        Assert.True(envelope.Success);
+        Assert.True(envelope.Data!.Reused);
+        Assert.Contains("We're using the confirmation", envelope.Message);
+    }
+
+    [Fact]
+    public async Task ListConsents_Answers200_WithTheHistory()
+    {
+        var id = Guid.NewGuid();
+        _consent.ListAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns([
+                new ExportConsentHistoryItem
+                {
+                    Id = id,
+                    RecordedAt = new DateTimeOffset(2026, 9, 11, 12, 0, 0, TimeSpan.Zero),
+                    Method = ExportConsentMethod.Biometric,
+                    RememberFor = ExportConsentRememberFor.OneWeek,
+                    CanRevoke = true,
+                    CanReuse = true,
+                    Summary = "In force until 18 Sep 2026 · fingerprint or face unlock",
+                    Reused = false
+                }
+            ]);
+
+        var result = await CreateSut().ListConsents(default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<IReadOnlyList<ExportConsentHistoryItem>>>(ok.Value);
+        Assert.True(envelope.Success);
+        var row = Assert.Single(envelope.Data!);
+        Assert.Equal(id, row.Id);
+        Assert.True(row.CanRevoke);
+    }
+
+    [Fact]
+    public async Task RevokeConsent_Answers200()
+    {
+        var result = await CreateSut().RevokeConsent(Guid.NewGuid(), default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<object>>(ok.Value);
+        Assert.True(envelope.Success);
+        await _consent.Received(1).RevokeAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 }

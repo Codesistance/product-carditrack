@@ -251,6 +251,12 @@ Based on the solution manifest, market analysis, and README, here are comprehens
   - Clear format explanations ("FHIR R4 is accepted by most US patient portals and EHR systems")
   - Export confirmation with file size estimate
   - Screen: M1-17 (Health Data Export)
+  - If the device can do fingerprint or face unlock, prompt to use it (or to turn it on) before confirming
+  - On the consent prompt, keep the confirmation for this export only, 1 week, 2 weeks, or 1 month (30 days max)
+  - A kept confirmation is reused on later exports; the caregiver is always told it is being reused
+  - Settings lists every confirmation and can stop a kept one
+  - [Edge] **Given** a kept confirmation whose wording has changed **When** they export **Then** they confirm again rather than silently reusing it
+  - [Edge] **Given** they stop a kept confirmation in Settings **When** they export **Then** the full confirmation runs again
 
 **Story 6.2: Device Management**
 - **As a** caregiver whose parent switched devices

@@ -14,9 +14,21 @@ public interface IExportConsentService
         Guid requestingUserId, RecordExportConsentRequest request, CancellationToken ct = default);
 
     /// <summary>
+    /// Mints a two-minute token from an in-force standing grant for this
+    /// snapshot. Throws <see cref="KeyNotFoundException"/> when
+    /// <paramref name="standingConsentId"/> is not an in-force grant the
+    /// caller owns, or the caller may not view a named CardiMember.
+    /// </summary>
+    Task<ExportConsentResponse> ReuseAsync(
+        Guid requestingUserId,
+        Guid standingConsentId,
+        GenerateReportRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Marks the token used and binds it to <paramref name="reportId"/>.
     /// Throws <see cref="Exceptions.ExportConsentException"/> when the token is
-    /// missing, expired, already used, or does not match <paramref name="request"/>.
+    /// missing, expired, already used, revoked, or does not match <paramref name="request"/>.
     /// </summary>
     Task ConsumeAsync(
         Guid requestingUserId,
@@ -24,4 +36,15 @@ public interface IExportConsentService
         GenerateReportRequest request,
         Guid reportId,
         CancellationToken ct = default);
+
+    /// <summary>Every confirmation this caregiver has given, newest first.</summary>
+    Task<IReadOnlyList<ExportConsentHistoryItem>> ListAsync(
+        Guid requestingUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stops a standing grant. Later exports must confirm again. Throws
+    /// <see cref="KeyNotFoundException"/> when the id is unknown, not theirs,
+    /// or is not a standing grant they can stop.
+    /// </summary>
+    Task RevokeAsync(Guid requestingUserId, Guid consentId, CancellationToken ct = default);
 }

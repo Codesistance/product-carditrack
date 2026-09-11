@@ -158,6 +158,23 @@
                     </Grid>
                 </Border>
 
+                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
+                          SemanticProperties.Description="Export confirmations"
+                          SemanticProperties.Hint="Stop a kept confirmation, or see earlier ones">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnExportConsentsTapped"/>
+                        </Grid.GestureRecognizers>
+                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                            <Label Text="Export confirmations" Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label Text="Stop a kept confirmation, or see earlier ones"
+                                   Style="{StaticResource Body2}"/>
+                        </VerticalStackLayout>
+                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                               VerticalTextAlignment="Center"/>
+                    </Grid>
+                </Border>
+
                 <Label Text="About"
                        Style="{StaticResource DashboardSectionTitle}"
                        Margin="4,8,4,-4"/>

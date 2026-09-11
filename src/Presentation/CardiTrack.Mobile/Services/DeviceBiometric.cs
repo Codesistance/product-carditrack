@@ -3,8 +3,9 @@ using CardiTrack.Mobile.Core.Auth;
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>
-/// Platform biometric unlock. Android uses the OS biometric prompt; other
-/// targets report unavailable so export falls back to the password popup.
+/// Platform biometric unlock. Android uses BiometricPrompt; iOS uses
+/// LocalAuthentication. Other targets report unavailable so export falls
+/// back to the password popup.
 /// </summary>
 public sealed class DeviceBiometric : IDeviceBiometric
 {
@@ -13,24 +14,67 @@ public sealed class DeviceBiometric : IDeviceBiometric
         Android.Hardware.Biometrics.BiometricManagerAuthenticators.BiometricStrong
         | Android.Hardware.Biometrics.BiometricManagerAuthenticators.BiometricWeak;
 
-    public bool IsAvailable
+    public bool IsAvailable => AuthenticateResult()
+        == Android.Hardware.Biometrics.BiometricCode.Success;
+
+    public bool CanEnroll
     {
         get
         {
+            var result = AuthenticateResult();
+            // 11 is BIOMETRIC_ERROR_NONE_ENROLLED — hardware is present, nothing enrolled.
+            return (int)result == 11;
+        }
+    }
+
+    public Task OpenEnrollmentSettingsAsync()
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
             try
             {
-                var context = Android.App.Application.Context;
-                if (context.GetSystemService(Android.Content.Context.BiometricService)
-                    is not Android.Hardware.Biometrics.BiometricManager manager)
-                    return false;
-
-                return manager.CanAuthenticate((int)Allowed)
-                    == Android.Hardware.Biometrics.BiometricCode.Success;
+                var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity
+                    ?? throw new InvalidOperationException("No current activity.");
+                var intent = BuildEnrollmentIntent();
+                activity.StartActivity(intent);
+                tcs.TrySetResult(true);
             }
             catch (Exception)
             {
-                return false;
+                tcs.TrySetResult(false);
             }
+        });
+        return tcs.Task;
+    }
+
+    private static Android.Content.Intent BuildEnrollmentIntent()
+    {
+        if (Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.R)
+        {
+            return new Android.Content.Intent(Android.Provider.Settings.ActionBiometricEnroll)
+                .PutExtra(
+                    Android.Provider.Settings.ExtraBiometricAuthenticatorsAllowed,
+                    (int)Allowed);
+        }
+
+        return new Android.Content.Intent(Android.Provider.Settings.ActionSecuritySettings);
+    }
+
+    private static Android.Hardware.Biometrics.BiometricCode AuthenticateResult()
+    {
+        try
+        {
+            var context = Android.App.Application.Context;
+            if (context.GetSystemService(Android.Content.Context.BiometricService)
+                is not Android.Hardware.Biometrics.BiometricManager manager)
+                return Android.Hardware.Biometrics.BiometricCode.ErrorNoHardware;
+
+            return manager.CanAuthenticate((int)Allowed);
+        }
+        catch (Exception)
+        {
+            return Android.Hardware.Biometrics.BiometricCode.ErrorNoHardware;
         }
     }
 
@@ -147,8 +191,101 @@ public sealed class DeviceBiometric : IDeviceBiometric
             Java.Lang.ICharSequence? errString) =>
             Complete(false);
     }
+#elif IOS
+    public bool IsAvailable
+    {
+        get
+        {
+            using var context = new LocalAuthentication.LAContext();
+            return context.CanEvaluatePolicy(
+                LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics, out _);
+        }
+    }
+
+    public bool CanEnroll
+    {
+        get
+        {
+            using var context = new LocalAuthentication.LAContext();
+            if (context.CanEvaluatePolicy(
+                    LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics, out var error))
+                return false;
+
+            return error is not null
+                && error.Code == (nint)LocalAuthentication.LAStatus.BiometryNotEnrolled;
+        }
+    }
+
+    public Task OpenEnrollmentSettingsAsync()
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try
+            {
+                var url = new Foundation.NSUrl(UIKit.UIApplication.OpenSettingsUrlString);
+                // Apple has no public URL for Face ID / Touch ID enrollment. This opens
+                // CardiTrack's page in Settings; the prompt tells them to turn biometrics
+                // on in the system Settings app, then the follow-up re-checks IsAvailable.
+                UIKit.UIApplication.SharedApplication.OpenUrl(
+                    url,
+                    new UIKit.UIApplicationOpenUrlOptions(),
+                    _ => tcs.TrySetResult(true));
+            }
+            catch (Exception)
+            {
+                tcs.TrySetResult(false);
+            }
+        });
+        return tcs.Task;
+    }
+
+    public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (ct.IsCancellationRequested)
+        {
+            tcs.TrySetResult(false);
+            return tcs.Task;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var context = new LocalAuthentication.LAContext();
+            if (!context.CanEvaluatePolicy(
+                    LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics, out _))
+            {
+                tcs.TrySetResult(false);
+                return;
+            }
+
+            ct.Register(() =>
+            {
+                try
+                {
+                    context.Invalidate();
+                }
+                catch (Exception)
+                {
+                    // Prompt already dismissed.
+                }
+
+                tcs.TrySetResult(false);
+            });
+
+            context.EvaluatePolicy(
+                LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics,
+                reason,
+                (success, _) => tcs.TrySetResult(success));
+        });
+        return tcs.Task;
+    }
 #else
     public bool IsAvailable => false;
+
+    public bool CanEnroll => false;
+
+    public Task OpenEnrollmentSettingsAsync() => Task.CompletedTask;
 
     public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
     {

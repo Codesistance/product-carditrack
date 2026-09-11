@@ -25,7 +25,15 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
     /// </summary>
     public const int MaxRangeDays = 365;
 
-    public GenerateReportValidator()
+    public GenerateReportValidator() : this(requireConsentToken: true)
+    {
+    }
+
+    /// <param name="requireConsentToken">
+    /// False for the reuse endpoint, which mints a token from a standing grant
+    /// rather than asking the caller to present one.
+    /// </param>
+    protected GenerateReportValidator(bool requireConsentToken)
     {
         // Cascade.Stop, not decoration: `required` is satisfied by an explicit JSON null, and
         // FluentValidation's default is to keep evaluating a chain after a rule fails — so
@@ -61,9 +69,12 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
                        || x.IncludeJournals || x.IncludeNotices)
                 .WithMessage("Choose at least one kind of data to include");
 
-        RuleFor(x => x.ConsentToken)
-            .NotEmpty()
-            .WithMessage("Confirm you accept responsibility before exporting");
+        if (requireConsentToken)
+        {
+            RuleFor(x => x.ConsentToken)
+                .NotEmpty()
+                .WithMessage("Confirm you accept responsibility before exporting");
+        }
 
         RuleFor(x => x)
             .Must(x => ExportJournalRules.ScopeMatchesJournalsFlag(

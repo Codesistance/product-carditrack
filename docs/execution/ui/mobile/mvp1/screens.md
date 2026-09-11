@@ -1091,7 +1091,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 - **No preview.** "Preview Export" is not built; the estimated file size is, computed from the period and format.
 - **No plan gate.** Nothing is gated by plan in R1, so the form opens for every account; the Complete Care upsell panel and `GET /api/v1/reports/availability` were removed on 2026-09-07 and return with subscriptions in R2.
 - **Data selection is six checkboxes**, not five: activity/heart rate/sleep travel together on one daily row; graphs (PDF), alerts, journals, notices, and device types are separate. There is still no notes feature to include.
-- **Two pop-ups before generate**, not a new screen: accept responsibility, then password or biometrics. The API records the confirmation; the password is checked against Auth0 on the device and is never posted to CardiTrack.
+- **Two pop-ups before generate**, not a new screen: accept responsibility (and how long to keep it: this export / 1 week / 2 weeks / 1 month), then password or biometrics. If the device can do fingerprint or face unlock, the caregiver is asked to use it — or to turn it on — first. A kept confirmation is reused on later exports and they are always told so. Settings → Export confirmations lists every one and can stop a kept grant. The API records the confirmation; the password is checked against Auth0 on the device and is never posted to CardiTrack.
 - **HL7 v2 is not offered** — MVP 2, and refused by the API's validator.
 - Progress is an indeterminate spinner: the API reports no percentage (`progressPercent` is always null).
 

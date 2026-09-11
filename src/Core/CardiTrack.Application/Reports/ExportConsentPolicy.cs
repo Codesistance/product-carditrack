@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Reports;
 
@@ -29,6 +30,44 @@ public static class ExportConsentPolicy
 
     /// <summary>How long a minted token may sit unused before generate must mint a new one.</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// How long a standing grant may authorize later exports. Null means this
+    /// export only — the two-minute <see cref="Lifetime"/> token.
+    /// </summary>
+    public static TimeSpan? RememberDuration(ExportConsentRememberFor rememberFor) => rememberFor switch
+    {
+        ExportConsentRememberFor.OneWeek => TimeSpan.FromDays(7),
+        ExportConsentRememberFor.TwoWeeks => TimeSpan.FromDays(14),
+        ExportConsentRememberFor.OneMonth => TimeSpan.FromDays(30),
+        _ => null
+    };
+
+    /// <summary>Chooser labels, in the order the consent prompt offers them.</summary>
+    public static readonly ExportConsentRememberFor[] RememberChoices =
+    [
+        ExportConsentRememberFor.ThisExport,
+        ExportConsentRememberFor.OneWeek,
+        ExportConsentRememberFor.TwoWeeks,
+        ExportConsentRememberFor.OneMonth
+    ];
+
+    public static string RememberChoiceLabel(ExportConsentRememberFor rememberFor) => rememberFor switch
+    {
+        ExportConsentRememberFor.OneWeek => "1 week",
+        ExportConsentRememberFor.TwoWeeks => "2 weeks",
+        ExportConsentRememberFor.OneMonth => "1 month",
+        _ => "Just this export"
+    };
+
+    /// <summary>
+    /// Caregiver-facing line when a later export uses a standing grant.
+    /// Dates are already local to whoever formatted <paramref name="recordedOn"/>
+    /// and <paramref name="rememberUntil"/>.
+    /// </summary>
+    public static string ReuseNotice(string recordedOn, string rememberUntil) =>
+        $"We're using the confirmation you gave on {recordedOn}. "
+        + $"It stays in force until {rememberUntil}. You can stop this in Settings.";
 
     public static string Sha256Hex => Sha256HexOf(Text);
 

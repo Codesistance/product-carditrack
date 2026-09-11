@@ -126,6 +126,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IDeviceBiometric, DeviceBiometric>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
+        builder.Services.AddSingleton<IExportConsentFlow, ExportConsentFlow>();
         builder.Services.AddSingleton<IJournalExportFlow, JournalExportFlow>();
 
         // Singleton so the "already reported" set outlives the pages that consult it — the member
@@ -150,6 +151,7 @@ public static class MauiProgram
         builder.Services.AddTransient<MetricAlarmEditPage>();
         builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<NotificationPreferencesPage>();
+        builder.Services.AddTransient<ExportConsentsPage>();
 
         // Routed pages pushed over a tab (M1-11/12/16, M1-13 / M1-14 / M1-15).
         builder.Services.AddTransient<CardiMemberDetailPage>();

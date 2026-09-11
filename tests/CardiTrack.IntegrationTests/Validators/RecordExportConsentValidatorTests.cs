@@ -96,4 +96,21 @@ public class RecordExportConsentValidatorTests
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("inside the date range"));
     }
+
+    [Fact]
+    public void Rejects_AnUnknownRememberFor()
+    {
+        var request = new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true,
+            RememberFor = (ExportConsentRememberFor)99
+        };
+
+        Assert.False(_validator.Validate(request).IsValid);
+    }
 }
