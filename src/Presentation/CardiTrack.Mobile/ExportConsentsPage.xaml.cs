@@ -90,7 +90,7 @@ public partial class ExportConsentsPage : ContentPage
         stop.Clicked += async (_, _) => await RevokeAsync(item);
 
         var stack = new VerticalStackLayout { Spacing = 6 };
-        stack.Add(TitleLabel("In force"));
+        stack.Add(TitleLabel(item.CanReuse ? "In force" : "Needs a new confirmation"));
         stack.Add(BodyLabel(ExportConsentCopy.HistorySummary(item)));
         stack.Add(CaptionLabel($"Given {item.RecordedAt.ToLocalTime():d MMM yyyy}"));
         stack.Add(stop);

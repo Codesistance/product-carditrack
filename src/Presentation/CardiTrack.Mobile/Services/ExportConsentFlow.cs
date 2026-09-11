@@ -27,27 +27,42 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     private readonly IPopupService _popups;
     private readonly IAuthService _auth;
     private readonly IDeviceBiometric _biometric;
+    private readonly IAppResumeNotifier _resumes;
 
     public ExportConsentFlow(
         ICardiTrackApiClient api,
         IPopupService popups,
         IAuthService auth,
-        IDeviceBiometric biometric)
+        IDeviceBiometric biometric,
+        IAppResumeNotifier resumes)
     {
         _api = api;
         _popups = popups;
         _auth = auth;
         _biometric = biometric;
+        _resumes = resumes;
     }
 
     public async Task<ExportConsentOutcome?> ConfirmAsync(
         GenerateReportRequest snapshot, CancellationToken ct = default)
     {
-        var reused = await TryReuseAsync(snapshot, ct);
-        if (reused is not null)
-            return reused;
+        try
+        {
+            if (ct.IsCancellationRequested)
+                return null;
 
-        return await RecordFreshAsync(snapshot, ct);
+            var reused = await TryReuseAsync(snapshot, ct);
+            if (reused is not null)
+                return reused;
+            if (ct.IsCancellationRequested)
+                return null;
+
+            return await RecordFreshAsync(snapshot, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
     }
 
     private async Task<ExportConsentOutcome?> TryReuseAsync(
@@ -60,9 +75,14 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         }
         catch (ApiException)
         {
-            // A history lookup must not block a fresh confirmation.
+            // A history lookup must not block a fresh confirmation. Caller
+            // cancel is also wrapped as ApiException; ConfirmAsync checks
+            // ct before starting RecordFreshAsync.
             return null;
         }
+
+        if (ct.IsCancellationRequested)
+            return null;
 
         var grant = history.FirstOrDefault(c => c.CanReuse);
         if (grant is null)
@@ -77,6 +97,8 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             "Using your earlier confirmation",
             "Continue",
             "Confirm again");
+        if (ct.IsCancellationRequested)
+            return null;
         if (!keep)
             return await RecordFreshAsync(snapshot, ct);
 
@@ -87,10 +109,14 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         }
         catch (ApiException ex) when (ex.IsNotFound)
         {
+            if (ct.IsCancellationRequested)
+                return null;
             return await RecordFreshAsync(snapshot, ct);
         }
         catch (ApiException ex)
         {
+            if (ct.IsCancellationRequested)
+                return null;
             await _popups.ShowErrorAsync(ex.Message, "Couldn't confirm");
             return null;
         }
@@ -99,22 +125,27 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     private async Task<ExportConsentOutcome?> RecordFreshAsync(
         GenerateReportRequest snapshot, CancellationToken ct)
     {
-        var preference = await OfferBiometricsAsync();
+        if (ct.IsCancellationRequested)
+            return null;
+
+        var preference = await OfferBiometricsAsync(ct);
+        if (ct.IsCancellationRequested)
+            return null;
 
         var accepted = await _popups.ConfirmWarningAsync(
             ExportConsentPolicy.Text,
             ExportConsentPolicy.Title,
             ExportConsentPolicy.ConfirmPrompt,
             "Not now");
-        if (!accepted)
+        if (!accepted || ct.IsCancellationRequested)
             return null;
 
         var rememberFor = await ChooseRememberForAsync();
-        if (rememberFor is null)
+        if (rememberFor is null || ct.IsCancellationRequested)
             return null;
 
-        var method = await ProveAsync(preference);
-        if (method is null)
+        var method = await ProveAsync(preference, ct);
+        if (method is null || ct.IsCancellationRequested)
             return null;
 
         try
@@ -125,6 +156,8 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         }
         catch (ApiException ex)
         {
+            if (ct.IsCancellationRequested)
+                return null;
             await _popups.ShowErrorAsync(ex.Message, "Couldn't confirm");
             return null;
         }
@@ -140,8 +173,11 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     /// When the device can do fingerprint or face unlock, ask to use it — or
     /// to turn it on — before the responsibility prompt.
     /// </summary>
-    private async Task<ProofPreference> OfferBiometricsAsync()
+    private async Task<ProofPreference> OfferBiometricsAsync(CancellationToken ct)
     {
+        if (ct.IsCancellationRequested)
+            return ProofPreference.Password;
+
         if (_biometric.IsAvailable)
         {
             var useIt = await _popups.ConfirmInfoAsync(
@@ -160,13 +196,12 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             "Turn on fingerprint or face unlock?",
             "Open settings",
             "Not now");
-        if (!open)
+        if (!open || ct.IsCancellationRequested)
             return ProofPreference.Password;
 
-        await _biometric.OpenEnrollmentSettingsAsync();
+        if (!await OpenEnrollmentAndWaitAsync(ct) || ct.IsCancellationRequested)
+            return ProofPreference.Password;
 
-        // Settings launches without waiting for enrollment. Ask again after they
-        // return, then re-check — IsAvailable is still false while Settings is open.
         var useNow = await _popups.ConfirmInfoAsync(
             "If fingerprint or face unlock is on now, use it for this export. Otherwise we'll use your password.",
             "Use fingerprint or face unlock?",
@@ -175,6 +210,36 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         return useNow && _biometric.IsAvailable
             ? ProofPreference.Biometric
             : ProofPreference.Password;
+    }
+
+    /// <summary>
+    /// Settings' StartActivity/OpenUrl returns as soon as the OS screen launches.
+    /// Wait for the app to resume before asking whether to use biometrics, otherwise
+    /// the follow-up popup opens over Settings and IsAvailable is still false.
+    /// A timeout that then continued the flow would still open popups over Settings;
+    /// leave waits until resume or the page-lifetime token is cancelled.
+    /// </summary>
+    private async Task<bool> OpenEnrollmentAndWaitAsync(CancellationToken ct)
+    {
+        var resumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnResumed(object? sender, EventArgs e) => resumed.TrySetResult();
+        _resumes.Resumed += OnResumed;
+        try
+        {
+            if (!await _biometric.OpenEnrollmentSettingsAsync())
+                return false;
+
+            await resumed.Task.WaitAsync(ct);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            _resumes.Resumed -= OnResumed;
+        }
     }
 
     private async Task<ExportConsentRememberFor?> ChooseRememberForAsync()
@@ -195,17 +260,21 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             : ExportConsentRememberFor.ThisExport;
     }
 
-    private async Task<ExportConsentMethod?> ProveAsync(ProofPreference preference)
+    private async Task<ExportConsentMethod?> ProveAsync(
+        ProofPreference preference, CancellationToken ct)
     {
         if (preference == ProofPreference.Biometric && _biometric.IsAvailable)
         {
             if (await _biometric.AuthenticateAsync("Confirm this export"))
                 return ExportConsentMethod.Biometric;
 
+            if (ct.IsCancellationRequested)
+                return null;
+
             await _popups.ShowErrorAsync(
                 "We couldn't confirm with fingerprint or face unlock. Try your password instead.",
                 "Couldn't confirm");
-            return await ProvePasswordAsync();
+            return await ProvePasswordAsync(ct);
         }
 
         if (!_biometric.IsAvailable)
@@ -215,22 +284,32 @@ public sealed class ExportConsentFlow : IExportConsentFlow
                 "Confirm with your password",
                 "Continue",
                 "Cancel");
-            return usePassword ? await ProvePasswordAsync() : null;
+            return usePassword ? await ProvePasswordAsync(ct) : null;
         }
 
-        return await ProvePasswordAsync();
+        return await ProvePasswordAsync(ct);
     }
 
-    private async Task<ExportConsentMethod?> ProvePasswordAsync()
+    private async Task<ExportConsentMethod?> ProvePasswordAsync(CancellationToken ct)
     {
         var password = await _popups.AskPasswordAsync(
             "Confirm it's you",
             "Enter the password you use to sign in to CardiTrack.");
-        if (password is null)
+        if (password is null || ct.IsCancellationRequested)
             return null;
 
-        if (await _auth.VerifyPasswordAsync(password))
-            return ExportConsentMethod.Password;
+        try
+        {
+            if (await _auth.VerifyPasswordAsync(password, ct))
+                return ExportConsentMethod.Password;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+
+        if (ct.IsCancellationRequested)
+            return null;
 
         await _popups.ShowErrorAsync(
             "That password didn't match. Try again, or use this device's fingerprint or face unlock.",

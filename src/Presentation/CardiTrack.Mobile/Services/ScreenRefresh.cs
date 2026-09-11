@@ -16,9 +16,12 @@ internal static class ScreenRefresh
     /// <summary>
     /// True only for the page actually being looked at. Shell keeps the pages of visited tabs
     /// alive, so without this one trigger would refresh every tab the caregiver has ever opened.
+    /// <see cref="Element.Handler"/> is included because teardown can leave the page as
+    /// CurrentPage after the handler is already gone.
     /// </summary>
     public static bool IsOnScreen(Page page) =>
-        page.Window is not null
+        page.Handler is not null
+        && page.Window is not null
         && Shell.Current is { } shell
         && shell.CurrentPage == page
         // A modal — a popup, or the connect-device wizard — owns the screen while it is up, and
