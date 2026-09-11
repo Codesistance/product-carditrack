@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-11",
+      "slack_ts": null,
+      "item_count": 6,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,60 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-11",
+      "slug": "ollama-ssrf-cve-2026-85180",
+      "title": "Second, still-unpatched Ollama SSRF (CVE-2026-85180) bypasses the earlier tensor-download fix — latest release 0.34.0 does not fix it",
+      "url": "https://github.com/ollama/ollama/issues/17041",
+      "severity": "CRITICAL",
+      "category": "models",
+      "brief": "research/queue/2026-09-11-ollama-ssrf-cve-2026-85180.md"
+    },
+    {
+      "date": "2026-09-11",
+      "slug": "automapper-commercial-license-gap",
+      "title": "AutoMapper 16.2.0 is inside the commercial-license era — no license key found anywhere in the repo",
+      "url": "https://www.jimmybogard.com/automapper-and-mediatr-commercial-editions-launch-today/",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-11-automapper-commercial-license-gap.md"
+    },
+    {
+      "date": "2026-09-11",
+      "slug": "github-actions-node20-runner-removal",
+      "title": "GitHub Actions drops Node.js 20 runner support 2026-09-23 — verified CardiTrack's pinned actions are already node24, no action needed",
+      "url": "https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-11-github-actions-node20-runner-removal.md"
+    },
+    {
+      "date": "2026-09-11",
+      "slug": "arpa-h-advocate-agentic-cardiac-ai",
+      "title": "ARPA-H ADVOCATE — $62.7M federal program funds FDA-track autonomous AI agents for heart-failure care",
+      "url": "https://www.statnews.com/2026/09/09/arpa-h-advocate-program-autonomous-ai-bots-for-heart-failure/",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-11-arpa-h-advocate-agentic-cardiac-ai.md"
+    },
+    {
+      "date": "2026-09-11",
+      "slug": "uk-ai-healthcare-commission-report",
+      "title": "UK National Commission into the Regulation of AI in Healthcare publishes recommendations feeding MHRA's future AI-SaMD framework",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-11-uk-ai-healthcare-commission-report.md"
+    },
+    {
+      "date": "2026-09-11",
+      "slug": "vertex-ai-gemini-enterprise-rebrand",
+      "title": "Vertex AI folded into the Gemini Enterprise Agent Platform — naming/console/doc staleness only, no breaking API or billing change",
+      "url": "https://cloud.google.com/blog/products/ai-machine-learning/vertex-ai-io-announcements/",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-11-vertex-ai-gemini-enterprise-rebrand.md"
     }
   ]
 }
