@@ -156,7 +156,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             return ProofPreference.Password;
 
         var open = await _popups.ConfirmInfoAsync(
-            "Turn on fingerprint or face unlock on this device to confirm exports more easily.",
+            "Turn on fingerprint or face unlock in this device's Settings app, then come back to confirm this export.",
             "Turn on fingerprint or face unlock?",
             "Open settings",
             "Not now");

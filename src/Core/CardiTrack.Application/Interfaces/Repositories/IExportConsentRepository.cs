@@ -38,6 +38,14 @@ public interface IExportConsentRepository : IRepository<ExportConsent>
         Guid consentId, Guid ownerUserId, DateTime utcNow, CancellationToken ct = default);
 
     /// <summary>
+    /// Locks an in-force standing grant for reuse inside the caller's
+    /// transaction. Returns false when the row is missing, not theirs,
+    /// revoked, expired, or the policy text has changed.
+    /// </summary>
+    Task<bool> TryLockStandingGrantAsync(
+        Guid consentId, Guid ownerUserId, DateTime utcNow, string policySha256, CancellationToken ct = default);
+
+    /// <summary>
     /// Stops every unrevoked standing grant for this owner, including ones
     /// whose <c>RememberUntil</c> has passed. A new remembered confirmation
     /// needs that unique slot free; a Postgres unique predicate cannot use

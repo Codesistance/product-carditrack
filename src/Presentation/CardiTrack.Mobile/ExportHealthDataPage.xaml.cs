@@ -62,6 +62,7 @@ public partial class ExportHealthDataPage : ContentPage
     private ReportFile? _ready;
     private string? _readyPath;
     private bool _isLoading;
+    private bool _exporting;
 
     public ExportHealthDataPage(
         ICardiTrackApiClient api,
@@ -288,57 +289,73 @@ public partial class ExportHealthDataPage : ContentPage
 
     private async void OnExportClicked(object? sender, EventArgs e)
     {
+        if (_exporting)
+            return;
+
         var member = SelectedMember();
         if (member is null)
             return;
 
-        var consent = await ConfirmExportAsync(member);
-        if (consent is null)
-            return;
-
-        _generation?.Cancel();
-        _generation = new CancellationTokenSource();
-        var ct = _generation.Token;
-
-        GeneratingDetailLabel.Text = consent.Reused
-            ? "Using your earlier confirmation — we're preparing the copy."
-            : _selectedFormat == ReportFormat.Pdf
-                ? "We're writing the summary — this usually takes under a minute."
-                : "This usually takes a few seconds.";
-        ShowOnly(GeneratingPanel);
-
+        _exporting = true;
+        ExportButton.IsEnabled = false;
         try
         {
-            var request = BuildRequest(member, consent.Token);
-            var queued = await _api.GenerateReportAsync(request, ct);
-
-            var status = await PollUntilReadyAsync(queued.ReportId, ct);
-
-            if (status is null || status.Status != ReportStatus.Ready)
-            {
-                FailedDetailLabel.Text = status?.Error
-                    ?? "We couldn't finish that export. Please try again.";
-                ShowOnly(FailedPanel);
+            var consent = await ConfirmExportAsync(member);
+            if (consent is null)
                 return;
+
+            _generation?.Cancel();
+            _generation = new CancellationTokenSource();
+            var ct = _generation.Token;
+
+            GeneratingDetailLabel.Text = consent.Reused
+                ? "Using your earlier confirmation — we're preparing the copy."
+                : _selectedFormat == ReportFormat.Pdf
+                    ? "We're writing the summary — this usually takes under a minute."
+                    : "This usually takes a few seconds.";
+            ShowOnly(GeneratingPanel);
+
+            try
+            {
+                var request = BuildRequest(member, consent.Token);
+                var queued = await _api.GenerateReportAsync(request, ct);
+
+                var status = await PollUntilReadyAsync(queued.ReportId, ct);
+
+                if (status is null || status.Status != ReportStatus.Ready)
+                {
+                    FailedDetailLabel.Text = status?.Error
+                        ?? "We couldn't finish that export. Please try again.";
+                    ShowOnly(FailedPanel);
+                    return;
+                }
+
+                _ready = await _api.DownloadReportAsync(queued.ReportId, ct);
+                _readyPath = await WriteToCacheAsync(_ready, ct);
+
+                CompleteDetailLabel.Text =
+                    $"{_ready.FileName} · {Describe(_ready.Content.LongLength)}";
+                ShowOnly(CompletePanel);
             }
-
-            _ready = await _api.DownloadReportAsync(queued.ReportId, ct);
-            _readyPath = await WriteToCacheAsync(_ready, ct);
-
-            CompleteDetailLabel.Text =
-                $"{_ready.FileName} · {Describe(_ready.Content.LongLength)}";
-            ShowOnly(CompletePanel);
+            catch (OperationCanceledException)
+            {
+                // The caregiver cancelled, or left the page. Either way there is nothing to say.
+                if (!ct.IsCancellationRequested)
+                    throw;
+            }
+            catch (ApiException ex)
+            {
+                FailedDetailLabel.Text = ex.Message;
+                ShowOnly(FailedPanel);
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            // The caregiver cancelled, or left the page. Either way there is nothing to say.
-            if (!ct.IsCancellationRequested)
-                throw;
-        }
-        catch (ApiException ex)
-        {
-            FailedDetailLabel.Text = ex.Message;
-            ShowOnly(FailedPanel);
+            if (FormPanel.IsVisible)
+            {
+                _exporting = false;
+                UpdateEstimate();
+            }
         }
     }
 
@@ -372,7 +389,9 @@ public partial class ExportHealthDataPage : ContentPage
     private void OnCancelGenerationClicked(object? sender, EventArgs e)
     {
         _generation?.Cancel();
+        _exporting = false;
         ShowOnly(FormPanel);
+        UpdateEstimate();
     }
 
     // ── Delivery ────────────────────────────────────────────────────────────────
@@ -439,6 +458,7 @@ public partial class ExportHealthDataPage : ContentPage
 
         _ready = null;
         _readyPath = null;
+        _exporting = false;
         ShowOnly(FormPanel);
         UpdateEstimate();
     }

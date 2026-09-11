@@ -77,13 +77,22 @@ public class ExportConsentService : IExportConsentService
             catch
             {
                 await _unitOfWork.RollbackTransactionAsync();
+                _unitOfWork.ClearTracking();
                 throw;
             }
         }
         else
         {
-            await _unitOfWork.ExportConsents.AddAsync(consent);
-            await _unitOfWork.SaveChangesAsync();
+            try
+            {
+                await _unitOfWork.ExportConsents.AddAsync(consent);
+                await _unitOfWork.SaveChangesAsync();
+            }
+            catch
+            {
+                _unitOfWork.ClearTracking();
+                throw;
+            }
         }
 
         return ToRecordedResponse(consent);
@@ -98,38 +107,59 @@ public class ExportConsentService : IExportConsentService
         await _access.RequireViewAccessAsync(requestingUserId, request.CardiMemberIds, ct);
 
         var now = DateTime.UtcNow;
-        var grant = await _unitOfWork.ExportConsents.GetForOwnerAsync(standingConsentId, requestingUserId, ct);
-        if (grant is null || !IsStandingGrantReusable(grant, now))
-            throw new KeyNotFoundException("You don't have a confirmation we can reuse — please confirm again.");
-
-        var child = new ExportConsent
+        await _unitOfWork.BeginTransactionAsync();
+        try
         {
-            OwnerUserId = requestingUserId,
-            CardiMemberIds = request.CardiMemberIds.ToList(),
-            DateRangeFrom = request.DateRangeFrom,
-            DateRangeTo = request.DateRangeTo,
-            Format = request.Format,
-            IncludeMetrics = request.IncludeMetrics,
-            IncludeTrends = request.IncludeTrends,
-            IncludeAlerts = request.IncludeAlerts,
-            IncludeJournals = request.IncludeJournals,
-            IncludeNotices = request.IncludeNotices,
-            IncludeDevices = request.IncludeDevices,
-            JournalEntryDate = request.JournalEntryDate,
-            JournalAudience = request.JournalAudience,
-            PolicyVersion = grant.PolicyVersion,
-            PolicySha256 = grant.PolicySha256,
-            RequestFingerprint = ExportConsentPolicy.Fingerprint(request),
-            Method = grant.Method,
-            RememberFor = ExportConsentRememberFor.ThisExport,
-            ReusedFromConsentId = grant.Id,
-            ExpiresAt = now.Add(ExportConsentPolicy.Lifetime)
-        };
+            if (!await _unitOfWork.ExportConsents.TryLockStandingGrantAsync(
+                    standingConsentId, requestingUserId, now, ExportConsentPolicy.Sha256Hex, ct))
+            {
+                throw new KeyNotFoundException(
+                    "You don't have a confirmation we can reuse — please confirm again.");
+            }
 
-        await _unitOfWork.ExportConsents.AddAsync(child);
-        await _unitOfWork.SaveChangesAsync();
+            var grant = await _unitOfWork.ExportConsents.GetForOwnerAsync(
+                standingConsentId, requestingUserId, ct);
+            if (grant is null || !IsStandingGrantReusable(grant, now))
+            {
+                throw new KeyNotFoundException(
+                    "You don't have a confirmation we can reuse — please confirm again.");
+            }
 
-        return ToReusedResponse(child, grant);
+            var child = new ExportConsent
+            {
+                OwnerUserId = requestingUserId,
+                CardiMemberIds = request.CardiMemberIds.ToList(),
+                DateRangeFrom = request.DateRangeFrom,
+                DateRangeTo = request.DateRangeTo,
+                Format = request.Format,
+                IncludeMetrics = request.IncludeMetrics,
+                IncludeTrends = request.IncludeTrends,
+                IncludeAlerts = request.IncludeAlerts,
+                IncludeJournals = request.IncludeJournals,
+                IncludeNotices = request.IncludeNotices,
+                IncludeDevices = request.IncludeDevices,
+                JournalEntryDate = request.JournalEntryDate,
+                JournalAudience = request.JournalAudience,
+                PolicyVersion = grant.PolicyVersion,
+                PolicySha256 = grant.PolicySha256,
+                RequestFingerprint = ExportConsentPolicy.Fingerprint(request),
+                Method = grant.Method,
+                RememberFor = ExportConsentRememberFor.ThisExport,
+                ReusedFromConsentId = grant.Id,
+                ExpiresAt = now.Add(ExportConsentPolicy.Lifetime)
+            };
+
+            await _unitOfWork.ExportConsents.AddAsync(child);
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+            return ToReusedResponse(child, grant);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            _unitOfWork.ClearTracking();
+            throw;
+        }
     }
 
     public async Task ConsumeAsync(

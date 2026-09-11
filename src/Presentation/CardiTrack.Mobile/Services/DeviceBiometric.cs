@@ -224,6 +224,9 @@ public sealed class DeviceBiometric : IDeviceBiometric
             try
             {
                 var url = new Foundation.NSUrl(UIKit.UIApplication.OpenSettingsUrlString);
+                // Apple has no public URL for Face ID / Touch ID enrollment. This opens
+                // CardiTrack's page in Settings; the prompt tells them to turn biometrics
+                // on in the system Settings app, then the follow-up re-checks IsAvailable.
                 UIKit.UIApplication.SharedApplication.OpenUrl(
                     url,
                     new UIKit.UIApplicationOpenUrlOptions(),

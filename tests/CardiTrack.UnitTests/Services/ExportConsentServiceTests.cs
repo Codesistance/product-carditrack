@@ -124,6 +124,27 @@ public class ExportConsentServiceTests
 
                 return Task.CompletedTask;
             });
+        _consents.TryLockStandingGrantAsync(
+                Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DateTime>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var id = ci.ArgAt<Guid>(0);
+                var owner = ci.ArgAt<Guid>(1);
+                var now = ci.ArgAt<DateTime>(2);
+                var sha = ci.ArgAt<string>(3);
+                var grant = _rows.FirstOrDefault(c =>
+                    c.Id == id
+                    && c.OwnerUserId == owner
+                    && c.ReusedFromConsentId is null
+                    && c.RevokedAt is null
+                    && c.RememberUntil is { } until
+                    && until > now
+                    && c.PolicySha256 == sha);
+                if (grant is null)
+                    return Task.FromResult(false);
+                grant.UpdatedDate = now;
+                return Task.FromResult(true);
+            });
     }
 
     private ExportConsentService CreateSut() => new(_unitOfWork, _access);

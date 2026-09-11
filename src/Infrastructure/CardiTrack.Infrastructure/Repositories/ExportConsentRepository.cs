@@ -35,6 +35,23 @@ public class ExportConsentRepository : Repository<ExportConsent>, IExportConsent
             .OrderByDescending(c => c.CreatedDate)
             .ToListAsync(ct);
 
+    public async Task<bool> TryLockStandingGrantAsync(
+        Guid consentId, Guid ownerUserId, DateTime utcNow, string policySha256, CancellationToken ct = default)
+    {
+        var updated = await _dbSet
+            .Where(c =>
+                c.Id == consentId
+                && c.OwnerUserId == ownerUserId
+                && c.ReusedFromConsentId == null
+                && c.RevokedAt == null
+                && c.RememberUntil != null
+                && c.RememberUntil > utcNow
+                && c.PolicySha256 == policySha256)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.UpdatedDate, utcNow), ct);
+
+        return updated == 1;
+    }
+
     public async Task<bool> TryConsumeAsync(
         Guid consentId, Guid ownerUserId, Guid reportId, DateTime utcNow, CancellationToken ct = default)
     {

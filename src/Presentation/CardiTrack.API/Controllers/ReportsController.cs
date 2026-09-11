@@ -4,6 +4,7 @@ using CardiTrack.API.Validators;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Domain.Enums;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -49,6 +50,7 @@ public class ReportsController : BaseApiController
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<ExportConsentResponse>>> RecordConsent(
         [FromBody] RecordExportConsentRequest request, CancellationToken ct)
     {
@@ -88,7 +90,7 @@ public class ReportsController : BaseApiController
         {
             return await _consent.RecordAsync(UserContext.UserId, request, ct);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException) when (request.RememberFor != ExportConsentRememberFor.ThisExport)
         {
             return await _consent.RecordAsync(UserContext.UserId, request, ct);
         }
