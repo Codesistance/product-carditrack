@@ -48,9 +48,14 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     {
         try
         {
+            if (ct.IsCancellationRequested)
+                return null;
+
             var reused = await TryReuseAsync(snapshot, ct);
             if (reused is not null)
                 return reused;
+            if (ct.IsCancellationRequested)
+                return null;
 
             return await RecordFreshAsync(snapshot, ct);
         }
@@ -70,9 +75,14 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         }
         catch (ApiException)
         {
-            // A history lookup must not block a fresh confirmation.
+            // A history lookup must not block a fresh confirmation. Caller
+            // cancel is also wrapped as ApiException; ConfirmAsync checks
+            // ct before starting RecordFreshAsync.
             return null;
         }
+
+        if (ct.IsCancellationRequested)
+            return null;
 
         var grant = history.FirstOrDefault(c => c.CanReuse);
         if (grant is null)
@@ -99,10 +109,14 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         }
         catch (ApiException ex) when (ex.IsNotFound)
         {
+            if (ct.IsCancellationRequested)
+                return null;
             return await RecordFreshAsync(snapshot, ct);
         }
         catch (ApiException ex)
         {
+            if (ct.IsCancellationRequested)
+                return null;
             await _popups.ShowErrorAsync(ex.Message, "Couldn't confirm");
             return null;
         }
@@ -111,6 +125,9 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     private async Task<ExportConsentOutcome?> RecordFreshAsync(
         GenerateReportRequest snapshot, CancellationToken ct)
     {
+        if (ct.IsCancellationRequested)
+            return null;
+
         var preference = await OfferBiometricsAsync(ct);
         if (ct.IsCancellationRequested)
             return null;
@@ -139,6 +156,8 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         }
         catch (ApiException ex)
         {
+            if (ct.IsCancellationRequested)
+                return null;
             await _popups.ShowErrorAsync(ex.Message, "Couldn't confirm");
             return null;
         }
@@ -156,6 +175,9 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     /// </summary>
     private async Task<ProofPreference> OfferBiometricsAsync(CancellationToken ct)
     {
+        if (ct.IsCancellationRequested)
+            return ProofPreference.Password;
+
         if (_biometric.IsAvailable)
         {
             var useIt = await _popups.ConfirmInfoAsync(
