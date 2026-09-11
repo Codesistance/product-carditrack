@@ -144,9 +144,27 @@ public class AlertChartKeyTests
     }
 
     /// <summary>
-    /// Realtime heart-rate windows stamp every sample with the same civil day. Colouring that day
-    /// would turn the whole hour amber, which is not "the reading this alert is about".
+    /// Realtime heart-rate windows stamp every sample with the same civil day, including the null
+    /// slots that pad missing minutes. Counting only reported readings would treat a sparse hour
+    /// (one measured sample among many empty ones) as a single daily point and colour it.
     /// </summary>
+    [Fact]
+    public void FlagsNothing_WhenASparseHourReusesTheAboutDayAcrossNullSlots()
+    {
+        var about = new DateOnly(2026, 9, 10);
+        var chart = new AlertChartResponse
+        {
+            Series =
+            [
+                new MetricPoint { Date = about, Value = null },
+                new MetricPoint { Date = about, Value = 94m },
+                new MetricPoint { Date = about, Value = null },
+            ],
+        };
+
+        Assert.Empty(AlertChartKey.FlaggedDates(chart, about));
+    }
+
     [Fact]
     public void FlagsNothing_WhenSeveralSamplesShareTheAboutDay()
     {

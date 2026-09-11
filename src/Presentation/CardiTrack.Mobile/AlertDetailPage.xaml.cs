@@ -273,7 +273,7 @@ public partial class AlertDetailPage : ContentPage
         Chart.Interactive = true;
         Chart.ValueFormatter = v => AlertChartKey.Value(chart, (decimal)v);
         var flagged = AlertChartKey.FlaggedDates(chart, alert.AboutDate);
-        var flagColor = flagged.Count == 0 ? null : SeverityInk(alert.Severity);
+        var flagColor = flagged.Count == 0 ? null : MetricStatus.Accent(alert.Severity);
         SemanticProperties.SetHint(Chart, flagged.Count == 0
             ? "Tap a reading to see its value"
             : "Tap a reading to see its value. The coloured point is the day this alert is about.");
@@ -290,23 +290,6 @@ public partial class AlertDetailPage : ContentPage
         var key = AlertChartKey.For(chart);
         ChartBaselineLabel.IsVisible = key is not null;
         ChartBaselineLabel.Text = key ?? string.Empty;
-    }
-
-    /// <summary>
-    /// The banner's own ink, reused on the flagged chart point so the colour on the line and the
-    /// colour on the card cannot disagree about how serious this day is.
-    /// </summary>
-    private static Color SeverityInk(string severity)
-    {
-        var key = severity switch
-        {
-            "red" => "StatusRed",
-            "orange" => "StatusOrange",
-            "yellow" => "StatusYellow",
-            "green" => "StatusGreen",
-            _ => "StatusUnknown",
-        };
-        return MetricStatus.Resource(key, Colors.Gray);
     }
 
     private void ApplyComparison(AlertComparisonResponse? comparison, string severity)

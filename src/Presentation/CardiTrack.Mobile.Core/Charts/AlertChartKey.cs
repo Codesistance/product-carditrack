@@ -53,24 +53,31 @@ public static class AlertChartKey
     }
 
     /// <summary>
-    /// The civil day this alert is about, when it lands on exactly one plotted reading. Empty when
-    /// the day is missing, unreported, or shared by more than one sample — a granular hour reuses
-    /// one date across every point, and colouring that date would paint the whole hour rather than
-    /// the reading the alert is about.
+    /// The civil day this alert is about, when the series has exactly one slot for that day and
+    /// that slot is a reading. Empty when the day is missing, unreported, or shared by more than
+    /// one sample — a granular hour reuses one date across every point (nulls included), and
+    /// colouring that date would paint the whole hour rather than the reading the alert is about.
     /// </summary>
     public static IReadOnlySet<DateOnly> FlaggedDates(AlertChartResponse chart, DateOnly aboutDate)
     {
         if (aboutDate == default)
             return NoFlaggedDates;
 
-        var hits = 0;
+        var slots = 0;
+        var readings = 0;
         foreach (var point in chart.Series)
         {
-            if (point.Date == aboutDate && point.Value is not null)
-                hits++;
+            if (point.Date != aboutDate)
+                continue;
+
+            slots++;
+            if (point.Value is not null)
+                readings++;
         }
 
-        return hits == 1 ? new HashSet<DateOnly> { aboutDate } : NoFlaggedDates;
+        return slots == 1 && readings == 1
+            ? new HashSet<DateOnly> { aboutDate }
+            : NoFlaggedDates;
     }
 
     /// <summary>
