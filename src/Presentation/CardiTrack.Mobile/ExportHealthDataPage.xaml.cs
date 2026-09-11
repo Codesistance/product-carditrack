@@ -298,15 +298,14 @@ public partial class ExportHealthDataPage : ContentPage
 
         _exporting = true;
         ExportButton.IsEnabled = false;
+        _generation?.Cancel();
+        _generation = new CancellationTokenSource();
+        var ct = _generation.Token;
         try
         {
-            var consent = await ConfirmExportAsync(member);
-            if (consent is null)
+            var consent = await ConfirmExportAsync(member, ct);
+            if (consent is null || ct.IsCancellationRequested)
                 return;
-
-            _generation?.Cancel();
-            _generation = new CancellationTokenSource();
-            var ct = _generation.Token;
 
             GeneratingDetailLabel.Text = consent.Reused
                 ? "Using your earlier confirmation — we're preparing the copy."
@@ -351,11 +350,9 @@ public partial class ExportHealthDataPage : ContentPage
         }
         finally
         {
+            _exporting = false;
             if (FormPanel.IsVisible)
-            {
-                _exporting = false;
                 UpdateEstimate();
-            }
         }
     }
 
@@ -389,7 +386,6 @@ public partial class ExportHealthDataPage : ContentPage
     private void OnCancelGenerationClicked(object? sender, EventArgs e)
     {
         _generation?.Cancel();
-        _exporting = false;
         ShowOnly(FormPanel);
         UpdateEstimate();
     }
@@ -458,7 +454,6 @@ public partial class ExportHealthDataPage : ContentPage
 
         _ready = null;
         _readyPath = null;
-        _exporting = false;
         ShowOnly(FormPanel);
         UpdateEstimate();
     }
@@ -509,8 +504,9 @@ public partial class ExportHealthDataPage : ContentPage
     /// Responsibility, how long to keep it, then password or fingerprint / face
     /// unlock — or a standing grant reused with the caregiver told so.
     /// </summary>
-    private Task<ExportConsentOutcome?> ConfirmExportAsync(CardiMemberResponse member) =>
-        _consent.ConfirmAsync(BuildRequest(member, consentToken: ""));
+    private Task<ExportConsentOutcome?> ConfirmExportAsync(
+        CardiMemberResponse member, CancellationToken ct) =>
+        _consent.ConfirmAsync(BuildRequest(member, consentToken: ""), ct);
 
     private GenerateReportRequest BuildRequest(CardiMemberResponse member, string consentToken) => new()
     {

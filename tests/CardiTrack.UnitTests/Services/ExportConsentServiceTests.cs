@@ -313,6 +313,19 @@ public class ExportConsentServiceTests
     }
 
     [Fact]
+    public async Task ReuseAsync_ThrowsWhenThePolicyTextHasChanged()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+        var grant = Assert.Single(_rows);
+        grant.PolicySha256 = new string('0', 64);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().ReuseAsync(_userId, grant.Id, GenerateRequest()));
+
+        Assert.Single(_rows);
+    }
+
+    [Fact]
     public async Task ReuseAsync_ThrowsWhenTheIdIsAReuseChild()
     {
         await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
