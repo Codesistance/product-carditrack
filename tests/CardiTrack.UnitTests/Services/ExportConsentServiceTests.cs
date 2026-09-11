@@ -117,8 +117,7 @@ public class ExportConsentServiceTests
                              c.OwnerUserId == owner
                              && c.ReusedFromConsentId is null
                              && c.RevokedAt is null
-                             && c.RememberUntil is { } until
-                             && until > now))
+                             && c.RememberUntil is not null))
                 {
                     row.RevokedAt = now;
                 }
@@ -241,6 +240,21 @@ public class ExportConsentServiceTests
         Assert.NotNull(first.RevokedAt);
         Assert.Null(_rows[1].RevokedAt);
         Assert.Equal(ExportConsentRememberFor.OneWeek, _rows[1].RememberFor);
+    }
+
+    [Fact]
+    public async Task RecordAsync_ANewStandingGrant_ReplacesAnExpiredOne()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+        var expired = Assert.Single(_rows);
+        expired.RememberUntil = DateTime.UtcNow.AddDays(-1);
+
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneMonth));
+
+        Assert.Equal(2, _rows.Count);
+        Assert.NotNull(expired.RevokedAt);
+        Assert.Null(_rows[1].RevokedAt);
+        Assert.Equal(ExportConsentRememberFor.OneMonth, _rows[1].RememberFor);
     }
 
     [Fact]

@@ -86,8 +86,7 @@ public class ExportConsentRepository : Repository<ExportConsent>, IExportConsent
                 c.OwnerUserId == ownerUserId
                 && c.ReusedFromConsentId == null
                 && c.RevokedAt == null
-                && c.RememberUntil != null
-                && c.RememberUntil > utcNow)
+                && c.RememberUntil != null)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(c => c.RevokedAt, utcNow)
                 .SetProperty(c => c.UpdatedDate, utcNow), ct);

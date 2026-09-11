@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Export;
 using CardiTrack.Mobile.Services;
 using MauiApplication = Microsoft.Maui.Controls.Application;
 
@@ -90,7 +91,7 @@ public partial class ExportConsentsPage : ContentPage
 
         var stack = new VerticalStackLayout { Spacing = 6 };
         stack.Add(TitleLabel("In force"));
-        stack.Add(BodyLabel(item.Summary));
+        stack.Add(BodyLabel(ExportConsentCopy.HistorySummary(item)));
         stack.Add(CaptionLabel($"Given {item.RecordedAt.ToLocalTime():d MMM yyyy}"));
         stack.Add(stop);
         return Card(stack);
@@ -100,7 +101,7 @@ public partial class ExportConsentsPage : ContentPage
     {
         var stack = new VerticalStackLayout { Spacing = 4 };
         stack.Add(TitleLabel(item.RecordedAt.ToLocalTime().ToString("d MMM yyyy")));
-        stack.Add(BodyLabel(item.Summary));
+        stack.Add(BodyLabel(ExportConsentCopy.HistorySummary(item)));
         return Card(stack);
     }
 

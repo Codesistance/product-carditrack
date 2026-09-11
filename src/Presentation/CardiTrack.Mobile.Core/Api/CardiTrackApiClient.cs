@@ -668,10 +668,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// task back. Not itself async: the task has to exist before it can be a key, which it cannot
     /// inside the method that produces it.
     /// </summary>
-    private Task<T> GetAsync<T>(string path, CancellationToken ct, bool allowNullData = false)
+    private Task<T> GetAsync<T>(
+        string path, CancellationToken ct, bool allowNullData = false, bool cache = true)
     {
         var origin = new CacheOrigin();
-        var call = GetCoreAsync<T>(path, origin, allowNullData, ct);
+        var call = GetCoreAsync<T>(path, origin, allowNullData, ct, cache);
         _origins.AddOrUpdate(call, origin);
         return call;
     }
@@ -690,7 +691,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return call;
     }
 
-    private async Task<T> GetCoreAsync<T>(string path, CacheOrigin origin, bool allowNullData, CancellationToken ct)
+    private async Task<T> GetCoreAsync<T>(
+        string path, CacheOrigin origin, bool allowNullData, CancellationToken ct, bool cache)
     {
         HttpResponseMessage response;
         try
@@ -702,7 +704,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             if (ex is OperationCanceledException && ct.IsCancellationRequested)
                 throw NetworkError("GET", path, ex, ct);
 
-            if (await TryReadCacheAsync<T>(path, origin, ct) is { } cached)
+            if (cache && await TryReadCacheAsync<T>(path, origin, ct) is { } cached)
                 return cached;
 
             throw NetworkError("GET", path, ex, ct);
@@ -724,7 +726,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
         // A null-data success is an answer, but not one worth caching: TryReadCacheAsync would
         // only reject the entry as unreadable on the way back out, one warning per offline read.
-        if (value is not null)
+        if (value is not null && cache)
             await TrySaveCacheAsync(path, body, ct);
         return value;
     }
@@ -926,7 +928,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     public Task<List<ExportConsentHistoryItem>> GetExportConsentsAsync(
         CancellationToken ct = default) =>
-        GetAsync<List<ExportConsentHistoryItem>>("api/v1/reports/consents", ct);
+        GetAsync<List<ExportConsentHistoryItem>>("api/v1/reports/consents", ct, cache: false);
 
     public async Task RevokeExportConsentAsync(Guid consentId, CancellationToken ct = default)
     {

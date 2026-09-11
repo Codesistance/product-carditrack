@@ -38,8 +38,10 @@ public interface IExportConsentRepository : IRepository<ExportConsent>
         Guid consentId, Guid ownerUserId, DateTime utcNow, CancellationToken ct = default);
 
     /// <summary>
-    /// Stops every in-force standing grant for this owner. Used when they
-    /// record a new remembered confirmation so only one grant is live.
+    /// Stops every unrevoked standing grant for this owner, including ones
+    /// whose <c>RememberUntil</c> has passed. A new remembered confirmation
+    /// needs that unique slot free; a Postgres unique predicate cannot use
+    /// a moving <c>now()</c>.
     /// </summary>
     Task RevokeActiveStandingAsync(Guid ownerUserId, DateTime utcNow, CancellationToken ct = default);
 }

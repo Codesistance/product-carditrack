@@ -7,6 +7,7 @@ using CardiTrack.Application.Interfaces.Services;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CardiTrack.API.Controllers;
 
@@ -60,12 +61,36 @@ public class ReportsController : BaseApiController
 
         try
         {
-            var recorded = await _consent.RecordAsync(UserContext.UserId, request, ct);
+            var recorded = await RecordStandingOrRetryAsync(request, ct);
             return Success(recorded, "Confirmed — we can prepare the export now.");
         }
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (DbUpdateException)
+        {
+            return Error(
+                "That confirmation couldn't be saved just then — please try again.",
+                StatusCodes.Status409Conflict);
+        }
+    }
+
+    /// <summary>
+    /// Two concurrent remembered confirmations can both pass revoke and then
+    /// collide on the one-standing-grant index. Retry once so the loser
+    /// revokes the winner and inserts, matching "a new grant stops the previous".
+    /// </summary>
+    private async Task<ExportConsentResponse> RecordStandingOrRetryAsync(
+        RecordExportConsentRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return await _consent.RecordAsync(UserContext.UserId, request, ct);
+        }
+        catch (DbUpdateException)
+        {
+            return await _consent.RecordAsync(UserContext.UserId, request, ct);
         }
     }
 

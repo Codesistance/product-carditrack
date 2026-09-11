@@ -78,17 +78,22 @@ Mints a two-minute generate token from the named in-force standing grant for thi
 
 The same snapshot generate will send (members, dates, format, section flags). `consentToken` is ignored.
 
-### Response `200 OK`
+### Response `200 OK` (wrapped in `ApiResponse<T>`)
 
 ```json
 {
-  "consentToken": "8f14e45fceea167a5a36dedd4bea2543",
-  "expiresAt": "2026-08-07T10:02:00Z",
-  "reused": true,
-  "reusedFromConsentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "originalConsentedAt": "2026-08-01T10:00:00Z",
-  "rememberUntil": "2026-08-15T10:00:00Z",
-  "reuseNotice": "We're using the confirmation you gave on 1 Aug 2026. It stays in force until 15 Aug 2026. You can stop this in Settings."
+  "success": true,
+  "message": "We're using the confirmation you gave on 1 Aug 2026. It stays in force until 15 Aug 2026. You can stop this in Settings.",
+  "data": {
+    "consentToken": "8f14e45fceea167a5a36dedd4bea2543",
+    "expiresAt": "2026-08-07T10:02:00Z",
+    "reused": true,
+    "reusedFromConsentId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "originalConsentedAt": "2026-08-01T10:00:00Z",
+    "rememberUntil": "2026-08-15T10:00:00Z",
+    "reuseNotice": "We're using the confirmation you gave on 1 Aug 2026. It stays in force until 15 Aug 2026. You can stop this in Settings."
+  },
+  "timestamp": "2026-08-07T10:00:00Z"
 }
 ```
 
@@ -100,24 +105,29 @@ Every confirmation this caregiver has given, newest first. Settings uses this li
 
 **Priority:** P1 | **Auth Required:** Yes
 
-### Response `200 OK`
+### Response `200 OK` (wrapped in `ApiResponse<T>`)
 
 ```json
-[
-  {
-    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-    "recordedAt": "2026-08-01T10:00:00Z",
-    "method": 2,
-    "rememberFor": 3,
-    "rememberUntil": "2026-08-15T10:00:00Z",
-    "revokedAt": null,
-    "consumedAt": "2026-08-01T10:00:20Z",
-    "reused": false,
-    "canRevoke": true,
-    "canReuse": true,
-    "summary": "In force until 15 Aug 2026 · fingerprint or face unlock"
-  }
-]
+{
+  "success": true,
+  "message": "",
+  "data": [
+    {
+      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "recordedAt": "2026-08-01T10:00:00Z",
+      "method": 2,
+      "rememberFor": 3,
+      "rememberUntil": "2026-08-15T10:00:00Z",
+      "revokedAt": null,
+      "consumedAt": "2026-08-01T10:00:20Z",
+      "reused": false,
+      "canRevoke": true,
+      "canReuse": true,
+      "summary": "In force until 15 Aug 2026 · fingerprint or face unlock"
+    }
+  ],
+  "timestamp": "2026-08-07T10:00:00Z"
+}
 ```
 
 ---

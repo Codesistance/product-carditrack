@@ -112,6 +112,36 @@ public class ReportsEndpointTests
     }
 
     [Fact]
+    public async Task RecordConsent_RetriesOnce_WhenTheStandingGrantIndexCollides()
+    {
+        _consent.RecordAsync(Arg.Any<Guid>(), Arg.Any<RecordExportConsentRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ => throw new Microsoft.EntityFrameworkCore.DbUpdateException(),
+                _ => new ExportConsentResponse
+                {
+                    ConsentToken = "retried",
+                    ExpiresAt = new DateTimeOffset(2026, 9, 9, 12, 2, 0, TimeSpan.Zero)
+                });
+
+        var result = await CreateSut().RecordConsent(new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 8, 9),
+            DateRangeTo = new DateOnly(2026, 9, 7),
+            Format = ReportFormat.Pdf,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true,
+            RememberFor = ExportConsentRememberFor.OneWeek
+        }, default);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var envelope = Assert.IsType<ApiResponse<ExportConsentResponse>>(ok.Value);
+        Assert.Equal("retried", envelope.Data!.ConsentToken);
+        await _consent.Received(2).RecordAsync(
+            Arg.Any<Guid>(), Arg.Any<RecordExportConsentRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ReuseConsent_Answers200_WithTheReuseNamedInTheEnvelope()
     {
         _consent.ReuseAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<GenerateReportRequest>(), Arg.Any<CancellationToken>())

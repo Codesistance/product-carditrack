@@ -47,6 +47,9 @@ public class ExportConsentConfiguration : IEntityTypeConfiguration<ExportConsent
         // At most one live standing grant per caregiver. RecordAsync revokes then
         // inserts in a transaction, but two concurrent remembered confirmations can
         // both pass the revoke and both insert; this index is the written-once contract.
+        // The filter cannot use now() — expired rows stay in the index until
+        // RevokeActiveStandingAsync stamps RevokedAt, including those whose
+        // RememberUntil has passed, so the next insert has a free slot.
         builder.HasIndex(c => c.OwnerUserId)
             .IsUnique()
             .HasFilter("\"ReusedFromConsentId\" IS NULL AND \"RevokedAt\" IS NULL AND \"RememberUntil\" IS NOT NULL")

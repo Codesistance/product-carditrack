@@ -99,7 +99,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
     private async Task<ExportConsentOutcome?> RecordFreshAsync(
         GenerateReportRequest snapshot, CancellationToken ct)
     {
-        var preferBiometric = await OfferBiometricsAsync();
+        var preference = await OfferBiometricsAsync();
 
         var accepted = await _popups.ConfirmWarningAsync(
             ExportConsentPolicy.Text,
@@ -113,7 +113,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         if (rememberFor is null)
             return null;
 
-        var method = await ProveAsync(preferBiometric);
+        var method = await ProveAsync(preference);
         if (method is null)
             return null;
 
@@ -130,23 +130,30 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         }
     }
 
+    private enum ProofPreference
+    {
+        Password,
+        Biometric
+    }
+
     /// <summary>
     /// When the device can do fingerprint or face unlock, ask to use it — or
     /// to turn it on — before the responsibility prompt.
     /// </summary>
-    private async Task<bool> OfferBiometricsAsync()
+    private async Task<ProofPreference> OfferBiometricsAsync()
     {
         if (_biometric.IsAvailable)
         {
-            return await _popups.ConfirmInfoAsync(
+            var useIt = await _popups.ConfirmInfoAsync(
                 "This device can confirm with fingerprint or face unlock. Use it for this export?",
                 "Use fingerprint or face unlock?",
                 "Use it",
                 "Use my password");
+            return useIt ? ProofPreference.Biometric : ProofPreference.Password;
         }
 
         if (!_biometric.CanEnroll)
-            return false;
+            return ProofPreference.Password;
 
         var open = await _popups.ConfirmInfoAsync(
             "Turn on fingerprint or face unlock on this device to confirm exports more easily.",
@@ -154,7 +161,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             "Open settings",
             "Not now");
         if (!open)
-            return false;
+            return ProofPreference.Password;
 
         await _biometric.OpenEnrollmentSettingsAsync();
 
@@ -165,7 +172,9 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             "Use fingerprint or face unlock?",
             "Use it",
             "Use my password");
-        return useNow && _biometric.IsAvailable;
+        return useNow && _biometric.IsAvailable
+            ? ProofPreference.Biometric
+            : ProofPreference.Password;
     }
 
     private async Task<ExportConsentRememberFor?> ChooseRememberForAsync()
@@ -186,9 +195,9 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             : ExportConsentRememberFor.ThisExport;
     }
 
-    private async Task<ExportConsentMethod?> ProveAsync(bool preferBiometric)
+    private async Task<ExportConsentMethod?> ProveAsync(ProofPreference preference)
     {
-        if (preferBiometric && _biometric.IsAvailable)
+        if (preference == ProofPreference.Biometric && _biometric.IsAvailable)
         {
             if (await _biometric.AuthenticateAsync("Confirm this export"))
                 return ExportConsentMethod.Biometric;
@@ -196,30 +205,20 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             await _popups.ShowErrorAsync(
                 "We couldn't confirm with fingerprint or face unlock. Try your password instead.",
                 "Couldn't confirm");
-            return null;
+            return await ProvePasswordAsync();
         }
 
-        if (_biometric.IsAvailable)
+        if (!_biometric.IsAvailable)
         {
-            var choice = await _popups.ChooseAsync(
-                "How do you want to confirm?",
-                "Cancel",
-                "Password",
-                "Fingerprint or face unlock");
-            return choice switch
-            {
-                "Password" => await ProvePasswordAsync(),
-                "Fingerprint or face unlock" => await ProveBiometricAsync(),
-                _ => null
-            };
+            var usePassword = await _popups.ConfirmInfoAsync(
+                "Enter the password you use to sign in. This device has no fingerprint or face unlock set up.",
+                "Confirm with your password",
+                "Continue",
+                "Cancel");
+            return usePassword ? await ProvePasswordAsync() : null;
         }
 
-        var usePassword = await _popups.ConfirmInfoAsync(
-            "Enter the password you use to sign in. This device has no fingerprint or face unlock set up.",
-            "Confirm with your password",
-            "Continue",
-            "Cancel");
-        return usePassword ? await ProvePasswordAsync() : null;
+        return await ProvePasswordAsync();
     }
 
     private async Task<ExportConsentMethod?> ProvePasswordAsync()
@@ -235,17 +234,6 @@ public sealed class ExportConsentFlow : IExportConsentFlow
 
         await _popups.ShowErrorAsync(
             "That password didn't match. Try again, or use this device's fingerprint or face unlock.",
-            "Couldn't confirm");
-        return null;
-    }
-
-    private async Task<ExportConsentMethod?> ProveBiometricAsync()
-    {
-        if (await _biometric.AuthenticateAsync("Confirm this export"))
-            return ExportConsentMethod.Biometric;
-
-        await _popups.ShowErrorAsync(
-            "We couldn't confirm with fingerprint or face unlock. Try your password instead.",
             "Couldn't confirm");
         return null;
     }
