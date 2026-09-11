@@ -44,6 +44,14 @@ public class ExportConsentConfiguration : IEntityTypeConfiguration<ExportConsent
 
         builder.HasIndex(c => new { c.OwnerUserId, c.RememberUntil });
 
+        // At most one live standing grant per caregiver. RecordAsync revokes then
+        // inserts in a transaction, but two concurrent remembered confirmations can
+        // both pass the revoke and both insert; this index is the written-once contract.
+        builder.HasIndex(c => c.OwnerUserId)
+            .IsUnique()
+            .HasFilter("\"ReusedFromConsentId\" IS NULL AND \"RevokedAt\" IS NULL AND \"RememberUntil\" IS NOT NULL")
+            .HasDatabaseName("IX_ExportConsents_OneStandingGrant");
+
         builder.Property(c => c.CreatedDate).HasDefaultValueSql("NOW()");
     }
 }

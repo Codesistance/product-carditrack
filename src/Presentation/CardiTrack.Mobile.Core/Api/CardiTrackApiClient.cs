@@ -916,10 +916,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     }
 
     public async Task<ExportConsentResponse> ReuseExportConsentAsync(
-        GenerateReportRequest request, CancellationToken ct = default)
+        Guid consentId, GenerateReportRequest request, CancellationToken ct = default)
     {
         var recorded = await PostAsync<GenerateReportRequest, ExportConsentResponse>(
-            "api/v1/reports/consent/reuse", request, ct);
+            $"api/v1/reports/consents/{consentId}/reuse", request, ct);
         await EvictAsync("api/v1/reports/consents");
         return recorded;
     }

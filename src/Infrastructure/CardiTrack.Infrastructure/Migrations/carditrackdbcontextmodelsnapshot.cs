@@ -1269,6 +1269,11 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.HasIndex("OwnerUserId", "RememberUntil");
 
+                    b.HasIndex("OwnerUserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ExportConsents_OneStandingGrant")
+                        .HasFilter("\"ReusedFromConsentId\" IS NULL AND \"RevokedAt\" IS NULL AND \"RememberUntil\" IS NOT NULL");
+
                     b.ToTable("ExportConsents", (string)null);
                 });
 

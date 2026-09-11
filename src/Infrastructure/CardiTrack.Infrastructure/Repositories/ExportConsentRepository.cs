@@ -43,7 +43,16 @@ public class ExportConsentRepository : Repository<ExportConsent>, IExportConsent
                 c.Id == consentId
                 && c.OwnerUserId == ownerUserId
                 && c.ConsumedAt == null
-                && c.ExpiresAt > utcNow)
+                && c.RevokedAt == null
+                && c.ExpiresAt > utcNow
+                && (c.ReusedFromConsentId == null
+                    || _dbSet.Any(g =>
+                        g.Id == c.ReusedFromConsentId
+                        && g.OwnerUserId == ownerUserId
+                        && g.ReusedFromConsentId == null
+                        && g.RevokedAt == null
+                        && g.RememberUntil != null
+                        && g.RememberUntil > utcNow)))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(c => c.ConsumedAt, utcNow)
                 .SetProperty(c => c.ReportId, reportId)

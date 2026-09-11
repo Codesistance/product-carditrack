@@ -98,6 +98,8 @@ public partial class ExportConsentsPage : ContentPage
 
     private static View BuildHistoryRow(ExportConsentHistoryItem item)
     {
+        var stack = new VerticalStackLayout { Spacing = 4 };
+        stack.Add(TitleLabel(item.RecordedAt.ToLocalTime().ToString("d MMM yyyy")));
         stack.Add(BodyLabel(item.Summary));
         return Card(stack);
     }

@@ -82,7 +82,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
 
         try
         {
-            var recorded = await _api.ReuseExportConsentAsync(snapshot, ct);
+            var recorded = await _api.ReuseExportConsentAsync(grant.Id, snapshot, ct);
             return new ExportConsentOutcome(recorded.ConsentToken, Reused: true);
         }
         catch (ApiException ex) when (ex.IsNotFound)
@@ -157,7 +157,15 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             return false;
 
         await _biometric.OpenEnrollmentSettingsAsync();
-        return _biometric.IsAvailable;
+
+        // Settings launches without waiting for enrollment. Ask again after they
+        // return, then re-check — IsAvailable is still false while Settings is open.
+        var useNow = await _popups.ConfirmInfoAsync(
+            "If fingerprint or face unlock is on now, use it for this export. Otherwise we'll use your password.",
+            "Use fingerprint or face unlock?",
+            "Use it",
+            "Use my password");
+        return useNow && _biometric.IsAvailable;
     }
 
     private async Task<ExportConsentRememberFor?> ChooseRememberForAsync()

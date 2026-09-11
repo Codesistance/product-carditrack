@@ -68,9 +68,9 @@ The same snapshot generate will send — members, dates, format, and section fla
 
 ---
 
-## POST `/api/v1/reports/consent/reuse`
+## POST `/api/v1/reports/consents/{consentId}/reuse`
 
-Mints a two-minute generate token from an in-force standing grant for this snapshot. **404** when there is none to reuse (expired, revoked, or the policy text has changed) — the client then runs the full confirmation. The envelope **message** and `reuseNotice` always say that an earlier confirmation is being reused.
+Mints a two-minute generate token from the named in-force standing grant for this snapshot. **404** when that grant cannot be reused (unknown, not theirs, expired, revoked, a reuse child rather than a standing grant, or the policy text has changed) — the client then runs the full confirmation. The envelope **message** and `reuseNotice` always say that an earlier confirmation is being reused. Binding reuse to `{consentId}` keeps the disclosure the caregiver saw aligned with the grant that actually mints the token.
 
 **Priority:** P0 | **Auth Required:** Yes
 

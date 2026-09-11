@@ -15,11 +15,15 @@ public interface IExportConsentService
 
     /// <summary>
     /// Mints a two-minute token from an in-force standing grant for this
-    /// snapshot. Throws <see cref="KeyNotFoundException"/> when there is no
-    /// grant to reuse, or the caller may not view a named CardiMember.
+    /// snapshot. Throws <see cref="KeyNotFoundException"/> when
+    /// <paramref name="standingConsentId"/> is not an in-force grant the
+    /// caller owns, or the caller may not view a named CardiMember.
     /// </summary>
     Task<ExportConsentResponse> ReuseAsync(
-        Guid requestingUserId, GenerateReportRequest request, CancellationToken ct = default);
+        Guid requestingUserId,
+        Guid standingConsentId,
+        GenerateReportRequest request,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Marks the token used and binds it to <paramref name="reportId"/>.

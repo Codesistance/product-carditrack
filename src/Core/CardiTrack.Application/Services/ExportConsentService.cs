@@ -39,9 +39,6 @@ public class ExportConsentService : IExportConsentService
         var rememberForDuration = ExportConsentPolicy.RememberDuration(rememberFor);
         var rememberUntil = rememberForDuration is { } duration ? now.Add(duration) : (DateTime?)null;
 
-        if (rememberUntil is not null)
-            await _unitOfWork.ExportConsents.RevokeActiveStandingAsync(requestingUserId, now, ct);
-
         var snapshot = ToGenerateRequest(request);
         var consent = new ExportConsent
         {
@@ -67,21 +64,42 @@ public class ExportConsentService : IExportConsentService
             ExpiresAt = now.Add(ExportConsentPolicy.Lifetime)
         };
 
-        await _unitOfWork.ExportConsents.AddAsync(consent);
-        await _unitOfWork.SaveChangesAsync();
+        if (rememberUntil is not null)
+        {
+            await _unitOfWork.BeginTransactionAsync();
+            try
+            {
+                await _unitOfWork.ExportConsents.RevokeActiveStandingAsync(requestingUserId, now, ct);
+                await _unitOfWork.ExportConsents.AddAsync(consent);
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
+        }
+        else
+        {
+            await _unitOfWork.ExportConsents.AddAsync(consent);
+            await _unitOfWork.SaveChangesAsync();
+        }
 
         return ToRecordedResponse(consent);
     }
 
     public async Task<ExportConsentResponse> ReuseAsync(
-        Guid requestingUserId, GenerateReportRequest request, CancellationToken ct = default)
+        Guid requestingUserId,
+        Guid standingConsentId,
+        GenerateReportRequest request,
+        CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, request.CardiMemberIds, ct);
 
         var now = DateTime.UtcNow;
-        var grant = await _unitOfWork.ExportConsents.GetActiveStandingAsync(
-            requestingUserId, now, ExportConsentPolicy.Sha256Hex, ct);
-        if (grant is null)
+        var grant = await _unitOfWork.ExportConsents.GetForOwnerAsync(standingConsentId, requestingUserId, ct);
+        if (grant is null || !IsStandingGrantReusable(grant, now))
             throw new KeyNotFoundException("You don't have a confirmation we can reuse — please confirm again.");
 
         var child = new ExportConsent
@@ -130,6 +148,9 @@ public class ExportConsentService : IExportConsentService
         if (consent is null || consent.ExpiresAt <= now)
             throw new ExportConsentException("That confirmation expired — please confirm again.");
 
+        if (consent.RevokedAt is not null)
+            throw new ExportConsentException("That confirmation is no longer in force — please confirm again.");
+
         if (consent.ConsumedAt is not null)
             throw new ExportConsentException("That confirmation was already used — please confirm again.");
 
@@ -145,10 +166,7 @@ public class ExportConsentService : IExportConsentService
         if (consent.ReusedFromConsentId is { } grantId)
         {
             var grant = await _unitOfWork.ExportConsents.GetForOwnerAsync(grantId, requestingUserId, ct);
-            if (grant is null
-                || grant.RevokedAt is not null
-                || grant.RememberUntil is null
-                || grant.RememberUntil <= now)
+            if (!IsStandingGrantUnrevoked(grant, now))
             {
                 throw new ExportConsentException(
                     "That confirmation is no longer in force — please confirm again.");
@@ -173,6 +191,17 @@ public class ExportConsentService : IExportConsentService
         if (!await _unitOfWork.ExportConsents.TryRevokeAsync(consentId, requestingUserId, now, ct))
             throw new KeyNotFoundException("We couldn't find that confirmation.");
     }
+
+    private static bool IsStandingGrantReusable(ExportConsent grant, DateTime utcNow) =>
+        IsStandingGrantUnrevoked(grant, utcNow)
+        && string.Equals(grant.PolicySha256, ExportConsentPolicy.Sha256Hex, StringComparison.Ordinal);
+
+    private static bool IsStandingGrantUnrevoked(ExportConsent? grant, DateTime utcNow) =>
+        grant is not null
+        && grant.ReusedFromConsentId is null
+        && grant.RevokedAt is null
+        && grant.RememberUntil is { } until
+        && until > utcNow;
 
     private static ExportConsentResponse ToRecordedResponse(ExportConsent consent) => new()
     {

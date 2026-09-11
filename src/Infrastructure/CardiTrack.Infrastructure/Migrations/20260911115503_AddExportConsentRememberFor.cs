@@ -41,11 +41,22 @@ namespace CardiTrack.Infrastructure.Migrations
                 name: "IX_ExportConsents_OwnerUserId_RememberUntil",
                 table: "ExportConsents",
                 columns: new[] { "OwnerUserId", "RememberUntil" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ExportConsents_OneStandingGrant",
+                table: "ExportConsents",
+                column: "OwnerUserId",
+                unique: true,
+                filter: "\"ReusedFromConsentId\" IS NULL AND \"RevokedAt\" IS NULL AND \"RememberUntil\" IS NOT NULL");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropIndex(
+                name: "IX_ExportConsents_OneStandingGrant",
+                table: "ExportConsents");
+
             migrationBuilder.DropIndex(
                 name: "IX_ExportConsents_OwnerUserId_RememberUntil",
                 table: "ExportConsents");

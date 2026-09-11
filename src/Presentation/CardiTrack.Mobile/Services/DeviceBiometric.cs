@@ -3,8 +3,9 @@ using CardiTrack.Mobile.Core.Auth;
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>
-/// Platform biometric unlock. Android uses the OS biometric prompt; other
-/// targets report unavailable so export falls back to the password popup.
+/// Platform biometric unlock. Android uses BiometricPrompt; iOS uses
+/// LocalAuthentication. Other targets report unavailable so export falls
+/// back to the password popup.
 /// </summary>
 public sealed class DeviceBiometric : IDeviceBiometric
 {
@@ -189,6 +190,92 @@ public sealed class DeviceBiometric : IDeviceBiometric
             Android.Hardware.Biometrics.BiometricErrorCode errorCode,
             Java.Lang.ICharSequence? errString) =>
             Complete(false);
+    }
+#elif IOS
+    public bool IsAvailable
+    {
+        get
+        {
+            using var context = new LocalAuthentication.LAContext();
+            return context.CanEvaluatePolicy(
+                LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics, out _);
+        }
+    }
+
+    public bool CanEnroll
+    {
+        get
+        {
+            using var context = new LocalAuthentication.LAContext();
+            if (context.CanEvaluatePolicy(
+                    LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics, out var error))
+                return false;
+
+            return error is not null
+                && error.Code == (nint)LocalAuthentication.LAStatus.BiometryNotEnrolled;
+        }
+    }
+
+    public Task OpenEnrollmentSettingsAsync()
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try
+            {
+                var url = new Foundation.NSUrl(UIKit.UIApplication.OpenSettingsUrlString);
+                UIKit.UIApplication.SharedApplication.OpenUrl(
+                    url,
+                    new UIKit.UIApplicationOpenUrlOptions(),
+                    _ => tcs.TrySetResult(true));
+            }
+            catch (Exception)
+            {
+                tcs.TrySetResult(false);
+            }
+        });
+        return tcs.Task;
+    }
+
+    public Task<bool> AuthenticateAsync(string reason, CancellationToken ct = default)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (ct.IsCancellationRequested)
+        {
+            tcs.TrySetResult(false);
+            return tcs.Task;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var context = new LocalAuthentication.LAContext();
+            if (!context.CanEvaluatePolicy(
+                    LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics, out _))
+            {
+                tcs.TrySetResult(false);
+                return;
+            }
+
+            ct.Register(() =>
+            {
+                try
+                {
+                    context.Invalidate();
+                }
+                catch (Exception)
+                {
+                    // Prompt already dismissed.
+                }
+
+                tcs.TrySetResult(false);
+            });
+
+            context.EvaluatePolicy(
+                LocalAuthentication.LAPolicy.DeviceOwnerAuthenticationWithBiometrics,
+                reason,
+                (success, _) => tcs.TrySetResult(success));
+        });
+        return tcs.Task;
     }
 #else
     public bool IsAvailable => false;

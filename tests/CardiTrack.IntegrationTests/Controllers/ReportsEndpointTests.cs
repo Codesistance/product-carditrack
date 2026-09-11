@@ -114,7 +114,7 @@ public class ReportsEndpointTests
     [Fact]
     public async Task ReuseConsent_Answers200_WithTheReuseNamedInTheEnvelope()
     {
-        _consent.ReuseAsync(Arg.Any<Guid>(), Arg.Any<GenerateReportRequest>(), Arg.Any<CancellationToken>())
+        _consent.ReuseAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<GenerateReportRequest>(), Arg.Any<CancellationToken>())
             .Returns(new ExportConsentResponse
             {
                 ConsentToken = "reusedtoken",
@@ -123,7 +123,7 @@ public class ReportsEndpointTests
                 ReuseNotice = "We're using the confirmation you gave on 4 Sep 2026. It stays in force until 18 Sep 2026. You can stop this in Settings."
             });
 
-        var result = await CreateSut().ReuseConsent(AnyRequest(), default);
+        var result = await CreateSut().ReuseConsent(Guid.NewGuid(), AnyRequest(), default);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var envelope = Assert.IsType<ApiResponse<ExportConsentResponse>>(ok.Value);

@@ -23,8 +23,9 @@ public interface IExportConsentRepository : IRepository<ExportConsent>
         Guid ownerUserId, CancellationToken ct = default);
 
     /// <summary>
-    /// Atomically stamps consume when the row is still unused and unexpired.
-    /// Returns false if another caller won or the row no longer qualifies.
+    /// Atomically stamps consume when the row is still unused, unexpired, and
+    /// not revoked. A reuse also requires its parent standing grant still in
+    /// force. Returns false if another caller won or the row no longer qualifies.
     /// </summary>
     Task<bool> TryConsumeAsync(
         Guid consentId, Guid ownerUserId, Guid reportId, DateTime utcNow, CancellationToken ct = default);

@@ -70,17 +70,17 @@ public class ReportsController : BaseApiController
     }
 
     /// <summary>
-    /// Mints a two-minute token from an in-force standing grant for this snapshot.
-    /// The client must tell the caregiver the confirmation is being reused.
+    /// Mints a two-minute token from the named in-force standing grant for this
+    /// snapshot. The client must tell the caregiver the confirmation is being reused.
     /// </summary>
-    [HttpPost("consent/reuse")]
+    [HttpPost("consents/{consentId:guid}/reuse")]
     [AuditHealthDataAccess("ReuseExportConsent")]
     [ProducesResponseType(typeof(ApiResponse<ExportConsentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<ExportConsentResponse>>> ReuseConsent(
-        [FromBody] GenerateReportRequest request, CancellationToken ct)
+        Guid consentId, [FromBody] GenerateReportRequest request, CancellationToken ct)
     {
         if (NotSignedIn(out var signInError))
             return signInError;
@@ -91,7 +91,7 @@ public class ReportsController : BaseApiController
 
         try
         {
-            var reused = await _consent.ReuseAsync(UserContext.UserId, request, ct);
+            var reused = await _consent.ReuseAsync(UserContext.UserId, consentId, request, ct);
             return Success(reused, reused.ReuseNotice ?? "We're using your earlier confirmation.");
         }
         catch (KeyNotFoundException ex)

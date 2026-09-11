@@ -69,7 +69,19 @@ public class ExportConsentServiceTests
                 var reportId = ci.ArgAt<Guid>(2);
                 var now = ci.ArgAt<DateTime>(3);
                 var row = _rows.FirstOrDefault(c =>
-                    c.Id == id && c.OwnerUserId == owner && c.ConsumedAt is null && c.ExpiresAt > now);
+                    c.Id == id
+                    && c.OwnerUserId == owner
+                    && c.ConsumedAt is null
+                    && c.RevokedAt is null
+                    && c.ExpiresAt > now
+                    && (c.ReusedFromConsentId is null
+                        || _rows.Any(g =>
+                            g.Id == c.ReusedFromConsentId
+                            && g.OwnerUserId == owner
+                            && g.ReusedFromConsentId is null
+                            && g.RevokedAt is null
+                            && g.RememberUntil is { } until
+                            && until > now)));
                 if (row is null)
                     return Task.FromResult(false);
                 row.ConsumedAt = now;
@@ -238,7 +250,7 @@ public class ExportConsentServiceTests
         var grant = Assert.Single(_rows);
         grant.ConsumedAt = DateTime.UtcNow;
 
-        var reused = await CreateSut().ReuseAsync(_userId, GenerateRequest(includeJournals: true));
+        var reused = await CreateSut().ReuseAsync(_userId, grant.Id, GenerateRequest(includeJournals: true));
 
         Assert.True(reused.Reused);
         Assert.Equal(grant.Id, reused.ReusedFromConsentId);
@@ -257,9 +269,24 @@ public class ExportConsentServiceTests
     public async Task ReuseAsync_ThrowsWhenThereIsNothingToReuse()
     {
         await CreateSut().RecordAsync(_userId, RecordRequest());
+        var thisExport = Assert.Single(_rows);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            CreateSut().ReuseAsync(_userId, GenerateRequest()));
+            CreateSut().ReuseAsync(_userId, thisExport.Id, GenerateRequest()));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().ReuseAsync(_userId, Guid.NewGuid(), GenerateRequest()));
+    }
+
+    [Fact]
+    public async Task ReuseAsync_ThrowsWhenTheIdIsAReuseChild()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+        var grant = Assert.Single(_rows);
+        var reused = await CreateSut().ReuseAsync(_userId, grant.Id, GenerateRequest());
+        var childId = Guid.Parse(reused.ConsentToken);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            CreateSut().ReuseAsync(_userId, childId, GenerateRequest()));
     }
 
     [Fact]
@@ -267,7 +294,7 @@ public class ExportConsentServiceTests
     {
         await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
         var grant = Assert.Single(_rows);
-        var reused = await CreateSut().ReuseAsync(_userId, GenerateRequest());
+        var reused = await CreateSut().ReuseAsync(_userId, grant.Id, GenerateRequest());
         grant.RevokedAt = DateTime.UtcNow;
 
         var stopped = await Assert.ThrowsAsync<ExportConsentException>(() =>
@@ -281,7 +308,8 @@ public class ExportConsentServiceTests
     public async Task ListAsync_MarksAStandingGrantRevocable_AndAReuseAsReused()
     {
         await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneMonth));
-        await CreateSut().ReuseAsync(_userId, GenerateRequest());
+        var standing = Assert.Single(_rows);
+        await CreateSut().ReuseAsync(_userId, standing.Id, GenerateRequest());
 
         var history = await CreateSut().ListAsync(_userId);
 
@@ -306,7 +334,7 @@ public class ExportConsentServiceTests
 
         Assert.NotNull(grant.RevokedAt);
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            CreateSut().ReuseAsync(_userId, GenerateRequest()));
+            CreateSut().ReuseAsync(_userId, grant.Id, GenerateRequest()));
     }
 
     [Fact]
@@ -314,6 +342,22 @@ public class ExportConsentServiceTests
     {
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().RevokeAsync(_userId, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_RefusesTheOriginalToken_OnceTheGrantWasStopped()
+    {
+        var recorded = await CreateSut().RecordAsync(
+            _userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+        var grant = Assert.Single(_rows);
+
+        await CreateSut().RevokeAsync(_userId, grant.Id);
+
+        var stopped = await Assert.ThrowsAsync<ExportConsentException>(() =>
+            CreateSut().ConsumeAsync(_userId, recorded.ConsentToken, GenerateRequest(), Guid.NewGuid()));
+
+        Assert.Contains("no longer in force", stopped.Message);
+        Assert.Null(grant.ConsumedAt);
     }
 
     [Fact]
