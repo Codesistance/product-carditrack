@@ -26,6 +26,7 @@ public sealed class TrendChart : GraphicsView
     private const double TapMovementSlop = 12;
 
     private readonly TrendChartDrawable _drawable = new();
+    private static readonly IReadOnlySet<DateOnly> NoFlaggedDates = new HashSet<DateOnly>();
 
     /// <summary>Where the current touch went down, or null when no touch is in progress or the
     /// gesture has already been claimed by a scrolling ancestor.</summary>
@@ -95,7 +96,7 @@ public sealed class TrendChart : GraphicsView
         // near, and stack it under whatever the host says about the gap.
         if (NoDataSpanAt(up.X) is { } gap)
         {
-            _drawable.SelectedDate = null;
+            _drawable.ClearSelection();
             Invalidate();
             NoDataSpanTapped?.Invoke(this, gap);
             return;
@@ -104,14 +105,19 @@ public sealed class TrendChart : GraphicsView
         var nearest = _drawable.NearestDataPointAt(up.X);
         if (nearest is null || Math.Abs(nearest.Value.At.X - up.X) > TouchSlop)
         {
-            _drawable.SelectedDate = null;
+            _drawable.ClearSelection();
         }
         else
         {
             // Tapping the already-selected reading dismisses its callout — the second tap means
-            // "put it away", not "tell me again".
-            _drawable.SelectedDate =
-                _drawable.SelectedDate == nearest.Value.Date ? null : nearest.Value.Date;
+            // "put it away", not "tell me again". Identity is the sample currently shown, not the
+            // stored slot alone: a rolling window can reuse that slot for a different day while
+            // ResolveSelectedIndex still holds the old date, and comparing only the index would
+            // treat a tap on the new day as a dismiss.
+            if (_drawable.IsSelected(nearest.Value))
+                _drawable.ClearSelection();
+            else
+                _drawable.Select(nearest.Value);
         }
 
         Invalidate();
@@ -136,13 +142,24 @@ public sealed class TrendChart : GraphicsView
     /// The published typical-adult range, shaded behind the line, or null for a metric no
     /// standards body publishes one for.
     /// </param>
+    /// <param name="flaggedDates">
+    /// Days to paint in <paramref name="flagColor"/> rather than the line's ink — the reading an
+    /// alert is about, on the alert-detail chart. Drawn even when <paramref name="showMarkers"/> is
+    /// false, so a 28-day window still shows which day raised the alert.
+    /// </param>
+    /// <param name="flagColor">
+    /// The alert's own severity ink. Null falls back to <paramref name="lineColor"/>, so a flagged
+    /// point still fills solid rather than disappearing.
+    /// </param>
     public void Render(
         IReadOnlyList<MetricPoint> points,
         TrendScale scale,
         Color lineColor,
         bool showMarkers,
         decimal? baseline = null,
-        MetricReference? reference = null)
+        MetricReference? reference = null,
+        IReadOnlySet<DateOnly>? flaggedDates = null,
+        Color? flagColor = null)
     {
         _drawable.Points = points;
         _drawable.ValueFormatter = ValueFormatter;
@@ -152,6 +169,8 @@ public sealed class TrendChart : GraphicsView
         _drawable.Baseline = baseline is { } value ? (double)value : null;
         _drawable.ReferenceLow = reference is not null ? (double)reference.Low : null;
         _drawable.ReferenceHigh = reference is not null ? (double)reference.High : null;
+        _drawable.FlaggedDates = flaggedDates ?? NoFlaggedDates;
+        _drawable.FlagColor = flagColor;
         Invalidate();
     }
 
@@ -212,9 +231,12 @@ public sealed class TrendChart : GraphicsView
     }
 }
 
-/// <summary>One reported reading as drawn: where it landed, which day, and its value — what
-/// tap-to-inspect selects and the callout names.</summary>
-public readonly record struct ChartDataPoint(PointF At, DateOnly Date, double Value);
+/// <summary>One reported reading as drawn: where it landed, which day, its value, whether it
+/// is the day an alert is about, and which slot in the series it came from — what tap-to-inspect
+/// selects and the callout names. The series index is the identity a granular hour needs: those
+/// samples share one civil day, so a date alone would always resolve to the first of them.</summary>
+public readonly record struct ChartDataPoint(
+    PointF At, DateOnly Date, double Value, bool Flagged = false, int SeriesIndex = 0);
 
 /// <summary>
 /// One shaded run of days with no reading: where it was drawn, and which days it covers.
@@ -369,13 +391,78 @@ internal sealed class TrendChartDrawable : IDrawable
     private readonly List<ChartDataPoint> _dataPoints = [];
 
     /// <summary>
-    /// The day a tap selected, or null. Held as a date rather than as the point itself because
-    /// <see cref="_dataPoints"/> is cleared and rebuilt on every draw: a resize moves every
-    /// coordinate, and a refresh can change the value under the same day. Keeping the point would
-    /// paint the marker where the reading used to be and caption it with a number the line no
-    /// longer shows, so the position and the value are both resolved fresh at draw time.
+    /// The day a tap selected, or null. Held as a date plus the series slot rather than as the
+    /// point itself because <see cref="_dataPoints"/> is cleared and rebuilt on every draw: a
+    /// resize moves every coordinate, and a refresh can change the value under the same day.
+    /// Keeping the point would paint the marker where the reading used to be and caption it with
+    /// a number the line no longer shows, so the position and the value are both resolved fresh
+    /// at draw time. The slot is what keeps two samples on the same civil day apart — a realtime
+    /// hour would otherwise always caption the first minute.
     /// </summary>
-    public DateOnly? SelectedDate { get; set; }
+    public DateOnly? SelectedDate { get; private set; }
+
+    /// <summary>Index into <see cref="Points"/> of the selected sample, or null.</summary>
+    public int? SelectedSeriesIndex { get; private set; }
+
+    public void ClearSelection()
+    {
+        SelectedDate = null;
+        SelectedSeriesIndex = null;
+    }
+
+    public void Select(ChartDataPoint point)
+    {
+        SelectedDate = point.Date;
+        SelectedSeriesIndex = point.SeriesIndex;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="point"/> is the sample the callout is currently naming — the
+    /// rebuilt one, not the stored slot. A rolling window can keep the selected day and move it
+    /// to a new index, while the old index now holds a different day; comparing the stored slot
+    /// would then treat a tap on that new day as a dismiss.
+    /// </summary>
+    public bool IsSelected(ChartDataPoint point)
+    {
+        if (SelectedDate is not { } date)
+            return false;
+
+        var index = ResolveSelectedIndex(date);
+        if (index < 0)
+            return false;
+
+        var shown = _dataPoints[index];
+        return shown.SeriesIndex == point.SeriesIndex && shown.Date == point.Date;
+    }
+
+    /// <summary>
+    /// The rebuilt sample that matches the current selection. Prefers the series slot the tap
+    /// hit, so two readings on the same civil day stay distinct. Falls back to the date only
+    /// when that day appears once — a 7/14/30 window change keeps the day and shuffles indices,
+    /// and a granular hour sharing one date across every sample must not caption the first
+    /// minute instead of the one that was tapped.
+    /// </summary>
+    private int ResolveSelectedIndex(DateOnly date)
+    {
+        if (SelectedSeriesIndex is { } seriesIndex)
+        {
+            var bySlot = _dataPoints.FindIndex(p => p.SeriesIndex == seriesIndex);
+            if (bySlot >= 0 && _dataPoints[bySlot].Date == date)
+                return bySlot;
+        }
+
+        var found = -1;
+        var sameDay = 0;
+        for (var i = 0; i < _dataPoints.Count; i++)
+        {
+            if (_dataPoints[i].Date != date)
+                continue;
+            sameDay++;
+            found = i;
+        }
+
+        return sameDay == 1 ? found : -1;
+    }
 
     /// <summary>How the view spells a value — it knows the metric's unit and the drawable does
     /// not. Needed here, rather than a pre-formatted string, because the callout has to reformat
@@ -425,6 +512,12 @@ internal sealed class TrendChartDrawable : IDrawable
     public double? ReferenceLow { get; set; }
     public double? ReferenceHigh { get; set; }
 
+    /// <summary>Days painted in <see cref="FlagColor"/> — the reading an alert is about.</summary>
+    public IReadOnlySet<DateOnly> FlaggedDates { get; set; } = new HashSet<DateOnly>();
+
+    /// <summary>The alert's severity ink, or null to fill flagged points in the line's colour.</summary>
+    public Color? FlagColor { get; set; }
+
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
         // Rebuilt every pass: the spans are canvas geometry, so a resize or a new window makes the
@@ -466,6 +559,9 @@ internal sealed class TrendChartDrawable : IDrawable
         // Only the longer windows skip the per-day markers, and those are exactly the windows with
         // the most points to collect — so the list is not built at all unless it will be drawn.
         var markers = ShowMarkers ? new List<PointF>(Points.Count) : null;
+        // Flagged readings are drawn even when the rest of the markers are off: a 28-day window
+        // still has to show which day raised the alert, or the colour-coding has nothing to land on.
+        var flagged = new List<PointF>();
 
         var latestMarker = default(PointF);
         var hasMarker = false;
@@ -538,12 +634,18 @@ internal sealed class TrendChartDrawable : IDrawable
             {
                 latestMarker = point;
                 hasMarker = true;
+                var isFlagged = FlaggedDates.Contains(Points[i].Date);
                 // Every reported reading is inspectable, partial included — the callout is how a
                 // caregiver asks "what is this exactly?", and today-so-far is a fair question.
-                _dataPoints.Add(new ChartDataPoint(point, Points[i].Date, (double)value!));
+                _dataPoints.Add(new ChartDataPoint(point, Points[i].Date, (double)value!, isFlagged, i));
                 // A running total is not one of the readings the window is made of, so it does not
-                // get a day marker — the dashed run is what says it is there.
-                if (!isPartial)
+                // get an ordinary day marker — the dashed run is what says it is there. A flagged
+                // partial still gets the coloured mark: that is the day the alert is about, and
+                // hiding it because the calendar day is unfinished would hide the very point the
+                // colour exists to name.
+                if (isFlagged)
+                    flagged.Add(point);
+                else if (!isPartial)
                     markers?.Add(point);
             }
         }
@@ -581,17 +683,23 @@ internal sealed class TrendChartDrawable : IDrawable
         if (markers is not null)
         {
             foreach (var marker in markers)
-                DrawMarker(canvas, marker, MarkerRadius);
+                DrawMarker(canvas, marker, MarkerRadius, LineColor);
+        }
+
+        foreach (var mark in flagged)
+        {
+            var radius = hasSettled && mark == lastSettled ? LatestMarkerRadius : MarkerRadius + 1f;
+            DrawFlaggedMarker(canvas, mark, radius);
         }
 
         // The most recent reading is always marked, whatever the window: it is the number the
         // card's headline value quotes, and the caregiver needs to see where it sits. Where the
         // window ends on a day in progress the headline quotes the last finished day instead, so
-        // that is the point the emphasis belongs to.
-        if (hasSettled)
-            DrawMarker(canvas, lastSettled, LatestMarkerRadius);
-        else if (hasMarker)
-            DrawMarker(canvas, latestMarker, LatestMarkerRadius);
+        // that is the point the emphasis belongs to. A flagged latest is already drawn above.
+        if (hasSettled && !flagged.Contains(lastSettled))
+            DrawMarker(canvas, lastSettled, LatestMarkerRadius, LineColor);
+        else if (!hasSettled && hasMarker && flagged.Count == 0)
+            DrawMarker(canvas, latestMarker, LatestMarkerRadius, LineColor);
 
         DrawSelection(canvas, dirtyRect);
     }
@@ -608,19 +716,23 @@ internal sealed class TrendChartDrawable : IDrawable
             return;
 
         // Resolved against the points this draw just built, never the ones the tap saw. A window
-        // change may also have dropped the selected day outright, and a stale callout over
+        // change may also have dropped the selected sample outright, and a stale callout over
         // different data would attribute a value to the wrong line.
-        var index = _dataPoints.FindIndex(p => p.Date == date);
+        var index = ResolveSelectedIndex(date);
         if (index < 0)
         {
-            SelectedDate = null;
+            ClearSelection();
             return;
         }
 
         var selected = _dataPoints[index];
         var label = $"{ValueFormatter?.Invoke(selected.Value) ?? selected.Value.ToString("0.#")} · {selected.Date:MMM d}";
+        var ink = selected.Flagged ? (FlagColor ?? LineColor) : LineColor;
 
-        DrawMarker(canvas, selected.At, LatestMarkerRadius + 1.5f);
+        if (selected.Flagged)
+            DrawFlaggedMarker(canvas, selected.At, LatestMarkerRadius + 1.5f);
+        else
+            DrawMarker(canvas, selected.At, LatestMarkerRadius + 1.5f, ink);
 
         canvas.FontSize = 10f;
         var size = canvas.GetStringSize(label, Microsoft.Maui.Graphics.Font.Default, 10f);
@@ -636,10 +748,22 @@ internal sealed class TrendChartDrawable : IDrawable
             : selected.At.Y + 10;
 
         var pill = new RectF((float)x, (float)y, width, height);
-        canvas.FillColor = LineColor;
+        canvas.FillColor = ink;
         canvas.FillRoundedRectangle(pill, height / 2);
-        canvas.FontColor = Colors.White;
+        canvas.FontColor = CalloutForeground(ink);
         canvas.DrawString(label, pill, HorizontalAlignment.Center, VerticalAlignment.Center);
+    }
+
+    /// <summary>
+    /// White on the metric inks (and on CRITICAL red); dark on NOTICE yellow and URGENT orange,
+    /// whose fills are too light for white at the callout's 10px size.
+    /// </summary>
+    private static Color CalloutForeground(Color fill)
+    {
+        var luminance = 0.2126f * fill.Red + 0.7152f * fill.Green + 0.0722f * fill.Blue;
+        return luminance > 0.45f
+            ? MetricStatus.Resource("HeadingText", Colors.Black)
+            : Colors.White;
     }
 
     /// <summary>
@@ -811,11 +935,25 @@ internal sealed class TrendChartDrawable : IDrawable
         canvas.StrokeDashPattern = null;
     }
 
-    private void DrawMarker(ICanvas canvas, PointF at, float radius)
+    private void DrawMarker(ICanvas canvas, PointF at, float radius, Color ink)
     {
         canvas.FillColor = Colors.White;
         canvas.FillCircle(at.X, at.Y, radius);
-        canvas.StrokeColor = LineColor;
+        canvas.StrokeColor = ink;
+        canvas.StrokeSize = 2f;
+        canvas.DrawCircle(at.X, at.Y, radius);
+    }
+
+    /// <summary>
+    /// The day this alert is about: filled in the severity colour so it reads as the flagged
+    /// reading rather than as one more point on the line. White ring, so it still sits on the
+    /// stroke the way the ordinary markers do.
+    /// </summary>
+    private void DrawFlaggedMarker(ICanvas canvas, PointF at, float radius)
+    {
+        canvas.FillColor = FlagColor ?? LineColor;
+        canvas.FillCircle(at.X, at.Y, radius);
+        canvas.StrokeColor = Colors.White;
         canvas.StrokeSize = 2f;
         canvas.DrawCircle(at.X, at.Y, radius);
     }
