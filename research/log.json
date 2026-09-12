@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-12",
+      "slack_ts": null,
+      "item_count": 8,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,78 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "ollama-tensor-blob-ssrf-cve-2026-85180",
+      "title": "Unpatched Ollama SSRF (CVE-2026-85180, CVSS 8.7) in MedGemma's unpinned serving image — no safe pin exists yet",
+      "url": "https://github.com/ollama/ollama/issues/17041",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-12-ollama-tensor-blob-ssrf-cve-2026-85180.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "mhra-national-ai-commission-recommendations-2026",
+      "title": "MHRA-commissioned National AI-in-Healthcare Commission publishes final recommendations — staged authorisation, continuous lifecycle monitoring",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "HIGH",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-12-mhra-national-ai-commission-recommendations-2026.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "arpa-h-advocate-agentic-cardiac-ai",
+      "title": "ARPA-H commits $62.7M to build FDA-authorized agentic AI for heart failure care",
+      "url": "https://www.statnews.com/2026/09/09/arpa-h-advocate-program-autonomous-ai-bots-for-heart-failure/",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-12-arpa-h-advocate-agentic-cardiac-ai.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "eic-accelerator-cutoff-correction",
+      "title": "Correction: EIC Accelerator has no October full-proposal cutoff — next is 4 Nov 2026 (Oct 6 is a short-proposal batch date)",
+      "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-12-eic-accelerator-cutoff-correction.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "eit-health-calls-deadline-4-days",
+      "title": "EIT Health Transformative Healthcare Instrument & Innovation Uptake calls both close 2026-09-16 — 4 days left",
+      "url": "https://eithealth.eu/opportunity/transformative-healthcare-instrument/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-12-eit-health-calls-deadline-4-days.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "apple-watch-series12-health-age-ecg",
+      "title": "Apple Watch Series 12 / Ultra 4: redesigned ECG, \"Health Age\" score, Longevity tab",
+      "url": "https://www.macrumors.com/2026/09/10/apple-watch-series-12-hypertension-alerts/",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-12-apple-watch-series12-health-age-ecg.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "gemini-25-family-retirement-oct-2026",
+      "title": "Gemini 2.5 Pro/Flash/Flash-Lite retirement date firmed to 2026-10-16",
+      "url": "https://ai.google.dev/gemini-api/docs/deprecations",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-12-gemini-25-family-retirement-oct-2026.md"
+    },
+    {
+      "date": "2026-09-12",
+      "slug": "device-suitability-review",
+      "title": "Recurring device suitability review — no change to live or roadmap device paths this cycle",
+      "url": "docs/execution/backend/api/devices.md",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-12-device-suitability-review.md"
     }
   ]
 }
