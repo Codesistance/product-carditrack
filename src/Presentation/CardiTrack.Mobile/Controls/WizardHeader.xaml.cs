@@ -77,6 +77,10 @@ public partial class WizardHeader : ContentView
         if (HeaderIcon is null || HeaderIconImage is null)
             return;
 
+        // The image is never its own control: TalkBack would announce it beside
+        // either "Go back" or the title. The circle is the accessible target.
+        AutomationProperties.SetIsInAccessibleTree(HeaderIconImage, false);
+
         if (IsBackVisible)
         {
             HeaderIconImage.Source = "icon_back_white.svg";

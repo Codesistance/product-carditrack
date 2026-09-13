@@ -24,9 +24,27 @@ public partial class AppShell : Shell
 
     public const string SettingsRoute = "//settings";
 
+    /// <summary>
+    /// <see cref="Routing.RegisterRoute"/> is process-wide. A second <see cref="AppShell"/>
+    /// — first-run onboarding after a prior sign-out discarded the last shell — must
+    /// not register the same names again.
+    /// </summary>
+    private static bool _routesRegistered;
+
     public AppShell()
     {
         InitializeComponent();
+        RegisterRoutes();
+
+#if ANDROID || IOS
+        WirePush();
+#endif
+    }
+
+    private static void RegisterRoutes()
+    {
+        if (_routesRegistered)
+            return;
 
         // Pages pushed on top of a tab rather than owning one. Registered here so
         // GoToAsync("<route>?memberId=...") resolves them through DI.
@@ -46,10 +64,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(MetricAlarmEditPage.Route, typeof(MetricAlarmEditPage));
         Routing.RegisterRoute(NotificationPreferencesPage.Route, typeof(NotificationPreferencesPage));
         Routing.RegisterRoute(ExportConsentsPage.Route, typeof(ExportConsentsPage));
-
-#if ANDROID || IOS
-        WirePush();
-#endif
+        _routesRegistered = true;
     }
 
 #if ANDROID || IOS

@@ -207,6 +207,9 @@ public sealed class WizardContext
             }
         }
 
+        // A prior tab jump (bell, etc.) may have recorded an origin. This button
+        // promised the dashboard, so back from here must not revive that page.
+        TabNavigation.Origin.Clear();
         await shell.GoToAsync(AppShell.DashboardRoute);
     }
 
