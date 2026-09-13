@@ -18,13 +18,15 @@
                                Step="Step 4 of 4"
                                Progress="1.0"
                                IsBackVisible="False"
+                               IconSource="icon_reason_heart_white.svg"
                                ContentPadding="20,14,20,16"/>
 
         <ScrollView Grid.Row="1">
             <VerticalStackLayout Padding="20,24,20,36" Spacing="0">
 
-                <!-- Device-card icon tile, not emoji: the rest of the app speaks in those
-                     tinted rounded squares and the monitoring glyph, not platform emoji. -->
+                <!-- Heart-with-trace, not the clock that icon_monitoring draws: this page
+                     is "getting to know" them, and the rest of the app already uses this
+                     glyph for the heart readings the 30-day baseline is built from. -->
                 <Border WidthRequest="96" HeightRequest="96"
                         BackgroundColor="{StaticResource SelectedOptionBackground}"
                         StrokeThickness="0"
@@ -32,7 +34,7 @@
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="24"/>
                     </Border.StrokeShape>
-                    <Image Source="icon_monitoring.svg"
+                    <Image Source="icon_metric_heart.svg"
                            WidthRequest="48" HeightRequest="48"
                            HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Border>

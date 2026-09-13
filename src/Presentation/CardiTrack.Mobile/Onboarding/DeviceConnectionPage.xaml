@@ -31,16 +31,20 @@
     </ContentPage.Resources>
 
     <Grid>
-        <ScrollView>
-            <Grid RowDefinitions="Auto,*">
+        <!-- Same pinned-band scaffold as Dashboard/Alerts: the header stays put and
+             uses the compact inset, so this step matches the rest of the app. -->
+        <Grid RowDefinitions="Auto,*"
+              SafeAreaEdges="None, Container, None, None">
 
                 <controls:WizardHeader x:Name="Header"
                                        Grid.Row="0"
                                        Title="Device Connection"
-                                       BackRequested="OnCancelTapped"/>
+                                       Step="The readings CardiTrack will watch"
+                                       BackRequested="OnCancelTapped"
+                                       ContentPadding="20,14,20,16"/>
 
-                <Grid Grid.Row="1"
-                      Padding="20,24,20,36">
+                <ScrollView Grid.Row="1">
+                <Grid Padding="20,24,20,36">
                     <VerticalStackLayout Spacing="0">
 
                         <Label x:Name="TitleHeading"
@@ -170,8 +174,8 @@
 
                     </VerticalStackLayout>
                 </Grid>
-            </Grid>
-        </ScrollView>
+                </ScrollView>
+        </Grid>
 
         <!-- Authorizing overlay (M1-06 C) -->
         <Grid x:Name="AuthorizingOverlay"

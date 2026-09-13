@@ -544,7 +544,7 @@ Each device card:
 - Progress indicator: "Step 4 of 4"
 
 **Illustration:**
-- Static emoji glyphs: 🧠⚙ (no Lottie animation shipped)
+- Static `icon_metric_heart` glyph in the app's tinted icon tile (not the clock `icon_monitoring` draws, and not emoji).
 
 **Explanation:**
 - Heading: "Getting to know them" (singular, no name interpolation)
@@ -1108,7 +1108,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 | 1 | Onboarding Slide 1 | M1-02 | Happy elderly person wearing a smartwatch — warm, reassuring tone |
 | 2 | Onboarding Slide 2 | M1-02 | Phone showing a health dashboard — conveys "at-a-glance monitoring" |
 | 3 | Onboarding Slide 3 | M1-02 | Family members on their phones — conveys shared caregiving |
-| 4 | Learning Phase | M1-08 | Brain with gears concept. Animated (Lottie). Source from LottieFiles or use static illustration + platform progress animation. **As built:** static 🧠⚙ emoji glyphs. |
+| 4 | Learning Phase | M1-08 | Brain with gears concept. Animated (Lottie). Source from LottieFiles or use static illustration + platform progress animation. **As built:** `icon_metric_heart` in the app's tinted icon tile, no Lottie. |
 | 5 | Empty Alerts | M1-10 | Muted bell or peaceful scene — "nothing to worry about" feeling |
 | 6 | No Device Connected | M1-09 | Prompt to connect a device — friendly nudge, not an error |
 
@@ -1128,7 +1128,7 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 | 1 | Success checkmark | M1-07 | LottieFiles — search "success checkmark" (free options available). **As built:** static green circle + ✓ glyph, no animation. |
 | 2 | Shimmer / skeleton loading | M1-09, M1-10 | **As built:** custom `SkeletonView` control (M1-09). |
 | 3 | Critical alert pulse | M1-12 | XAML/CSS animation — opacity + scale loop on severity banner |
-| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." **As built:** static 🧠⚙ emoji glyphs, no Lottie. |
+| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." **As built:** `icon_metric_heart` in the app's tinted icon tile, no Lottie. |
 
 ### Third-Party Logos (vendor-provided, no design needed)
 
