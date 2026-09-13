@@ -34,11 +34,14 @@ Delete children before parents. There are almost no cascades, so nothing is remo
 ```sql
 SELECT table_name, column_name
 FROM information_schema.columns
-WHERE column_name IN ('CardiMemberId', 'CardiMemberIds', 'UserId', 'OwnerUserId', 'RequestedByUserId', 'OrganizationId')
+WHERE column_name IN ('CardiMemberId', 'CardiMemberIds', 'OrganizationId')
+   OR column_name LIKE '%UserId'
 ORDER BY table_name;
 ```
 
 Table names are **not** always the entity name — the questionnaire entity lives in `MemberQuestionnaires`, not `Questionnaires`. Take names from `ToTable(...)` in the persistence configuration, not from the domain class.
+
+**Two columns reference a caregiver without owning the row:** `Alerts.AcknowledgedByUserId` and `MemberQuestionnaires.AnsweredByUserId` (both nullable). When a caregiver's account is erased but the member stays — another caregiver remains linked — set those to null rather than deleting the member's alert or answer; the `LIKE '%UserId'` clause above is what surfaces them, so do not narrow it back to the exact names.
 
 ### Member-scoped (`CardiMemberId`) — for a single CardiMember or a full closure
 

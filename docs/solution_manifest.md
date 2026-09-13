@@ -410,11 +410,10 @@ document exists and someone owns it.
 **Audit logging — implemented for annotated health-data controllers**
 
 `AuditLoggingMiddleware` writes user ID, CardiMember ID, action, timestamp, IP address and user
-agent, request-scoped so reads are captured and not just writes, for the eight health-data
-controllers annotated `[AuditHealthDataAccess]` (CardiMembers, Dashboard, Devices, Insights, Chat,
-Reports, Questionnaires, Alerts). Repeated GETs from the same caller coalesce into one row per
-15-minute window. The remaining gap is Onboarding's member creation, which writes health data
-without an audit row. Retention is 90 days for the platform
+agent, request-scoped so reads are captured and not just writes, for the ten controllers
+annotated `[AuditHealthDataAccess]` as of 2026-09-13 (Alerts, CardiMembers, Dashboard, Devices, Insights, MemberChat, MetricAlarms, Onboarding (member creation only), Questionnaires, Reports). Repeated GETs from the same caller coalesce into one row per
+15-minute window. Onboarding's member creation has been audited since 2026-09-13; the
+remaining gap is retention. Retention is 90 days for the platform
 audit trail today (`enable_platform_audit_logging`); the six-year figure applies to HIPAA
 §164.316(b)(2) documentation and PHI-access records, and becomes required only when HIPAA
 attaches.

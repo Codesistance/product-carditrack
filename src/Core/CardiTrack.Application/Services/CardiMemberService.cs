@@ -36,6 +36,28 @@ public class CardiMemberService : ICardiMemberService
         _photoStorage = photoStorage;
     }
 
+    /// <summary>
+    /// The photo is stored before the member row exists (a refused photo must not half-create a
+    /// member), so a creation that fails after the upload would leave health imagery in the
+    /// bucket that no row points at. Delete it here; the caller's exception is the one that
+    /// matters, so a failed delete is not allowed to replace it — <c>OrphanedPhotoCleanupWorker</c>
+    /// sweeps whatever this misses.
+    /// </summary>
+    private async Task DiscardUploadedPhotoAsync(CardiMember cardiMember)
+    {
+        if (string.IsNullOrEmpty(cardiMember.PhotoObjectName))
+            return;
+
+        try
+        {
+            await _photoStorage.DeleteAsync(cardiMember.PhotoObjectName);
+        }
+        catch
+        {
+            // Swallowed on purpose: see the summary. The original failure is being rethrown.
+        }
+    }
+
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
         Guid organizationId,
         Guid userId,
@@ -66,10 +88,13 @@ public class CardiMemberService : ICardiMemberService
         // The member and the caregiver's link to it are one creation. Two saves without a
         // transaction could leave a member row that no caregiver is linked to — reachable by
         // nobody, deletable by nobody, and named by no audit entry (the id is handed to the
-        // audit middleware only once this method returns).
-        await _unitOfWork.BeginTransactionAsync();
+        // audit middleware only once this method returns). The transaction starts inside the
+        // try so that a failure to start it still discards the photo uploaded above; rolling
+        // back with no transaction open is a no-op.
         try
         {
+            await _unitOfWork.BeginTransactionAsync();
+
             await _unitOfWork.CardiMembers.AddAsync(cardiMember);
             await _unitOfWork.SaveChangesAsync(); // Save to get ID
 
@@ -92,6 +117,7 @@ public class CardiMemberService : ICardiMemberService
         catch
         {
             await _unitOfWork.RollbackTransactionAsync();
+            await DiscardUploadedPhotoAsync(cardiMember);
             throw;
         }
 

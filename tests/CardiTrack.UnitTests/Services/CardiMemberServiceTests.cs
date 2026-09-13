@@ -563,6 +563,42 @@ public class CardiMemberServiceTests
     }
 
     [Fact]
+    public async Task Create_WithPhoto_DeletesTheUploadedObject_WhenTheCreateFails()
+    {
+        // The upload happens before the member row exists. If the row never lands, the object
+        // must not be left behind for nothing to point at.
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _photoStorage.Received(1).DeleteAsync("members/x/orphan.jpg", Arg.Any<CancellationToken>());
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_StillRethrowsTheCreateFailure_WhenTheDeleteFailsToo()
+    {
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+        _photoStorage.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new IOException("bucket unreachable")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        // The creation failure is what the caller must see — not the clean-up's.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+    }
+
+    [Fact]
     public async Task Create_WithoutPhoto_NeverTouchesPhotoStorage()
     {
         await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest());
