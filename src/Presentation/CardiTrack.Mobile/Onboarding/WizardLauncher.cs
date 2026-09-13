@@ -23,9 +23,10 @@ internal static class WizardLauncher
 
     /// <summary>
     /// Pushes the wizard in its own modal <see cref="NavigationPage"/> stack. The returned task
-    /// completes when the wizard exits — modal pop (Cancel / Done / hardware back / iOS swipe)
-    /// via <c>ModalPopped</c>, or "Go to Dashboard" via <see cref="WizardContext.DashboardExit"/>
-    /// because that path replaces the window instead of popping.
+    /// completes when the wizard exits — Cancel / Done / hardware back / iOS swipe via
+    /// <c>ModalPopped</c>, or "Go to Dashboard" via <see cref="WizardContext.DashboardExit"/>
+    /// after the root swap (the pop that path does first is ignored so callers do not
+    /// resume before the new shell is up).
     /// </summary>
     /// <param name="showBaselineIntro">
     /// Pass false when the member already has a connected device, so success exits straight
@@ -52,12 +53,14 @@ internal static class WizardLauncher
         {
             if (!ReferenceEquals(e.Modal, wizardNav))
                 return;
+            // "Go to Dashboard" pops first, then swaps the root. Completing here
+            // would release the caller (and let Dashboard LoadAsync) before the
+            // new shell is up. DashboardExit finishes that path after the swap.
+            if (ctx.ExitedToDashboard)
+                return;
             Complete();
         }
 
-        // "Go to Dashboard" pops the modal (ModalPopped) and then replaces the window.
-        // Complete on either signal so a pop that never comes still unblocks callers,
-        // and a pop-then-swap is still one result (TrySetResult is idempotent).
         void OnDashboardExit(object? sender, EventArgs e) => Complete();
 
         app.ModalPopped += OnPopped;

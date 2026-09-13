@@ -86,11 +86,30 @@ public sealed class WizardContext
             var root = window?.Page;
 
             // Replacing the root underneath a live modal leaves the wizard on screen
-            // (App.DismissModalsAsync). Pop it first, without animation, then root a
-            // fresh shell so there is no Device Management / OAuth page left to walk
-            // back into.
-            if (root is not null)
-                await DismissModalsAsync(root);
+            // (App.DismissModalsAsync). Pop it first, without animation. Only swap
+            // when the stack is actually empty — a failed pop must not hide a new
+            // shell behind the wizard.
+            var dismissed = root is null || await DismissModalsAsync(root);
+            if (!dismissed)
+            {
+                try
+                {
+                    await current.Navigation.PopModalAsync(false);
+                }
+                catch
+                {
+                    // Still up. Do not swap under it.
+                }
+                dismissed = (window?.Page ?? root)?.Navigation.ModalStack.Count == 0;
+            }
+
+            if (!dismissed)
+            {
+                if (Shell.Current is { } existing)
+                    await GoToDashboardTabAsync(existing);
+                AppForeground.BringToFront();
+                return;
+            }
 
             var shell = new AppShell();
             await MainThread.InvokeOnMainThreadAsync(() =>
@@ -110,24 +129,26 @@ public sealed class WizardContext
     }
 
     /// <summary>
-    /// Same bounded pop as <c>App.DismissModalsAsync</c>: a pop that does not shrink
-    /// the stack must not spin, and a failure must not block the root swap.
+    /// Bounded pop: a pop that does not shrink the stack must not spin.
+    /// Returns whether the modal stack is empty afterwards.
     /// </summary>
-    private static async Task DismissModalsAsync(Page root)
+    private static async Task<bool> DismissModalsAsync(Page root)
     {
         for (var remaining = root.Navigation.ModalStack.Count; remaining > 0; remaining--)
         {
             if (root.Navigation.ModalStack.Count == 0)
-                return;
+                return true;
             try
             {
                 await root.Navigation.PopModalAsync(false);
             }
             catch
             {
-                return;
+                break;
             }
         }
+
+        return root.Navigation.ModalStack.Count == 0;
     }
 
     /// <summary>

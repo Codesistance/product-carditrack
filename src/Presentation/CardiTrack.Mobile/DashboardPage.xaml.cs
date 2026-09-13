@@ -837,7 +837,11 @@ public partial class DashboardPage : ContentPage
         _wizardActive = true;
         try
         {
-            await WizardLauncher.RunModalAsync(Navigation, member: null);
+            var result = await WizardLauncher.RunModalAsync(Navigation, member: null);
+            // "Go to Dashboard" has already replaced this page with a fresh shell —
+            // reloading here would fetch for a page that is gone.
+            if (result.ExitedToDashboard)
+                return;
             // Bypass the auto-refresh window and re-resolve the primary member —
             // this may have been the first one.
             await LoadAsync(force: true);
@@ -870,7 +874,9 @@ public partial class DashboardPage : ContentPage
             if (member is null)
                 return;
 
-            await WizardLauncher.RunModalAsync(Navigation, member);
+            var result = await WizardLauncher.RunModalAsync(Navigation, member);
+            if (result.ExitedToDashboard)
+                return;
             await LoadAsync(force: true);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)

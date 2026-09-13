@@ -10,7 +10,7 @@
          is the only wizard-only extra, and it stays hidden when Progress is 0 so the
          terminal steps (M1-07 / M1-08) match those screens exactly. -->
     <controls:HeaderBand ContentPadding="{Binding ContentPadding, Source={x:Reference Root}, x:DataType=controls:WizardHeader}">
-        <Grid RowDefinitions="Auto,Auto" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto" RowSpacing="0">
 
             <Grid Grid.Row="0"
                   ColumnDefinitions="Auto,*"
@@ -52,6 +52,7 @@
             <Border x:Name="StepProgress"
                     Grid.Row="1"
                     HeightRequest="8"
+                    Margin="0,12,0,0"
                     BackgroundColor="{StaticResource White}"
                     StrokeThickness="0"
                     IsVisible="False"
