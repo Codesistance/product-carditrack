@@ -1286,6 +1286,36 @@ public class GoogleHealthApiClientTests
     }
 
     /// <summary>
+    /// Tomorrow's list only improves the bedtime clip. A transient failure there must not
+    /// discard a day whose night and metrics already arrived.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_KeepsTheDay_WhenTomorrowsSleepListFails()
+    {
+        var date = new DateOnly(2026, 8, 5);
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/sleep/",
+                SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"))
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPointWithCivil(
+                        "SEDENTARY", "2026-08-05T19:00:00Z", "2026-08-06T06:00:00Z",
+                        2026, 8, 6, 6, 0)}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var snapshot = await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
+
+        Assert.Equal(400, snapshot.TotalSleepMinutes);
+        // Without tonight's session the evening run is 19:00–midnight.
+        Assert.Equal(300, snapshot.LongestSedentaryStretchMinutes);
+    }
+
+    /// <summary>
     /// A night that only <em>starts</em> today is not enough to judge waking rest. Without the
     /// night that ended this morning the small hours stay unclipped, so the snapshot reports
     /// no stretch rather than inventing one.

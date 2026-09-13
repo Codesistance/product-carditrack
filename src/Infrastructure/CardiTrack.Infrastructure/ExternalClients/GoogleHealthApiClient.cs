@@ -716,8 +716,19 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         IReadOnlyList<(DateTime Start, DateTime End)>? stretchWindows = null;
         if (NightEndedOn(sleep.SessionWindows))
         {
-            stretchWindows = UnionSleepWindows(
-                sleep.SessionWindows, await ListSleepWindowsStartingOnAsync(accessToken, date));
+            try
+            {
+                stretchWindows = UnionSleepWindows(
+                    sleep.SessionWindows, await ListSleepWindowsStartingOnAsync(accessToken, date));
+            }
+            catch (GoogleHealthApiException ex) when (!ex.IsMalformedRequest)
+            {
+                // Bedtime clipping is enrichment. A transient failure on tomorrow's list
+                // must not discard today's snapshot — the ended night still clips the
+                // small hours; the evening tail stays inside the stretch until the next sync.
+                _logger.LogWarning(ex, "Tomorrow's sleep list failed; stretching without bedtime clip.");
+                stretchWindows = sleep.SessionWindows;
+            }
         }
         var exertionTask = GetExertionAsync(accessToken, date, stretchWindows);
 
