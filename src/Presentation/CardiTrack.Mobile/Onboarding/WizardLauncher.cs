@@ -55,8 +55,9 @@ internal static class WizardLauncher
             Complete();
         }
 
-        // "Go to Dashboard" replaces the window rather than popping this modal, so
-        // ModalPopped never runs for it. Complete on that signal too.
+        // "Go to Dashboard" pops the modal (ModalPopped) and then replaces the window.
+        // Complete on either signal so a pop that never comes still unblocks callers,
+        // and a pop-then-swap is still one result (TrySetResult is idempotent).
         void OnDashboardExit(object? sender, EventArgs e) => Complete();
 
         app.ModalPopped += OnPopped;

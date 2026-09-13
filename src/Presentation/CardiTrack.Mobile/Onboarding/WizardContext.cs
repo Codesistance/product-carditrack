@@ -43,9 +43,9 @@ public sealed class WizardContext
     public bool ExitedToDashboard { get; private set; }
 
     /// <summary>
-    /// Fired when "Go to Dashboard" replaces the window root. The modal is never popped on
-    /// that path, so <c>ModalPopped</c> does not run and the launcher has to hear this
-    /// instead or it waits forever for a result that will not come.
+    /// Fired when "Go to Dashboard" finishes (success or a failed root swap). The launcher
+    /// also listens to <c>ModalPopped</c>; both complete the same TCS so a pop-then-swap
+    /// is still one result.
     /// </summary>
     public event EventHandler? DashboardExit;
 
@@ -68,26 +68,66 @@ public sealed class WizardContext
         : current.Navigation.PopModalAsync();
 
     /// <summary>
-    /// Terminal exit for the step whose button names the dashboard. Always roots a fresh
-    /// <see cref="AppShell"/> on the dashboard tab — never pops the wizard, never walks
-    /// back into the OAuth browser that authorized the device, and never returns to
-    /// whatever launched the wizard (device management, a post-login resume).
+    /// Terminal exit for the step whose button names the dashboard. Pops any live modal
+    /// (a root swap underneath one leaves the wizard on screen), then roots a fresh
+    /// <see cref="AppShell"/> on the dashboard tab — not the OAuth browser that authorized
+    /// the device, and not whatever launched the wizard.
     /// </summary>
     public async Task GoToDashboardAsync(Page current)
     {
         ExitedToDashboard = true;
 
-        // A modal pop (or any ".." unwind) leaves the Custom Tab / Chrome task as the
-        // next thing Android shows. Replace the window so there is no history to walk
-        // back through, then bring this task to the front after the shell is up.
-        var shell = new AppShell();
-        await MainThread.InvokeOnMainThreadAsync(() =>
+        try
         {
-            WindowNavigation.SetRootPage(current, shell);
-        });
-        await GoToDashboardTabAsync(shell);
-        AppForeground.BringToFront();
-        DashboardExit?.Invoke(this, EventArgs.Empty);
+            // Capture the window first: after the modal pops, `current` is no longer
+            // parented and its Window is gone.
+            var window = current.Window
+                ?? Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault();
+            var root = window?.Page;
+
+            // Replacing the root underneath a live modal leaves the wizard on screen
+            // (App.DismissModalsAsync). Pop it first, without animation, then root a
+            // fresh shell so there is no Device Management / OAuth page left to walk
+            // back into.
+            if (root is not null)
+                await DismissModalsAsync(root);
+
+            var shell = new AppShell();
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (window is not null)
+                    window.Page = shell;
+                else
+                    WindowNavigation.SetRootPage(current, shell);
+            });
+            await GoToDashboardTabAsync(shell);
+            AppForeground.BringToFront();
+        }
+        finally
+        {
+            DashboardExit?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Same bounded pop as <c>App.DismissModalsAsync</c>: a pop that does not shrink
+    /// the stack must not spin, and a failure must not block the root swap.
+    /// </summary>
+    private static async Task DismissModalsAsync(Page root)
+    {
+        for (var remaining = root.Navigation.ModalStack.Count; remaining > 0; remaining--)
+        {
+            if (root.Navigation.ModalStack.Count == 0)
+                return;
+            try
+            {
+                await root.Navigation.PopModalAsync(false);
+            }
+            catch
+            {
+                return;
+            }
+        }
     }
 
     /// <summary>
