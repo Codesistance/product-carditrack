@@ -45,6 +45,18 @@ public class ReportJournalScopeTests
     }
 
     [Fact]
+    public void ChartWindow_ClampsToTheEarliestCalendarDay_WhenAPinnedEntryIsNearYearOne()
+    {
+        var day = DateOnly.MinValue;
+
+        var window = ReportJournalScope.ChartWindow(
+            day, day, day, DigestAudience.Daybook);
+
+        Assert.Equal(DateOnly.MinValue, window.From);
+        Assert.Equal(day, window.To);
+    }
+
+    [Fact]
     public void ChartWindows_StayInStepWithTheJournalPage()
     {
         Assert.Equal(TrendAwareness.WindowDays, ReportJournalScope.DayAndWeekChartDays);

@@ -52,6 +52,13 @@ public static class ReportJournalScope
             return (from, to);
 
         var span = audience == DigestAudience.Monthbook ? MonthChartDays : DayAndWeekChartDays;
-        return (day.AddDays(-(span - 1)), day);
+        var back = span - 1;
+        // DateOnly.AddDays throws below year 1. The validators do not
+        // refuse 0001-01-01, so a pinned Daybook on that day must still
+        // produce a window rather than fail the background job.
+        var start = day.DayNumber >= back
+            ? day.AddDays(-back)
+            : DateOnly.MinValue;
+        return (start, day);
     }
 }

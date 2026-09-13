@@ -108,7 +108,7 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
 
     /// <summary>
     /// Shared with <see cref="RecordExportConsentValidator"/> so a graphs-only PDF
-    /// that generate would accept cannot have its consent refused.
+    /// that generation would accept cannot have its consent refused.
     /// </summary>
     public static bool HasARenderableSection(
         ReportFormat format,
