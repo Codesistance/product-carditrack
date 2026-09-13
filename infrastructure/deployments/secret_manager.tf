@@ -285,10 +285,14 @@ moved {
 #
 # That different cost is also why this one carries no prevent_destroy where the
 # encryption key does. A replace here — see the immutable-replication trap
-# described above — loses the in-flight acks and nothing else: caregivers whose
-# escalation should have halted get one more notification, and the next token
-# issued is valid again. Blocking every teardown of an environment to prevent a
-# recoverable miss is not the trade the encryption key justifies.
+# described above — invalidates every token this key has signed that is still in
+# flight. That is both halves of AckTokenService: an escalation that should have
+# halted sends one more notification, AND a content fetch for an already-delivered
+# push 404s at InternalNotificationsController.GetContent — a caregiver sees an
+# alert whose detail will not load. Both are bounded to what was in flight at the
+# instant of the replace and both self-heal on the next token issued, which is why
+# this is still not the trade the encryption key justifies — but it is a closer call
+# than "one more notification", so it is written down rather than left implied.
 #
 # Only two IAM grants — API and Worker — not every service this pattern usually
 # reaches. The AI pipeline never sends push directly; it POSTs to the internal
