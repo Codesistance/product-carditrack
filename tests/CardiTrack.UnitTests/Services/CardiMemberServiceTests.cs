@@ -75,6 +75,34 @@ public class CardiMemberServiceTests
     };
 
     [Fact]
+    public async Task Create_CommitsOnce_WhenBothSavesSucceed()
+    {
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest());
+
+        await _unitOfWork.Received(1).BeginTransactionAsync();
+        await _unitOfWork.Received(1).CommitTransactionAsync();
+        await _unitOfWork.DidNotReceive().RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Create_RollsBack_WhenTheCaregiverLinkCannotBeSaved()
+    {
+        // The member and the caregiver's link to it are one creation. A failure after the first
+        // save must not leave a member row that no caregiver can reach — and the id is handed to
+        // the audit middleware only on success, so an orphan would also be unnamed there.
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest()));
+
+        await _unitOfWork.Received(1).BeginTransactionAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+    }
+
+    [Fact]
     public async Task Create_PersistsMemberAndCaregiverLink()
     {
         CardiMember? savedMember = null;

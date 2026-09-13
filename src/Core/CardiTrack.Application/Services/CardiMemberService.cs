@@ -63,22 +63,37 @@ public class CardiMemberService : ICardiMemberService
             cardiMember.PhotoObjectName = await _photoStorage.UploadAsync(cardiMember.Id, jpeg);
         }
 
-        await _unitOfWork.CardiMembers.AddAsync(cardiMember);
-        await _unitOfWork.SaveChangesAsync(); // Save to get ID
-
-        // Create relationship between user and CardiMember
-        var userCardiMember = new UserCardiMember
+        // The member and the caregiver's link to it are one creation. Two saves without a
+        // transaction could leave a member row that no caregiver is linked to — reachable by
+        // nobody, deletable by nobody, and named by no audit entry (the id is handed to the
+        // audit middleware only once this method returns).
+        await _unitOfWork.BeginTransactionAsync();
+        try
         {
-            UserId = userId,
-            CardiMemberId = cardiMember.Id,
-            RelationshipType = Stated(request.RelationshipType),
-            IsPrimaryCaregiver = request.IsPrimaryCaregiver,
-            CanViewHealthData = true,
-            ReceiveAlerts = true
-        };
+            await _unitOfWork.CardiMembers.AddAsync(cardiMember);
+            await _unitOfWork.SaveChangesAsync(); // Save to get ID
 
-        await _unitOfWork.UserCardiMembers.AddAsync(userCardiMember);
-        await _unitOfWork.SaveChangesAsync();
+            // Create relationship between user and CardiMember
+            var userCardiMember = new UserCardiMember
+            {
+                UserId = userId,
+                CardiMemberId = cardiMember.Id,
+                RelationshipType = Stated(request.RelationshipType),
+                IsPrimaryCaregiver = request.IsPrimaryCaregiver,
+                CanViewHealthData = true,
+                ReceiveAlerts = true
+            };
+
+            await _unitOfWork.UserCardiMembers.AddAsync(userCardiMember);
+            await _unitOfWork.SaveChangesAsync();
+
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
 
         return new CardiMemberResponse
         {

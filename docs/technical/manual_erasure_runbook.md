@@ -61,9 +61,15 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 15 | `MemberChatSessions` | Caregiver Q&A about this member — the full question and answer text per turn, plus the encrypted theme. `MemberChatTurns` and `MemberChatTurnUsages` cascade from the session (`MemberChatSessionConfiguration`), but re-query both to verify the count. Also carries `UserId`. **No partition drop and no retention worker covers these** — retained indefinitely unless deleted here |
 | 16 | `MemberAdvises` | The current "Something to try" suggestion — one row per member per topic, derived from health data; overwritten on each regeneration, so this is the whole history |
 | 17 | `MetricAlarms` (member rows) | Caregiver-defined alarms **tuned for this member** — rows where `CardiMemberId` is this member. Account-level rows (`CardiMemberId` null) are account-scoped, below |
-| 18 | `DeviceConnections` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
-| 19 | `UserCardiMembers` | Cascades, but delete explicitly so the count is verifiable |
-| 20 | `CardiMembers` | Emergency contacts, medical notes **and the profile-photo object name** live on this row |
+| 18 | `MetricAlarmStates` | Per-member state of each custom alarm (`MetricAlarmId`, `CardiMemberId`) — delete before the alarms above are gone, or the count is unverifiable |
+| 19 | `MemberStatusLines` | The saved dashboard status sentence — derived from health data, one row per member |
+| 20 | `MemberAiHolds` | The per-member, per-purpose hold the AI pipeline sets when a read fills its ceiling — records that a member's data was being assessed |
+| 21 | `DeviceHistoryRepulls` | Caregiver-requested history re-pulls; carries `CardiMemberId` and `RequestedByUserId`, so it is also swept at account closure |
+| 22 | `ExportConsents` (rows naming this member) | Keyed on `OwnerUserId`, but each row's `CardiMemberIds` array names the members an export covered. For a single-member erasure delete every row whose array contains the member and re-query the array; the owner-keyed sweep at account closure is below |
+| 23 | `Reports` (rows naming this member) | Durable export metadata: `OwnerUserId`, a `CardiMemberIds` array and the export's `ObjectName` in the report-exports bucket. Delete every row whose array contains the member **and the object it names** (`gcloud storage rm gs://<report-exports-bucket>/<ObjectName>`; bucket from `Storage__Reports__Bucket` on the API service). `ExpiredReportCleanupWorker` sweeps rows past `ExpiresAt`, but an erasure must not wait for it |
+| 24 | `DeviceConnections` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
+| 25 | `UserCardiMembers` | Cascades, but delete explicitly so the count is verifiable |
+| 26 | `CardiMembers` | Emergency contacts, medical notes **and the profile-photo object name** live on this row |
 
 **Profile photo blob (GCS) — not a table, easy to miss.** The member's profile photo lives outside Postgres, in the private member-photos bucket, under `members/<cardiMemberId>/`. The app hard-deletes the blob on normal member removal, but an erasure must not trust that: delete the member's whole prefix explicitly (before or after the table sweep — nothing references it):
 
@@ -77,14 +83,15 @@ The bucket name is environment-specific (dev: `carditrack-490120-carditrack-dev-
 
 | Order | Table | Notes |
 |---|---|---|
-| 21 | `PushDeviceTokens` | Encrypted tokens; the designed 30-day post-disable hard delete is **not enforced** |
-| 22 | `NotificationPreferences` | Quiet hours, per-category mutes |
-| 23 | `ExportConsents` | Keyed on `OwnerUserId`; each row carries the ids of the members that export covered, so it names members after they are gone |
-| 24 | `MetricAlarms` (account rows) | Rows where `CardiMemberId` is null — the account-wide defaults, keyed on `OrganizationId` |
-| 25 | `Subscriptions` | Keyed on `OrganizationId` |
-| 26 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
+| 27 | `PushDeviceTokens` | Encrypted tokens; the designed 30-day post-disable hard delete is **not enforced** |
+| 28 | `NotificationPreferences` | Quiet hours, per-category mutes |
+| 29 | `ExportConsents` (all rows) | Keyed on `OwnerUserId`; the owner's remaining consent rows, after the member-naming rows were removed above |
+| 30 | `Reports` (all rows) | Keyed on `OwnerUserId`; every remaining report row and every object it names in the report-exports bucket — same command as the member row above |
+| 31 | `MetricAlarms` (account rows) | Rows where `CardiMemberId` is null — the account-wide defaults, keyed on `OrganizationId` |
+| 32 | `Subscriptions` | Keyed on `OrganizationId` |
+| 33 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
 
-Reports are cached with a 1-hour TTL and generated fire-and-forget in-process, so there is no durable report table to clear.
+**Reports are durable.** Since the self-service export shipped (2026-09-07) every generated export has a `Reports` row and an object in the report-exports bucket, both listed above; the earlier statement here that reports were an in-process one-hour cache with no table to clear is no longer true.
 
 **`AuditLogs` are retained, not deleted.** They are the record that the erasure happened and are needed to demonstrate compliance. This is a legitimate exception under Art. 17(3)(b), but note the unresolved conflict flagged in [dpia.md](../compliance/dpia.md): the policy implies a 6-year schedule, the deployed retention is 30/90 days, and the entity comment says 90 days. **Resolve that before quoting a figure to any data subject** — and note the deletion page currently points at "the retention schedule in the Privacy Policy" for audit logs, which has no audit-log row.
 
