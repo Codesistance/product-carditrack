@@ -389,6 +389,16 @@ public partial class MemberChatPage : ContentView
         ScrollToLatest(animate: false);
     }
 
+    private void ApplyThread(MemberChatHistoryResponse? history)
+    {
+        _turns.Clear();
+        if (history is null)
+            return;
+
+        foreach (var turn in history.Turns)
+            _turns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
+    }
+
     private async Task ShowHistoryListAsync()
     {
         _mode = ChatViewMode.HistoryList;
@@ -401,7 +411,19 @@ public partial class MemberChatPage : ContentView
         ContinuePanel.IsVisible = false;
         SessionsList.IsVisible = false;
         SelectSessionsAction.IsVisible = false;
-        SetState(loading: true);
+
+        if (_sessions.Count == 0
+            && await _api.PeekMemberChatSessionsAsync(_memberId) is { Sessions.Count: > 0 } saved)
+        {
+            _sessions.Clear();
+            foreach (var session in saved.Sessions)
+                _sessions.Add(ChatSessionItem.From(session));
+            SetState();
+            SessionsList.IsVisible = true;
+            SelectSessionsAction.IsVisible = true;
+        }
+        else if (_sessions.Count == 0)
+            SetState(loading: true);
 
         try
         {
@@ -615,17 +637,20 @@ public partial class MemberChatPage : ContentView
         _isLoading = true;
 
         if (_turns.Count == 0)
-            SetState(loading: true);
+        {
+            if (await _api.PeekCurrentMemberChatSessionAsync(_memberId) is { } saved)
+            {
+                ApplyThread(saved);
+                SetState(loaded: true);
+            }
+            else
+                SetState(loading: true);
+        }
 
         try
         {
             var history = await _api.GetCurrentMemberChatSessionAsync(_memberId);
-            _turns.Clear();
-            if (history is not null)
-            {
-                foreach (var turn in history.Turns)
-                    _turns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
-            }
+            ApplyThread(history);
 
             _threadLoadFailed = false;
 

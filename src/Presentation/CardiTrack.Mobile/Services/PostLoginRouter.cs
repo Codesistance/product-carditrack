@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using Microsoft.Extensions.Logging;
@@ -18,11 +19,16 @@ namespace CardiTrack.Mobile.Services;
 public sealed class PostLoginRouter
 {
     private readonly ICardiTrackApiClient _api;
+    private readonly IOfflineCacheWarmer _cacheWarmer;
     private readonly ILogger<PostLoginRouter>? _logger;
 
-    public PostLoginRouter(ICardiTrackApiClient api, ILogger<PostLoginRouter>? logger = null)
+    public PostLoginRouter(
+        ICardiTrackApiClient api,
+        IOfflineCacheWarmer cacheWarmer,
+        ILogger<PostLoginRouter>? logger = null)
     {
         _api = api;
+        _cacheWarmer = cacheWarmer;
         _logger = logger;
     }
 
@@ -71,7 +77,13 @@ public sealed class PostLoginRouter
         // fewer they wait on their first question. Only for the dashboard — a caregiver still in
         // the wizard has no member to ask about yet.
         if (root is AppShell)
+        {
             _ = WarmAssistantAsync(ct);
+            // A push may have started this already; the warmer single-flights. Starting
+            // here covers the signed-in open that never saw the push (iOS killed the
+            // process, the caregiver opened the icon rather than the banner).
+            _ = WarmCacheAsync(ct);
+        }
 
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
@@ -95,6 +107,18 @@ public sealed class PostLoginRouter
     /// failing a launch over: the endpoint answers 202 without doing the work inline, and if the
     /// call never lands the first chat question simply pays the model load as it always did.
     /// </summary>
+    private async Task WarmCacheAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _cacheWarmer.RefreshAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(ex, "Warming the on-device cache after login failed.");
+        }
+    }
+
     private async Task WarmAssistantAsync(CancellationToken ct)
     {
         try

@@ -7,6 +7,7 @@ using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 using Plugin.Firebase.CloudMessaging;
@@ -49,6 +50,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private readonly IFirebaseCloudMessaging _messaging;
     private readonly IPushDeviceRegistrationService _registration;
     private readonly ISecureKeyValueStore _keyValueStore;
+    private readonly IOfflineCacheWarmer _cacheWarmer;
 
     /// <summary>Raised when a tapped notification's deep link has been parsed — AppShell subscribes to navigate.</summary>
     public event EventHandler<NudgeDestination>? DestinationTapped;
@@ -56,11 +58,13 @@ public sealed class PushRegistrationCoordinator : IDisposable
     public PushRegistrationCoordinator(
         IFirebaseCloudMessaging messaging,
         IPushDeviceRegistrationService registration,
-        ISecureKeyValueStore keyValueStore)
+        ISecureKeyValueStore keyValueStore,
+        IOfflineCacheWarmer cacheWarmer)
     {
         _messaging = messaging;
         _registration = registration;
         _keyValueStore = keyValueStore;
+        _cacheWarmer = cacheWarmer;
 
         _messaging.NotificationReceived += OnNotificationReceived;
         _messaging.NotificationTapped += OnNotificationTapped;
@@ -113,15 +117,32 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private void OnNotificationReceived(object? sender, FCMNotificationReceivedEventArgs e)
     {
         var data = e.Notification.Data;
-        if (data is null
-            || !data.TryGetValue("deliveryId", out var deliveryIdRaw)
-            || !Guid.TryParse(deliveryIdRaw, out var deliveryId)
-            || !data.TryGetValue("ackToken", out var ackToken))
+        if (data is not null
+            && data.TryGetValue("deliveryId", out var deliveryIdRaw)
+            && Guid.TryParse(deliveryIdRaw, out var deliveryId)
+            && data.TryGetValue("ackToken", out var ackToken))
         {
-            return;
+            _ = AckDeliveredSafeAsync(deliveryId, ackToken);
         }
 
-        _ = AckDeliveredSafeAsync(deliveryId, ackToken);
+        // The notification is the wake: pull every default read into the on-device cache
+        // so the caregiver who opens the app next is not kept waiting. Fire-and-forget —
+        // a slow warm must never delay the OS displaying the notification, and the ack
+        // above is the one the escalation ladder keys off. Runs even when the payload
+        // has no ack fields — a content-available wake is still a wake.
+        _ = WarmCacheSafeAsync();
+    }
+
+    private async Task WarmCacheSafeAsync()
+    {
+        try
+        {
+            await _cacheWarmer.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Push-triggered cache warm failed.");
+        }
     }
 
     private async Task AckDeliveredSafeAsync(Guid deliveryId, string ackToken)
@@ -144,6 +165,11 @@ public sealed class PushRegistrationCoordinator : IDisposable
         var data = e.Notification.Data;
         var deepLink = data is not null && data.TryGetValue("deepLink", out var link) ? link : null;
         var destination = NudgeLinkParser.Parse(deepLink);
+        // A tap is also a wake — and on Android a background notification+data payload
+        // often does not raise Received until the caregiver opens it. Start the warm
+        // before navigation so the destination page's peek can hit a cache that is
+        // already being written.
+        _ = WarmCacheSafeAsync();
         if (destination.Kind != NudgeDestinationKind.Unknown)
             DestinationTapped?.Invoke(this, destination);
     }

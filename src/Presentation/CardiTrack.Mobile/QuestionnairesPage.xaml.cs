@@ -27,7 +27,7 @@ public partial class QuestionnairesPage : ContentPage
 
     /// <summary>How many answered questions a page fetches. Small enough that a page arrives while
     /// a scroll is still in motion, large enough that scrolling rarely outruns it.</summary>
-    private const int PageSize = 20;
+    private const int PageSize = OfflineReadDefaults.QuestionnairePageSize;
 
     /// <summary>How long to hold after a keystroke before searching — long enough that a caregiver
     /// typing a whole word does not fire a request per letter, short enough to still feel live.</summary>

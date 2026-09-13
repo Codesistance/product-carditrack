@@ -13,6 +13,7 @@ internal static class ApiPaths
     public const string NotificationSummary = "api/v1/notifications/summary";
     public const string NotificationMutes = "api/v1/notifications/mutes";
     public const string NotificationPreferences = "api/v1/notifications/preferences";
+    public const string ExportConsents = "api/v1/reports/consents";
 
     public static string CardiMember(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}";
     public static string Dashboard(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/dashboard";
@@ -24,6 +25,15 @@ internal static class ApiPaths
     public static string Digest(Guid cardiMemberId) => $"api/v1/insights/members/{cardiMemberId}/digest";
     public static string Advise(Guid cardiMemberId) => $"api/v1/insights/members/{cardiMemberId}/advise";
     public static string Alert(Guid alertId) => $"api/v1/alerts/{alertId}";
+
+    public static string CurrentMemberChatSession(Guid cardiMemberId) =>
+        $"api/v1/member-chat/members/{cardiMemberId}/sessions/current";
+
+    public static string MemberChatSessions(Guid cardiMemberId) =>
+        $"api/v1/member-chat/members/{cardiMemberId}/sessions";
+
+    public static string MemberChatSuggestions(Guid cardiMemberId) =>
+        $"api/v1/member-chat/members/{cardiMemberId}/suggestions";
 
     public static string JournalEntries(
         Guid cardiMemberId, JournalCadence cadence, int limit, string? search, DateOnly? from, string? urgency)

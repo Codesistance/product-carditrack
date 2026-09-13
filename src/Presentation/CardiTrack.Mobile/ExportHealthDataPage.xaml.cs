@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 using Microsoft.Maui.Controls.Shapes;
 
@@ -62,8 +63,9 @@ public partial class ExportHealthDataPage : ContentPage
     private CancellationTokenSource? _page;
     private ReportFile? _ready;
     private string? _readyPath;
-    private bool _isLoading;
     private bool _exporting;
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
 
     public ExportHealthDataPage(
         ICardiTrackApiClient api,
@@ -74,6 +76,7 @@ public partial class ExportHealthDataPage : ContentPage
         _api = api;
         _popups = popups;
         _consent = consent;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
 
         BuildFormatCards();
     }
@@ -134,11 +137,12 @@ public partial class ExportHealthDataPage : ContentPage
 
     private async Task LoadAsync()
     {
-        if (_isLoading)
+        if (_gate.IsLoading)
             return;
-        _isLoading = true;
+        var ticket = _gate.Begin();
 
-        ShowOnly(SkeletonPanel);
+        if (_members.Count == 0)
+            ShowOnly(SkeletonPanel);
 
         // Anything left in the cache by a previous visit — the caregiver hit back, or the OS
         // killed the app, on a path no explicit cleanup can cover. Swept on arrival rather than
@@ -147,25 +151,34 @@ public partial class ExportHealthDataPage : ContentPage
 
         try
         {
-            _members = (await _api.GetCardiMembersAsync()).ToList();
-            if (_members.Count == 0)
-            {
-                ErrorDetailLabel.Text = "There's nobody to export data for yet.";
-                ShowOnly(ErrorPanel);
-                return;
-            }
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: _members.Count == 0 ? ct => _api.PeekCardiMembersAsync(ct) : null,
+                fetch: ct => _api.GetCardiMembersAsync(ct),
+                render: members =>
+                {
+                    _members = members.ToList();
+                    if (_members.Count == 0)
+                    {
+                        ErrorDetailLabel.Text = "There's nobody to export data for yet.";
+                        ShowOnly(ErrorPanel);
+                        return;
+                    }
 
-            PopulateForm();
-            ShowOnly(FormPanel);
-        }
-        catch (ApiException ex)
-        {
-            ErrorDetailLabel.Text = ex.Message;
-            ShowOnly(ErrorPanel);
+                    PopulateForm();
+                    ShowOnly(FormPanel);
+                },
+                _feedback);
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                ErrorDetailLabel.Text = outcome.Error!.Message;
+                ShowOnly(ErrorPanel);
+            }
         }
         finally
         {
-            _isLoading = false;
+            _gate.Release(ticket);
         }
     }
 

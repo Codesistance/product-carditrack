@@ -123,6 +123,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<IBrowserAuthenticator, WebBrowserAuthenticator>();
         builder.Services.AddSingleton<IPushDeviceRegistrationService, PushDeviceRegistrationService>();
+        builder.Services.AddSingleton<IOfflineCacheWarmer, OfflineCacheWarmer>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IDeviceBiometric, DeviceBiometric>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
@@ -166,6 +167,21 @@ public static class MauiProgram
 
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);
+#if ANDROID || IOS
+        // Constructing the coordinator is what subscribes its FCM handlers. AppShell used to
+        // be the first resolver, so a push that woke a killed process reached
+        // FirebaseMessagingService with nobody listening — the ack never posted and the
+        // cache never warmed. Resolving it here, as soon as the app exists, covers that wake.
+        try
+        {
+            _ = app.Services.GetRequiredService<PushRegistrationCoordinator>();
+        }
+        catch (Exception)
+        {
+            // Firebase initialisation is the realistic failure (a missing google-services
+            // file in a local build). Push not working must not cost the rest of the app.
+        }
+#endif
         return app;
     }
 

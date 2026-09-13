@@ -482,6 +482,11 @@ public interface ICardiTrackApiClient
     Task<JournalSettingsResponse?> PeekJournalSettingsAsync(Guid cardiMemberId, CancellationToken ct = default);
     Task<NotificationPreferenceResponse?> PeekNotificationPreferencesAsync(CancellationToken ct = default);
     Task<List<NotificationMuteResponse>?> PeekNotificationMutesAsync(CancellationToken ct = default);
+    Task<CurrentStatusMessageResponse?> PeekCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<MemberChatHistoryResponse?> PeekCurrentMemberChatSessionAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<MemberChatSessionListResponse?> PeekMemberChatSessionsAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<MemberChatSuggestionsResponse?> PeekMemberChatSuggestionsAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<List<ExportConsentHistoryItem>?> PeekExportConsentsAsync(CancellationToken ct = default);
 }
 
 /// <summary>A downloaded export: the bytes, and what to call them when saving or sharing.</summary>

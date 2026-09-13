@@ -203,6 +203,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<CurrentStatusMessageResponse> GetCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<CurrentStatusMessageResponse>(ApiPaths.CurrentStatus(cardiMemberId), ct);
 
+    public Task<CurrentStatusMessageResponse?> PeekCurrentStatusAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<CurrentStatusMessageResponse>(ApiPaths.CurrentStatus(cardiMemberId), ct);
+
     public Task<DigestResponse> GetDigestAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<DigestResponse>(ApiPaths.Digest(cardiMemberId), ct);
 
@@ -219,8 +222,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// The first page of a member's questions as every screen asks for it — the detail screen's
     /// call takes the defaults, and the questionnaires screen's own constant matches them.
     /// </summary>
-    private const int DefaultQuestionnairePage = 1;
-    private const int DefaultQuestionnairePageSize = 20;
+    private const int DefaultQuestionnairePage = OfflineReadDefaults.QuestionnairePage;
+    private const int DefaultQuestionnairePageSize = OfflineReadDefaults.QuestionnairePageSize;
 
     /// <summary>The keys a change to one member's profile or monitoring state makes stale.</summary>
     private static string[] MemberProfileKeys(Guid cardiMemberId) =>
@@ -262,15 +265,23 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<MemberChatHistoryResponse?>(
-            $"api/v1/member-chat/members/{cardiMemberId}/sessions/current", ct,
+            ApiPaths.CurrentMemberChatSession(cardiMemberId), ct,
             // 200 with a null data is this endpoint's documented "no active session yet" —
             // see MemberChatController.GetCurrentSession — not a malformed reply.
             allowNullData: true);
 
+    public Task<MemberChatHistoryResponse?> PeekCurrentMemberChatSessionAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<MemberChatHistoryResponse>(ApiPaths.CurrentMemberChatSession(cardiMemberId), ct);
+
     public Task<MemberChatSessionListResponse> GetMemberChatSessionsAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<MemberChatSessionListResponse>(
-            $"api/v1/member-chat/members/{cardiMemberId}/sessions", ct);
+            ApiPaths.MemberChatSessions(cardiMemberId), ct);
+
+    public Task<MemberChatSessionListResponse?> PeekMemberChatSessionsAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<MemberChatSessionListResponse>(ApiPaths.MemberChatSessions(cardiMemberId), ct);
 
     public Task<MemberChatHistoryResponse> GetMemberChatSessionAsync(
         Guid cardiMemberId, Guid sessionId, CancellationToken ct = default) =>
@@ -301,7 +312,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<MemberChatSuggestionsResponse> GetMemberChatSuggestionsAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
         GetAsync<MemberChatSuggestionsResponse>(
-            $"api/v1/member-chat/members/{cardiMemberId}/suggestions", ct);
+            ApiPaths.MemberChatSuggestions(cardiMemberId), ct);
+
+    public Task<MemberChatSuggestionsResponse?> PeekMemberChatSuggestionsAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<MemberChatSuggestionsResponse>(ApiPaths.MemberChatSuggestions(cardiMemberId), ct);
 
     public Task<IReadOnlyList<DigestResponse>> GetJournalEntriesAsync(
         Guid cardiMemberId,
@@ -913,7 +928,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     {
         var recorded = await PostAsync<RecordExportConsentRequest, ExportConsentResponse>(
             "api/v1/reports/consent", request, ct);
-        await EvictAsync("api/v1/reports/consents");
+        await EvictAsync(ApiPaths.ExportConsents);
         return recorded;
     }
 
@@ -922,18 +937,22 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     {
         var recorded = await PostAsync<GenerateReportRequest, ExportConsentResponse>(
             $"api/v1/reports/consents/{consentId}/reuse", request, ct);
-        await EvictAsync("api/v1/reports/consents");
+        await EvictAsync(ApiPaths.ExportConsents);
         return recorded;
     }
 
     public Task<List<ExportConsentHistoryItem>> GetExportConsentsAsync(
         CancellationToken ct = default) =>
-        GetAsync<List<ExportConsentHistoryItem>>("api/v1/reports/consents", ct, cache: false);
+        GetAsync<List<ExportConsentHistoryItem>>(ApiPaths.ExportConsents, ct);
+
+    public Task<List<ExportConsentHistoryItem>?> PeekExportConsentsAsync(
+        CancellationToken ct = default) =>
+        PeekAsync<List<ExportConsentHistoryItem>>(ApiPaths.ExportConsents, ct);
 
     public async Task RevokeExportConsentAsync(Guid consentId, CancellationToken ct = default)
     {
         await SendNoDataAsync(HttpMethod.Delete, $"api/v1/reports/consents/{consentId}", ct);
-        await EvictAsync("api/v1/reports/consents");
+        await EvictAsync(ApiPaths.ExportConsents);
     }
 
     public Task<ReportQueuedResponse> GenerateReportAsync(
