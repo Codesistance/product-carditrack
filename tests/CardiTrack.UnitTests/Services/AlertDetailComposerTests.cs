@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Core.Charts;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -94,6 +95,66 @@ public class AlertDetailComposerTests
     }
 
     [Fact]
+    public void DaytimeInactivityBlock_WithoutADayStamp_FallsBackToTheDayBeforeItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":372}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(new DateOnly(2026, 8, 13), detail.AboutDate);
+    }
+
+    [Fact]
+    public void ElevatedZone_WithoutADayStamp_FallsBackToTheDayBeforeItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.HeartRate,
+            """{"rule":"elevated_zone_without_movement","elevatedZoneMinutes":40}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(new DateOnly(2026, 8, 13), detail.AboutDate);
+    }
+
+    [Fact]
+    public void IrregularSleep_WithoutANightStamp_StaysOnTheDayItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","sleepMinutes":240,"baselineAvgSleepMinutes":420}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(_today, detail.AboutDate);
+    }
+
+    [Fact]
+    public void HeartRateVariabilityDrop_WithoutANightStamp_StaysOnTheDayItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.HeartRate,
+            """{"rule":"hrv_drop","heartRateVariabilityMs":31}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(_today, detail.AboutDate);
+    }
+
+    [Fact]
+    public void OvernightBreathingUp_WithoutANightStamp_StaysOnTheDayItFired()
+    {
+        var alert = MakeAlert(
+            AlertType.PatternBreak,
+            """{"rule":"overnight_breathing_up","overnightBreathingRate":16}""");
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
+
+        Assert.Equal(_today, detail.AboutDate);
+    }
+
+    [Fact]
     public void NoMorningActivity_AboutDateIsTheDayItFired()
     {
         var alert = MakeAlert(
@@ -116,6 +177,23 @@ public class AlertDetailComposerTests
         var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
 
         Assert.Equal(_today, detail.AboutDate);
+        Assert.Equal("Last night", detail.Comparison!.CurrentLabel);
+    }
+
+    [Fact]
+    public void IrregularSleep_NamesTheNightItJudged_WhenThatNightIsNoLongerLastNight()
+    {
+        var about = new DateOnly(2026, 8, 10);
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","night":"2026-08-10","sleepMinutes":240,"baselineAvgSleepMinutes":420}""");
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, [Log(about, sleepMinutes: 240)], _today, null, null);
+
+        Assert.Equal(about, detail.AboutDate);
+        Assert.Equal("10 Aug", detail.Comparison!.CurrentLabel);
+        Assert.Equal("10 Aug", detail.Chart!.ValueLabel);
     }
 
     [Fact]
@@ -306,6 +384,48 @@ public class AlertDetailComposerTests
     }
 
     [Fact]
+    public void DaytimeInactivityBlock_HeadlineAndFlagStayOnTheAboutDay()
+    {
+        var about = new DateOnly(2026, 8, 10);
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """
+            {"rule":"daytime_inactivity_block","day":"2026-08-10",
+             "longestSedentaryStretchMinutes":354,
+             "baselineAvgLongestSedentaryStretchMinutes":198}
+            """);
+        var logs = new[]
+        {
+            Log(_today, stretchMinutes: 120),
+            Log(about, stretchMinutes: 354),
+            Log(about.AddDays(-1), stretchMinutes: 180),
+        };
+
+        var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
+
+        Assert.Equal(about, detail.AboutDate);
+        Assert.Equal(5.9m, detail.Chart!.Value);
+        Assert.Equal("10 Aug", detail.Chart.ValueLabel);
+        Assert.Equal(about, Assert.Single(AlertChartKey.FlaggedDates(detail.Chart, detail.AboutDate)));
+    }
+
+    [Theory]
+    [InlineData(14, 0, null, "whether anything kept them in the chair")]
+    [InlineData(20, 0, null, "whether they settled early")]
+    [InlineData(21, 30, "22:00", "whether anything kept them in the chair")]
+    [InlineData(22, 0, "22:00", "whether they settled early")]
+    [InlineData(1, 0, "22:00", "whether they settled early")]
+    [InlineData(21, 0, "01:00", "whether anything kept them in the chair")]
+    [InlineData(1, 30, "01:00", "whether they settled early")]
+    [InlineData(21, 0, "00:00", "whether anything kept them in the chair")]
+    public void StillStretchAsk_SwitchesAtBedtime(
+        int hour, int minute, string? bedtime, string expected)
+    {
+        TimeOnly? typical = bedtime is null ? null : TimeOnly.Parse(bedtime);
+        Assert.Equal(expected, AlertDetailComposer.StillStretchAsk(new TimeOnly(hour, minute), typical));
+    }
+
+    [Fact]
     public void RealtimeHeartRate_UsesTheGranularHourNotDailyLogs()
     {
         var start = new DateTime(2026, 8, 14, 10, 0, 0, DateTimeKind.Utc);
@@ -417,6 +537,50 @@ public class AlertDetailComposerTests
         Assert.Equal(_today.AddDays(-1), detail.LastActivityOn);
         Assert.Equal("07:00", detail.TypicalWakeTime);
         Assert.Equal("steps", detail.Chart!.Metric);
+        Assert.Equal(6120, detail.Chart.Value);
+        Assert.Equal(_today, detail.AboutDate);
+        Assert.Contains(_today, AlertChartKey.FlaggedDates(detail.Chart, detail.AboutDate));
+    }
+
+    [Fact]
+    public void Compose_CarriesTypicalBedtimeFromTheBaseline()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """{"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":372}""");
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, [], _today, null,
+            new PatternBaseline { TypicalBedtime = new TimeOnly(22, 15) });
+
+        Assert.Equal("22:15", detail.TypicalBedtime);
+    }
+
+    /// <summary>
+    /// The stored bedtime face is UTC. Compared raw against a Pacific afternoon it looks
+    /// like 05:00 — after a 04:00 UTC start — and the ask flips to "settled early".
+    /// Localising both onto the member's clock keeps 21:00 before a 22:00 bedtime.
+    /// </summary>
+    [Fact]
+    public void Compose_LocalisesTheStillStretchAsk_OntoTheMembersClock()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """
+            {"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":372,
+             "startedAtUtc":"2026-08-14T04:00:00Z"}
+            """);
+        var zone = TimeZoneInfo.CreateCustomTimeZone(
+            "test-7", TimeSpan.FromHours(-7), "test-7", "test-7");
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, [], _today, null,
+            new PatternBaseline { TypicalBedtime = new TimeOnly(5, 0) },
+            timeZone: zone);
+
+        Assert.Equal("22:00", detail.TypicalBedtime);
+        Assert.Equal("whether anything kept them in the chair", detail.StillStretchAsk);
+        Assert.Equal("9:00 PM", detail.StretchStartedLabel);
     }
 
     /// <summary>
@@ -508,14 +672,19 @@ public class AlertDetailComposerTests
     {
         var alert = MakeAlert(
             AlertType.HeartRate,
-            """{"rule":"elevated_heart_rate","restingHeartRate":88,"baselineAvgRestingHeartRate":68}""");
-        var logs = new[] { Log(_today, restingHr: 88), Log(_today.AddDays(-1), restingHr: 70) };
+            """{"rule":"elevated_heart_rate","day":"2026-08-13","restingHeartRate":88,"baselineAvgRestingHeartRate":68}""");
+        var logs = new[]
+        {
+            Log(_today, restingHr: 74),
+            Log(_today.AddDays(-1), restingHr: 88),
+            Log(_today.AddDays(-2), restingHr: 70),
+        };
 
         var detail = AlertDetailComposer.Compose(alert, Member(), null, logs, _today, null, null);
 
         Assert.DoesNotContain(detail.Chart!.Series, p => p.IsPartial);
-        Assert.Null(detail.Chart.ValueLabel);
         Assert.Equal(88, detail.Chart.Value);
+        Assert.Equal("Yesterday", detail.Chart.ValueLabel);
     }
 
     [Fact]
@@ -726,12 +895,17 @@ public class AlertDetailComposerTests
     };
 
     private ActivityLog Log(
-        DateOnly date, int? steps = null, int? restingHr = null, int? sleepMinutes = null) => new()
+        DateOnly date,
+        int? steps = null,
+        int? restingHr = null,
+        int? sleepMinutes = null,
+        int? stretchMinutes = null) => new()
         {
             CardiMemberId = _memberId,
             Date = date,
             Steps = steps,
             RestingHeartRate = restingHr,
             SleepMinutes = sleepMinutes,
+            LongestSedentaryStretchMinutes = stretchMinutes,
         };
 }

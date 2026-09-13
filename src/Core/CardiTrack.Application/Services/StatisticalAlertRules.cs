@@ -112,7 +112,7 @@ public static class StatisticalAlertRules
         return new StatisticalAlertCandidate(
             ActivityDeclineRule, AlertType.Inactivity, AlertSeverity.Yellow,
             "Activity was well below the usual",
-            $"About {steps:N0} steps yesterday against a usual {average:N0} — a quieter day than normal. "
+            $"About {steps:N0} steps against a usual {average:N0} — a quieter day than normal. "
             + "Worth a gentle check-in.",
             Serialize(new
             {
@@ -239,8 +239,8 @@ public static class StatisticalAlertRules
         return new StatisticalAlertCandidate(
             ElevatedHeartRateRule, AlertType.HeartRate, AlertSeverity.Orange,
             "Resting heart rate is running high",
-            $"Resting heart rate was {restingHr} bpm yesterday, clearly above the usual "
-            + $"{average} bpm. Worth checking in today.",
+            $"Resting heart rate was {restingHr} bpm, clearly above the usual "
+            + $"{average} bpm. Worth checking in.",
             Serialize(new
             {
                 rule = ElevatedHeartRateRule,
@@ -359,7 +359,7 @@ public static class StatisticalAlertRules
             HeartRateVariabilityDropRule, AlertType.HeartRate, AlertSeverity.Orange,
             "Their heart rate variability has dropped",
             $"Overnight heart rate variability has been low two nights running — {latest:0.#} ms "
-            + $"last night against a usual {average:0.#} ms. On its own it often just means a "
+            + $"against a usual {average:0.#} ms. On its own it often just means a "
             + "poor night or a cold coming on, but it is worth a check-in.",
             Serialize(new
             {
@@ -466,7 +466,7 @@ public static class StatisticalAlertRules
         return new StatisticalAlertCandidate(
             ElevatedZoneWithoutMovementRule, AlertType.HeartRate, AlertSeverity.Orange,
             "Their heart worked hard on a quiet day",
-            $"Yesterday their heart spent about {elevated} minutes in a raised zone{zoneFloor}, "
+            $"Their heart spent about {elevated} minutes in a raised zone{zoneFloor}, "
             + $"on a day of only {yesterday.Steps:N0} steps against a usual "
             + $"{baseline.AvgSteps:N0}. Effort without movement is worth a check-in — how are they "
             + "feeling, and have they been warm or short of breath?",
@@ -521,13 +521,13 @@ public static class StatisticalAlertRules
         return new StatisticalAlertCandidate(
             DaytimeInactivityBlockRule, AlertType.Inactivity, AlertSeverity.Yellow,
             "A long stretch without moving",
-            // No clock time in this copy. The instant is stored in the metrics below for the
-            // detail screen, which knows the member's timezone; naming it here would have to name
-            // it in UTC, and a caregiver cannot tell an afternoon in a chair from the small hours
-            // that way.
-            $"They went about {Hours(stretch)} without moving at all yesterday"
+            // No clock time and no relative day in this copy. The instant and the civil day live
+            // in the metrics; the detail screen localises both. Baking "yesterday" or a clock
+            // here would be right on the morning the rule fires and wrong the next time the
+            // caregiver opens the card.
+            $"They went about {Hours(stretch)} without moving at all"
             + $"{usualClause}. A long unbroken rest is not the same as a quiet day — worth asking "
-            + "whether they were comfortable, and whether anything kept them in the chair.",
+            + "whether they were comfortable.",
             Serialize(new
             {
                 rule = DaytimeInactivityBlockRule,

@@ -117,6 +117,7 @@ public class AlertService : IAlertService
         var utcTriggered = ToUtc(alert.TriggeredDate);
         var firedOn = DateOnly.FromDateTime(utcTriggered);
         ElapsedMatch? elapsed = null;
+        TimeZoneInfo? zone = null;
 
         if (days > 0)
         {
@@ -126,7 +127,7 @@ public class AlertService : IAlertService
             // yesterday the alert is about. Resolved only when a daily window is actually being
             // plotted: it costs a links query plus a user read, and device-silence and the
             // realtime-HR rule never look at a calendar day.
-            var zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, alert.CardiMemberId);
+            zone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, alert.CardiMemberId);
             elapsed = AlertDetailComposer.ElapsedMatchFor(utcNow, zone);
             today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, zone));
             firedOn = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcTriggered, zone));
@@ -161,7 +162,7 @@ public class AlertService : IAlertService
 
         return AlertDetailComposer.Compose(
             alert, member, acknowledger, logs, today, granular, baseline, elapsedSteps, firedOn,
-            photoUrl);
+            photoUrl, zone);
     }
 
     /// <summary>
