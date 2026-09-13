@@ -310,8 +310,11 @@ Consequences, all confirmed on a device (2026-08-11):
 
 Notes: the app's Android minimum is API 31 today (raised for the splash-screen API);
 Datadog and Firebase themselves only require API 23. `Site` defaults to
-`Eu1` when omitted; consent is currently `Granted` at first launch — add a settings toggle
-before any store review that requires opt-in analytics consent. The app sets
+`Eu1` when omitted; tracking consent starts at `NotGranted` and is raised to `Granted` only
+when the caregiver turns on Settings → Privacy → **Send diagnostics** (`DiagnosticsConsent`,
+which also calls `DdSdk.SetTrackingConsent` so the change lands without a restart). A build
+with the toggle off ships no logs or traces at all — when mobile telemetry is missing from
+Datadog, check the toggle on the device before suspecting the stamping. The app sets
 `FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so
 mobile spans join the API's OTel traces.
 

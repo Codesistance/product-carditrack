@@ -17,6 +17,10 @@ public partial class SettingsPage : ContentPage
     private readonly CardiMemberDraftStore _drafts;
     private readonly ICardiTrackApiClient _api;
 
+    // A Switch raises Toggled when set from code too; this keeps OnAppearing from writing the
+    // preference back and re-announcing a consent the caregiver did not just change.
+    private bool _renderingDiagnostics;
+
     public SettingsPage(
         IAuthService authService,
         IPopupService popups,
@@ -36,6 +40,7 @@ public partial class SettingsPage : ContentPage
         AccountNameLabel.Text = _authService.CurrentUserName ?? "Your account";
         AccountEmailLabel.Text = _authService.CurrentUserEmail ?? string.Empty;
         VersionLabel.Text = $"{AppInfo.Current.VersionString} ({AppInfo.Current.BuildString})";
+        RenderDiagnosticsConsent();
         _ = LoadMutesAsync();
         _ = LoadNotificationSummaryAsync();
     }
@@ -383,6 +388,26 @@ public partial class SettingsPage : ContentPage
         ExitHintScrim.IsVisible = false;
     }
 
+    private void RenderDiagnosticsConsent()
+    {
+        _renderingDiagnostics = true;
+        try
+        {
+            DiagnosticsSwitch.IsToggled = DiagnosticsConsent.IsGranted;
+        }
+        finally
+        {
+            _renderingDiagnostics = false;
+        }
+    }
+
+    private void OnDiagnosticsToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_renderingDiagnostics)
+            return;
+        DiagnosticsConsent.Set(e.Value);
+    }
+
     private async void OnSignOutClicked(object? sender, EventArgs e)
     {
         if (!_signOutGate.Confirm())
@@ -402,6 +427,9 @@ public partial class SettingsPage : ContentPage
             // it was confirmed, and the next caregiver on this phone must be asked afresh.
             Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
+            // Consent is the person's, not the phone's: stop collecting now, and make the next
+            // caregiver who signs in here say yes for themselves.
+            DiagnosticsConsent.Clear();
             // Holds a name, DOB and medical notes — must not survive into the next session.
             await _drafts.ClearAsync();
             WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));

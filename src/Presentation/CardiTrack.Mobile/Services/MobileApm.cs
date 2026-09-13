@@ -21,6 +21,13 @@ namespace CardiTrack.Mobile.Services;
 /// </summary>
 public static class MobileApm
 {
+    /// <summary>
+    /// True once an engine has actually been wired up. Callers that reach for an SDK's
+    /// static entry points later — <see cref="DiagnosticsConsent"/> does — need to know
+    /// the difference between "monitoring is off" and "monitoring is on and silent".
+    /// </summary>
+    public static bool IsConfigured { get; private set; }
+
     private static readonly Dictionary<string, Action<MauiAppBuilder, JObject>> Engines =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -104,7 +111,11 @@ public static class MobileApm
             {
                 ClientToken = clientToken,
                 Environment = AppConfig.EnvironmentName,
-                TrackingConsent = TrackingConsent.Granted,
+                // Opt-in: nothing is collected until the caregiver turns diagnostics on in
+                // Settings, and DiagnosticsConsent.Set flips this at runtime from there.
+                TrackingConsent = DiagnosticsConsent.IsGranted
+                    ? TrackingConsent.Granted
+                    : TrackingConsent.NotGranted,
                 Service = "carditrack-mobile",
                 Site = site,
                 // Datadog's own crash reporting rides on RUM, which is not enabled — Play
@@ -123,6 +134,8 @@ public static class MobileApm
             })
             .UseDatadogLogs()
             .UseDatadogTrace();
+
+        IsConfigured = true;
 #endif
     }
 }

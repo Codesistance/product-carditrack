@@ -205,7 +205,7 @@ Wearable (Fitbit / Google Health API) OAuth returns to the app via the **`cardit
 - **Crashes and ANRs come from Play Console** (Quality → Android vitals), not Datadog — Datadog crash reporting is a RUM feature and went with it.
 - **Session Replay is deliberately NOT enabled** — health data must not be recorded.
 - **`FirstPartyHosts`**: the API host is marked first-party with W3C `traceparent` (+ Datadog) headers, so mobile spans join the API's OTel traces.
-- **Consent (follow-up)**: `TrackingConsent` is currently set to `Granted` at first launch, and there is no in-app opt-out. This is the current state of the code, flagged for follow-up, not a settled privacy posture.
+- **Consent is opt-in**: `TrackingConsent` starts at `NotGranted` and only becomes `Granted` when the caregiver turns on Settings → Privacy → **Send diagnostics**. `DiagnosticsConsent` (`Services/DiagnosticsConsent.cs`) owns the stored choice and hands each change straight to `DdSdk.SetTrackingConsent`, so a toggle takes effect without a restart; sign-out clears it, so the next caregiver on the same phone is asked afresh. `NotGranted` rather than `Pending` is deliberate — Pending would still collect and hold events on the device waiting for a yes, which is what an opt-in toggle exists to prevent, at the cost of never recovering diagnostics from before it was turned on.
 - **Provisioning**: the `apm_mobile_engine` tfvar plus the per-environment secrets `carditrack-<env>-apm-mobile-engine` / `carditrack-<env>-apm-mobile-data` (env stacks, not `common/`) feed CI's `-p:ApmEngine`/`-p:ApmData` stamping — see the [APM setup runbook](../../technical/apm_setup_runbook.md).
 
 ## Push notifications
