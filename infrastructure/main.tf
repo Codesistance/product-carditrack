@@ -133,9 +133,10 @@ module "deployments" {
       # the API refuses to start with this true when ASPNETCORE_ENVIRONMENT is Prod, so the
       # conditional here and that guard agree by construction rather than by discipline.
       "AI__Private__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
-      # The Rewrite slot's twin. Only read when AI__Rewrite__Kind is Ollama — deployed hosts run
-      # VertexGemini, so this is inert here — set so dev and prod carry the same answer the code
-      # and docs describe rather than leaving one slot to its default.
+      # The Rewrite slot's twin, and no longer inert here: VertexAiClient honours the flag too, so
+      # in dev this writes the rewrite slot's prompts and completions — the copy a caregiver reads
+      # — verbatim under the same inspection event id. Prod is false, and the API refuses to start
+      # with it true there, the same agreement by construction as the line above.
       "AI__Rewrite__LogClinicalOutput" = var.environment == "dev" ? "true" : "false"
       # Rewrite slot — Gemini on an EU regional Vertex endpoint under IAM (DPIA v0.11 row A20,
       # decision D6). Hard-coded rather than a variable: the self-hosted Ollama alternative had a

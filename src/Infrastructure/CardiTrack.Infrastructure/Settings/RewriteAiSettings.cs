@@ -85,8 +85,11 @@ public class RewriteAiSettings : IMedGemmaModelSettings
     /// <inheritdoc cref="IMedGemmaModelSettings.LogClinicalOutput" path="/summary"/>
     /// </summary>
     /// <remarks>
-    /// Only read when <see cref="Kind"/> is Ollama, since only then does a
-    /// <c>MedGemmaClient</c> serve this slot. Same production refusal as the Private slot.
+    /// Read on both kinds. It began as an Ollama-only switch, because only a
+    /// <c>MedGemmaClient</c> implemented the outlet — which left the deployed slot, the one that
+    /// writes every word a caregiver reads, with no way to see what it had been sent or what it
+    /// said. <c>VertexAiClient</c> now honours it too, under the same event id and the same
+    /// production refusal as the Private slot.
     /// </remarks>
     public bool LogClinicalOutput { get; set; }
 

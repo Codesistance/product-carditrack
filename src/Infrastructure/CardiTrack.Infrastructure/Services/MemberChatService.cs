@@ -147,8 +147,10 @@ public class MemberChatService : IMemberChatService
         """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     /// <summary>Shown when a steer generation fails or comes back unusable — the redirect must
-    /// never be the thing that breaks.</summary>
-    private const string FallbackSteerReply =
+    /// never be the thing that breaks. Internal, like <see cref="CouldNotAnswerReply"/>, so the
+    /// tests that assert a caregiver saw this rather than the model's own sentence can name
+    /// it.</summary>
+    internal const string FallbackSteerReply =
         "I'm best at questions about your family member's readings, sleep, activity, and alerts — "
         + "ask me anything about those.";
 
@@ -407,7 +409,7 @@ public class MemberChatService : IMemberChatService
     /// </para>
     /// </remarks>
     private const string RewriteInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.PronounsByToken
         + MedicalPromptBlocks.CaregiverRegister + """
 
         Rewrite the clinical read below as a reply to the caregiver's question, in one or two
@@ -576,7 +578,7 @@ public class MemberChatService : IMemberChatService
                 { IsAskingForAdvice: true } =>
                     await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
-                    await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, ct),
+                    await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, MemberVoice.For(member), ct),
                 _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
             };
 
@@ -654,9 +656,9 @@ public class MemberChatService : IMemberChatService
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var voice = MemberVoice.For(member);
         var reply = ComposeReply(
-            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
@@ -716,9 +718,9 @@ public class MemberChatService : IMemberChatService
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var voice = MemberVoice.For(member);
         var reply = ComposeReply(
-            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
         // The brief above told the clinical read not to be calmer than the hero. This is the
@@ -808,11 +810,11 @@ public class MemberChatService : IMemberChatService
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var voice = MemberVoice.For(member);
         // Exactly one of the two fetches carries activity: the second plans over what the first
         // did not ask for, so RecentActivity lands in one or the other and never in both.
         var reply = ComposeReply(
-            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
@@ -921,9 +923,9 @@ public class MemberChatService : IMemberChatService
                     route.AsksForSpecifics, triageUsage, member,
                     advise ?? await PickAdviseAsync(route.AdviseTopic, cardiMemberId, member, utcNow), utcNow),
             MemberChatWorkflow.SteerCasual =>
-                await SteerAsync(flattened, triageUsage, casual: true, member?.Name, ct),
+                await SteerAsync(flattened, triageUsage, casual: true, MemberVoice.For(member), ct),
             MemberChatWorkflow.SteerOffTopic =>
-                await SteerAsync(flattened, triageUsage, casual: false, member?.Name, ct),
+                await SteerAsync(flattened, triageUsage, casual: false, MemberVoice.For(member), ct),
             MemberChatWorkflow.Inference =>
                 await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
             MemberChatWorkflow.Investigation =>
@@ -1049,11 +1051,10 @@ public class MemberChatService : IMemberChatService
         string flattened,
         AiUsage triageUsage,
         bool casual,
-        string? memberName,
+        MemberVoice voice,
         CancellationToken ct)
     {
         var instructions = casual ? CasualSteerInstructions : OffTopicSteerInstructions;
-        var name = NamePlaceholder.FirstName(memberName);
 
         string reply;
         AiUsage? steerUsage = null;
@@ -1062,8 +1063,18 @@ public class MemberChatService : IMemberChatService
             var steer = await _rewriteAi.GenerateStructuredWithUsageAsync<SteerAiResponse>(
                 BuildSteerPrompt(instructions, flattened), ct);
             steerUsage = steer.Usage;
-            var resolved = NamePlaceholder.Resolve(steer.Result.Reply.Trim(), name) ?? string.Empty;
-            reply = NamePlaceholder.IsPresentIn(resolved) || string.IsNullOrWhiteSpace(resolved)
+
+            // A steer is one sentence of redirection, and its brief carries no pronoun rule — it
+            // is a utility prompt, not prose about a member. It does hold the name token, though,
+            // and a model given a name reaches for a pronoun to go with it: "He is doing well" on
+            // a member whose sex is not on file is the same invented claim the cards refuse, made
+            // in the one place on this path that still resolved only the name. The canned redirect
+            // says as much as the model's own sentence did anyway.
+            var resolved = RewriteCopyGuards.StatesAnUnsupportedSex(steer.Result.Reply, voice.Gender)
+                ? string.Empty
+                : voice.Resolve(steer.Result.Reply.Trim()) ?? string.Empty;
+
+            reply = MemberVoice.IsUnresolvedIn(resolved) || string.IsNullOrWhiteSpace(resolved)
                 ? FallbackSteerReply
                 : CapReply(resolved);
         }
@@ -2085,12 +2096,25 @@ public class MemberChatService : IMemberChatService
     internal const string CouldNotAnswerReply =
         "I couldn't put together an answer from what's on file right now.";
 
-    /// <summary>Resolves CardiTrackCardiMember, or falls back to a fixed line rather than showing a leftover
-    /// placeholder or an empty reply — see <c>NamePlaceholder.IsPresentIn</c>.</summary>
-    private static string ResolvedOrFallback(string text, string? name)
+    /// <summary>Resolves the member's name and pronouns, or falls back to a fixed line rather than
+    /// showing a leftover placeholder, an empty reply, or a sex nothing on file bears out —
+    /// see <c>MemberVoice.IsUnresolvedIn</c> and <c>RewriteCopyGuards.StatesAnUnsupportedSex</c>.</summary>
+    /// <remarks>
+    /// The sex check costs more here than anywhere else it runs: a digest that fails it keeps
+    /// yesterday's card, while a chat turn that fails it answers the caregiver's actual question
+    /// with "I couldn't put together an answer". It is applied anyway, and on the same terms as
+    /// the cards — a pronoun the record cannot bear out is a claim about someone's mother or
+    /// father, and it is not made less wrong by being made in a conversation. A guess that matches
+    /// the record still passes, so the cost lands only on members whose sex is not on file, and
+    /// only when the model has ignored the token rule.
+    /// </remarks>
+    private static string ResolvedOrFallback(string text, MemberVoice voice)
     {
-        var resolved = NamePlaceholder.Resolve(text.Trim(), name) ?? string.Empty;
-        return NamePlaceholder.IsPresentIn(resolved) || string.IsNullOrWhiteSpace(resolved)
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender))
+            return CouldNotAnswerReply;
+
+        var resolved = voice.Resolve(text.Trim()) ?? string.Empty;
+        return MemberVoice.IsUnresolvedIn(resolved) || string.IsNullOrWhiteSpace(resolved)
             ? CouldNotAnswerReply
             : resolved;
     }
@@ -2115,13 +2139,13 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     private static string ComposeReply(
         string rewritten,
-        string? name,
+        MemberVoice voice,
         string? readingsFrom,
         string? readingsTo,
         (DateOnly From, DateOnly To)? fetchedWindow,
         DateOnly today)
     {
-        var resolved = ResolvedOrFallback(rewritten, name);
+        var resolved = ResolvedOrFallback(rewritten, voice);
         if (resolved == CouldNotAnswerReply)
             return resolved;
         if (JournalRegisterGuards.NamesACondition(resolved) is not null)

@@ -151,6 +151,35 @@ public class AiServiceExtensionsTests
         Assert.Contains("AI:Rewrite:LogClinicalOutput", ex.Message);
     }
 
+    /// <summary>
+    /// The same refusal on the kind that is actually deployed. The test above passes with the
+    /// check on either side of the kind branch, because the rewrite slot defaults to Ollama with
+    /// no Kind set — so while VertexAiClient did not read the flag, a branch-local check looked
+    /// exactly like a section-wide one. It reads it now.
+    /// </summary>
+    [Fact]
+    public void AddAiServices_Throws_WhenVertexRewriteClinicalLoggingIsOnInProduction()
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:LogClinicalOutput"] = "true";
+        config["ASPNETCORE_ENVIRONMENT"] = "Prod";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(config));
+
+        Assert.Contains("AI:Rewrite:LogClinicalOutput", ex.Message);
+        Assert.Contains("ASPNETCORE_ENVIRONMENT", ex.Message);
+    }
+
+    [Fact]
+    public void AddAiServices_AllowsVertexRewriteClinicalLogging_OutsideProduction()
+    {
+        var config = VertexRewriteConfig();
+        config["AI:Rewrite:LogClinicalOutput"] = "true";
+        config["ASPNETCORE_ENVIRONMENT"] = "Dev";
+
+        Assert.NotNull(Resolve(config).GetRequiredKeyedService<IExternalAiClient>("RewriteProvider"));
+    }
+
     // With no Kind configured the rewrite slot defaults to Ollama — the local-dev shape must
     // keep working with zero configuration and no GCP credentials.
     [Fact]

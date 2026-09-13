@@ -109,7 +109,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// boundary, the same contract Advise and member chat honour.
     /// </remarks>
     private const string FamilyDigestRewriteInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.PronounsByToken + """
         Write CardiTrackCardiMember's family their summary of the day, from the clinical read below.
         Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
@@ -291,6 +291,36 @@ public partial class DigestGenerationService : IDigestGenerationService
     private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// The version of this service's briefs. A stored family summary carrying an older one is due
+    /// for regeneration whatever its age and whatever its readings did. Bump it on any change to a
+    /// brief that alters what a caregiver is told.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The gates above all turn on the readings moving, which is the right question for "is this
+    /// summary out of date" and the wrong one for "was this summary written by a brief we have
+    /// since corrected". Without this, copy from a superseded brief sat on the card of every
+    /// member whose data had gone quiet — the pronoun the model chose for itself before it was
+    /// asked for a token, in the failure that version 1 is the answer to — and nothing in the
+    /// pass ever looked at it again. Advise has carried the same mechanism since its own brief
+    /// split; this is the digest catching up, one bug later.
+    /// </para>
+    /// <para>
+    /// Version 1 is the first stamped generation: <see cref="MedicalPromptBlocks.PronounsByToken"/>
+    /// in the family rewrite brief, with the name and the pronouns both resolved in code. Rows
+    /// written before the column existed read 0 and are stale by that alone, which is the
+    /// intended reading of them — they were written by a brief that chose a sex for the member.
+    /// </para>
+    /// <para>
+    /// One counter for the service rather than one per audience. It is stamped on the journals too
+    /// and read only on the family path, because a journal is an account of a finished day and a
+    /// better brief is not a reason to rewrite one somebody has already read — see
+    /// <see cref="DigestEntry.PromptVersion"/>.
+    /// </para>
+    /// </remarks>
+    internal const int CurrentPromptVersion = 1;
+
+    /// <summary>
     /// The floor that replaces <see cref="MinimumRegenerationInterval"/> in the first
     /// <see cref="DigestDayProgress.EarlyDayHours"/> after the member wakes, once they already have
     /// a summary for the day in progress.
@@ -470,6 +500,22 @@ public partial class DigestGenerationService : IDigestGenerationService
         _advise = advise;
         _logger = logger;
     }
+
+    /// <summary>
+    /// What the read actually measured — the finding and the basis for an action — as the text the
+    /// copy written from it is grounded against.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not <see cref="RenderClinicalRead"/>, which the rewrite prompt gets. That also
+    /// carries the question topic, and a topic is a subject to ask the family about ("what their
+    /// evenings usually look like"), not a reading anyone took: grounding on it would let a topic
+    /// naming sleep or activity vouch for a measurement the read never made.
+    /// </remarks>
+    private static string RenderMeasuredRead(DigestClinicalAiResponse clinical) =>
+        string.IsNullOrWhiteSpace(clinical.ActionBasis)
+            ? MedicalPromptBlocks.Flatten(clinical.Finding)
+            : $"{MedicalPromptBlocks.Flatten(clinical.Finding)} "
+              + $"{MedicalPromptBlocks.Flatten(clinical.ActionBasis)}";
 
     /// <summary>
     /// The clinical read as the one thing the rewrite prompt is allowed to carry — no member
@@ -799,6 +845,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 CleanSuggestion(aiResponse.Suggestion, memberId, monthEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, monthEnd),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         return true;
@@ -991,6 +1038,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 CleanSuggestion(aiResponse.Suggestion, memberId, weekEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, weekEnd),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         return true;
@@ -1183,6 +1231,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 CleanSuggestion(aiResponse.Suggestion, memberId, reviewedDate), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, reviewedDate),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         // No question is asked off a daybook entry. Questions exist to explain readings while they
@@ -1224,8 +1273,37 @@ public partial class DigestGenerationService : IDigestGenerationService
         // observation that has not become an alert is the same kind of change; it used to ride
         // the ordinary cycle, which is how a dire hour could sit behind a stale
         // "settled day" card.
+        // Two more reasons to refresh, and neither is about the readings.
+        //
+        // A stored summary from an older brief is stale by that alone: the gates below ask whether
+        // the data has moved, which cannot answer "was this written by a brief we have since
+        // corrected". This is the bounded one — once a generation under the current version lands,
+        // it stops firing.
+        var previousIsFromAnOlderBrief = previous is not null && previous.PromptVersion < CurrentPromptVersion;
+
+        // And the copy itself, whatever version wrote it: a summary this code would now refuse to
+        // write is worth trying to replace. It catches what the version cannot — a member whose
+        // sex was filled in after the summary was written, where the stored pronoun was nobody's
+        // mistake and is now wrong anyway. Unbounded against a model that keeps guessing, which is
+        // the price of checking the words rather than a number; the card meanwhile shows exactly
+        // what it already showed.
+        var previousStatesAnUnsupportedSex = previous is not null
+            && RewriteCopyGuards.StatesAnUnsupportedSex(
+                previous.Text, member?.Gender ?? Gender.PreferNotToSay);
+
+        if (previousIsFromAnOlderBrief || previousStatesAnUnsupportedSex)
+        {
+            _logger.LogInformation(
+                "Refreshing the summary for CardiMember {CardiMemberId} whatever its readings did: "
+                + "stored under prompt version {StoredVersion} of {CurrentVersion}, states an "
+                + "unsupported sex: {StatesAnUnsupportedSex}.",
+                memberId, previous!.PromptVersion, CurrentPromptVersion, previousStatesAnUnsupportedSex);
+        }
+
         var forceRefresh = previous is not null
-            && (await AlertStateChangedSinceAsync(memberId, previous, ct)
+            && (previousIsFromAnOlderBrief
+                || previousStatesAnUnsupportedSex
+                || await AlertStateChangedSinceAsync(memberId, previous, ct)
                 || await ConcerningSamplesSinceAsync(memberId, previous, ct));
 
         // A summary is keyed by the local day it DESCRIBES, and it now describes the day in
@@ -1361,11 +1439,17 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         // The A20 boundary as a type: the rewrite builder takes DeidentifiedFindings and cannot be
         // handed the member context or the readings, whatever a future edit here tries to pass.
+        var read = RenderClinicalRead(clinical);
+
+        // The yardstick the copy coming back is measured against — a summary or a headline may
+        // only name a reading this text named. Narrower than what the prompt is sent, on purpose:
+        // see RenderMeasuredRead.
+        var measured = RenderMeasuredRead(clinical);
         DigestAiResponse aiResponse;
         try
         {
             aiResponse = await _rewriteAi.GenerateStructuredAsync<DigestAiResponse>(
-                BuildFamilyDigestRewritePrompt(new DeidentifiedFindings(RenderClinicalRead(clinical))), ct);
+                BuildFamilyDigestRewritePrompt(new DeidentifiedFindings(read)), ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -1417,18 +1501,44 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var voice = MemberVoice.For(member);
+
+        // Checked before the voice is resolved in, while the words are still the model's own. A
+        // summary that states a sex the record does not bear out, or that names a reading the read
+        // never mentioned, is the same kind of failure as the two above — something written that
+        // was not in what the model was given — and gets the same answer: yesterday's card, which
+        // was true, beats today's, which is not.
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender))
+        {
+            _logger.LogWarning(
+                "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: it "
+                + "states a sex the member's record does not bear out.",
+                memberId, describedDate);
+            return false;
+        }
+
+        if (RewriteCopyGuards.NamesAReadingTheReadDidNot(text, measured) is { } invented)
+        {
+            _logger.LogWarning(
+                "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: it "
+                + "tells the family about {Reading}, which the clinical read never mentioned.",
+                memberId, describedDate, invented);
+            return false;
+        }
 
         // Same stance as the checks above: nothing is written rather than something wrong. A
         // summary reading "CardiTrackCardiMember slept well" is a worse thing to show a caregiver than the
         // "not enough to say yet" copy, and there is no neutral word to fall back to — every
         // stand-in for a name here ("your relative", "your loved one") is exactly the phrasing
-        // the placeholder exists to avoid.
-        if (name is null && NamePlaceholder.IsPresentIn(text))
+        // the placeholder exists to avoid. A pronoun token that outlived resolution is the same
+        // sentence with the same hole in it, so it is refused on the same terms.
+        var resolvedText = voice.Resolve(text)!;
+        if (MemberVoice.IsUnresolvedIn(resolvedText))
         {
             _logger.LogWarning(
                 "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: it "
-                + "names the member through the placeholder, but no name is on file to resolve it to.",
+                + "names or refers to the member through a placeholder, and the record has nothing "
+                + "to resolve it to.",
                 memberId, describedDate);
             return false;
         }
@@ -1438,21 +1548,25 @@ public partial class DigestGenerationService : IDigestGenerationService
             CardiMemberId = memberId,
             LocalDate = describedDate,
             Audience = DigestAudience.Family,
-            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, describedDate), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
-            Suggestion = NamePlaceholder.Resolve(
-                CleanSuggestion(aiResponse.Suggestion, memberId, describedDate), name),
+            Headline = ResolvedOrDropped(
+                CaregiverHeadline(aiResponse.Headline, memberId, describedDate),
+                voice, "headline", memberId, describedDate, groundedIn: measured),
+            Text = resolvedText,
+            Suggestion = ResolvedOrDropped(
+                CleanSuggestion(aiResponse.Suggestion, memberId, describedDate),
+                voice, "suggestion", memberId, describedDate),
             // From the clinical read, not the rewrite: how soon a family should act is a judgement
             // about the readings, and the rewrite is not shown them.
             Urgency = ParseUrgency(clinical.Urgency, memberId, describedDate),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         // Strictly after the summary is stored, and only then: a question is a by-product of a
         // generation that was good enough to keep. Every discard path above has already returned,
         // so a member whose summary was rejected is never asked anything on the strength of it.
         await StoreQuestionIfWorthAskingAsync(
-            memberId, aiResponse, clinical.QuestionTopic, clinical.QuestionScope, name, utcNow,
+            memberId, aiResponse, clinical.QuestionTopic, clinical.QuestionScope, voice, utcNow,
             localNow, timeZone, describedDate, ct);
 
         // The Dashboard status line is served from its persisted row, and a stored digest is
@@ -1631,7 +1745,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </param>
     private async Task StoreQuestionIfWorthAskingAsync(
         Guid memberId, DigestAiResponse aiResponse, string? clinicalTopic, string? clinicalScope,
-        string? name, DateTime utcNow, DateTime localNow, TimeZoneInfo timeZone,
+        MemberVoice voice, DateTime utcNow, DateTime localNow, TimeZoneInfo timeZone,
         DateOnly describedDate, CancellationToken ct)
     {
         // The clinical read is the single source of truth for "is there anything worth asking".
@@ -1642,10 +1756,21 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (CleanQuestion(aiResponse.Question, memberId, describedDate) is not { } question)
             return;
 
-        // A question naming the member through the placeholder is worthless without a name to
-        // resolve it to — the same stance the summary takes.
-        var resolved = NamePlaceholder.Resolve(question, name);
-        if (resolved is null || NamePlaceholder.IsPresentIn(resolved))
+        // A question is put to the family in as many words as the summary is, so it answers to the
+        // same two rules. A sex the record does not bear out is checked first, while the words are
+        // still the model's; a placeholder the record cannot resolve is checked after, because a
+        // question with a sentinel in it is worthless whatever else is right with it.
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(question, voice.Gender))
+        {
+            _logger.LogWarning(
+                "Dropped a proposed family question for CardiMember {CardiMemberId} on {LocalDate}: "
+                + "it states a sex the member's record does not bear out.",
+                memberId, describedDate);
+            return;
+        }
+
+        var resolved = voice.Resolve(question);
+        if (resolved is null || MemberVoice.IsUnresolvedIn(resolved))
             return;
 
         if (await _unitOfWork.MemberQuestionnaires.HasPendingAsync(memberId, utcNow, ct))
@@ -1677,7 +1802,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             }
         }
 
-        var rationale = CleanRationale(aiResponse.QuestionRationale, resolved, name, memberId);
+        var rationale = CleanRationale(aiResponse.QuestionRationale, resolved, voice, memberId);
 
         await _unitOfWork.MemberQuestionnaires.AddAsync(new MemberQuestionnaire
         {
@@ -1763,9 +1888,36 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// showing. Dropped rather than rewritten: a mechanical caption ("prompted by the reading")
     /// is worse than no caption, and the question itself is still worth asking without it.
     /// </summary>
-    private string? CleanRationale(string? rationale, string question, string? name, Guid memberId)
+    /// <remarks>
+    /// The caption is family-facing copy from the same reply as everything else here, so it meets
+    /// the same two rules before any of the cosmetic cleaning below: a sex the record does not
+    /// bear out, checked while the words are the model's, and a placeholder that outlived
+    /// resolution. Neither was checked when the tokens were introduced, which would have let a
+    /// sentinel — or a "his" for a member at PreferNotToSay — reach a caregiver through the one
+    /// field on this path that nothing else guards.
+    /// </remarks>
+    private string? CleanRationale(string? rationale, string question, MemberVoice voice, Guid memberId)
     {
-        var resolved = NamePlaceholder.Resolve(rationale, name);
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(rationale, voice.Gender))
+        {
+            _logger.LogInformation(
+                "Dropped the proposed question rationale for CardiMember {CardiMemberId}: it states "
+                + "a sex the member's record does not bear out. The question is stored without a "
+                + "caption.",
+                memberId);
+            return null;
+        }
+
+        var resolved = voice.Resolve(rationale);
+        if (MemberVoice.IsUnresolvedIn(resolved))
+        {
+            _logger.LogInformation(
+                "Dropped the proposed question rationale for CardiMember {CardiMemberId}: it carries "
+                + "a placeholder the record cannot resolve. The question is stored without a caption.",
+                memberId);
+            return null;
+        }
+
         var cleaned = MedicalPromptBlocks.Flatten(resolved ?? string.Empty)
             .Trim().TrimStart('-', '*', '•').Trim('"', '\'', ' ').Trim();
 
@@ -1997,6 +2149,119 @@ public partial class DigestGenerationService : IDigestGenerationService
             "Dropped the generated headline for CardiMember {CardiMemberId} on {LocalDate}: {Reason}. "
             + "The summary is stored without one and the apps will title the card themselves.",
             memberId, describedDate, reason);
+        return null;
+    }
+
+    /// <summary>
+    /// <see cref="CleanHeadline"/> with the caregiver register applied as well — the family card's
+    /// title, which is read on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure, seen on a development card: a clinical read comparing a daytime heart-rate
+    /// peak against the member's much lower resting baseline came back titled "Elevated resting
+    /// heart rate", over a summary that said the rate ran slightly higher than usual and a
+    /// suggestion card that said it was in a normal range. A headline is the one line a family reads without the rest,
+    /// and "elevated" is a clinician's word for a finding — the exact vocabulary
+    /// <see cref="MedicalPromptBlocks.RegisterNoClinicSpeak"/> rules out and is careful never to
+    /// hand the model by naming it.
+    /// </para>
+    /// <para>
+    /// Only the family digest. The journals call <see cref="CleanHeadline"/> directly and keep
+    /// theirs, because <see cref="MedicalPromptBlocks.JournalRegister"/> allows a precise term
+    /// explained in the sentence that first uses it — an entry has room to explain, and three
+    /// words of card title do not.
+    /// </para>
+    /// </remarks>
+    private string? CaregiverHeadline(string? headline, Guid memberId, DateOnly describedDate)
+    {
+        if (CleanHeadline(headline, memberId, describedDate) is not { } cleaned)
+            return null;
+
+        var clinical = ClinicSpeakHeadlineMarkers.FirstOrDefault(
+            marker => cleaned.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+        if (clinical is null)
+            return cleaned;
+
+        _logger.LogWarning(
+            "Dropped the generated headline for CardiMember {CardiMemberId} on {LocalDate}: it titles "
+            + "the family's card in clinic-speak (\"{Marker}\"). The summary is stored without one "
+            + "and the apps will title the card themselves.",
+            memberId, describedDate, clinical);
+        return null;
+    }
+
+    /// <summary>
+    /// Words that turn a card title into a clinical finding. Stems, matched case-insensitively as
+    /// substrings, and — like every other marker list here — kept out of the prompt, which would
+    /// otherwise be a list of clinic-speak handed to a model asked not to use any.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately short and unambiguous. "Higher than usual" is not here and must not be: it is
+    /// the plain-English way to say the same thing, and it is what the brief is asking for.
+    /// </remarks>
+    private static readonly string[] ClinicSpeakHeadlineMarkers =
+    [
+        "elevated", "abnormal", "deviation", "irregular", "arrhythm",
+        "tachycard", "bradycard", "hypertens", "hypotens", "desaturat",
+    ];
+
+    /// <summary>
+    /// A cleaned line with the member's name and pronouns resolved into it, or null when it states
+    /// a sex the record does not bear out or a placeholder outlived resolution — a headline or
+    /// suggestion is optional on the row, so dropping one costs the card a title or a line rather
+    /// than the whole generation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The sex check is the same one the summary gets a few lines above, and it is here because
+    /// the summary alone was not the whole card: a member could be handed a neutral summary and a
+    /// suggestion saying "walk with her", from a rewrite that was never told which. Advise checks
+    /// both of its fields; this is the digest's equivalent. Run before resolution, while the words
+    /// are still the model's.
+    /// </para>
+    /// <para>
+    /// <paramref name="groundedIn"/> adds the reading check, and only the headline passes it. A
+    /// title is a claim about the day in three words — "Oxygen levels stable" over a read that
+    /// never mentioned oxygen is the same invention the summary is refused for, on the line a
+    /// family reads first. The suggestion passes null for the reason the guard's own remark gives:
+    /// it is an action, and the brief lets it reach for a routine fact the read never measured.
+    /// </para>
+    /// </remarks>
+    private string? ResolvedOrDropped(
+        string? cleaned, MemberVoice voice, string field, Guid memberId, DateOnly describedDate,
+        string? groundedIn = null)
+    {
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(cleaned, voice.Gender))
+        {
+            _logger.LogWarning(
+                "Dropped the generated {Field} for CardiMember {CardiMemberId} on {LocalDate}: it "
+                + "states a sex the member's record does not bear out. The summary is stored "
+                + "without it.",
+                field, memberId, describedDate);
+            return null;
+        }
+
+        if (groundedIn is not null
+            && RewriteCopyGuards.NamesAReadingTheReadDidNot(cleaned, groundedIn) is { } invented)
+        {
+            _logger.LogWarning(
+                "Dropped the generated {Field} for CardiMember {CardiMemberId} on {LocalDate}: it "
+                + "names {Reading}, which the clinical read never mentioned. The summary is stored "
+                + "without it.",
+                field, memberId, describedDate, invented);
+            return null;
+        }
+
+        var resolved = voice.Resolve(cleaned);
+        if (!MemberVoice.IsUnresolvedIn(resolved))
+            return resolved;
+
+        _logger.LogWarning(
+            "Dropped the generated {Field} for CardiMember {CardiMemberId} on {LocalDate}: it "
+            + "carries a placeholder the record cannot resolve. The summary is stored without it.",
+            field, memberId, describedDate);
         return null;
     }
 

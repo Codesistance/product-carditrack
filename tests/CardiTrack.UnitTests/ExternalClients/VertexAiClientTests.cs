@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Http.Headers;
+using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.ExternalClients.Vertex;
 using CardiTrack.Shared.Telemetry;
 using CardiTrack.UnitTests.Mobile;
@@ -134,6 +135,50 @@ public class VertexAiClientTests
         Assert.Equal(412, span.GetTagItem("gen_ai.usage.input_tokens"));
         Assert.Equal(128, span.GetTagItem("gen_ai.usage.output_tokens"));
         Assert.Null(span.GetTagItem("error.type"));
+    }
+
+    /// <summary>
+    /// The inspection switch, which is the one exception to everything this suite otherwise pins.
+    /// With it on, the prompt and the completion are written verbatim under the shared
+    /// <c>ClinicalInspection</c> event id — the same one the Ollama client uses, so one filter
+    /// finds both halves of a two-slot generation and one filter drops them.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_WritesThePromptAndCompletion_WhenInspectionIsOn()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out var logger, out _, logClinicalOutput: true);
+
+        await client.GenerateAsync(Prompt);
+
+        var inspection = logger.Events
+            .Where(e => e.Event == MedGemmaClient.ClinicalInspectionEvent)
+            .ToList();
+
+        Assert.Equal(2, inspection.Count);
+        Assert.Contains(inspection, e => e.Message.Contains("prompt") && e.Message.Contains("chest pain at night"));
+        Assert.Contains(inspection, e => e.Message.Contains("completion") && e.Message.Contains(ResponseText));
+        Assert.All(inspection, e => Assert.Equal(4200, e.Event.Id));
+    }
+
+    /// <summary>
+    /// And the default, which is the contract the rest of this suite depends on: off, silent, and
+    /// no health-derived text in any line the client writes.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_WritesNoPromptOrCompletion_WhenInspectionIsOff()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out var logger);
+
+        await client.GenerateAsync(Prompt);
+
+        Assert.DoesNotContain(logger.Events, e => e.Event == MedGemmaClient.ClinicalInspectionEvent);
+        Assert.All(logger.Entries, entry =>
+        {
+            Assert.DoesNotContain("chest pain", entry.Message);
+            Assert.DoesNotContain(ResponseText, entry.Message);
+        });
     }
 
     /// <summary>The DPIA regression pin, same as the MedGemma suite's.</summary>
@@ -434,7 +479,8 @@ public class VertexAiClientTests
         CreateClient(handler, out logger, out _);
 
     private static VertexAiClient CreateClient(
-        FakeHttpMessageHandler handler, out ListLogger logger, out InstantRetryTimeProvider time)
+        FakeHttpMessageHandler handler, out ListLogger logger, out InstantRetryTimeProvider time,
+        bool logClinicalOutput = false)
     {
         var factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient("RewriteAiClient").Returns(
@@ -446,6 +492,7 @@ public class VertexAiClientTests
             Location = "europe-west2",
             TimeoutSeconds = 60,
             MaxOutputTokens = 8192,
+            LogClinicalOutput = logClinicalOutput,
         };
         logger = new ListLogger();
         time = new InstantRetryTimeProvider();
@@ -525,6 +572,13 @@ public class VertexAiClientTests
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = new();
 
+        /// <summary>
+        /// Kept beside <see cref="Entries"/> rather than folded into it: the inspection outlet is
+        /// identified by its event id, which is how a log pipeline selects or drops it, and a test
+        /// that matched on the message text alone would pass a line written under any id at all.
+        /// </summary>
+        public List<(EventId Event, string Message)> Events { get; } = new();
+
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
         public bool IsEnabled(LogLevel logLevel) => true;
@@ -533,7 +587,11 @@ public class VertexAiClientTests
             LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            lock (Entries) Entries.Add((logLevel, formatter(state, exception)));
+            lock (Entries)
+            {
+                Entries.Add((logLevel, formatter(state, exception)));
+                Events.Add((eventId, formatter(state, exception)));
+            }
         }
     }
 }

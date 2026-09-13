@@ -120,6 +120,42 @@ public class MemberChatRoutedDispatchTests
     }
 
     /// <summary>
+    /// The steer is a Rewrite-slot reply too, and it holds the name token — so a model given a
+    /// name reaches for a pronoun to go with it. This member's sex is not on file, so the canned
+    /// redirect stands in rather than a sentence that decides it for them.
+    /// </summary>
+    [Fact]
+    public async Task ASteerThatStatesAnUnsupportedSex_FallsBackToTheCannedRedirect()
+    {
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "He is doing well — ask me about his readings." },
+                new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "hello!");
+
+        Assert.Equal(MemberChatService.FallbackSteerReply, reply.Reply);
+    }
+
+    /// <summary>And a steer that says nothing about the person is passed through as written.</summary>
+    [Fact]
+    public async Task ASteerThatNamesNoSex_IsShownAsWritten()
+    {
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "Hi there! Ask me about CardiTrackCardiMember." },
+                new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "hello!");
+
+        Assert.Equal("Hi there! Ask me about Moses.", reply.Reply);
+    }
+
+    /// <summary>
     /// An inference reply closes by quoting the authorities the verdict drew on — the registry's
     /// own citation lines, keyed by what the clinical read named. The model picks WHICH; the
     /// registry writes WHAT, so an invented authority never reaches the caregiver.
@@ -310,6 +346,48 @@ public class MemberChatRoutedDispatchTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how's his heart rate?");
 
         Assert.Equal(MemberChatService.CouldNotAnswerReply, reply.Reply);
+    }
+
+    /// <summary>
+    /// The chat reply answers to the same rule the cards do. This member's sex is not on file, so
+    /// a reply calling them "he" is a guess about someone's parent — and the fallback line, poor
+    /// answer though it is, tells the caregiver nothing untrue.
+    /// </summary>
+    [Fact]
+    public async Task ARewriteThatStatesAnUnsupportedSex_IsNotShown()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(
+                "His heart rate has been steady all week.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how's the heart rate?");
+
+        Assert.Equal(MemberChatService.CouldNotAnswerReply, reply.Reply);
+    }
+
+    /// <summary>And the pronoun the brief actually asks for, resolved from the record.</summary>
+    [Fact]
+    public async Task ARewriteWritingThePronounTokens_IsResolvedForTheCaregiver()
+    {
+        _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Moses Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            Gender = Gender.Male,
+            IsActive = true,
+        });
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(
+                $"{PronounPlaceholder.Possessive} heart rate has been steady all week.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how's the heart rate?");
+
+        Assert.StartsWith("His heart rate has been steady all week.", reply.Reply, StringComparison.Ordinal);
     }
 
     [Fact]

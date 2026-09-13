@@ -43,9 +43,10 @@ public class DigestRepository : IDigestRepository
         // the enum HasConversion<string>() expects. The null-conditional keeps it a real NULL.
         await _context.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "DigestEntries"
-                ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestion", "Urgency", "GeneratedAtUtc")
+                ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestion", "Urgency", "GeneratedAtUtc", "PromptVersion")
             VALUES ({entry.CardiMemberId}, {entry.LocalDate}, {entry.Audience.ToString()},
-                    {entry.Headline}, {entry.Text}, {entry.Suggestion}, {entry.Urgency?.ToString()}, {entry.GeneratedAtUtc})
+                    {entry.Headline}, {entry.Text}, {entry.Suggestion}, {entry.Urgency?.ToString()}, {entry.GeneratedAtUtc},
+                    {entry.PromptVersion})
             ON CONFLICT DO NOTHING
             """, ct);
     }

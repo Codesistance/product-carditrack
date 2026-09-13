@@ -68,9 +68,11 @@ public class AdviseGenerationService
     /// their next pass. Version 3 unclamps the clinical half — <see cref="MedicalPromptBlocks.ClinicalRead"/>
     /// in place of the old three-rule block, and the register guard off the clinical entry.
     /// Version 4 aligns the sleep reference with the National Sleep Foundation 7–9 / 7–8-from-65
-    /// band the rest of the product already cites.
+    /// band the rest of the product already cites. Version 5 moves the rewrite half's pronouns to
+    /// <see cref="MedicalPromptBlocks.PronounsByToken"/>, so every stored row predating it holds
+    /// copy whose pronoun the model chose for itself.
     /// </remarks>
-    internal const int CurrentPromptVersion = 4;
+    internal const int CurrentPromptVersion = 5;
 
     /// <summary>
     /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — MedGemma's read of where the readings fall
@@ -120,7 +122,9 @@ public class AdviseGenerationService
     /// <c>CARDITRACK_ADVISE_PROMPT</c>, rewrite half — the caregiver voice and the addressing,
     /// on the Rewrite slot like member chat's <c>RewriteInstructions</c>. This is the step that
     /// holds the <see cref="NamePlaceholder.Token"/>: the family reads about the member by name,
-    /// and code resolves the token afterwards so the real name reaches no model.
+    /// and code resolves the token afterwards so the real name reaches no model. It holds
+    /// <see cref="PronounPlaceholder"/>'s three tokens on the same terms and for the same reason —
+    /// the sex is no more this slot's to know than the name is.
     /// </summary>
     /// <remarks>
     /// Opens with <see cref="MedicalPromptBlocks.Tone"/>, deliberately not
@@ -132,7 +136,7 @@ public class AdviseGenerationService
     /// instructing the model into its own guard.
     /// </remarks>
     private const string RewriteInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.PronounsByToken
         + MedicalPromptBlocks.CaregiverRegister + """
 
         Below are clinical notes on areas where CardiTrackCardiMember's recent readings fall
@@ -278,8 +282,32 @@ public class AdviseGenerationService
         // read stayed silent on has its row removed — the brief makes silence deliberate, and a
         // suggestion the readings no longer support is worse than none. The whole pass is one
         // SaveChanges, so a reader never sees half a regeneration.
+        //
+        // A hiccup normally keeps the row it could not replace, because the previous suggestion
+        // beats none. Not when that row is itself the thing this version was raised to repair: a
+        // row written before the rewrite brief asked for pronoun tokens holds whichever sex the
+        // model chose, and a rewrite that keeps failing its guards would otherwise leave that copy
+        // on the card for as long as the model kept failing. None beats a suggestion that calls
+        // someone's mother "he", so such a row is withdrawn rather than kept.
+        var voice = MemberVoice.For(member);
+        var unsafeRows = existing
+            .Where(r => !incoming.ContainsKey(r.Topic)
+                && (RewriteCopyGuards.StatesAnUnsupportedSex(r.Summary, voice.Gender)
+                    || RewriteCopyGuards.StatesAnUnsupportedSex(r.Suggestion, voice.Gender)))
+            .ToList();
+
+        foreach (var row in unsafeRows.Where(r => hiccups.Contains(r.Topic)))
+        {
+            _logger.LogWarning(
+                "Withdrawing the stored suggestion for CardiMember {CardiMemberId} topic {Topic}: it "
+                + "states a sex the member's record does not bear out, and this pass produced "
+                + "nothing to replace it with.",
+                cardiMemberId, row.Topic);
+        }
+
         var removals = existing
-            .Where(r => !incoming.ContainsKey(r.Topic) && !hiccups.Contains(r.Topic))
+            .Where(r => !incoming.ContainsKey(r.Topic)
+                && (!hiccups.Contains(r.Topic) || unsafeRows.Contains(r)))
             .ToList();
         foreach (var row in removals)
             _unitOfWork.MemberAdvises.Remove(row);
@@ -401,7 +429,7 @@ public class AdviseGenerationService
                 rewritten.TryAdd(topic, entry);
         }
 
-        var name = NamePlaceholder.FirstName(member.Name);
+        var voice = MemberVoice.For(member);
         foreach (var (topic, note) in clinical)
         {
             if (!rewritten.TryGetValue(topic, out var copy))
@@ -410,8 +438,28 @@ public class AdviseGenerationService
                 continue;
             }
 
-            var summary = ResolvedOrEmpty(copy.Summary, name);
-            var suggestion = ResolvedOrEmpty(copy.Suggestion, name);
+            // Checked on the reply exactly as it came back, before the voice is resolved into it:
+            // afterwards a "his" is this service's own word, looked up from the record, and the
+            // question of whether the model invented one can no longer be asked. A copy failure
+            // over sound clinical content, so it is a hiccup like the guards below — the previous
+            // suggestion stands rather than the topic falling silent.
+            var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(
+                copy.Summary, $"{note.Finding} {note.Action}");
+            if (invented is not null
+                || RewriteCopyGuards.StatesAnUnsupportedSex(copy.Summary, voice.Gender)
+                || RewriteCopyGuards.StatesAnUnsupportedSex(copy.Suggestion, voice.Gender))
+            {
+                _logger.LogWarning(
+                    "Advise rewrite for CardiMember {CardiMemberId} topic {Topic} stated a sex the "
+                    + "record does not bear out, or named a reading the note did not ({Reading}); "
+                    + "keeping the previous row.",
+                    cardiMemberId, topic, invented ?? "none");
+                hiccups.Add(topic);
+                continue;
+            }
+
+            var summary = ResolvedOrEmpty(copy.Summary, voice);
+            var suggestion = ResolvedOrEmpty(copy.Suggestion, voice);
             if (string.IsNullOrWhiteSpace(summary) || string.IsNullOrWhiteSpace(suggestion))
             {
                 hiccups.Add(topic);
@@ -450,14 +498,14 @@ public class AdviseGenerationService
     }
 
     /// <summary>
-    /// Substitutes <see cref="NamePlaceholder.Token"/> when a name is on file, and drops leftover
-    /// braces rather than returning them — the same guard <c>HealthInsightService.ResolvedOrEmpty</c>
-    /// applies to its own AI replies.
+    /// Substitutes the member's name and pronouns when there is something to substitute, and drops
+    /// copy that still carries either token rather than returning it — the same guard
+    /// <c>HealthInsightService.ResolvedOrEmpty</c> applies to its own AI replies.
     /// </summary>
-    private static string ResolvedOrEmpty(string? text, string? name)
+    private static string ResolvedOrEmpty(string? text, MemberVoice voice)
     {
-        var resolved = NamePlaceholder.Resolve(text, name) ?? string.Empty;
-        return NamePlaceholder.IsPresentIn(resolved) ? string.Empty : resolved;
+        var resolved = voice.Resolve(text) ?? string.Empty;
+        return MemberVoice.IsUnresolvedIn(resolved) ? string.Empty : resolved;
     }
 
     /// <summary>

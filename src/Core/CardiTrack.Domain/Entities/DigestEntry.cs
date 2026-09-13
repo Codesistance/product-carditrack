@@ -66,4 +66,24 @@ public class DigestEntry
     /// day from the next, and ordering by it is how readers find the current summary.
     /// </summary>
     public DateTime GeneratedAtUtc { get; set; }
+
+    /// <summary>
+    /// Which version of this service's briefs wrote the row — see
+    /// <c>DigestGenerationService.CurrentPromptVersion</c>. Rows from before the column exist at 0.
+    /// </summary>
+    /// <remarks>
+    /// The same mechanism <see cref="MemberAdvise.PromptVersion"/> carries, and it exists here for
+    /// a failure that mechanism would have prevented: the family summary's gates all turn on the
+    /// readings moving, so copy written under a brief since corrected — a pronoun the model chose
+    /// for itself, before it was asked for a token the code resolves — stayed on the card of any
+    /// member whose readings had gone quiet, with nothing in the pass ever looking at it again.
+    /// A row from an older version is stale whatever the data did.
+    /// <para>
+    /// Stamped on every audience this service writes, family and journals alike, because it
+    /// records which briefs produced the text rather than which gate reads it back. Only the
+    /// family path acts on it: a journal entry is an account of a finished day, written once, and
+    /// a better brief is not a reason to rewrite a day that has already been read.
+    /// </para>
+    /// </remarks>
+    public int PromptVersion { get; set; }
 }

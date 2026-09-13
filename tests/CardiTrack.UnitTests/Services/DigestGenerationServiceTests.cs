@@ -269,6 +269,7 @@ public class DigestGenerationServiceTests
                 // An hour before the data landed, so this exercises the data-moved trigger rather
                 // than the regeneration floor, which would otherwise hold a summary this recent.
                 GeneratedAtUtc = DataLandedAt.AddHours(-1),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -278,6 +279,110 @@ public class DigestGenerationServiceTests
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.LocalDate == Today && d.GeneratedAtUtc == UtcNow),
             Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A summary written by a brief this service no longer sends is stale whatever its readings
+    /// did. Rows from before the column existed read 0, which is the intended reading of them:
+    /// they were written by a brief that chose a sex for the member.
+    /// </summary>
+    [Fact]
+    public async Task Regenerates_WhenTheStoredSummaryCameFromAnOlderBrief()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                // Newer than the readings, so every ordinary gate would stop here.
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "A settled day.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion - 1,
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>And a row from the current brief is left exactly as the gates left it.</summary>
+    [Fact]
+    public async Task Skips_WhenTheStoredSummaryIsFromTheCurrentBrief()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "A settled day.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+    }
+
+    /// <summary>
+    /// Every row this service writes carries the version that wrote it — the journals too, which
+    /// never act on it, so a row's provenance does not depend on which gate reads it back.
+    /// </summary>
+    [Fact]
+    public async Task StampsTheSummaryWithTheVersionThatWroteIt()
+    {
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.PromptVersion == DigestGenerationService.CurrentPromptVersion),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The other waiver, which the version cannot cover: a member whose sex was filled in after
+    /// the summary was written, where the stored pronoun was nobody's mistake and is wrong anyway.
+    /// </summary>
+    [Fact]
+    public async Task Regenerates_WhenTheStoredSummaryStatesASexTheRecordDoesNotBearOut()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                // Newer than the readings, so the ordinary gate would stop here — and stamped with
+                // the current brief, so this turns on the copy rather than on the version.
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "He slept well and his heart rate was steady.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>
+    /// And the gate still holds for a stored summary whose sex the record bears out — this member
+    /// is on file as female, so "her" is the word the code would have chosen itself.
+    /// </summary>
+    [Fact]
+    public async Task Skips_WhenTheStoredSummarysSexIsTheRecordsOwn()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "She slept well and her heart rate was steady.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
     }
 
     // What keeps "recompute on every update" from meaning "re-run the fleet on every pass".
@@ -290,6 +395,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -325,6 +431,7 @@ public class DigestGenerationServiceTests
                 LocalDate = Today,
                 // Clear of the regeneration floor: the edit is what should trigger this, not age.
                 GeneratedAtUtc = UtcNow.AddHours(-2),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -348,6 +455,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = UtcNow.AddMinutes(-10),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(UtcNow.AddMinutes(-2));
 
@@ -372,6 +480,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = UtcNow.AddHours(-1),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(UtcNow.AddMinutes(-2));
 
@@ -448,6 +557,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today.AddDays(-1),
                 GeneratedAtUtc = JustAfterWake.AddHours(-10),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(JustAfterWake.AddMinutes(-2));
 
@@ -582,6 +692,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today.AddDays(-1),
                 GeneratedAtUtc = AfterBedtime.AddHours(-20),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(AfterBedtime.AddMinutes(-2));
 
@@ -806,6 +917,215 @@ public class DigestGenerationServiceTests
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.Headline == null && d.Text == "A quiet, steady day."),
             Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The headline from the card that prompted all of this. The read compared a daytime
+    /// heart-rate peak against the member's much lower resting baseline; the family's card was
+    /// titled "Elevated resting heart rate", over a summary saying the rate ran slightly higher
+    /// than usual. A title is read on its own, and that one is a clinician's finding — the
+    /// register the caregiver block rules out.
+    /// </summary>
+    [Theory]
+    [InlineData("Elevated resting heart rate")]
+    [InlineData("Abnormal overnight readings")]
+    [InlineData("A deviation from the usual")]
+    public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineIsClinicSpeak(string headline)
+    {
+        ReturnsClinicalRead("Heart rate ran above this member's usual resting rate yesterday evening.");
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = headline,
+                Summary = "Her heart rate ran a little higher than usual yesterday evening.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == null), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The plain-English way of saying the same thing is what the brief asks for, and must survive.
+    /// </summary>
+    [Fact]
+    public async Task KeepsAHeadlineThatSaysItInEverydayWords()
+    {
+        ReturnsClinicalRead("Heart rate ran above this member's usual resting rate yesterday evening.");
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "Heart rate a little higher",
+                Summary = "Her heart rate ran a little higher than usual yesterday evening.",
+            });
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == "Heart rate a little higher"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The other half of that card: a read that never mentioned oxygen came back as "breathing and
+    /// oxygen levels remained stable". The family was told a reading had been taken and was fine.
+    /// Nothing is stored — the previous card, which was true, stays on screen.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenItNamesAReadingTheReadDidNot()
+    {
+        ReturnsClinicalRead("Breathing rate while asleep was slightly higher than usual.");
+        ReturnsSummary("Her breathing and oxygen levels remained stable overnight.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The rewrite slot is shown no member context, so a sex in its copy is one it chose. This
+    /// member is on file as female; a summary about "he" is about someone else.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenItStatesASexTheRecordDoesNotBearOut()
+    {
+        ReturnsSummary("He slept well and his heart rate was steady.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// And the copy the brief now asks for: tokens where the pronouns go, resolved from the record
+    /// on the way out. The member is Margaret Doe, female — so "she", written by this code and not
+    /// guessed by a model that was never told.
+    /// </summary>
+    [Fact]
+    public async Task ResolvesThePronounTokensFromTheMembersRecord()
+    {
+        ReturnsSummary(
+            $"{NamePlaceholder.Token} slept well, and {PronounPlaceholder.Possessive} heart rate "
+            + $"was steady. Sit with {PronounPlaceholder.Object} this evening.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Text ==
+                "Margaret slept well, and her heart rate was steady. Sit with her this evening."),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The summary is not the whole card. A member could be handed a neutral summary and a
+    /// headline or suggestion that picked a sex for them — both optional fields, both stored
+    /// unchanged before this check, and both read as fact by a family.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "His quietest day this week",
+                Summary = "A quiet, steady day.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == null && d.Text == "A quiet, steady day."),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoresTheSummaryWithoutASuggestion_WhenTheSuggestionStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        ReturnsSuggestion("Walk with her after lunch if she is up to it.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == null && d.Text == "A quiet, steady day."),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A sex that matches the record is left alone here as everywhere else: the member is on file
+    /// as female, so the suggestion is one a family can read without being told anything untrue.
+    /// </summary>
+    [Fact]
+    public async Task KeepsASuggestionWhoseSexTheRecordBearsOut()
+    {
+        ReturnsSuggestion("Walk with her after lunch if she is up to it.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == "Walk with her after lunch if she is up to it."),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The member as every row created before M1-04 asked for sex still holds them.</summary>
+    private CardiMember MemberWithNoSexOnFile()
+    {
+        var member = Member();
+        member.Gender = Gender.PreferNotToSay;
+        return member;
+    }
+
+    /// <summary>
+    /// A title is a claim about the day in three words, and it is the line a family reads first.
+    /// "Oxygen levels stable" over a read that never mentioned oxygen is the summary's own
+    /// invention, moved to the one field that was not being grounded.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineNamesAReadingTheReadDidNot()
+    {
+        ReturnsClinicalRead("Heart rate and sleep both sit within this member's usual range.");
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "Oxygen levels stable",
+                Summary = "A settled day: steady heart rate and a good night's sleep.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == null), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The question topic travels in the text the rewrite is sent, but it is a subject to ask the
+    /// family about, not a reading anyone took — so it cannot vouch for a measurement the summary
+    /// claims. Grounding on it would have let this summary through.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenOnlyTheQuestionTopicNamedTheReading()
+    {
+        ReturnsClinicalRead(
+            "Heart rate sits within this member's usual range.",
+            questionTopic: "what their evenings and sleep usually look like");
+        ReturnsSummary("Her sleep was shorter than usual last night.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -1299,6 +1619,7 @@ public class DigestGenerationServiceTests
     {
         // A model told to prefer a phrase to a figure and then asked for one will round. "Around
         // 5,000" of 5,000 is a fair description; the guard is for a different day's number.
+        ReturnsClinicalRead("Steps today sit close to this member's usual.");
         ReturnsSummary("They walked around 5000 steps today, much as usual.");
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -1314,6 +1635,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task LeavesAlone_AFigureAttributedToADayItCouldBelongTo()
     {
+        ReturnsClinicalRead("Yesterday's steps were well above today's, which is early yet.");
         ReturnsSummary("Yesterday they managed 8000 steps. Today has been quieter so far.");
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -1468,12 +1790,12 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task KeepsAMedicationReminderTiedToAKnownRoutine()
     {
-        ReturnsSuggestion("Remind Dad to take his evening medication if he hasn't yet");
+        ReturnsSuggestion("Remind Mum to take her evening medication if she hasn't yet");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => d.Suggestion == "Remind Dad to take his evening medication if he hasn't yet"),
+            Arg.Is<DigestEntry>(d => d.Suggestion == "Remind Mum to take her evening medication if she hasn't yet"),
             Arg.Any<CancellationToken>());
     }
 
@@ -1883,6 +2205,56 @@ public class DigestGenerationServiceTests
         await _unitOfWork.Received().SaveChangesAsync();
     }
 
+    /// <summary>
+    /// A question is put to the family in as many words as the summary is. This member's sex is
+    /// not on file, so "he" is a guess — and the question is the one piece of copy on this path
+    /// that a family is asked to answer.
+    /// </summary>
+    [Fact]
+    public async Task AsksNothing_WhenTheQuestionStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        ReturnsQuestion("Did he have visitors today?");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>
+    /// The caption under the question is family-facing copy from the same reply, and was the one
+    /// field on this path that checked neither rule. The question survives without it — that is
+    /// what a dropped rationale has always meant.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheQuestionWithoutACaption_WhenTheRationaleStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        ReturnsQuestion("Were there visitors today?", "His evenings are usually busier than this.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.TriggerContext == null));
+    }
+
+    [Fact]
+    public async Task StoresTheQuestionWithoutACaption_WhenTheRationaleCarriesAnUnresolvableToken()
+    {
+        var member = MemberWithNoSexOnFile();
+        member.Name = string.Empty;
+        _members.GetByIdAsync(_memberId).Returns(member);
+        ReturnsQuestion(
+            "Were there visitors today?",
+            $"{PronounPlaceholder.Possessive} evenings are usually busier than this.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.TriggerContext == null));
+    }
+
     /// <summary>Stored encrypted, like everything else a family says about a member.</summary>
     [Fact]
     public async Task StoresTheQuestionEncrypted()
@@ -1971,7 +2343,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task AsksNothing_WhenTheClinicalReadNamedNoTopic()
     {
-        ReturnsClinicalRead("Everything sits within this member's usual range.");
+        ReturnsClinicalRead("Heart rate and sleep both sit within this member's usual range.");
         _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse
@@ -2094,7 +2466,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task StoresATimeScopedQuestion_AskableUntilTheEndOfTheMembersOwnDay()
     {
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
@@ -2130,7 +2502,7 @@ public class DigestGenerationServiceTests
         // A wall-clock delta would have said 03:00 UTC.
         var beforeSpringForward = new DateTime(2026, 3, 28, 10, 30, 0, DateTimeKind.Utc);
         SetupActivity(beforeSpringForward.AddMinutes(-30));
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(beforeSpringForward);
 
@@ -2151,7 +2523,7 @@ public class DigestGenerationServiceTests
         // A wall-clock delta would have said 02:00 UTC.
         var beforeFallBack = new DateTime(2026, 10, 24, 9, 30, 0, DateTimeKind.Utc);
         SetupActivity(beforeFallBack.AddMinutes(-30));
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(beforeFallBack);
 
@@ -2170,7 +2542,7 @@ public class DigestGenerationServiceTests
         // 22:50 in London, so the local day plus the grace has only 4h10m left in it.
         var lateAtNight = new DateTime(2026, 8, 10, 21, 50, 0, DateTimeKind.Utc);
         SetupActivity(lateAtNight.AddMinutes(-2));
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(lateAtNight);
 
@@ -2384,6 +2756,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = generatedAt,
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
     /// <summary>
