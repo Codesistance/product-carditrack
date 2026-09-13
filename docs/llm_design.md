@@ -429,6 +429,8 @@ Where you would write a pronoun for the person, write CardiTrackCardiMemberThey 
 
 `RewriteCopyGuards.StatesAnUnsupportedSex` is the backstop, and it rejects only what the record cannot bear out — the wrong sex, or any sex for a member at "not stated". A guess that matches the record is left alone rather than costing that member their card for the day. "They" is not rejected at all: it states nothing untrue, and it is also the ordinary word for the family being written to.
 
+Copy already stored under the old brief is the other half of the problem, and it needed a mechanism of its own. Advise had one — a row from an older `PromptVersion` is due whatever its age — and the family digest did not: its gates all turn on the readings moving, so a summary written before the token rule sat on the card of any member whose data had gone quiet, with nothing in the pass ever looking at it again. `DigestEntry.PromptVersion` closes that, read only on the family path (a journal is an account of a finished day; a better brief is not a reason to rewrite one somebody has already read). Rows from before the column read 0, which is the intended reading of them. A stored summary the guard would refuse to write today waives the gates too, for the case no version can catch: a member whose sex was filled in after the summary was written.
+
 The prose rule stays exactly as it is on every brief that does see the sex line — the journals, the alert, the assessor.
 
 ### The member-context composer (built today)

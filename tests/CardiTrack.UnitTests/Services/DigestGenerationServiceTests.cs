@@ -269,6 +269,7 @@ public class DigestGenerationServiceTests
                 // An hour before the data landed, so this exercises the data-moved trigger rather
                 // than the regeneration floor, which would otherwise hold a summary this recent.
                 GeneratedAtUtc = DataLandedAt.AddHours(-1),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -281,10 +282,65 @@ public class DigestGenerationServiceTests
     }
 
     /// <summary>
-    /// The one exception to that gate, and it is not about the readings. A digest row carries no
-    /// prompt version, so a summary written before the rewrite brief asked for pronoun tokens —
-    /// holding whichever sex the model chose — would otherwise sit on the card of a member whose
-    /// readings have stopped moving, and never be looked at again.
+    /// A summary written by a brief this service no longer sends is stale whatever its readings
+    /// did. Rows from before the column existed read 0, which is the intended reading of them:
+    /// they were written by a brief that chose a sex for the member.
+    /// </summary>
+    [Fact]
+    public async Task Regenerates_WhenTheStoredSummaryCameFromAnOlderBrief()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                // Newer than the readings, so every ordinary gate would stop here.
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "A settled day.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion - 1,
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>And a row from the current brief is left exactly as the gates left it.</summary>
+    [Fact]
+    public async Task Skips_WhenTheStoredSummaryIsFromTheCurrentBrief()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "A settled day.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+    }
+
+    /// <summary>
+    /// Every row this service writes carries the version that wrote it — the journals too, which
+    /// never act on it, so a row's provenance does not depend on which gate reads it back.
+    /// </summary>
+    [Fact]
+    public async Task StampsTheSummaryWithTheVersionThatWroteIt()
+    {
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.PromptVersion == DigestGenerationService.CurrentPromptVersion),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The other waiver, which the version cannot cover: a member whose sex was filled in after
+    /// the summary was written, where the stored pronoun was nobody's mistake and is wrong anyway.
     /// </summary>
     [Fact]
     public async Task Regenerates_WhenTheStoredSummaryStatesASexTheRecordDoesNotBearOut()
@@ -295,9 +351,11 @@ public class DigestGenerationServiceTests
             {
                 CardiMemberId = _memberId,
                 LocalDate = Today,
-                // Newer than the readings, so the ordinary gate would stop here.
+                // Newer than the readings, so the ordinary gate would stop here — and stamped with
+                // the current brief, so this turns on the copy rather than on the version.
                 GeneratedAtUtc = DataLandedAt.AddMinutes(1),
                 Text = "He slept well and his heart rate was steady.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -319,6 +377,7 @@ public class DigestGenerationServiceTests
                 LocalDate = Today,
                 GeneratedAtUtc = DataLandedAt.AddMinutes(1),
                 Text = "She slept well and her heart rate was steady.",
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -336,6 +395,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -371,6 +431,7 @@ public class DigestGenerationServiceTests
                 LocalDate = Today,
                 // Clear of the regeneration floor: the edit is what should trigger this, not age.
                 GeneratedAtUtc = UtcNow.AddHours(-2),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -394,6 +455,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = UtcNow.AddMinutes(-10),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(UtcNow.AddMinutes(-2));
 
@@ -418,6 +480,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = UtcNow.AddHours(-1),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(UtcNow.AddMinutes(-2));
 
@@ -494,6 +557,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today.AddDays(-1),
                 GeneratedAtUtc = JustAfterWake.AddHours(-10),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(JustAfterWake.AddMinutes(-2));
 
@@ -628,6 +692,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today.AddDays(-1),
                 GeneratedAtUtc = AfterBedtime.AddHours(-20),
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
         SetupActivity(AfterBedtime.AddMinutes(-2));
 
@@ -2691,6 +2756,7 @@ public class DigestGenerationServiceTests
                 CardiMemberId = _memberId,
                 LocalDate = Today,
                 GeneratedAtUtc = generatedAt,
+                PromptVersion = DigestGenerationService.CurrentPromptVersion,
             });
 
     /// <summary>

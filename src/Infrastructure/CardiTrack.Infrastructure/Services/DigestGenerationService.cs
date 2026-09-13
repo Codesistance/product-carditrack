@@ -291,6 +291,36 @@ public partial class DigestGenerationService : IDigestGenerationService
     private static readonly TimeSpan MinimumRegenerationInterval = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// The version of this service's briefs. A stored family summary carrying an older one is due
+    /// for regeneration whatever its age and whatever its readings did. Bump it on any change to a
+    /// brief that alters what a caregiver is told.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The gates above all turn on the readings moving, which is the right question for "is this
+    /// summary out of date" and the wrong one for "was this summary written by a brief we have
+    /// since corrected". Without this, copy from a superseded brief sat on the card of every
+    /// member whose data had gone quiet — the pronoun the model chose for itself before it was
+    /// asked for a token, in the failure that version 1 is the answer to — and nothing in the
+    /// pass ever looked at it again. Advise has carried the same mechanism since its own brief
+    /// split; this is the digest catching up, one bug later.
+    /// </para>
+    /// <para>
+    /// Version 1 is the first stamped generation: <see cref="MedicalPromptBlocks.PronounsByToken"/>
+    /// in the family rewrite brief, with the name and the pronouns both resolved in code. Rows
+    /// written before the column existed read 0 and are stale by that alone, which is the
+    /// intended reading of them — they were written by a brief that chose a sex for the member.
+    /// </para>
+    /// <para>
+    /// One counter for the service rather than one per audience. It is stamped on the journals too
+    /// and read only on the family path, because a journal is an account of a finished day and a
+    /// better brief is not a reason to rewrite one somebody has already read — see
+    /// <see cref="DigestEntry.PromptVersion"/>.
+    /// </para>
+    /// </remarks>
+    internal const int CurrentPromptVersion = 1;
+
+    /// <summary>
     /// The floor that replaces <see cref="MinimumRegenerationInterval"/> in the first
     /// <see cref="DigestDayProgress.EarlyDayHours"/> after the member wakes, once they already have
     /// a summary for the day in progress.
@@ -815,6 +845,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 CleanSuggestion(aiResponse.Suggestion, memberId, monthEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, monthEnd),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         return true;
@@ -1007,6 +1038,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 CleanSuggestion(aiResponse.Suggestion, memberId, weekEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, weekEnd),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         return true;
@@ -1199,6 +1231,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 CleanSuggestion(aiResponse.Suggestion, memberId, reviewedDate), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, reviewedDate),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         // No question is asked off a daybook entry. Questions exist to explain readings while they
@@ -1240,30 +1273,36 @@ public partial class DigestGenerationService : IDigestGenerationService
         // observation that has not become an alert is the same kind of change; it used to ride
         // the ordinary cycle, which is how a dire hour could sit behind a stale
         // "settled day" card.
-        // One more reason to refresh, and it is not about the readings at all. A summary written
-        // before the rewrite brief asked for pronoun tokens holds whichever sex the model chose,
-        // and a digest row carries no prompt version to invalidate it by — so on a member whose
-        // readings have stopped moving, copy this code would now refuse to write would sit on the
-        // card indefinitely without ever being looked at again. A waiver rather than a clause in
-        // the gates below, because it is the same kind of fact the other waivers carry: what the
-        // summary should say has changed, whatever the data did.
+        // Two more reasons to refresh, and neither is about the readings.
         //
-        // The retry is per pass and unbounded on a model that keeps guessing — the cost of having
-        // no version column here — and the card meanwhile shows exactly what it already showed.
+        // A stored summary from an older brief is stale by that alone: the gates below ask whether
+        // the data has moved, which cannot answer "was this written by a brief we have since
+        // corrected". This is the bounded one — once a generation under the current version lands,
+        // it stops firing.
+        var previousIsFromAnOlderBrief = previous is not null && previous.PromptVersion < CurrentPromptVersion;
+
+        // And the copy itself, whatever version wrote it: a summary this code would now refuse to
+        // write is worth trying to replace. It catches what the version cannot — a member whose
+        // sex was filled in after the summary was written, where the stored pronoun was nobody's
+        // mistake and is now wrong anyway. Unbounded against a model that keeps guessing, which is
+        // the price of checking the words rather than a number; the card meanwhile shows exactly
+        // what it already showed.
         var previousStatesAnUnsupportedSex = previous is not null
             && RewriteCopyGuards.StatesAnUnsupportedSex(
                 previous.Text, member?.Gender ?? Gender.PreferNotToSay);
 
-        if (previousStatesAnUnsupportedSex)
+        if (previousIsFromAnOlderBrief || previousStatesAnUnsupportedSex)
         {
             _logger.LogInformation(
                 "Refreshing the summary for CardiMember {CardiMemberId} whatever its readings did: "
-                + "the stored one states a sex the member's record does not bear out.",
-                memberId);
+                + "stored under prompt version {StoredVersion} of {CurrentVersion}, states an "
+                + "unsupported sex: {StatesAnUnsupportedSex}.",
+                memberId, previous!.PromptVersion, CurrentPromptVersion, previousStatesAnUnsupportedSex);
         }
 
         var forceRefresh = previous is not null
-            && (previousStatesAnUnsupportedSex
+            && (previousIsFromAnOlderBrief
+                || previousStatesAnUnsupportedSex
                 || await AlertStateChangedSinceAsync(memberId, previous, ct)
                 || await ConcerningSamplesSinceAsync(memberId, previous, ct));
 
@@ -1520,6 +1559,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             // about the readings, and the rewrite is not shown them.
             Urgency = ParseUrgency(clinical.Urgency, memberId, describedDate),
             GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
         }, ct);
 
         // Strictly after the summary is stored, and only then: a question is a by-product of a

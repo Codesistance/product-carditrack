@@ -50,6 +50,14 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
         builder.Property(d => d.GeneratedAtUtc)
             .IsRequired();
 
+        // Zero is the honest value for every row written before the column existed: they were
+        // written by briefs this service no longer sends, which is exactly what the family gate
+        // treats as stale. The default belongs in the database as well as the model, because the
+        // insert is raw SQL that has to name the column itself.
+        builder.Property(d => d.PromptVersion)
+            .IsRequired()
+            .HasDefaultValue(0);
+
         // One daybook entry per member per day, enforced where it can actually be enforced. The
         // service's "already reviewed?" probe is a fast path two overlapping executions can both
         // pass before either writes; this index is the written-once contract itself. Partial, so
