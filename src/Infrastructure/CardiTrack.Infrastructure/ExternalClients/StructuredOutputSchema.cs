@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.Json.Schema;
 using System.Text.Json.Serialization;
@@ -64,32 +65,94 @@ internal static class StructuredOutputSchema
     };
 
     /// <summary>
-    /// Copies each property's <see cref="DescriptionAttribute"/> into its schema node.
-    /// <see cref="JsonSchemaExporter"/> emits names and types only, so without this the schema
+    /// Copies each property's <see cref="DescriptionAttribute"/> into its schema node, and turns an
+    /// <see cref="AllowedValuesAttribute"/> into the node's <c>enum</c>.
+    /// <see cref="JsonSchemaExporter"/> emits names and types only, so without the first the schema
     /// appended to the prompt states the <em>shape</em> of the reply and nothing about what belongs
     /// in each field — leaving a bare field name as the sole description of its own contents, which
-    /// a small model will happily satisfy by restating the brief it was just given. Callers that
-    /// decorate nothing export exactly what they exported before.
+    /// a small model will happily satisfy by restating the brief it was just given. Without the
+    /// second, a field whose description reads "one of: watch, check-in, concerning, act-now" is
+    /// still typed as any string, and a description is a request where the grammar is a rule.
+    /// Callers that decorate nothing export exactly what they exported before.
     /// </summary>
     private static readonly JsonSchemaExporterOptions DescribedSchemaOptions = new()
     {
         TransformSchemaNode = (context, schema) =>
         {
-            var description = context.PropertyInfo?.AttributeProvider
+            var attributes = context.PropertyInfo?.AttributeProvider;
+            var description = attributes
                 ?.GetCustomAttributes(typeof(DescriptionAttribute), inherit: true)
                 .OfType<DescriptionAttribute>()
                 .FirstOrDefault()?.Description;
+            var allowed = attributes
+                ?.GetCustomAttributes(typeof(AllowedValuesAttribute), inherit: true)
+                .OfType<AllowedValuesAttribute>()
+                .FirstOrDefault()?.Values;
 
-            if (string.IsNullOrWhiteSpace(description))
+            if (string.IsNullOrWhiteSpace(description) && allowed is null)
                 return schema;
 
             // An unconstrained node is exported as the boolean `true`, not an object; assigning a
             // property to that would throw, and `{"description": ...}` says the same thing.
             var node = schema as System.Text.Json.Nodes.JsonObject ?? new System.Text.Json.Nodes.JsonObject();
-            node["description"] = description;
+            if (!string.IsNullOrWhiteSpace(description))
+                node["description"] = description;
+            if (allowed is not null)
+                ConstrainToAllowedValues(node, allowed);
             return node;
         },
     };
+
+    /// <summary>
+    /// Writes the property's allowed values as the node's <c>enum</c>, and takes <c>null</c> out of
+    /// its type union when none of them is null.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The exporter has no nullability annotation to read for a reference-type property, so a
+    /// <c>string</c> exports as <c>["string","null"]</c> whether or not the record marks it
+    /// <c>required</c>. Both providers compile that into the decoding grammar, and a small model
+    /// on a hard prompt takes the branch it is offered: the daily clinical read answered
+    /// <c>"urgency": null</c> on every run for a week while its description asked for one of four
+    /// tiers (2026-09-13). An <c>enum</c> of the four closes that branch in the grammar rather
+    /// than catching the null afterwards, which is the same stance <see cref="RequireAnObjectAtTheRoot"/>
+    /// takes for the reply as a whole.
+    /// </para>
+    /// <para>
+    /// Strings only. Every allowed-values field in the solution is a fixed vocabulary of words, and
+    /// a number or an enum member would need a decision about how it is spelt on the wire that
+    /// nothing has asked for yet — so it fails loudly here, on the first schema export in the
+    /// process, rather than exporting a shape neither provider was tested against.
+    /// </para>
+    /// </remarks>
+    private static void ConstrainToAllowedValues(System.Text.Json.Nodes.JsonObject node, object?[] allowed)
+    {
+        var values = new System.Text.Json.Nodes.JsonArray();
+        foreach (var value in allowed)
+        {
+            if (value is not string text)
+            {
+                throw new NotSupportedException(
+                    $"[AllowedValues] on a structured-output field must list strings; got "
+                    + $"{value?.GetType().Name ?? "null"}.");
+            }
+
+            values.Add(System.Text.Json.Nodes.JsonValue.Create(text));
+        }
+
+        node["enum"] = values;
+
+        if (node["type"] is not System.Text.Json.Nodes.JsonArray union)
+            return;
+
+        var named = union.OfType<System.Text.Json.Nodes.JsonValue>()
+            .Select(value => value.GetValue<string>())
+            .Where(name => name != "null")
+            .ToList();
+
+        if (named is [var only])
+            node["type"] = only;
+    }
 
     // Internal (not private) so StructuredSchemaGrammarTests asserts against the real
     // generator rather than a re-implementation that could drift.
