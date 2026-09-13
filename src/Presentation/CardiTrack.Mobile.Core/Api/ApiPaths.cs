@@ -14,6 +14,7 @@ internal static class ApiPaths
     public const string NotificationMutes = "api/v1/notifications/mutes";
     public const string NotificationPreferences = "api/v1/notifications/preferences";
     public const string ExportConsents = "api/v1/reports/consents";
+    public const string HealthDataDisclosure = "api/v1/users/me/health-data-disclosure";
 
     public static string CardiMember(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}";
     public static string Dashboard(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/dashboard";

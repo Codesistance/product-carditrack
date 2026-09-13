@@ -185,9 +185,12 @@ public class UserServiceTests
         var result = await CreateSut().DismissHealthDataDisclosureAsync("auth0|abc");
 
         Assert.True(result);
-        Assert.NotNull(user.HealthDataDisclosureDismissedDate);
-        Assert.InRange(user.HealthDataDisclosureDismissedDate!.Value, before, DateTime.UtcNow);
-        await _unitOfWork.Received(1).SaveChangesAsync();
+        // Recorded through the repository's conditional update — one statement that only lands
+        // when nothing is stamped yet — never by read-then-save on the entity.
+        await _users.Received(1).TryRecordHealthDataDisclosureDismissalAsync(
+            "auth0|abc",
+            Arg.Is<DateTime>(d => d.Kind == DateTimeKind.Utc && d >= before && d <= DateTime.UtcNow));
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
     [Fact]
@@ -203,6 +206,7 @@ public class UserServiceTests
         Assert.True(result);
         Assert.Equal(firstDismissal, user.HealthDataDisclosureDismissedDate);
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _users.DidNotReceiveWithAnyArgs().TryRecordHealthDataDisclosureDismissalAsync(default!, default);
     }
 
     [Fact]

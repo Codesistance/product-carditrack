@@ -22,10 +22,16 @@
         <controls:DashboardHeader x:Name="Header" Grid.Row="0"/>
 
         <!-- ════════════════════════════════════════
-             VERIFY-EMAIL NUDGE (dismissible)
+             ACCOUNT BANNERS — the health-data disclosure (Google-mandated,
+             once per caregiver, recorded on the account) and the verify-email
+             nudge (dismissible, per device). Both above the content so they
+             show in every dashboard state.
              ════════════════════════════════════════ -->
+        <VerticalStackLayout Grid.Row="1" Spacing="0">
+
+        <controls:HealthDataDisclosureBanner x:Name="DisclosureBanner"/>
+
         <Border x:Name="VerifyEmailBanner"
-                Grid.Row="1"
                 IsVisible="False"
                 BackgroundColor="{StaticResource StaleBannerBackground}"
                 StrokeThickness="0"
@@ -52,6 +58,8 @@
                         Clicked="OnDismissVerifyEmailClicked"/>
             </Grid>
         </Border>
+
+        </VerticalStackLayout>
 
         <!-- ════════════════════════════════════════
              CONTENT

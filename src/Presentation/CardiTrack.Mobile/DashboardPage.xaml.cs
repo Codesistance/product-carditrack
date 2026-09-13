@@ -24,6 +24,15 @@ public partial class DashboardPage : ContentPage
     /// <summary>Their full name, kept so the Alerts jump can label the chip it filters by.</summary>
     private string? _memberName;
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
+
+    /// <summary>
+    /// Holds the <see cref="HealthDataDisclosureScope"/> of the caregiver whose account confirmed
+    /// the health-data disclosure was dismissed — a hint that stops the banner returning while
+    /// the account cannot be asked, never the record itself. Scoped to the caregiver, so a
+    /// session that expires without the Settings sign-out running cannot hand one person's
+    /// acknowledgement to the next; sign-out clears it anyway, like <see cref="VerifyEmailDismissedKey"/>.
+    /// </summary>
+    internal const string HealthDataDisclosureConfirmedKey = "HealthDataDisclosureConfirmedFor";
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
@@ -90,6 +99,8 @@ public partial class DashboardPage : ContentPage
         HeroCard.AdviseTapped += OnHeroAdviseTapped;
         HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
         Header.BellTapped += OnBellClicked;
+        DisclosureBanner.LearnMoreRequested += OnDisclosureLearnMore;
+        DisclosureBanner.DismissRequested += OnDisclosureDismiss;
 
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
@@ -111,6 +122,7 @@ public partial class DashboardPage : ContentPage
         base.OnAppearing();
         UpdateGreeting();
         UpdateVerifyEmailBanner();
+        _ = RefreshDisclosureBannerAsync();
 
         // Arriving on the screen is a pull, like the tick and the resume. This used to skip the
         // load when the last one was under a couple of minutes old, which meant a caregiver who
@@ -189,6 +201,78 @@ public partial class DashboardPage : ContentPage
     {
         Preferences.Default.Set(VerifyEmailDismissedKey, true);
         VerifyEmailBanner.IsVisible = false;
+    }
+
+    // Google-mandated health-data disclosure: shown until the account says it was dismissed. The
+    // account is the record, asked live on every appearance — never the offline cache, since a
+    // compliance banner decided by a stale answer is the wrong kind of last-known-good. When the
+    // account cannot be asked, the banner shows: an unknown answer must read as "not yet told",
+    // never as "acknowledged". The one thing kept on the device is that the account has
+    // confirmed a dismissal, so a caregiver who has already read it is not shown it again every
+    // time the phone is offline; sign-out clears it with the other per-device flags.
+    private bool DisclosureConfirmedForCurrentCaregiver()
+    {
+        var scope = HealthDataDisclosureScope.For(_authService.CurrentUserEmail);
+        return scope is not null
+            && Preferences.Default.Get(HealthDataDisclosureConfirmedKey, string.Empty) == scope;
+    }
+
+    private void RememberDisclosureConfirmed()
+    {
+        if (HealthDataDisclosureScope.For(_authService.CurrentUserEmail) is { } scope)
+            Preferences.Default.Set(HealthDataDisclosureConfirmedKey, scope);
+    }
+
+    private async Task RefreshDisclosureBannerAsync()
+    {
+        if (DisclosureConfirmedForCurrentCaregiver())
+        {
+            DisclosureBanner.IsVisible = false;
+            return;
+        }
+
+        // Up before the answer is in: while the account has not yet said "dismissed", the notice
+        // is owed, and a slow or absent network must not turn into its absence.
+        DisclosureBanner.IsVisible = true;
+
+        try
+        {
+            var disclosure = await _api.GetHealthDataDisclosureAsync();
+
+            // A dismissal recorded while this was in flight wins over a stale "not yet" answer.
+            if (disclosure.Dismissed || DisclosureConfirmedForCurrentCaregiver())
+            {
+                RememberDisclosureConfirmed();
+                DisclosureBanner.IsVisible = false;
+            }
+        }
+        catch (Exception)
+        {
+            // Unknown stays shown.
+        }
+    }
+
+    private async void OnDisclosureLearnMore(object? sender, EventArgs e) =>
+        await Navigation.PushModalAsync(new LegalDocumentPage(LegalDocumentPage.PrivacyTitle, LegalDocumentPage.PrivacyUrl));
+
+    private async void OnDisclosureDismiss(object? sender, EventArgs e)
+    {
+        // Hide only once the dismissal has actually persisted — the same rule as the web banner.
+        DisclosureBanner.SetBusy(true);
+        try
+        {
+            await _api.DismissHealthDataDisclosureAsync();
+            RememberDisclosureConfirmed();
+            DisclosureBanner.IsVisible = false;
+        }
+        catch (ApiException ex)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't save that");
+        }
+        finally
+        {
+            DisclosureBanner.SetBusy(false);
+        }
     }
 
     private void OnDismissSleepConcernClicked(object? sender, EventArgs e)

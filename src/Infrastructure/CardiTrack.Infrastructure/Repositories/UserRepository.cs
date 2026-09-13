@@ -30,4 +30,14 @@ public class UserRepository : Repository<User>, IUserRepository
             Update(user);
         }
     }
+
+    public async Task<bool> TryRecordHealthDataDisclosureDismissalAsync(string auth0UserId, DateTime dismissedAtUtc)
+    {
+        // One conditional UPDATE, not read-then-save: the WHERE is what makes the first
+        // acknowledgement win when two devices race, and it runs without SaveChanges.
+        var rows = await _dbSet
+            .Where(u => u.Auth0UserId == auth0UserId && u.HealthDataDisclosureDismissedDate == null)
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.HealthDataDisclosureDismissedDate, dismissedAtUtc));
+        return rows > 0;
+    }
 }
