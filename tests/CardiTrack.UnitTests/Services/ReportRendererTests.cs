@@ -628,7 +628,8 @@ public class ReportRendererTests
         var sections = new ReportSections(
             IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true);
 
-        Assert.True(PdfReportRenderer.ShouldDrawTrends(sections, data.Members[0]));
+        Assert.True(PdfReportRenderer.ShouldDrawTrends(
+            sections, data.Members[0], data.ChartFrom, data.ChartTo));
         AssertChartInk(data, sections);
     }
 
@@ -673,8 +674,45 @@ public class ReportRendererTests
         var sections = new ReportSections(
             IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true);
 
-        Assert.False(PdfReportRenderer.HasAChartedReading(data.Members[0]));
-        Assert.False(PdfReportRenderer.ShouldDrawTrends(sections, data.Members[0]));
+        Assert.False(PdfReportRenderer.HasAChartedReading(data.Members[0], data.ChartFrom, data.ChartTo));
+        Assert.False(PdfReportRenderer.ShouldDrawTrends(sections, data.Members[0], data.ChartFrom, data.ChartTo));
+        Assert.Equal(0, CountChartInk(data, sections));
+    }
+
+    [Fact]
+    public void Pdf_OmitsTheTrendsHeading_WhenTheOnlyReadingIsOutsideTheChartWindow()
+    {
+        // Metrics can cover a month; a pinned Daybook charts the fortnight
+        // ending on that entry. A steps day after the window must not leave
+        // a Trends heading over an empty figure.
+        var day = new DateOnly(2026, 2, 20);
+        var after = day.AddDays(5);
+        var data = new ReportDataSet(
+            [
+                new ReportMemberData(
+                    new CardiMember
+                    {
+                        Id = MemberId,
+                        Name = "Margaret Doe",
+                        DateOfBirth = new DateOnly(1948, 4, 12),
+                        Gender = Gender.Female
+                    },
+                    [new ActivityLog { CardiMemberId = MemberId, Date = after, Steps = 5400 }],
+                    [],
+                    [],
+                    [],
+                    [])
+            ],
+            new DateOnly(2026, 2, 1),
+            new DateOnly(2026, 2, 28),
+            Title: null,
+            ChartFrom: day.AddDays(-(ReportJournalScope.DayAndWeekChartDays - 1)),
+            ChartTo: day);
+        var sections = new ReportSections(
+            IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true);
+
+        Assert.False(PdfReportRenderer.HasAChartedReading(data.Members[0], data.ChartFrom, data.ChartTo));
+        Assert.False(PdfReportRenderer.ShouldDrawTrends(sections, data.Members[0], data.ChartFrom, data.ChartTo));
         Assert.Equal(0, CountChartInk(data, sections));
     }
 

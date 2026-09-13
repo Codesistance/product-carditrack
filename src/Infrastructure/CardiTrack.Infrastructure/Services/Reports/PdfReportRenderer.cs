@@ -157,7 +157,7 @@ public class PdfReportRenderer : IReportRenderer
             {
                 var prefix = data.Members.Count > 1 ? $"{member.Member.Name} · " : string.Empty;
 
-                if (ShouldDrawTrends(sections, member))
+                if (ShouldDrawTrends(sections, member, data.ChartFrom, data.ChartTo))
                     Section(column, prefix + "Trends", e => Charts(e, member, data.ChartFrom, data.ChartTo));
 
                 if (sections.IncludeMetrics)
@@ -711,18 +711,24 @@ public class PdfReportRenderer : IReportRenderer
         || log.SleepMinutes is not null || log.SpO2Average is not null;
 
     /// <summary>
-    /// Graphs ticked and at least one of the four figures we actually plot.
-    /// A day that only has active minutes would pass <see cref="HasAnyReading"/>
-    /// and then produce a Trends heading with no marks.
+    /// Graphs ticked and at least one of the four figures we actually plot
+    /// inside the chart window. A day that only has active minutes would pass
+    /// <see cref="HasAnyReading"/> and then produce a Trends heading with no
+    /// marks. A reading outside <paramref name="from"/>–<paramref name="to"/>
+    /// is the same: Charts would clip it and leave an empty heading.
     /// </summary>
-    internal static bool ShouldDrawTrends(ReportSections sections, ReportMemberData member) =>
-        sections.IncludeTrends && HasAChartedReading(member);
+    internal static bool ShouldDrawTrends(
+        ReportSections sections, ReportMemberData member, DateOnly from, DateOnly to) =>
+        sections.IncludeTrends && HasAChartedReading(member, from, to);
 
     /// <summary>
-    /// At least one of the four figures we actually plot.
+    /// At least one of the four figures we actually plot, on a day inside
+    /// the window the figure will draw.
     /// </summary>
-    internal static bool HasAChartedReading(ReportMemberData member) =>
-        Metrics.Any(metric => member.ActivityLogs.Any(log => metric.Read(log) is not null));
+    internal static bool HasAChartedReading(
+        ReportMemberData member, DateOnly from, DateOnly to) =>
+        Metrics.Any(metric => member.ActivityLogs.Any(log =>
+            log.Date >= from && log.Date <= to && metric.Read(log) is not null));
 
     /// <summary>
     /// A reading the device never reported prints as an em dash, not a blank and never a zero —
