@@ -172,6 +172,52 @@ public class StructuredSchemaGrammarTests
         Assert.Contains("\"description\"", schemaText);
     }
 
+    /// <summary>Every reply shape that carries an urgency tier for the family's card.</summary>
+    public static TheoryData<Type> UrgencyBearingTypes() => new()
+    {
+        typeof(CardiTrack.Infrastructure.Services.DigestGenerationService.DigestClinicalAiResponse),
+        typeof(CardiTrack.Infrastructure.Services.DigestGenerationService.DaybookAiResponse),
+        typeof(CardiTrack.Infrastructure.Services.DigestGenerationService.WeekbookAiResponse),
+        typeof(CardiTrack.Infrastructure.Services.DigestGenerationService.MonthbookAiResponse),
+    };
+
+    /// <summary>
+    /// The urgency tier used to be an optional string whose description asked for one of four
+    /// words, and the daily clinical read answered <c>null</c> on every run for a week
+    /// (2026-09-13): the grammar offered the null branch and a small model took it, so no card
+    /// carried a tier. The description still asks; the schema now compels — the field is required
+    /// and its <c>enum</c> is the four words, with no null in its type.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(UrgencyBearingTypes))]
+    public void Urgency_IsRequired_AndConstrainedToTheFourTiers(Type aiResponseType)
+    {
+        var schemaText = SchemaTextFor(aiResponseType);
+
+        Assert.Contains("\"urgency\":{\"type\":\"string\"", schemaText);
+        Assert.Contains("\"enum\":[\"watch\",\"check-in\",\"concerning\",\"act-now\"]", schemaText);
+        Assert.DoesNotContain("\"urgency\":{\"type\":[", schemaText);
+
+        var required = schemaText[schemaText.IndexOf("\"required\"", StringComparison.Ordinal)..];
+        Assert.Contains("\"urgency\"", required);
+    }
+
+    /// <summary>
+    /// <c>[AllowedValues]</c> is read for its values only; a field with one still reads as English
+    /// in the prompt, and a field with a description and no allowed values exports as before.
+    /// </summary>
+    [Fact]
+    public void AllowedValues_KeepTheFieldsDescription()
+    {
+        var schemaText = SchemaTextFor(
+            typeof(CardiTrack.Infrastructure.Services.DigestGenerationService.DigestClinicalAiResponse));
+
+        var urgency = schemaText[schemaText.IndexOf("\"urgency\"", StringComparison.Ordinal)..];
+        urgency = urgency[..urgency.IndexOf("\"actionBasis\"", StringComparison.Ordinal)];
+        Assert.Contains("\"description\":\"One of: watch, check-in, concerning, act-now", urgency);
+        Assert.Contains("\"enum\"", urgency);
+    }
+
     private static string SchemaTextFor(Type type) => StructuredOutputSchema.TextFor(type);
 
 }

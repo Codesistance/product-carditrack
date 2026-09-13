@@ -110,6 +110,7 @@ public class WeekbookGenerationTests
             {
                 Headline = headline,
                 Summary = summary,
+                Urgency = "watch",
             });
 
     private DigestGenerationService CreateSut() =>

@@ -118,7 +118,7 @@ public class DigestGenerationServiceTests
     /// </summary>
     private void ReturnsClinicalRead(
         string finding = "Resting heart rate and sleep both sit within this member's usual range.",
-        string? urgency = null,
+        string urgency = "watch",
         string? actionBasis = null,
         string? questionTopic = null,
         string? questionScope = null) =>

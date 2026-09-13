@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Common;
@@ -2266,19 +2267,41 @@ public partial class DigestGenerationService : IDigestGenerationService
     }
 
     /// <summary>
+    /// The four tier words, exactly as the reply schemas' <c>enum</c> offers them to the model and
+    /// as <see cref="ParseUrgency"/> reads them back. One vocabulary in one place, so the schema
+    /// cannot offer a word the parser then drops.
+    /// </summary>
+    private const string WatchTier = "watch";
+
+    /// <inheritdoc cref="WatchTier"/>
+    private const string CheckInTier = "check-in";
+
+    /// <inheritdoc cref="WatchTier"/>
+    private const string ConcerningTier = "concerning";
+
+    /// <inheritdoc cref="WatchTier"/>
+    private const string ActNowTier = "act-now";
+
+    /// <summary>
     /// The model's urgency reply, mapped to <see cref="DigestUrgency"/> — or null when it did not
     /// match one of the four tiers asked for. Dropped rather than guessed at: a wrong tier is a
     /// worse answer than no tier at all, and the apps already treat a missing urgency as nothing to
     /// show, the same stance every other optional field on this response takes.
     /// </summary>
+    /// <remarks>
+    /// The reply schemas constrain the field to the four tiers and require it, so a
+    /// grammar-constrained provider cannot hand this anything else. It stays as the line of
+    /// defence behind that: a provider that ignores the schema, or a spelling the grammar allowed
+    /// and the switch below does not, ends here as a warning and no tier rather than a wrong one.
+    /// </remarks>
     private DigestUrgency? ParseUrgency(string? urgency, Guid memberId, DateOnly describedDate)
     {
         var tier = (urgency ?? string.Empty).Trim().ToLowerInvariant() switch
         {
-            "watch" => DigestUrgency.Watch,
-            "check-in" or "checkin" => DigestUrgency.CheckIn,
-            "concerning" => DigestUrgency.Concerning,
-            "act-now" or "actnow" => DigestUrgency.ActNow,
+            WatchTier => DigestUrgency.Watch,
+            CheckInTier or "checkin" => DigestUrgency.CheckIn,
+            ConcerningTier => DigestUrgency.Concerning,
+            ActNowTier or "actnow" => DigestUrgency.ActNow,
             _ => (DigestUrgency?)null,
         };
 
@@ -2498,10 +2521,11 @@ public partial class DigestGenerationService : IDigestGenerationService
             + "missing rather than filling the gap.")]
         public required string Finding { get; init; }
 
+        [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
             "One of: watch, check-in, concerning, act-now — how soon the family should act on "
             + "today's readings, judged only from the readings below.")]
-        public string? Urgency { get; init; }
+        public required string Urgency { get; init; }
 
         [Description(
             "What would help, answering something in the readings or computed observations "
@@ -2648,10 +2672,11 @@ public partial class DigestGenerationService : IDigestGenerationService
             + "condition, never a change to any treatment.")]
         public string? Suggestion { get; init; }
 
+        [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
             "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
             + "day's readings, judged only from the readings given.")]
-        public string? Urgency { get; init; }
+        public required string Urgency { get; init; }
     }
 
     /// <summary>
@@ -2681,10 +2706,11 @@ public partial class DigestGenerationService : IDigestGenerationService
             + "condition, never a change to any treatment.")]
         public string? Suggestion { get; init; }
 
+        [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
             "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
             + "week's readings, judged only from the readings given.")]
-        public string? Urgency { get; init; }
+        public required string Urgency { get; init; }
     }
 
     /// <summary>The Monthbook's reply shape, described for a month.</summary>
@@ -2711,10 +2737,11 @@ public partial class DigestGenerationService : IDigestGenerationService
             + "condition, never a change to any treatment.")]
         public string? Suggestion { get; init; }
 
+        [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
             "One of: watch, check-in, concerning, act-now — how soon the family should act on this "
             + "month's readings, judged only from the readings given.")]
-        public string? Urgency { get; init; }
+        public required string Urgency { get; init; }
     }
 
 }
