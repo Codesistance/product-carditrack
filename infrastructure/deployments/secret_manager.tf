@@ -201,10 +201,26 @@ resource "google_secret_manager_secret_version" "app_secrets" {
 # fails at runtime the moment a device endpoint is hit.
 #
 # ignore_changes on the version is load-bearing, not cosmetic. Rotating this key
-# makes every token already encrypted under the old one permanently undecryptable
-# — there is no key id in the ciphertext envelope today (see
-# docs/technical/data_protection_architecture.md §7.1). Environments that already
-# hold a value therefore keep it; only a fresh environment takes the generated one.
+# makes every token already encrypted under the old one undecryptable — the
+# versioned envelope (`v1:{keyId}:{base64}`, `AesEncryptionService`) records which key
+# id wrote a value, which tells you what happened but does not decrypt it without
+# that key. Environments that already hold a value keep it; only a fresh one takes
+# the generated value.
+#
+# That same ignore_changes is what makes REPLACING this secret dangerous, and the
+# replication block below is the way someone would do it by accident. `replication`
+# is **immutable** in the Secret Manager API ("cannot be changed after the Secret
+# has been created"), so pinning it — a reasonable-looking answer to the DPIA's
+# "pin Secret Manager replication", R-A5/M5 — does not edit the secret in place:
+# Terraform plans a destroy-and-recreate. The recreate takes the version with it and
+# writes Terraform's idea of the value back, and ignore_changes exists precisely
+# because the live value may not be Terraform's. On any environment seeded by hand,
+# that silently swaps the key and every stored device token becomes unreadable.
+#
+# Pinning replication here is therefore a migration, not an edit: create a new
+# user-managed-replication secret alongside, copy the live value into it, repoint the
+# services, then retire the old one. prevent_destroy makes the shortcut fail at plan
+# time instead of at the first device sync after the apply.
 
 resource "random_bytes" "encryption_key" {
   length = 32 # 256 bits
@@ -217,6 +233,10 @@ resource "google_secret_manager_secret" "encryption_key" {
   }
   labels     = var.secret_labels
   depends_on = [google_project_service.secretmanager]
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_secret_manager_secret_version" "encryption_key" {
@@ -262,6 +282,17 @@ moved {
 # encryption key's: there's no data to become permanently unreadable (ack tokens
 # are short-lived), but rotating mid-flight would fail every ack/escalation-halt
 # for whatever was in flight at rotation time. Same mitigation, different cost.
+#
+# That different cost is also why this one carries no prevent_destroy where the
+# encryption key does. A replace here — see the immutable-replication trap
+# described above — invalidates every token this key has signed that is still in
+# flight. That is both halves of AckTokenService: an escalation that should have
+# halted sends one more notification, AND a content fetch for an already-delivered
+# push 404s at InternalNotificationsController.GetContent — a caregiver sees an
+# alert whose detail will not load. Both are bounded to what was in flight at the
+# instant of the replace and both self-heal on the next token issued, which is why
+# this is still not the trade the encryption key justifies — but it is a closer call
+# than "one more notification", so it is written down rather than left implied.
 #
 # Only two IAM grants — API and Worker — not every service this pattern usually
 # reaches. The AI pipeline never sends push directly; it POSTs to the internal
