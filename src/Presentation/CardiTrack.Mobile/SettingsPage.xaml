@@ -175,6 +175,32 @@
                     </Grid>
                 </Border>
 
+                <!-- Diagnostics are opt-in and ship off. On, the app sends its own logs and
+                     network timings so a crash can be traced; it never sends health data — the
+                     monitoring SDK is handed none, and Session Replay is not enabled. Off is a
+                     real off: nothing is collected and held on the phone waiting for a yes. -->
+                <Label Text="Privacy"
+                       Style="{StaticResource DashboardSectionTitle}"
+                       Margin="4,8,4,-4"/>
+
+                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60">
+                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+                            <Label Text="Send diagnostics" Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label Text="Helps us fix crashes. Never your family's health data."
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
+                        </VerticalStackLayout>
+                        <Switch x:Name="DiagnosticsSwitch"
+                                Grid.Column="1"
+                                OnColor="{StaticResource Primary}"
+                                VerticalOptions="Center"
+                                Toggled="OnDiagnosticsToggled"
+                                SemanticProperties.Description="Send diagnostics"
+                                SemanticProperties.Hint="Off sends nothing about how you use the app"/>
+                    </Grid>
+                </Border>
+
                 <Label Text="About"
                        Style="{StaticResource DashboardSectionTitle}"
                        Margin="4,8,4,-4"/>

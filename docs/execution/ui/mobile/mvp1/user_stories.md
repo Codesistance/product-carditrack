@@ -295,7 +295,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 | 11.2 | Elevated Resting Heart Rate | — | Built (`AlertDetailPage`, resting-HR / granular HR chart) |
 | 11.3 | No Morning Activity | — | Built (`AlertDetailPage`, red / no-morning branch) |
 
-> **Telemetry-consent gap (product follow-up):** Datadog telemetry is logs + traces only — RUM was removed in PR #185, and with it Datadog crash reporting (`NativeCrashReportEnabled=false`); crashes/ANRs come from Play Console vitals. `TrackingConsent.Granted` is still hardcoded — consent is granted by default, with no in-app opt-out and no diagnostics screen. **There is no in-app telemetry control in MVP 1.** This is in tension with the consent-first principle (Principle 4) — see Story 7.4 in the canonical [user_stories.md](../user_stories.md).
+> **Telemetry consent (shipped):** Datadog telemetry is logs + traces only — RUM was removed in PR #185, and with it Datadog crash reporting (`NativeCrashReportEnabled=false`); crashes/ANRs come from Play Console vitals. Consent is **opt-in and off by default**: the SDK initialises at `TrackingConsent.NotGranted`, and Settings → Privacy → **Send diagnostics** is the one control that raises it. Sign-out forgets the choice. What remains open is a first-run disclosure — see Story 7.4 in the canonical [user_stories.md](../user_stories.md).
 
 ---
 
