@@ -404,6 +404,7 @@ public static class AiServiceExtensions
         TimeoutSeconds = settings.TimeoutSeconds,
         MaxOutputTokens = settings.MaxOutputTokens,
         BaseUrl = settings.VertexBaseUrl,
+        LogClinicalOutput = settings.LogClinicalOutput,
     };
 
     private static VertexAiClientOptions VertexOptionsFor(PublicAiSettings settings) => new()
@@ -414,6 +415,8 @@ public static class AiServiceExtensions
         TimeoutSeconds = settings.TimeoutSeconds,
         MaxOutputTokens = settings.MaxOutputTokens,
         BaseUrl = settings.BaseUrl,
+        // Left at its default. The Public slot has no inspection switch to carry: the section
+        // never had one, because this slot is not shown clinical text in the first place.
     };
 
     /// <summary>

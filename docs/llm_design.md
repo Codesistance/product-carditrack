@@ -415,6 +415,22 @@ Handed a `CardiTrackCardiMember` placeholder and told to write with it, a 4B mod
 
 It follows `Tone` in **every prompt that writes prose** — the digest, the assessor, and the alert/baseline/learning/provisional insights — and is deliberately kept out of `CurrentStatusInstructions`. That prompt asks for a two-to-five-word headline and one sentence under fifteen words, where a pronoun scarcely arises and its own instructions already settle how the person is named. It is also the only prompt on a request path a caregiver waits on and the only one under a character budget (`StatusPromptBudget`), so a rule that bought nothing there would be paid for in latency on nearly every dashboard view. `MedicalPromptToneTests` pins both halves of that: every other prompt carries the rule, and the status prompt does not.
 
+### The pronoun token (built today)
+
+The rule above can only be followed by a prompt that is shown the sex line, and three of the prompts carrying it never were. The digest rewrite, the Advise rewrite and the member-chat rewrite all run on the Rewrite slot, which receives a `DeidentifiedFindings` and nothing else — no member context, so no `Sex:` line, so no answer to the rule's first clause. They answered it anyway. On 2026-09-11 a member's summary card said "he" and "his" while the suggestion card beneath it said "them", about the same person on the same screen; the "he" matched the record, but nothing in the chain that wrote it had been told, and for the population still at "not stated" the same guess is a coin toss about someone's father or mother.
+
+So those three briefs carry `MedicalPromptBlocks.PronounsByToken` instead, and the pronoun is settled the way the name already is — asked for as a token, substituted in code:
+
+```
+Where you would write a pronoun for the person, write CardiTrackCardiMemberThey for he or she, CardiTrackCardiMemberThem for him or her, and CardiTrackCardiMemberTheir for his or her.
+```
+
+`PronounPlaceholder.Resolve` turns those into he/him/his or she/her/her from `CardiMember.Gender`, and — when sex is not stated — into the member's own first name, which is the fallback the prose rule above could only ask for. `MemberVoice` pairs it with `NamePlaceholder` so every call site resolves both halves in the one safe order and refuses copy that still carries either token. Nothing new crosses the A20 boundary: the sex is not sent, a word is put back afterwards.
+
+`RewriteCopyGuards.StatesAnUnsupportedSex` is the backstop, and it rejects only what the record cannot bear out — the wrong sex, or any sex for a member at "not stated". A guess that matches the record is left alone rather than costing that member their card for the day. "They" is not rejected at all: it states nothing untrue, and it is also the ordinary word for the family being written to.
+
+The prose rule stays exactly as it is on every brief that does see the sex line — the journals, the alert, the assessor.
+
 ### The member-context composer (built today)
 
 The block above is no longer hand-built per prompt. Each prompt service used to assemble its own member context, and the differences between them were accidents rather than decisions: environmental readings reached the assessor alone because that is the service the enrichment pass was built beside, and the digest read no assessments at all despite this document routing medium severity to it.
@@ -644,7 +660,11 @@ already up):
   Receives the clinical entries as `DeidentifiedFindings` and nothing else (DPIA row A20's
   compile-time boundary). Guarded as copy: brief echoes ("just a suggestion", "worth mentioning
   to their doctor" — the doctor line is fixed UI copy on the card now), figures in the summary,
-  and an unresolved name token all keep the previous row rather than serving the bad copy.
+  an unresolved name or pronoun token, a sex the record does not bear out, and a reading the
+  note never mentioned all keep the previous row rather than serving the bad copy. The last two
+  are `RewriteCopyGuards`, shared with the family digest — see the pronoun-token section above,
+  and note what they cannot catch: a summary that contradicts a reading the read *did* name
+  passes both.
 - **Cadence and freshness.** Regenerates on the half-hourly `--job digest` pass behind its own
   due-gate: at most daily, **or immediately when the stored rows carry an older
   `PromptVersion`** — so a deployed brief change reaches every member within one pass instead of
@@ -653,6 +673,13 @@ already up):
 - **Failure posture.** A blank clinical field, a failed rewrite call, or rejected copy keeps the
   previous row (a hiccup); clinical silence on a topic removes its row (deliberate); a guard-
   tripped clinical entry is withheld and its row withdrawn.
+
+**Inspecting the rewrite half.** `AI__Rewrite__LogClinicalOutput` now writes the Rewrite slot's
+prompts and completions verbatim under the same `ClinicalInspection` event id the Ollama client
+uses, so one log filter pairs a clinical read with the copy written from it. Until that was wired
+the switch was honoured only by `MedGemmaClient`, which left the deployed Vertex path — the one
+that writes every word a caregiver reads — with model, tokens and finish-reason and nothing else.
+It is off by default and refused outright in production.
 
 > **Known divergence:** the family digest above is still a single-pass MedGemma generation that
 > writes caregiver prose directly (with the same name placeholder). Under the two-slot contract

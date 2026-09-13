@@ -24,6 +24,19 @@ namespace CardiTrack.Infrastructure.ExternalClients.Vertex;
 /// metric tag or exception message produced by this class. Token counts, durations, model names,
 /// status codes, JSON error positions and finish/block reason enum values are the only telemetry
 /// payload.
+///
+/// The one exception is the inspection switch every slot's settings already carry
+/// (<see cref="Settings.IMedGemmaModelSettings.LogClinicalOutput"/>, surfaced here as
+/// <see cref="VertexAiClientOptions.LogClinicalOutput"/>): with it on, prompts and completions are
+/// written verbatim under <see cref="Medical.MedGemmaClient.ClinicalInspectionEvent"/>, the same
+/// event id the Ollama client uses, so one filter finds both halves of a two-slot generation and
+/// one filter drops them. It is off by default and the settings loader refuses to start a
+/// production host with it on.
+///
+/// Until it was wired, the asymmetry was the thing: the clinical half — which no family reads —
+/// was fully inspectable, while the half that writes every word a caregiver sees could only be
+/// inferred from the read that went into it. A summary card that told a family about a reading
+/// nobody had taken (2026-09-11) had to be diagnosed backwards from the clinical log.
 /// </summary>
 public class VertexAiClient : IExternalAiClient
 {
@@ -146,6 +159,36 @@ public class VertexAiClient : IExternalAiClient
         return new AiGenerationResult<T>(result, usage);
     }
 
+    /// <summary>
+    /// The inspection switch's one outlet, and the counterpart of
+    /// <c>MedGemmaClient.LogClinicalText</c> down to the event id — a two-slot generation writes a
+    /// clinical line from one client and a rewrite line from the other, and pairing them by hand
+    /// is only possible if both can be selected at once. Writes <paramref name="text"/> verbatim,
+    /// health data included, which is the point of the switch. Nothing else in this class may log
+    /// prompt or completion text.
+    /// </summary>
+    private void LogClinicalText(string operationName, string kind, string text)
+    {
+        if (!_options.LogClinicalOutput || text.Length == 0)
+            return;
+
+        _logger.LogInformation(
+            Medical.MedGemmaClient.ClinicalInspectionEvent,
+            "Vertex clinical inspection — {Model} {Operation} {Kind} ({Length} chars):\n{Text}",
+            _options.Model, operationName, kind, text.Length, text);
+    }
+
+    /// <summary>
+    /// What was actually sent, as one string: every part of every turn, in order. A chat request
+    /// carries the history as separate turns, and an inspection line that showed only the last one
+    /// would be the least informative part of the exchange.
+    /// </summary>
+    private static string PromptTextOf(VertexRequest request) =>
+        string.Join(
+            "\n",
+            request.Contents.Select(content =>
+                $"[{content.Role}] {string.Concat(content.Parts.Select(part => part.Text))}"));
+
     private static List<VertexContent> SingleUserTurn(string prompt) =>
         [new VertexContent { Role = "user", Parts = [new VertexPart { Text = prompt }] }];
 
@@ -214,6 +257,8 @@ public class VertexAiClient : IExternalAiClient
         if (replySchema is not null)
             activity?.SetTag(AiTelemetry.ReplySchemaTag, replySchema);
 
+        LogClinicalText(operationName, "prompt", PromptTextOf(request));
+
         var stopwatch = Stopwatch.StartNew();
         string? errorType = null;
         try
@@ -271,6 +316,8 @@ public class VertexAiClient : IExternalAiClient
                 (candidate?.Content?.Parts ?? [])
                     .Where(part => part.Thought != true)
                     .Select(part => part.Text ?? string.Empty));
+
+            LogClinicalText(operationName, "completion", content);
 
             if (string.IsNullOrEmpty(content))
             {

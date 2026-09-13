@@ -26,6 +26,16 @@ public sealed record VertexAiClientOptions
 
     public required int MaxOutputTokens { get; init; }
 
+    /// <summary>
+    /// The inspection switch, carried over from <see cref="Settings.RewriteAiSettings.LogClinicalOutput"/>
+    /// — the Rewrite slot is the one this matters for, and the only Vertex-capable section that has
+    /// the switch at all.
+    /// With it on, <see cref="VertexAiClient"/> writes prompts and completions verbatim under the
+    /// shared clinical-inspection event id; off by default, and refused outright in production by
+    /// the settings loader.
+    /// </summary>
+    public bool LogClinicalOutput { get; init; }
+
     /// <summary>Endpoint override for test doubles; derived from <see cref="Location"/> when
     /// null or blank — an empty string is how an env-var override reads when unset, and it must
     /// mean "not set", not "the empty endpoint".</summary>
