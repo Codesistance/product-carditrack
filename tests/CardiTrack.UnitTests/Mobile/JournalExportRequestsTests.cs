@@ -54,8 +54,10 @@ public class JournalExportRequestsTests
             DigestAudience.Weekbook, entryDate: null, "token");
 
         Assert.True(consent.IncludeJournals);
+        Assert.True(consent.IncludeTrends);
         Assert.False(consent.IncludeMetrics);
         Assert.False(consent.IncludeNotices);
+        Assert.Equal(consent.IncludeTrends, generate.IncludeTrends);
         Assert.Equal(consent.JournalAudience, generate.JournalAudience);
         Assert.Equal(consent.JournalEntryDate, generate.JournalEntryDate);
         Assert.Equal(consent.DateRangeFrom, generate.DateRangeFrom);
@@ -99,5 +101,24 @@ public class JournalExportRequestsTests
         Assert.Equal(day, generate.DateRangeFrom);
         Assert.Equal(day, generate.DateRangeTo);
         Assert.Equal(ReportFormat.Csv, generate.Format);
+        Assert.False(generate.IncludeTrends);
+    }
+
+    [Fact]
+    public void Pdf_AsksForTheTrendCharts_CsvDoesNot()
+    {
+        var from = new DateOnly(2026, 2, 7);
+        var to = new DateOnly(2026, 3, 9);
+
+        var pdf = JournalExportRequests.Generate(
+            MemberId, "Dad — Daybooks", from, to, ReportFormat.Pdf,
+            DigestAudience.Daybook, entryDate: null, "token");
+        var csv = JournalExportRequests.Generate(
+            MemberId, "Dad — Daybooks", from, to, ReportFormat.Csv,
+            DigestAudience.Daybook, entryDate: null, "token");
+
+        Assert.True(pdf.IncludeTrends);
+        Assert.False(pdf.IncludeMetrics);
+        Assert.False(csv.IncludeTrends);
     }
 }

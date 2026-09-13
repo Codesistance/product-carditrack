@@ -6,6 +6,8 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.Reports;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
+using QuestPDF.Fluent;
+using QuestPDF.Infrastructure;
 using Task = System.Threading.Tasks.Task;
 
 namespace CardiTrack.UnitTests.Services;
@@ -21,7 +23,7 @@ public class ReportRendererTests
     private static readonly Guid MemberId = Guid.NewGuid();
 
     private static readonly ReportSections AllSections = new(
-        IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true);
+        IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true, IncludeTrends: true);
 
     static ReportRendererTests()
     {
@@ -590,12 +592,85 @@ public class ReportRendererTests
             })
             .ToList();
 
+        var sections = new ReportSections(
+            IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true, IncludeTrends: true);
+        var data = BuildData(logs: logs);
         var rendered = await new PdfReportRenderer().RenderAsync(
-            BuildData(logs: logs),
-            new ReportSections(IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true, IncludeTrends: true),
+            data, sections,
             "## Overall\n\nA **steady** fortnight.\n\n- Steps rose\n- Sleep held\n\n1. Mention it");
 
         Assert.Equal("%PDF", Encoding.ASCII.GetString(rendered.Content, 0, 4));
+        AssertChartInk(data, sections);
+    }
+
+    [Fact]
+    public void Pdf_DrawsTrendCharts_WhenMetricsWereUnticked()
+    {
+        // Graphs are their own section. A journals-only PDF, or a caregiver who
+        // unticked the daily table, still gets the lines — they asked for them.
+        var logs = Enumerable.Range(0, 14)
+            .Select(i => new ActivityLog
+            {
+                CardiMemberId = MemberId,
+                Date = new DateOnly(2026, 2, 7).AddDays(i),
+                Steps = 4000 + i * 90,
+                SleepMinutes = 380 + i * 5
+            })
+            .ToList();
+
+        var data = BuildData(logs: logs);
+        var sections = new ReportSections(
+            IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true);
+
+        AssertChartInk(data, sections);
+    }
+
+    [Fact]
+    public void Pdf_OmitsTrendCharts_WhenTrendsWereUnticked()
+    {
+        var data = BuildData(logs: [FullDay()]);
+        var sections = new ReportSections(
+            IncludeMetrics: true, IncludeAlerts: true, IncludeDevices: true, IncludeTrends: false);
+
+        // Sleep purple is not brand chrome. The 8pt tile dot is tens of pixels;
+        // a drawn series is hundreds. A Trends heading with no marks stays in the tile bucket.
+        Assert.True(CountChartInk(data, sections) < 120,
+            "Unticked graphs must not leave a series on the page.");
+    }
+
+    /// <summary>
+    /// Sleep ink (#7C6FDC) from the vector figure. Steps share the brand blue of
+    /// the header rule, so a file with no charts still has that colour.
+    /// </summary>
+    private static void AssertChartInk(ReportDataSet data, ReportSections sections)
+    {
+        var hits = CountChartInk(data, sections);
+        Assert.True(hits > 200, $"Expected a sleep series on the page; found {hits} ink pixels.");
+    }
+
+    private static int CountChartInk(ReportDataSet data, ReportSections sections)
+    {
+        var images = PdfReportRenderer.Compose(data, sections, narrative: null)
+            .GenerateImages(new ImageGenerationSettings { ImageFormat = ImageFormat.Png, RasterDpi = 72 });
+
+        var hits = 0;
+        foreach (var bytes in images)
+        {
+            using var bitmap = SkiaSharp.SKBitmap.Decode(bytes);
+            for (var y = 0; y < bitmap.Height; y++)
+            {
+                for (var x = 0; x < bitmap.Width; x++)
+                {
+                    var c = bitmap.GetPixel(x, y);
+                    if (Math.Abs(c.Red - 0x7C) <= 12
+                        && Math.Abs(c.Green - 0x6F) <= 12
+                        && Math.Abs(c.Blue - 0xDC) <= 12)
+                        hits++;
+                }
+            }
+        }
+
+        return hits;
     }
 
     [Fact]

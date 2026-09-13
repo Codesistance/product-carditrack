@@ -97,6 +97,7 @@ public class ReportGenerationServiceTests
     private GenerateReportRequest BuildRequest(
         ReportFormat format = ReportFormat.Pdf,
         bool includeMetrics = true,
+        bool includeTrends = true,
         bool includeAlerts = true,
         bool includeJournals = false,
         bool includeNotices = false,
@@ -108,6 +109,7 @@ public class ReportGenerationServiceTests
             DateRangeTo = new DateOnly(2026, 3, 9),
             Format = format,
             IncludeMetrics = includeMetrics,
+            IncludeTrends = includeTrends,
             IncludeAlerts = includeAlerts,
             IncludeJournals = includeJournals,
             IncludeNotices = includeNotices,
@@ -910,10 +912,11 @@ public class ReportGenerationServiceTests
         var sut = CreateSut();
 
         var queued = await sut.GenerateAsync(
-            _userId, BuildRequest(includeMetrics: false, includeAlerts: false));
+            _userId, BuildRequest(includeMetrics: false, includeTrends: false, includeAlerts: false));
         await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
         Assert.False(_renderer.LastSections!.IncludeMetrics);
+        Assert.False(_renderer.LastSections.IncludeTrends);
         Assert.False(_renderer.LastSections.IncludeAlerts);
     }
 
@@ -927,10 +930,68 @@ public class ReportGenerationServiceTests
             .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10), Steps = 4321 }]);
         var sut = CreateSut();
 
-        var queued = await sut.GenerateAsync(_userId, BuildRequest(includeMetrics: false));
+        var queued = await sut.GenerateAsync(
+            _userId, BuildRequest(includeMetrics: false, includeTrends: false));
         await WaitForTerminalStatusAsync(sut, queued.ReportId);
 
         Assert.Empty(_renderer.LastData!.Members.Single().ActivityLogs);
+    }
+
+    [Fact]
+    public async Task Gather_LoadsReadings_WhenOnlyTrendsAreOn()
+    {
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10), Steps = 4321 }]);
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(
+            _userId, BuildRequest(includeMetrics: false, includeTrends: true, includeAlerts: false));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.True(_renderer.LastSections!.IncludeTrends);
+        Assert.False(_renderer.LastSections.IncludeMetrics);
+        Assert.Single(_renderer.LastData!.Members.Single().ActivityLogs);
+    }
+
+    [Fact]
+    public async Task Gather_WidensAPinnedJournalToThePageChartWindow()
+    {
+        // A single Daybook export is dated on that day. The journal page charts
+        // the fortnight ending there; the gather has to ask for those days or
+        // the figure is a single point.
+        var day = new DateOnly(2026, 2, 20);
+        DateOnly? from = null;
+        DateOnly? to = null;
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(call =>
+            {
+                from = call.ArgAt<DateOnly>(1);
+                to = call.ArgAt<DateOnly>(2);
+                return Array.Empty<ActivityLog>();
+            });
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, new GenerateReportRequest
+        {
+            CardiMemberIds = [_memberId],
+            DateRangeFrom = day,
+            DateRangeTo = day,
+            Format = ReportFormat.Pdf,
+            IncludeMetrics = false,
+            IncludeTrends = true,
+            IncludeAlerts = false,
+            IncludeJournals = true,
+            JournalEntryDate = day,
+            JournalAudience = DigestAudience.Daybook,
+            ConsentToken = "consent-token"
+        });
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(day.AddDays(-(ReportJournalScope.DayAndWeekChartDays - 1)), from);
+        Assert.Equal(day, to);
+        Assert.Equal(from, _renderer.LastData!.From);
+        Assert.Equal(to, _renderer.LastData.To);
     }
 
     [Fact]
@@ -939,7 +1000,7 @@ public class ReportGenerationServiceTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([new ActivityLog { CardiMemberId = _memberId, Date = new DateOnly(2026, 2, 10), Steps = 4321 }]);
 
-        var prompt = await CapturePromptAsync(BuildRequest(includeMetrics: false));
+        var prompt = await CapturePromptAsync(BuildRequest(includeMetrics: false, includeTrends: true));
 
         // Not just absent from the rendered file — absent from what leaves for the provider.
         Assert.DoesNotContain("### Activity Metrics", prompt);

@@ -64,9 +64,12 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
                 .WithMessage("Choose PDF, CSV or FHIR R4");
 
         // Every section off would produce a file with a header and nothing under it.
+        // Graphs are PDF-only — a CSV or FHIR request with only includeTrends ticked
+        // would be an empty file, so they do not count there.
         RuleFor(x => x)
             .Must(x => x.IncludeMetrics || x.IncludeAlerts || x.IncludeDevices
-                       || x.IncludeJournals || x.IncludeNotices)
+                       || x.IncludeJournals || x.IncludeNotices
+                       || (x.IncludeTrends && x.Format == ReportFormat.Pdf))
                 .WithMessage("Choose at least one kind of data to include");
 
         if (requireConsentToken)

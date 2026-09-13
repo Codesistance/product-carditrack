@@ -40,7 +40,7 @@ public record ReportSections(
     bool IncludeMetrics,
     bool IncludeAlerts,
     bool IncludeDevices,
-    bool IncludeTrends = false,
+    bool IncludeTrends = true,
     bool IncludeJournals = false,
     bool IncludeNotices = false);
 

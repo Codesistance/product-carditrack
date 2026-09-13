@@ -155,11 +155,11 @@ public class PdfReportRenderer : IReportRenderer
             {
                 var prefix = data.Members.Count > 1 ? $"{member.Member.Name} · " : string.Empty;
 
+                if (sections.IncludeTrends && member.ActivityLogs.Count > 0)
+                    Section(column, prefix + "Trends", e => Charts(e, member, data.From, data.To));
+
                 if (sections.IncludeMetrics)
                 {
-                    if (sections.IncludeTrends && member.ActivityLogs.Count > 0)
-                        Section(column, prefix + "Trends", e => Charts(e, member, data.From, data.To));
-
                     if (member.ActivityLogs.Count > 0)
                         Section(column, prefix + "Daily readings", e => DailyTable(e, member));
                     else
