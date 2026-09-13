@@ -405,7 +405,7 @@ document exists and someone owns it.
 | Google Cloud (Cloud SQL, GCS, Secret Manager, KMS, Cloud Run) | ⬜ Offered and free — not executed (tracked in issue #40) |
 | Auth0 (Okta) | ⬜ Available on suitable plan tier — deferred to production go-live |
 | Google Health API | n/a — no BAA offered; user-consent model under Google's Limited Use policy |
-| Gemini via Vertex AI | BAA-eligible under the Cloud umbrella — **D6 resolved 2026-08-21**: the Public and Rewrite slots move to an EU regional Vertex endpoint (in code; per-environment flip pending) (ZDR configuration, [vertex_ai_setup.md](technical/vertex_ai_setup.md)); the consumer Gemini API is superseded. Chat and reports still send **de-identified daily readings** (no name/id on chat; reports label members positionally). Insights/digest/assess stay on in-project MedGemma |
+| Gemini via Vertex AI | BAA-eligible under the Cloud umbrella — **D6 resolved 2026-08-21**: the Public and Rewrite slots move to an EU regional Vertex endpoint (in code; per-environment flip pending) (ZDR configuration, [vertex_ai_setup.md](technical/vertex_ai_setup.md)); the consumer Gemini API is superseded. Chat and reports still send **de-identified daily readings** (no name/id on chat; reports label members positionally). Insights and real-time assessments stay on in-project MedGemma; the family digest and Advise are two-step since 2026-09-04 / 2026-08-26 — MedGemma's clinical read stays in-project and only a de-identified read reaches the Vertex Rewrite slot (DPIA A11, A22) |
 
 **Audit logging — implemented for annotated health-data controllers**
 

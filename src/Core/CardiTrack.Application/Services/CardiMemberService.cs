@@ -132,6 +132,12 @@ public class CardiMemberService : ICardiMemberService
                 // Rollback is itself a database call. The original failure is the one the
                 // caller must see, and the photo clean-up below must still run.
             }
+            finally
+            {
+                // The member and link are still tracked as Added. Left there, the next save on
+                // this scoped unit of work would submit the failed graph again.
+                _unitOfWork.ClearTracking();
+            }
 
             if (commitAttempted)
             {

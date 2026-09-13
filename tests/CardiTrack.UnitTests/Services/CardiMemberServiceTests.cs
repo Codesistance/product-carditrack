@@ -100,6 +100,26 @@ public class CardiMemberServiceTests
         await _unitOfWork.Received(1).BeginTransactionAsync();
         await _unitOfWork.Received(1).RollbackTransactionAsync();
         await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+        // The failed graph must not ride along on this unit of work's next save.
+        _unitOfWork.Received(1).ClearTracking();
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_DiscardsTheObject_WhenTheTransactionCannotEvenStart()
+    {
+        // The one path where rollback is a no-op rather than an undo: nothing was written, but
+        // the photo was already uploaded, and the caller must still see the real failure.
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.BeginTransactionAsync().Returns(Task.FromException(new IOException("no connection")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        await Assert.ThrowsAsync<IOException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _photoStorage.Received(1).DeleteAsync("members/x/orphan.jpg", Arg.Any<CancellationToken>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
     }
 
     [Fact]
