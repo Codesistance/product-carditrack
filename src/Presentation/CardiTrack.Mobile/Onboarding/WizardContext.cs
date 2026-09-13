@@ -71,9 +71,9 @@ public sealed class WizardContext
 
     /// <summary>
     /// Terminal exit for the step whose button names the dashboard. Pops any live modal
-    /// (a root swap underneath one leaves the wizard on screen), then roots a fresh
-    /// <see cref="AppShell"/> on the dashboard tab — not the OAuth browser that authorized
-    /// the device, and not whatever launched the wizard.
+    /// (a root swap underneath one leaves the wizard on screen), then goes to
+    /// <c>//dashboard</c> on the existing <see cref="AppShell"/> — or roots a new one
+    /// when this is first-run onboarding and there is no shell yet.
     /// </summary>
     public async Task GoToDashboardAsync(Page current)
     {
@@ -113,6 +113,17 @@ public sealed class WizardContext
             if (!dismissed)
             {
                 ExitedToDashboard = false;
+                AppForeground.BringToFront();
+                return;
+            }
+
+            // A second AppShell() re-registers every pushed-page route on the
+            // process-wide Routing table and throws. Reuse the shell the modal
+            // sat on. First-run onboarding has no shell yet — that is the only
+            // path that constructs one.
+            if (Shell.Current is { } existing)
+            {
+                await GoToDashboardTabAsync(existing);
                 AppForeground.BringToFront();
                 return;
             }
