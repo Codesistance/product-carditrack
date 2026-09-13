@@ -560,6 +560,7 @@ public class AlertDetailComposerTests
 
         Assert.Equal("22:00", detail.TypicalBedtime);
         Assert.Equal("whether anything kept them in the chair", detail.StillStretchAsk);
+        Assert.Equal("9:00 PM", detail.StretchStartedLabel);
     }
 
     /// <summary>

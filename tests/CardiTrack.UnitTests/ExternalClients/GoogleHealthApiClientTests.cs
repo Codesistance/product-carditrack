@@ -1280,7 +1280,7 @@ public class GoogleHealthApiClientTests
             filters);
         Assert.Contains(
             """
-            sleep.interval.civil_start_time >= "2026-08-05" AND sleep.interval.civil_start_time < "2026-08-06"
+            sleep.interval.civil_end_time >= "2026-08-06" AND sleep.interval.civil_end_time < "2026-08-07"
             """,
             filters);
     }

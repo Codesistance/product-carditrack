@@ -200,7 +200,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         // Sleep figures stay on sessions that *ended* on this civil day. The night that starts
         // tonight is tomorrow's sleep row; folding it in here would move tonight's hours onto
         // today's card. Stretch exclusion asks for both — see ListSleepWindowsStartingOnAsync.
-        var sessions = await ListSleepSessionsAsync(accessToken, CivilSleepBound.End, date);
+        var sessions = await ListSleepSessionsAsync(accessToken, date);
 
         // A civil day can carry more than one session — an afternoon nap ends on the same day as
         // the night before it — and the order dataPoints arrive in is not a contract. The fields
@@ -260,26 +260,16 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         };
     }
 
-    private enum CivilSleepBound
-    {
-        End,
-        Start,
-    }
-
     /// <summary>
-    /// Sleep sessions whose civil start or end falls on <paramref name="date"/>. The list filter
-    /// is the same civil-day form <see cref="GetSleepAsync"/> already uses; only the bound
-    /// changes. A second fetch rather than one OR filter so the sleep *figures* stay on the
-    /// sessions that ended today.
+    /// Sleep sessions whose civil end falls on <paramref name="date"/>. Sleep is filterable
+    /// on end time only — a start-time filter is a malformed request
+    /// (<c>docs/llm_design.md</c>). The night that starts tonight is tomorrow's end-bound
+    /// list; see <see cref="ListSleepWindowsStartingOnAsync"/>.
     /// </summary>
-    private async Task<List<JToken?>> ListSleepSessionsAsync(
-        string accessToken, CivilSleepBound bound, DateOnly date)
+    private async Task<List<JToken?>> ListSleepSessionsAsync(string accessToken, DateOnly date)
     {
-        var field = bound == CivilSleepBound.End
-            ? "sleep.interval.civil_end_time"
-            : "sleep.interval.civil_start_time";
         var filter = Uri.EscapeDataString(
-            $"{field} >= \"{date:yyyy-MM-dd}\" AND {field} < \"{date.AddDays(1):yyyy-MM-dd}\"");
+            $"sleep.interval.civil_end_time >= \"{date:yyyy-MM-dd}\" AND sleep.interval.civil_end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
         using var request = new HttpRequestMessage(
             HttpMethod.Get,
             $"/v4/users/me/dataTypes/sleep/dataPoints?filter={filter}");
@@ -306,28 +296,22 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             .Select(w => (w.Start!.Value, w.End!.Value))
             .ToList();
 
+    /// <summary>
+    /// The night that starts on <paramref name="date"/> — tomorrow's end-bound list, because
+    /// sleep cannot be filtered on start time. Those sessions have not ended today, so they
+    /// never enter today's sleep figures.
+    /// </summary>
     private async Task<IReadOnlyList<(DateTime Start, DateTime End)>> ListSleepWindowsStartingOnAsync(
         string accessToken, DateOnly date) =>
-        SessionWindowsFrom(await ListSleepSessionsAsync(accessToken, CivilSleepBound.Start, date));
+        SessionWindowsFrom(await ListSleepSessionsAsync(accessToken, date.AddDays(1)));
 
     /// <summary>
-    /// A night that ended on <paramref name="date"/>, not merely a session that did. A nap
-    /// ends on the same civil day and does not clip the small hours, so treating it as
-    /// permission to measure waking rest would make the midnight-to-morning run the day's
-    /// longest stretch — the case <c>daytime_inactivity_block</c> exists not to page about.
+    /// A night that ended on this civil day, not merely a session that did. The API has no
+    /// night-vs-nap marker, so this is duration: four hours is long enough to clip the small
+    /// hours and short enough that an afternoon nap does not unlock the stretch figure.
     /// </summary>
-    /// <remarks>
-    /// Duration or a start before this civil day's UTC midnight: a Pacific 19:00 bedtime is
-    /// 02:00 UTC the next calendar day, so a same-UTC-date night is still a night if it
-    /// lasted long enough to be one.
-    /// </remarks>
-    private static bool NightEndedOn(
-        IReadOnlyList<(DateTime Start, DateTime End)> windows, DateOnly date)
-    {
-        var dayStartUtc = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        return windows.Any(w =>
-            w.Start < dayStartUtc || w.End - w.Start >= TimeSpan.FromHours(3));
-    }
+    private static bool NightEndedOn(IReadOnlyList<(DateTime Start, DateTime End)> windows) =>
+        windows.Any(w => w.End - w.Start >= TimeSpan.FromHours(4));
 
     private static IReadOnlyList<(DateTime Start, DateTime End)> UnionSleepWindows(
         IReadOnlyList<(DateTime Start, DateTime End)> ended,
@@ -730,7 +714,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         // does not clip the small hours, and an extra provider call on an empty day is a
         // backfill we do not need.
         IReadOnlyList<(DateTime Start, DateTime End)>? stretchWindows = null;
-        if (NightEndedOn(sleep.SessionWindows, date))
+        if (NightEndedOn(sleep.SessionWindows))
         {
             stretchWindows = UnionSleepWindows(
                 sleep.SessionWindows, await ListSleepWindowsStartingOnAsync(accessToken, date));

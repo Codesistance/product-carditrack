@@ -296,6 +296,9 @@ public static class AlertDetailComposer
         var aboutDate = AboutDate(rule, alert.MetricValues, raisedOn);
         var stretchStartedAt = ReadDateTime(metrics, "startedAtUtc");
         var bedtime = LocalizedBedtime(baseline?.TypicalBedtime, stretchStartedAt, timeZone);
+        var stretchStartLocal = stretchStartedAt is { } started
+            ? BaselineClock.Local(started, timeZone)
+            : null;
 
         return new AlertDetailResponse
         {
@@ -324,11 +327,10 @@ public static class AlertDetailComposer
             TypicalWakeTime = ReadString(metrics, "typicalWakeTime")
                 ?? baseline?.TypicalWakeTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
             TypicalBedtime = bedtime?.ToString("HH:mm", CultureInfo.InvariantCulture),
-            StillStretchAsk = stretchStartedAt is { } startedAt
-                ? StillStretchAsk(
-                    BaselineClock.Local(startedAt, timeZone) ?? TimeOnly.FromDateTime(startedAt),
-                    bedtime)
+            StillStretchAsk = stretchStartLocal is { } start
+                ? StillStretchAsk(start, bedtime)
                 : null,
+            StretchStartedLabel = stretchStartLocal?.ToString("h:mm tt", CultureInfo.InvariantCulture),
             LastDataAt = ReadDateTime(metrics, "lastDataUtc"),
             StretchStartedAt = stretchStartedAt,
         };

@@ -102,6 +102,12 @@ public class AlertDetailResponse
     /// </summary>
     public string? StillStretchAsk { get; set; }
 
+    /// <summary>
+    /// When the still stretch began, on the member's wall clock ("2:00 PM"). The ask sits
+    /// on this same clock; the caregiver's phone must not re-derive it.
+    /// </summary>
+    public string? StretchStartedLabel { get; set; }
+
     /// <summary>When the device last produced a reading, for <c>device_silence</c>.</summary>
     public DateTime? LastDataAt { get; set; }
 
