@@ -1,6 +1,7 @@
 using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
 using FluentValidation;
@@ -150,10 +151,22 @@ public class OnboardingController : BaseApiController
             request.Name,
             UserContext.OrganizationId);
 
-        var response = await _cardiMemberService.CreateCardiMemberAsync(
-            UserContext.OrganizationId,
-            UserContext.UserId,
-            request);
+        CardiMemberResponse response;
+        try
+        {
+            response = await _cardiMemberService.CreateCardiMemberAsync(
+                UserContext.OrganizationId,
+                UserContext.UserId,
+                request);
+        }
+        catch (CardiMemberCreationOutcomeUnknownException ex)
+        {
+            // The commit's outcome is unknown, so the member may exist. The audit entry for
+            // this request must still name it; the exception handler turns the throw into a
+            // 500 and the audit middleware, which sits outside it, reads this on the way out.
+            HttpContext.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = ex.CardiMemberId;
+            throw;
+        }
 
         HttpContext.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = response.Id;
 

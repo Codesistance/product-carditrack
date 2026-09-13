@@ -86,13 +86,16 @@ The bucket name is environment-specific (dev: `carditrack-490120-carditrack-dev-
 
 | Order | Table | Notes |
 |---|---|---|
-| 27 | `PushDeviceTokens` | Encrypted tokens; the designed 30-day post-disable hard delete is **not enforced** |
-| 28 | `NotificationPreferences` | Quiet hours, per-category mutes |
-| 29 | `ExportConsents` (all rows) | Keyed on `OwnerUserId`; the owner's remaining consent rows, after the member-naming rows were removed above |
-| 30 | `Reports` (all rows) | Keyed on `OwnerUserId`; every remaining report row and every object it names in the report-exports bucket — same command as the member row above |
-| 31 | `MetricAlarms` (account rows) | Rows where `CardiMemberId` is null — the account-wide defaults, keyed on `OrganizationId` |
-| 32 | `Subscriptions` | Keyed on `OrganizationId` |
-| 33 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
+| 27 | `NotificationDeliveries` (account-level rows) | Rows where `CardiMemberId` is null — safety and nudge deliveries, the push canary; keyed on `UserId`. Rows 1–3 above only reach the member-scoped ones |
+| 28 | `NotificationMutes` (account-level rows) | `CardiMemberId` null, keyed on `UserId` |
+| 29 | `Notifications` (account-level rows) | `CardiMemberId` null — account notices; keyed on `UserId` |
+| 30 | `PushDeviceTokens` | Encrypted tokens; the designed 30-day post-disable hard delete is **not enforced** |
+| 31 | `NotificationPreferences` | Quiet hours, per-category mutes |
+| 32 | `ExportConsents` (all rows) | Keyed on `OwnerUserId`; the owner's remaining consent rows, after the member-naming rows were removed above |
+| 33 | `Reports` (all rows) | Keyed on `OwnerUserId`; every remaining report row and every object it names in the report-exports bucket — same command as the member row above |
+| 34 | `MetricAlarms` (account rows) | Rows where `CardiMemberId` is null — the account-wide defaults, keyed on `OrganizationId` |
+| 35 | `Subscriptions` | Keyed on `OrganizationId` |
+| 36 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
 
 ### Caregiver only (`UserId`) — the account closes but the members stay
 
@@ -100,12 +103,12 @@ The account-scoped rows above assume the members go too. When another caregiver 
 
 | Order | Table | Notes |
 |---|---|---|
-| 34 | `MemberChatSessions` (this user's) | Their transcripts about the members; `MemberChatTurns` and `MemberChatTurnUsages` cascade — verify both |
-| 35 | `NotificationDeliveries`, `NotificationMutes`, `Notifications` (this user's) | All three carry `UserId`; the member's rows for other caregivers stay |
-| 36 | `DeviceHistoryRepulls` (rows they requested) | `RequestedByUserId` is required, so these cannot be nulled — delete them; the 48-hour re-pull cooldown resets for that member |
-| 37 | `Alerts.AcknowledgedByUserId`, `MemberQuestionnaires.AnsweredByUserId` | **Null, do not delete** — the alert and the answer belong to the member |
-| 38 | `UserCardiMembers` (this user's links) | Delete last among the member-facing rows, so the count checks above still resolve the user |
-| 39 | `PushDeviceTokens`, `NotificationPreferences`, `ExportConsents`, `Reports` (with their bucket objects), `Users` | The user-keyed rows from the account-scoped table; `Organizations` and `Subscriptions` stay while other users remain |
+| 37 | `MemberChatSessions` (this user's) | Their transcripts about the members; `MemberChatTurns` and `MemberChatTurnUsages` cascade — verify both |
+| 38 | `NotificationDeliveries`, `NotificationMutes`, `Notifications` (this user's) | All three carry `UserId`; the member's rows for other caregivers stay |
+| 39 | `DeviceHistoryRepulls` (rows they requested) | `RequestedByUserId` is required, so these cannot be nulled — delete them; the 48-hour re-pull cooldown resets for that member |
+| 40 | `Alerts.AcknowledgedByUserId`, `MemberQuestionnaires.AnsweredByUserId` | **Null, do not delete** — the alert and the answer belong to the member |
+| 41 | `UserCardiMembers` (this user's links) | Delete last among the member-facing rows, so the count checks above still resolve the user |
+| 42 | `PushDeviceTokens`, `NotificationPreferences`, `ExportConsents`, `Reports` (with their bucket objects), `Users` | The user-keyed rows from the account-scoped table; `Organizations` and `Subscriptions` stay while other users remain |
 
 **Reports are durable.** Since the self-service export shipped (2026-09-07) every generated export has a `Reports` row and an object in the report-exports bucket, both listed above; the earlier statement here that reports were an in-process one-hour cache with no table to clear is no longer true.
 

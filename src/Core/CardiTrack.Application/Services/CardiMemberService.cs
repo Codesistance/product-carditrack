@@ -121,7 +121,7 @@ public class CardiMemberService : ICardiMemberService
             commitAttempted = true;
             await _unitOfWork.CommitTransactionAsync();
         }
-        catch
+        catch (Exception ex)
         {
             try
             {
@@ -133,9 +133,14 @@ public class CardiMemberService : ICardiMemberService
                 // caller must see, and the photo clean-up below must still run.
             }
 
-            if (!commitAttempted)
-                await DiscardUploadedPhotoAsync(cardiMember);
+            if (commitAttempted)
+            {
+                // The member may exist. Hand the caller the id so the audit entry for this
+                // request can still name it and a reconciler can find the row.
+                throw new Exceptions.CardiMemberCreationOutcomeUnknownException(cardiMember.Id, ex);
+            }
 
+            await DiscardUploadedPhotoAsync(cardiMember);
             throw;
         }
 
