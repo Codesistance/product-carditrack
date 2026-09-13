@@ -2086,9 +2086,22 @@ public class MemberChatService : IMemberChatService
         "I couldn't put together an answer from what's on file right now.";
 
     /// <summary>Resolves the member's name and pronouns, or falls back to a fixed line rather than
-    /// showing a leftover placeholder or an empty reply — see <c>MemberVoice.IsUnresolvedIn</c>.</summary>
+    /// showing a leftover placeholder, an empty reply, or a sex nothing on file bears out —
+    /// see <c>MemberVoice.IsUnresolvedIn</c> and <c>RewriteCopyGuards.StatesAnUnsupportedSex</c>.</summary>
+    /// <remarks>
+    /// The sex check costs more here than anywhere else it runs: a digest that fails it keeps
+    /// yesterday's card, while a chat turn that fails it answers the caregiver's actual question
+    /// with "I couldn't put together an answer". It is applied anyway, and on the same terms as
+    /// the cards — a pronoun the record cannot bear out is a claim about someone's mother or
+    /// father, and it is not made less wrong by being made in a conversation. A guess that matches
+    /// the record still passes, so the cost lands only on members whose sex is not on file, and
+    /// only when the model has ignored the token rule.
+    /// </remarks>
     private static string ResolvedOrFallback(string text, MemberVoice voice)
     {
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(text, voice.Gender))
+            return CouldNotAnswerReply;
+
         var resolved = voice.Resolve(text.Trim()) ?? string.Empty;
         return MemberVoice.IsUnresolvedIn(resolved) || string.IsNullOrWhiteSpace(resolved)
             ? CouldNotAnswerReply

@@ -312,6 +312,48 @@ public class MemberChatRoutedDispatchTests
         Assert.Equal(MemberChatService.CouldNotAnswerReply, reply.Reply);
     }
 
+    /// <summary>
+    /// The chat reply answers to the same rule the cards do. This member's sex is not on file, so
+    /// a reply calling them "he" is a guess about someone's parent — and the fallback line, poor
+    /// answer though it is, tells the caregiver nothing untrue.
+    /// </summary>
+    [Fact]
+    public async Task ARewriteThatStatesAnUnsupportedSex_IsNotShown()
+    {
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(
+                "His heart rate has been steady all week.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how's the heart rate?");
+
+        Assert.Equal(MemberChatService.CouldNotAnswerReply, reply.Reply);
+    }
+
+    /// <summary>And the pronoun the brief actually asks for, resolved from the record.</summary>
+    [Fact]
+    public async Task ARewriteWritingThePronounTokens_IsResolvedForTheCaregiver()
+    {
+        _unitOfWork.CardiMembers.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Moses Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            Gender = Gender.Male,
+            IsActive = true,
+        });
+        RouterAnswers(MemberChatWorkflow.Analysis);
+        PipelineAnswers();
+        _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(
+                $"{PronounPlaceholder.Possessive} heart rate has been steady all week.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "how's the heart rate?");
+
+        Assert.StartsWith("His heart rate has been steady all week.", reply.Reply, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task AnUnparseableAnswer_DescendsToAnalysis()
     {

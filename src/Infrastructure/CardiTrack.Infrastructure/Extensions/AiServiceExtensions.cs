@@ -363,6 +363,12 @@ public static class AiServiceExtensions
         RequirePositive(settings.TimeoutSeconds, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.TimeoutSeconds));
         // Out of the kind branches below: both kinds cap a completion with it.
         RequirePositive(settings.MaxOutputTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens));
+        // Out of them for a sharper reason: it used to sit on the Ollama branch, which was right
+        // only while MedGemmaClient was the sole implementer of the outlet. Now that
+        // VertexAiClient honours the flag too, a branch-local refusal would have let a production
+        // host running the deployed kind log prompts and completions — health data — verbatim.
+        // The switch belongs to the section, not to a provider.
+        RequireNoClinicalLoggingInProduction(ConfigurationKeys.AI.RewriteSectionName, settings.LogClinicalOutput, configuration);
 
         if (kind == RewriteAiProviderKind.VertexGemini)
         {
@@ -382,7 +388,6 @@ public static class AiServiceExtensions
         {
             RequireValue(settings.BaseUrl, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.BaseUrl));
             RequirePositive(settings.ContextTokens, ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.ContextTokens));
-            RequireNoClinicalLoggingInProduction(ConfigurationKeys.AI.RewriteSectionName, settings.LogClinicalOutput, configuration);
             RequireOutputFitsContext(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.MaxOutputTokens),
                 nameof(RewriteAiSettings.ContextTokens), settings.MaxOutputTokens, settings.ContextTokens);
             RequireRepetitionGuard(ConfigurationKeys.AI.RewriteSectionName, nameof(RewriteAiSettings.RepeatPenalty),

@@ -911,6 +911,69 @@ public class DigestGenerationServiceTests
     }
 
     /// <summary>
+    /// The summary is not the whole card. A member could be handed a neutral summary and a
+    /// headline or suggestion that picked a sex for them — both optional fields, both stored
+    /// unchanged before this check, and both read as fact by a family.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "His quietest day this week",
+                Summary = "A quiet, steady day.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == null && d.Text == "A quiet, steady day."),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoresTheSummaryWithoutASuggestion_WhenTheSuggestionStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        ReturnsSuggestion("Walk with her after lunch if she is up to it.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == null && d.Text == "A quiet, steady day."),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A sex that matches the record is left alone here as everywhere else: the member is on file
+    /// as female, so the suggestion is one a family can read without being told anything untrue.
+    /// </summary>
+    [Fact]
+    public async Task KeepsASuggestionWhoseSexTheRecordBearsOut()
+    {
+        ReturnsSuggestion("Walk with her after lunch if she is up to it.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Suggestion == "Walk with her after lunch if she is up to it."),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The member as every row created before M1-04 asked for sex still holds them.</summary>
+    private CardiMember MemberWithNoSexOnFile()
+    {
+        var member = Member();
+        member.Gender = Gender.PreferNotToSay;
+        return member;
+    }
+
+    /// <summary>
     /// Every phrase the echo guard watches for has to appear in the prompt, wholly inside one of
     /// its lines — that is the whole basis of the check, and the guard now spans two files since
     /// the prompt opens with the shared tone block. A phrase that drifted out of the prompt, or a
@@ -1572,12 +1635,12 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task KeepsAMedicationReminderTiedToAKnownRoutine()
     {
-        ReturnsSuggestion("Remind Dad to take his evening medication if he hasn't yet");
+        ReturnsSuggestion("Remind Mum to take her evening medication if she hasn't yet");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _digests.Received(1).AddAsync(
-            Arg.Is<DigestEntry>(d => d.Suggestion == "Remind Dad to take his evening medication if he hasn't yet"),
+            Arg.Is<DigestEntry>(d => d.Suggestion == "Remind Mum to take her evening medication if she hasn't yet"),
             Arg.Any<CancellationToken>());
     }
 
@@ -1987,6 +2050,56 @@ public class DigestGenerationServiceTests
         await _unitOfWork.Received().SaveChangesAsync();
     }
 
+    /// <summary>
+    /// A question is put to the family in as many words as the summary is. This member's sex is
+    /// not on file, so "he" is a guess — and the question is the one piece of copy on this path
+    /// that a family is asked to answer.
+    /// </summary>
+    [Fact]
+    public async Task AsksNothing_WhenTheQuestionStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        ReturnsQuestion("Did he have visitors today?");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>
+    /// The caption under the question is family-facing copy from the same reply, and was the one
+    /// field on this path that checked neither rule. The question survives without it — that is
+    /// what a dropped rationale has always meant.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheQuestionWithoutACaption_WhenTheRationaleStatesAnUnsupportedSex()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        ReturnsQuestion("Were there visitors today?", "His evenings are usually busier than this.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.TriggerContext == null));
+    }
+
+    [Fact]
+    public async Task StoresTheQuestionWithoutACaption_WhenTheRationaleCarriesAnUnresolvableToken()
+    {
+        var member = MemberWithNoSexOnFile();
+        member.Name = string.Empty;
+        _members.GetByIdAsync(_memberId).Returns(member);
+        ReturnsQuestion(
+            "Were there visitors today?",
+            $"{PronounPlaceholder.Possessive} evenings are usually busier than this.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
+            q.TriggerContext == null));
+    }
+
     /// <summary>Stored encrypted, like everything else a family says about a member.</summary>
     [Fact]
     public async Task StoresTheQuestionEncrypted()
@@ -2198,7 +2311,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task StoresATimeScopedQuestion_AskableUntilTheEndOfTheMembersOwnDay()
     {
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
@@ -2234,7 +2347,7 @@ public class DigestGenerationServiceTests
         // A wall-clock delta would have said 03:00 UTC.
         var beforeSpringForward = new DateTime(2026, 3, 28, 10, 30, 0, DateTimeKind.Utc);
         SetupActivity(beforeSpringForward.AddMinutes(-30));
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(beforeSpringForward);
 
@@ -2255,7 +2368,7 @@ public class DigestGenerationServiceTests
         // A wall-clock delta would have said 02:00 UTC.
         var beforeFallBack = new DateTime(2026, 10, 24, 9, 30, 0, DateTimeKind.Utc);
         SetupActivity(beforeFallBack.AddMinutes(-30));
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(beforeFallBack);
 
@@ -2274,7 +2387,7 @@ public class DigestGenerationServiceTests
         // 22:50 in London, so the local day plus the grace has only 4h10m left in it.
         var lateAtNight = new DateTime(2026, 8, 10, 21, 50, 0, DateTimeKind.Utc);
         SetupActivity(lateAtNight.AddMinutes(-2));
-        ReturnsQuestion("Did he have visitors today?", questionScope: "time-scoped");
+        ReturnsQuestion("Did she have visitors today?", questionScope: "time-scoped");
 
         await CreateSut().GenerateDueDigestsAsync(lateAtNight);
 

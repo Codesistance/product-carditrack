@@ -151,13 +151,19 @@ internal static partial class RewriteCopyGuards
     /// The pronouns that state a male subject. Word-bounded, so "his" does not fire on "history"
     /// and "he" does not fire on "her".
     /// </summary>
-    [GeneratedRegex(@"\b(?:he|him|his)\b", RegexOptions.IgnoreCase)]
+    /// <remarks>
+    /// The reflexive is listed rather than left to the word boundary: "himself" is one word, so a
+    /// pattern matching "him" never reaches it, and "CardiTrackCardiMember made the tea himself"
+    /// states a sex without using any of the other three.
+    /// </remarks>
+    [GeneratedRegex(@"\b(?:he|him|his|himself)\b", RegexOptions.IgnoreCase)]
     private static partial Regex MalePronouns();
 
     /// <summary>
-    /// The pronouns that state a female subject. Shorter by one than its counterpart because "her"
-    /// serves as both the object and the possessive.
+    /// The pronouns that state a female subject. One shorter than its counterpart looks, because
+    /// "her" serves as both the object and the possessive; "herself" is here for the reason its
+    /// male counterpart is.
     /// </summary>
-    [GeneratedRegex(@"\b(?:she|her|hers)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(?:she|her|hers|herself)\b", RegexOptions.IgnoreCase)]
     private static partial Regex FemalePronouns();
 }

@@ -85,6 +85,21 @@ public class RewriteCopyGuardsTests
         Assert.Equal(expected, RewriteCopyGuards.StatesAnUnsupportedSex(copy, gender));
 
     /// <summary>
+    /// The reflexives are their own words, so the boundary that keeps "his" out of "history" also
+    /// keeps "him" out of "himself". A sentence whose only sexed word is the reflexive states a
+    /// sex as plainly as one that says "he".
+    /// </summary>
+    [Theory]
+    [InlineData(Gender.PreferNotToSay, "CardiTrackCardiMember made the tea himself.", true)]
+    [InlineData(Gender.PreferNotToSay, "CardiTrackCardiMember made the tea herself.", true)]
+    [InlineData(Gender.Male, "CardiTrackCardiMember made the tea herself.", true)]
+    [InlineData(Gender.Female, "CardiTrackCardiMember made the tea himself.", true)]
+    [InlineData(Gender.Male, "CardiTrackCardiMember made the tea himself.", false)]
+    [InlineData(Gender.Female, "CardiTrackCardiMember made the tea herself.", false)]
+    public void A_reflexive_states_a_sex_too(Gender gender, string copy, bool expected) =>
+        Assert.Equal(expected, RewriteCopyGuards.StatesAnUnsupportedSex(copy, gender));
+
+    /// <summary>
     /// Word boundaries, not substrings: "history" is not "his", and "there" is not "her". A guard
     /// that fired on those would discard a summary a week.
     /// </summary>

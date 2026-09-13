@@ -1467,10 +1467,13 @@ public partial class DigestGenerationService : IDigestGenerationService
             CardiMemberId = memberId,
             LocalDate = describedDate,
             Audience = DigestAudience.Family,
-            Headline = ResolvedOrDropped(CaregiverHeadline(aiResponse.Headline, memberId, describedDate), voice),
+            Headline = ResolvedOrDropped(
+                CaregiverHeadline(aiResponse.Headline, memberId, describedDate),
+                voice, "headline", memberId, describedDate),
             Text = resolvedText,
             Suggestion = ResolvedOrDropped(
-                CleanSuggestion(aiResponse.Suggestion, memberId, describedDate), voice),
+                CleanSuggestion(aiResponse.Suggestion, memberId, describedDate),
+                voice, "suggestion", memberId, describedDate),
             // From the clinical read, not the rewrite: how soon a family should act is a judgement
             // about the readings, and the rewrite is not shown them.
             Urgency = ParseUrgency(clinical.Urgency, memberId, describedDate),
@@ -1671,8 +1674,19 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (CleanQuestion(aiResponse.Question, memberId, describedDate) is not { } question)
             return;
 
-        // A question naming or referring to the member through a placeholder is worthless without
-        // the record to resolve it from — the same stance the summary takes.
+        // A question is put to the family in as many words as the summary is, so it answers to the
+        // same two rules. A sex the record does not bear out is checked first, while the words are
+        // still the model's; a placeholder the record cannot resolve is checked after, because a
+        // question with a sentinel in it is worthless whatever else is right with it.
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(question, voice.Gender))
+        {
+            _logger.LogWarning(
+                "Dropped a proposed family question for CardiMember {CardiMemberId} on {LocalDate}: "
+                + "it states a sex the member's record does not bear out.",
+                memberId, describedDate);
+            return;
+        }
+
         var resolved = voice.Resolve(question);
         if (resolved is null || MemberVoice.IsUnresolvedIn(resolved))
             return;
@@ -1792,9 +1806,36 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// showing. Dropped rather than rewritten: a mechanical caption ("prompted by the reading")
     /// is worse than no caption, and the question itself is still worth asking without it.
     /// </summary>
+    /// <remarks>
+    /// The caption is family-facing copy from the same reply as everything else here, so it meets
+    /// the same two rules before any of the cosmetic cleaning below: a sex the record does not
+    /// bear out, checked while the words are the model's, and a placeholder that outlived
+    /// resolution. Neither was checked when the tokens were introduced, which would have let a
+    /// sentinel — or a "his" for a member at PreferNotToSay — reach a caregiver through the one
+    /// field on this path that nothing else guards.
+    /// </remarks>
     private string? CleanRationale(string? rationale, string question, MemberVoice voice, Guid memberId)
     {
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(rationale, voice.Gender))
+        {
+            _logger.LogInformation(
+                "Dropped the proposed question rationale for CardiMember {CardiMemberId}: it states "
+                + "a sex the member's record does not bear out. The question is stored without a "
+                + "caption.",
+                memberId);
+            return null;
+        }
+
         var resolved = voice.Resolve(rationale);
+        if (MemberVoice.IsUnresolvedIn(resolved))
+        {
+            _logger.LogInformation(
+                "Dropped the proposed question rationale for CardiMember {CardiMemberId}: it carries "
+                + "a placeholder the record cannot resolve. The question is stored without a caption.",
+                memberId);
+            return null;
+        }
+
         var cleaned = MedicalPromptBlocks.Flatten(resolved ?? string.Empty)
             .Trim().TrimStart('-', '*', '•').Trim('"', '\'', ' ').Trim();
 
@@ -2085,14 +2126,40 @@ public partial class DigestGenerationService : IDigestGenerationService
     ];
 
     /// <summary>
-    /// A cleaned line with the member's name and pronouns resolved into it, or null when a
-    /// placeholder outlived resolution — a headline or suggestion is optional on the row, so
-    /// dropping one costs the card a title or a line rather than the whole generation.
+    /// A cleaned line with the member's name and pronouns resolved into it, or null when it states
+    /// a sex the record does not bear out or a placeholder outlived resolution — a headline or
+    /// suggestion is optional on the row, so dropping one costs the card a title or a line rather
+    /// than the whole generation.
     /// </summary>
-    private static string? ResolvedOrDropped(string? cleaned, MemberVoice voice)
+    /// <remarks>
+    /// The sex check is the same one the summary gets a few lines above, and it is here because
+    /// the summary alone was not the whole card: a member could be handed a neutral summary and a
+    /// suggestion saying "walk with her", from a rewrite that was never told which. Advise checks
+    /// both of its fields; this is the digest's equivalent. Run before resolution, while the words
+    /// are still the model's.
+    /// </remarks>
+    private string? ResolvedOrDropped(
+        string? cleaned, MemberVoice voice, string field, Guid memberId, DateOnly describedDate)
     {
+        if (RewriteCopyGuards.StatesAnUnsupportedSex(cleaned, voice.Gender))
+        {
+            _logger.LogWarning(
+                "Dropped the generated {Field} for CardiMember {CardiMemberId} on {LocalDate}: it "
+                + "states a sex the member's record does not bear out. The summary is stored "
+                + "without it.",
+                field, memberId, describedDate);
+            return null;
+        }
+
         var resolved = voice.Resolve(cleaned);
-        return MemberVoice.IsUnresolvedIn(resolved) ? null : resolved;
+        if (!MemberVoice.IsUnresolvedIn(resolved))
+            return resolved;
+
+        _logger.LogWarning(
+            "Dropped the generated {Field} for CardiMember {CardiMemberId} on {LocalDate}: it "
+            + "carries a placeholder the record cannot resolve. The summary is stored without it.",
+            field, memberId, describedDate);
+        return null;
     }
 
     /// <summary>
