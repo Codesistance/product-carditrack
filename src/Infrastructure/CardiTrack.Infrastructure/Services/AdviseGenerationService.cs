@@ -282,8 +282,32 @@ public class AdviseGenerationService
         // read stayed silent on has its row removed — the brief makes silence deliberate, and a
         // suggestion the readings no longer support is worse than none. The whole pass is one
         // SaveChanges, so a reader never sees half a regeneration.
+        //
+        // A hiccup normally keeps the row it could not replace, because the previous suggestion
+        // beats none. Not when that row is itself the thing this version was raised to repair: a
+        // row written before the rewrite brief asked for pronoun tokens holds whichever sex the
+        // model chose, and a rewrite that keeps failing its guards would otherwise leave that copy
+        // on the card for as long as the model kept failing. None beats a suggestion that calls
+        // someone's mother "he", so such a row is withdrawn rather than kept.
+        var voice = MemberVoice.For(member);
+        var unsafeRows = existing
+            .Where(r => !incoming.ContainsKey(r.Topic)
+                && (RewriteCopyGuards.StatesAnUnsupportedSex(r.Summary, voice.Gender)
+                    || RewriteCopyGuards.StatesAnUnsupportedSex(r.Suggestion, voice.Gender)))
+            .ToList();
+
+        foreach (var row in unsafeRows.Where(r => hiccups.Contains(r.Topic)))
+        {
+            _logger.LogWarning(
+                "Withdrawing the stored suggestion for CardiMember {CardiMemberId} topic {Topic}: it "
+                + "states a sex the member's record does not bear out, and this pass produced "
+                + "nothing to replace it with.",
+                cardiMemberId, row.Topic);
+        }
+
         var removals = existing
-            .Where(r => !incoming.ContainsKey(r.Topic) && !hiccups.Contains(r.Topic))
+            .Where(r => !incoming.ContainsKey(r.Topic)
+                && (!hiccups.Contains(r.Topic) || unsafeRows.Contains(r)))
             .ToList();
         foreach (var row in removals)
             _unitOfWork.MemberAdvises.Remove(row);

@@ -4,18 +4,25 @@ using CardiTrack.Infrastructure.Services;
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// The backstop for the half of a two-slot generation a caregiver actually reads. Both guards are
-/// written against one real card (2026-09-11): a summary that told a family about an oxygen
+/// The backstop for the half of a two-slot generation a caregiver actually reads. Both guards were
+/// written from one failure seen in development: a summary that told a family about an oxygen
 /// reading the clinical read never mentioned, under a rewrite that had picked the member's sex for
 /// itself.
 /// </summary>
+/// <remarks>
+/// The fixtures below have the shape of that read and that summary and none of its numbers.
+/// Committed test data is a durable, public record, and a real member's readings are health data
+/// whether or not a name travels with them — so the figures are invented, and every one of them
+/// could be: what these tests turn on is which readings each text names, never what any of them
+/// measured.
+/// </remarks>
 public class RewriteCopyGuardsTests
 {
     private const string TheCardsRead =
         "finding: The patient's recent readings show an increase in heart rate compared to their "
-        + "usual resting rate, reaching up to 119 bpm yesterday evening. Their overnight heart rate "
+        + "usual resting rate, reaching up to 111 bpm yesterday evening. Their overnight heart rate "
         + "variability was also significantly lower than usual. Sleep duration was well off the "
-        + "usual amount. Activity levels were very low yesterday, with only 2,419 steps taken. "
+        + "usual amount. Activity levels were very low yesterday, with only 1,000 steps taken. "
         + "Breathing rate while asleep was slightly higher than usual. The longest stretch of "
         + "stillness observed was relatively short.";
 
@@ -43,9 +50,9 @@ public class RewriteCopyGuardsTests
 
     [Theory]
     [InlineData("Sleep was shorter than usual.", "finding: Sleep duration was well off the usual amount.")]
-    [InlineData("Steps were low.", "finding: Activity levels were very low, with only 2,419 steps taken.")]
+    [InlineData("Steps were low.", "finding: Activity levels were very low, with only 1,000 steps taken.")]
     [InlineData("A short walk would help.", "finding: Steps sit below their own baseline. what would help: a walk.")]
-    [InlineData("Their heart rate ran higher.", "finding: heart rate reached 119 bpm.")]
+    [InlineData("Their heart rate ran higher.", "finding: heart rate reached 111 bpm.")]
     [InlineData("A quiet day all round.", "finding: Activity levels were very low.")]
     public void Copy_that_stays_within_the_read_passes(string copy, string read) =>
         Assert.Null(RewriteCopyGuards.NamesAReadingTheReadDidNot(copy, read));
@@ -98,6 +105,27 @@ public class RewriteCopyGuardsTests
     [InlineData(Gender.Female, "CardiTrackCardiMember made the tea herself.", false)]
     public void A_reflexive_states_a_sex_too(Gender gender, string copy, bool expected) =>
         Assert.Equal(expected, RewriteCopyGuards.StatesAnUnsupportedSex(copy, gender));
+
+    /// <summary>
+    /// "Heart rate variability" contains "heart rate", so a read that measured only the
+    /// variability used to vouch for a summary claiming the rate itself — a different reading,
+    /// and one nobody had taken.
+    /// </summary>
+    [Fact]
+    public void A_read_about_variability_does_not_vouch_for_the_heart_rate() =>
+        Assert.Equal(
+            "heart rate",
+            RewriteCopyGuards.NamesAReadingTheReadDidNot(
+                "CardiTrackCardiMemberTheir heart rate was higher than usual.",
+                "finding: heart rate variability was lower than usual overnight."));
+
+    /// <summary>And the pair the other way round, which must still pass.</summary>
+    [Fact]
+    public void A_read_about_the_heart_rate_vouches_for_the_heart_rate() =>
+        Assert.Null(RewriteCopyGuards.NamesAReadingTheReadDidNot(
+            "CardiTrackCardiMemberTheir heart rate was higher than usual.",
+            "finding: heart rate ran above this member's usual resting rate, and heart rate "
+            + "variability was lower overnight."));
 
     /// <summary>
     /// Word boundaries, not substrings: "history" is not "his", and "there" is not "her". A guard

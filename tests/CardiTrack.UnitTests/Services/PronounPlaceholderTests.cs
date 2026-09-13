@@ -62,6 +62,43 @@ public class PronounPlaceholderTests
             $"{NamePlaceholder.Token}{suffix} walk", Gender.Male, "Dad"));
 
     /// <summary>
+    /// A contraction on the token is refused outright rather than half-resolved. "They’re" would
+    /// otherwise have "They’" consumed and replaced, leaving "here" — a real word, with no token
+    /// left for <see cref="PronounPlaceholder.IsPresentIn"/> to catch. Unmatched, the token
+    /// survives and the caller discards the copy.
+    /// </summary>
+    [Theory]
+    [InlineData("They're resting well.")]
+    [InlineData("They’ve been quieter.")]
+    [InlineData("Them'll do.")]
+    public void Resolve_RefusesAContractionOnTheToken(string tail)
+    {
+        var generated = $"{NamePlaceholder.Token}{tail}";
+
+        var resolved = new MemberVoice(Gender.Male, "Dad").Resolve(generated);
+
+        Assert.Equal(generated, resolved);
+        Assert.True(MemberVoice.IsUnresolvedIn(resolved));
+    }
+
+    /// <summary>
+    /// The name pattern's lookahead admits the same separators the pronoun pattern does, so a
+    /// name-only caller cannot turn "CardiTrackCardiMember_Their" into "Dad_Their". It used to,
+    /// and only the order <see cref="MemberVoice"/> resolves in hid it.
+    /// </summary>
+    [Theory]
+    [InlineData("Their")]
+    [InlineData("_Their")]
+    [InlineData("-Them")]
+    [InlineData("__They")]
+    public void TheNamePattern_LeavesEverySeparatorFormOfAPronounTokenAlone(string suffix)
+    {
+        var generated = $"{NamePlaceholder.Token}{suffix} walk";
+
+        Assert.Equal(generated, NamePlaceholder.Resolve(generated, "Dad"));
+    }
+
+    /// <summary>
     /// Unresolvable is left standing, like <see cref="NamePlaceholder.Resolve"/> does with a name
     /// it cannot substitute: the caller has to be able to tell, so it can discard the copy rather
     /// than store a sentence with a hole in it.

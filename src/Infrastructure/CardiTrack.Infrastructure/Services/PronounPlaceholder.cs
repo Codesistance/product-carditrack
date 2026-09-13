@@ -61,8 +61,16 @@ internal static partial class PronounPlaceholder
     /// Callers pair it with <see cref="NamePlaceholder.IsPresentIn"/> and refuse to store copy
     /// that still carries either, rather than showing a sentinel to a caregiver.
     /// </summary>
+    /// <remarks>
+    /// Deliberately looser than <see cref="TokenPattern"/>, which decides what may be replaced.
+    /// This one decides what counts as a leftover, and those are different questions: a token the
+    /// resolver refuses — "CardiTrackCardiMemberThey're", where replacing the token alone would
+    /// leave "here" — is exactly the case a caller most needs told about. A presence check
+    /// narrower than the replacement it guards would report "nothing left to resolve" about a
+    /// sentence with the sentinel still in it.
+    /// </remarks>
     internal static bool IsPresentIn(string? text) =>
-        !string.IsNullOrEmpty(text) && TokenPattern().IsMatch(text);
+        !string.IsNullOrEmpty(text) && TokenPresencePattern().IsMatch(text);
 
     /// <summary>
     /// Replaces every pronoun token with the word <paramref name="gender"/> calls for, falling
@@ -164,6 +172,14 @@ internal static partial class PronounPlaceholder
     /// is a worse thing to show a caregiver than the sentence it meant.
     /// </para>
     /// <para>
+    /// Any other apostrophe after the token refuses the match outright, which is the difference
+    /// between a caught failure and a silent one. A model writing the natural contraction
+    /// "CardiTrackCardiMemberThey're" would otherwise have "They'" consumed and replaced, leaving
+    /// "here" — a real word, with no token left for <see cref="IsPresentIn"/> to catch and nothing
+    /// to stop it being stored. Left unmatched, the token survives resolution and the copy is
+    /// discarded by the caller that checks for one.
+    /// </para>
+    /// <para>
     /// Whitespace is the one separator not tolerated between the name half and the suffix, though
     /// <see cref="NamePlaceholder"/>'s pattern tolerates it inside the name itself. "CardiTrackCardiMember
     /// their" with a space is far more likely to be the model writing the name token and then an
@@ -172,7 +188,16 @@ internal static partial class PronounPlaceholder
     /// </para>
     /// </remarks>
     [GeneratedRegex(
-        @"CardiTrack[\s_-]*Cardi[\s_-]*Member[_-]*(?<form>They|Them|Their)['’]?s?\b",
+        @"CardiTrack[\s_-]*Cardi[\s_-]*Member[_-]*(?<form>They|Them|Their)(?:['’]s)?\b(?!['’])",
         RegexOptions.IgnoreCase)]
     private static partial Regex TokenPattern();
+
+    /// <summary>
+    /// What a leftover looks like: the token in any shape at all, whatever follows it. See
+    /// <see cref="IsPresentIn"/> for why this is the looser of the two.
+    /// </summary>
+    [GeneratedRegex(
+        @"CardiTrack[\s_-]*Cardi[\s_-]*Member[_-]*(?:They|Them|Their)",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex TokenPresencePattern();
 }

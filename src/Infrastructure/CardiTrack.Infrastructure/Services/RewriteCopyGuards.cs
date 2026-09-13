@@ -102,14 +102,31 @@ internal static partial class RewriteCopyGuards
         if (string.IsNullOrWhiteSpace(copy) || string.IsNullOrWhiteSpace(read))
             return null;
 
+        var copyText = SeparateVariability(copy);
+        var readText = SeparateVariability(read);
+
         foreach (var (family, words) in ReadingFamilies)
         {
-            if (Mentions(copy, words) && !Mentions(read, words))
+            if (Mentions(copyText, words) && !Mentions(readText, words))
                 return family;
         }
 
         return null;
     }
+
+    /// <summary>
+    /// Collapses "heart rate variability" to "hrv" so the two heart families do not overlap.
+    /// </summary>
+    /// <remarks>
+    /// The phrase contains the shorter family's own words, so a read that mentioned only
+    /// variability satisfied a summary claiming the heart rate itself — "heart rate was higher"
+    /// against "heart rate variability was lower" passed, though the read said nothing about the
+    /// rate. Rewriting the phrase before matching is what keeps both families' word lists plain
+    /// words: the alternative is a lookahead inside every heart-rate entry, which is a rule about
+    /// this one collision written five times.
+    /// </remarks>
+    private static string SeparateVariability(string text) =>
+        Regex.Replace(text, @"heart[\s-]*rate[\s-]*variability", "hrv", RegexOptions.IgnoreCase);
 
     /// <summary>
     /// The readings this platform takes, each with the everyday words a caregiver-facing sentence

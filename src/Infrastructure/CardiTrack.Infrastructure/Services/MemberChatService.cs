@@ -147,8 +147,10 @@ public class MemberChatService : IMemberChatService
         """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     /// <summary>Shown when a steer generation fails or comes back unusable — the redirect must
-    /// never be the thing that breaks.</summary>
-    private const string FallbackSteerReply =
+    /// never be the thing that breaks. Internal, like <see cref="CouldNotAnswerReply"/>, so the
+    /// tests that assert a caregiver saw this rather than the model's own sentence can name
+    /// it.</summary>
+    internal const string FallbackSteerReply =
         "I'm best at questions about your family member's readings, sleep, activity, and alerts — "
         + "ask me anything about those.";
 
@@ -576,7 +578,7 @@ public class MemberChatService : IMemberChatService
                 { IsAskingForAdvice: true } =>
                     await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
-                    await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, member?.Name, ct),
+                    await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, MemberVoice.For(member), ct),
                 _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
             };
 
@@ -921,9 +923,9 @@ public class MemberChatService : IMemberChatService
                     route.AsksForSpecifics, triageUsage, member,
                     advise ?? await PickAdviseAsync(route.AdviseTopic, cardiMemberId, member, utcNow), utcNow),
             MemberChatWorkflow.SteerCasual =>
-                await SteerAsync(flattened, triageUsage, casual: true, member?.Name, ct),
+                await SteerAsync(flattened, triageUsage, casual: true, MemberVoice.For(member), ct),
             MemberChatWorkflow.SteerOffTopic =>
-                await SteerAsync(flattened, triageUsage, casual: false, member?.Name, ct),
+                await SteerAsync(flattened, triageUsage, casual: false, MemberVoice.For(member), ct),
             MemberChatWorkflow.Inference =>
                 await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
             MemberChatWorkflow.Investigation =>
@@ -1049,11 +1051,10 @@ public class MemberChatService : IMemberChatService
         string flattened,
         AiUsage triageUsage,
         bool casual,
-        string? memberName,
+        MemberVoice voice,
         CancellationToken ct)
     {
         var instructions = casual ? CasualSteerInstructions : OffTopicSteerInstructions;
-        var name = NamePlaceholder.FirstName(memberName);
 
         string reply;
         AiUsage? steerUsage = null;
@@ -1062,8 +1063,18 @@ public class MemberChatService : IMemberChatService
             var steer = await _rewriteAi.GenerateStructuredWithUsageAsync<SteerAiResponse>(
                 BuildSteerPrompt(instructions, flattened), ct);
             steerUsage = steer.Usage;
-            var resolved = NamePlaceholder.Resolve(steer.Result.Reply.Trim(), name) ?? string.Empty;
-            reply = NamePlaceholder.IsPresentIn(resolved) || string.IsNullOrWhiteSpace(resolved)
+
+            // A steer is one sentence of redirection, and its brief carries no pronoun rule — it
+            // is a utility prompt, not prose about a member. It does hold the name token, though,
+            // and a model given a name reaches for a pronoun to go with it: "He is doing well" on
+            // a member whose sex is not on file is the same invented claim the cards refuse, made
+            // in the one place on this path that still resolved only the name. The canned redirect
+            // says as much as the model's own sentence did anyway.
+            var resolved = RewriteCopyGuards.StatesAnUnsupportedSex(steer.Result.Reply, voice.Gender)
+                ? string.Empty
+                : voice.Resolve(steer.Result.Reply.Trim()) ?? string.Empty;
+
+            reply = MemberVoice.IsUnresolvedIn(resolved) || string.IsNullOrWhiteSpace(resolved)
                 ? FallbackSteerReply
                 : CapReply(resolved);
         }

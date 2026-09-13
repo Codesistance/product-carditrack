@@ -120,13 +120,14 @@ internal static partial class NamePlaceholder
     /// <remarks>
     /// The lookahead keeps this pattern off <see cref="PronounPlaceholder"/>'s three tokens, which
     /// are built on this one: without it "CardiTrackCardiMemberTheir" resolves to "DadTheir",
-    /// which is neither a name nor a pronoun and would reach a caregiver as both. It admits no
-    /// separator before the suffix, unlike the token's own two halves, so the far commoner
-    /// "CardiTrackCardiMember their doctor" — the name token and then an ordinary word — still
-    /// resolves the name.
+    /// which is neither a name nor a pronoun and would reach a caregiver as both. It admits the
+    /// same <c>[_-]</c> separators that pattern does, and whitespace for neither reason it does:
+    /// "CardiTrackCardiMember their doctor" is the name token followed by an ordinary word far
+    /// more often than it is a mangled pronoun token, and swallowing the name there would cost a
+    /// caregiver the one word this mechanism exists to produce.
     /// </remarks>
     [GeneratedRegex(
-        @"CardiTrack[\s_-]*Cardi[\s_-]*Member(?!(?:They|Them|Their)\b)",
+        @"CardiTrack[\s_-]*Cardi[\s_-]*Member(?![_-]*(?:They|Them|Their)\b)",
         RegexOptions.IgnoreCase)]
     private static partial Regex TokenPattern();
 }

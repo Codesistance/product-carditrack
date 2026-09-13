@@ -280,6 +280,52 @@ public class DigestGenerationServiceTests
             Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// The one exception to that gate, and it is not about the readings. A digest row carries no
+    /// prompt version, so a summary written before the rewrite brief asked for pronoun tokens —
+    /// holding whichever sex the model chose — would otherwise sit on the card of a member whose
+    /// readings have stopped moving, and never be looked at again.
+    /// </summary>
+    [Fact]
+    public async Task Regenerates_WhenTheStoredSummaryStatesASexTheRecordDoesNotBearOut()
+    {
+        _members.GetByIdAsync(_memberId).Returns(MemberWithNoSexOnFile());
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                // Newer than the readings, so the ordinary gate would stop here.
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "He slept well and his heart rate was steady.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+    }
+
+    /// <summary>
+    /// And the gate still holds for a stored summary whose sex the record bears out — this member
+    /// is on file as female, so "her" is the word the code would have chosen itself.
+    /// </summary>
+    [Fact]
+    public async Task Skips_WhenTheStoredSummarysSexIsTheRecordsOwn()
+    {
+        _digests.GetLatestAsync(_memberId, DigestAudience.Family, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = Today,
+                GeneratedAtUtc = DataLandedAt.AddMinutes(1),
+                Text = "She slept well and her heart rate was steady.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+    }
+
     // What keeps "recompute on every update" from meaning "re-run the fleet on every pass".
     [Fact]
     public async Task Skips_WhenNoDataHasLandedSinceTheLastSummary()
@@ -809,10 +855,11 @@ public class DigestGenerationServiceTests
     }
 
     /// <summary>
-    /// The headline from the card that prompted all of this. The read compared a 119 bpm daytime
-    /// peak against a resting baseline of 75; the family's card was titled "Elevated resting heart
-    /// rate", over a summary saying the rate ran slightly higher than usual. A title is read on its
-    /// own, and that one is a clinician's finding — the register the caregiver block rules out.
+    /// The headline from the card that prompted all of this. The read compared a daytime
+    /// heart-rate peak against the member's much lower resting baseline; the family's card was
+    /// titled "Elevated resting heart rate", over a summary saying the rate ran slightly higher
+    /// than usual. A title is read on its own, and that one is a clinician's finding — the
+    /// register the caregiver block rules out.
     /// </summary>
     [Theory]
     [InlineData("Elevated resting heart rate")]
@@ -971,6 +1018,49 @@ public class DigestGenerationServiceTests
         var member = Member();
         member.Gender = Gender.PreferNotToSay;
         return member;
+    }
+
+    /// <summary>
+    /// A title is a claim about the day in three words, and it is the line a family reads first.
+    /// "Oxygen levels stable" over a read that never mentioned oxygen is the summary's own
+    /// invention, moved to the one field that was not being grounded.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineNamesAReadingTheReadDidNot()
+    {
+        ReturnsClinicalRead("Heart rate and sleep both sit within this member's usual range.");
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "Oxygen levels stable",
+                Summary = "A settled day: steady heart rate and a good night's sleep.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == null), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The question topic travels in the text the rewrite is sent, but it is a subject to ask the
+    /// family about, not a reading anyone took — so it cannot vouch for a measurement the summary
+    /// claims. Grounding on it would have let this summary through.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenOnlyTheQuestionTopicNamedTheReading()
+    {
+        ReturnsClinicalRead(
+            "Heart rate sits within this member's usual range.",
+            questionTopic: "what their evenings and sleep usually look like");
+        ReturnsSummary("Her sleep was shorter than usual last night.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>

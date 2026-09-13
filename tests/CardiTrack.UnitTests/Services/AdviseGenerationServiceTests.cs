@@ -372,6 +372,45 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
+    /// A hiccup keeps the previous row, because the previous suggestion beats none — unless that
+    /// row is the thing the guard exists to stop. A row written before the brief asked for pronoun
+    /// tokens holds whichever sex the model chose, and a rewrite that keeps failing would leave it
+    /// on the card indefinitely. None beats a suggestion that calls this member "he".
+    /// </summary>
+    [Fact]
+    public async Task AStoredRowStatingTheWrongSex_IsWithdrawn_WhenThePassCannotReplaceIt()
+    {
+        var existing = ExistingRow(_memberId);
+        existing.Summary = "His steps have been below usual this week.";
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+        // This pass produces nothing to replace it with: the copy fails the same guard.
+        RewriteAnswers(ActivityCopy(summary: "He has been walking less than usual this week."));
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        _advises.Received(1).Remove(existing);
+        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The same row, on a pass whose copy is sound, is overwritten rather than withdrawn — the
+    /// withdrawal is the last resort, not the first answer.
+    /// </summary>
+    [Fact]
+    public async Task AStoredRowStatingTheWrongSex_IsOverwritten_WhenThePassProducesSoundCopy()
+    {
+        var existing = ExistingRow(_memberId);
+        existing.Summary = "His steps have been below usual this week.";
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        _advises.DidNotReceive().Remove(Arg.Any<MemberAdvise>());
+        Assert.Equal("Steps have been below her usual this week.", existing.Summary);
+    }
+
+    /// <summary>
     /// A member with no name on file cannot have the token resolved, and a leftover token must
     /// never reach a caregiver — the entry is a hiccup, keeping whatever row already serves.
     /// </summary>

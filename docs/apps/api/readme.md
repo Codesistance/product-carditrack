@@ -311,8 +311,11 @@ eventual change is adding those two `DeviceTypes` to element 0, not a new block.
   verbatim to the log under event id 4200 `ClinicalInspection`, so the clinical output can be
   read during development. It is the one exception to the client's DPIA invariant, and a host
   whose `ASPNETCORE_ENVIRONMENT` is `Prod` refuses to start with it on. `AI__Rewrite__LogClinicalOutput`
-  is the Rewrite slot's twin — read only when `AI__Rewrite__Kind` is `Ollama`, so inert on deployed
-  hosts (VertexGemini) — with the same production refusal.
+  is the Rewrite slot's twin, read on both kinds: `MedGemmaClient` locally and `VertexAiClient` on
+  deployed hosts, which write under the same event id so one filter pairs a clinical read with the
+  copy written from it. It carries the same production refusal, checked for the section rather than
+  for a provider — Terraform sets it `true` in dev, where it therefore does log Vertex prompts and
+  completions verbatim.
 
 Both resolve as keyed `IExternalAiClient` services ("GeneralProvider" / "MedicalProvider")
 behind `IGenerativeAiService`, `IMedicalAiService`, `IHealthInsightService`, and
