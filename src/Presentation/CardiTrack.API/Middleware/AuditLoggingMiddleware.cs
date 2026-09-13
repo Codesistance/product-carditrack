@@ -194,9 +194,17 @@ public class AuditLoggingMiddleware
     /// <summary>
     /// Pulls the member id out of the route. Null is legitimate — some audited endpoints take
     /// the member in the body or span several — and the entry is still worth writing without it.
+    /// An action that only knows the member after it has run (a create) hands the id over in
+    /// <see cref="HttpContext.Items"/>, which wins over the route.
     /// </summary>
     private static Guid? ResolveCardiMemberId(HttpContext httpContext)
     {
+        if (httpContext.Items.TryGetValue(AuditHealthDataAccessAttribute.CardiMemberIdItemKey, out var handed)
+            && handed is Guid handedId && handedId != Guid.Empty)
+        {
+            return handedId;
+        }
+
         foreach (var key in CardiMemberRouteKeys)
         {
             if (httpContext.Request.RouteValues.TryGetValue(key, out var raw)

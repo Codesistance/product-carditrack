@@ -58,9 +58,12 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 12 | `DeviceActivityLogs` | **Raw per-device rows.** Easy to miss — `ActivityLogs` is the merged view, this is the source |
 | 13 | `ActivityLogs` | The primary daily store. **No partition drop covers this table** — retained indefinitely unless deleted here |
 | 14 | `MemberQuestionnaires` | Question text and free-text answers, AES-256-GCM encrypted at rest |
-| 15 | `DeviceConnections` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
-| 16 | `UserCardiMembers` | Cascades, but delete explicitly so the count is verifiable |
-| 17 | `CardiMembers` | Emergency contacts, medical notes **and the profile-photo object name** live on this row |
+| 15 | `MemberChatSessions` | Caregiver Q&A about this member — the full question and answer text per turn, plus the encrypted theme. `MemberChatTurns` and `MemberChatTurnUsages` cascade from the session (`MemberChatSessionConfiguration`), but re-query both to verify the count. Also carries `UserId`. **No partition drop and no retention worker covers these** — retained indefinitely unless deleted here |
+| 16 | `MemberAdvises` | The current "Something to try" suggestion — one row per member per topic, derived from health data; overwritten on each regeneration, so this is the whole history |
+| 17 | `MetricAlarms` (member rows) | Caregiver-defined alarms **tuned for this member** — rows where `CardiMemberId` is this member. Account-level rows (`CardiMemberId` null) are account-scoped, below |
+| 18 | `DeviceConnections` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
+| 19 | `UserCardiMembers` | Cascades, but delete explicitly so the count is verifiable |
+| 20 | `CardiMembers` | Emergency contacts, medical notes **and the profile-photo object name** live on this row |
 
 **Profile photo blob (GCS) — not a table, easy to miss.** The member's profile photo lives outside Postgres, in the private member-photos bucket, under `members/<cardiMemberId>/`. The app hard-deletes the blob on normal member removal, but an erasure must not trust that: delete the member's whole prefix explicitly (before or after the table sweep — nothing references it):
 
@@ -74,10 +77,12 @@ The bucket name is environment-specific (dev: `carditrack-490120-carditrack-dev-
 
 | Order | Table | Notes |
 |---|---|---|
-| 18 | `PushDeviceTokens` | Encrypted tokens; the designed 30-day post-disable hard delete is **not enforced** |
-| 19 | `NotificationPreferences` | Quiet hours, per-category mutes |
-| 20 | `Subscriptions` | Keyed on `OrganizationId` |
-| 21 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
+| 21 | `PushDeviceTokens` | Encrypted tokens; the designed 30-day post-disable hard delete is **not enforced** |
+| 22 | `NotificationPreferences` | Quiet hours, per-category mutes |
+| 23 | `ExportConsents` | Keyed on `OwnerUserId`; each row carries the ids of the members that export covered, so it names members after they are gone |
+| 24 | `MetricAlarms` (account rows) | Rows where `CardiMemberId` is null — the account-wide defaults, keyed on `OrganizationId` |
+| 25 | `Subscriptions` | Keyed on `OrganizationId` |
+| 26 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
 
 Reports are cached with a 1-hour TTL and generated fire-and-forget in-process, so there is no durable report table to clear.
 
