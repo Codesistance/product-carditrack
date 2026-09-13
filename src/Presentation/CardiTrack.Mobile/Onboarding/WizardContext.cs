@@ -42,6 +42,13 @@ public sealed class WizardContext
     /// </summary>
     public bool ExitedToDashboard { get; private set; }
 
+    /// <summary>
+    /// Fired when "Go to Dashboard" replaces the window root. The modal is never popped on
+    /// that path, so <c>ModalPopped</c> does not run and the launcher has to hear this
+    /// instead or it waits forever for a result that will not come.
+    /// </summary>
+    public event EventHandler? DashboardExit;
+
     private WizardContext(WizardOrigin origin, CardiMemberResponse? member)
     {
         Origin = origin;
@@ -61,32 +68,26 @@ public sealed class WizardContext
         : current.Navigation.PopModalAsync();
 
     /// <summary>
-    /// Terminal exit for the step whose button names the dashboard. Always lands on the
-    /// dashboard tab — never on the OAuth browser that authorized the device, and never on
+    /// Terminal exit for the step whose button names the dashboard. Always roots a fresh
+    /// <see cref="AppShell"/> on the dashboard tab — never pops the wizard, never walks
+    /// back into the OAuth browser that authorized the device, and never returns to
     /// whatever launched the wizard (device management, a post-login resume).
     /// </summary>
     public async Task GoToDashboardAsync(Page current)
     {
         ExitedToDashboard = true;
 
-        // Custom Tabs left in the Android task would otherwise become the activity "Go to
-        // Dashboard" walks back into. Dismiss them before we swap the root or pop the modal.
-        AppForeground.BringToFront();
-
-        if (Origin == WizardOrigin.OnboardingRoot)
+        // A modal pop (or any ".." unwind) leaves the Custom Tab / Chrome task as the
+        // next thing Android shows. Replace the window so there is no history to walk
+        // back through, then bring this task to the front after the shell is up.
+        var shell = new AppShell();
+        await MainThread.InvokeOnMainThreadAsync(() =>
         {
-            var shell = new AppShell();
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
-                WindowNavigation.SetRootPage(current, shell);
-            });
-            await GoToDashboardTabAsync(shell);
-            return;
-        }
-
-        await current.Navigation.PopModalAsync();
-        if (Shell.Current is { } currentShell)
-            await GoToDashboardTabAsync(currentShell);
+            WindowNavigation.SetRootPage(current, shell);
+        });
+        await GoToDashboardTabAsync(shell);
+        AppForeground.BringToFront();
+        DashboardExit?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

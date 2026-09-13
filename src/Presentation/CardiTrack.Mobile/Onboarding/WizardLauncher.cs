@@ -23,8 +23,9 @@ internal static class WizardLauncher
 
     /// <summary>
     /// Pushes the wizard in its own modal <see cref="NavigationPage"/> stack. The returned task
-    /// completes when the modal is dismissed — wizard exit, Android hardware back, or iOS swipe —
-    /// via the application's ModalPopped event, so callers can always await the outcome.
+    /// completes when the wizard exits — modal pop (Cancel / Done / hardware back / iOS swipe)
+    /// via <c>ModalPopped</c>, or "Go to Dashboard" via <see cref="WizardContext.DashboardExit"/>
+    /// because that path replaces the window instead of popping.
     /// </summary>
     /// <param name="showBaselineIntro">
     /// Pass false when the member already has a connected device, so success exits straight
@@ -40,15 +41,26 @@ internal static class WizardLauncher
         var tcs = new TaskCompletionSource<WizardResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var app = global::Microsoft.Maui.Controls.Application.Current!;
+        void Complete()
+        {
+            app.ModalPopped -= OnPopped;
+            ctx.DashboardExit -= OnDashboardExit;
+            tcs.TrySetResult(new WizardResult(ctx.MemberCreated, ctx.DeviceConnected, ctx.ExitedToDashboard));
+        }
+
         void OnPopped(object? sender, ModalPoppedEventArgs e)
         {
             if (!ReferenceEquals(e.Modal, wizardNav))
                 return;
-            app.ModalPopped -= OnPopped;
-            tcs.TrySetResult(new WizardResult(ctx.MemberCreated, ctx.DeviceConnected, ctx.ExitedToDashboard));
+            Complete();
         }
 
+        // "Go to Dashboard" replaces the window rather than popping this modal, so
+        // ModalPopped never runs for it. Complete on that signal too.
+        void OnDashboardExit(object? sender, EventArgs e) => Complete();
+
         app.ModalPopped += OnPopped;
+        ctx.DashboardExit += OnDashboardExit;
         try
         {
             await navigation.PushModalAsync(wizardNav);
@@ -60,6 +72,7 @@ internal static class WizardLauncher
             // on an application-lifetime event, one leak per failed attempt, and the
             // awaited task below could never complete.
             app.ModalPopped -= OnPopped;
+            ctx.DashboardExit -= OnDashboardExit;
             throw;
         }
         return await tcs.Task;

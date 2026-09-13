@@ -15,14 +15,24 @@ internal static class AppForeground
         if (activity is null)
             return;
 
-        // CLEAR_TOP finishes anything sitting above MainActivity in this task (the Custom
-        // Tab). REORDER_TO_FRONT covers the case where Chrome opened a separate task.
-        var intent = new Android.Content.Intent(activity, activity.Class);
+        // Always retarget MainActivity. Starting CurrentActivity.Class used to relaunch
+        // the callback activity (or a Custom Tab) when that was still "current", which
+        // is exactly the browser "Go to Dashboard" must not walk back into.
+        var intent = new Android.Content.Intent(activity, typeof(Platforms.Android.MainActivity));
         intent.AddFlags(
             Android.Content.ActivityFlags.ClearTop
             | Android.Content.ActivityFlags.SingleTop
-            | Android.Content.ActivityFlags.ReorderToFront);
+            | Android.Content.ActivityFlags.ReorderToFront
+            | Android.Content.ActivityFlags.NewTask);
         activity.StartActivity(intent);
+
+        // CLEAR_TOP finishes a Custom Tab sitting above us in this task. A sibling Chrome
+        // task is a different stack — MoveTaskToFront is what puts ours back on screen.
+        if (activity is Platforms.Android.MainActivity
+            && activity.GetSystemService(Android.Content.Context.ActivityService) is Android.App.ActivityManager manager)
+        {
+            manager.MoveTaskToFront(activity.TaskId, Android.App.MoveTaskFlags.None);
+        }
 #endif
     }
 }
