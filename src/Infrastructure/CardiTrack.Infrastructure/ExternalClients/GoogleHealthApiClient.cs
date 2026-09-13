@@ -721,7 +721,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
                 stretchWindows = UnionSleepWindows(
                     sleep.SessionWindows, await ListSleepWindowsStartingOnAsync(accessToken, date));
             }
-            catch (GoogleHealthApiException ex) when (!ex.IsMalformedRequest)
+            catch (Exception ex) when (IsEnrichmentFailure(ex))
             {
                 // Bedtime clipping is enrichment. A transient failure on tomorrow's list
                 // must not discard today's snapshot — the ended night still clips the
@@ -1640,6 +1640,19 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// from "this account has no such data", which some callers tolerate. Parsed best-effort: an
     /// unparseable or differently-shaped error body is not treated as a request bug.
     /// </summary>
+    /// <summary>
+    /// Failures that must not discard a snapshot whose night already arrived. A malformed
+    /// filter is a bug in this client and still throws.
+    /// </summary>
+    private static bool IsEnrichmentFailure(Exception ex) => ex switch
+    {
+        GoogleHealthApiException { IsMalformedRequest: true } => false,
+        GoogleHealthApiException => true,
+        HttpRequestException => true,
+        TaskCanceledException => true,
+        _ => false,
+    };
+
     private bool IsMalformedRequest(int statusCode, string body)
     {
         if (statusCode != 400 || !JsonUtility.TryParse(body, out var root, out _))
