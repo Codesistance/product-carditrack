@@ -134,11 +134,13 @@ public class UserService : IUserService
         var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
         if (user == null) return false;
 
-        // Keep the first acknowledgment timestamp — it is the compliance-relevant one
+        // Keep the first acknowledgment timestamp — it is the compliance-relevant one. The
+        // repository stamps it conditionally in a single statement, so two devices dismissing
+        // at the same moment cannot each read "not yet" and both write; whichever lands first
+        // is the record and the other is a no-op that still counts as acknowledged.
         if (user.HealthDataDisclosureDismissedDate != null) return true;
 
-        user.HealthDataDisclosureDismissedDate = DateTime.UtcNow;
-        await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.Users.TryRecordHealthDataDisclosureDismissalAsync(auth0UserId, DateTime.UtcNow);
         return true;
     }
 

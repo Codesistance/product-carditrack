@@ -74,8 +74,9 @@ public sealed class HealthDataDisclosureBanner : Border
             TextColor = ControlResources.Color("BodyText", Colors.DarkGray),
             BackgroundColor = Colors.Transparent,
             Padding = new Thickness(6, 0),
-            MinimumWidthRequest = 32,
-            MinimumHeightRequest = 32,
+            // The mobile spec's 48×48dp floor for every tappable element (ui_screens_maui_mobile.md).
+            MinimumWidthRequest = 48,
+            MinimumHeightRequest = 48,
             VerticalOptions = LayoutOptions.Center,
         };
         SemanticProperties.SetDescription(_dismiss, "Dismiss the health data disclosure");
