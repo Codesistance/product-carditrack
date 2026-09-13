@@ -23,8 +23,9 @@ public partial class DeviceSelectionPage : ContentPage
 
         if (ctx.Origin == WizardOrigin.Modal)
         {
-            // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply.
-            Header.Step = string.Empty;
+            // Mid-flow entry: the onboarding "Step N of 4" story doesn't apply, but
+            // the header still needs the caption line every other page carries.
+            Header.Step = "The wearables they already own";
             Header.Progress = 0;
         }
     }

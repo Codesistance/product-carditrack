@@ -687,7 +687,7 @@ Each device card:
 - Progress indicator: "Step 4 of 4"
 
 **Illustration:**
-- Static `icon_monitoring` glyph in the app's tinted icon tile (not emoji).
+- Static `icon_metric_heart` glyph in the app's tinted icon tile (not the clock `icon_monitoring` draws, and not emoji).
 
 **Explanation:**
 - Heading: `$"Getting to know {_member.Name}"` (name interpolated)
@@ -2123,7 +2123,7 @@ Icons use **SF Symbols** (iOS) and **Material Symbols** (Android) — no custom 
 | 1 | Success checkmark | M1-07 | LottieFiles — search "success checkmark" (free options available). **As built:** `icon_status_check` on the status-green tile the dashboard uses, no animation. |
 | 2 | Shimmer / skeleton loading | M1-09, M1-10, M2-03 | **As built:** custom `SkeletonView` control (M1-09). |
 | 3 | Critical alert pulse | M1-12 | XAML/CSS animation — opacity + scale loop on severity banner |
-| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." **As built:** `icon_monitoring` in the app's tinted icon tile, no Lottie. |
+| 4 | Learning phase brain/gears | M1-08 | LottieFiles — search "machine learning" or "brain processing." **As built:** `icon_metric_heart` in the app's tinted icon tile, no Lottie. |
 
 #### Third-Party Logos (vendor-provided, no design needed)
 

@@ -5,48 +5,50 @@
              x:Class="CardiTrack.Mobile.Controls.WizardHeader"
              x:Name="Root">
 
-    <!-- Onboarding header shared by M1-04..M1-08: back button, title, step indicator, and a
-         progress bar sitting on the gradient. The gradient itself is HeaderBand's, the same one
-         the dashboard and the auth screens use. Default padding clears the status bar when the
-         host page does not claim a top safe-area; pages that pin this header outside the
-         scroller (M1-07 / M1-08) pass the compact Alerts/Dashboard inset instead. The band
-         sizes to its content rather than to a fixed height, so a wrapped title can't clip. -->
+    <!-- Same chrome as Alerts / Device Management / Dashboard: circular icon spanning
+         title-to-subtitle, Heading3 + CaptionOnBand, 12dp column gap. The progress bar
+         is the only wizard-only extra, and it stays hidden when Progress is 0 so the
+         terminal steps (M1-07 / M1-08) match those screens exactly. -->
     <controls:HeaderBand ContentPadding="{Binding ContentPadding, Source={x:Reference Root}, x:DataType=controls:WizardHeader}">
-        <Grid RowDefinitions="Auto,Auto" RowSpacing="22">
+        <Grid RowDefinitions="Auto,Auto" RowSpacing="12">
 
             <Grid Grid.Row="0"
                   ColumnDefinitions="Auto,*"
-                  ColumnSpacing="16">
+                  ColumnSpacing="12">
 
-                <Border x:Name="BackButton"
+                <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
-                        WidthRequest="40" HeightRequest="40"
-                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        MinimumHeightRequest="40"
                         StrokeThickness="0"
-                        VerticalOptions="Start"
-                        SemanticProperties.Description="Go back">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="20"/>
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnBackTapped"/>
-                    </Border.GestureRecognizers>
-                    <Image Source="icon_back_white.svg"
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image x:Name="HeaderIconImage"
+                           Source="icon_back_white.svg"
                            WidthRequest="20" HeightRequest="20"
                            HorizontalOptions="Center" VerticalOptions="Center"/>
-                </Border>
+                </controls:SquareBorder>
 
-                <VerticalStackLayout Grid.Column="1" Spacing="4">
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
                     <Label Text="{Binding Title, Source={x:Reference Root}, x:DataType=controls:WizardHeader}"
                            Style="{StaticResource Heading3}"
-                           TextColor="{StaticResource White}" />
-                    <Label Text="{Binding Step, Source={x:Reference Root}, x:DataType=controls:WizardHeader}"
-                           Style="{StaticResource Body1SemiBold}" />
+                           TextColor="{StaticResource White}"
+                           LineBreakMode="TailTruncation"/>
+                    <Label x:Name="StepLabel"
+                           Text="{Binding Step, Source={x:Reference Root}, x:DataType=controls:WizardHeader}"
+                           Style="{StaticResource CaptionOnBand}"
+                           LineBreakMode="TailTruncation"
+                           IsVisible="False"/>
                 </VerticalStackLayout>
             </Grid>
 
             <!-- Figma M1-04 progress bar: 8px white pill track, gradient pill fill.
-                 Hidden until Progress > 0 (some wizard screens have no progress bar). -->
+                 Hidden until Progress > 0 (terminal wizard screens have no progress bar). -->
             <Border x:Name="StepProgress"
                     Grid.Row="1"
                     HeightRequest="8"

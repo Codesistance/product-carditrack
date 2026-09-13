@@ -16,7 +16,9 @@
 
         <controls:WizardHeader Grid.Row="0"
                                Title="Device Connection"
+                               Step="Their wearable is ready"
                                IsBackVisible="False"
+                               IconSource="icon_reason_device_white.svg"
                                ContentPadding="20,14,20,16"/>
 
         <ScrollView Grid.Row="1">

@@ -8,19 +8,20 @@
              NavigationPage.HasNavigationBar="False"
              BackgroundColor="{StaticResource PageGround}">
 
-    <ScrollView>
-        <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,*"
+          SafeAreaEdges="None, Container, None, None">
 
             <controls:WizardHeader x:Name="Header"
                                    Grid.Row="0"
                                    Title="Add First CardiMember"
                                    Step="Step 2 of 4"
                                    Progress="0.45"
-                                   BackRequested="OnBackRequested"/>
+                                   BackRequested="OnBackRequested"
+                                   ContentPadding="20,14,20,16"/>
 
             <!-- Full-bleed form body (M1-04) -->
-            <Grid Grid.Row="1"
-                  Padding="20,24,20,36">
+            <ScrollView Grid.Row="1">
+            <Grid Padding="20,24,20,36">
                 <VerticalStackLayout Spacing="0">
 
                     <Label Text="Who would you like to look after?"
@@ -193,6 +194,6 @@
 
                 </VerticalStackLayout>
             </Grid>
-        </Grid>
-    </ScrollView>
+            </ScrollView>
+    </Grid>
 </ContentPage>

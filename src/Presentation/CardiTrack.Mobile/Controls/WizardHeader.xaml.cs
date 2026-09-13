@@ -3,16 +3,20 @@ namespace CardiTrack.Mobile.Controls;
 public partial class WizardHeader : ContentView
 {
     public static readonly BindableProperty TitleProperty =
-        BindableProperty.Create(nameof(Title), typeof(string), typeof(WizardHeader), string.Empty);
+        BindableProperty.Create(nameof(Title), typeof(string), typeof(WizardHeader), string.Empty,
+            propertyChanged: (b, _, _) => ((WizardHeader)b).ApplyIcon());
 
     public static readonly BindableProperty StepProperty =
-        BindableProperty.Create(nameof(Step), typeof(string), typeof(WizardHeader), string.Empty);
+        BindableProperty.Create(nameof(Step), typeof(string), typeof(WizardHeader), string.Empty,
+            propertyChanged: (b, _, _) => ((WizardHeader)b).ApplyStepVisibility());
 
     public static readonly BindableProperty ProgressProperty =
         BindableProperty.Create(nameof(Progress), typeof(double), typeof(WizardHeader), 0d,
             propertyChanged: (b, _, v) =>
             {
                 var header = (WizardHeader)b;
+                if (header.StepProgress is null)
+                    return;
                 header.StepProgress.IsVisible = (double)v > 0;
                 header.UpdateProgressFill();
 
@@ -22,7 +26,17 @@ public partial class WizardHeader : ContentView
 
     public static readonly BindableProperty IsBackVisibleProperty =
         BindableProperty.Create(nameof(IsBackVisible), typeof(bool), typeof(WizardHeader), true,
-            propertyChanged: (b, _, v) => ((WizardHeader)b).BackButton.IsVisible = (bool)v);
+            propertyChanged: (b, _, _) => ((WizardHeader)b).ApplyIcon());
+
+    /// <summary>
+    /// Glyph in the left circle when <see cref="IsBackVisible"/> is false. Terminal steps
+    /// still show the circle — every other header in the app does — they just do not
+    /// offer a back action. Ignored while back is shown.
+    /// </summary>
+    public static readonly BindableProperty IconSourceProperty =
+        BindableProperty.Create(nameof(IconSource), typeof(string), typeof(WizardHeader),
+            "icon_home_white.svg",
+            propertyChanged: (b, _, _) => ((WizardHeader)b).ApplyIcon());
 
     /// <summary>
     /// Inset inside the gradient band. Defaults to the status-bar-clearing padding the
@@ -39,6 +53,8 @@ public partial class WizardHeader : ContentView
     {
         InitializeComponent();
         StepProgress.SizeChanged += (_, _) => UpdateProgressFill();
+        ApplyStepVisibility();
+        ApplyIcon();
     }
 
     private void UpdateProgressFill()
@@ -47,6 +63,31 @@ public partial class WizardHeader : ContentView
             return;
 
         StepProgressFill.WidthRequest = StepProgress.Width * Math.Clamp(Progress, 0d, 1d);
+    }
+
+    private void ApplyStepVisibility()
+    {
+        if (StepLabel is null)
+            return;
+        StepLabel.IsVisible = !string.IsNullOrWhiteSpace(Step);
+    }
+
+    private void ApplyIcon()
+    {
+        if (HeaderIcon is null || HeaderIconImage is null)
+            return;
+
+        if (IsBackVisible)
+        {
+            HeaderIconImage.Source = "icon_back_white.svg";
+            HeaderIcon.InputTransparent = false;
+            SemanticProperties.SetDescription(HeaderIcon, "Go back");
+            return;
+        }
+
+        HeaderIconImage.Source = string.IsNullOrWhiteSpace(IconSource) ? "icon_home_white.svg" : IconSource;
+        HeaderIcon.InputTransparent = true;
+        SemanticProperties.SetDescription(HeaderIcon, string.IsNullOrWhiteSpace(Title) ? "Header" : Title);
     }
 
     public string Title
@@ -73,6 +114,12 @@ public partial class WizardHeader : ContentView
         set => SetValue(IsBackVisibleProperty, value);
     }
 
+    public string IconSource
+    {
+        get => (string)GetValue(IconSourceProperty);
+        set => SetValue(IconSourceProperty, value);
+    }
+
     public Thickness ContentPadding
     {
         get => (Thickness)GetValue(ContentPaddingProperty);
@@ -81,6 +128,9 @@ public partial class WizardHeader : ContentView
 
     private async void OnBackTapped(object? sender, EventArgs e)
     {
+        if (!IsBackVisible)
+            return;
+
         if (BackRequested is not null)
         {
             BackRequested.Invoke(this, EventArgs.Empty);
