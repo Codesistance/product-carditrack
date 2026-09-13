@@ -201,11 +201,11 @@ resource "google_secret_manager_secret_version" "app_secrets" {
 # fails at runtime the moment a device endpoint is hit.
 #
 # ignore_changes on the version is load-bearing, not cosmetic. Rotating this key
-# makes every token already encrypted under the old one undecryptable — the v2
-# envelope records which key id wrote a value (`AesEncryptionService`), which tells
-# you what happened but does not decrypt it without that key. Environments that
-# already hold a value therefore keep it; only a fresh environment takes the
-# generated one.
+# makes every token already encrypted under the old one undecryptable — the
+# versioned envelope (`v1:{keyId}:{base64}`, `AesEncryptionService`) records which key
+# id wrote a value, which tells you what happened but does not decrypt it without
+# that key. Environments that already hold a value keep it; only a fresh one takes
+# the generated value.
 #
 # That same ignore_changes is what makes REPLACING this secret dangerous, and the
 # replication block below is the way someone would do it by accident. `replication`
