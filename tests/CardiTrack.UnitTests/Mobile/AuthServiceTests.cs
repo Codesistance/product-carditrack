@@ -251,6 +251,90 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task SignIn_AdvancesTheSession_BeforeTheNewTokensAreVisible()
+    {
+        var session = new SessionGeneration();
+        var pending = Substitute.For<IPendingNavigation>();
+        var warmer = Substitute.For<IOfflineCacheWarmer>();
+        var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
+        _auth0.LoginAsync("a@b.com", "pw", Arg.Any<CancellationToken>()).Returns(tokens);
+        var generationAtSave = -1;
+        _store.SaveAsync(tokens).Returns(_ =>
+        {
+            generationAtSave = session.Current;
+            return Task.CompletedTask;
+        });
+        var sut = new AuthService(
+            _auth0, _store, _refresher, _browser, Options,
+            warmer: warmer, session: session, pendingNavigation: pending);
+        var before = session.Current;
+
+        await sut.SignInAsync("a@b.com", "pw");
+
+        Assert.Equal(before + 1, generationAtSave);
+        pending.Received(1).Discard();
+        warmer.Received(1).ResumeAfterSignOut();
+    }
+
+    [Fact]
+    public async Task SocialSignIn_AdvancesTheSession_BeforeTheNewTokensAreVisible()
+    {
+        var session = new SessionGeneration();
+        var (_, state) = StubAuthorizeUri();
+        StubCallback(() => new Dictionary<string, string>
+        {
+            ["state"] = state()!,
+            ["code"] = "code789",
+        });
+        var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
+        _auth0.ExchangeAuthorizationCodeAsync("code789", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(tokens);
+        var generationAtSave = -1;
+        _store.SaveAsync(tokens).Returns(_ =>
+        {
+            generationAtSave = session.Current;
+            return Task.CompletedTask;
+        });
+        var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, session: session);
+        var before = session.Current;
+
+        await sut.SignInWithProviderAsync(Auth0Options.GoogleConnection);
+
+        Assert.Equal(before + 1, generationAtSave);
+    }
+
+    [Fact]
+    public void SessionExpired_AdvancesTheSession_AndDiscardsAPendingDestination()
+    {
+        var session = new SessionGeneration();
+        var pending = Substitute.For<IPendingNavigation>();
+        var sut = new AuthService(
+            _auth0, _store, _refresher, _browser, Options, session: session, pendingNavigation: pending);
+        _ = sut;
+        var before = session.Current;
+
+        _refresher.SessionExpired += Raise.Event<Action>();
+
+        Assert.Equal(before + 1, session.Current);
+        pending.Received(1).Discard();
+    }
+
+    [Fact]
+    public async Task SignOut_DoesNotResumeTheWarmer_WhenTheWipeFails()
+    {
+        var cache = Substitute.For<IOfflineReadCache>();
+        var warmer = Substitute.For<IOfflineCacheWarmer>();
+        _store.GetAsync().Returns(Tokens());
+        cache.ClearAsync(Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new IOException("disk full"));
+        var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, cache, warmer: warmer);
+
+        await Assert.ThrowsAsync<IOException>(() => sut.SignOutAsync());
+
+        warmer.DidNotReceive().ResumeAfterSignOut();
+    }
+
+    [Fact]
     public async Task VerifyPassword_ProvesAgainstAuth0_WithoutSavingTokens()
     {
         var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));

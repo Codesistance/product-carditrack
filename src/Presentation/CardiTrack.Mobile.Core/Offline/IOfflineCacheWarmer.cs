@@ -15,9 +15,10 @@ public interface IOfflineCacheWarmer
     Task RefreshAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Cancels the shared run and waits for its in-flight GETs to stop writing. Sign-out must
-    /// call this before it clears tokens and the cache, otherwise a late completion can put
-    /// the previous caregiver's answers back under the next session's key.
+    /// Cancels the shared run and waits for its in-flight GETs to stop writing. The caller
+    /// token does not abort that wait — sign-out must not wipe tokens and the cache while
+    /// a GET can still complete. Call this before clearing either, otherwise a late
+    /// completion can put the previous caregiver's answers back under the next session's key.
     /// </summary>
     Task DrainForSignOutAsync(CancellationToken ct = default);
 

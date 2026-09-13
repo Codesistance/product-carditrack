@@ -121,13 +121,13 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
 
         if (!TryDecrypt(dek, file, out var payload, out var cachedAt))
         {
-            await RemoveAsync(key, ct);
+            await RemoveAsync(key, epoch, ct);
             return null;
         }
 
         if (_clock.GetUtcNow() - cachedAt > IOfflineReadCache.Lifetime)
         {
-            await RemoveAsync(key, ct);
+            await RemoveAsync(key, epoch, ct);
             return null;
         }
 
@@ -229,13 +229,21 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
     /// callers are all on paths where throwing would be the worse outcome — a failed read, or a
     /// caller tidying up after itself.
     /// </summary>
-    public async Task RemoveAsync(string key, CancellationToken ct = default)
+    public Task RemoveAsync(string key, CancellationToken ct = default) =>
+        RemoveAsync(key, expectedEpoch: null, ct);
+
+    private async Task RemoveAsync(string key, int? expectedEpoch, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         await _gate.WaitAsync(ct);
         try
         {
+            // A decrypt-fail/expiry tidy that started before Clear must not delete the
+            // next session's file at the same hashed path.
+            if (expectedEpoch is { } epoch && epoch != _epoch)
+                return;
+
             var path = PathFor(key);
             if (File.Exists(path))
                 File.Delete(path);

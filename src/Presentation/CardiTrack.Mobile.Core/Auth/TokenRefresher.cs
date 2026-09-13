@@ -15,6 +15,7 @@ public sealed class TokenRefresher : ITokenRefresher
     private readonly ITokenStore _store;
     private readonly IAuth0AuthClient _auth0;
     private readonly Auth0Options _options;
+    private readonly SessionGeneration? _session;
     private readonly ILogger<TokenRefresher> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -24,11 +25,13 @@ public sealed class TokenRefresher : ITokenRefresher
         ITokenStore store,
         IAuth0AuthClient auth0,
         Auth0Options options,
-        ILogger<TokenRefresher>? logger = null)
+        ILogger<TokenRefresher>? logger = null,
+        SessionGeneration? session = null)
     {
         _store = store;
         _auth0 = auth0;
         _options = options;
+        _session = session;
         _logger = logger ?? NullLogger<TokenRefresher>.Instance;
     }
 
@@ -97,6 +100,7 @@ public sealed class TokenRefresher : ITokenRefresher
     private async Task FailSessionAsync(string reason)
     {
         _logger.LogWarning("Session ended: {Reason}; clearing tokens and returning to sign-in", reason);
+        _session?.Advance();
         await _store.ClearAsync();
         SessionExpired?.Invoke();
     }

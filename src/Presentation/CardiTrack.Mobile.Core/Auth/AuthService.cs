@@ -44,6 +44,27 @@ public sealed class AuthService : IAuthService
         _session = session;
         _pendingNavigation = pendingNavigation;
         _logger = logger ?? NullLogger<AuthService>.Instance;
+        // TokenRefresher.FailSessionAsync clears the store without coming through SignOutAsync.
+        // A tap buffered while that session died would otherwise replay into the next login.
+        _refresher.SessionExpired += OnSessionExpired;
+    }
+
+    private void OnSessionExpired()
+    {
+        _session?.Advance();
+        _pendingNavigation?.Discard();
+    }
+
+    /// <summary>
+    /// Close the previous caregiver's generation and drop a buffered tap before the new
+    /// tokens become visible. A GET that started under the old generation can otherwise
+    /// finish during <c>SaveAsync</c>, pass <c>SameSession</c>, see the new token, and
+    /// write the previous body into the shared cache.
+    /// </summary>
+    private void BeginNewSession()
+    {
+        _session?.Advance();
+        _pendingNavigation?.Discard();
     }
 
     public string? CurrentUserName =>
@@ -62,8 +83,9 @@ public sealed class AuthService : IAuthService
     public async Task SignInAsync(string email, string password, CancellationToken ct = default)
     {
         var tokens = await _auth0.LoginAsync(email, password, ct);
+        BeginNewSession();
         await _store.SaveAsync(tokens);
-        _session?.Advance();
+        _warmer?.ResumeAfterSignOut();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
         // Checked here as well as on refresh: a build stamped with the wrong audience is
         // wrong from the very first token, and this is the only place that sees one issued.
@@ -121,8 +143,9 @@ public sealed class AuthService : IAuthService
             throw new AuthException(AuthErrorCode.Unknown, "Sign-in failed. Please try again.");
 
         var tokens = await _auth0.ExchangeAuthorizationCodeAsync(code, verifier, ct);
+        BeginNewSession();
         await _store.SaveAsync(tokens);
-        _session?.Advance();
+        _warmer?.ResumeAfterSignOut();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
         AccessTokenAudience.Warn(_logger, tokens.AccessToken, _options.Audience, "social-sign-in");
     }
@@ -173,41 +196,35 @@ public sealed class AuthService : IAuthService
 
     public async Task SignOutAsync(CancellationToken ct = default)
     {
-        try
+        if (_warmer is not null)
+            await _warmer.DrainForSignOutAsync(ct);
+
+        _session?.Advance();
+        _pendingNavigation?.Discard();
+
+        var tokens = await _store.GetAsync();
+        if (!string.IsNullOrEmpty(tokens?.RefreshToken))
         {
-            if (_warmer is not null)
-                await _warmer.DrainForSignOutAsync(ct);
-
-            _session?.Advance();
-            _pendingNavigation?.Discard();
-
-            var tokens = await _store.GetAsync();
-            if (!string.IsNullOrEmpty(tokens?.RefreshToken))
+            try
             {
-                try
-                {
-                    await _auth0.RevokeAsync(tokens.RefreshToken, ct);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // Local sign-out must still happen offline. Revoke is best-effort — the
-                    // live Auth0 client already swallows transport errors, but the interface
-                    // does not promise AuthException-only, and a misconfigured build must not
-                    // leave tokens and cached health data on the device.
-                    _logger.LogWarning(ex, "Token revoke failed; clearing the local session anyway");
-                }
+                await _auth0.RevokeAsync(tokens.RefreshToken, ct);
             }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Local sign-out must still happen offline. Revoke is best-effort — the
+                // live Auth0 client already swallows transport errors, but the interface
+                // does not promise AuthException-only, and a misconfigured build must not
+                // leave tokens and cached health data on the device.
+                _logger.LogWarning(ex, "Token revoke failed; clearing the local session anyway");
+            }
+        }
 
-            await _store.ClearAsync();
-            if (_cache is not null)
-                await _cache.ClearAsync(ct);
-            _claims = new Dictionary<string, string>(StringComparer.Ordinal);
-        }
-        finally
-        {
-            // A push that arrives after the wipe must be allowed to no-op on the empty
-            // store rather than stay blocked until the next process start.
-            _warmer?.ResumeAfterSignOut();
-        }
+        await _store.ClearAsync();
+        if (_cache is not null)
+            await _cache.ClearAsync(ct);
+        _claims = new Dictionary<string, string>(StringComparer.Ordinal);
+        // Only reopen after the wipe succeeded. A throw here leaves leftover snapshots;
+        // the next SignIn resumes the warmer after it has saved the new tokens.
+        _warmer?.ResumeAfterSignOut();
     }
 }

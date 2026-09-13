@@ -63,6 +63,10 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
 
     public async Task DrainForSignOutAsync(CancellationToken ct = default)
     {
+        // Caller cancellation must not abort the wait below — the parameter stays so
+        // existing SignOutAsync call sites keep compiling.
+        _ = ct;
+
         Task? running;
         CancellationTokenSource? runCts;
         lock (_gate)
@@ -86,11 +90,14 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
 
         try
         {
-            await running.WaitAsync(ct);
+            // The sign-out caller's token must not abort this wait: once the shared run
+            // is cancelled, its in-flight GETs still have to finish (and refuse the write)
+            // before tokens and the cache are wiped.
+            await running.ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // The run stopped, or the sign-out caller gave up. Either way the wipe proceeds.
+            // The shared run observed runCts.Cancel().
         }
     }
 

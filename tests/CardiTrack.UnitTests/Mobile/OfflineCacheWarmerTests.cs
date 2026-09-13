@@ -99,6 +99,29 @@ public class OfflineCacheWarmerTests
     }
 
     [Fact]
+    public async Task DrainForSignOut_WaitsForTheSharedRun_EvenWhenTheCallerTokenIsCanceled()
+    {
+        var handler = new UncancellableHoldHandler();
+        var tokens = SignedIn();
+        var api = new CardiTrackApiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.test") },
+            new MemoryOfflineCache());
+        var warmer = new OfflineCacheWarmer(api, tokens);
+
+        var warm = warmer.RefreshAsync();
+        await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        var drain = warmer.DrainForSignOutAsync(canceled.Token);
+
+        Assert.False(drain.IsCompleted);
+        handler.Release.SetResult();
+        await drain.WaitAsync(TimeSpan.FromSeconds(2));
+        await warm;
+    }
+
+    [Fact]
     public async Task OneFailedRead_DoesNotStopTheOthers()
     {
         var (warmer, http, cache) = CreateSut(SignedIn());
@@ -190,6 +213,28 @@ public class OfflineCacheWarmerTests
                 Interlocked.Increment(ref MembersRequests);
                 Entered.TrySetResult();
                 await Release.Task.WaitAsync(cancellationToken);
+            }
+
+            return Json(EnvelopeFor(request.RequestUri!));
+        }
+    }
+
+    /// <summary>
+    /// Same as <see cref="HoldingHandler"/> but the members GET ignores cancel, so a drain
+    /// that used the caller's token would return while this request was still in flight.
+    /// </summary>
+    private sealed class UncancellableHoldHandler : HttpMessageHandler
+    {
+        public TaskCompletionSource Entered { get; } = new();
+        public TaskCompletionSource Release { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.AbsolutePath == "/api/Onboarding/cardimembers")
+            {
+                Entered.TrySetResult();
+                await Release.Task;
             }
 
             return Json(EnvelopeFor(request.RequestUri!));

@@ -5,6 +5,7 @@
 #if ANDROID || IOS
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Offline;
@@ -51,6 +52,7 @@ public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposabl
     private readonly IPushDeviceRegistrationService _registration;
     private readonly ISecureKeyValueStore _keyValueStore;
     private readonly IOfflineCacheWarmer _cacheWarmer;
+    private readonly ITokenStore _tokens;
 
     private readonly PendingEvent<NudgeDestination> _destination = new();
 
@@ -73,12 +75,14 @@ public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposabl
         IFirebaseCloudMessaging messaging,
         IPushDeviceRegistrationService registration,
         ISecureKeyValueStore keyValueStore,
-        IOfflineCacheWarmer cacheWarmer)
+        IOfflineCacheWarmer cacheWarmer,
+        ITokenStore tokens)
     {
         _messaging = messaging;
         _registration = registration;
         _keyValueStore = keyValueStore;
         _cacheWarmer = cacheWarmer;
+        _tokens = tokens;
 
         _messaging.NotificationReceived += OnNotificationReceived;
         _messaging.NotificationTapped += OnNotificationTapped;
@@ -192,7 +196,25 @@ public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposabl
         // they already left. The destination page still peeks, then revalidates.
         _ = WarmCacheSafeAsync();
         if (destination.Kind != NudgeDestinationKind.Unknown)
+            _ = RaiseDestinationIfSignedInAsync(destination);
+    }
+
+    private async Task RaiseDestinationIfSignedInAsync(NudgeDestination destination)
+    {
+        try
+        {
+            // A tap after the session is already gone is not followed by SignOutAsync, so
+            // nothing else would Discard() it. Buffering here would replay the previous
+            // account's member/alert into the next caregiver's shell.
+            if (await _tokens.GetAsync() is null)
+                return;
+
             _destination.Raise(this, destination);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Push destination could not be delivered.");
+        }
     }
 
     public void Discard() => _destination.Discard();
