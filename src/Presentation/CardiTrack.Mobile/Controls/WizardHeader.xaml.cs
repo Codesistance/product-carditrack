@@ -81,13 +81,17 @@ public partial class WizardHeader : ContentView
         {
             HeaderIconImage.Source = "icon_back_white.svg";
             HeaderIcon.InputTransparent = false;
+            AutomationProperties.SetIsInAccessibleTree(HeaderIcon, true);
             SemanticProperties.SetDescription(HeaderIcon, "Go back");
             return;
         }
 
         HeaderIconImage.Source = string.IsNullOrWhiteSpace(IconSource) ? "icon_home_white.svg" : IconSource;
         HeaderIcon.InputTransparent = true;
-        SemanticProperties.SetDescription(HeaderIcon, string.IsNullOrWhiteSpace(Title) ? "Header" : Title);
+        // Decorative: the title next to it is already announced. A second copy of
+        // the heading on a non-actionable circle is noise for TalkBack / VoiceOver.
+        AutomationProperties.SetIsInAccessibleTree(HeaderIcon, false);
+        SemanticProperties.SetDescription(HeaderIcon, null);
     }
 
     public string Title

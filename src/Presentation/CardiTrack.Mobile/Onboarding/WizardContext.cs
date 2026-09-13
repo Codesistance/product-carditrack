@@ -49,6 +49,8 @@ public sealed class WizardContext
     /// </summary>
     public event EventHandler? DashboardExit;
 
+    private int _dashboardExitBusy;
+
     private WizardContext(WizardOrigin origin, CardiMemberResponse? member)
     {
         Origin = origin;
@@ -75,6 +77,11 @@ public sealed class WizardContext
     /// </summary>
     public async Task GoToDashboardAsync(Page current)
     {
+        if (Interlocked.CompareExchange(ref _dashboardExitBusy, 1, 0) != 0)
+            return;
+
+        // Set before the pop so ModalPopped does not release callers early.
+        // Cleared again if the modal will not come down — that is not a hand-off.
         ExitedToDashboard = true;
 
         try
@@ -105,8 +112,7 @@ public sealed class WizardContext
 
             if (!dismissed)
             {
-                if (Shell.Current is { } existing)
-                    await GoToDashboardTabAsync(existing);
+                ExitedToDashboard = false;
                 AppForeground.BringToFront();
                 return;
             }
@@ -125,6 +131,8 @@ public sealed class WizardContext
         finally
         {
             DashboardExit?.Invoke(this, EventArgs.Empty);
+            if (!ExitedToDashboard)
+                Interlocked.Exchange(ref _dashboardExitBusy, 0);
         }
     }
 
