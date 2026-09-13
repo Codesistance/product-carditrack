@@ -251,6 +251,15 @@ public class FcmPayloadPrivacyTests
     // ── Collapse key: only forwarded when present, never fabricated ────────────
 
     [Fact]
+    public void ApnsAlert_AlsoSetsContentAvailable_SoIosCanWarmTheCache_WithoutChangingPushType()
+    {
+        var message = CreateSut().BuildMessage(Delivery(), Token());
+
+        Assert.Equal("alert", message.Apns.Headers!["apns-push-type"]);
+        Assert.True(message.Apns.Aps.ContentAvailable);
+    }
+
+    [Fact]
     public void ApnsCollapseId_IsOmitted_WhenDeliveryHasNoCollapseKey()
     {
         var message = CreateSut().BuildMessage(Delivery(collapseKey: null), Token());

@@ -42,9 +42,10 @@ public partial class JournalPage : ContentPage
     /// <summary>
     /// How many reviews one load asks for. A month is a page a caregiver actually scrolls; the
     /// service clamps anything larger anyway, and search narrows the history server-side rather
-    /// than needing a bigger page.
+    /// than needing a bigger page. Shared with the push-triggered warm so the list it writes
+    /// is the one this page peeks.
     /// </summary>
-    private const int HistoryLimit = 31;
+    private const int HistoryLimit = OfflineReadDefaults.JournalHistoryLimit;
 
     /// <summary>Lines of the review shown on the card before it is opened.</summary>
     private const int PreviewLines = 3;

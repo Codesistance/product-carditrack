@@ -77,12 +77,15 @@ public static class MauiProgram
 
         builder.Services.AddSingleton(_ => CrossFirebaseCloudMessaging.Current);
         builder.Services.AddSingleton<PushRegistrationCoordinator>();
+        builder.Services.AddSingleton<IPendingNavigation>(sp =>
+            sp.GetRequiredService<PushRegistrationCoordinator>());
 #endif
 
         var auth0 = new Auth0Options(AppConfig.Auth0Domain, AppConfig.Auth0ClientId, AppConfig.Auth0Audience);
         builder.Services.AddSingleton(auth0);
         builder.Services.AddSingleton(new ApiOptions(AppConfig.ApiBaseUrl));
 
+        builder.Services.AddSingleton<SessionGeneration>();
         builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
         builder.Services.AddSingleton<ISecureKeyValueStore, SecureStorageKeyValueStore>();
         builder.Services.AddSingleton<IOfflineReadCache>(sp =>
@@ -123,6 +126,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<IBrowserAuthenticator, WebBrowserAuthenticator>();
         builder.Services.AddSingleton<IPushDeviceRegistrationService, PushDeviceRegistrationService>();
+        builder.Services.AddSingleton<IOfflineCacheWarmer, OfflineCacheWarmer>();
         builder.Services.AddSingleton<IAuthService, AuthService>();
         builder.Services.AddSingleton<IDeviceBiometric, DeviceBiometric>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
@@ -166,6 +170,21 @@ public static class MauiProgram
 
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);
+#if ANDROID || IOS
+        // Constructing the coordinator is what subscribes its FCM handlers. AppShell used to
+        // be the first resolver, so a push that woke a killed process reached
+        // FirebaseMessagingService with nobody listening — the ack never posted and the
+        // cache never warmed. Resolving it here, as soon as the app exists, covers that wake.
+        try
+        {
+            _ = app.Services.GetRequiredService<PushRegistrationCoordinator>();
+        }
+        catch (Exception)
+        {
+            // Firebase initialisation is the realistic failure (a missing google-services
+            // file in a local build). Push not working must not cost the rest of the app.
+        }
+#endif
         return app;
     }
 

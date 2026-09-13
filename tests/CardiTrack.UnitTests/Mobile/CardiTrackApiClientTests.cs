@@ -3,7 +3,9 @@ using System.Text;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Offline;
+using NSubstitute;
 
 namespace CardiTrack.UnitTests.Mobile;
 
@@ -1195,13 +1197,17 @@ public class CardiTrackApiClientTests
     {
         // The cache reader treats a stored envelope with a null `data` as unreadable and warns
         // on every offline read — nothing worth serving offline, so nothing gets written.
+        // A leftover current-session snapshot from before the conversation ended is dropped.
         var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        cache.Items[$"api/v1/member-chat/members/{memberId}/sessions/current"] =
+            new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
         var (client, http) = CreateSut(cache);
         http.Enqueue(HttpStatusCode.OK, """
             {"success":true,"message":"ok","data":null,"timestamp":"2026-08-20T15:48:00Z"}
             """);
 
-        var history = await client.GetCurrentMemberChatSessionAsync(Guid.NewGuid());
+        var history = await client.GetCurrentMemberChatSessionAsync(memberId);
 
         Assert.Null(history);
         Assert.Empty(cache.Items);
@@ -1296,6 +1302,118 @@ public class CardiTrackApiClientTests
         Assert.Equal(HttpMethod.Post, request.Method);
         Assert.Equal($"/api/v1/member-chat/members/{memberId}/sessions/current/end",
             request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task EndCurrentMemberChatSession_EvictsTheCurrentThreadAndHistoryList()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        var current = $"api/v1/member-chat/members/{memberId}/sessions/current";
+        var sessions = $"api/v1/member-chat/members/{memberId}/sessions";
+        var kept = $"api/v1/cardimembers/{memberId}/dashboard";
+        foreach (var key in new[] { current, sessions, kept })
+            cache.Items[key] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"endedSessionId":"6f9619ff-8b86-d011-b42d-00c04fc964ff"},
+             "timestamp":"2026-08-24T09:00:00Z"}
+            """);
+
+        await client.EndCurrentMemberChatSessionAsync(memberId);
+
+        Assert.Equal([kept], cache.Items.Keys);
+    }
+
+    [Fact]
+    public async Task Get_DoesNotWriteTheCache_OnceTheSessionIsGone()
+    {
+        var tokens = Substitute.For<ITokenStore>();
+        tokens.GetAsync().Returns((AuthTokens?)null);
+        var cache = new MemoryOfflineCache();
+        var http = new FakeHttpMessageHandler();
+        var client = new CardiTrackApiClient(
+            new HttpClient(http) { BaseAddress = new Uri("https://api.test") }, cache, tokens: tokens);
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"cardiMemberId":"{{memberId}}","name":"Margaret",
+             "age":78,"healthStatus":"green","unreadAlertCount":1,
+             "device":{"hasActiveConnection":true},"baseline":{"isLearning":false},
+             "recentAlerts":[]},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        await client.GetDashboardAsync(memberId);
+
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
+    public async Task Get_DoesNotWriteTheCache_WhenTheSessionGenerationMoved()
+    {
+        var handler = new HoldingJsonHandler("""
+            {"success":true,"message":"ok","data":{"cardiMemberId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+             "name":"Margaret","age":78,"healthStatus":"green","unreadAlertCount":1,
+             "device":{"hasActiveConnection":true},"baseline":{"isLearning":false},
+             "recentAlerts":[]},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+        var session = new SessionGeneration();
+        var cache = new MemoryOfflineCache();
+        var client = new CardiTrackApiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.test") },
+            cache, session: session);
+
+        var get = client.GetDashboardAsync(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        session.Advance();
+        handler.Release.SetResult();
+        await get;
+
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
+    public async Task Get_DoesNotWriteTheCache_WhenTheSessionMovesDuringTheSave()
+    {
+        var session = new SessionGeneration();
+        var tokens = Substitute.For<ITokenStore>();
+        tokens.GetAsync().Returns(_ =>
+        {
+            session.Advance();
+            return new AuthTokens("access", "refresh", "id", DateTimeOffset.UtcNow.AddHours(1));
+        });
+        var cache = new MemoryOfflineCache();
+        var http = new FakeHttpMessageHandler();
+        var client = new CardiTrackApiClient(
+            new HttpClient(http) { BaseAddress = new Uri("https://api.test") },
+            cache, tokens: tokens, session: session);
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"cardiMemberId":"{{memberId}}","name":"Margaret",
+             "age":78,"healthStatus":"green","unreadAlertCount":1,
+             "device":{"hasActiveConnection":true},"baseline":{"isLearning":false},
+             "recentAlerts":[]},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        await client.GetDashboardAsync(memberId);
+
+        Assert.Empty(cache.Items);
+    }
+
+    private sealed class HoldingJsonHandler(string body) : HttpMessageHandler
+    {
+        public TaskCompletionSource Entered { get; } = new();
+        public TaskCompletionSource Release { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+        }
     }
 
     [Fact]

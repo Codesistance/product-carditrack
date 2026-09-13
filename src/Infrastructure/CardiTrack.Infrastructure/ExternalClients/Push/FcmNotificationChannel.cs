@@ -262,6 +262,12 @@ public class FcmNotificationChannel : INotificationChannel
                 {
                     Sound = NotificationChannels.IosSoundFor(delivery.Category),
                     MutableContent = true,
+                    // Alert + content-available: the banner still shows (apns-push-type
+                    // stays "alert") and iOS may wake the app briefly so it can pull every
+                    // default read into the on-device cache before the caregiver opens it.
+                    // Distinct from the deferred silent-only liveness probe, which needs a
+                    // different push-type and no visible notification.
+                    ContentAvailable = true,
                     CustomData = new Dictionary<string, object> { ["interruption-level"] = interruptionLevel }
                 }
             }

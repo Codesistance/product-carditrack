@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Export;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 using MauiApplication = Microsoft.Maui.Controls.Application;
 
@@ -12,13 +13,17 @@ public partial class ExportConsentsPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
-    private bool _loading;
+    private readonly LoadGate _gate = new();
+    private readonly RefreshFeedback _feedback;
+    private List<ExportConsentHistoryItem>? _items;
+    private bool _reloadWhenIdle;
 
     public ExportConsentsPage(ICardiTrackApiClient api, IPopupService popups)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
     protected override void OnAppearing()
@@ -36,26 +41,55 @@ public partial class ExportConsentsPage : ContentPage
 
     private async Task LoadAsync()
     {
-        if (_loading)
+        if (_gate.IsLoading)
+        {
+            // A revoke (or retry) while the first live GET still owns the gate must not
+            // be dropped — that GET's pre-revoke snapshot would paint the consent back.
+            _reloadWhenIdle = true;
             return;
-        _loading = true;
-        Loading.IsVisible = true;
-        Panel.IsVisible = false;
+        }
+
+        var ticket = _gate.Begin();
+
+        var cold = _items is null;
+        if (cold)
+        {
+            Loading.IsVisible = true;
+            Panel.IsVisible = false;
+        }
         ErrorPanel.IsVisible = false;
 
         try
         {
-            Render(await _api.GetExportConsentsAsync());
-            Panel.IsVisible = true;
-        }
-        catch (ApiException)
-        {
-            ErrorPanel.IsVisible = true;
+            var outcome = await SnapshotRefresh.RunAsync(
+                _api, _gate, ticket,
+                peek: cold ? ct => _api.PeekExportConsentsAsync(ct) : null,
+                fetch: ct => _api.GetExportConsentsAsync(ct),
+                render: items =>
+                {
+                    _items = items;
+                    Render(items);
+                    Panel.IsVisible = true;
+                    Loading.IsVisible = false;
+                },
+                _feedback);
+
+            if (outcome.Result == RefreshResult.NothingAndFailed)
+            {
+                _items = null;
+                Panel.IsVisible = false;
+                ErrorPanel.IsVisible = true;
+            }
         }
         finally
         {
             Loading.IsVisible = false;
-            _loading = false;
+            _gate.Release(ticket);
+            if (_reloadWhenIdle)
+            {
+                _reloadWhenIdle = false;
+                await LoadAsync();
+            }
         }
     }
 

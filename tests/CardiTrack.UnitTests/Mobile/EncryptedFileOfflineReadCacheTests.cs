@@ -149,6 +149,27 @@ public sealed class EncryptedFileOfflineReadCacheTests : IDisposable
         Assert.Null(await sut.TryGetAsync("api/v1/dashboard"));
     }
 
+    [Fact]
+    public async Task TryGet_DoesNotDeleteTheNextSessionsFile_AfterClear()
+    {
+        var sut = CreateSut();
+        await sut.SaveAsync("api/v1/dashboard", """{"name":"Ada"}""");
+
+        var file = Directory.GetFiles(_directory, "*.bin").Single();
+        var bytes = await File.ReadAllBytesAsync(file);
+        bytes[^1] ^= 0xFF;
+        await File.WriteAllBytesAsync(file, bytes);
+
+        var stale = sut.TryGetAsync("api/v1/dashboard");
+        await sut.ClearAsync();
+        await sut.SaveAsync("api/v1/dashboard", """{"name":"Grace"}""");
+        await stale;
+
+        var entry = await sut.TryGetAsync("api/v1/dashboard");
+        Assert.NotNull(entry);
+        Assert.Equal("""{"name":"Grace"}""", entry!.Payload);
+    }
+
     private sealed class FakeSecureStore : ISecureKeyValueStore
     {
         private readonly Dictionary<string, string> _values = [];

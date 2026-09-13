@@ -27,7 +27,8 @@ public partial class QuestionnairesPage : ContentPage
 
     /// <summary>How many answered questions a page fetches. Small enough that a page arrives while
     /// a scroll is still in motion, large enough that scrolling rarely outruns it.</summary>
-    private const int PageSize = 20;
+    private const int Page = OfflineReadDefaults.QuestionnairePage;
+    private const int PageSize = OfflineReadDefaults.QuestionnairePageSize;
 
     /// <summary>How long to hold after a keystroke before searching — long enough that a caregiver
     /// typing a whole word does not fire a request per letter, short enough to still feel live.</summary>
@@ -170,7 +171,7 @@ public partial class QuestionnairesPage : ContentPage
         _pagingCts = new CancellationTokenSource();
         if (showSkeleton)
             SetState(loading: true);
-        _currentPage = 1;
+        _currentPage = Page;
         var (memberId, search) = (_memberId, _searchTerm);
 
         try
@@ -180,8 +181,8 @@ public partial class QuestionnairesPage : ContentPage
             // swaps the contents in place. Later pages never peek — they append to a live list.
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
-                peek: showSkeleton ? ct => _api.PeekQuestionnairesAsync(memberId, search, 1, PageSize, ct) : null,
-                fetch: ct => _api.GetQuestionnairesAsync(memberId, search, 1, PageSize, ct),
+                peek: showSkeleton ? ct => _api.PeekQuestionnairesAsync(memberId, search, Page, PageSize, ct) : null,
+                fetch: ct => _api.GetQuestionnairesAsync(memberId, search, Page, PageSize, ct),
                 render: result =>
                 {
                     ApplyHeader(result);

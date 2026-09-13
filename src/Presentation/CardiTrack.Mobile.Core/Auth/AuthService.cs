@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Offline;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,6 +14,9 @@ public sealed class AuthService : IAuthService
     private readonly IBrowserAuthenticator _browser;
     private readonly Auth0Options _options;
     private readonly IOfflineReadCache? _cache;
+    private readonly IOfflineCacheWarmer? _warmer;
+    private readonly SessionGeneration? _session;
+    private readonly IPendingNavigation? _pendingNavigation;
     private readonly ILogger<AuthService> _logger;
 
     private IReadOnlyDictionary<string, string> _claims =
@@ -25,7 +29,10 @@ public sealed class AuthService : IAuthService
         IBrowserAuthenticator browser,
         Auth0Options options,
         IOfflineReadCache? cache = null,
-        ILogger<AuthService>? logger = null)
+        ILogger<AuthService>? logger = null,
+        IOfflineCacheWarmer? warmer = null,
+        SessionGeneration? session = null,
+        IPendingNavigation? pendingNavigation = null)
     {
         _auth0 = auth0;
         _store = store;
@@ -33,7 +40,34 @@ public sealed class AuthService : IAuthService
         _browser = browser;
         _options = options;
         _cache = cache;
+        _warmer = warmer;
+        _session = session;
+        _pendingNavigation = pendingNavigation;
         _logger = logger ?? NullLogger<AuthService>.Instance;
+        // TokenRefresher.FailSessionAsync clears the store without coming through SignOutAsync.
+        // A tap buffered while that session died would otherwise replay into the next login.
+        _refresher.SessionExpired += OnSessionExpired;
+    }
+
+    private void OnSessionExpired()
+    {
+        _session?.Advance();
+        _pendingNavigation?.Discard();
+    }
+
+    /// <summary>
+    /// Close the previous caregiver's generation, drop a buffered tap, and wipe leftover
+    /// snapshots before the new tokens become visible. A GET that started under the old
+    /// generation can otherwise finish during <c>SaveAsync</c>, pass <c>SameSession</c>,
+    /// see the new token, and write the previous body into the shared cache. Expiry
+    /// (unlike sign-out) used to leave those snapshots in place for the next login.
+    /// </summary>
+    private async Task BeginNewSessionAsync(CancellationToken ct)
+    {
+        _session?.Advance();
+        _pendingNavigation?.Discard();
+        if (_cache is not null)
+            await _cache.ClearAsync(ct);
     }
 
     public string? CurrentUserName =>
@@ -52,7 +86,9 @@ public sealed class AuthService : IAuthService
     public async Task SignInAsync(string email, string password, CancellationToken ct = default)
     {
         var tokens = await _auth0.LoginAsync(email, password, ct);
+        await BeginNewSessionAsync(ct);
         await _store.SaveAsync(tokens);
+        _warmer?.ResumeAfterSignOut();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
         // Checked here as well as on refresh: a build stamped with the wrong audience is
         // wrong from the very first token, and this is the only place that sees one issued.
@@ -110,7 +146,9 @@ public sealed class AuthService : IAuthService
             throw new AuthException(AuthErrorCode.Unknown, "Sign-in failed. Please try again.");
 
         var tokens = await _auth0.ExchangeAuthorizationCodeAsync(code, verifier, ct);
+        await BeginNewSessionAsync(ct);
         await _store.SaveAsync(tokens);
+        _warmer?.ResumeAfterSignOut();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
         AccessTokenAudience.Warn(_logger, tokens.AccessToken, _options.Audience, "social-sign-in");
     }
@@ -161,6 +199,12 @@ public sealed class AuthService : IAuthService
 
     public async Task SignOutAsync(CancellationToken ct = default)
     {
+        if (_warmer is not null)
+            await _warmer.DrainForSignOutAsync(ct);
+
+        _session?.Advance();
+        _pendingNavigation?.Discard();
+
         var tokens = await _store.GetAsync();
         if (!string.IsNullOrEmpty(tokens?.RefreshToken))
         {
@@ -182,5 +226,8 @@ public sealed class AuthService : IAuthService
         if (_cache is not null)
             await _cache.ClearAsync(ct);
         _claims = new Dictionary<string, string>(StringComparer.Ordinal);
+        // Only reopen after the wipe succeeded. A throw here leaves leftover snapshots;
+        // the next SignIn resumes the warmer after it has saved the new tokens.
+        _warmer?.ResumeAfterSignOut();
     }
 }

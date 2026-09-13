@@ -53,6 +53,7 @@
                                    Margin="0,24"/>
 
                 <VerticalStackLayout x:Name="Panel" IsVisible="False" Spacing="12">
+                    <controls:SavedDataBanner x:Name="SavedBanner"/>
                     <Label Text="A confirmation you keep for a week, two weeks or a month can be reused on later exports. We always tell you when that happens. Stopping it means the next export asks again."
                            Style="{StaticResource Body2}"/>
 
@@ -83,5 +84,9 @@
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
+
+        <!-- The second-long "Updating…" while saved confirmations are replaced by live data —
+             last, so it covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="2"/>
     </Grid>
 </ContentPage>

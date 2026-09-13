@@ -1,5 +1,6 @@
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Offline;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -77,13 +78,18 @@ public class TokenRefresherTests
         _auth0.RefreshAsync("refresh-0", Arg.Any<CancellationToken>())
             .ThrowsAsync(new AuthException(AuthErrorCode.InvalidCredentials, "invalid_grant"));
 
-        var sut = CreateSut();
+        var session = new SessionGeneration();
+        var cache = Substitute.For<IOfflineReadCache>();
+        var before = session.Current;
+        var sut = new TokenRefresher(_store, _auth0, Options, session: session, cache: cache);
         var expired = false;
         sut.SessionExpired += () => expired = true;
 
         Assert.Null(await sut.GetValidAccessTokenAsync());
         Assert.True(expired);
+        Assert.Equal(before + 1, session.Current);
         await _store.Received(1).ClearAsync();
+        await cache.Received(1).ClearAsync();
     }
 
     [Fact]

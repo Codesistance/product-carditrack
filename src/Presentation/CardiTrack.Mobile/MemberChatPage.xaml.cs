@@ -389,6 +389,16 @@ public partial class MemberChatPage : ContentView
         ScrollToLatest(animate: false);
     }
 
+    private void ApplyThread(MemberChatHistoryResponse? history)
+    {
+        _turns.Clear();
+        if (history is null)
+            return;
+
+        foreach (var turn in history.Turns)
+            _turns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
+    }
+
     private async Task ShowHistoryListAsync()
     {
         _mode = ChatViewMode.HistoryList;
@@ -401,7 +411,26 @@ public partial class MemberChatPage : ContentView
         ContinuePanel.IsVisible = false;
         SessionsList.IsVisible = false;
         SelectSessionsAction.IsVisible = false;
-        SetState(loading: true);
+
+        var shownFromCache = _sessions.Count > 0;
+        if (shownFromCache)
+        {
+            SetState();
+            SessionsList.IsVisible = true;
+            SelectSessionsAction.IsVisible = true;
+        }
+        else if (await _api.PeekMemberChatSessionsAsync(_memberId) is { } saved)
+        {
+            _sessions.Clear();
+            foreach (var session in saved.Sessions)
+                _sessions.Add(ChatSessionItem.From(session));
+            shownFromCache = true;
+            SetState();
+            SessionsList.IsVisible = true;
+            SelectSessionsAction.IsVisible = _sessions.Count > 0;
+        }
+        else
+            SetState(loading: true);
 
         try
         {
@@ -426,6 +455,16 @@ public partial class MemberChatPage : ContentView
         {
             if (_mode != ChatViewMode.HistoryList)
                 return;
+            if (ex.IsNotFound)
+            {
+                _sessions.Clear();
+                ErrorDetailLabel.Text = ex.Message;
+                SetState(error: true);
+                return;
+            }
+
+            if (KeepCachedHistory())
+                return;
             ErrorDetailLabel.Text = ex.Message;
             SetState(error: true);
         }
@@ -434,8 +473,21 @@ public partial class MemberChatPage : ContentView
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading past conversations");
             if (_mode != ChatViewMode.HistoryList)
                 return;
+            if (KeepCachedHistory())
+                return;
             ErrorDetailLabel.Text = "Something went wrong while showing this.";
             SetState(error: true);
+        }
+
+        bool KeepCachedHistory()
+        {
+            if (!shownFromCache && _sessions.Count == 0)
+                return false;
+
+            SetState();
+            SessionsList.IsVisible = true;
+            SelectSessionsAction.IsVisible = _sessions.Count > 0;
+            return true;
         }
     }
 
@@ -499,27 +551,34 @@ public partial class MemberChatPage : ContentView
     {
         try
         {
+            if (await _api.PeekMemberChatSuggestionsAsync(_memberId) is { Suggestions.Count: > 0 } saved)
+                ShowSuggestions(saved);
+
             var response = await _api.GetMemberChatSuggestionsAsync(_memberId);
-
-            // _isSending as well as the turn count: a send hides this panel before it appends the
-            // caregiver's own bubble, so a reply to this request landing in that gap would find
-            // an empty thread and put the chips back underneath a message already on its way.
-            // The mode check is the same race one layer out — a caregiver already looking at
-            // history must not get the thread's chips drawn under the sessions list.
-            if (response.Suggestions.Count == 0 || _turns.Count > 0 || _isSending
-                || _mode != ChatViewMode.Thread)
-                return;
-
-            SuggestionsRow.Clear();
-            foreach (var suggestion in response.Suggestions)
-                SuggestionsRow.Add(BuildSuggestionChip(suggestion));
-
-            SuggestionsPanel.IsVisible = _turns.Count == 0;
+            ShowSuggestions(response);
         }
         catch (Exception ex)
         {
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading suggestions");
         }
+    }
+
+    private void ShowSuggestions(MemberChatSuggestionsResponse response)
+    {
+        // _isSending as well as the turn count: a send hides this panel before it appends the
+        // caregiver's own bubble, so a reply to this request landing in that gap would find
+        // an empty thread and put the chips back underneath a message already on its way.
+        // The mode check is the same race one layer out — a caregiver already looking at
+        // history must not get the thread's chips drawn under the sessions list.
+        if (response.Suggestions.Count == 0 || _turns.Count > 0 || _isSending
+            || _mode != ChatViewMode.Thread)
+            return;
+
+        SuggestionsRow.Clear();
+        foreach (var suggestion in response.Suggestions)
+            SuggestionsRow.Add(BuildSuggestionChip(suggestion));
+
+        SuggestionsPanel.IsVisible = _turns.Count == 0;
     }
 
     /// <summary>
@@ -614,18 +673,23 @@ public partial class MemberChatPage : ContentView
             return;
         _isLoading = true;
 
+        var shownFromCache = false;
         if (_turns.Count == 0)
-            SetState(loading: true);
+        {
+            if (await _api.PeekCurrentMemberChatSessionAsync(_memberId) is { } saved)
+            {
+                ApplyThread(saved);
+                SetState(loaded: true);
+                shownFromCache = true;
+            }
+            else
+                SetState(loading: true);
+        }
 
         try
         {
             var history = await _api.GetCurrentMemberChatSessionAsync(_memberId);
-            _turns.Clear();
-            if (history is not null)
-            {
-                foreach (var turn in history.Turns)
-                    _turns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
-            }
+            ApplyThread(history);
 
             _threadLoadFailed = false;
 
@@ -656,8 +720,21 @@ public partial class MemberChatPage : ContentView
         }
         catch (ApiException ex)
         {
-            _threadLoadFailed = _turns.Count == 0;
-            if (_turns.Count == 0 && _mode == ChatViewMode.Thread)
+            if (ex.IsNotFound)
+            {
+                ApplyThread(null);
+                _threadLoadFailed = true;
+                if (_mode == ChatViewMode.Thread)
+                {
+                    ErrorDetailLabel.Text = ex.Message;
+                    SetState(error: true);
+                }
+
+                return;
+            }
+
+            _threadLoadFailed = !shownFromCache && _turns.Count == 0;
+            if (!shownFromCache && _turns.Count == 0 && _mode == ChatViewMode.Thread)
             {
                 ErrorDetailLabel.Text = ex.Message;
                 SetState(error: true);
@@ -668,8 +745,8 @@ public partial class MemberChatPage : ContentView
             // Same async-void-has-no-observer hole MedicalInformationPage documents on its own
             // OnAppearing/pull handlers — without this the page never leaves its skeleton.
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading");
-            _threadLoadFailed = _turns.Count == 0;
-            if (_turns.Count == 0 && _mode == ChatViewMode.Thread)
+            _threadLoadFailed = !shownFromCache && _turns.Count == 0;
+            if (!shownFromCache && _turns.Count == 0 && _mode == ChatViewMode.Thread)
             {
                 ErrorDetailLabel.Text = "Something went wrong while showing this.";
                 SetState(error: true);

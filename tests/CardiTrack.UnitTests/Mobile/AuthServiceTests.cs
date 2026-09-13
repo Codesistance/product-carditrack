@@ -1,6 +1,7 @@
 using System.Text;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Offline;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -211,6 +212,135 @@ public class AuthServiceTests
 
         await _store.Received(1).ClearAsync();
         await cache.Received(1).ClearAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SignOut_DrainsTheCacheWarmer_BeforeClearingTokensAndCache()
+    {
+        var cache = Substitute.For<IOfflineReadCache>();
+        var warmer = Substitute.For<IOfflineCacheWarmer>();
+        var order = new List<string>();
+        warmer.DrainForSignOutAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => { order.Add("drain"); return Task.CompletedTask; });
+        _store.ClearAsync().Returns(_ => { order.Add("tokens"); return Task.CompletedTask; });
+        cache.ClearAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => { order.Add("cache"); return Task.CompletedTask; });
+        _store.GetAsync().Returns(Tokens());
+        var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, cache, warmer: warmer);
+
+        await sut.SignOutAsync();
+
+        Assert.Equal(["drain", "tokens", "cache"], order);
+        warmer.Received(1).ResumeAfterSignOut();
+    }
+
+    [Fact]
+    public async Task SignOut_AdvancesTheSession_AndDiscardsAPendingDestination()
+    {
+        var session = new SessionGeneration();
+        var pending = Substitute.For<IPendingNavigation>();
+        _store.GetAsync().Returns(Tokens());
+        var sut = new AuthService(
+            _auth0, _store, _refresher, _browser, Options, session: session, pendingNavigation: pending);
+        var before = session.Current;
+
+        await sut.SignOutAsync();
+
+        Assert.Equal(before + 1, session.Current);
+        pending.Received(1).Discard();
+    }
+
+    [Fact]
+    public async Task SignIn_AdvancesTheSession_BeforeTheNewTokensAreVisible()
+    {
+        var session = new SessionGeneration();
+        var pending = Substitute.For<IPendingNavigation>();
+        var warmer = Substitute.For<IOfflineCacheWarmer>();
+        var cache = Substitute.For<IOfflineReadCache>();
+        var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
+        _auth0.LoginAsync("a@b.com", "pw", Arg.Any<CancellationToken>()).Returns(tokens);
+        var generationAtSave = -1;
+        var clearedBeforeSave = false;
+        cache.ClearAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            clearedBeforeSave = generationAtSave < 0;
+            return Task.CompletedTask;
+        });
+        _store.SaveAsync(tokens).Returns(_ =>
+        {
+            generationAtSave = session.Current;
+            return Task.CompletedTask;
+        });
+        var sut = new AuthService(
+            _auth0, _store, _refresher, _browser, Options, cache,
+            warmer: warmer, session: session, pendingNavigation: pending);
+        var before = session.Current;
+
+        await sut.SignInAsync("a@b.com", "pw");
+
+        Assert.Equal(before + 1, generationAtSave);
+        Assert.True(clearedBeforeSave);
+        pending.Received(1).Discard();
+        warmer.Received(1).ResumeAfterSignOut();
+        await cache.Received(1).ClearAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SocialSignIn_AdvancesTheSession_BeforeTheNewTokensAreVisible()
+    {
+        var session = new SessionGeneration();
+        var (_, state) = StubAuthorizeUri();
+        StubCallback(() => new Dictionary<string, string>
+        {
+            ["state"] = state()!,
+            ["code"] = "code789",
+        });
+        var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
+        _auth0.ExchangeAuthorizationCodeAsync("code789", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(tokens);
+        var generationAtSave = -1;
+        _store.SaveAsync(tokens).Returns(_ =>
+        {
+            generationAtSave = session.Current;
+            return Task.CompletedTask;
+        });
+        var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, session: session);
+        var before = session.Current;
+
+        await sut.SignInWithProviderAsync(Auth0Options.GoogleConnection);
+
+        Assert.Equal(before + 1, generationAtSave);
+    }
+
+    [Fact]
+    public void SessionExpired_AdvancesTheSession_AndDiscardsAPendingDestination()
+    {
+        var session = new SessionGeneration();
+        var pending = Substitute.For<IPendingNavigation>();
+        var sut = new AuthService(
+            _auth0, _store, _refresher, _browser, Options, session: session, pendingNavigation: pending);
+        _ = sut;
+        var before = session.Current;
+
+        _refresher.SessionExpired += Raise.Event<Action>();
+
+        Assert.Equal(before + 1, session.Current);
+        pending.Received(1).Discard();
+    }
+
+    [Fact]
+    public async Task SignOut_DoesNotResumeTheWarmer_WhenTheWipeFails()
+    {
+        var cache = Substitute.For<IOfflineReadCache>();
+        var warmer = Substitute.For<IOfflineCacheWarmer>();
+        _store.GetAsync().Returns(Tokens());
+        cache.ClearAsync(Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new IOException("disk full"));
+        var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, cache, warmer: warmer);
+
+        await Assert.ThrowsAsync<IOException>(() => sut.SignOutAsync());
+
+        warmer.DidNotReceive().ResumeAfterSignOut();
     }
 
     [Fact]

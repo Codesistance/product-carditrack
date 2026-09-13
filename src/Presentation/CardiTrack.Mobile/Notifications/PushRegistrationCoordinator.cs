@@ -5,8 +5,10 @@
 #if ANDROID || IOS
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Http;
 using CardiTrack.Mobile.Core.Notifications;
+using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
 using Plugin.Firebase.CloudMessaging;
@@ -25,7 +27,7 @@ namespace CardiTrack.Mobile.Notifications;
 /// implementation to swap in, so this type simply isn't constructed there (see MauiProgram.cs's
 /// <c>#if ANDROID || IOS</c> guard around its registration).
 /// </summary>
-public sealed class PushRegistrationCoordinator : IDisposable
+public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposable
 {
     /// <summary>
     /// Ceiling on the stored value: PushDeviceToken.AppVersion is varchar(32) and NOT NULL (see
@@ -49,18 +51,38 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private readonly IFirebaseCloudMessaging _messaging;
     private readonly IPushDeviceRegistrationService _registration;
     private readonly ISecureKeyValueStore _keyValueStore;
+    private readonly IOfflineCacheWarmer _cacheWarmer;
+    private readonly ITokenStore _tokens;
+
+    private readonly PendingEvent<NudgeDestination> _destination = new();
 
     /// <summary>Raised when a tapped notification's deep link has been parsed — AppShell subscribes to navigate.</summary>
-    public event EventHandler<NudgeDestination>? DestinationTapped;
+    public event EventHandler<NudgeDestination>? DestinationTapped
+    {
+        add
+        {
+            if (value is not null)
+                _destination.Subscribe(value);
+        }
+        remove
+        {
+            if (value is not null)
+                _destination.Unsubscribe(value);
+        }
+    }
 
     public PushRegistrationCoordinator(
         IFirebaseCloudMessaging messaging,
         IPushDeviceRegistrationService registration,
-        ISecureKeyValueStore keyValueStore)
+        ISecureKeyValueStore keyValueStore,
+        IOfflineCacheWarmer cacheWarmer,
+        ITokenStore tokens)
     {
         _messaging = messaging;
         _registration = registration;
         _keyValueStore = keyValueStore;
+        _cacheWarmer = cacheWarmer;
+        _tokens = tokens;
 
         _messaging.NotificationReceived += OnNotificationReceived;
         _messaging.NotificationTapped += OnNotificationTapped;
@@ -113,15 +135,37 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private void OnNotificationReceived(object? sender, FCMNotificationReceivedEventArgs e)
     {
         var data = e.Notification.Data;
-        if (data is null
-            || !data.TryGetValue("deliveryId", out var deliveryIdRaw)
-            || !Guid.TryParse(deliveryIdRaw, out var deliveryId)
-            || !data.TryGetValue("ackToken", out var ackToken))
-        {
-            return;
-        }
+        AckIfPresent(data);
 
-        _ = AckDeliveredSafeAsync(deliveryId, ackToken);
+        // The notification is the wake: pull every default read into the on-device cache
+        // so the caregiver who opens the app next is not kept waiting. Fire-and-forget —
+        // a slow warm must never delay the OS displaying the notification, and the ack
+        // above is the one the escalation ladder keys off. Runs even when the payload
+        // has no ack fields — a content-available wake is still a wake.
+        _ = WarmCacheSafeAsync();
+    }
+
+    private void AckIfPresent(IDictionary<string, string>? data)
+    {
+        if (data is not null
+            && data.TryGetValue("deliveryId", out var deliveryIdRaw)
+            && Guid.TryParse(deliveryIdRaw, out var deliveryId)
+            && data.TryGetValue("ackToken", out var ackToken))
+        {
+            _ = AckDeliveredSafeAsync(deliveryId, ackToken);
+        }
+    }
+
+    private async Task WarmCacheSafeAsync()
+    {
+        try
+        {
+            await _cacheWarmer.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Push-triggered cache warm failed.");
+        }
     }
 
     private async Task AckDeliveredSafeAsync(Guid deliveryId, string ackToken)
@@ -142,11 +186,38 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private void OnNotificationTapped(object? sender, FCMNotificationTappedEventArgs e)
     {
         var data = e.Notification.Data;
+        // On a killed Android process the tap is often the first wake — Received never
+        // ran, so this is the only chance to ack before the escalation ladder continues.
+        AckIfPresent(data);
         var deepLink = data is not null && data.TryGetValue("deepLink", out var link) ? link : null;
         var destination = NudgeLinkParser.Parse(deepLink);
+        // A tap is also a wake. Start the warm without waiting for the whole catalogue —
+        // blocking navigation on every default GET would keep the caregiver on a splash
+        // they already left. The destination page still peeks, then revalidates.
+        _ = WarmCacheSafeAsync();
         if (destination.Kind != NudgeDestinationKind.Unknown)
-            DestinationTapped?.Invoke(this, destination);
+            _ = RaiseDestinationIfSignedInAsync(destination);
     }
+
+    private async Task RaiseDestinationIfSignedInAsync(NudgeDestination destination)
+    {
+        try
+        {
+            // A tap after the session is already gone is not followed by SignOutAsync, so
+            // nothing else would Discard() it. Buffering here would replay the previous
+            // account's member/alert into the next caregiver's shell.
+            if (await _tokens.GetAsync() is null)
+                return;
+
+            _destination.Raise(this, destination);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Push destination could not be delivered.");
+        }
+    }
+
+    public void Discard() => _destination.Discard();
 
     private static void OnError(object? sender, FCMErrorEventArgs e) =>
         Log.Warning("Push messaging error: {Message}", e.Message);

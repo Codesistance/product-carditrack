@@ -30,6 +30,7 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
     private readonly ILogger<EncryptedFileOfflineReadCache> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private byte[]? _dek;
+    private int _epoch;
 
     public EncryptedFileOfflineReadCache(
         string directory,
@@ -48,7 +49,7 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(payload);
 
-        var dek = await GetOrCreateDekAsync(ct);
+        var (dek, epoch) = await GetDekAsync(ct);
         if (dek is null)
             return;
 
@@ -72,6 +73,9 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         await _gate.WaitAsync(ct);
         try
         {
+            if (epoch != _epoch)
+                return;
+
             Directory.CreateDirectory(_directory);
             await File.WriteAllBytesAsync(PathFor(key), file, ct);
         }
@@ -89,7 +93,7 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        var dek = await GetOrCreateDekAsync(ct);
+        var (dek, epoch) = await GetDekAsync(ct);
         if (dek is null)
             return null;
 
@@ -97,6 +101,9 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         byte[] file;
         try
         {
+            if (epoch != _epoch)
+                return null;
+
             var path = PathFor(key);
             if (!File.Exists(path))
                 return null;
@@ -114,15 +121,20 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
 
         if (!TryDecrypt(dek, file, out var payload, out var cachedAt))
         {
-            await RemoveAsync(key, ct);
+            await RemoveAsync(key, epoch, ct);
             return null;
         }
 
         if (_clock.GetUtcNow() - cachedAt > IOfflineReadCache.Lifetime)
         {
-            await RemoveAsync(key, ct);
+            await RemoveAsync(key, epoch, ct);
             return null;
         }
+
+        // Sign-out may have cleared the cache while we were decrypting — do not hand the
+        // previous caregiver's snapshot back after the wipe has finished.
+        if (epoch != _epoch)
+            return null;
 
         return new OfflineCacheEntry(payload, cachedAt);
     }
@@ -132,75 +144,83 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         await _gate.WaitAsync(ct);
         try
         {
-            if (Directory.Exists(_directory))
-                Directory.Delete(_directory, recursive: true);
+            _epoch++;
+            try
+            {
+                if (Directory.Exists(_directory))
+                    Directory.Delete(_directory, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Offline cache directory delete failed");
+            }
+
             _dek = null;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning(ex, "Offline cache directory delete failed");
+            // Rotate the DEK under the same gate as the epoch bump so a concurrent save
+            // cannot reload the old key after this increment and write the previous
+            // snapshot into the new session's directory.
+            try
+            {
+                _secure.Remove(DekKey);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Offline cache DEK remove failed");
+            }
         }
         finally
         {
             _gate.Release();
         }
+    }
 
-        // Rotate the DEK so any file we failed to delete is unreadable. A leftover blob
-        // after sign-out is still wearer health data.
+    private async Task<(byte[]? Dek, int Epoch)> GetDekAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
         try
         {
-            _secure.Remove(DekKey);
+            return (await GetOrCreateDekUnlockedAsync(), _epoch);
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogWarning(ex, "Offline cache DEK remove failed");
+            _gate.Release();
         }
     }
 
-    private async Task<byte[]?> GetOrCreateDekAsync(CancellationToken ct)
+    /// <summary>Caller already holds <see cref="_gate"/>.</summary>
+    private async Task<byte[]?> GetOrCreateDekUnlockedAsync()
     {
         if (_dek is not null)
             return _dek;
 
-        await _gate.WaitAsync(ct);
         try
         {
-            if (_dek is not null)
-                return _dek;
-
-            try
+            var existing = await _secure.GetAsync(DekKey);
+            if (!string.IsNullOrEmpty(existing))
             {
-                var existing = await _secure.GetAsync(DekKey);
-                if (!string.IsNullOrEmpty(existing))
+                try
                 {
-                    try
-                    {
-                        var decoded = Convert.FromBase64String(existing);
-                        if (decoded.Length == DekSize)
-                            return _dek = decoded;
-                    }
-                    catch (FormatException)
-                    {
-                        // Corrupt DEK: rotate rather than disabling the cache until someone
-                        // clears Keystore by hand. Existing blobs become unreadable, which is
-                        // the same outcome as a missing key.
-                    }
+                    var decoded = Convert.FromBase64String(existing);
+                    if (decoded.Length == DekSize)
+                        return _dek = decoded;
                 }
+                catch (FormatException)
+                {
+                    // Corrupt DEK: rotate rather than disabling the cache until someone
+                    // clears Keystore by hand. Existing blobs become unreadable, which is
+                    // the same outcome as a missing key.
+                }
+            }
 
-                var dek = RandomNumberGenerator.GetBytes(DekSize);
-                await _secure.SetAsync(DekKey, Convert.ToBase64String(dek));
-                return _dek = dek;
-            }
-            catch (Exception ex)
-            {
-                // Fail closed: never write wearer data in the clear because Keystore is unhappy.
-                _logger.LogWarning(ex, "Offline cache DEK unavailable; skipping cache I/O");
-                return null;
-            }
+            var dek = RandomNumberGenerator.GetBytes(DekSize);
+            await _secure.SetAsync(DekKey, Convert.ToBase64String(dek));
+            return _dek = dek;
         }
-        finally
+        catch (Exception ex)
         {
-            _gate.Release();
+            // Fail closed: never write wearer data in the clear because Keystore is unhappy.
+            _logger.LogWarning(ex, "Offline cache DEK unavailable; skipping cache I/O");
+            return null;
         }
     }
 
@@ -209,13 +229,21 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
     /// callers are all on paths where throwing would be the worse outcome — a failed read, or a
     /// caller tidying up after itself.
     /// </summary>
-    public async Task RemoveAsync(string key, CancellationToken ct = default)
+    public Task RemoveAsync(string key, CancellationToken ct = default) =>
+        RemoveAsync(key, expectedEpoch: null, ct);
+
+    private async Task RemoveAsync(string key, int? expectedEpoch, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         await _gate.WaitAsync(ct);
         try
         {
+            // A decrypt-fail/expiry tidy that started before Clear must not delete the
+            // next session's file at the same hashed path.
+            if (expectedEpoch is { } epoch && epoch != _epoch)
+                return;
+
             var path = PathFor(key);
             if (File.Exists(path))
                 File.Delete(path);

@@ -78,6 +78,7 @@
 
                 <!-- M1-17a — the form -->
                 <VerticalStackLayout x:Name="FormPanel" Spacing="14" IsVisible="False">
+                    <controls:SavedDataBanner x:Name="SavedBanner"/>
 
                     <!-- Who -->
                     <Border Style="{StaticResource ElevatedCard}">
@@ -227,5 +228,9 @@
         </ScrollView>
 
         <controls:BottomNavBar Grid.Row="2" Tab="Dashboard"/>
+
+        <!-- The second-long "Updating…" while the saved member list is replaced by the live
+             one — last, so it covers everything. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="3"/>
     </Grid>
 </ContentPage>
