@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-13",
+      "slack_ts": null,
+      "item_count": 4,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,42 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-13",
+      "slug": "fda-cardiovascular-ml-notification-class-ii",
+      "title": "FDA final classification order: Cardiovascular Machine Learning-Based Notification Software → Class II",
+      "url": "https://www.federalregister.gov/public-inspection/2026-18612/medical-devices-cardiovascular-devices-classification-of-the-cardiovascular-machine-learning-based",
+      "severity": "CRITICAL",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-13-fda-cardiovascular-ml-notification-class-ii.md"
+    },
+    {
+      "date": "2026-09-13",
+      "slug": "mhra-ai-healthcare-commission-recommendations",
+      "title": "MHRA National Commission into the Regulation of AI in Healthcare — 44 recommendations for a future framework",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "HIGH",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-13-mhra-ai-healthcare-commission-recommendations.md"
+    },
+    {
+      "date": "2026-09-13",
+      "slug": "arpa-h-advocate-agentic-cardiac-ai",
+      "title": "ARPA-H launches $62.7M \"ADVOCATE\" program for agentic AI cardiovascular care (Tempus AI, Stanford, Duke, Kaiser)",
+      "url": "https://arpa-h.gov/news-and-events/arpa-h-revolutionize-cardiovascular-disease-management-clinical-agentic-ai",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-13-arpa-h-advocate-agentic-cardiac-ai.md"
+    },
+    {
+      "date": "2026-09-13",
+      "slug": "implicity-40m-cardiac-remote-monitoring",
+      "title": "Implicity raises €35M to scale AI-driven cardiac remote-monitoring platform (clinician-facing, not a direct competitor)",
+      "url": "https://www.globenewswire.com/news-release/2026/09/09/3358622/0/en/implicity-secures-40m-growth-equity-funding-to-scale-its-ai-driven-cardiac-monitoring-platform-globally.html",
+      "severity": "FYI",
+      "category": "competition",
+      "brief": "research/queue/2026-09-13-implicity-40m-cardiac-remote-monitoring.md"
     }
   ]
 }
