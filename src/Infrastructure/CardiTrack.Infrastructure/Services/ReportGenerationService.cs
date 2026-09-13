@@ -205,7 +205,7 @@ public class ReportGenerationService : IReportGenerationService
                 request.IncludeJournals,
                 request.IncludeNotices);
 
-            var narrative = await BuildNarrativeAsync(generativeAi, data, report.Format);
+            var narrative = await BuildNarrativeAsync(generativeAi, data, report.Format, sections);
             var rendered = await renderer.RenderAsync(data, sections, narrative);
 
             var objectName = await _storage.UploadAsync(
@@ -255,18 +255,34 @@ public class ReportGenerationService : IReportGenerationService
     {
         var members = new List<ReportMemberData>(request.CardiMemberIds.Count);
 
+        // Charts are PDF-only. includeTrends defaults on, and a CSV/FHIR call
+        // that also pins a journal day must not fetch the fortnight and write
+        // those extra rows into a spreadsheet or bundle. The request range
+        // stays on the header, table, filename and prompt; the chart window
+        // is only the days the figures plot.
+        var requestFrom = request.DateRangeFrom;
+        var requestTo = request.DateRangeTo;
+        var chartOnPdf = request.IncludeTrends && request.Format == ReportFormat.Pdf;
+        var (chartFrom, chartTo) = chartOnPdf
+            ? ReportJournalScope.ChartWindow(
+                requestFrom, requestTo,
+                request.JournalEntryDate, request.JournalAudience)
+            : (requestFrom, requestTo);
+
+        var readingsFrom = requestFrom < chartFrom ? requestFrom : chartFrom;
+        var readingsTo = requestTo > chartTo ? requestTo : chartTo;
+
         foreach (var memberId in request.CardiMemberIds)
         {
             var member = await unitOfWork.CardiMembers.GetByIdAsync(memberId);
             if (member is null) continue;
 
-            // Gated like the other two sections, and for a sharper reason than symmetry: the
-            // narrative prompt is built from whatever this gather returns, so loading the logs
-            // regardless meant a caregiver who unticked metrics still had the readings described
-            // in their PDF — and still had them sent to the general provider.
-            var logs = request.IncludeMetrics
+            // Readings load for the daily table *or* the PDF charts. The narrative still
+            // only sees them when metrics are ticked — charts on a journals-only PDF
+            // must not send the fortnight to the general provider.
+            var logs = request.IncludeMetrics || chartOnPdf
                 ? (await unitOfWork.ActivityLogs
-                        .GetByCardiMemberAndDateRangeAsync(memberId, request.DateRangeFrom, request.DateRangeTo))
+                        .GetByCardiMemberAndDateRangeAsync(memberId, readingsFrom, readingsTo))
                     .OrderBy(l => l.Date)
                     .ToList()
                 : [];
@@ -296,7 +312,8 @@ public class ReportGenerationService : IReportGenerationService
             members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices));
         }
 
-        return new ReportDataSet(members, request.DateRangeFrom, request.DateRangeTo, request.Title);
+        return new ReportDataSet(
+            members, requestFrom, requestTo, request.Title, chartFrom, chartTo);
     }
 
     /// <summary>
@@ -361,12 +378,15 @@ public class ReportGenerationService : IReportGenerationService
     /// asking for CSV gets their file without waiting on an inference.
     /// </remarks>
     private async Task<string?> BuildNarrativeAsync(
-        IGenerativeAiService generativeAi, ReportDataSet data, ReportFormat format)
+        IGenerativeAiService generativeAi,
+        ReportDataSet data,
+        ReportFormat format,
+        ReportSections sections)
     {
         if (format != ReportFormat.Pdf)
             return null;
 
-        var prompt = BuildReportPrompt(data);
+        var prompt = BuildReportPrompt(data, sections.IncludeMetrics);
         var generated = await generativeAi.GenerateAsync(prompt.Text);
 
         // Names are restored only here, after the model has answered — the provider never saw them.
@@ -450,7 +470,7 @@ public class ReportGenerationService : IReportGenerationService
     /// is. Members are labelled positionally here and the labels are swapped back for real names
     /// after the response returns, so identity and health data never leave together.
     /// </summary>
-    private static ReportPrompt BuildReportPrompt(ReportDataSet data)
+    private static ReportPrompt BuildReportPrompt(ReportDataSet data, bool includeMetrics)
     {
         var sections = new List<string>();
         var pseudonyms = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -463,10 +483,11 @@ public class ReportGenerationService : IReportGenerationService
             var sb = new StringBuilder();
             sb.AppendLine($"## {label}");
 
-            if (member.ActivityLogs.Count > 0)
+            var periodLogs = data.PeriodReadings(member);
+            if (includeMetrics && periodLogs.Count > 0)
             {
                 sb.AppendLine("### Activity Metrics");
-                foreach (var log in member.ActivityLogs)
+                foreach (var log in periodLogs)
                     sb.AppendLine($"  {log.Date}: {DayFigures(log)}");
             }
 

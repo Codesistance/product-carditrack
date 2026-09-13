@@ -18,6 +18,7 @@ public class GenerateReportValidatorTests
         DateOnly? to = null,
         ReportFormat format = ReportFormat.Pdf,
         bool includeMetrics = true,
+        bool includeTrends = true,
         bool includeAlerts = true,
         bool includeDevices = false,
         bool includeJournals = false,
@@ -31,6 +32,7 @@ public class GenerateReportValidatorTests
             DateRangeTo = to ?? new DateOnly(2026, 3, 9),
             Format = format,
             IncludeMetrics = includeMetrics,
+            IncludeTrends = includeTrends,
             IncludeAlerts = includeAlerts,
             IncludeDevices = includeDevices,
             IncludeJournals = includeJournals,
@@ -227,9 +229,25 @@ public class GenerateReportValidatorTests
     {
         // It would produce a file with a header and nothing under it.
         var result = _validator.Validate(
-            Build(includeMetrics: false, includeAlerts: false, includeDevices: false));
+            Build(includeMetrics: false, includeTrends: false, includeAlerts: false, includeDevices: false));
 
         Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void Accepts_APdfRequestCarryingOnlyTrends()
+    {
+        Assert.True(_validator.Validate(
+            Build(includeMetrics: false, includeTrends: true, includeAlerts: false, includeDevices: false)).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_ACsvRequestCarryingOnlyTrends()
+    {
+        // Graphs have nowhere to go in a spreadsheet.
+        Assert.False(_validator.Validate(Build(
+            format: ReportFormat.Csv,
+            includeMetrics: false, includeTrends: true, includeAlerts: false, includeDevices: false)).IsValid);
     }
 
     [Fact]

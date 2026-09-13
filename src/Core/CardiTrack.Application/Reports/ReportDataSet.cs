@@ -13,11 +13,52 @@ namespace CardiTrack.Application.Reports;
 /// </remarks>
 /// <param name="Members">One entry per requested CardiMember, in request order. Members the
 /// caller could not read never reach here: access is vetted before the report is queued.</param>
+/// <param name="From">The range the caregiver asked for — header, filename, daily
+/// table, key figures, and the AI prompt. A pinned journal day does not move this.</param>
+/// <param name="To">Inclusive end of <paramref name="From"/>.</param>
+/// <param name="ChartFrom">The days the PDF figures plot. Same as <paramref name="From"/>
+/// on a health-data export; the journal page's fortnight (or 30 days) when a book
+/// entry is pinned.</param>
+/// <param name="ChartTo">Inclusive end of <paramref name="ChartFrom"/>.</param>
 public record ReportDataSet(
     IReadOnlyList<ReportMemberData> Members,
     DateOnly From,
     DateOnly To,
-    string? Title);
+    string? Title,
+    DateOnly ChartFrom,
+    DateOnly ChartTo)
+{
+    /// <summary>
+    /// Health-data exports — and tests that do not pin a journal — plot the
+    /// same days they tabulate.
+    /// </summary>
+    public ReportDataSet(
+        IReadOnlyList<ReportMemberData> Members,
+        DateOnly From,
+        DateOnly To,
+        string? Title)
+        : this(Members, From, To, Title, From, To)
+    {
+    }
+
+    /// <summary>
+    /// Readings that belong on the daily table and in the narrative — the
+    /// requested days, not the wider chart window a pinned journal needs.
+    /// </summary>
+    public IReadOnlyList<ActivityLog> PeriodReadings(ReportMemberData member)
+    {
+        var logs = member.ActivityLogs;
+        if (logs.Count == 0)
+            return logs;
+
+        // Gather orders by date. When the loaded span is already the request
+        // range, skip the second pass — the common health-data case.
+        if (ChartFrom == From && ChartTo == To)
+            return logs;
+
+        return logs.Where(l => l.Date >= From && l.Date <= To).ToList();
+    }
+}
 
 /// <summary>One member's slice of an export.</summary>
 /// <param name="Devices">Connections that produced the readings — the FHIR <c>Device</c>
@@ -40,7 +81,7 @@ public record ReportSections(
     bool IncludeMetrics,
     bool IncludeAlerts,
     bool IncludeDevices,
-    bool IncludeTrends = false,
+    bool IncludeTrends = true,
     bool IncludeJournals = false,
     bool IncludeNotices = false);
 

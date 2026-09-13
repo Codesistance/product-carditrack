@@ -291,7 +291,8 @@ public partial class ExportHealthDataPage : ContentPage
     {
         var days = (SelectedTo - SelectedFrom).Days + 1;
         var anySection = MetricsCheck.IsChecked || AlertsCheck.IsChecked || DevicesCheck.IsChecked
-                         || JournalsCheck.IsChecked || NoticesCheck.IsChecked;
+                         || JournalsCheck.IsChecked || NoticesCheck.IsChecked
+                         || (TrendsCheck.IsChecked && _selectedFormat == ReportFormat.Pdf);
 
         if (days <= 0)
         {

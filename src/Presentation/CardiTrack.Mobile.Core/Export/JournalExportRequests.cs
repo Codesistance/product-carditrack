@@ -67,6 +67,10 @@ public static class JournalExportRequests
         string? consentToken,
         string? title = null)
     {
+        // PDF draws the same fortnight (or month) the journal page charts. CSV has
+        // no picture, so the flag stays off and the fingerprint stays journals-only.
+        var includeTrends = format == ReportFormat.Pdf;
+
         var consent = new RecordExportConsentRequest
         {
             CardiMemberIds = [memberId],
@@ -74,7 +78,7 @@ public static class JournalExportRequests
             DateRangeTo = to,
             Format = format,
             IncludeMetrics = false,
-            IncludeTrends = false,
+            IncludeTrends = includeTrends,
             IncludeAlerts = false,
             IncludeJournals = true,
             IncludeNotices = false,
@@ -92,7 +96,7 @@ public static class JournalExportRequests
             DateRangeTo = to,
             Format = format,
             IncludeMetrics = false,
-            IncludeTrends = false,
+            IncludeTrends = includeTrends,
             IncludeAlerts = false,
             IncludeJournals = true,
             IncludeNotices = false,
