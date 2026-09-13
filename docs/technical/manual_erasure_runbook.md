@@ -2,7 +2,7 @@
 
 **Status: operational procedure. This is how the published 30-day deletion promise is kept until an erasure endpoint exists.**
 
-Last updated: 2026-08-18
+Last updated: 2026-09-13
 
 ## Why this document exists
 
@@ -29,12 +29,12 @@ So the promise is not impossible — at current scale (under 100 connected weare
 
 Delete children before parents. There are almost no cascades, so nothing is removed for you.
 
-**Derive the list, do not trust this table alone.** Before starting, enumerate every table carrying a `CardiMemberId` or `UserId` column and reconcile it against the list below. New subject-linked tables get added by ordinary feature work and will not announce themselves here — this is the same failure the `SubjectDataMap` exists to remove, and until that ships the query below is the map:
+**Derive the list, do not trust this table alone.** Before starting, enumerate every table carrying a `CardiMemberId` or `UserId` column — **and** the tables that reach the subject another way: a `CardiMemberIds` array (`ExportConsents`, `Reports`), an owner or requester column (`OwnerUserId`, `RequestedByUserId`), or an organisation key (`OrganizationId`, on the account-level `MetricAlarms` rows) — and reconcile it against the list below. New subject-linked tables get added by ordinary feature work and will not announce themselves here — this is the same failure the `SubjectDataMap` exists to remove, and until that ships the query below is the map:
 
 ```sql
 SELECT table_name, column_name
 FROM information_schema.columns
-WHERE column_name IN ('CardiMemberId', 'UserId')
+WHERE column_name IN ('CardiMemberId', 'CardiMemberIds', 'UserId', 'OwnerUserId', 'RequestedByUserId', 'OrganizationId')
 ORDER BY table_name;
 ```
 
@@ -60,8 +60,8 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 14 | `MemberQuestionnaires` | Question text and free-text answers, AES-256-GCM encrypted at rest |
 | 15 | `MemberChatSessions` | Caregiver Q&A about this member — the full question and answer text per turn, plus the encrypted theme. `MemberChatTurns` and `MemberChatTurnUsages` cascade from the session (`MemberChatSessionConfiguration`), but re-query both to verify the count. Also carries `UserId`. **No partition drop and no retention worker covers these** — retained indefinitely unless deleted here |
 | 16 | `MemberAdvises` | The current "Something to try" suggestion — one row per member per topic, derived from health data; overwritten on each regeneration, so this is the whole history |
-| 17 | `MetricAlarms` (member rows) | Caregiver-defined alarms **tuned for this member** — rows where `CardiMemberId` is this member. Account-level rows (`CardiMemberId` null) are account-scoped, below |
-| 18 | `MetricAlarmStates` | Per-member state of each custom alarm (`MetricAlarmId`, `CardiMemberId`) — delete before the alarms above are gone, or the count is unverifiable |
+| 17 | `MetricAlarmStates` | Per-member state of each custom alarm (`MetricAlarmId`, `CardiMemberId`) — a child of `MetricAlarms`, so it goes first — delete these before the alarm rows below |
+| 18 | `MetricAlarms` (member rows) | Caregiver-defined alarms **tuned for this member** — rows where `CardiMemberId` is this member. Account-level rows (`CardiMemberId` null) are account-scoped, below |
 | 19 | `MemberStatusLines` | The saved dashboard status sentence — derived from health data, one row per member |
 | 20 | `MemberAiHolds` | The per-member, per-purpose hold the AI pipeline sets when a read fills its ceiling — records that a member's data was being assessed |
 | 21 | `DeviceHistoryRepulls` | Caregiver-requested history re-pulls; carries `CardiMemberId` and `RequestedByUserId`, so it is also swept at account closure |

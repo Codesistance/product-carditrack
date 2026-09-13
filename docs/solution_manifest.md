@@ -389,7 +389,7 @@ added after real PHI exists leaves an unauditable gap that can never be closed.
 | Token policy | ✅ | Short-lived access tokens (15–60 min), rotating refresh tokens (30-day absolute), ~15-min web idle timeout, biometric re-auth on mobile open |
 | Access controls — RBAC | 🔄 | `UserRole` exists and CardiMember access is gated per-caregiver; role enforcement is not yet applied across every endpoint |
 | Access controls — MFA for admins | ⬜ | Auth0 tenant configuration, not yet enabled |
-| Audit logging of PHI access | 🔄 | `AuditLoggingMiddleware` writes audit rows for the **eight** health-data controllers annotated `[AuditHealthDataAccess]` (CardiMembers, Dashboard, Devices, Insights, Chat, Reports, Questionnaires, Alerts); GET audits coalesce for 15 minutes. Onboarding's member creation remains unaudited |
+| Audit logging of PHI access | 🔄 | `AuditLoggingMiddleware` writes audit rows for the **ten** controllers annotated `[AuditHealthDataAccess]` (Alerts, CardiMembers, Dashboard, Devices, Insights, MemberChat, MetricAlarms, Onboarding (member creation only), Questionnaires, Reports); GET audits coalesce for 15 minutes. Onboarding's member creation has been audited since 2026-09-13 |
 | Least privilege | 🔄 | api, web, pipeline and webhook-receiver run as dedicated service accounts; worker, migrator and aggregator still share the default compute SA; applications connect to Postgres as admin (W1-6) |
 
 **Administrative safeguards (§164.308) — not started**
@@ -470,7 +470,7 @@ attaches.
 
 **AuditLog**
 - Schema for access tracking — table, EF configuration, indexes and migration exist
-- 🔄 Written request-scoped by `AuditLoggingMiddleware` for the eight `[AuditHealthDataAccess]`-annotated health-data controllers; GET audits coalesce for 15 minutes; Onboarding's member creation is the remaining unaudited path
+- 🔄 Written request-scoped by `AuditLoggingMiddleware` for the ten `[AuditHealthDataAccess]`-annotated controllers (Onboarding's member creation included since 2026-09-13); GET audits coalesce for 15 minutes; the remaining gap is audit-log retention (DPIA OI-8)
 - Retention target is set by the regime that applies — see §5
 
 ---
