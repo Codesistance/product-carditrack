@@ -396,7 +396,7 @@ AuditLog Entity (6-year retention policy; deployed infra currently retains 30 de
 ├── UserAgent: Browser/device info
 └── DataAccessed: JSON (specific fields viewed)
 ```
-(Written by `AuditLoggingMiddleware` for endpoints carrying the opt-in `AuditHealthDataAccessAttribute` — the eight health-data controllers: Alerts, CardiMembers, Chat, Dashboard, Devices, Insights, Questionnaires, Reports; unannotated endpoints such as Onboarding are not audited.)
+(Written by `AuditLoggingMiddleware` for endpoints carrying the opt-in `AuditHealthDataAccessAttribute` — ten controllers as of 2026-09-13: Alerts, CardiMembers, Dashboard, Devices, Insights, MemberChat, MetricAlarms, Onboarding (member creation only), Questionnaires, Reports. Onboarding's `POST /api/onboarding/cardimember` is audited as `CreateCardiMember`; its other steps create no health data and are not.)
 
 **Business Associate Agreements (BAAs):**
 - ✅ **Auth0**: BAA required before prod go-live ([runbook §1](./auth0_setup_runbook.md))

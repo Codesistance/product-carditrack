@@ -75,6 +75,54 @@ public class CardiMemberServiceTests
     };
 
     [Fact]
+    public async Task Create_CommitsOnce_WhenBothSavesSucceed()
+    {
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest());
+
+        await _unitOfWork.Received(1).BeginTransactionAsync();
+        await _unitOfWork.Received(1).CommitTransactionAsync();
+        await _unitOfWork.DidNotReceive().RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Create_RollsBack_WhenTheCaregiverLinkCannotBeSaved()
+    {
+        // The member and the caregiver's link to it are one creation. A failure after the first
+        // save must not leave a member row that no caregiver can reach — and the id is handed to
+        // the audit middleware only on success, so an orphan would also be unnamed there.
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest()));
+
+        await _unitOfWork.Received(1).BeginTransactionAsync();
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+        // The failed graph must not ride along on this unit of work's next save.
+        _unitOfWork.Received(1).ClearTracking();
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_DiscardsTheObject_WhenTheTransactionCannotEvenStart()
+    {
+        // The one path where rollback is a no-op rather than an undo: nothing was written, but
+        // the photo was already uploaded, and the caller must still see the real failure.
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.BeginTransactionAsync().Returns(Task.FromException(new IOException("no connection")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        await Assert.ThrowsAsync<IOException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _photoStorage.Received(1).DeleteAsync("members/x/orphan.jpg", Arg.Any<CancellationToken>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+    }
+
+    [Fact]
     public async Task Create_PersistsMemberAndCaregiverLink()
     {
         CardiMember? savedMember = null;
@@ -532,6 +580,99 @@ public class CardiMemberServiceTests
             savedMember.Id,
             Arg.Is<ReadOnlyMemory<byte>>(m => m.ToArray().SequenceEqual(ProcessedJpeg)),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_DeletesTheUploadedObject_WhenTheCreateFails()
+    {
+        // The upload happens before the member row exists. If the row never lands, the object
+        // must not be left behind for nothing to point at.
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _photoStorage.Received(1).DeleteAsync("members/x/orphan.jpg", Arg.Any<CancellationToken>());
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_StillRethrowsTheCreateFailure_WhenTheDeleteFailsToo()
+    {
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+        _photoStorage.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new IOException("bucket unreachable")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        // The creation failure is what the caller must see — not the clean-up's.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_KeepsTheObject_WhenTheCommitItselfFails()
+    {
+        // A commit can fail after the server has accepted it. The member may exist and own the
+        // photo, so nothing here may delete it — the orphan sweep decides later, from the rows.
+        SetupPhotoPipeline("members/x/maybe-committed.jpg");
+        CardiMember? savedMember = null;
+        await _members.AddAsync(Arg.Do<CardiMember>(m => savedMember = m));
+        _unitOfWork.CommitTransactionAsync().Returns(Task.FromException(new TimeoutException("commit ack lost")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        // The indeterminate outcome takes its own shape, carrying the id the row would have —
+        // so the audit entry can still name the member and a reconciler can look for it.
+        var outcome = await Assert.ThrowsAsync<CardiMemberCreationOutcomeUnknownException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        Assert.Equal(savedMember!.Id, outcome.CardiMemberId);
+        Assert.IsType<TimeoutException>(outcome.InnerException);
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Create_RethrowsTheOriginalFailure_WhenItHappensBeforeTheCommit()
+    {
+        // Only the indeterminate outcome is wrapped. A pre-commit failure is fully rolled back
+        // and the caller sees the exception that actually happened.
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest()));
+
+        Assert.Equal("link save failed", ex.Message);
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_StillDiscardsTheObject_WhenTheRollbackAlsoFails()
+    {
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+        _unitOfWork.RollbackTransactionAsync().Returns(Task.FromException(new IOException("connection dropped")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        // The rollback's failure must neither replace the original exception nor skip the clean-up.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _photoStorage.Received(1).DeleteAsync("members/x/orphan.jpg", Arg.Any<CancellationToken>());
     }
 
     [Fact]

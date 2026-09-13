@@ -389,7 +389,7 @@ added after real PHI exists leaves an unauditable gap that can never be closed.
 | Token policy | ✅ | Short-lived access tokens (15–60 min), rotating refresh tokens (30-day absolute), ~15-min web idle timeout, biometric re-auth on mobile open |
 | Access controls — RBAC | 🔄 | `UserRole` exists and CardiMember access is gated per-caregiver; role enforcement is not yet applied across every endpoint |
 | Access controls — MFA for admins | ⬜ | Auth0 tenant configuration, not yet enabled |
-| Audit logging of PHI access | 🔄 | `AuditLoggingMiddleware` writes audit rows for the **eight** health-data controllers annotated `[AuditHealthDataAccess]` (CardiMembers, Dashboard, Devices, Insights, Chat, Reports, Questionnaires, Alerts); GET audits coalesce for 15 minutes. Onboarding's member creation remains unaudited |
+| Audit logging of PHI access | 🔄 | `AuditLoggingMiddleware` writes audit rows for the **ten** controllers annotated `[AuditHealthDataAccess]` (Alerts, CardiMembers, Dashboard, Devices, Insights, MemberChat, MetricAlarms, Onboarding (member creation only), Questionnaires, Reports); GET audits coalesce for 15 minutes. Onboarding's member creation has been audited since 2026-09-13 |
 | Least privilege | 🔄 | api, web, pipeline and webhook-receiver run as dedicated service accounts; worker, migrator and aggregator still share the default compute SA; applications connect to Postgres as admin (W1-6) |
 
 **Administrative safeguards (§164.308) — not started**
@@ -405,16 +405,15 @@ document exists and someone owns it.
 | Google Cloud (Cloud SQL, GCS, Secret Manager, KMS, Cloud Run) | ⬜ Offered and free — not executed (tracked in issue #40) |
 | Auth0 (Okta) | ⬜ Available on suitable plan tier — deferred to production go-live |
 | Google Health API | n/a — no BAA offered; user-consent model under Google's Limited Use policy |
-| Gemini via Vertex AI | BAA-eligible under the Cloud umbrella — **D6 resolved 2026-08-21**: the Public and Rewrite slots move to an EU regional Vertex endpoint (in code; per-environment flip pending) (ZDR configuration, [vertex_ai_setup.md](technical/vertex_ai_setup.md)); the consumer Gemini API is superseded. Chat and reports still send **de-identified daily readings** (no name/id on chat; reports label members positionally). Insights/digest/assess stay on in-project MedGemma |
+| Gemini via Vertex AI | BAA-eligible under the Cloud umbrella — **D6 resolved 2026-08-21**: the Public and Rewrite slots move to an EU regional Vertex endpoint (in code; per-environment flip pending) (ZDR configuration, [vertex_ai_setup.md](technical/vertex_ai_setup.md)); the consumer Gemini API is superseded. Chat and reports still send **de-identified daily readings** (no name/id on chat; reports label members positionally). Insights and real-time assessments stay on in-project MedGemma; the family digest and Advise are two-step since 2026-09-04 / 2026-08-26 — MedGemma's clinical read stays in-project and only a de-identified read reaches the Vertex Rewrite slot (DPIA A11, A22) |
 
 **Audit logging — implemented for annotated health-data controllers**
 
 `AuditLoggingMiddleware` writes user ID, CardiMember ID, action, timestamp, IP address and user
-agent, request-scoped so reads are captured and not just writes, for the eight health-data
-controllers annotated `[AuditHealthDataAccess]` (CardiMembers, Dashboard, Devices, Insights, Chat,
-Reports, Questionnaires, Alerts). Repeated GETs from the same caller coalesce into one row per
-15-minute window. The remaining gap is Onboarding's member creation, which writes health data
-without an audit row. Retention is 90 days for the platform
+agent, request-scoped so reads are captured and not just writes, for the ten controllers
+annotated `[AuditHealthDataAccess]` as of 2026-09-13 (Alerts, CardiMembers, Dashboard, Devices, Insights, MemberChat, MetricAlarms, Onboarding (member creation only), Questionnaires, Reports). Repeated GETs from the same caller coalesce into one row per
+15-minute window. Onboarding's member creation has been audited since 2026-09-13; the
+remaining gaps are audit-log retention and the unannotated A4 `ChatController` (DPIA §4.4). Retention is 90 days for the platform
 audit trail today (`enable_platform_audit_logging`); the six-year figure applies to HIPAA
 §164.316(b)(2) documentation and PHI-access records, and becomes required only when HIPAA
 attaches.
@@ -470,7 +469,7 @@ attaches.
 
 **AuditLog**
 - Schema for access tracking — table, EF configuration, indexes and migration exist
-- 🔄 Written request-scoped by `AuditLoggingMiddleware` for the eight `[AuditHealthDataAccess]`-annotated health-data controllers; GET audits coalesce for 15 minutes; Onboarding's member creation is the remaining unaudited path
+- 🔄 Written request-scoped by `AuditLoggingMiddleware` for the ten `[AuditHealthDataAccess]`-annotated controllers (Onboarding's member creation included since 2026-09-13); GET audits coalesce for 15 minutes; the remaining gaps are audit-log retention (DPIA OI-8) and the unannotated A4 `ChatController` (DPIA §4.4)
 - Retention target is set by the regime that applies — see §5
 
 ---

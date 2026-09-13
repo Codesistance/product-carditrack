@@ -1,3 +1,5 @@
+using System.Reflection;
+using CardiTrack.API.Controllers;
 using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.API.Middleware;
@@ -74,7 +76,7 @@ public class AuditLoggingMiddlewareTests
             cache ?? new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions())));
 
     private async Task<AuditLog?> InvokeAndCaptureAsync(
-        DefaultHttpContext httpContext, bool authenticated = true)
+        DefaultHttpContext httpContext, bool authenticated = true, RequestDelegate? next = null)
     {
         AuditLog? captured = null;
         await _auditLogs.AppendAsync(Arg.Do<AuditLog>(a => captured = a), Arg.Any<CancellationToken>());
@@ -85,11 +87,64 @@ public class AuditLoggingMiddlewareTests
             IsAuthenticated = authenticated,
         };
 
-        await CreateSut().InvokeAsync(httpContext, userContext, _auditLogs);
+        await CreateSut(next).InvokeAsync(httpContext, userContext, _auditLogs);
         return captured;
     }
 
     // ── What gets recorded ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ReadsTheMemberId_HandedOverInItems_WhenTheRouteCannotCarryOne()
+    {
+        // A create has no member id in its route — the member does not exist until the action
+        // has run. The action hands the new id over in Items, and that must be what is recorded.
+        var httpContext = BuildContext(
+            new AuditHealthDataAccessAttribute("CreateCardiMember"), StatusCodes.Status201Created);
+        httpContext.Request.Method = "POST";
+        httpContext.Request.Path = "/api/onboarding/cardimember";
+
+        var created = Guid.NewGuid();
+        var entry = await InvokeAndCaptureAsync(httpContext, next: ctx =>
+        {
+            ctx.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = created;
+            return Task.CompletedTask;
+        });
+
+        Assert.NotNull(entry);
+        Assert.Equal(created, entry!.CardiMemberId);
+        Assert.Equal("CreateCardiMember", entry.Action);
+    }
+
+    [Fact]
+    public async Task PrefersTheHandedOverMemberId_OverARouteValue()
+    {
+        var routeMember = Guid.NewGuid();
+        var handedMember = Guid.NewGuid();
+        var httpContext = BuildContext(
+            new AuditHealthDataAccessAttribute("Anything"),
+            routeValue: ("cardiMemberId", routeMember.ToString()));
+
+        var entry = await InvokeAndCaptureAsync(httpContext, next: ctx =>
+        {
+            ctx.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = handedMember;
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal(handedMember, entry!.CardiMemberId);
+    }
+
+    [Fact]
+    public void OnboardingMemberCreation_IsAudited()
+    {
+        // DPIA R-A2: the one onboarding step that writes health data must carry the attribute.
+        // Checked by reflection rather than an HTTP round-trip, so a route move cannot hide it.
+        var action = typeof(OnboardingController).GetMethod(nameof(OnboardingController.CreateCardiMember));
+
+        Assert.NotNull(action);
+        var attribute = action!.GetCustomAttribute<AuditHealthDataAccessAttribute>();
+        Assert.NotNull(attribute);
+        Assert.Equal("CreateCardiMember", attribute!.Action);
+    }
 
     [Fact]
     public async Task WritesAnEntry_ForAnAuditedEndpoint()

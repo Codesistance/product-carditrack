@@ -36,6 +36,28 @@ public class CardiMemberService : ICardiMemberService
         _photoStorage = photoStorage;
     }
 
+    /// <summary>
+    /// The photo is stored before the member row exists (a refused photo must not half-create a
+    /// member), so a creation that fails after the upload would leave health imagery in the
+    /// bucket that no row points at. Delete it here; the caller's exception is the one that
+    /// matters, so a failed delete is not allowed to replace it — <c>OrphanedPhotoCleanupWorker</c>
+    /// sweeps whatever this misses.
+    /// </summary>
+    private async Task DiscardUploadedPhotoAsync(CardiMember cardiMember)
+    {
+        if (string.IsNullOrEmpty(cardiMember.PhotoObjectName))
+            return;
+
+        try
+        {
+            await _photoStorage.DeleteAsync(cardiMember.PhotoObjectName);
+        }
+        catch
+        {
+            // Swallowed on purpose: see the summary. The original failure is being rethrown.
+        }
+    }
+
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
         Guid organizationId,
         Guid userId,
@@ -63,22 +85,70 @@ public class CardiMemberService : ICardiMemberService
             cardiMember.PhotoObjectName = await _photoStorage.UploadAsync(cardiMember.Id, jpeg);
         }
 
-        await _unitOfWork.CardiMembers.AddAsync(cardiMember);
-        await _unitOfWork.SaveChangesAsync(); // Save to get ID
-
-        // Create relationship between user and CardiMember
-        var userCardiMember = new UserCardiMember
+        // The member and the caregiver's link to it are one creation. Two saves without a
+        // transaction could leave a member row that no caregiver is linked to — reachable by
+        // nobody, deletable by nobody, and named by no audit entry (the id is handed to the
+        // audit middleware only once this method returns). The transaction starts inside the
+        // try so that a failure to start it still discards the photo uploaded above; rolling
+        // back with no transaction open is a no-op.
+        //
+        // Once Commit has been *attempted* the outcome is indeterminate — the server can accept
+        // the commit and the call still fail on the way back. A member may then exist and own
+        // the photo, so the object is left alone on that path: OrphanedPhotoCleanupWorker deletes
+        // it only if no row ever points at it.
+        var commitAttempted = false;
+        try
         {
-            UserId = userId,
-            CardiMemberId = cardiMember.Id,
-            RelationshipType = Stated(request.RelationshipType),
-            IsPrimaryCaregiver = request.IsPrimaryCaregiver,
-            CanViewHealthData = true,
-            ReceiveAlerts = true
-        };
+            await _unitOfWork.BeginTransactionAsync();
 
-        await _unitOfWork.UserCardiMembers.AddAsync(userCardiMember);
-        await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CardiMembers.AddAsync(cardiMember);
+            await _unitOfWork.SaveChangesAsync(); // Save to get ID
+
+            // Create relationship between user and CardiMember
+            var userCardiMember = new UserCardiMember
+            {
+                UserId = userId,
+                CardiMemberId = cardiMember.Id,
+                RelationshipType = Stated(request.RelationshipType),
+                IsPrimaryCaregiver = request.IsPrimaryCaregiver,
+                CanViewHealthData = true,
+                ReceiveAlerts = true
+            };
+
+            await _unitOfWork.UserCardiMembers.AddAsync(userCardiMember);
+            await _unitOfWork.SaveChangesAsync();
+
+            commitAttempted = true;
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+            }
+            catch
+            {
+                // Rollback is itself a database call. The original failure is the one the
+                // caller must see, and the photo clean-up below must still run.
+            }
+            finally
+            {
+                // The member and link are still tracked as Added. Left there, the next save on
+                // this scoped unit of work would submit the failed graph again.
+                _unitOfWork.ClearTracking();
+            }
+
+            if (commitAttempted)
+            {
+                // The member may exist. Hand the caller the id so the audit entry for this
+                // request can still name it and a reconciler can find the row.
+                throw new Exceptions.CardiMemberCreationOutcomeUnknownException(cardiMember.Id, ex);
+            }
+
+            await DiscardUploadedPhotoAsync(cardiMember);
+            throw;
+        }
 
         return new CardiMemberResponse
         {

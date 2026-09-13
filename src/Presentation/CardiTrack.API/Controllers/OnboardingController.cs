@@ -1,5 +1,7 @@
+using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
 using FluentValidation;
@@ -122,7 +124,14 @@ public class OnboardingController : BaseApiController
     /// <summary>
     /// Step 5: Create CardiMember (person to monitor)
     /// </summary>
+    /// <remarks>
+    /// The one onboarding step that writes health data (date of birth, sex, medical notes), so
+    /// it is audited like every other health-data surface. The member does not exist until the
+    /// service returns, so the id is handed to the middleware through <c>HttpContext.Items</c>
+    /// rather than read from the route.
+    /// </remarks>
     [HttpPost("cardimember")]
+    [AuditHealthDataAccess("CreateCardiMember")]
     [ProducesResponseType(typeof(ApiResponse<CardiMemberResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ApiResponse<CardiMemberResponse>>> CreateCardiMember(
@@ -142,10 +151,24 @@ public class OnboardingController : BaseApiController
             request.Name,
             UserContext.OrganizationId);
 
-        var response = await _cardiMemberService.CreateCardiMemberAsync(
-            UserContext.OrganizationId,
-            UserContext.UserId,
-            request);
+        CardiMemberResponse response;
+        try
+        {
+            response = await _cardiMemberService.CreateCardiMemberAsync(
+                UserContext.OrganizationId,
+                UserContext.UserId,
+                request);
+        }
+        catch (CardiMemberCreationOutcomeUnknownException ex)
+        {
+            // The commit's outcome is unknown, so the member may exist. The audit entry for
+            // this request must still name it; the exception handler turns the throw into a
+            // 500 and the audit middleware, which sits outside it, reads this on the way out.
+            HttpContext.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = ex.CardiMemberId;
+            throw;
+        }
+
+        HttpContext.Items[AuditHealthDataAccessAttribute.CardiMemberIdItemKey] = response.Id;
 
         return Created(response, $"{response.Name} has been added to your care circle!");
     }

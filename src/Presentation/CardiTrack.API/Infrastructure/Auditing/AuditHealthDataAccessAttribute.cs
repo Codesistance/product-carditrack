@@ -13,6 +13,13 @@ namespace CardiTrack.API.Infrastructure.Auditing;
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, Inherited = true)]
 public sealed class AuditHealthDataAccessAttribute : Attribute
 {
+    /// <summary>
+    /// <c>HttpContext.Items</c> key an action sets to name the member the entry is about when
+    /// the route cannot — a create has no member id until the write has happened. The
+    /// middleware reads this before the route values.
+    /// </summary>
+    public const string CardiMemberIdItemKey = "CardiTrack.Audit.CardiMemberId";
+
     /// <param name="action">
     /// Short verb recorded in <c>AuditLog.Action</c>, e.g. "ViewDashboard". Defaults to the
     /// HTTP method plus route when omitted.
