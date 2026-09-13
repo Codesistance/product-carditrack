@@ -1559,6 +1559,64 @@ public class CardiTrackApiClientTests
         Assert.Equal(new DateOnly(2026, 8, 10), repull.FromDate);
     }
 
+    // ── Health-data disclosure (Google-mandated, once per caregiver) ─────────────
+
+    [Fact]
+    public async Task GetHealthDataDisclosure_UsesUsersMeRoute_AndUnwraps()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK,
+            """{"success":true,"message":"ok","data":{"dismissed":false},"timestamp":"2026-09-13T00:00:00Z"}""");
+
+        var disclosure = await client.GetHealthDataDisclosureAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal("/api/v1/users/me/health-data-disclosure", request.Uri!.AbsolutePath);
+        Assert.False(disclosure.Dismissed);
+    }
+
+    [Fact]
+    public async Task GetHealthDataDisclosure_NeverReadsTheOfflineCache()
+    {
+        // A compliance banner decided by a stale answer is the wrong kind of last-known-good.
+        var cache = Substitute.For<IOfflineReadCache>();
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK,
+            """{"success":true,"message":"ok","data":{"dismissed":true},"timestamp":"2026-09-13T00:00:00Z"}""");
+
+        var disclosure = await client.GetHealthDataDisclosureAsync();
+
+        Assert.True(disclosure.Dismissed);
+        await cache.DidNotReceiveWithAnyArgs().TryGetAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task DismissHealthDataDisclosure_PostsToTheDismissRoute()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK,
+            """{"success":true,"message":"Thanks","data":null,"timestamp":"2026-09-13T00:00:00Z"}""");
+
+        await client.DismissHealthDataDisclosureAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/v1/users/me/health-data-disclosure/dismiss", request.Uri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task DismissHealthDataDisclosure_ThrowsApiException_WhenRefused()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.NotFound,
+            """{"success":false,"message":"We couldn't find your account — please sign in again.","timestamp":"2026-09-13T00:00:00Z"}""");
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.DismissHealthDataDisclosureAsync());
+
+        Assert.Contains("find your account", ex.Message);
+    }
+
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
         IOfflineReadCache? cache = null)
     {

@@ -660,6 +660,16 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             HttpMethod.Put, "api/v1/users/me/timezone",
             new UpdateTimeZoneBody { TimeZoneId = timeZoneId }, ct);
 
+    public Task<HealthDataDisclosureResponse> GetHealthDataDisclosureAsync(CancellationToken ct = default) =>
+        GetAsync<HealthDataDisclosureResponse>(ApiPaths.HealthDataDisclosure, ct, cache: false);
+
+    public async Task DismissHealthDataDisclosureAsync(CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Post, ApiPaths.HealthDataDisclosure + "/dismiss", ct);
+        // Not cached on read, but nothing may ever peek a pre-dismissal answer either.
+        await EvictAsync(ApiPaths.HealthDataDisclosure);
+    }
+
     public Task<PushDeviceTokenResponse> RegisterPushDeviceAsync(
         RegisterPushDeviceRequest request, CancellationToken ct = default) =>
         PostAsync<RegisterPushDeviceRequest, PushDeviceTokenResponse>("api/v1/notifications/devices", request, ct);

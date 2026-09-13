@@ -398,6 +398,9 @@ public partial class SettingsPage : ContentPage
             await _authService.SignOutAsync();
             Preferences.Default.Remove("PrimaryCardiMemberId");
             Preferences.Default.Remove("VerifyEmailNudgeDismissed");
+            // The account is the record of the health-data disclosure; this is only the hint that
+            // it was confirmed, and the next caregiver on this phone must be asked afresh.
+            Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
             Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
             // Holds a name, DOB and medical notes — must not survive into the next session.
             await _drafts.ClearAsync();

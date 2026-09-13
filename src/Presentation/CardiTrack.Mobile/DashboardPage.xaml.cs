@@ -24,6 +24,13 @@ public partial class DashboardPage : ContentPage
     /// <summary>Their full name, kept so the Alerts jump can label the chip it filters by.</summary>
     private string? _memberName;
     private const string VerifyEmailDismissedKey = "VerifyEmailNudgeDismissed";
+
+    /// <summary>
+    /// Set once the account has confirmed the health-data disclosure was dismissed — a hint that
+    /// stops the banner returning while the account cannot be asked, never the record itself.
+    /// Cleared on sign-out, like <see cref="VerifyEmailDismissedKey"/>.
+    /// </summary>
+    internal const string HealthDataDisclosureConfirmedKey = "HealthDataDisclosureConfirmed";
     private const string DismissedSleepAlertKey = "DismissedSleepAlertId";
     private static readonly TimeSpan StaleThreshold = TimeSpan.FromHours(2);
 
@@ -90,6 +97,8 @@ public partial class DashboardPage : ContentPage
         HeroCard.AdviseTapped += OnHeroAdviseTapped;
         HeroCard.WeatherTapped += async (_, weather) => await _popups.ShowWeatherAsync(weather);
         Header.BellTapped += OnBellClicked;
+        DisclosureBanner.LearnMoreRequested += OnDisclosureLearnMore;
+        DisclosureBanner.DismissRequested += OnDisclosureDismiss;
 
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
 
@@ -111,6 +120,7 @@ public partial class DashboardPage : ContentPage
         base.OnAppearing();
         UpdateGreeting();
         UpdateVerifyEmailBanner();
+        _ = RefreshDisclosureBannerAsync();
 
         // Arriving on the screen is a pull, like the tick and the resume. This used to skip the
         // load when the last one was under a couple of minutes old, which meant a caregiver who
@@ -189,6 +199,54 @@ public partial class DashboardPage : ContentPage
     {
         Preferences.Default.Set(VerifyEmailDismissedKey, true);
         VerifyEmailBanner.IsVisible = false;
+    }
+
+    // Google-mandated health-data disclosure: shown until the account says it was dismissed. The
+    // account is the record, asked live on every appearance — never the offline cache, since a
+    // compliance banner decided by a stale answer is the wrong kind of last-known-good. When the
+    // account cannot be asked, the banner shows: an unknown answer must read as "not yet told",
+    // never as "acknowledged". The one thing kept on the device is that the account has
+    // confirmed a dismissal, so a caregiver who has already read it is not shown it again every
+    // time the phone is offline; sign-out clears it with the other per-device flags.
+    private async Task RefreshDisclosureBannerAsync()
+    {
+        if (Preferences.Default.Get(HealthDataDisclosureConfirmedKey, false))
+            return;
+
+        try
+        {
+            var disclosure = await _api.GetHealthDataDisclosureAsync();
+            if (disclosure.Dismissed)
+                Preferences.Default.Set(HealthDataDisclosureConfirmedKey, true);
+            DisclosureBanner.IsVisible = !disclosure.Dismissed;
+        }
+        catch (Exception)
+        {
+            DisclosureBanner.IsVisible = true;
+        }
+    }
+
+    private async void OnDisclosureLearnMore(object? sender, EventArgs e) =>
+        await Navigation.PushModalAsync(new LegalDocumentPage(LegalDocumentPage.PrivacyTitle, LegalDocumentPage.PrivacyUrl));
+
+    private async void OnDisclosureDismiss(object? sender, EventArgs e)
+    {
+        // Hide only once the dismissal has actually persisted — the same rule as the web banner.
+        DisclosureBanner.SetBusy(true);
+        try
+        {
+            await _api.DismissHealthDataDisclosureAsync();
+            Preferences.Default.Set(HealthDataDisclosureConfirmedKey, true);
+            DisclosureBanner.IsVisible = false;
+        }
+        catch (ApiException ex)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't save that");
+        }
+        finally
+        {
+            DisclosureBanner.SetBusy(false);
+        }
     }
 
     private void OnDismissSleepConcernClicked(object? sender, EventArgs e)

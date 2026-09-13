@@ -374,6 +374,16 @@ public interface ICardiTrackApiClient
     /// <summary>Sets the caller's IANA time zone — what the timezone nudge sends the user to do.</summary>
     Task UpdateTimeZoneAsync(string timeZoneId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Whether the caller has dismissed the Google-mandated health-data disclosure. Never served
+    /// from the offline cache: a compliance banner decided by a stale answer is the wrong kind of
+    /// last-known-good.
+    /// </summary>
+    Task<HealthDataDisclosureResponse> GetHealthDataDisclosureAsync(CancellationToken ct = default);
+
+    /// <summary>Records that the caller has read the disclosure; the banner hides only once this succeeds.</summary>
+    Task DismissHealthDataDisclosureAsync(CancellationToken ct = default);
+
     // ---- Push delivery spine (notification_engine.md Phase 3) ----
 
     /// <summary>Upserts this device's push token — doubles as the reachability heartbeat (§4).</summary>

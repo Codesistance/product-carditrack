@@ -170,7 +170,9 @@ The full implemented surface is 56 endpoints across 13 controllers:
 | `POST /api/v1/notifications/{id}/delivered` | Anonymous delivery ack (HMAC `ackToken`); halts escalation | [notifications.md](notifications.md) |
 | `GET /api/v1/notifications/preferences` | Quiet hours, lock-screen detail, muted categories | [notifications.md](notifications.md) |
 | `PUT /api/v1/notifications/preferences` | Update notification preferences | [notifications.md](notifications.md) |
-| `PUT /api/v1/users/me/timezone` | Set the caller's IANA timezone | [notifications.md](notifications.md) |
+| `PUT /api/v1/users/me/timezone` | Set the caller's IANA timezone | [users.md](users.md) |
+| `GET /api/v1/users/me/health-data-disclosure` | Whether the caller has dismissed the Google-mandated health-data disclosure | [users.md](users.md) |
+| `POST /api/v1/users/me/health-data-disclosure/dismiss` | Record that the caller has read it (idempotent) | [users.md](users.md) |
 | `POST /api/v1/internal/notifications/enqueue` | AI pipeline → rules-engine hand-off (`GoogleOidc` scheme) | [notifications.md](notifications.md) |
 | `GET /api/v1/internal/notifications/{deliveryId}/content` | Content fetch for content-free pushes (HMAC `fetchToken`) | [notifications.md](notifications.md) |
 
