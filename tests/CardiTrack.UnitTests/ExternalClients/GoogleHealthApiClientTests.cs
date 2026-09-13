@@ -63,7 +63,14 @@ public class GoogleHealthApiClientTests
         /// repeating its last page, so a pagination loop that fails to terminate fails the test
         /// instead of spinning until the client's own cap.
         /// </summary>
-        private readonly List<(string PathContains, Queue<string> Bodies)> _sequences = [];
+        private readonly List<(string PathContains, Queue<(string Body, HttpStatusCode Status)> Bodies)> _sequences = [];
+
+        /// <summary>
+        /// When a sequenced path is asked past its last mapped body, throw instead of the
+        /// default 500. Used to pin that tomorrow's sleep list is enrichment: a dropped
+        /// connection or timeout must not discard the day whose night already arrived.
+        /// </summary>
+        private readonly List<(string PathContains, Exception Error)> _throwWhenSequenceExhausted = [];
 
         public RoutedFakeHttpHandler Map(string pathContains, string body, HttpStatusCode status = HttpStatusCode.OK)
         {
@@ -73,7 +80,21 @@ public class GoogleHealthApiClientTests
 
         public RoutedFakeHttpHandler MapSequence(string pathContains, params string[] bodies)
         {
-            _sequences.Add((pathContains, new Queue<string>(bodies)));
+            _sequences.Add((pathContains, new Queue<(string, HttpStatusCode)>(
+                bodies.Select(b => (b, HttpStatusCode.OK)))));
+            return this;
+        }
+
+        public RoutedFakeHttpHandler MapSequence(
+            string pathContains, params (string Body, HttpStatusCode Status)[] steps)
+        {
+            _sequences.Add((pathContains, new Queue<(string, HttpStatusCode)>(steps)));
+            return this;
+        }
+
+        public RoutedFakeHttpHandler ThrowWhenSequenceExhausted(string pathContains, Exception error)
+        {
+            _throwWhenSequenceExhausted.Add((pathContains, error));
             return this;
         }
 
@@ -101,21 +122,43 @@ public class GoogleHealthApiClientTests
                     _sentBodies.Add((path, requestBody));
             }
 
+            string? sequenceBody = null;
+            HttpStatusCode? sequenceStatus = null;
+            Exception? sequenceThrow = null;
             lock (_recorded)
             {
                 var sequence = _sequences.FirstOrDefault(s =>
                     path.Contains(s.PathContains, StringComparison.Ordinal));
                 if (sequence != default)
                 {
-                    var (sequenceBody, sequenceStatus) = sequence.Bodies.Count > 0
-                        ? (sequence.Bodies.Dequeue(), HttpStatusCode.OK)
-                        : ($"sequence for {sequence.PathContains} exhausted",
-                            HttpStatusCode.InternalServerError);
-                    return new HttpResponseMessage(sequenceStatus)
+                    if (sequence.Bodies.Count > 0)
                     {
-                        Content = new StringContent(sequenceBody, Encoding.UTF8, "application/json")
-                    };
+                        (sequenceBody, var stepStatus) = sequence.Bodies.Dequeue();
+                        sequenceStatus = stepStatus;
+                    }
+                    else
+                    {
+                        var thrower = _throwWhenSequenceExhausted.FirstOrDefault(t =>
+                            path.Contains(t.PathContains, StringComparison.Ordinal));
+                        if (thrower.Error is not null)
+                            sequenceThrow = thrower.Error;
+                        else
+                        {
+                            sequenceBody = $"sequence for {sequence.PathContains} exhausted";
+                            sequenceStatus = HttpStatusCode.InternalServerError;
+                        }
+                    }
                 }
+            }
+
+            if (sequenceThrow is not null)
+                throw sequenceThrow;
+            if (sequenceBody is not null)
+            {
+                return new HttpResponseMessage(sequenceStatus!.Value)
+                {
+                    Content = new StringContent(sequenceBody, Encoding.UTF8, "application/json")
+                };
             }
 
             var route = _routes.FirstOrDefault(r => path.Contains(r.PathContains, StringComparison.Ordinal));
@@ -1316,6 +1359,55 @@ public class GoogleHealthApiClientTests
     }
 
     /// <summary>
+    /// A dropped connection never becomes a <see cref="GoogleHealthApiException"/>. It is still
+    /// enrichment: keep the day whose night already arrived.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_KeepsTheDay_WhenTomorrowsSleepListDrops()
+    {
+        var snapshot = await SnapshotWithEndedNightThenTomorrowFails(
+            new HttpRequestException("connection reset"));
+
+        Assert.Equal(400, snapshot.TotalSleepMinutes);
+        Assert.Equal(300, snapshot.LongestSedentaryStretchMinutes);
+    }
+
+    /// <summary>
+    /// A timeout is the same class of miss as a 5xx on tomorrow's list.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_KeepsTheDay_WhenTomorrowsSleepListTimesOut()
+    {
+        var snapshot = await SnapshotWithEndedNightThenTomorrowFails(
+            new TaskCanceledException("timed out"));
+
+        Assert.Equal(400, snapshot.TotalSleepMinutes);
+        Assert.Equal(300, snapshot.LongestSedentaryStretchMinutes);
+    }
+
+    /// <summary>
+    /// A 400 with field violations is a bug in this client's filter, not a transient miss.
+    /// Swallowing it would hide a malformed tomorrow-window until a human notices the clip.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_Throws_WhenTomorrowsSleepListIsMalformed()
+    {
+        var date = new DateOnly(2026, 8, 5);
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/sleep/",
+                (SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"),
+                    HttpStatusCode.OK),
+                (MalformedSleepFilter400, HttpStatusCode.BadRequest))
+            .Map("/dataTypes/activity-level/", EveningSedentaryRollup);
+
+        var (sut, _) = CreateSut(handler);
+        var ex = await Assert.ThrowsAsync<GoogleHealthApiException>(
+            () => ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date));
+        Assert.True(ex.IsMalformedRequest);
+    }
+
+    /// <summary>
     /// A night that only <em>starts</em> today is not enough to judge waking rest. Without the
     /// night that ended this morning the small hours stay unclipped, so the snapshot reports
     /// no stretch rather than inventing one.
@@ -1399,6 +1491,45 @@ public class GoogleHealthApiClientTests
               }
             }
           ]
+        }
+        """;
+
+    private static async Task<DeviceHealthSnapshot> SnapshotWithEndedNightThenTomorrowFails(Exception tomorrow)
+    {
+        var date = new DateOnly(2026, 8, 5);
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/sleep/",
+                SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"))
+            .ThrowWhenSequenceExhausted("/dataTypes/sleep/", tomorrow)
+            .Map("/dataTypes/activity-level/", EveningSedentaryRollup);
+
+        var (sut, _) = CreateSut(handler);
+        return await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
+    }
+
+    private static string EveningSedentaryRollup => $$"""
+        {
+          "dataPoints": [
+            {{ActivityLevelPointWithCivil(
+                "SEDENTARY", "2026-08-05T19:00:00Z", "2026-08-06T06:00:00Z",
+                2026, 8, 6, 6, 0)}}
+          ]
+        }
+        """;
+
+    private const string MalformedSleepFilter400 = """
+        {
+          "error": {
+            "code": 400,
+            "status": "INVALID_ARGUMENT",
+            "details": [
+              {
+                "@type": "type.googleapis.com/google.rpc.BadRequest",
+                "fieldViolations": [ { "field": "filter", "description": "Unknown field." } ]
+              }
+            ]
+          }
         }
         """;
 
