@@ -604,6 +604,35 @@ public class ReportRendererTests
     }
 
     [Fact]
+    public void Pdf_DrawsTrendCharts_WhenTheRequestRangeIsOnePinnedDay()
+    {
+        // Journal export: header is the entry day; the figure is the fortnight.
+        var day = new DateOnly(2026, 2, 20);
+        var logs = Enumerable.Range(0, 14)
+            .Select(i => new ActivityLog
+            {
+                CardiMemberId = MemberId,
+                Date = day.AddDays(-(13 - i)),
+                Steps = 4000 + i * 90,
+                SleepMinutes = 380 + i * 5
+            })
+            .ToList();
+
+        var data = new ReportDataSet(
+            BuildData(logs: logs).Members,
+            day,
+            day,
+            Title: null,
+            ChartFrom: day.AddDays(-(ReportJournalScope.DayAndWeekChartDays - 1)),
+            ChartTo: day);
+        var sections = new ReportSections(
+            IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true);
+
+        Assert.True(PdfReportRenderer.ShouldDrawTrends(sections, data.Members[0]));
+        AssertChartInk(data, sections);
+    }
+
+    [Fact]
     public void Pdf_DrawsTrendCharts_WhenMetricsWereUnticked()
     {
         // Graphs are their own section. A journals-only PDF, or a caregiver who
@@ -640,10 +669,13 @@ public class ReportRendererTests
             }
         };
 
-        Assert.Equal(0, CountChartInk(
-            BuildData(logs: logs),
-            new ReportSections(
-                IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true)));
+        var data = BuildData(logs: logs);
+        var sections = new ReportSections(
+            IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true);
+
+        Assert.False(PdfReportRenderer.HasAChartedReading(data.Members[0]));
+        Assert.False(PdfReportRenderer.ShouldDrawTrends(sections, data.Members[0]));
+        Assert.Equal(0, CountChartInk(data, sections));
     }
 
     [Fact]
@@ -718,6 +750,43 @@ public class ReportRendererTests
 
         // Two days gathered, one of them a day the watch was not worn.
         Assert.Contains("1 day with readings", facts);
+    }
+
+    [Fact]
+    public void Pdf_CountsOnlyTheRequestedDays_WhenTheChartWindowIsWider()
+    {
+        var day = new DateOnly(2026, 2, 20);
+        var earlier = day.AddDays(-5);
+        var data = new ReportDataSet(
+            [
+                new ReportMemberData(
+                    new CardiMember
+                    {
+                        Id = MemberId,
+                        Name = "Margaret Doe",
+                        DateOfBirth = new DateOnly(1948, 4, 12),
+                        Gender = Gender.Female
+                    },
+                    [
+                        new ActivityLog { CardiMemberId = MemberId, Date = earlier, Steps = 2100 },
+                        new ActivityLog { CardiMemberId = MemberId, Date = day, Steps = 5400 }
+                    ],
+                    [],
+                    [],
+                    [],
+                    [])
+            ],
+            day,
+            day,
+            Title: null,
+            ChartFrom: day.AddDays(-(ReportJournalScope.DayAndWeekChartDays - 1)),
+            ChartTo: day);
+
+        var period = data.Members[0] with { ActivityLogs = data.PeriodReadings(data.Members[0]) };
+        var facts = PdfReportRenderer.MemberFacts(period, AllSections);
+
+        Assert.Contains("1 day with readings", facts);
+        Assert.DoesNotContain("2 days with readings", facts);
     }
 
     [Fact]

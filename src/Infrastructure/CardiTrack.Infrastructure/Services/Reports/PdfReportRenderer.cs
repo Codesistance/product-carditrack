@@ -142,10 +142,12 @@ public class PdfReportRenderer : IReportRenderer
 
             foreach (var member in data.Members)
             {
-                column.Item().PaddingTop(18).Element(m => MemberBanner(m, member, sections));
+                var period = member with { ActivityLogs = data.PeriodReadings(member) };
 
-                if (sections.IncludeMetrics && member.ActivityLogs.Count > 0)
-                    column.Item().PaddingTop(12).Element(k => KeyFigures(k, member));
+                column.Item().PaddingTop(18).Element(m => MemberBanner(m, period, sections));
+
+                if (sections.IncludeMetrics && period.ActivityLogs.Count > 0)
+                    column.Item().PaddingTop(12).Element(k => KeyFigures(k, period));
             }
 
             if (!string.IsNullOrWhiteSpace(narrative))
@@ -155,13 +157,15 @@ public class PdfReportRenderer : IReportRenderer
             {
                 var prefix = data.Members.Count > 1 ? $"{member.Member.Name} · " : string.Empty;
 
-                if (sections.IncludeTrends && HasAChartedReading(member))
-                    Section(column, prefix + "Trends", e => Charts(e, member, data.From, data.To));
+                if (ShouldDrawTrends(sections, member))
+                    Section(column, prefix + "Trends", e => Charts(e, member, data.ChartFrom, data.ChartTo));
 
                 if (sections.IncludeMetrics)
                 {
-                    if (member.ActivityLogs.Count > 0)
-                        Section(column, prefix + "Daily readings", e => DailyTable(e, member));
+                    var periodLogs = data.PeriodReadings(member);
+                    if (periodLogs.Count > 0)
+                        Section(column, prefix + "Daily readings",
+                            e => DailyTable(e, member with { ActivityLogs = periodLogs }));
                     else
                         Section(column, prefix + "Daily readings", e => EmptyState(e, "No readings were recorded in this period."));
                 }
@@ -422,7 +426,12 @@ public class PdfReportRenderer : IReportRenderer
                 if (chart is null)
                     continue;
 
-                var values = member.ActivityLogs.Select(metric.Read).Where(v => v is not null).Select(v => v!.Value).ToList();
+                var values = member.ActivityLogs
+                    .Where(l => l.Date >= from && l.Date <= to)
+                    .Select(metric.Read)
+                    .Where(v => v is not null)
+                    .Select(v => v!.Value)
+                    .ToList();
 
                 // A chart split across a page break is two half-charts; keep each one whole.
                 column.Item().ShowEntire().PaddingTop(8).Column(block =>
@@ -702,11 +711,17 @@ public class PdfReportRenderer : IReportRenderer
         || log.SleepMinutes is not null || log.SpO2Average is not null;
 
     /// <summary>
-    /// At least one of the four figures we actually plot. A day that only has
-    /// active minutes would pass <see cref="HasAnyReading"/> and then produce a
-    /// Trends heading with no marks.
+    /// Graphs ticked and at least one of the four figures we actually plot.
+    /// A day that only has active minutes would pass <see cref="HasAnyReading"/>
+    /// and then produce a Trends heading with no marks.
     /// </summary>
-    private static bool HasAChartedReading(ReportMemberData member) =>
+    internal static bool ShouldDrawTrends(ReportSections sections, ReportMemberData member) =>
+        sections.IncludeTrends && HasAChartedReading(member);
+
+    /// <summary>
+    /// At least one of the four figures we actually plot.
+    /// </summary>
+    internal static bool HasAChartedReading(ReportMemberData member) =>
         Metrics.Any(metric => member.ActivityLogs.Any(log => metric.Read(log) is not null));
 
     /// <summary>

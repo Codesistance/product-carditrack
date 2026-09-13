@@ -257,13 +257,20 @@ public class ReportGenerationService : IReportGenerationService
 
         // Charts are PDF-only. includeTrends defaults on, and a CSV/FHIR call
         // that also pins a journal day must not fetch the fortnight and write
-        // those extra rows into a spreadsheet or bundle.
+        // those extra rows into a spreadsheet or bundle. The request range
+        // stays on the header, table, filename and prompt; the chart window
+        // is only the days the figures plot.
+        var requestFrom = request.DateRangeFrom;
+        var requestTo = request.DateRangeTo;
         var chartOnPdf = request.IncludeTrends && request.Format == ReportFormat.Pdf;
-        var (readingsFrom, readingsTo) = chartOnPdf
+        var (chartFrom, chartTo) = chartOnPdf
             ? ReportJournalScope.ChartWindow(
-                request.DateRangeFrom, request.DateRangeTo,
+                requestFrom, requestTo,
                 request.JournalEntryDate, request.JournalAudience)
-            : (request.DateRangeFrom, request.DateRangeTo);
+            : (requestFrom, requestTo);
+
+        var readingsFrom = requestFrom < chartFrom ? requestFrom : chartFrom;
+        var readingsTo = requestTo > chartTo ? requestTo : chartTo;
 
         foreach (var memberId in request.CardiMemberIds)
         {
@@ -305,7 +312,8 @@ public class ReportGenerationService : IReportGenerationService
             members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices));
         }
 
-        return new ReportDataSet(members, readingsFrom, readingsTo, request.Title);
+        return new ReportDataSet(
+            members, requestFrom, requestTo, request.Title, chartFrom, chartTo);
     }
 
     /// <summary>
@@ -475,10 +483,11 @@ public class ReportGenerationService : IReportGenerationService
             var sb = new StringBuilder();
             sb.AppendLine($"## {label}");
 
-            if (includeMetrics && member.ActivityLogs.Count > 0)
+            var periodLogs = data.PeriodReadings(member);
+            if (includeMetrics && periodLogs.Count > 0)
             {
                 sb.AppendLine("### Activity Metrics");
-                foreach (var log in member.ActivityLogs)
+                foreach (var log in periodLogs)
                     sb.AppendLine($"  {log.Date}: {DayFigures(log)}");
             }
 

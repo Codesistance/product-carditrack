@@ -991,8 +991,85 @@ public class ReportGenerationServiceTests
 
         Assert.Equal(day.AddDays(-(ReportJournalScope.DayAndWeekChartDays - 1)), from);
         Assert.Equal(day, to);
-        Assert.Equal(from, _renderer.LastData!.From);
-        Assert.Equal(to, _renderer.LastData.To);
+        Assert.Equal(day, _renderer.LastData!.From);
+        Assert.Equal(day, _renderer.LastData.To);
+        Assert.Equal(from, _renderer.LastData.ChartFrom);
+        Assert.Equal(to, _renderer.LastData.ChartTo);
+    }
+
+    [Fact]
+    public async Task Gather_KeepsTheRequestRange_WhenMetricsAndAPinnedJournalShareAPdf()
+    {
+        // Charts need the fortnight; the table, filename, and prompt must stay
+        // on the day the caregiver asked for — not quietly become 14 days.
+        var day = new DateOnly(2026, 2, 20);
+        var earlier = day.AddDays(-5);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { CardiMemberId = _memberId, Date = earlier, Steps = 2100 },
+                new ActivityLog { CardiMemberId = _memberId, Date = day, Steps = 5400 }
+            ]);
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, new GenerateReportRequest
+        {
+            CardiMemberIds = [_memberId],
+            DateRangeFrom = day,
+            DateRangeTo = day,
+            Format = ReportFormat.Pdf,
+            IncludeMetrics = true,
+            IncludeTrends = true,
+            IncludeAlerts = false,
+            IncludeJournals = true,
+            JournalEntryDate = day,
+            JournalAudience = DigestAudience.Daybook,
+            ConsentToken = "consent-token"
+        });
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        var data = _renderer.LastData!;
+        Assert.Equal(day, data.From);
+        Assert.Equal(day, data.To);
+        Assert.Equal(day.AddDays(-(ReportJournalScope.DayAndWeekChartDays - 1)), data.ChartFrom);
+        Assert.Equal(day, data.ChartTo);
+        Assert.Equal(2, data.Members.Single().ActivityLogs.Count);
+        Assert.Single(data.PeriodReadings(data.Members.Single()));
+    }
+
+    [Fact]
+    public async Task Prompt_DescribesOnlyTheRequestedDays_WhenAPinnedJournalWidensTheChart()
+    {
+        var day = new DateOnly(2026, 2, 20);
+        var earlier = day.AddDays(-5);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(
+            [
+                new ActivityLog { CardiMemberId = _memberId, Date = earlier, Steps = 2100 },
+                new ActivityLog { CardiMemberId = _memberId, Date = day, Steps = 5400 }
+            ]);
+
+        var prompt = await CapturePromptAsync(new GenerateReportRequest
+        {
+            CardiMemberIds = [_memberId],
+            DateRangeFrom = day,
+            DateRangeTo = day,
+            Format = ReportFormat.Pdf,
+            IncludeMetrics = true,
+            IncludeTrends = true,
+            IncludeAlerts = false,
+            IncludeJournals = true,
+            JournalEntryDate = day,
+            JournalAudience = DigestAudience.Daybook,
+            ConsentToken = "consent-token"
+        });
+
+        Assert.Contains($"covering {day} to {day}.", prompt);
+        Assert.Contains("steps=5400", prompt);
+        Assert.DoesNotContain("steps=2100", prompt);
+        Assert.DoesNotContain($"{earlier}:", prompt);
     }
 
     [Fact]
