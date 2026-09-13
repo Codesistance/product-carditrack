@@ -52,8 +52,22 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private readonly ISecureKeyValueStore _keyValueStore;
     private readonly IOfflineCacheWarmer _cacheWarmer;
 
+    private readonly PendingEvent<NudgeDestination> _destination = new();
+
     /// <summary>Raised when a tapped notification's deep link has been parsed — AppShell subscribes to navigate.</summary>
-    public event EventHandler<NudgeDestination>? DestinationTapped;
+    public event EventHandler<NudgeDestination>? DestinationTapped
+    {
+        add
+        {
+            if (value is not null)
+                _destination.Subscribe(value);
+        }
+        remove
+        {
+            if (value is not null)
+                _destination.Unsubscribe(value);
+        }
+    }
 
     public PushRegistrationCoordinator(
         IFirebaseCloudMessaging messaging,
@@ -117,13 +131,7 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private void OnNotificationReceived(object? sender, FCMNotificationReceivedEventArgs e)
     {
         var data = e.Notification.Data;
-        if (data is not null
-            && data.TryGetValue("deliveryId", out var deliveryIdRaw)
-            && Guid.TryParse(deliveryIdRaw, out var deliveryId)
-            && data.TryGetValue("ackToken", out var ackToken))
-        {
-            _ = AckDeliveredSafeAsync(deliveryId, ackToken);
-        }
+        AckIfPresent(data);
 
         // The notification is the wake: pull every default read into the on-device cache
         // so the caregiver who opens the app next is not kept waiting. Fire-and-forget —
@@ -131,6 +139,17 @@ public sealed class PushRegistrationCoordinator : IDisposable
         // above is the one the escalation ladder keys off. Runs even when the payload
         // has no ack fields — a content-available wake is still a wake.
         _ = WarmCacheSafeAsync();
+    }
+
+    private void AckIfPresent(IDictionary<string, string>? data)
+    {
+        if (data is not null
+            && data.TryGetValue("deliveryId", out var deliveryIdRaw)
+            && Guid.TryParse(deliveryIdRaw, out var deliveryId)
+            && data.TryGetValue("ackToken", out var ackToken))
+        {
+            _ = AckDeliveredSafeAsync(deliveryId, ackToken);
+        }
     }
 
     private async Task WarmCacheSafeAsync()
@@ -163,15 +182,17 @@ public sealed class PushRegistrationCoordinator : IDisposable
     private void OnNotificationTapped(object? sender, FCMNotificationTappedEventArgs e)
     {
         var data = e.Notification.Data;
+        // On a killed Android process the tap is often the first wake — Received never
+        // ran, so this is the only chance to ack before the escalation ladder continues.
+        AckIfPresent(data);
         var deepLink = data is not null && data.TryGetValue("deepLink", out var link) ? link : null;
         var destination = NudgeLinkParser.Parse(deepLink);
-        // A tap is also a wake — and on Android a background notification+data payload
-        // often does not raise Received until the caregiver opens it. Start the warm
-        // before navigation so the destination page's peek can hit a cache that is
-        // already being written.
+        // A tap is also a wake. Start the warm without waiting for the whole catalogue —
+        // blocking navigation on every default GET would keep the caregiver on a splash
+        // they already left. The destination page still peeks, then revalidates.
         _ = WarmCacheSafeAsync();
         if (destination.Kind != NudgeDestinationKind.Unknown)
-            DestinationTapped?.Invoke(this, destination);
+            _destination.Raise(this, destination);
     }
 
     private static void OnError(object? sender, FCMErrorEventArgs e) =>

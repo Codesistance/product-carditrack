@@ -45,7 +45,7 @@ public partial class AlertsPage : ContentPage
     /// Together they are every alert, and no alert is in both — which is what the "View Archived
     /// Alerts" / "Back to current alerts" toggle promises.
     /// </summary>
-    private const string OpenStatus = "open";
+    private const string OpenStatus = OfflineReadDefaults.OpenAlertStatus;
 
     private const string ArchivedStatus = "resolved";
 

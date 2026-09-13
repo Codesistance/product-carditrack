@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Shared.Json;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     private readonly HttpClient _http;
     private readonly IOfflineReadCache? _cache;
+    private readonly ITokenStore? _tokens;
     private readonly ILogger<CardiTrackApiClient> _logger;
 
     /// <summary>
@@ -35,10 +37,12 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public CardiTrackApiClient(
         HttpClient http,
         IOfflineReadCache? cache = null,
-        ILogger<CardiTrackApiClient>? logger = null)
+        ILogger<CardiTrackApiClient>? logger = null,
+        ITokenStore? tokens = null)
     {
         _http = http;
         _cache = cache;
+        _tokens = tokens;
         _logger = logger ?? NullLogger<CardiTrackApiClient>.Instance;
     }
 
@@ -256,19 +260,28 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// </summary>
     private static readonly TimeSpan MemberChatSendTimeout = TimeSpan.FromSeconds(960);
 
-    public Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
-        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
-        SendAsync<MemberChatMessageRequest, MemberChatMessageResponse>(
+    public async Task<MemberChatMessageResponse> SendMemberChatMessageAsync(
+        Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default)
+    {
+        var sent = await SendAsync<MemberChatMessageRequest, MemberChatMessageResponse>(
             HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/messages", request, ct,
             timeout: MemberChatSendTimeout);
+        await EvictAsync(MemberChatKeys(cardiMemberId));
+        return sent;
+    }
 
-    public Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
-        Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<MemberChatHistoryResponse?>(
+    public async Task<MemberChatHistoryResponse?> GetCurrentMemberChatSessionAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var history = await GetAsync<MemberChatHistoryResponse?>(
             ApiPaths.CurrentMemberChatSession(cardiMemberId), ct,
             // 200 with a null data is this endpoint's documented "no active session yet" —
             // see MemberChatController.GetCurrentSession — not a malformed reply.
             allowNullData: true);
+        if (history is null)
+            await EvictAsync(ApiPaths.CurrentMemberChatSession(cardiMemberId));
+        return history;
+    }
 
     public Task<MemberChatHistoryResponse?> PeekCurrentMemberChatSessionAsync(
         Guid cardiMemberId, CancellationToken ct = default) =>
@@ -288,21 +301,40 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         GetAsync<MemberChatHistoryResponse>(
             $"api/v1/member-chat/members/{cardiMemberId}/sessions/{sessionId}", ct);
 
-    public Task<MemberChatEndSessionResponse> EndCurrentMemberChatSessionAsync(
-        Guid cardiMemberId, CancellationToken ct = default) =>
-        SendAsync<MemberChatEndSessionResponse>(
+    public async Task<MemberChatEndSessionResponse> EndCurrentMemberChatSessionAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var ended = await SendAsync<MemberChatEndSessionResponse>(
             HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/sessions/current/end", ct);
+        await EvictAsync(MemberChatKeys(cardiMemberId));
+        return ended;
+    }
 
-    public Task<MemberChatHistoryResponse> ContinueMemberChatSessionAsync(
-        Guid cardiMemberId, Guid sessionId, CancellationToken ct = default) =>
-        SendAsync<MemberChatHistoryResponse>(
+    public async Task<MemberChatHistoryResponse> ContinueMemberChatSessionAsync(
+        Guid cardiMemberId, Guid sessionId, CancellationToken ct = default)
+    {
+        var continued = await SendAsync<MemberChatHistoryResponse>(
             HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/sessions/{sessionId}/continue", ct);
+        await EvictAsync(MemberChatKeys(cardiMemberId));
+        return continued;
+    }
 
-    public Task<MemberChatDeleteSessionsResponse> DeleteMemberChatSessionsAsync(
-        Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default) =>
-        SendAsync<MemberChatDeleteSessionsRequest, MemberChatDeleteSessionsResponse>(
+    public async Task<MemberChatDeleteSessionsResponse> DeleteMemberChatSessionsAsync(
+        Guid cardiMemberId, IReadOnlyList<Guid> sessionIds, CancellationToken ct = default)
+    {
+        var deleted = await SendAsync<MemberChatDeleteSessionsRequest, MemberChatDeleteSessionsResponse>(
             HttpMethod.Post, $"api/v1/member-chat/members/{cardiMemberId}/sessions/delete",
             new MemberChatDeleteSessionsRequest { SessionIds = [.. sessionIds] }, ct);
+        await EvictAsync(MemberChatKeys(cardiMemberId));
+        return deleted;
+    }
+
+    /// <summary>The keys a chat mutation makes stale — the open thread and the history list.</summary>
+    private static string[] MemberChatKeys(Guid cardiMemberId) =>
+    [
+        ApiPaths.CurrentMemberChatSession(cardiMemberId),
+        ApiPaths.MemberChatSessions(cardiMemberId),
+    ];
 
     public Task<MemberChatWaitingResponse> GetMemberChatWaitingSentencesAsync(
         Guid cardiMemberId, MemberChatMessageRequest request, CancellationToken ct = default) =>
@@ -885,6 +917,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private async Task TrySaveCacheAsync(string path, string body, CancellationToken ct)
     {
         if (_cache is null)
+            return;
+
+        // A GET that outlived sign-out must not write the previous caregiver's body
+        // into a cache the next session will peek as its own.
+        if (_tokens is not null && await _tokens.GetAsync() is null)
             return;
 
         try

@@ -13,6 +13,7 @@ public sealed class AuthService : IAuthService
     private readonly IBrowserAuthenticator _browser;
     private readonly Auth0Options _options;
     private readonly IOfflineReadCache? _cache;
+    private readonly IOfflineCacheWarmer? _warmer;
     private readonly ILogger<AuthService> _logger;
 
     private IReadOnlyDictionary<string, string> _claims =
@@ -25,7 +26,8 @@ public sealed class AuthService : IAuthService
         IBrowserAuthenticator browser,
         Auth0Options options,
         IOfflineReadCache? cache = null,
-        ILogger<AuthService>? logger = null)
+        ILogger<AuthService>? logger = null,
+        IOfflineCacheWarmer? warmer = null)
     {
         _auth0 = auth0;
         _store = store;
@@ -33,6 +35,7 @@ public sealed class AuthService : IAuthService
         _browser = browser;
         _options = options;
         _cache = cache;
+        _warmer = warmer;
         _logger = logger ?? NullLogger<AuthService>.Instance;
     }
 
@@ -161,26 +164,38 @@ public sealed class AuthService : IAuthService
 
     public async Task SignOutAsync(CancellationToken ct = default)
     {
-        var tokens = await _store.GetAsync();
-        if (!string.IsNullOrEmpty(tokens?.RefreshToken))
+        try
         {
-            try
-            {
-                await _auth0.RevokeAsync(tokens.RefreshToken, ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // Local sign-out must still happen offline. Revoke is best-effort — the
-                // live Auth0 client already swallows transport errors, but the interface
-                // does not promise AuthException-only, and a misconfigured build must not
-                // leave tokens and cached health data on the device.
-                _logger.LogWarning(ex, "Token revoke failed; clearing the local session anyway");
-            }
-        }
+            if (_warmer is not null)
+                await _warmer.DrainForSignOutAsync(ct);
 
-        await _store.ClearAsync();
-        if (_cache is not null)
-            await _cache.ClearAsync(ct);
-        _claims = new Dictionary<string, string>(StringComparer.Ordinal);
+            var tokens = await _store.GetAsync();
+            if (!string.IsNullOrEmpty(tokens?.RefreshToken))
+            {
+                try
+                {
+                    await _auth0.RevokeAsync(tokens.RefreshToken, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Local sign-out must still happen offline. Revoke is best-effort — the
+                    // live Auth0 client already swallows transport errors, but the interface
+                    // does not promise AuthException-only, and a misconfigured build must not
+                    // leave tokens and cached health data on the device.
+                    _logger.LogWarning(ex, "Token revoke failed; clearing the local session anyway");
+                }
+            }
+
+            await _store.ClearAsync();
+            if (_cache is not null)
+                await _cache.ClearAsync(ct);
+            _claims = new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+        finally
+        {
+            // A push that arrives after the wipe must be allowed to no-op on the empty
+            // store rather than stay blocked until the next process start.
+            _warmer?.ResumeAfterSignOut();
+        }
     }
 }

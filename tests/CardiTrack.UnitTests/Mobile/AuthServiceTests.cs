@@ -214,6 +214,26 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task SignOut_DrainsTheCacheWarmer_BeforeClearingTokensAndCache()
+    {
+        var cache = Substitute.For<IOfflineReadCache>();
+        var warmer = Substitute.For<IOfflineCacheWarmer>();
+        var order = new List<string>();
+        warmer.DrainForSignOutAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => { order.Add("drain"); return Task.CompletedTask; });
+        _store.ClearAsync().Returns(_ => { order.Add("tokens"); return Task.CompletedTask; });
+        cache.ClearAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => { order.Add("cache"); return Task.CompletedTask; });
+        _store.GetAsync().Returns(Tokens());
+        var sut = new AuthService(_auth0, _store, _refresher, _browser, Options, cache, warmer: warmer);
+
+        await sut.SignOutAsync();
+
+        Assert.Equal(["drain", "tokens", "cache"], order);
+        warmer.Received(1).ResumeAfterSignOut();
+    }
+
+    [Fact]
     public async Task VerifyPassword_ProvesAgainstAuth0_WithoutSavingTokens()
     {
         var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));

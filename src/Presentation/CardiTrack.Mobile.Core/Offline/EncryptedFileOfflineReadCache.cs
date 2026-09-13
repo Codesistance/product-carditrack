@@ -30,6 +30,7 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
     private readonly ILogger<EncryptedFileOfflineReadCache> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private byte[]? _dek;
+    private int _epoch;
 
     public EncryptedFileOfflineReadCache(
         string directory,
@@ -48,6 +49,9 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(payload);
 
+        // Captured before the encrypt so a sign-out that lands while we are working
+        // cannot recreate the previous caregiver's file under the next session's DEK.
+        var epoch = _epoch;
         var dek = await GetOrCreateDekAsync(ct);
         if (dek is null)
             return;
@@ -72,6 +76,9 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         await _gate.WaitAsync(ct);
         try
         {
+            if (epoch != _epoch)
+                return;
+
             Directory.CreateDirectory(_directory);
             await File.WriteAllBytesAsync(PathFor(key), file, ct);
         }
@@ -132,6 +139,7 @@ public sealed class EncryptedFileOfflineReadCache : IOfflineReadCache
         await _gate.WaitAsync(ct);
         try
         {
+            _epoch++;
             if (Directory.Exists(_directory))
                 Directory.Delete(_directory, recursive: true);
             _dek = null;

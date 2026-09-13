@@ -13,4 +13,18 @@ public interface IOfflineCacheWarmer
     /// and a login cannot stack three identical storms.
     /// </summary>
     Task RefreshAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Cancels the shared run and waits for its in-flight GETs to stop writing. Sign-out must
+    /// call this before it clears tokens and the cache, otherwise a late completion can put
+    /// the previous caregiver's answers back under the next session's key.
+    /// </summary>
+    Task DrainForSignOutAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Allows <see cref="RefreshAsync"/> again after the local session has been wiped (or a
+    /// new one has been saved). Drain leaves the warmer closed so a push that arrives in that
+    /// gap cannot start another storm.
+    /// </summary>
+    void ResumeAfterSignOut();
 }

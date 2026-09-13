@@ -35,6 +35,8 @@ public class OfflineCacheWarmerTests
         var paths = http.Requests.Select(r => r.Uri!.PathAndQuery).ToList();
         Assert.Contains("/api/Onboarding/cardimembers", paths);
         Assert.Contains("/api/v1/notifications/summary", paths);
+        Assert.Contains("/api/v1/alerts?status=open", paths);
+        Assert.Contains($"/api/v1/cardimembers/{MemberId}/alerts?status=open", paths);
         Assert.Contains($"/api/v1/cardimembers/{MemberId}/dashboard", paths);
         Assert.Contains($"/api/v1/insights/members/{MemberId}/digest", paths);
         Assert.Contains($"/api/v1/alerts/{AlertId}", paths);
@@ -65,6 +67,35 @@ public class OfflineCacheWarmerTests
         await first;
 
         Assert.Equal(1, handler.MembersRequests);
+    }
+
+    [Fact]
+    public async Task DrainForSignOut_CancelsTheSharedRun_AndBlocksANewOneUntilResume()
+    {
+        var handler = new HoldingHandler();
+        var tokens = SignedIn();
+        var cache = new MemoryOfflineCache();
+        var api = new CardiTrackApiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.test") }, cache);
+        var warmer = new OfflineCacheWarmer(api, tokens);
+
+        var warm = warmer.RefreshAsync();
+        await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await warmer.DrainForSignOutAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await warm;
+
+        Assert.DoesNotContain($"api/v1/cardimembers/{MemberId}/dashboard", cache.Items.Keys);
+        Assert.Equal(1, handler.MembersRequests);
+
+        await warmer.RefreshAsync();
+        Assert.Equal(1, handler.MembersRequests);
+
+        warmer.ResumeAfterSignOut();
+        handler.Release.SetResult();
+        await warmer.RefreshAsync();
+
+        Assert.Equal(2, handler.MembersRequests);
     }
 
     [Fact]

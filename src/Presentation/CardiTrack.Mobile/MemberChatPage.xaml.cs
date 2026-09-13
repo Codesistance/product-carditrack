@@ -412,15 +412,17 @@ public partial class MemberChatPage : ContentView
         SessionsList.IsVisible = false;
         SelectSessionsAction.IsVisible = false;
 
+        var shownFromCache = _sessions.Count > 0;
         if (_sessions.Count == 0
-            && await _api.PeekMemberChatSessionsAsync(_memberId) is { Sessions.Count: > 0 } saved)
+            && await _api.PeekMemberChatSessionsAsync(_memberId) is { } saved)
         {
             _sessions.Clear();
             foreach (var session in saved.Sessions)
                 _sessions.Add(ChatSessionItem.From(session));
+            shownFromCache = true;
             SetState();
             SessionsList.IsVisible = true;
-            SelectSessionsAction.IsVisible = true;
+            SelectSessionsAction.IsVisible = _sessions.Count > 0;
         }
         else if (_sessions.Count == 0)
             SetState(loading: true);
@@ -448,6 +450,8 @@ public partial class MemberChatPage : ContentView
         {
             if (_mode != ChatViewMode.HistoryList)
                 return;
+            if (KeepCachedHistory())
+                return;
             ErrorDetailLabel.Text = ex.Message;
             SetState(error: true);
         }
@@ -456,8 +460,21 @@ public partial class MemberChatPage : ContentView
             ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while loading past conversations");
             if (_mode != ChatViewMode.HistoryList)
                 return;
+            if (KeepCachedHistory())
+                return;
             ErrorDetailLabel.Text = "Something went wrong while showing this.";
             SetState(error: true);
+        }
+
+        bool KeepCachedHistory()
+        {
+            if (!shownFromCache && _sessions.Count == 0)
+                return false;
+
+            SetState();
+            SessionsList.IsVisible = true;
+            SelectSessionsAction.IsVisible = _sessions.Count > 0;
+            return true;
         }
     }
 

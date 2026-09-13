@@ -26,6 +26,8 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
     private readonly ILogger<OfflineCacheWarmer> _logger;
     private readonly object _gate = new();
     private Task? _inFlight;
+    private CancellationTokenSource? _runCts;
+    private bool _signingOut;
 
     public OfflineCacheWarmer(
         ICardiTrackApiClient api,
@@ -41,26 +43,90 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
     {
         lock (_gate)
         {
+            if (_signingOut)
+                return Task.CompletedTask;
+
             if (_inFlight is { IsCompleted: false } running)
                 return running;
 
             // The shared run is not tied to the caller's token: a page going away, or a
             // second trigger cancelling, must not abort a warm a push already started.
-            // The timeout inside the run is what bounds it.
-            var run = RefreshCoreAsync();
+            // Sign-out is the exception — DrainForSignOutAsync cancels this source so a
+            // late GET cannot write the previous caregiver's answers after the wipe.
+            var runCts = new CancellationTokenSource();
+            _runCts = runCts;
+            var run = RunAndReleaseAsync(runCts);
             _inFlight = run;
             return run;
         }
     }
 
-    private async Task RefreshCoreAsync()
+    public async Task DrainForSignOutAsync(CancellationToken ct = default)
+    {
+        Task? running;
+        CancellationTokenSource? runCts;
+        lock (_gate)
+        {
+            _signingOut = true;
+            running = _inFlight;
+            runCts = _runCts;
+        }
+
+        try
+        {
+            runCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The run finished and disposed the source between the lock and here.
+        }
+
+        if (running is null)
+            return;
+
+        try
+        {
+            await running.WaitAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // The run stopped, or the sign-out caller gave up. Either way the wipe proceeds.
+        }
+    }
+
+    public void ResumeAfterSignOut()
+    {
+        lock (_gate)
+            _signingOut = false;
+    }
+
+    private async Task RunAndReleaseAsync(CancellationTokenSource runCts)
+    {
+        try
+        {
+            await RefreshCoreAsync(runCts.Token);
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                if (ReferenceEquals(_runCts, runCts))
+                    _runCts = null;
+            }
+
+            runCts.Dispose();
+        }
+    }
+
+    private async Task RefreshCoreAsync(CancellationToken runCt)
     {
         try
         {
             if (await _tokens.GetAsync() is null)
                 return;
 
-            using var timeout = new CancellationTokenSource(OfflineReadDefaults.WarmTimeout);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(runCt);
+            timeout.CancelAfter(OfflineReadDefaults.WarmTimeout);
             var ct = timeout.Token;
 
             var members = await Safe(() => _api.GetCardiMembersAsync(ct), ct) ?? [];
@@ -98,7 +164,9 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
         ct => _api.GetNotificationMutesAsync(ct),
         ct => _api.GetAlarmCatalogueAsync(ct),
         ct => _api.GetExportConsentsAsync(ct),
-        ct => CaptureAlerts(() => _api.GetAlertsAsync(ct: ct), alertIds, ct),
+        ct => CaptureAlerts(
+            () => _api.GetAlertsAsync(status: OfflineReadDefaults.OpenAlertStatus, ct: ct),
+            alertIds, ct),
     ];
 
     private List<Func<CancellationToken, Task>> MemberJobs(Guid memberId, ConcurrentBag<Guid> alertIds) =>
@@ -124,7 +192,10 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
             OfflineReadDefaults.QuestionnairePage,
             OfflineReadDefaults.QuestionnairePageSize,
             ct),
-        ct => CaptureAlerts(() => _api.GetAlertsAsync(cardiMemberId: memberId, ct: ct), alertIds, ct),
+        ct => CaptureAlerts(
+            () => _api.GetAlertsAsync(
+                status: OfflineReadDefaults.OpenAlertStatus, cardiMemberId: memberId, ct: ct),
+            alertIds, ct),
         ct => _api.GetCurrentMemberChatSessionAsync(memberId, ct),
         ct => _api.GetMemberChatSessionsAsync(memberId, ct),
         ct => _api.GetMemberChatSuggestionsAsync(memberId, ct),
@@ -162,9 +233,11 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
         {
             return await call();
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception) when (ct.IsCancellationRequested)
         {
-            throw;
+            // GetAsync wraps an abort as ApiException. Either form means the run was
+            // cancelled — stop, do not treat it as one missing answer among others.
+            throw new OperationCanceledException(ct);
         }
         catch (Exception ex)
         {
@@ -181,9 +254,9 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
         {
             await call();
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception) when (ct.IsCancellationRequested)
         {
-            throw;
+            throw new OperationCanceledException(ct);
         }
         catch (Exception ex)
         {

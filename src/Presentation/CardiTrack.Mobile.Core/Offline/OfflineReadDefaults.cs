@@ -16,6 +16,12 @@ public static class OfflineReadDefaults
     public const int QuestionnairePageSize = 20;
 
     /// <summary>
+    /// The Alerts tab's default filter — open, not resolved. The warmer must ask this same
+    /// question so the tab's peek hits the snapshot a push just wrote.
+    /// </summary>
+    public const string OpenAlertStatus = "open";
+
+    /// <summary>
     /// Alert-detail fetches after the list lands. The list itself is what the Alerts tab
     /// shows; twenty details cover a typical open inbox without turning a wake into a storm.
     /// </summary>
