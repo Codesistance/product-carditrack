@@ -256,24 +256,33 @@ public class AuthServiceTests
         var session = new SessionGeneration();
         var pending = Substitute.For<IPendingNavigation>();
         var warmer = Substitute.For<IOfflineCacheWarmer>();
+        var cache = Substitute.For<IOfflineReadCache>();
         var tokens = Tokens(Jwt("""{"name":"Ada","email":"a@b.com"}"""));
         _auth0.LoginAsync("a@b.com", "pw", Arg.Any<CancellationToken>()).Returns(tokens);
         var generationAtSave = -1;
+        var clearedBeforeSave = false;
+        cache.ClearAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            clearedBeforeSave = generationAtSave < 0;
+            return Task.CompletedTask;
+        });
         _store.SaveAsync(tokens).Returns(_ =>
         {
             generationAtSave = session.Current;
             return Task.CompletedTask;
         });
         var sut = new AuthService(
-            _auth0, _store, _refresher, _browser, Options,
+            _auth0, _store, _refresher, _browser, Options, cache,
             warmer: warmer, session: session, pendingNavigation: pending);
         var before = session.Current;
 
         await sut.SignInAsync("a@b.com", "pw");
 
         Assert.Equal(before + 1, generationAtSave);
+        Assert.True(clearedBeforeSave);
         pending.Received(1).Discard();
         warmer.Received(1).ResumeAfterSignOut();
+        await cache.Received(1).ClearAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]

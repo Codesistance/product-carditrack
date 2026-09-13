@@ -56,15 +56,18 @@ public sealed class AuthService : IAuthService
     }
 
     /// <summary>
-    /// Close the previous caregiver's generation and drop a buffered tap before the new
-    /// tokens become visible. A GET that started under the old generation can otherwise
-    /// finish during <c>SaveAsync</c>, pass <c>SameSession</c>, see the new token, and
-    /// write the previous body into the shared cache.
+    /// Close the previous caregiver's generation, drop a buffered tap, and wipe leftover
+    /// snapshots before the new tokens become visible. A GET that started under the old
+    /// generation can otherwise finish during <c>SaveAsync</c>, pass <c>SameSession</c>,
+    /// see the new token, and write the previous body into the shared cache. Expiry
+    /// (unlike sign-out) used to leave those snapshots in place for the next login.
     /// </summary>
-    private void BeginNewSession()
+    private async Task BeginNewSessionAsync(CancellationToken ct)
     {
         _session?.Advance();
         _pendingNavigation?.Discard();
+        if (_cache is not null)
+            await _cache.ClearAsync(ct);
     }
 
     public string? CurrentUserName =>
@@ -83,7 +86,7 @@ public sealed class AuthService : IAuthService
     public async Task SignInAsync(string email, string password, CancellationToken ct = default)
     {
         var tokens = await _auth0.LoginAsync(email, password, ct);
-        BeginNewSession();
+        await BeginNewSessionAsync(ct);
         await _store.SaveAsync(tokens);
         _warmer?.ResumeAfterSignOut();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
@@ -143,7 +146,7 @@ public sealed class AuthService : IAuthService
             throw new AuthException(AuthErrorCode.Unknown, "Sign-in failed. Please try again.");
 
         var tokens = await _auth0.ExchangeAuthorizationCodeAsync(code, verifier, ct);
-        BeginNewSession();
+        await BeginNewSessionAsync(ct);
         await _store.SaveAsync(tokens);
         _warmer?.ResumeAfterSignOut();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);

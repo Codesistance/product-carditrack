@@ -780,8 +780,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
         // A null-data success is an answer, but not one worth caching: TryReadCacheAsync would
         // only reject the entry as unreadable on the way back out, one warning per offline read.
-        if (value is not null && cache && SameSession(generation))
-            await TrySaveCacheAsync(path, body, ct);
+        if (value is not null && cache)
+            await TrySaveCacheAsync(path, body, generation, ct);
         return value;
     }
 
@@ -921,7 +921,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return envelope.Data;
     }
 
-    private async Task TrySaveCacheAsync(string path, string body, CancellationToken ct)
+    private async Task TrySaveCacheAsync(string path, string body, int generation, CancellationToken ct)
     {
         if (_cache is null)
             return;
@@ -929,6 +929,12 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         // Belt-and-suspenders with SameSession: a token that is already gone is a
         // session that has ended, even if the generation counter was not wired in.
         if (_tokens is not null && await _tokens.GetAsync() is null)
+            return;
+
+        // Recheck after those awaits: sign-out + the next sign-in can land between
+        // "generation still matches" and the write, and a non-null token is then the
+        // new caregiver's, not this GET's.
+        if (!SameSession(generation))
             return;
 
         try

@@ -1371,6 +1371,34 @@ public class CardiTrackApiClientTests
         Assert.Empty(cache.Items);
     }
 
+    [Fact]
+    public async Task Get_DoesNotWriteTheCache_WhenTheSessionMovesDuringTheSave()
+    {
+        var session = new SessionGeneration();
+        var tokens = Substitute.For<ITokenStore>();
+        tokens.GetAsync().Returns(_ =>
+        {
+            session.Advance();
+            return new AuthTokens("access", "refresh", "id", DateTimeOffset.UtcNow.AddHours(1));
+        });
+        var cache = new MemoryOfflineCache();
+        var http = new FakeHttpMessageHandler();
+        var client = new CardiTrackApiClient(
+            new HttpClient(http) { BaseAddress = new Uri("https://api.test") },
+            cache, tokens: tokens, session: session);
+        var memberId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.OK, $$"""
+            {"success":true,"message":"ok","data":{"cardiMemberId":"{{memberId}}","name":"Margaret",
+             "age":78,"healthStatus":"green","unreadAlertCount":1,
+             "device":{"hasActiveConnection":true},"baseline":{"isLearning":false},
+             "recentAlerts":[]},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        await client.GetDashboardAsync(memberId);
+
+        Assert.Empty(cache.Items);
+    }
+
     private sealed class HoldingJsonHandler(string body) : HttpMessageHandler
     {
         public TaskCompletionSource Entered { get; } = new();
