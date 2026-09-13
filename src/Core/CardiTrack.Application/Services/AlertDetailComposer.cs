@@ -396,7 +396,7 @@ public static class AlertDetailComposer
             StatisticalAlertRules.ActivityDeclineRule => StepsComparison(metrics, baseline, today, aboutDate),
             StatisticalAlertRules.LongTermTrendRule => TrendComparison(metrics),
             StatisticalAlertRules.ElevatedHeartRateRule => HeartRateComparison(metrics, baseline, today, aboutDate),
-            StatisticalAlertRules.IrregularSleepRule => SleepComparison(metrics, baseline),
+            StatisticalAlertRules.IrregularSleepRule => SleepComparison(metrics, baseline, today, aboutDate),
             StatisticalAlertRules.NoMorningActivityRule => NoMorningComparison(metrics, baseline),
             RealtimeHeartRateRule => RealtimeHeartComparison(metrics, baseline),
             StatisticalAlertRules.HeartRateVariabilityDropRule
@@ -565,7 +565,8 @@ public static class AlertDetailComposer
         };
     }
 
-    private static AlertComparisonResponse? SleepComparison(JsonElement metrics, PatternBaseline? baseline)
+    private static AlertComparisonResponse? SleepComparison(
+        JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
     {
         var currentMinutes = ReadDecimal(metrics, "sleepMinutes");
         var usualMinutes = ReadDecimal(metrics, "baselineAvgSleepMinutes") ?? baseline?.AvgSleepMinutes;
@@ -574,7 +575,11 @@ public static class AlertDetailComposer
 
         return new AlertComparisonResponse
         {
-            CurrentLabel = "Last night",
+            // The night that ended this morning is "Last night". An older card must name
+            // the night it judged — the chart headline already does.
+            CurrentLabel = aboutDate == today
+                ? "Last night"
+                : DayLabel(aboutDate, today) ?? "Last night",
             CurrentValue = HoursLabel(currentMinutes),
             NormalLabel = "Usual night",
             NormalValue = HoursLabel(usualMinutes),

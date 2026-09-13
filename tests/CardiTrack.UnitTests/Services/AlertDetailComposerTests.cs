@@ -177,6 +177,23 @@ public class AlertDetailComposerTests
         var detail = AlertDetailComposer.Compose(alert, Member(), null, [], _today, null, null);
 
         Assert.Equal(_today, detail.AboutDate);
+        Assert.Equal("Last night", detail.Comparison!.CurrentLabel);
+    }
+
+    [Fact]
+    public void IrregularSleep_NamesTheNightItJudged_WhenThatNightIsNoLongerLastNight()
+    {
+        var about = new DateOnly(2026, 8, 10);
+        var alert = MakeAlert(
+            AlertType.Sleep,
+            """{"rule":"irregular_sleep","night":"2026-08-10","sleepMinutes":240,"baselineAvgSleepMinutes":420}""");
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, [Log(about, sleepMinutes: 240)], _today, null, null);
+
+        Assert.Equal(about, detail.AboutDate);
+        Assert.Equal("10 Aug", detail.Comparison!.CurrentLabel);
+        Assert.Equal("10 Aug", detail.Chart!.ValueLabel);
     }
 
     [Fact]

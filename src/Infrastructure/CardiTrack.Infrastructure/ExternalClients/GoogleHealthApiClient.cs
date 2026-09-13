@@ -1635,12 +1635,6 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     }
 
     /// <summary>
-    /// A payload the API could not bind comes back as 400 with a `google.rpc.BadRequest` detail
-    /// listing field violations. Recognising that shape is what separates "this request is wrong"
-    /// from "this account has no such data", which some callers tolerate. Parsed best-effort: an
-    /// unparseable or differently-shaped error body is not treated as a request bug.
-    /// </summary>
-    /// <summary>
     /// Failures that must not discard a snapshot whose night already arrived. A malformed
     /// filter is a bug in this client and still throws.
     /// </summary>
@@ -1653,6 +1647,12 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         _ => false,
     };
 
+    /// <summary>
+    /// A payload the API could not bind comes back as 400 with a `google.rpc.BadRequest` detail
+    /// listing field violations. Recognising that shape is what separates "this request is wrong"
+    /// from "this account has no such data", which some callers tolerate. Parsed best-effort: an
+    /// unparseable or differently-shaped error body is not treated as a request bug.
+    /// </summary>
     private bool IsMalformedRequest(int statusCode, string body)
     {
         if (statusCode != 400 || !JsonUtility.TryParse(body, out var root, out _))
