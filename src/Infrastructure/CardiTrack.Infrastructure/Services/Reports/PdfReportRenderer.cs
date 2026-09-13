@@ -155,7 +155,7 @@ public class PdfReportRenderer : IReportRenderer
             {
                 var prefix = data.Members.Count > 1 ? $"{member.Member.Name} · " : string.Empty;
 
-                if (sections.IncludeTrends && member.ActivityLogs.Count > 0)
+                if (sections.IncludeTrends && HasAChartedReading(member))
                     Section(column, prefix + "Trends", e => Charts(e, member, data.From, data.To));
 
                 if (sections.IncludeMetrics)
@@ -700,6 +700,14 @@ public class PdfReportRenderer : IReportRenderer
     private static bool HasAnyReading(ActivityLog log) =>
         log.Steps is not null || log.ActiveMinutes is not null || log.RestingHeartRate is not null
         || log.SleepMinutes is not null || log.SpO2Average is not null;
+
+    /// <summary>
+    /// At least one of the four figures we actually plot. A day that only has
+    /// active minutes would pass <see cref="HasAnyReading"/> and then produce a
+    /// Trends heading with no marks.
+    /// </summary>
+    private static bool HasAChartedReading(ReportMemberData member) =>
+        Metrics.Any(metric => member.ActivityLogs.Any(log => metric.Read(log) is not null));
 
     /// <summary>
     /// A reading the device never reported prints as an em dash, not a blank and never a zero —

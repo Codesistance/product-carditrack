@@ -626,6 +626,27 @@ public class ReportRendererTests
     }
 
     [Fact]
+    public void Pdf_OmitsTheTrendsHeading_WhenNoMetricWasMeasured()
+    {
+        // A row that only has active minutes is a reading, but none of the four
+        // figures we plot. The heading must not stand over an empty figure.
+        var logs = new[]
+        {
+            new ActivityLog
+            {
+                CardiMemberId = MemberId,
+                Date = new DateOnly(2026, 2, 10),
+                ActiveMinutes = 41
+            }
+        };
+
+        Assert.Equal(0, CountChartInk(
+            BuildData(logs: logs),
+            new ReportSections(
+                IncludeMetrics: false, IncludeAlerts: false, IncludeDevices: false, IncludeTrends: true)));
+    }
+
+    [Fact]
     public void Pdf_OmitsTrendCharts_WhenTrendsWereUnticked()
     {
         var data = BuildData(logs: [FullDay()]);

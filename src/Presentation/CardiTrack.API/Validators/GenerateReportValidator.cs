@@ -67,9 +67,9 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
         // Graphs are PDF-only — a CSV or FHIR request with only includeTrends ticked
         // would be an empty file, so they do not count there.
         RuleFor(x => x)
-            .Must(x => x.IncludeMetrics || x.IncludeAlerts || x.IncludeDevices
-                       || x.IncludeJournals || x.IncludeNotices
-                       || (x.IncludeTrends && x.Format == ReportFormat.Pdf))
+            .Must(x => HasARenderableSection(
+                x.Format, x.IncludeMetrics, x.IncludeTrends, x.IncludeAlerts,
+                x.IncludeDevices, x.IncludeJournals, x.IncludeNotices))
                 .WithMessage("Choose at least one kind of data to include");
 
         if (requireConsentToken)
@@ -105,4 +105,20 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
                     + "or choose PDF or CSV to export alerts")
             .When(x => x.Format == ReportFormat.FhirR4);
     }
+
+    /// <summary>
+    /// Shared with <see cref="RecordExportConsentValidator"/> so a graphs-only PDF
+    /// that generate would accept cannot have its consent refused.
+    /// </summary>
+    public static bool HasARenderableSection(
+        ReportFormat format,
+        bool includeMetrics,
+        bool includeTrends,
+        bool includeAlerts,
+        bool includeDevices,
+        bool includeJournals,
+        bool includeNotices) =>
+        includeMetrics || includeAlerts || includeDevices
+        || includeJournals || includeNotices
+        || (includeTrends && format == ReportFormat.Pdf);
 }

@@ -113,4 +113,44 @@ public class RecordExportConsentValidatorTests
 
         Assert.False(_validator.Validate(request).IsValid);
     }
+
+    [Fact]
+    public void Accepts_APdfRequestCarryingOnlyTrends()
+    {
+        var request = new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf,
+            IncludeMetrics = false,
+            IncludeTrends = true,
+            IncludeAlerts = false,
+            IncludeDevices = false,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true
+        };
+
+        Assert.True(_validator.Validate(request).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_ACsvRequestCarryingOnlyTrends()
+    {
+        var request = new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Csv,
+            IncludeMetrics = false,
+            IncludeTrends = true,
+            IncludeAlerts = false,
+            IncludeDevices = false,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true
+        };
+
+        Assert.False(_validator.Validate(request).IsValid);
+    }
 }

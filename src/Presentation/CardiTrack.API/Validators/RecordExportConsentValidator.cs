@@ -35,8 +35,9 @@ public class RecordExportConsentValidator : AbstractValidator<RecordExportConsen
                 .WithMessage("Choose PDF, CSV or FHIR R4");
 
         RuleFor(x => x)
-            .Must(x => x.IncludeMetrics || x.IncludeAlerts || x.IncludeDevices
-                       || x.IncludeJournals || x.IncludeNotices)
+            .Must(x => GenerateReportValidator.HasARenderableSection(
+                x.Format, x.IncludeMetrics, x.IncludeTrends, x.IncludeAlerts,
+                x.IncludeDevices, x.IncludeJournals, x.IncludeNotices))
                 .WithMessage("Choose at least one kind of data to include");
 
         RuleFor(x => x)

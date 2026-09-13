@@ -28,6 +28,7 @@ public class ReportGenerationServiceTests
     private readonly InMemoryReportRepository _reports = new();
     private readonly InMemoryReportStorage _storage = new();
     private readonly RecordingRenderer _renderer = new(ReportFormat.Pdf);
+    private readonly RecordingRenderer _csvRenderer = new(ReportFormat.Csv);
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
     private readonly IExportConsentService _consent = Substitute.For<IExportConsentService>();
     private readonly IDigestRepository _digests = Substitute.For<IDigestRepository>();
@@ -69,7 +70,7 @@ public class ReportGenerationServiceTests
         {
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
-            [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer }
+            [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer, _csvRenderer }
         });
 
         var scope = Substitute.For<IServiceScope>();
@@ -992,6 +993,46 @@ public class ReportGenerationServiceTests
         Assert.Equal(day, to);
         Assert.Equal(from, _renderer.LastData!.From);
         Assert.Equal(to, _renderer.LastData.To);
+    }
+
+    [Fact]
+    public async Task Gather_DoesNotWidenACsvExport_WhenTrendsAreOn()
+    {
+        // includeTrends defaults on and is ignored by CSV. A pinned journal day
+        // must not pull the fortnight into the spreadsheet.
+        var day = new DateOnly(2026, 2, 20);
+        DateOnly? from = null;
+        DateOnly? to = null;
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(call =>
+            {
+                from = call.ArgAt<DateOnly>(1);
+                to = call.ArgAt<DateOnly>(2);
+                return Array.Empty<ActivityLog>();
+            });
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, new GenerateReportRequest
+        {
+            CardiMemberIds = [_memberId],
+            DateRangeFrom = day,
+            DateRangeTo = day,
+            Format = ReportFormat.Csv,
+            IncludeMetrics = true,
+            IncludeTrends = true,
+            IncludeAlerts = false,
+            IncludeJournals = true,
+            JournalEntryDate = day,
+            JournalAudience = DigestAudience.Daybook,
+            ConsentToken = "consent-token"
+        });
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Equal(day, from);
+        Assert.Equal(day, to);
+        Assert.Equal(day, _csvRenderer.LastData!.From);
+        Assert.Equal(day, _csvRenderer.LastData.To);
     }
 
     [Fact]

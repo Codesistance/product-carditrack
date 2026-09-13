@@ -255,10 +255,11 @@ public class ReportGenerationService : IReportGenerationService
     {
         var members = new List<ReportMemberData>(request.CardiMemberIds.Count);
 
-        // Charts plot against this span. A pinned journal entry widens it to the
-        // fortnight (or month) the journal page charts, so the extra days actually
-        // appear rather than being gathered and then clipped off the axis.
-        var (readingsFrom, readingsTo) = request.IncludeTrends
+        // Charts are PDF-only. includeTrends defaults on, and a CSV/FHIR call
+        // that also pins a journal day must not fetch the fortnight and write
+        // those extra rows into a spreadsheet or bundle.
+        var chartOnPdf = request.IncludeTrends && request.Format == ReportFormat.Pdf;
+        var (readingsFrom, readingsTo) = chartOnPdf
             ? ReportJournalScope.ChartWindow(
                 request.DateRangeFrom, request.DateRangeTo,
                 request.JournalEntryDate, request.JournalAudience)
@@ -272,7 +273,7 @@ public class ReportGenerationService : IReportGenerationService
             // Readings load for the daily table *or* the PDF charts. The narrative still
             // only sees them when metrics are ticked — charts on a journals-only PDF
             // must not send the fortnight to the general provider.
-            var logs = request.IncludeMetrics || request.IncludeTrends
+            var logs = request.IncludeMetrics || chartOnPdf
                 ? (await unitOfWork.ActivityLogs
                         .GetByCardiMemberAndDateRangeAsync(memberId, readingsFrom, readingsTo))
                     .OrderBy(l => l.Date)
