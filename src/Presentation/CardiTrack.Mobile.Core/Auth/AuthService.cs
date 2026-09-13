@@ -1,4 +1,5 @@
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Offline;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,6 +15,8 @@ public sealed class AuthService : IAuthService
     private readonly Auth0Options _options;
     private readonly IOfflineReadCache? _cache;
     private readonly IOfflineCacheWarmer? _warmer;
+    private readonly SessionGeneration? _session;
+    private readonly IPendingNavigation? _pendingNavigation;
     private readonly ILogger<AuthService> _logger;
 
     private IReadOnlyDictionary<string, string> _claims =
@@ -27,7 +30,9 @@ public sealed class AuthService : IAuthService
         Auth0Options options,
         IOfflineReadCache? cache = null,
         ILogger<AuthService>? logger = null,
-        IOfflineCacheWarmer? warmer = null)
+        IOfflineCacheWarmer? warmer = null,
+        SessionGeneration? session = null,
+        IPendingNavigation? pendingNavigation = null)
     {
         _auth0 = auth0;
         _store = store;
@@ -36,6 +41,8 @@ public sealed class AuthService : IAuthService
         _options = options;
         _cache = cache;
         _warmer = warmer;
+        _session = session;
+        _pendingNavigation = pendingNavigation;
         _logger = logger ?? NullLogger<AuthService>.Instance;
     }
 
@@ -56,6 +63,7 @@ public sealed class AuthService : IAuthService
     {
         var tokens = await _auth0.LoginAsync(email, password, ct);
         await _store.SaveAsync(tokens);
+        _session?.Advance();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
         // Checked here as well as on refresh: a build stamped with the wrong audience is
         // wrong from the very first token, and this is the only place that sees one issued.
@@ -114,6 +122,7 @@ public sealed class AuthService : IAuthService
 
         var tokens = await _auth0.ExchangeAuthorizationCodeAsync(code, verifier, ct);
         await _store.SaveAsync(tokens);
+        _session?.Advance();
         _claims = JwtPayloadReader.ReadClaims(tokens.IdToken);
         AccessTokenAudience.Warn(_logger, tokens.AccessToken, _options.Audience, "social-sign-in");
     }
@@ -168,6 +177,9 @@ public sealed class AuthService : IAuthService
         {
             if (_warmer is not null)
                 await _warmer.DrainForSignOutAsync(ct);
+
+            _session?.Advance();
+            _pendingNavigation?.Discard();
 
             var tokens = await _store.GetAsync();
             if (!string.IsNullOrEmpty(tokens?.RefreshToken))

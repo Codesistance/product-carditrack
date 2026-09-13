@@ -46,6 +46,18 @@ public class PendingEventTests
     }
 
     [Fact]
+    public void Discard_DropsAPendingRaise()
+    {
+        var pending = new PendingEvent<NudgeDestination>();
+        NudgeDestination? seen = null;
+        pending.Raise(this, Settings);
+        pending.Discard();
+        pending.Subscribe((_, destination) => seen = destination);
+
+        Assert.Null(seen);
+    }
+
+    [Fact]
     public void Replay_HappensOnlyOnce()
     {
         var pending = new PendingEvent<NudgeDestination>();

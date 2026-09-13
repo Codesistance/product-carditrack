@@ -1348,6 +1348,47 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task Get_DoesNotWriteTheCache_WhenTheSessionGenerationMoved()
+    {
+        var handler = new HoldingJsonHandler("""
+            {"success":true,"message":"ok","data":{"cardiMemberId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+             "name":"Margaret","age":78,"healthStatus":"green","unreadAlertCount":1,
+             "device":{"hasActiveConnection":true},"baseline":{"isLearning":false},
+             "recentAlerts":[]},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+        var session = new SessionGeneration();
+        var cache = new MemoryOfflineCache();
+        var client = new CardiTrackApiClient(
+            new HttpClient(handler) { BaseAddress = new Uri("https://api.test") },
+            cache, session: session);
+
+        var get = client.GetDashboardAsync(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+        await handler.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        session.Advance();
+        handler.Release.SetResult();
+        await get;
+
+        Assert.Empty(cache.Items);
+    }
+
+    private sealed class HoldingJsonHandler(string body) : HttpMessageHandler
+    {
+        public TaskCompletionSource Entered { get; } = new();
+        public TaskCompletionSource Release { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    [Fact]
     public async Task ContinueMemberChatSession_PostsToItsRoute_AndReadsTheTurns()
     {
         var (client, http) = CreateSut();

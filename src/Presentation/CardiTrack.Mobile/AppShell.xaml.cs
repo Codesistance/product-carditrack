@@ -83,17 +83,16 @@ public partial class AppShell : Shell
             return;
         }
 
-        push.DestinationTapped += OnPushDestinationTapped;
-
-        // Every foreground, not just this one: it picks up a rotated FCM token, and it is the
-        // LastSeenDate heartbeat that NotificationDispatchWorker's staleness sweep treats as
-        // proof the install is still alive. Loaded/Unloaded rather than the constructor alone,
-        // so a shell discarded on sign-out stops holding the singleton notifier's event.
+        // Subscribe on Loaded, not here: the constructor runs before PostLoginRouter
+        // installs this shell as the window root. A pending tap replayed from the
+        // constructor would navigate against the splash that is still showing.
         var notifier = ServiceHelper.GetRequiredService<IAppResumeNotifier>();
         void OnResumed(object? sender, EventArgs e) => RegisterPush(push);
 
         Loaded += (_, _) =>
         {
+            push.DestinationTapped -= OnPushDestinationTapped;
+            push.DestinationTapped += OnPushDestinationTapped;
             notifier.Resumed -= OnResumed;
             notifier.Resumed += OnResumed;
         };

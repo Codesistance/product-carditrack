@@ -413,8 +413,13 @@ public partial class MemberChatPage : ContentView
         SelectSessionsAction.IsVisible = false;
 
         var shownFromCache = _sessions.Count > 0;
-        if (_sessions.Count == 0
-            && await _api.PeekMemberChatSessionsAsync(_memberId) is { } saved)
+        if (shownFromCache)
+        {
+            SetState();
+            SessionsList.IsVisible = true;
+            SelectSessionsAction.IsVisible = true;
+        }
+        else if (await _api.PeekMemberChatSessionsAsync(_memberId) is { } saved)
         {
             _sessions.Clear();
             foreach (var session in saved.Sessions)
@@ -424,7 +429,7 @@ public partial class MemberChatPage : ContentView
             SessionsList.IsVisible = true;
             SelectSessionsAction.IsVisible = _sessions.Count > 0;
         }
-        else if (_sessions.Count == 0)
+        else
             SetState(loading: true);
 
         try
@@ -450,6 +455,14 @@ public partial class MemberChatPage : ContentView
         {
             if (_mode != ChatViewMode.HistoryList)
                 return;
+            if (ex.IsNotFound)
+            {
+                _sessions.Clear();
+                ErrorDetailLabel.Text = ex.Message;
+                SetState(error: true);
+                return;
+            }
+
             if (KeepCachedHistory())
                 return;
             ErrorDetailLabel.Text = ex.Message;
@@ -698,6 +711,19 @@ public partial class MemberChatPage : ContentView
         }
         catch (ApiException ex)
         {
+            if (ex.IsNotFound)
+            {
+                ApplyThread(null);
+                _threadLoadFailed = true;
+                if (_mode == ChatViewMode.Thread)
+                {
+                    ErrorDetailLabel.Text = ex.Message;
+                    SetState(error: true);
+                }
+
+                return;
+            }
+
             _threadLoadFailed = _turns.Count == 0;
             if (_turns.Count == 0 && _mode == ChatViewMode.Thread)
             {

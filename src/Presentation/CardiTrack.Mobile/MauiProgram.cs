@@ -77,12 +77,15 @@ public static class MauiProgram
 
         builder.Services.AddSingleton(_ => CrossFirebaseCloudMessaging.Current);
         builder.Services.AddSingleton<PushRegistrationCoordinator>();
+        builder.Services.AddSingleton<IPendingNavigation>(sp =>
+            sp.GetRequiredService<PushRegistrationCoordinator>());
 #endif
 
         var auth0 = new Auth0Options(AppConfig.Auth0Domain, AppConfig.Auth0ClientId, AppConfig.Auth0Audience);
         builder.Services.AddSingleton(auth0);
         builder.Services.AddSingleton(new ApiOptions(AppConfig.ApiBaseUrl));
 
+        builder.Services.AddSingleton<SessionGeneration>();
         builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
         builder.Services.AddSingleton<ISecureKeyValueStore, SecureStorageKeyValueStore>();
         builder.Services.AddSingleton<IOfflineReadCache>(sp =>

@@ -45,6 +45,16 @@ public sealed class PendingEvent<TEventArgs>
             _handlers -= handler;
     }
 
+    public void Discard()
+    {
+        lock (_gate)
+        {
+            _hasPending = false;
+            _pendingSender = null;
+            _pending = default;
+        }
+    }
+
     public void Raise(object? sender, TEventArgs args)
     {
         EventHandler<TEventArgs>? handlers;

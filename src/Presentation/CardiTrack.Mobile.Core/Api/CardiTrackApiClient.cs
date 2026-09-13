@@ -24,6 +24,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private readonly HttpClient _http;
     private readonly IOfflineReadCache? _cache;
     private readonly ITokenStore? _tokens;
+    private readonly SessionGeneration? _session;
     private readonly ILogger<CardiTrackApiClient> _logger;
 
     /// <summary>
@@ -38,11 +39,13 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         HttpClient http,
         IOfflineReadCache? cache = null,
         ILogger<CardiTrackApiClient>? logger = null,
-        ITokenStore? tokens = null)
+        ITokenStore? tokens = null,
+        SessionGeneration? session = null)
     {
         _http = http;
         _cache = cache;
         _tokens = tokens;
+        _session = session;
         _logger = logger ?? NullLogger<CardiTrackApiClient>.Instance;
     }
 
@@ -741,6 +744,10 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private async Task<T> GetCoreAsync<T>(
         string path, CacheOrigin origin, bool allowNullData, CancellationToken ct, bool cache)
     {
+        // Captured before the network call: a response that outlives this session must not
+        // land in the next caregiver's cache. A non-null token at save time is not enough —
+        // the next session may already be signed in.
+        var generation = _session?.Current ?? 0;
         HttpResponseMessage response;
         try
         {
@@ -773,7 +780,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
         // A null-data success is an answer, but not one worth caching: TryReadCacheAsync would
         // only reject the entry as unreadable on the way back out, one warning per offline read.
-        if (value is not null && cache)
+        if (value is not null && cache && SameSession(generation))
             await TrySaveCacheAsync(path, body, ct);
         return value;
     }
@@ -919,8 +926,8 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         if (_cache is null)
             return;
 
-        // A GET that outlived sign-out must not write the previous caregiver's body
-        // into a cache the next session will peek as its own.
+        // Belt-and-suspenders with SameSession: a token that is already gone is a
+        // session that has ended, even if the generation counter was not wired in.
         if (_tokens is not null && await _tokens.GetAsync() is null)
             return;
 
@@ -933,6 +940,9 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             _logger.LogWarning(ex, "Offline cache write failed for GET {Path}", path);
         }
     }
+
+    private bool SameSession(int generation) =>
+        _session is null || _session.Current == generation;
 
     /// <summary>
     /// Drops the snapshots a successful mutation has made stale. Best-effort and uncancellable:

@@ -1,6 +1,7 @@
 using System.Text;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
+using CardiTrack.Mobile.Core.Notifications;
 using CardiTrack.Mobile.Core.Offline;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -231,6 +232,22 @@ public class AuthServiceTests
 
         Assert.Equal(["drain", "tokens", "cache"], order);
         warmer.Received(1).ResumeAfterSignOut();
+    }
+
+    [Fact]
+    public async Task SignOut_AdvancesTheSession_AndDiscardsAPendingDestination()
+    {
+        var session = new SessionGeneration();
+        var pending = Substitute.For<IPendingNavigation>();
+        _store.GetAsync().Returns(Tokens());
+        var sut = new AuthService(
+            _auth0, _store, _refresher, _browser, Options, session: session, pendingNavigation: pending);
+        var before = session.Current;
+
+        await sut.SignOutAsync();
+
+        Assert.Equal(before + 1, session.Current);
+        pending.Received(1).Discard();
     }
 
     [Fact]

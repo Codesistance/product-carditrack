@@ -26,7 +26,7 @@ namespace CardiTrack.Mobile.Notifications;
 /// implementation to swap in, so this type simply isn't constructed there (see MauiProgram.cs's
 /// <c>#if ANDROID || IOS</c> guard around its registration).
 /// </summary>
-public sealed class PushRegistrationCoordinator : IDisposable
+public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposable
 {
     /// <summary>
     /// Ceiling on the stored value: PushDeviceToken.AppVersion is varchar(32) and NOT NULL (see
@@ -194,6 +194,8 @@ public sealed class PushRegistrationCoordinator : IDisposable
         if (destination.Kind != NudgeDestinationKind.Unknown)
             _destination.Raise(this, destination);
     }
+
+    public void Discard() => _destination.Discard();
 
     private static void OnError(object? sender, FCMErrorEventArgs e) =>
         Log.Warning("Push messaging error: {Message}", e.Message);

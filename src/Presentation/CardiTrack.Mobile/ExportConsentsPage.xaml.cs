@@ -16,6 +16,7 @@ public partial class ExportConsentsPage : ContentPage
     private readonly LoadGate _gate = new();
     private readonly RefreshFeedback _feedback;
     private List<ExportConsentHistoryItem>? _items;
+    private bool _reloadWhenIdle;
 
     public ExportConsentsPage(ICardiTrackApiClient api, IPopupService popups)
     {
@@ -41,7 +42,13 @@ public partial class ExportConsentsPage : ContentPage
     private async Task LoadAsync()
     {
         if (_gate.IsLoading)
+        {
+            // A revoke (or retry) while the first live GET still owns the gate must not
+            // be dropped — that GET's pre-revoke snapshot would paint the consent back.
+            _reloadWhenIdle = true;
             return;
+        }
+
         var ticket = _gate.Begin();
 
         var cold = _items is null;
@@ -78,6 +85,11 @@ public partial class ExportConsentsPage : ContentPage
         {
             Loading.IsVisible = false;
             _gate.Release(ticket);
+            if (_reloadWhenIdle)
+            {
+                _reloadWhenIdle = false;
+                await LoadAsync();
+            }
         }
     }
 

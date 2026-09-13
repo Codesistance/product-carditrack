@@ -165,8 +165,13 @@ public partial class ExportHealthDataPage : ContentPage
                         return;
                     }
 
-                    PopulateForm();
-                    ShowOnly(FormPanel);
+                    if (FormPanel.IsVisible)
+                        RefreshMemberPicker();
+                    else
+                    {
+                        PopulateForm();
+                        ShowOnly(FormPanel);
+                    }
                 },
                 _feedback);
 
@@ -180,6 +185,17 @@ public partial class ExportHealthDataPage : ContentPage
         {
             _gate.Release(ticket);
         }
+    }
+
+    private void RefreshMemberPicker()
+    {
+        var selectedId = MemberPicker.SelectedIndex >= 0
+            && MemberPicker.SelectedIndex < _members.Count
+                ? _members[MemberPicker.SelectedIndex].Id
+                : _memberId;
+        MemberPicker.ItemsSource = _members.Select(m => m.Name).ToList();
+        var index = _members.FindIndex(m => m.Id == selectedId);
+        MemberPicker.SelectedIndex = index >= 0 ? index : 0;
     }
 
     private void PopulateForm()
