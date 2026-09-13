@@ -225,7 +225,8 @@ public class MemberChatService : IMemberChatService
         Respond with:
         - analysis: your answer, grounded only in the data provided.
         """ + ReadingsDatedFields
-        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail
+        + MedicalPromptBlocks.DataGapRule;
 
     /// <summary>
     /// The two date fields every clinical read answers, so the reply can be dated in code.
@@ -307,7 +308,8 @@ public class MemberChatService : IMemberChatService
           verdict, so name only what the verdict genuinely used; an empty list is correct when
           it rests on the member's own baseline alone.
         """ + ReadingsDatedFields
-        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail
+        + MedicalPromptBlocks.DataGapRule;
 
     /// <summary>
     /// The explanation rung's clinical read. Its defining rule is co-occurrence: with several
@@ -339,7 +341,8 @@ public class MemberChatService : IMemberChatService
         - analysis: what changed, what if anything co-occurred and qualifies, ranked, and what
           remains unexplained.
         """ + ReadingsDatedFields
-        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail;
+        + MedicalPromptBlocks.ContextGuardrail + MedicalPromptBlocks.ChatQuestionGuardrail
+        + MedicalPromptBlocks.DataGapRule;
 
     /// <summary>
     /// The brief each rung's handler actually sends to a model, keyed by rung — the fixture for the
@@ -1811,13 +1814,22 @@ public class MemberChatService : IMemberChatService
             var heading = window is { } w
                 // "unless it is today": DailyLines now writes today's row whether or not a reading
                 // has arrived for it, so the old blanket "days with no reading are omitted" said
-                // the opposite of the line directly beneath it.
-                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; a day with no reading is omitted unless it is today"
+                // the opposite of the line directly beneath it. Any other day without a row is
+                // named under the block rather than left to be noticed — see MissingDaysLine.
+                ? $"{w.From:MMM d} to {w.To:MMM d}, oldest first; a day with no reading is omitted unless it is today, and named beneath"
                 : "oldest first";
+
+            // The omitted days, named. The heading above says days can be missing; it does not
+            // say which, and a model handed a window with a hole in it answers about the days it
+            // can see rather than about the one that was asked for (#531).
+            var missing = window is { } gapWindow
+                ? MedicalPromptBlocks.MissingDaysLine(data.RecentActivity, gapWindow, today)
+                : null;
 
             sections.Add(
                 $"--- Recent readings ({heading}) ---\n"
-                + MedicalPromptBlocks.DailyLines(data.RecentActivity, data.RecentActivity.Count, today));
+                + MedicalPromptBlocks.DailyLines(data.RecentActivity, data.RecentActivity.Count, today)
+                + (missing is null ? string.Empty : $"\n{missing}"));
         }
 
         if (data.Baseline is { } baseline)

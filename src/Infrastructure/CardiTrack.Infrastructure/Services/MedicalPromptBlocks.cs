@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -481,6 +481,35 @@ internal static partial class MedicalPromptBlocks
         NL + UntrustedOpen + NotesHeading + " and " + AnswersHeading + UntrustedCloseMany;
 
     /// <summary>
+    /// What a missing day means, and what may not be said about one. Carried by every clinical
+    /// read that is given daily readings.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure this exists for: asked "why aren't there steps tracked for Monday?" over a
+    /// window with four days missing, member chat answered with a different day's step count
+    /// (#531). The chart made the same mistake in its own vocabulary, labelling those days "No
+    /// data recorded" (#532) — and the readings arrived later, so both surfaces had stated as
+    /// settled fact about a person something that was only ever a fact about the data.
+    /// </para>
+    /// <para>
+    /// Two rules, and the second matters as much as the first. Naming the absence is not enough on
+    /// its own, because the obvious next sentence — "he probably left his watch off" — is the one
+    /// a caregiver will act on, and nothing here can tell a watch left on the side from a phone
+    /// that never synced from a provider publishing late. <see cref="MissingDaysLine"/> supplies
+    /// the dates; this supplies the limit.
+    /// </para>
+    /// </remarks>
+    internal const string DataGapRule = NL + """
+        A day the readings do not cover, or that is named above as having no reading, is a gap in
+        what has reached us — not a statement that the person did nothing, and not a sign that
+        anything is wrong. Asked about such a day, say plainly that no reading arrived for it.
+        Never answer with a different day's figure in its place, and never say why it is missing:
+        a device not worn, a phone that did not sync and a provider publishing late cannot be told
+        apart from this data.
+        """;
+
+    /// <summary>
     /// The same rule as <see cref="ContextGuardrail"/>, scoped to the one free-text section the
     /// dashboard hero prompt actually receives. Naming a section that is never present is an
     /// instruction to mention it; this path is also the one under a character budget.
@@ -807,6 +836,59 @@ internal static partial class MedicalPromptBlocks
             lines.Add(Render(new ActivityLog { Date = today }));
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
+    }
+
+    /// <summary>
+    /// The days inside a readings window that no reading has arrived for, named — or null when the
+    /// window is complete.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="DailyLines"/> omits a day it holds no row for, which leaves the model to infer an
+    /// absence from a row that simply is not there. It does not make that inference: asked "why
+    /// aren't there steps tracked for Monday?" over a window missing four days, member chat
+    /// answered with a different day's step count — the one failure a caregiver reads as a fact
+    /// about the person rather than about the data (#531, and #532 on the chart).
+    /// </para>
+    /// <para>
+    /// So the gap gets stated rather than implied, in the same spirit as the synthesised today row
+    /// above. The wording is deliberately about arrival — "no reading has reached us" — because
+    /// that is the only thing true of every case. A watch left on the side, a phone that never
+    /// synced, and a provider publishing late are indistinguishable from here, and the difference
+    /// between them is exactly what a caregiver would want to know. Saying which one it was would
+    /// be a guess dressed as an observation, and the instructions that carry this block forbid it.
+    /// </para>
+    /// <para>
+    /// Every missing day is named rather than counted, and no cap is needed: <c>DataQueryWhitelist</c>
+    /// clamps the activity window to seven days, so the longest list this can produce is six dates.
+    /// </para>
+    /// <para>
+    /// Today is excluded: <see cref="DailyLines"/> already writes a row for it whether or not a
+    /// reading has arrived, and naming it here as well would say the same absence twice in two
+    /// different vocabularies. A window with no readings at all is left to "No recent activity
+    /// data.", which says it better than a list of every date would.
+    /// </para>
+    /// </remarks>
+    internal static string? MissingDaysLine(
+        IEnumerable<ActivityLog> logs, (DateOnly From, DateOnly To) window, DateOnly today)
+    {
+        var present = logs.Select(l => l.Date).ToHashSet();
+        if (present.Count == 0)
+            return null;
+
+        var missing = new List<DateOnly>();
+        for (var day = window.From; day <= window.To; day = day.AddDays(1))
+        {
+            if (day != today && !present.Contains(day))
+                missing.Add(day);
+        }
+
+        if (missing.Count == 0)
+            return null;
+
+        return "No reading has reached us for: "
+            + string.Join(", ", missing.Select(d => d.ToString("MMM d")))
+            + ". That means nothing arrived for those days, not that the person recorded nothing.";
     }
 
     /// <summary>
