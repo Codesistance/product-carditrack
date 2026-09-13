@@ -284,7 +284,8 @@ public static class AlertDetailComposer
         PatternBaseline? baseline,
         ElapsedSteps? elapsedSteps = null,
         DateOnly? firedOn = null,
-        string? photoUrl = null)
+        string? photoUrl = null,
+        TimeZoneInfo? timeZone = null)
     {
         var rule = ReadRule(alert.MetricValues);
         TryParse(alert.MetricValues, out var metrics);
@@ -293,6 +294,8 @@ public static class AlertDetailComposer
                 ? alert.TriggeredDate.ToUniversalTime()
                 : DateTime.SpecifyKind(alert.TriggeredDate, DateTimeKind.Utc));
         var aboutDate = AboutDate(rule, alert.MetricValues, raisedOn);
+        var stretchStartedAt = ReadDateTime(metrics, "startedAtUtc");
+        var bedtime = LocalizedBedtime(baseline?.TypicalBedtime, stretchStartedAt, timeZone);
 
         return new AlertDetailResponse
         {
@@ -320,10 +323,33 @@ public static class AlertDetailComposer
             LastActivityOn = LastMeasuredStepsDay(logs),
             TypicalWakeTime = ReadString(metrics, "typicalWakeTime")
                 ?? baseline?.TypicalWakeTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
-            TypicalBedtime = baseline?.TypicalBedtime?.ToString("HH:mm", CultureInfo.InvariantCulture),
+            TypicalBedtime = bedtime?.ToString("HH:mm", CultureInfo.InvariantCulture),
+            StillStretchAsk = stretchStartedAt is { } startedAt
+                ? StillStretchAsk(
+                    BaselineClock.Local(startedAt, timeZone) ?? TimeOnly.FromDateTime(startedAt),
+                    bedtime)
+                : null,
             LastDataAt = ReadDateTime(metrics, "lastDataUtc"),
-            StretchStartedAt = ReadDateTime(metrics, "startedAtUtc"),
+            StretchStartedAt = stretchStartedAt,
         };
+    }
+
+    /// <summary>
+    /// The stored UTC bedtime face, read on the member's wall clock and anchored to the
+    /// stretch (or, without one, left as stored). Without a zone the face is unchanged, so
+    /// fixtures that already speak in local hours keep working — the same fallback
+    /// <see cref="BaselineClock.Local(TimeOnly?, DateOnly, TimeZoneInfo?)"/> documents.
+    /// </summary>
+    private static TimeOnly? LocalizedBedtime(
+        TimeOnly? utcBedtime, DateTime? stretchStartedAtUtc, TimeZoneInfo? timeZone)
+    {
+        if (utcBedtime is null)
+            return null;
+        if (timeZone is null || stretchStartedAtUtc is not { } startedAt)
+            return utcBedtime;
+
+        return BaselineClock.Local(
+            utcBedtime, DateOnly.FromDateTime(DateTime.SpecifyKind(startedAt, DateTimeKind.Utc)), timeZone);
     }
 
     /// <summary>
@@ -777,9 +803,23 @@ public static class AlertDetailComposer
     public static string StillStretchAsk(TimeOnly localStart, TimeOnly? typicalBedtime)
     {
         var evening = typicalBedtime ?? new TimeOnly(20, 0);
-        return localStart >= evening
+        return IsAtOrAfterBedtime(localStart, evening)
             ? "whether they settled early"
             : "whether anything kept them in the chair";
+    }
+
+    /// <summary>
+    /// Whether <paramref name="localStart"/> sits in the hours after bedtime, the short way
+    /// round the clock. A 01:00 bedtime is after midnight, so 21:00 is still evening in a
+    /// chair — the linear <c>&gt;=</c> that treated every afternoon as already after 01:00
+    /// is what this replaces. The window is eight hours: bedtime through the small hours,
+    /// not the next afternoon.
+    /// </summary>
+    private static bool IsAtOrAfterBedtime(TimeOnly localStart, TimeOnly bedtime)
+    {
+        var raw = (int)Math.Round((localStart.ToTimeSpan() - bedtime.ToTimeSpan()).TotalMinutes);
+        var forward = ((raw % 1440) + 1440) % 1440;
+        return forward < 8 * 60;
     }
 
     /// <summary>Names the day the headline belongs to, relative to the caregiver's today.</summary>

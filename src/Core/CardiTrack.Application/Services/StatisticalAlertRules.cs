@@ -240,7 +240,7 @@ public static class StatisticalAlertRules
             ElevatedHeartRateRule, AlertType.HeartRate, AlertSeverity.Orange,
             "Resting heart rate is running high",
             $"Resting heart rate was {restingHr} bpm, clearly above the usual "
-            + $"{average} bpm. Worth checking in today.",
+            + $"{average} bpm. Worth checking in.",
             Serialize(new
             {
                 rule = ElevatedHeartRateRule,

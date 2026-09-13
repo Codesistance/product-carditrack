@@ -397,6 +397,10 @@ public class AlertDetailComposerTests
     [InlineData(20, 0, null, "whether they settled early")]
     [InlineData(21, 30, "22:00", "whether anything kept them in the chair")]
     [InlineData(22, 0, "22:00", "whether they settled early")]
+    [InlineData(1, 0, "22:00", "whether they settled early")]
+    [InlineData(21, 0, "01:00", "whether anything kept them in the chair")]
+    [InlineData(1, 30, "01:00", "whether they settled early")]
+    [InlineData(21, 0, "00:00", "whether anything kept them in the chair")]
     public void StillStretchAsk_SwitchesAtBedtime(
         int hour, int minute, string? bedtime, string expected)
     {
@@ -530,6 +534,32 @@ public class AlertDetailComposerTests
             new PatternBaseline { TypicalBedtime = new TimeOnly(22, 15) });
 
         Assert.Equal("22:15", detail.TypicalBedtime);
+    }
+
+    /// <summary>
+    /// The stored bedtime face is UTC. Compared raw against a Pacific afternoon it looks
+    /// like 05:00 — after a 04:00 UTC start — and the ask flips to "settled early".
+    /// Localising both onto the member's clock keeps 21:00 before a 22:00 bedtime.
+    /// </summary>
+    [Fact]
+    public void Compose_LocalisesTheStillStretchAsk_OntoTheMembersClock()
+    {
+        var alert = MakeAlert(
+            AlertType.Inactivity,
+            """
+            {"rule":"daytime_inactivity_block","longestSedentaryStretchMinutes":372,
+             "startedAtUtc":"2026-08-14T04:00:00Z"}
+            """);
+        var zone = TimeZoneInfo.CreateCustomTimeZone(
+            "test-7", TimeSpan.FromHours(-7), "test-7", "test-7");
+
+        var detail = AlertDetailComposer.Compose(
+            alert, Member(), null, [], _today, null,
+            new PatternBaseline { TypicalBedtime = new TimeOnly(5, 0) },
+            timeZone: zone);
+
+        Assert.Equal("22:00", detail.TypicalBedtime);
+        Assert.Equal("whether anything kept them in the chair", detail.StillStretchAsk);
     }
 
     /// <summary>

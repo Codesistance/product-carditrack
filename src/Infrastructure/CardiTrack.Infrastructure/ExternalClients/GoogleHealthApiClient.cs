@@ -310,6 +310,25 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         string accessToken, DateOnly date) =>
         SessionWindowsFrom(await ListSleepSessionsAsync(accessToken, CivilSleepBound.Start, date));
 
+    /// <summary>
+    /// A night that ended on <paramref name="date"/>, not merely a session that did. A nap
+    /// ends on the same civil day and does not clip the small hours, so treating it as
+    /// permission to measure waking rest would make the midnight-to-morning run the day's
+    /// longest stretch — the case <c>daytime_inactivity_block</c> exists not to page about.
+    /// </summary>
+    /// <remarks>
+    /// Duration or a start before this civil day's UTC midnight: a Pacific 19:00 bedtime is
+    /// 02:00 UTC the next calendar day, so a same-UTC-date night is still a night if it
+    /// lasted long enough to be one.
+    /// </remarks>
+    private static bool NightEndedOn(
+        IReadOnlyList<(DateTime Start, DateTime End)> windows, DateOnly date)
+    {
+        var dayStartUtc = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        return windows.Any(w =>
+            w.Start < dayStartUtc || w.End - w.Start >= TimeSpan.FromHours(3));
+    }
+
     private static IReadOnlyList<(DateTime Start, DateTime End)> UnionSleepWindows(
         IReadOnlyList<(DateTime Start, DateTime End)> ended,
         IReadOnlyList<(DateTime Start, DateTime End)> started)
@@ -707,12 +726,15 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var sleep = await sleepTask;
         // The night that *starts* tonight is tomorrow's sleep row, but it is this day's
         // bedtime-to-midnight stillness. Without it the stretch clip leaves that tail inside
-        // "daytime rest". Only unioned when we already have the night that ended today —
-        // otherwise the small hours stay unclipped and we must not invent a stretch.
-        var startingTonight = await ListSleepWindowsStartingOnAsync(accessToken, date);
-        var stretchWindows = sleep.SessionWindows.Count == 0
-            ? null
-            : UnionSleepWindows(sleep.SessionWindows, startingTonight);
+        // "daytime rest". Only fetched and unioned when a night also *ended* today — a nap
+        // does not clip the small hours, and an extra provider call on an empty day is a
+        // backfill we do not need.
+        IReadOnlyList<(DateTime Start, DateTime End)>? stretchWindows = null;
+        if (NightEndedOn(sleep.SessionWindows, date))
+        {
+            stretchWindows = UnionSleepWindows(
+                sleep.SessionWindows, await ListSleepWindowsStartingOnAsync(accessToken, date));
+        }
         var exertionTask = GetExertionAsync(accessToken, date, stretchWindows);
 
         await Task.WhenAll(activitiesTask, heartRateTask, additionalTask, exertionTask);

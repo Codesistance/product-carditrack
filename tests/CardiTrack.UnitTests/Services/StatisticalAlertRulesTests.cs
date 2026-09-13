@@ -295,6 +295,7 @@ public class StatisticalAlertRulesTests
         Assert.Equal(AlertType.HeartRate, candidate.Type);
         Assert.Equal(AlertSeverity.Orange, candidate.Severity);
         Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
+        Assert.DoesNotContain("today", candidate.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     // σ = 6 → 2σ = 12 beats the floor: 62 + 12 = 74 is the boundary.

@@ -1307,12 +1307,56 @@ public class GoogleHealthApiClientTests
                 }
                 """);
 
-        var (sut, _) = CreateSut(handler);
+        var (sut, handlerOut) = CreateSut(handler);
         var snapshot = await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
 
         Assert.Null(snapshot.TotalSleepMinutes);
         Assert.Null(snapshot.LongestSedentaryStretchMinutes);
         Assert.Null(snapshot.LongestSedentaryStretchStartUtc);
+
+        var sleepFilters = handlerOut.Requests
+            .Where(r => r.RequestUri!.AbsolutePath.Contains("/dataTypes/sleep/", StringComparison.Ordinal))
+            .Select(r => Uri.UnescapeDataString(r.RequestUri!.Query["?filter=".Length..]))
+            .ToList();
+        Assert.Equal(
+            """
+            sleep.interval.civil_end_time >= "2026-08-05" AND sleep.interval.civil_end_time < "2026-08-06"
+            """,
+            Assert.Single(sleepFilters));
+    }
+
+    /// <summary>
+    /// A nap ends on the same civil day and does not clip the small hours. Treating it as
+    /// a night would enable the bedtime union while leaving midnight-to-morning inside
+    /// waking rest — the case the stretch figure exists not to invent.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_ReportsNoStretch_WhenOnlyANapEndedToday()
+    {
+        var date = new DateOnly(2026, 8, 5);
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/sleep/",
+                SleepSessionList("2026-08-05T13:00:00Z", "2026-08-05T14:00:00Z", asleepMinutes: "50"),
+                SleepSessionList("2026-08-05T21:00:00Z", "2026-08-06T06:00:00Z"))
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T00:00:00Z", "2026-08-05T07:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, handlerOut) = CreateSut(handler);
+        var snapshot = await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
+
+        Assert.Equal(50, snapshot.TotalSleepMinutes);
+        Assert.Null(snapshot.LongestSedentaryStretchMinutes);
+        Assert.Null(snapshot.LongestSedentaryStretchStartUtc);
+        Assert.Equal(
+            1,
+            handlerOut.Requests.Count(r =>
+                r.RequestUri!.AbsolutePath.Contains("/dataTypes/sleep/", StringComparison.Ordinal)));
     }
 
     private static string SleepSessionList(string start, string end, string asleepMinutes = "400") => $$"""

@@ -366,7 +366,7 @@ public partial class AlertDetailPage : ContentPage
             // becomes one, so a caregiver can tell an afternoon in a chair from an evening they
             // settled early. The ask is the composer's — the page only localises the clock.
             "daytime_inactivity_block" when alert.StretchStartedAt is { } startedAt =>
-                StillStretchLine(startedAt, alert.TypicalBedtime),
+                StillStretchLine(startedAt, alert.TypicalBedtime, alert.StillStretchAsk),
             _ => null,
         };
 
@@ -374,12 +374,16 @@ public partial class AlertDetailPage : ContentPage
         ContextLabel.Text = copy ?? string.Empty;
     }
 
-    private static string StillStretchLine(DateTime startedAtUtc, string? typicalBedtime)
+    private static string StillStretchLine(
+        DateTime startedAtUtc, string? typicalBedtime, string? composedAsk)
     {
         var local = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc).ToLocalTime();
+        // The ask is composed on the server in the member's zone. The clock here is the
+        // caregiver's, so a fallback (older payload) is the best the phone can do alone.
         TimeOnly? bedtime = TimeOnly.TryParse(typicalBedtime, out var parsed) ? parsed : null;
-        return $"The still stretch began around {local:h:mm tt} — "
-            + $"{AlertDetailComposer.StillStretchAsk(TimeOnly.FromDateTime(local), bedtime)}.";
+        var ask = composedAsk ?? AlertDetailComposer.StillStretchAsk(
+            TimeOnly.FromDateTime(local), bedtime);
+        return $"The still stretch began around {local:h:mm tt} — {ask}.";
     }
 
     /// <summary>

@@ -91,10 +91,16 @@ public class AlertDetailResponse
     public string? TypicalWakeTime { get; set; }
 
     /// <summary>
-    /// Typical bedtime ("22:00") from the baseline, for the still-stretch context line.
+    /// Typical bedtime ("22:00") from the baseline, already on the member's wall clock.
     /// Null when the member has no learned bedtime — the screen then treats 20:00 as evening.
     /// </summary>
     public string? TypicalBedtime { get; set; }
+
+    /// <summary>
+    /// The still-stretch ask, composed in the member's zone so a caregiver's phone clock
+    /// cannot flip "chair" and "settled early". Null when the rule has no stretch start.
+    /// </summary>
+    public string? StillStretchAsk { get; set; }
 
     /// <summary>When the device last produced a reading, for <c>device_silence</c>.</summary>
     public DateTime? LastDataAt { get; set; }
