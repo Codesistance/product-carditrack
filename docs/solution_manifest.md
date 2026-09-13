@@ -413,7 +413,7 @@ document exists and someone owns it.
 agent, request-scoped so reads are captured and not just writes, for the ten controllers
 annotated `[AuditHealthDataAccess]` as of 2026-09-13 (Alerts, CardiMembers, Dashboard, Devices, Insights, MemberChat, MetricAlarms, Onboarding (member creation only), Questionnaires, Reports). Repeated GETs from the same caller coalesce into one row per
 15-minute window. Onboarding's member creation has been audited since 2026-09-13; the
-remaining gap is retention. Retention is 90 days for the platform
+remaining gaps are audit-log retention and the unannotated A4 `ChatController` (DPIA §4.4). Retention is 90 days for the platform
 audit trail today (`enable_platform_audit_logging`); the six-year figure applies to HIPAA
 §164.316(b)(2) documentation and PHI-access records, and becomes required only when HIPAA
 attaches.
@@ -469,7 +469,7 @@ attaches.
 
 **AuditLog**
 - Schema for access tracking — table, EF configuration, indexes and migration exist
-- 🔄 Written request-scoped by `AuditLoggingMiddleware` for the ten `[AuditHealthDataAccess]`-annotated controllers (Onboarding's member creation included since 2026-09-13); GET audits coalesce for 15 minutes; the remaining gap is audit-log retention (DPIA OI-8)
+- 🔄 Written request-scoped by `AuditLoggingMiddleware` for the ten `[AuditHealthDataAccess]`-annotated controllers (Onboarding's member creation included since 2026-09-13); GET audits coalesce for 15 minutes; the remaining gaps are audit-log retention (DPIA OI-8) and the unannotated A4 `ChatController` (DPIA §4.4)
 - Retention target is set by the regime that applies — see §5
 
 ---

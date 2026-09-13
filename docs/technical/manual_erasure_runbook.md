@@ -94,6 +94,19 @@ The bucket name is environment-specific (dev: `carditrack-490120-carditrack-dev-
 | 32 | `Subscriptions` | Keyed on `OrganizationId` |
 | 33 | `Organizations`, `Users` | Retain billing records for 6 years per UK tax law — see policy §5 |
 
+### Caregiver only (`UserId`) — the account closes but the members stay
+
+The account-scoped rows above assume the members go too. When another caregiver remains linked to the members, erase **only the departing user's own rows**, keyed by their `UserId`, and leave every member-scoped table alone. If they were the *last* caregiver on a member, that member has nobody left to reach them: treat it as a full closure instead.
+
+| Order | Table | Notes |
+|---|---|---|
+| 34 | `MemberChatSessions` (this user's) | Their transcripts about the members; `MemberChatTurns` and `MemberChatTurnUsages` cascade — verify both |
+| 35 | `NotificationDeliveries`, `NotificationMutes`, `Notifications` (this user's) | All three carry `UserId`; the member's rows for other caregivers stay |
+| 36 | `DeviceHistoryRepulls` (rows they requested) | `RequestedByUserId` is required, so these cannot be nulled — delete them; the 48-hour re-pull cooldown resets for that member |
+| 37 | `Alerts.AcknowledgedByUserId`, `MemberQuestionnaires.AnsweredByUserId` | **Null, do not delete** — the alert and the answer belong to the member |
+| 38 | `UserCardiMembers` (this user's links) | Delete last among the member-facing rows, so the count checks above still resolve the user |
+| 39 | `PushDeviceTokens`, `NotificationPreferences`, `ExportConsents`, `Reports` (with their bucket objects), `Users` | The user-keyed rows from the account-scoped table; `Organizations` and `Subscriptions` stay while other users remain |
+
 **Reports are durable.** Since the self-service export shipped (2026-09-07) every generated export has a `Reports` row and an object in the report-exports bucket, both listed above; the earlier statement here that reports were an in-process one-hour cache with no table to clear is no longer true.
 
 **`AuditLogs` are retained, not deleted.** They are the record that the erasure happened and are needed to demonstrate compliance. This is a legitimate exception under Art. 17(3)(b), but note the unresolved conflict flagged in [dpia.md](../compliance/dpia.md): the policy implies a 6-year schedule, the deployed retention is 30/90 days, and the entity comment says 90 days. **Resolve that before quoting a figure to any data subject** — and note the deletion page currently points at "the retention schedule in the Privacy Policy" for audit logs, which has no audit-log row.

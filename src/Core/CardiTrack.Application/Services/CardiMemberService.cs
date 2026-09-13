@@ -91,6 +91,12 @@ public class CardiMemberService : ICardiMemberService
         // audit middleware only once this method returns). The transaction starts inside the
         // try so that a failure to start it still discards the photo uploaded above; rolling
         // back with no transaction open is a no-op.
+        //
+        // Once Commit has been *attempted* the outcome is indeterminate — the server can accept
+        // the commit and the call still fail on the way back. A member may then exist and own
+        // the photo, so the object is left alone on that path: OrphanedPhotoCleanupWorker deletes
+        // it only if no row ever points at it.
+        var commitAttempted = false;
         try
         {
             await _unitOfWork.BeginTransactionAsync();
@@ -112,12 +118,24 @@ public class CardiMemberService : ICardiMemberService
             await _unitOfWork.UserCardiMembers.AddAsync(userCardiMember);
             await _unitOfWork.SaveChangesAsync();
 
+            commitAttempted = true;
             await _unitOfWork.CommitTransactionAsync();
         }
         catch
         {
-            await _unitOfWork.RollbackTransactionAsync();
-            await DiscardUploadedPhotoAsync(cardiMember);
+            try
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+            }
+            catch
+            {
+                // Rollback is itself a database call. The original failure is the one the
+                // caller must see, and the photo clean-up below must still run.
+            }
+
+            if (!commitAttempted)
+                await DiscardUploadedPhotoAsync(cardiMember);
+
             throw;
         }
 

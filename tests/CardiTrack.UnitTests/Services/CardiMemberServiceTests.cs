@@ -599,6 +599,41 @@ public class CardiMemberServiceTests
     }
 
     [Fact]
+    public async Task Create_WithPhoto_KeepsTheObject_WhenTheCommitItselfFails()
+    {
+        // A commit can fail after the server has accepted it. The member may exist and own the
+        // photo, so nothing here may delete it — the orphan sweep decides later, from the rows.
+        SetupPhotoPipeline("members/x/maybe-committed.jpg");
+        _unitOfWork.CommitTransactionAsync().Returns(Task.FromException(new TimeoutException("commit ack lost")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _photoStorage.DidNotReceiveWithAnyArgs().DeleteAsync(default!, default);
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+    }
+
+    [Fact]
+    public async Task Create_WithPhoto_StillDiscardsTheObject_WhenTheRollbackAlsoFails()
+    {
+        SetupPhotoPipeline("members/x/orphan.jpg");
+        _unitOfWork.SaveChangesAsync().Returns(
+            Task.FromResult(1),
+            Task.FromException<int>(new InvalidOperationException("link save failed")));
+        _unitOfWork.RollbackTransactionAsync().Returns(Task.FromException(new IOException("connection dropped")));
+        var request = BuildRequest();
+        request.PhotoBase64 = PhotoBase64;
+
+        // The rollback's failure must neither replace the original exception nor skip the clean-up.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request));
+
+        await _photoStorage.Received(1).DeleteAsync("members/x/orphan.jpg", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Create_WithoutPhoto_NeverTouchesPhotoStorage()
     {
         await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, BuildRequest());
