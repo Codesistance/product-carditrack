@@ -537,6 +537,9 @@ public class AlertDetailComposerTests
         Assert.Equal(_today.AddDays(-1), detail.LastActivityOn);
         Assert.Equal("07:00", detail.TypicalWakeTime);
         Assert.Equal("steps", detail.Chart!.Metric);
+        Assert.Equal(6120, detail.Chart.Value);
+        Assert.Equal(_today, detail.AboutDate);
+        Assert.Contains(_today, AlertChartKey.FlaggedDates(detail.Chart, detail.AboutDate));
     }
 
     [Fact]

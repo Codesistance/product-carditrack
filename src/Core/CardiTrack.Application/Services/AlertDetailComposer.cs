@@ -638,11 +638,18 @@ public static class AlertDetailComposer
         return rule switch
         {
             StatisticalAlertRules.ActivityDeclineRule
-                or StatisticalAlertRules.NoMorningActivityRule
                 => DailyChart(
                     "steps", "Activity", "steps", ActivityDays, today, logs,
                     l => l.Steps, baseline?.AvgSteps ?? ReadDecimal(metrics, "baselineAvgSteps"),
                     partialDay, elapsedSteps, headlineDate: aboutDate),
+
+            // About-day is the morning in progress. Headlining that 0 would fight
+            // NeedsElapsedMatch; the flag still marks today via AboutDate.
+            StatisticalAlertRules.NoMorningActivityRule
+                => DailyChart(
+                    "steps", "Activity", "steps", ActivityDays, today, logs,
+                    l => l.Steps, baseline?.AvgSteps ?? ReadDecimal(metrics, "baselineAvgSteps"),
+                    partialDay, elapsedSteps),
 
             StatisticalAlertRules.LongTermTrendRule
                 => DailyChart(
