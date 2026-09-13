@@ -183,8 +183,8 @@ public sealed class ExportConsentFlow : IExportConsentFlow
             var useIt = await _popups.ConfirmInfoAsync(
                 "This device can confirm with fingerprint or face unlock. Use it for this export?",
                 "Use fingerprint or face unlock?",
-                "Use it",
-                "Use my password");
+                "Yes",
+                "No");
             return useIt ? ProofPreference.Biometric : ProofPreference.Password;
         }
 
@@ -205,8 +205,8 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         var useNow = await _popups.ConfirmInfoAsync(
             "If fingerprint or face unlock is on now, use it for this export. Otherwise we'll use your password.",
             "Use fingerprint or face unlock?",
-            "Use it",
-            "Use my password");
+            "Yes",
+            "No");
         return useNow && _biometric.IsAvailable
             ? ProofPreference.Biometric
             : ProofPreference.Password;
