@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Services.PromptContext;
 
@@ -308,6 +309,21 @@ public class MedicalPromptToneTests
     ];
 
     /// <summary>
+    /// The briefs written by the Rewrite slot, which is shown no member context and so is never
+    /// told the sex. They carry <see cref="MedicalPromptBlocks.PronounsByToken"/> in place of the
+    /// sex-aware rule: the pronoun comes back as a token and is settled from the member's record
+    /// by <c>PronounPlaceholder</c>. Listed rather than detected, like
+    /// <see cref="FindingsOnlyPrompts"/> above, because what makes a brief one of these is where
+    /// its input comes from, which the prompt text cannot show.
+    /// </summary>
+    private static readonly string[] RewriteSlotProsePrompts =
+    [
+        "AdviseGenerationService.RewriteInstructions",
+        "DigestGenerationService.FamilyDigestRewriteInstructions",
+        "MemberChatService.RewriteInstructions",
+    ];
+
+    /// <summary>
     /// Anything that writes more than a sentence gets the pronoun rule. Without it the model
     /// repeats the <c>CardiTrackCardiMember</c> placeholder in every sentence it writes, which reads as a case
     /// file rather than as the voice the tone block asks for.
@@ -331,11 +347,54 @@ public class MedicalPromptToneTests
         if (IsClinicalRead(prompt))
         {
             Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), prompt, StringComparison.Ordinal);
+            Assert.DoesNotContain(MedicalPromptBlocks.PronounsByToken.Trim(), prompt, StringComparison.Ordinal);
+            return;
+        }
+
+        // A brief that never sees the sex gets the rule it can actually follow. Both assertions
+        // matter: the first is the rule it must carry, the second is the one whose first clause it
+        // could only answer by guessing — which is what it did, on a card in front of a family.
+        if (RewriteSlotProsePrompts.Contains(name, StringComparer.Ordinal))
+        {
+            Assert.Contains(MedicalPromptBlocks.PronounsByToken.Trim(), prompt, StringComparison.Ordinal);
+            Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), prompt, StringComparison.Ordinal);
             return;
         }
 
         Assert.Contains(MedicalPromptBlocks.Pronouns.Trim(), prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain(MedicalPromptBlocks.PronounsByToken.Trim(), prompt, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The token rule has to name all three tokens, and they have to be the ones the resolver
+    /// looks for: a brief asking for a word the code does not replace ships a sentinel to a
+    /// caregiver, and a resolver looking for a word the brief never asks for does nothing at all.
+    /// </summary>
+    [Fact]
+    public void The_token_pronoun_rule_asks_for_the_tokens_the_resolver_resolves()
+    {
+        Assert.Contains(PronounPlaceholder.Subject, MedicalPromptBlocks.PronounsByToken, StringComparison.Ordinal);
+        Assert.Contains(PronounPlaceholder.Object, MedicalPromptBlocks.PronounsByToken, StringComparison.Ordinal);
+        Assert.Contains(PronounPlaceholder.Possessive, MedicalPromptBlocks.PronounsByToken, StringComparison.Ordinal);
+
+        Assert.Equal(
+            "Yesterday he rested.",
+            PronounPlaceholder.Resolve($"Yesterday {PronounPlaceholder.Subject} rested.", Gender.Male, "Dad"));
+        Assert.Equal(
+            "Sit with her.",
+            PronounPlaceholder.Resolve($"Sit with {PronounPlaceholder.Object}.", Gender.Female, "Mum"));
+        Assert.Equal(
+            "Dad's sleep was short.",
+            PronounPlaceholder.Resolve($"{PronounPlaceholder.Possessive} sleep was short.", Gender.PreferNotToSay, "Dad"));
+    }
+
+    /// <summary>
+    /// The clause that survived the split. A brief that is told nothing about the person can still
+    /// invent a name, and the token rule is the only pronoun rule those three briefs now carry.
+    /// </summary>
+    [Fact]
+    public void The_token_pronoun_rule_still_forbids_inventing_a_name() =>
+        Assert.Contains("Never invent a name", MedicalPromptBlocks.PronounsByToken);
 
     /// <summary>
     /// Briefs that never send a name omit the pronoun rule. Status also sits under a character
@@ -351,6 +410,7 @@ public class MedicalPromptToneTests
         {
             Assert.True(byName.ContainsKey(name), $"{name} was not found by the prompt reflection.");
             Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), byName[name], StringComparison.Ordinal);
+            Assert.DoesNotContain(MedicalPromptBlocks.PronounsByToken.Trim(), byName[name], StringComparison.Ordinal);
         }
     }
 

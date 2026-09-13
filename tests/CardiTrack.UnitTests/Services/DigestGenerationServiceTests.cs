@@ -809,6 +809,108 @@ public class DigestGenerationServiceTests
     }
 
     /// <summary>
+    /// The headline from the card that prompted all of this. The read compared a 119 bpm daytime
+    /// peak against a resting baseline of 75; the family's card was titled "Elevated resting heart
+    /// rate", over a summary saying the rate ran slightly higher than usual. A title is read on its
+    /// own, and that one is a clinician's finding — the register the caregiver block rules out.
+    /// </summary>
+    [Theory]
+    [InlineData("Elevated resting heart rate")]
+    [InlineData("Abnormal overnight readings")]
+    [InlineData("A deviation from the usual")]
+    public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineIsClinicSpeak(string headline)
+    {
+        ReturnsClinicalRead("Heart rate ran above this member's usual resting rate yesterday evening.");
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = headline,
+                Summary = "Her heart rate ran a little higher than usual yesterday evening.",
+            });
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == null), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The plain-English way of saying the same thing is what the brief asks for, and must survive.
+    /// </summary>
+    [Fact]
+    public async Task KeepsAHeadlineThatSaysItInEverydayWords()
+    {
+        ReturnsClinicalRead("Heart rate ran above this member's usual resting rate yesterday evening.");
+        _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DigestGenerationService.DigestAiResponse
+            {
+                Headline = "Heart rate a little higher",
+                Summary = "Her heart rate ran a little higher than usual yesterday evening.",
+            });
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Headline == "Heart rate a little higher"),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The other half of that card: a read that never mentioned oxygen came back as "breathing and
+    /// oxygen levels remained stable". The family was told a reading had been taken and was fine.
+    /// Nothing is stored — the previous card, which was true, stays on screen.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenItNamesAReadingTheReadDidNot()
+    {
+        ReturnsClinicalRead("Breathing rate while asleep was slightly higher than usual.");
+        ReturnsSummary("Her breathing and oxygen levels remained stable overnight.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The rewrite slot is shown no member context, so a sex in its copy is one it chose. This
+    /// member is on file as female; a summary about "he" is about someone else.
+    /// </summary>
+    [Fact]
+    public async Task DiscardsTheSummary_WhenItStatesASexTheRecordDoesNotBearOut()
+    {
+        ReturnsSummary("He slept well and his heart rate was steady.");
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(0, generated);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// And the copy the brief now asks for: tokens where the pronouns go, resolved from the record
+    /// on the way out. The member is Margaret Doe, female — so "she", written by this code and not
+    /// guessed by a model that was never told.
+    /// </summary>
+    [Fact]
+    public async Task ResolvesThePronounTokensFromTheMembersRecord()
+    {
+        ReturnsSummary(
+            $"{NamePlaceholder.Token} slept well, and {PronounPlaceholder.Possessive} heart rate "
+            + $"was steady. Sit with {PronounPlaceholder.Object} this evening.");
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d => d.Text ==
+                "Margaret slept well, and her heart rate was steady. Sit with her this evening."),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Every phrase the echo guard watches for has to appear in the prompt, wholly inside one of
     /// its lines — that is the whole basis of the check, and the guard now spans two files since
     /// the prompt opens with the shared tone block. A phrase that drifted out of the prompt, or a
@@ -1299,6 +1401,7 @@ public class DigestGenerationServiceTests
     {
         // A model told to prefer a phrase to a figure and then asked for one will round. "Around
         // 5,000" of 5,000 is a fair description; the guard is for a different day's number.
+        ReturnsClinicalRead("Steps today sit close to this member's usual.");
         ReturnsSummary("They walked around 5000 steps today, much as usual.");
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -1314,6 +1417,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task LeavesAlone_AFigureAttributedToADayItCouldBelongTo()
     {
+        ReturnsClinicalRead("Yesterday's steps were well above today's, which is early yet.");
         ReturnsSummary("Yesterday they managed 8000 steps. Today has been quieter so far.");
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
@@ -1971,7 +2075,7 @@ public class DigestGenerationServiceTests
     [Fact]
     public async Task AsksNothing_WhenTheClinicalReadNamedNoTopic()
     {
-        ReturnsClinicalRead("Everything sits within this member's usual range.");
+        ReturnsClinicalRead("Heart rate and sleep both sit within this member's usual range.");
         _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new DigestGenerationService.DigestAiResponse

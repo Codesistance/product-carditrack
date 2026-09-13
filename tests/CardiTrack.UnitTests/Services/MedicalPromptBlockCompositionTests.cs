@@ -74,6 +74,27 @@ public class MedicalPromptBlockCompositionTests
                 + " If sex is not stated, use a given name instead of they, and they only if no name is given either."));
     }
 
+    /// <summary>
+    /// The rule the three Rewrite-slot briefs carry instead. Pinned like its sibling, and with the
+    /// tokens spelled out rather than interpolated from
+    /// <see cref="PronounPlaceholder"/>: a test that builds the expectation from the same constants
+    /// the block does would pass through a rename that left every deployed prompt asking for a
+    /// token the resolver no longer looks for.
+    /// </summary>
+    [Fact]
+    public void PronounsByToken_is_one_rule_on_one_line()
+    {
+        Assert.Equal(
+            MedicalPromptBlocks.PronounsByToken,
+            Block(
+                "Never invent a name; use one only if it is given."
+                + " Where you would write a pronoun for the person, write CardiTrackCardiMemberThey"
+                + " for he or she, CardiTrackCardiMemberThem for him or her, and"
+                + " CardiTrackCardiMemberTheir for his or her."
+                + " They stand in for words you are not given, exactly as the name does, and no"
+                + " other pronoun for the person is right."));
+    }
+
     [Fact]
     public void Caregiver_register_is_its_three_rules_one_per_line()
     {

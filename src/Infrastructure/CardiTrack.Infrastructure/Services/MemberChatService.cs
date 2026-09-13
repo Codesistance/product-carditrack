@@ -407,7 +407,7 @@ public class MemberChatService : IMemberChatService
     /// </para>
     /// </remarks>
     private const string RewriteInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.PronounsByToken
         + MedicalPromptBlocks.CaregiverRegister + """
 
         Rewrite the clinical read below as a reply to the caregiver's question, in one or two
@@ -654,9 +654,9 @@ public class MemberChatService : IMemberChatService
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var voice = MemberVoice.For(member);
         var reply = ComposeReply(
-            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
@@ -716,9 +716,9 @@ public class MemberChatService : IMemberChatService
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var voice = MemberVoice.For(member);
         var reply = ComposeReply(
-            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
         // The brief above told the clinical read not to be calmer than the hero. This is the
@@ -808,11 +808,11 @@ public class MemberChatService : IMemberChatService
         var rewritePrompt = BuildRewritePrompt(flattened, new DeidentifiedFindings(clinical.Result.Analysis));
         var rewrite = await _rewriteAi.GenerateWithUsageAsync(rewritePrompt, ct);
 
-        var name = NamePlaceholder.FirstName(member?.Name);
+        var voice = MemberVoice.For(member);
         // Exactly one of the two fetches carries activity: the second plans over what the first
         // did not ask for, so RecentActivity lands in one or the other and never in both.
         var reply = ComposeReply(
-            rewrite.Result, name, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
@@ -2085,12 +2085,12 @@ public class MemberChatService : IMemberChatService
     internal const string CouldNotAnswerReply =
         "I couldn't put together an answer from what's on file right now.";
 
-    /// <summary>Resolves CardiTrackCardiMember, or falls back to a fixed line rather than showing a leftover
-    /// placeholder or an empty reply — see <c>NamePlaceholder.IsPresentIn</c>.</summary>
-    private static string ResolvedOrFallback(string text, string? name)
+    /// <summary>Resolves the member's name and pronouns, or falls back to a fixed line rather than
+    /// showing a leftover placeholder or an empty reply — see <c>MemberVoice.IsUnresolvedIn</c>.</summary>
+    private static string ResolvedOrFallback(string text, MemberVoice voice)
     {
-        var resolved = NamePlaceholder.Resolve(text.Trim(), name) ?? string.Empty;
-        return NamePlaceholder.IsPresentIn(resolved) || string.IsNullOrWhiteSpace(resolved)
+        var resolved = voice.Resolve(text.Trim()) ?? string.Empty;
+        return MemberVoice.IsUnresolvedIn(resolved) || string.IsNullOrWhiteSpace(resolved)
             ? CouldNotAnswerReply
             : resolved;
     }
@@ -2115,13 +2115,13 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     private static string ComposeReply(
         string rewritten,
-        string? name,
+        MemberVoice voice,
         string? readingsFrom,
         string? readingsTo,
         (DateOnly From, DateOnly To)? fetchedWindow,
         DateOnly today)
     {
-        var resolved = ResolvedOrFallback(rewritten, name);
+        var resolved = ResolvedOrFallback(rewritten, voice);
         if (resolved == CouldNotAnswerReply)
             return resolved;
         if (JournalRegisterGuards.NamesACondition(resolved) is not null)

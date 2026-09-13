@@ -117,6 +117,16 @@ internal static partial class NamePlaceholder
     /// on purpose: "CardiTrackCardiMember's" resolves to "Dad's" by substituting the token and
     /// leaving the apostrophe where the model put it.
     /// </summary>
-    [GeneratedRegex(@"CardiTrack[\s_-]*Cardi[\s_-]*Member", RegexOptions.IgnoreCase)]
+    /// <remarks>
+    /// The lookahead keeps this pattern off <see cref="PronounPlaceholder"/>'s three tokens, which
+    /// are built on this one: without it "CardiTrackCardiMemberTheir" resolves to "DadTheir",
+    /// which is neither a name nor a pronoun and would reach a caregiver as both. It admits no
+    /// separator before the suffix, unlike the token's own two halves, so the far commoner
+    /// "CardiTrackCardiMember their doctor" — the name token and then an ordinary word — still
+    /// resolves the name.
+    /// </remarks>
+    [GeneratedRegex(
+        @"CardiTrack[\s_-]*Cardi[\s_-]*Member(?!(?:They|Them|Their)\b)",
+        RegexOptions.IgnoreCase)]
     private static partial Regex TokenPattern();
 }

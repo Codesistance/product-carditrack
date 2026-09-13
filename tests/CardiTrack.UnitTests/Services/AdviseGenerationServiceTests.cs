@@ -43,6 +43,9 @@ public class AdviseGenerationServiceTests
             Id = _memberId,
             Name = "Margaret Doe",
             DateOfBirth = new DateOnly(1948, 3, 15),
+            // On file, and load-bearing since the rewrite brief stopped choosing for itself: the
+            // copy below writes a pronoun token, and this is what it resolves to.
+            Gender = Gender.Female,
             IsActive = true,
         });
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
@@ -65,7 +68,7 @@ public class AdviseGenerationServiceTests
         };
 
     private static AdviseGenerationService.AdviseRewriteEntryAiResponse ActivityCopy(
-        string summary = "Steps have been below her usual this week.",
+        string summary = "Steps have been below CardiTrackCardiMemberTheir usual this week.",
         string suggestion = "A short walk after lunch is worth trying.") => new()
         {
             Topic = "Activity",
@@ -302,7 +305,7 @@ public class AdviseGenerationServiceTests
     public async Task TheNameToken_IsResolvedInCode()
     {
         RewriteAnswers(ActivityCopy(
-            summary: "CardiTrackCardiMember's steps have been below her usual this week.",
+            summary: "CardiTrackCardiMember's steps have been below CardiTrackCardiMemberTheir usual this week.",
             suggestion: "The family could join CardiTrackCardiMember for a short walk after lunch."));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
@@ -310,6 +313,62 @@ public class AdviseGenerationServiceTests
         await _advises.Received(1).AddAsync(Arg.Is<MemberAdvise>(a =>
             a.Summary == "Margaret's steps have been below her usual this week."
             && a.Suggestion == "The family could join Margaret for a short walk after lunch."));
+    }
+
+    /// <summary>
+    /// The pronoun goes the same way as the name: asked for as a token, settled from the record.
+    /// This is the card that started it — the summary card above said "he" while this one said
+    /// "them", about the same person, on the same screen.
+    /// </summary>
+    [Fact]
+    public async Task ThePronounTokens_AreResolvedFromTheRecord()
+    {
+        RewriteAnswers(ActivityCopy(
+            summary: $"{PronounPlaceholder.Possessive} steps have been below usual this week.",
+            suggestion: $"The family could walk with {PronounPlaceholder.Object} after lunch."));
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.Received(1).AddAsync(Arg.Is<MemberAdvise>(a =>
+            a.Summary == "Her steps have been below usual this week."
+            && a.Suggestion == "The family could walk with her after lunch."));
+    }
+
+    /// <summary>
+    /// A sex the record does not bear out is a claim about a real person that nothing in the chain
+    /// that wrote it was told. The previous suggestion, which said nothing untrue, stays.
+    /// </summary>
+    [Fact]
+    public async Task CopyStatingTheWrongSex_KeepsThePreviousRow()
+    {
+        var existing = ExistingRow(_memberId);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+        RewriteAnswers(ActivityCopy(summary: "His steps have been below usual this week."));
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        _advises.DidNotReceive().Remove(Arg.Any<MemberAdvise>());
+        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
+        Assert.Equal("Old summary.", existing.Summary);
+    }
+
+    /// <summary>
+    /// And the same for a reading the note never mentioned: a suggestion about sleep, written from
+    /// a note about steps, is telling the family something nobody measured.
+    /// </summary>
+    [Fact]
+    public async Task CopyNamingAReadingTheNoteDidNot_KeepsThePreviousRow()
+    {
+        var existing = ExistingRow(_memberId);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+        RewriteAnswers(ActivityCopy(
+            summary: "Sleep has been shorter than usual this week."));
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        _advises.DidNotReceive().Remove(Arg.Any<MemberAdvise>());
+        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
+        Assert.Equal("Old summary.", existing.Summary);
     }
 
     /// <summary>
@@ -671,6 +730,10 @@ public class AdviseGenerationServiceTests
     public async Task AnEverydayClinicalEntry_IsNotDiscarded(string finding, string action)
     {
         ClinicalAnswers(ActivityFinding(finding, action));
+        // Copy that names no reading in particular, so this stays a test of the clinical guards:
+        // the default summary talks about steps, which a note about sleep alone never gave it.
+        RewriteAnswers(ActivityCopy(
+            summary: "Things have been a little below CardiTrackCardiMemberTheir usual this week."));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 

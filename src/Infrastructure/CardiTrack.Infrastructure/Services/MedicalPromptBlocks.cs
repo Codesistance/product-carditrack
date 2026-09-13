@@ -273,6 +273,40 @@ internal static partial class MedicalPromptBlocks
         + " Use he or she as the sex given indicates, writing a given name at most once."
         + " If sex is not stated, use a given name instead of they, and they only if no name is given either." + NL;
 
+    /// <summary>
+    /// <see cref="Pronouns"/> for the briefs that are never told the sex: the pronoun is asked for
+    /// as a token and settled in code from the member's record, by
+    /// <see cref="PronounPlaceholder.Resolve"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The three rewrite briefs — digest, advise, member chat — hold the
+    /// <see cref="NamePlaceholder.Token"/> and write everything a caregiver reads, and each one
+    /// receives a <c>DeidentifiedFindings</c> and nothing else. The sex travels in the member
+    /// context, which those briefs do not get, so <see cref="Pronouns"/>'s first clause asked them
+    /// to read a line that was never in front of them. They answered it anyway: on 2026-09-11 a
+    /// member's summary card said "he" and the suggestion card below it said "them", and the "he"
+    /// was a guess that happened to match the record. A guess that happens to be right is still a
+    /// guess, and for the population sitting at <see cref="Domain.Enums.Gender.PreferNotToSay"/>
+    /// it is a coin toss about someone's father or mother.
+    /// </para>
+    /// <para>
+    /// So this block asks for what the model can honestly supply — where a pronoun goes — and
+    /// leaves which pronoun to the code that can look it up. The clause forbidding an invented
+    /// name is carried over unchanged; the clause about sex is gone, because a brief that cannot
+    /// see the sex cannot act on it, and the "they" fallback is gone with it, because the fallback
+    /// is now a substitution rather than a request. The last clause is what stops the model
+    /// reaching for a plain pronoun anyway — the failure this block exists to end.
+    /// </para>
+    /// </remarks>
+    internal const string PronounsByToken =
+        "Never invent a name; use one only if it is given."
+        + " Where you would write a pronoun for the person, write " + PronounPlaceholder.Subject
+        + " for he or she, " + PronounPlaceholder.Object + " for him or her, and "
+        + PronounPlaceholder.Possessive + " for his or her."
+        + " They stand in for words you are not given, exactly as the name does, and no other"
+        + " pronoun for the person is right." + NL;
+
     /// <summary>The caregiver register's voice line: who is writing, and in whose words.</summary>
     internal const string RegisterCaregiverVoice =
         "Write as a caregiver would. Everyday words for the readings are fine.";
