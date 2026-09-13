@@ -256,6 +256,17 @@ Eight catalogue entries, eight handlers — seven of the entries render into the
 
 **Where the handlers live.** Prompt-building handlers go in `Infrastructure/Services/`, beside `MemberChatService` and the existing `DaybookPrompt` / `WeekbookPrompt`. The **pure reply assembly lives in `Application/Services/`** — `LiveStatusReply` and `AdviseReply` sit on `MemberChatReplies` (with `ReadingFigures.SleepFigure`, which they speak aloud), beside `AlertDetailComposer`, `AdviseServability` and `AdviseStaleness`, which are exactly this: reply-composition policy with no I/O. That makes the two zero-model-call rungs testable without a host, which is what the zero-package invariant on `src/Core` exists to buy. Model-response records stay `internal sealed record` inside the owning service, following `MaliciousCheckAiResponse` — not `Application/DTOs`, which is the public API contract.
 
+### A missing day, on every rung that reads days
+
+A window the readings do not fill is a fact about what has arrived, never a fact about the person — and stating it as the latter is the one failure a caregiver acts on. Asked *"why aren't there steps tracked for Monday?"* over a window with four days missing, chat answered with a different day's step count (#531); the Activity chart called the same days "No data recorded" (#532). The readings turned up days later, and the highest step count of the fortnight was inside them.
+
+Two mechanisms, because naming the gap without bounding what may be said about it invites the next sentence — *"he probably left his watch off"* — which is the guess a family would act on:
+
+- **The dates are named.** `MedicalPromptBlocks.MissingDaysLine` appends the days in the window no reading arrived for, and says what that means, beneath the readings block. `DailyLines` omits a day it holds no row for, and a model does not infer an absence from a row that is simply not there — the same reason today's row is synthesised rather than omitted.
+- **The rule travels with every brief that gets readings.** `MedicalPromptBlocks.DataGapRule` is appended to each clinical read whose catalogue entry allows `RecentActivity`: say plainly that no reading arrived, never substitute another day's figure, and never say why it is missing. A device not worn, a phone that did not sync and a provider publishing late are indistinguishable from this data, and the difference between them is precisely what the caregiver wanted to know.
+
+Derived from the catalogue rather than listed, so a rung added later with daily readings in its datasets cannot reach a caregiver without the rule (`DataGapPromptTests`).
+
 ### `status` — observation, no model call
 
 **Answers.** "How many steps today?" · "How did he sleep last night?" · "When did his watch last sync?" · "Is he asleep right now?"

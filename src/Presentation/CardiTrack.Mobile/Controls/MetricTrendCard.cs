@@ -239,7 +239,12 @@ public sealed class MetricTrendCard : ContentView
         // two: they appear only on a window with a gap in it, and a third column would cost the
         // published range its width on every window that has none.
         _noDataLegend = BuildLegendEntry(_noDataSwatch, _noDataKey);
-        _noDataKey.Text = "No data recorded";
+        // Not "No data recorded": that states, as a fact about the wearer, something this app
+        // cannot know. A break in the line means no reading reached us for those days — which for
+        // recent ones may still change, because routine sync re-fetches a trailing repair window.
+        // The chart told a caregiver four days had no data; the readings arrived later and the
+        // highest step count of the fortnight was inside them (#532).
+        _noDataKey.Text = "No readings received";
 
         _legend = new Grid
         {
