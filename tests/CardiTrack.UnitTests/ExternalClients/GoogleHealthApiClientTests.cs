@@ -1233,6 +1233,101 @@ public class GoogleHealthApiClientTests
         Assert.Null(snapshot.StressScore);
     }
 
+    /// <summary>
+    /// The night that starts tonight is tomorrow's sleep row, but it is this day's
+    /// bedtime-to-midnight stillness. The snapshot unions that session into the stretch clip
+    /// so an evening in a chair is not welded onto the night; the sleep figures themselves
+    /// stay on the session that ended this morning.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_ClipsBedtimeToMidnight_UsingTheNightThatStartsTonight()
+    {
+        var date = new DateOnly(2026, 8, 5);
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/sleep/",
+                SleepSessionList("2026-08-04T23:00:00Z", "2026-08-05T06:30:00Z", asleepMinutes: "400"),
+                SleepSessionList("2026-08-05T21:00:00Z", "2026-08-06T06:00:00Z", asleepMinutes: "480"))
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPointWithCivil(
+                        "SEDENTARY", "2026-08-05T19:00:00Z", "2026-08-06T06:00:00Z",
+                        2026, 8, 6, 6, 0)}}
+                  ]
+                }
+                """);
+
+        var (sut, handlerOut) = CreateSut(handler);
+        var snapshot = await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
+
+        // Sleep figures stay on the night that ended this morning.
+        Assert.Equal(400, snapshot.TotalSleepMinutes);
+        // 19:00–midnight is five hours without tonight's session; bedtime at 21:00 leaves two.
+        Assert.Equal(120, snapshot.LongestSedentaryStretchMinutes);
+        Assert.Equal(
+            new DateTime(2026, 8, 5, 19, 0, 0, DateTimeKind.Utc),
+            snapshot.LongestSedentaryStretchStartUtc);
+
+        var filters = handlerOut.Requests
+            .Where(r => r.RequestUri!.AbsolutePath.Contains("/dataTypes/sleep/", StringComparison.Ordinal))
+            .Select(r => Uri.UnescapeDataString(r.RequestUri!.Query["?filter=".Length..]))
+            .ToList();
+        Assert.Contains(
+            """
+            sleep.interval.civil_end_time >= "2026-08-05" AND sleep.interval.civil_end_time < "2026-08-06"
+            """,
+            filters);
+        Assert.Contains(
+            """
+            sleep.interval.civil_start_time >= "2026-08-05" AND sleep.interval.civil_start_time < "2026-08-06"
+            """,
+            filters);
+    }
+
+    /// <summary>
+    /// A night that only <em>starts</em> today is not enough to judge waking rest. Without the
+    /// night that ended this morning the small hours stay unclipped, so the snapshot reports
+    /// no stretch rather than inventing one.
+    /// </summary>
+    [Fact]
+    public async Task GetHealthSnapshotAsync_ReportsNoStretch_WhenNoNightEndedToday()
+    {
+        var date = new DateOnly(2026, 8, 5);
+        var handler = new RoutedFakeHttpHandler()
+            .MapSequence(
+                "/dataTypes/sleep/",
+                """{ "dataPoints": [] }""",
+                SleepSessionList("2026-08-05T21:00:00Z", "2026-08-06T06:00:00Z"))
+            .Map("/dataTypes/activity-level/", $$"""
+                {
+                  "dataPoints": [
+                    {{ActivityLevelPoint("SEDENTARY", "2026-08-05T00:00:00Z", "2026-08-05T07:00:00Z")}}
+                  ]
+                }
+                """);
+
+        var (sut, _) = CreateSut(handler);
+        var snapshot = await ((IDeviceApiClient)sut).GetHealthSnapshotAsync("token", date);
+
+        Assert.Null(snapshot.TotalSleepMinutes);
+        Assert.Null(snapshot.LongestSedentaryStretchMinutes);
+        Assert.Null(snapshot.LongestSedentaryStretchStartUtc);
+    }
+
+    private static string SleepSessionList(string start, string end, string asleepMinutes = "400") => $$"""
+        {
+          "dataPoints": [
+            {
+              "sleep": {
+                "interval": { "startTime": "{{start}}", "endTime": "{{end}}" },
+                "summary": { "minutesAsleep": "{{asleepMinutes}}" }
+              }
+            }
+          ]
+        }
+        """;
+
     // ── Granular day ─────────────────────────────────────────────────────────────
     //
     // The sub-daily series feeding GranularMetricHours. Field names and record shapes below are

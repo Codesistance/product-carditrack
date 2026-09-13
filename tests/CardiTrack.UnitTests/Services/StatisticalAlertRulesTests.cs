@@ -723,4 +723,33 @@ public class StatisticalAlertRulesTests
         Assert.DoesNotContain("13:15", candidate.Message);
         Assert.Contains(startedAt.ToString("O"), candidate.MetricValues);
     }
+
+    /// <summary>
+    /// Relative day words and the chair sentence go stale the moment the next midnight
+    /// passes — the banner and comparison already localise the civil day and the clock.
+    /// Persist the fact; let the detail screen name when.
+    /// </summary>
+    [Fact]
+    public void PersistedMessages_NameNoRelativeDay_AndNoChair()
+    {
+        var messages = new[]
+        {
+            StatisticalAlertRules.ActivityDecline(Baseline(), Log(steps: 4199))!.Message,
+            StatisticalAlertRules.ElevatedHeartRate(Baseline(), Log(restingHr: 68))!.Message,
+            StatisticalAlertRules.HeartRateVariabilityDrop(
+                HrvBaseline(),
+                HrvLog(new DateOnly(2026, 8, 10), 31m),
+                HrvLog(new DateOnly(2026, 8, 9), 33m))!.Message,
+            StatisticalAlertRules.ElevatedZoneWithoutMovement(
+                Baseline(), ZoneLog(steps: 1200, moderate: 30))!.Message,
+            StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(120), StretchLog(260))!.Message,
+        };
+
+        Assert.All(messages, message =>
+        {
+            Assert.DoesNotContain("yesterday", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("last night", message, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("chair", message, StringComparison.OrdinalIgnoreCase);
+        });
+    }
 }

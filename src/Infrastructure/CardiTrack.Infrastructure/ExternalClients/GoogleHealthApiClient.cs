@@ -197,31 +197,10 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
 
     public async Task<GoogleHealthSleepResult> GetSleepAsync(string accessToken, DateOnly date)
     {
-        // Sleep is session-shaped, so it uses list (get/list are its documented methods) with a
-        // civil end-time filter: sessions that ended on the requested date.
-        // `civil_end_time`, not `end_time`: the sibling field is a physical instant and demands an
-        // RFC-3339 literal, so a bare date against it is a parse failure rather than a coercion.
-        // Civil is also the semantics we want — it buckets by the wearer's local day, matching the
-        // CivilTimeInterval range every dailyRollUp above uses. Filtering the physical instant
-        // would bucket by UTC day, dropping a wearer's late-evening session into tomorrow's
-        // snapshot while their steps for the same night stayed in today's.
-        var filter = Uri.EscapeDataString(
-            $"sleep.interval.civil_end_time >= \"{date:yyyy-MM-dd}\" AND sleep.interval.civil_end_time < \"{date.AddDays(1):yyyy-MM-dd}\"");
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get,
-            $"/v4/users/me/dataTypes/sleep/dataPoints?filter={filter}");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-        using var response = await _httpClient.SendAsync(request);
-        await EnsureSuccessAsync(response);
-
-        var root = await ParseBodyAsync(response, "sleep");
-        var sessions = ((root["dataPoints"] as JArray)?
-                .OfType<JObject>()
-                .Select(point => point["sleep"])
-                .Where(session => session is not null)
-            ?? Enumerable.Empty<JToken?>())
-            .ToList();
+        // Sleep figures stay on sessions that *ended* on this civil day. The night that starts
+        // tonight is tomorrow's sleep row; folding it in here would move tonight's hours onto
+        // today's card. Stretch exclusion asks for both — see ListSleepWindowsStartingOnAsync.
+        var sessions = await ListSleepSessionsAsync(accessToken, CivilSleepBound.End, date);
 
         // A civil day can carry more than one session — an afternoon nap ends on the same day as
         // the night before it — and the order dataPoints arrive in is not a contract. The fields
@@ -235,15 +214,10 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         var startTime = ParseInstantUtc(ReadString(sleep?["interval"], "startTime"));
         var endTime = ParseInstantUtc(ReadString(sleep?["interval"], "endTime"));
 
-        // Every bounded session, naps included: the sedentary exclusion has to subtract them all,
-        // because any sleep left in scope is an unbroken "rest" by definition.
-        var sessionWindows = sessions
-            .Select(session => (
-                Start: ParseInstantUtc(ReadString(session?["interval"], "startTime")),
-                End: ParseInstantUtc(ReadString(session?["interval"], "endTime"))))
-            .Where(w => w.Start.HasValue && w.End.HasValue && w.End > w.Start)
-            .Select(w => (w.Start!.Value, w.End!.Value))
-            .ToList();
+        // Every bounded session that ended today, naps included. The night that starts tonight
+        // is unioned in at snapshot time so the stretch clip sees bedtime without moving the
+        // sleep figures off this row.
+        var sessionWindows = SessionWindowsFrom(sessions);
 
         var summary = sleep?["summary"];
 
@@ -284,6 +258,74 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         {
             SessionWindows = sessionWindows,
         };
+    }
+
+    private enum CivilSleepBound
+    {
+        End,
+        Start,
+    }
+
+    /// <summary>
+    /// Sleep sessions whose civil start or end falls on <paramref name="date"/>. The list filter
+    /// is the same civil-day form <see cref="GetSleepAsync"/> already uses; only the bound
+    /// changes. A second fetch rather than one OR filter so the sleep *figures* stay on the
+    /// sessions that ended today.
+    /// </summary>
+    private async Task<List<JToken?>> ListSleepSessionsAsync(
+        string accessToken, CivilSleepBound bound, DateOnly date)
+    {
+        var field = bound == CivilSleepBound.End
+            ? "sleep.interval.civil_end_time"
+            : "sleep.interval.civil_start_time";
+        var filter = Uri.EscapeDataString(
+            $"{field} >= \"{date:yyyy-MM-dd}\" AND {field} < \"{date.AddDays(1):yyyy-MM-dd}\"");
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/v4/users/me/dataTypes/sleep/dataPoints?filter={filter}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _httpClient.SendAsync(request);
+        await EnsureSuccessAsync(response);
+
+        var root = await ParseBodyAsync(response, "sleep");
+        return ((root["dataPoints"] as JArray)?
+                .OfType<JObject>()
+                .Select(point => point["sleep"])
+                .Where(session => session is not null)
+            ?? Enumerable.Empty<JToken?>())
+            .ToList();
+    }
+
+    private List<(DateTime Start, DateTime End)> SessionWindowsFrom(IEnumerable<JToken?> sessions) =>
+        sessions
+            .Select(session => (
+                Start: ParseInstantUtc(ReadString(session?["interval"], "startTime")),
+                End: ParseInstantUtc(ReadString(session?["interval"], "endTime"))))
+            .Where(w => w.Start.HasValue && w.End.HasValue && w.End > w.Start)
+            .Select(w => (w.Start!.Value, w.End!.Value))
+            .ToList();
+
+    private async Task<IReadOnlyList<(DateTime Start, DateTime End)>> ListSleepWindowsStartingOnAsync(
+        string accessToken, DateOnly date) =>
+        SessionWindowsFrom(await ListSleepSessionsAsync(accessToken, CivilSleepBound.Start, date));
+
+    private static IReadOnlyList<(DateTime Start, DateTime End)> UnionSleepWindows(
+        IReadOnlyList<(DateTime Start, DateTime End)> ended,
+        IReadOnlyList<(DateTime Start, DateTime End)> started)
+    {
+        if (started.Count == 0)
+            return ended;
+
+        var seen = new HashSet<(DateTime Start, DateTime End)>(ended);
+        var union = new List<(DateTime Start, DateTime End)>(ended);
+        foreach (var window in started)
+        {
+            if (seen.Add(window))
+                union.Add(window);
+        }
+
+        return union;
     }
 
     /// <summary>
@@ -539,11 +581,10 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// reading as "could not judge", which is exactly what this is.
     /// </para>
     /// <para>
-    /// One bound remains, and it is deliberate. The night that <em>begins</em> on this day belongs
-    /// to tomorrow's row and is not fetched here, so an early bedtime leaves a tail of stillness
-    /// between it and midnight inside the day's own intervals. It is capped by definition — at most
-    /// bedtime to midnight — and unlike the small hours it is time the wearer spent settled while
-    /// the day was still theirs, which is nearer what the reading is for than it is to sleep.
+    /// The night that <em>begins</em> on this day belongs to tomorrow's sleep row. The snapshot
+    /// unions that session into these windows so bedtime-to-midnight is clipped here; a caller
+    /// that only passes sessions ending today still sees that tail, which is at most bedtime to
+    /// midnight.
     /// </para>
     /// </remarks>
     private async Task<(int? Minutes, DateTime? StartUtc)> OptionalLongestSedentaryStretchAsync(
@@ -664,7 +705,15 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         // session is handed over, not just the night — a nap left in scope is an unbroken "rest"
         // by definition.
         var sleep = await sleepTask;
-        var exertionTask = GetExertionAsync(accessToken, date, sleep.SessionWindows);
+        // The night that *starts* tonight is tomorrow's sleep row, but it is this day's
+        // bedtime-to-midnight stillness. Without it the stretch clip leaves that tail inside
+        // "daytime rest". Only unioned when we already have the night that ended today —
+        // otherwise the small hours stay unclipped and we must not invent a stretch.
+        var startingTonight = await ListSleepWindowsStartingOnAsync(accessToken, date);
+        var stretchWindows = sleep.SessionWindows.Count == 0
+            ? null
+            : UnionSleepWindows(sleep.SessionWindows, startingTonight);
+        var exertionTask = GetExertionAsync(accessToken, date, stretchWindows);
 
         await Task.WhenAll(activitiesTask, heartRateTask, additionalTask, exertionTask);
 

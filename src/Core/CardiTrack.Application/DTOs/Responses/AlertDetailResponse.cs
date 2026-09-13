@@ -64,7 +64,8 @@ public class AlertDetailResponse
 
     /// <summary>
     /// The civil day the alert is about. Daily-grain rules that judge yesterday
-    /// (<c>activity_decline</c>, <c>elevated_heart_rate</c>, <c>long_term_trend</c>) stamp that
+    /// (<c>activity_decline</c>, <c>elevated_heart_rate</c>, <c>long_term_trend</c>,
+    /// <c>daytime_inactivity_block</c>, <c>elevated_zone_without_movement</c>) stamp that
     /// day; sleep stamps the night it judged. The banner date follows this, not
     /// <see cref="TriggeredAt"/>, so a quieter day is not dated as the afternoon we noticed it.
     /// </summary>
@@ -88,6 +89,12 @@ public class AlertDetailResponse
 
     /// <summary>Typical wake time ("07:00") for the no-morning rule.</summary>
     public string? TypicalWakeTime { get; set; }
+
+    /// <summary>
+    /// Typical bedtime ("22:00") from the baseline, for the still-stretch context line.
+    /// Null when the member has no learned bedtime — the screen then treats 20:00 as evening.
+    /// </summary>
+    public string? TypicalBedtime { get; set; }
 
     /// <summary>When the device last produced a reading, for <c>device_silence</c>.</summary>
     public DateTime? LastDataAt { get; set; }
@@ -144,9 +151,10 @@ public class AlertChartResponse
     public decimal? Value { get; set; }
 
     /// <summary>
-    /// Which day <see cref="Value"/> belongs to ("Yesterday"), so the number in the chart header
-    /// and the number in the comparison card are visibly the same number. Null when the window
-    /// has no day in progress and the headline is simply the latest reading.
+    /// Which day <see cref="Value"/> belongs to ("Yesterday", "10 Aug"), so the number in the
+    /// chart header, the comparison card and the flagged series point are visibly the same
+    /// reading. Set when the headline is the about-day or the window includes a day in
+    /// progress; null when the headline is simply the latest settled slot.
     /// </summary>
     public string? ValueLabel { get; set; }
 

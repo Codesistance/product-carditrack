@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Services;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Offline;
@@ -362,15 +363,23 @@ public partial class AlertDetailPage : ContentPage
             "device_silence" when alert.LastDataAt is { } at =>
                 $"The device last sent a reading {RelativeTime.Format(at)}. It may need charging, or a check that it is being worn.",
             // The rule's message names no clock time on purpose; this is where the stored instant
-            // becomes one, so a caregiver can tell an afternoon in a chair from an episode worth a
-            // second look — or spot a reading that plainly describes the night.
+            // becomes one, so a caregiver can tell an afternoon in a chair from an evening they
+            // settled early. The ask is the composer's — the page only localises the clock.
             "daytime_inactivity_block" when alert.StretchStartedAt is { } startedAt =>
-                $"The still stretch began around {DateTime.SpecifyKind(startedAt, DateTimeKind.Utc).ToLocalTime():h:mm tt}.",
+                StillStretchLine(startedAt, alert.TypicalBedtime),
             _ => null,
         };
 
         ContextCard.IsVisible = copy is not null;
         ContextLabel.Text = copy ?? string.Empty;
+    }
+
+    private static string StillStretchLine(DateTime startedAtUtc, string? typicalBedtime)
+    {
+        var local = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc).ToLocalTime();
+        TimeOnly? bedtime = TimeOnly.TryParse(typicalBedtime, out var parsed) ? parsed : null;
+        return $"The still stretch began around {local:h:mm tt} — "
+            + $"{AlertDetailComposer.StillStretchAsk(TimeOnly.FromDateTime(local), bedtime)}.";
     }
 
     /// <summary>

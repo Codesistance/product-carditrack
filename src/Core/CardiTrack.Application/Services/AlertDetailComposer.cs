@@ -112,10 +112,18 @@ public static class AlertDetailComposer
     /// otherwise the list buckets them under Today and the banner dates the quieter day as
     /// this afternoon.
     /// </summary>
+    /// <remarks>
+    /// Night-ending rules (<c>irregular_sleep</c>, <c>hrv_drop</c>, <c>overnight_breathing_up</c>)
+    /// are not here: those stamp the civil day the night ended on, which is often the firing
+    /// day. Falling back to the day before would move a morning sleep card onto the night
+    /// before last.
+    /// </remarks>
     public static bool IsAboutPreviousLocalDay(string? rule) => rule is
         StatisticalAlertRules.ActivityDeclineRule
         or StatisticalAlertRules.ElevatedHeartRateRule
-        or StatisticalAlertRules.LongTermTrendRule;
+        or StatisticalAlertRules.LongTermTrendRule
+        or StatisticalAlertRules.DaytimeInactivityBlockRule
+        or StatisticalAlertRules.ElevatedZoneWithoutMovementRule;
 
     /// <summary>
     /// The civil day this alert is about. Prefers the <c>day</c> / <c>night</c> stamp the
@@ -308,10 +316,11 @@ public static class AlertDetailComposer
             AcknowledgedByUserId = alert.AcknowledgedByUserId,
             AcknowledgedByName = acknowledger?.Name,
             Comparison = Comparison(rule, metrics, baseline, today, aboutDate),
-            Chart = Chart(rule, logs, today, granular, baseline, metrics, member, elapsedSteps),
+            Chart = Chart(rule, logs, today, granular, baseline, metrics, member, elapsedSteps, aboutDate),
             LastActivityOn = LastMeasuredStepsDay(logs),
             TypicalWakeTime = ReadString(metrics, "typicalWakeTime")
                 ?? baseline?.TypicalWakeTime?.ToString("HH:mm", CultureInfo.InvariantCulture),
+            TypicalBedtime = baseline?.TypicalBedtime?.ToString("HH:mm", CultureInfo.InvariantCulture),
             LastDataAt = ReadDateTime(metrics, "lastDataUtc"),
             StretchStartedAt = ReadDateTime(metrics, "startedAtUtc"),
         };
@@ -587,7 +596,8 @@ public static class AlertDetailComposer
         PatternBaseline? baseline,
         JsonElement metrics,
         CardiMember? member,
-        ElapsedSteps? elapsedSteps)
+        ElapsedSteps? elapsedSteps,
+        DateOnly aboutDate)
     {
         // Only the step windows run up to the day in progress — see NeedsElapsedMatch.
         var partialDay = NeedsElapsedMatch(rule) ? today : (DateOnly?)null;
@@ -599,25 +609,27 @@ public static class AlertDetailComposer
                 => DailyChart(
                     "steps", "Activity", "steps", ActivityDays, today, logs,
                     l => l.Steps, baseline?.AvgSteps ?? ReadDecimal(metrics, "baselineAvgSteps"),
-                    partialDay, elapsedSteps),
+                    partialDay, elapsedSteps, headlineDate: aboutDate),
 
             StatisticalAlertRules.LongTermTrendRule
                 => DailyChart(
                     "steps", "Activity", "steps", TrendDays, today, logs,
-                    l => l.Steps, baseline?.AvgSteps, partialDay, elapsedSteps),
+                    l => l.Steps, baseline?.AvgSteps, partialDay, elapsedSteps, headlineDate: aboutDate),
 
             StatisticalAlertRules.ElevatedHeartRateRule
                 => DailyChart(
                     "restingHeartRate", "Heart Rate", "bpm", HeartRateDays, today, logs,
                     l => l.RestingHeartRate,
-                    baseline?.AvgRestingHeartRate ?? ReadDecimal(metrics, "baselineAvgRestingHeartRate")),
+                    baseline?.AvgRestingHeartRate ?? ReadDecimal(metrics, "baselineAvgRestingHeartRate"),
+                    headlineDate: aboutDate),
 
             StatisticalAlertRules.IrregularSleepRule
                 => DailyChart(
                     "sleep", "Sleep", "hours", SleepDays, today, logs,
                     l => Hours(l.SleepMinutes),
                     Hours(baseline?.AvgSleepMinutes) ?? Hours(ReadDecimal(metrics, "baselineAvgSleepMinutes")),
-                    reference: SleepReference(metrics, member, today)),
+                    reference: SleepReference(metrics, member, today),
+                    headlineDate: aboutDate),
 
             StatisticalAlertRules.OvernightBreathingUpRule
                 => DailyChart(
@@ -625,13 +637,15 @@ public static class AlertDetailComposer
                     l => l.OvernightBreathingRate,
                     baseline?.AvgOvernightBreathingRate
                         ?? ReadDecimal(metrics, "baselineAvgOvernightBreathingRate"),
-                    reference: HealthReferenceRanges.BreathingRate),
+                    reference: HealthReferenceRanges.BreathingRate,
+                    headlineDate: aboutDate),
 
             StatisticalAlertRules.ElevatedZoneWithoutMovementRule
                 => DailyChart(
                     "elevatedZoneMinutes", "Raised Heart-Rate Minutes", "minutes", ActivityDays, today, logs,
                     l => BaselineCalculator.ElevatedZoneMinutes(l),
-                    baseline?.AvgElevatedZoneMinutes),
+                    baseline?.AvgElevatedZoneMinutes,
+                    headlineDate: aboutDate),
 
             StatisticalAlertRules.DaytimeInactivityBlockRule
                 => DailyChart(
@@ -639,14 +653,16 @@ public static class AlertDetailComposer
                     l => l.LongestSedentaryStretchMinutes is { } m ? Math.Round(m / 60m, 1) : null,
                     baseline?.AvgLongestSedentaryStretchMinutes is { } avg
                         ? Math.Round(avg / 60m, 1)
-                        : null),
+                        : null,
+                    headlineDate: aboutDate),
 
             StatisticalAlertRules.HeartRateVariabilityDropRule
                 => DailyChart(
                     "heartRateVariability", "Heart Rate Variability", "ms", HeartRateDays, today, logs,
                     l => l.HeartRateVariabilityMs,
                     baseline?.AvgHeartRateVariabilityMs
-                        ?? ReadDecimal(metrics, "baselineAvgHeartRateVariabilityMs")),
+                        ?? ReadDecimal(metrics, "baselineAvgHeartRateVariabilityMs"),
+                    headlineDate: aboutDate),
 
             RealtimeHeartRateRule => GranularHeartChart(granular, baseline?.AvgRestingHeartRate),
 
@@ -687,6 +703,12 @@ public static class AlertDetailComposer
     /// The published typical-adult band, or null for a metric that has none — see
     /// <see cref="AlertChartResponse.Reference"/>.
     /// </param>
+    /// <param name="headlineDate">
+    /// The civil day this alert is about. When that day is on the series and is a finished
+    /// reading, the headline quotes it rather than the latest settled slot — otherwise a later
+    /// quiet Tuesday would caption a card about last Thursday, and the yellow about-day mark
+    /// would sit on a different point from the number above the chart.
+    /// </param>
     private static AlertChartResponse? DailyChart(
         string metric,
         string name,
@@ -698,7 +720,8 @@ public static class AlertDetailComposer
         decimal? baseline,
         DateOnly? partialDay = null,
         ElapsedSteps? elapsedSteps = null,
-        MetricReference? reference = null)
+        MetricReference? reference = null,
+        DateOnly? headlineDate = null)
     {
         var byDate = logs
             .GroupBy(l => l.Date)
@@ -722,8 +745,12 @@ public static class AlertDetailComposer
         // The headline quotes a finished day. Taking the latest reading outright is what put a
         // lunchtime step count in the header of a card whose comparison block was reporting the
         // whole of yesterday — two different days, one number apiece, and nothing on screen saying
-        // so.
-        var settled = series.LastOrDefault(p => p.Value is not null && !p.IsPartial);
+        // so. Preferring the about-day keeps the number, the comparison and the flagged point on
+        // the same reading.
+        var about = headlineDate is { } day
+            ? series.FirstOrDefault(p => p.Date == day && p.Value is not null && !p.IsPartial)
+            : null;
+        var settled = about ?? series.LastOrDefault(p => p.Value is not null && !p.IsPartial);
 
         return new AlertChartResponse
         {
@@ -732,12 +759,27 @@ public static class AlertDetailComposer
             Unit = unit,
             WindowLabel = $"Last {days} days",
             Value = settled?.Value,
-            ValueLabel = partialDay is null ? null : DayLabel(settled?.Date, today),
+            ValueLabel = about is not null || partialDay is not null
+                ? DayLabel(settled?.Date, today)
+                : null,
             Baseline = baseline,
             Reference = reference,
             Series = series,
             PartialDayLabel = PartialDayLabel(elapsedSteps),
         };
+    }
+
+    /// <summary>
+    /// The ask that follows "the still stretch began around …". An evening start is settling
+    /// down, not an afternoon in a chair — the same distinction the sleep-window clip exists
+    /// to make, in words.
+    /// </summary>
+    public static string StillStretchAsk(TimeOnly localStart, TimeOnly? typicalBedtime)
+    {
+        var evening = typicalBedtime ?? new TimeOnly(20, 0);
+        return localStart >= evening
+            ? "whether they settled early"
+            : "whether anything kept them in the chair";
     }
 
     /// <summary>Names the day the headline belongs to, relative to the caregiver's today.</summary>

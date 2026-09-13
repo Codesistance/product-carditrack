@@ -7,11 +7,12 @@ public interface IGoogleHealthApiClient
     Task<GoogleHealthSleepResult> GetSleepAsync(string accessToken, DateOnly date);
     Task<GoogleHealthAdditionalMetricsResult> GetAdditionalMetricsAsync(string accessToken, DateOnly date);
     /// <param name="sleepWindows">
-    /// Every sleep session that ended on the day — the night and any nap — so the longest sedentary
-    /// stretch is a waking-hours figure rather than the small hours or an afternoon nap. Null or
-    /// empty returns no stretch at all rather than measuring the whole civil day: a figure that
-    /// cannot be told from a night is worse than no figure — see the implementation's remarks. The
-    /// zone readings are unaffected and are returned either way.
+    /// Every sleep session that overlaps the day — the night that ended on it, any nap, and the
+    /// night that <em>starts</em> on it — so the longest sedentary stretch is a waking-hours
+    /// figure rather than the small hours, an afternoon nap, or the bedtime-to-midnight tail.
+    /// Null or empty returns no stretch at all rather than measuring the whole civil day: a
+    /// figure that cannot be told from a night is worse than no figure — see the implementation's
+    /// remarks. The zone readings are unaffected and are returned either way.
     /// </param>
     Task<GoogleHealthExertionResult> GetExertionAsync(
         string accessToken,
