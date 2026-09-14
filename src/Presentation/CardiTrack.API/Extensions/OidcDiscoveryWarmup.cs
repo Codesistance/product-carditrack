@@ -62,7 +62,30 @@ public sealed class OidcDiscoveryWarmup(
     /// a 5000 ms timeout. A second covers that comfortably and is still far short of
     /// <see cref="OidcBackchannel.RequestTimeout"/>.
     /// </summary>
+    /// <remarks>
+    /// Only a fallback now, for a cancellation that arrives with nothing in it to key on. The
+    /// runtime stamps a distinguishing message on both timeouts (see <see cref="ConnectTimeoutMarker"/>
+    /// and <see cref="RequestTimeoutMarker"/>), and reading that is exact where this is a guess:
+    /// the 6349 ms failure on 10 September was a connect timeout whose cancellation took 1349 ms to
+    /// unwind, and so was reported as the response phase giving way at a mark the response phase
+    /// never reached.
+    /// </remarks>
     internal static readonly TimeSpan ConnectTimeoutTolerance = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// What <c>HttpConnectionPool.CreateConnectTimeoutException</c> puts on the
+    /// <see cref="TimeoutException"/> it raises when <see cref="OidcBackchannel.ConnectTimeout"/>
+    /// expires. Matched as a fragment: the runtime's full text has moved between releases, this
+    /// much has not.
+    /// </summary>
+    private const string ConnectTimeoutMarker = "configured ConnectTimeout";
+
+    /// <summary>
+    /// What <c>HttpClient</c> puts on the <see cref="TaskCanceledException"/> it raises when
+    /// <see cref="OidcBackchannel.RequestTimeout"/> expires, as distinct from the connect budget
+    /// above.
+    /// </summary>
+    private const string RequestTimeoutMarker = "HttpClient.Timeout";
 
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly CancellationTokenSource _stopping = new();
@@ -175,10 +198,10 @@ public sealed class OidcDiscoveryWarmup(
     /// <remarks>
     /// A connect that never completes surfaces as an <see cref="OperationCanceledException"/> or
     /// <see cref="TimeoutException"/> rather than a socket error, and the same pair is what the
-    /// request budget throws. The two are told apart by how long the attempt took: an attempt that
-    /// ended at about <see cref="OidcBackchannel.ConnectTimeout"/> (within
-    /// <see cref="ConnectTimeoutTolerance"/>) was the connect phase; one that ran on past that was
-    /// connected and waiting on the response until <see cref="OidcBackchannel.RequestTimeout"/>.
+    /// request budget throws. The two are told apart by the message the runtime stamps on them —
+    /// <see cref="ConnectTimeoutMarker"/> against <see cref="RequestTimeoutMarker"/> — and only
+    /// when neither is there by how long the attempt took, which is the older and rougher test
+    /// that <see cref="ConnectTimeoutTolerance"/> serves.
     /// </remarks>
     internal static string DescribeFailure(Exception exception, TimeSpan elapsed)
     {
@@ -189,6 +212,18 @@ public sealed class OidcDiscoveryWarmup(
         var root = chain[^1];
         var rootType = root.GetType().Name;
 
+        // Before the socket branch below, not after. When every address fails fast — four
+        // ConnectionRefused in a row, say — the aggregate carries the last address's
+        // SocketException as its inner, and reporting that alone would say "TCP connect failed
+        // (ConnectionRefused)" as though one address had been tried. The per-address log lines and
+        // the logged exception still carry each address's own error; this line's job is to say how
+        // much was tried.
+        if (chain.Any(static e => e.Message.Contains(
+                OidcBackchannel.AllAddressesFailedMarker, StringComparison.Ordinal)))
+        {
+            return $"{rootType}: every address the issuer resolved to was tried and none answered";
+        }
+
         if (chain.OfType<SocketException>().FirstOrDefault() is { } socket)
         {
             return socket.SocketErrorCode is SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain
@@ -198,6 +233,16 @@ public sealed class OidcDiscoveryWarmup(
 
         if (chain.OfType<AuthenticationException>().Any())
             return $"{rootType}: TLS handshake failed";
+
+        if (chain.Any(static e => e.Message.Contains(ConnectTimeoutMarker, StringComparison.Ordinal)))
+        {
+            return $"{rootType}: timed out in the connect phase — DNS, TCP or TLS did not complete within the {OidcBackchannel.ConnectTimeout.TotalSeconds:0} s ConnectTimeout";
+        }
+
+        if (chain.Any(static e => e.Message.Contains(RequestTimeoutMarker, StringComparison.Ordinal)))
+        {
+            return $"{rootType}: timed out waiting for the response within the {OidcBackchannel.RequestTimeout.TotalSeconds:0} s BackchannelTimeout";
+        }
 
         if (chain.Any(static e => e is OperationCanceledException or TimeoutException))
         {

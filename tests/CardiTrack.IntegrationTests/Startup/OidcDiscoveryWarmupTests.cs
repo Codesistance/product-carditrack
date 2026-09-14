@@ -146,6 +146,13 @@ public class OidcDiscoveryWarmupTests
         static Exception Idx20803(Exception inner) =>
             new InvalidOperationException("IDX20803: Unable to obtain configuration from: 'https://carditrack-test.invalid/'.", inner);
 
+        // What the runtime actually throws when ConnectTimeout expires: the cancellation carries
+        // no detail and the marker sits on the TimeoutException underneath it.
+        static Exception ConnectTimedOut() =>
+            new TaskCanceledException(
+                "The operation was canceled.",
+                new TimeoutException("A connection could not be established within the configured ConnectTimeout."));
+
         // 5102 ms is the elapsed figure from the dev instance that motivated this; the tolerance
         // lets it read as connect-phase, and anything past the tolerance was a connected socket
         // waiting on the issuer.
@@ -171,8 +178,22 @@ public class OidcDiscoveryWarmupTests
                 "AuthenticationException: TLS handshake failed"
             },
             {
-                Idx20803(new TaskCanceledException("A connection could not be established within the configured ConnectTimeout.", new TimeoutException("timeout"))),
+                // The shape a real connect timeout arrives in, copied from a dev stack trace: the
+                // TaskCanceledException says only "The operation was canceled", and it is the
+                // inner TimeoutException that HttpConnectionPool marks. An earlier version of this
+                // case had the two the other way round, so it passed against a classifier that
+                // never read either message.
+                Idx20803(ConnectTimedOut()),
                 connectTimeout,
+                "TimeoutException: timed out in the connect phase"
+            },
+            {
+                // Same failure, reported late: the cancellation took 1349 ms to unwind through the
+                // pool, which is what the 10 September dev instance did. Read by elapsed alone
+                // this is past the tolerance and reads as the response phase; read by the message
+                // it is what it is.
+                Idx20803(ConnectTimedOut()),
+                TimeSpan.FromMilliseconds(6349),
                 "TimeoutException: timed out in the connect phase"
             },
             {
@@ -189,6 +210,31 @@ public class OidcDiscoveryWarmupTests
                 Idx20803(new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 10 seconds elapsing.", new TimeoutException("timeout"))),
                 requestTimeout,
                 "TimeoutException: timed out waiting for the response"
+            },
+            {
+                // Every address tried and none answered — the failure mode the per-address
+                // callback introduces. It must name itself rather than land in the elapsed-based
+                // fallback as a generic cancellation.
+                Idx20803(new HttpRequestException(
+                    "no address accepted a connection: carditrack-test.invalid:443 resolved to 2 address(es) "
+                    + "and none answered within 2500 ms each — 203.0.113.7 (no answer within 2500 ms); "
+                    + "203.0.113.8 (no answer within 2500 ms)",
+                    new OperationCanceledException("cancelled"))),
+                connectTimeout,
+                "every address the issuer resolved to was tried and none answered"
+            },
+            {
+                // Same aggregate, but every address was refused outright rather than silent, so
+                // the last address's SocketException rides along inside it. The aggregate still
+                // has to win: "TCP connect failed (ConnectionRefused)" would describe one address
+                // as though it were the whole issuer.
+                Idx20803(new HttpRequestException(
+                    "no address accepted a connection: carditrack-test.invalid:443 resolved to 2 address(es) "
+                    + "and none answered within 2500 ms each — 203.0.113.7 (ConnectionRefused); "
+                    + "203.0.113.8 (ConnectionRefused)",
+                    new SocketException((int)SocketError.ConnectionRefused))),
+                TimeSpan.FromMilliseconds(40),
+                "every address the issuer resolved to was tried and none answered"
             },
             {
                 Idx20803(new HttpRequestException(HttpRequestError.ProxyTunnelError, "proxy")),
@@ -249,11 +295,15 @@ public class OidcDiscoveryWarmupTests
     private sealed class ScriptedConfigurationManager(Func<int, CancellationToken, Task<OpenIdConnectConfiguration>> script)
         : IConfigurationManager<OpenIdConnectConfiguration>
     {
+        // The runtime's nesting, not a convenient approximation of it: the cancellation says only
+        // that the operation was cancelled, and the marker sits on the TimeoutException beneath.
+        // The retry-path tests are the ones that assert on what gets logged, so they are the ones
+        // that most need to be failing the way production fails.
         private static readonly InvalidOperationException Failure = new(
             "IDX20803: Unable to obtain configuration from: 'https://carditrack-test.invalid/'.",
             new TaskCanceledException(
-                "A connection could not be established within the configured ConnectTimeout.",
-                new TimeoutException("timeout")));
+                "The operation was canceled.",
+                new TimeoutException("A connection could not be established within the configured ConnectTimeout.")));
 
         private int _calls;
         private readonly SemaphoreSlim _called = new(0);
