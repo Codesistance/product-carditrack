@@ -48,8 +48,7 @@ public class StatusLineGenerationService
         Third person, write CardiTrackCardiMember exactly as written; it stands
         in for their real name.
         """ + MedicalPromptBlocks.CaregiverRegister + """
-        Match the given tier: green settled, yellow a mention,
-        orange or red more attentive.
+        Match the given tier's seriousness: green the least, then yellow, then orange, then red.
         Lead with a computed observation when one is present; do not recap every figure.
         Name today's steps or active minutes only if an observation does.
 
@@ -83,7 +82,7 @@ public class StatusLineGenerationService
     /// constant exists to deny, so the measurement below normalizes instead.
     /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_161;
+    internal const int StatusPromptBudget = 1_165;
 
     /// <summary>
     /// Exposed for the budget test — the instructions themselves stay private.

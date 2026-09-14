@@ -371,7 +371,7 @@ public class StatusLineGenerationServiceTests
         Assert.DoesNotContain("Never suggest a medical cause", prompt);
         Assert.Contains("never diagnose", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("under 15 words", prompt);
-        Assert.Contains("green settled, yellow a mention", prompt);
+        Assert.Contains("green the least, then yellow", prompt);
         Assert.Contains("write CardiTrackCardiMember exactly as written", prompt);
         Assert.Contains("Lead with a computed observation when one is present", prompt);
         Assert.Contains("Name today's steps or active minutes only if an observation does", prompt);

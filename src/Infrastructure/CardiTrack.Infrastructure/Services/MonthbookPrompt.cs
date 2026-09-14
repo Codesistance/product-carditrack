@@ -61,9 +61,8 @@ internal static class MonthbookPrompt
           readings mean for the family — plainly, before any figures, so a reader who gets no
           further still has the answer. Then the account, keeping every number it has now.
         - headline: a five-to-seven-word qualification of the month you just described — what kind
-          of month it was, never a generic label like monthly summary or month's readings, which
-          could title any month at all. Sentence case, no full stop, no name and no CardiTrackCardiMember, not a
-          sentence.
+          of month it was, never a generic label that could title any month at all. Sentence case,
+          no full stop, no name and no CardiTrackCardiMember, not a sentence.
         - suggestion: one supportive, specific thing the family could do, at most 25 words,
           answering something in the month's readings closely enough that a reader could tell what
           it came from. It may reference an already-known routine fact. Never a diagnosis, never a

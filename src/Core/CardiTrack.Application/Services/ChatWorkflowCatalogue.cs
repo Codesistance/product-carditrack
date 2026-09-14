@@ -120,8 +120,7 @@ public static class ChatWorkflowCatalogue
                 "Whether what the readings show is settled or worth attention. Choose this when "
                 + "the question asks for a verdict rather than for figures. It returns the figures "
                 + "as well. Choose it too when the question asks what is worth attention without "
-                + "naming any particular reading — \"anything to follow up on?\", \"what should I "
-                + "be watching?\", \"anything I've missed?\" — which asks for the same verdict "
+                + "naming any particular reading, which asks for the same verdict "
                 + "across everything rather than about one thing.",
                 ChatClaimClass.Judgement,
                 [DataQueryKind.RecentActivity, DataQueryKind.Baseline, DataQueryKind.UnresolvedAlerts, DataQueryKind.RealtimeAssessments]),
@@ -145,7 +144,7 @@ public static class ChatWorkflowCatalogue
             new(MemberChatWorkflow.Advise,
                 "advise",
                 "What could be done about the member's wellbeing — including what kind, how much "
-                + "or how often of something would suit them: exercise, walking, sleep habits. "
+                + "or how often of something would suit them. "
                 + "Choose this when answering would mean recommending an action.",
                 ChatClaimClass.Suggestion,
                 []),
