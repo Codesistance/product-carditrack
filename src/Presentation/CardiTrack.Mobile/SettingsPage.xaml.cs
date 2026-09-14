@@ -525,6 +525,31 @@ public partial class SettingsPage : ContentPage
         DiagnosticsConsent.Set(e.Value);
     }
 
+    /// <summary>
+    /// Nothing to share is the ordinary case, not a failure: the log file only records Warning
+    /// and above, so a phone that has behaved has no file at all. Saying so beats opening a share
+    /// sheet over an empty archive, which reads as the feature being broken.
+    /// </summary>
+    private async void OnShareAppLogsTapped(object? sender, TappedEventArgs e)
+    {
+        try
+        {
+            if (!await AppLogShare.TryShareAsync())
+                await _popups.ShowInfoAsync(
+                    "This phone hasn't recorded any problems, so there is nothing to send.",
+                    "No logs yet");
+        }
+        catch (Exception ex)
+        {
+            // An async void handler: anything escaping here takes the app down, which would be a
+            // poor way for the screen that exists to report crashes to behave.
+            Log.Warning(ex, "Sharing the app logs failed.");
+            await _popups.ShowErrorAsync(
+                "The logs could not be prepared. Please try again.",
+                "Couldn't get the logs");
+        }
+    }
+
     private async void OnSignOutClicked(object? sender, EventArgs e)
     {
         if (!_signOutGate.Confirm())

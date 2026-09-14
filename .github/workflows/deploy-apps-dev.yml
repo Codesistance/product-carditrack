@@ -891,6 +891,7 @@ jobs:
             -c Release \
             -p:RuntimeIdentifier=ios-arm64 \
             -p:ArchiveOnBuild=true \
+            -p:CreateDsymDirectory=true \
             -p:CodesignKey="Apple Distribution" \
             -p:CodesignProvision="CardiTrack Distribution" \
             -p:CodesignEntitlements=Platforms/iOS/Entitlements.Release.plist \
@@ -903,6 +904,57 @@ jobs:
             -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
             -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
+      # The counterpart of build-mobile-android-signed's "Stage Play crash-report
+      # files": the shipped binary is stripped, so a TestFlight crash report arrives
+      # as raw offsets into CardiTrack.Mobile and
+      # the .dSYM is the only thing that can name them again — including the managed
+      # frames, which AOT compiles into that same binary. Nothing shipped it before:
+      # the artifact below took the IPA alone, and the copies `ArchiveOnBuild=true`
+      # leaves in the build output and the .xcarchive both died with the runner. The
+      # first crash that cost us was the launch abort in build 1510, which could not
+      # be symbolicated at all.
+      #
+      # Kept twice over, because a crash report can arrive long after the build: as its
+      # own 90-day Actions artifact, and in the GCS builds bucket alongside the IPA,
+      # where the bucket's 10-day lifecycle rule reaches it. Neither is App Store
+      # Connect — the upload action takes an IPA, and dSYMs cannot be attached to a
+      # build after the fact, so symbolication always happens from one of these copies.
+      #
+      # A hard failure rather than a warning. A build nobody can symbolicate is the
+      # exact hole this step closes, and a silently absent dSYM looks identical to a
+      # working one right up until the next crash report needs it.
+      - name: Stage iOS symbols
+        if: steps.gate.outputs.available == 'true'
+        run: |
+          SEARCH="src/Presentation/CardiTrack.Mobile/bin/Release/net10.0-ios"
+          # The archive lands outside the workspace and is absent when ArchiveOnBuild
+          # has not run yet; find errors on a missing path, so only search a real one.
+          if [ -d "$HOME/Library/Developer/Xcode/Archives" ]; then
+            SEARCH="$SEARCH $HOME/Library/Developer/Xcode/Archives"
+          fi
+          # -prune: a .dSYM is a directory, and without it find walks into the bundle
+          # and reports its contents as well as the bundle itself.
+          find $SEARCH \( -name '*.dSYM' -o -name '*.mSYM' \) -prune -print \
+            > "$RUNNER_TEMP/symbols.txt"
+          if [ ! -s "$RUNNER_TEMP/symbols.txt" ]; then
+            # Print where it did look, so one failed run is enough to find the new
+            # location rather than needing a build with extra logging bolted on.
+            echo "Contents of the searched paths:"
+            find $SEARCH -maxdepth 4 \( -name '*.app' -o -name '*.xcarchive' -o -name '*SYM*' \) -print || true
+            echo "::error::No .dSYM found under $SEARCH — this build could not be symbolicated, so it is not worth shipping. Check whether the iOS SDK still writes one here (CreateDsymDirectory is set on the publish above)."
+            exit 1
+          fi
+          mkdir -p ios-symbols
+          while IFS= read -r SYM; do
+            NAME=$(basename "$SYM")
+            # The same bundle usually appears twice, in the build output and in the
+            # archive. zip would merge the second into the first rather than replace
+            # it, so take whichever is found first and skip the duplicate.
+            if [ -f "$GITHUB_WORKSPACE/ios-symbols/$NAME.zip" ]; then continue; fi
+            (cd "$(dirname "$SYM")" && zip -qry "$GITHUB_WORKSPACE/ios-symbols/$NAME.zip" "$NAME")
+          done < "$RUNNER_TEMP/symbols.txt"
+          ls -l ios-symbols
+
       - id: upload
         uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true'
@@ -911,6 +963,22 @@ jobs:
           name: mobile-ios-ipa
           path: '**/*.ipa'
           retention-days: 1
+
+      # Its own artifact rather than a second pattern on the one above, for two
+      # reasons: adding a pattern would re-root that artifact at the workspace and
+      # silently move the IPA's path in the GCS bucket, and symbols want a far longer
+      # retention than the binary — 90 days against the IPA's one, because the IPA is
+      # superseded by the next build while its symbols stay the only way to read a
+      # crash report from it. Not continue-on-error: the staging step above already
+      # refused to let an unsymbolicatable build get this far, and losing the upload
+      # would put us back exactly where build 1510 left us.
+      - name: Upload iOS symbols
+        uses: actions/upload-artifact@v7
+        if: steps.gate.outputs.available == 'true'
+        with:
+          name: mobile-ios-symbols
+          path: ios-symbols/*
+          retention-days: 90
 
   # ── Main only: Store uploads (internal testing) ─────────────────────────────
   deploy-testflight:
@@ -1361,6 +1429,13 @@ jobs:
         with:
           name: mobile-ios-ipa
           path: artifacts/ios
+      # Alongside the IPA rather than inside artifacts/ios, so the copy below lands
+      # them at $TAG/ios/symbols/ instead of mixing zips in with the binary.
+      - uses: actions/download-artifact@v8
+        if: needs.build-mobile-ios-device.outputs.available == 'true'
+        with:
+          name: mobile-ios-symbols
+          path: artifacts/ios-symbols
       - uses: actions/download-artifact@v8
         if: needs.build-mobile-windows.outputs.available == 'true'
         with:
@@ -1376,6 +1451,9 @@ jobs:
           if [ -d artifacts/android ]; then gcloud storage cp -r artifacts/android/** $BUCKET/$TAG/android/; fi
           if [ -d artifacts/ios ];     then gcloud storage cp -r artifacts/ios/**     $BUCKET/$TAG/ios/; fi
           if [ -d artifacts/windows ]; then gcloud storage cp -r artifacts/windows/** $BUCKET/$TAG/windows/; fi
+          # The bucket's 10-day lifecycle rule deletes these along with the binaries;
+          # the 90-day Actions artifact is the copy that outlives a late crash report.
+          if [ -d artifacts/ios-symbols ]; then gcloud storage cp -r artifacts/ios-symbols/** $BUCKET/$TAG/ios/symbols/; fi
 
   # ── Main only: DB Migrations + Deploy Dev ───────────────────────────────────
   run-db-migrations:

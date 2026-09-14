@@ -227,6 +227,30 @@
                                             SemanticProperties.Description="Send diagnostics"
                                             SemanticProperties.Hint="Off sends nothing about how you use the app"/>
                                 </Grid>
+
+                                <BoxView Style="{StaticResource DividerLine}"/>
+
+                                <!-- Under the toggle rather than in About: both rows are about
+                                     what this phone can say about the app going wrong. The
+                                     difference is who sends it — the switch above lets the app
+                                     send on its own, this one is the caregiver handing a file
+                                     over themselves, which is why it works with the switch off. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                      SemanticProperties.Description="Share app logs"
+                                      SemanticProperties.Hint="Sends the error records kept on this phone wherever you choose">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnShareAppLogsTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="Share app logs"
+                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                        <Label Text="Send the error records kept on this phone to support"
+                                               Style="{StaticResource Body2}" FontSize="13"
+                                               LineBreakMode="WordWrap"/>
+                                    </VerticalStackLayout>
+                                    <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
                             </VerticalStackLayout>
                         </Border>
                     </VerticalStackLayout>
