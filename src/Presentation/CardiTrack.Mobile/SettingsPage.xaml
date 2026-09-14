@@ -318,9 +318,16 @@
                             <Label Text="•  Nothing can be recovered afterwards." Style="{StaticResource Body2Dark}"/>
                         </VerticalStackLayout>
                         <!-- The label ticks the box on its own now — that is the control's, not a
-                             gesture this page wires — and the tick is DangerRed, as the box was. -->
+                             gesture this page wires — and the tick is DangerRed, as the box was.
+
+                             The negative margin is CheckField's own geometry, not a nudge by eye:
+                             its 22pt box is centred in a 44pt tap target, so the box draws 11pt in
+                             from the control's left edge and sat indented from every line of text
+                             above it. Pulling the control back by that 11 puts the box on the same
+                             left edge as the wording it is confirming. The -8 top closes the gap
+                             the same tap target opens above the box. -->
                         <controls:CheckField x:Name="DeleteConfirmCheck"
-                                             Margin="0,4,0,0"
+                                             Margin="-11,-8,0,0"
                                              Text="I understand this can't be undone"
                                              CheckedColor="{StaticResource DangerRed}"
                                              CheckedChanged="OnDeleteConfirmChanged"
