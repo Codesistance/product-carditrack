@@ -24,6 +24,19 @@ public sealed class CardiMemberDraft
     public string? EmergencyContactName { get; set; }
     public string? EmergencyContactPhone { get; set; }
     public string? PhotoPath { get; set; }
+
+    /// <summary>
+    /// The creation key the form is submitting this member under, carried so a retry survives the
+    /// page being rebuilt.
+    /// </summary>
+    /// <remarks>
+    /// Without it the key lived only on the page instance, and the draft was the one thing that
+    /// outlived it: a caregiver whose create committed but whose response was lost could back out,
+    /// come back to the restored draft, and submit under a fresh key — adding the second member
+    /// the key exists to prevent. Deliberately absent from <see cref="HasContent"/>: a key with no
+    /// typing behind it is not something worth restoring a form for.
+    /// </remarks>
+    public string? CreationKey { get; set; }
     public DateTime SavedUtc { get; set; }
 
     /// <summary>

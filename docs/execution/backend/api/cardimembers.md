@@ -32,6 +32,12 @@ Creates a CardiMember in the caller's organization (organization comes from the 
 | `relationshipType` | integer enum | No | Defaults to `Other` (99) — not knowing how you are related is no reason to be unable to start watching over someone |
 | `isPrimaryCaregiver` | boolean | No | Defaults to `true` |
 
+**`Idempotency-Key` (request header, optional, ≤ 64 chars).** The client’s own name for one creation attempt. A second request carrying a key this caregiver has already used returns **the member that attempt created** — same 201, same body — instead of adding a second person. Sent longer than 64 characters it is a **400**; omitted, the endpoint behaves exactly as before.
+
+It exists for one failure: a commit the database accepted whose response never reached the client. The caregiver sees an error, retries, and without a key the retry makes a second CardiMember and a second link. The key row is written **inside the same transaction as the member and the link**, so it commits with them or not at all — which is what lets the retry know whether the attempt it is retrying actually landed, rather than guess. Keys are scoped per caregiver and unique within that scope. Spent keys are **trimmed**, not expired: a caregiver’s keys older than seven days are dropped the next time they create a member, and nothing refuses an older key that has not been swept. Seven days because the mobile app persists the key with its form draft, which lives that long — a shorter window would delete the key of a draft the caregiver can still submit.
+
+The mobile app fixes one key when the Add CardiMember form opens and reuses it for every retry of that member, so a genuinely new member always gets a new key. Twins are unaffected: identical details under different keys are two members.
+
 ### GET `/api/Onboarding/cardimembers`
 
 Returns **200** with a plain list of the organization's CardiMembers — **no sorting, filtering, or `total` count**. Returns **403** if the caller has no organization.

@@ -22,6 +22,7 @@ public class CardiMemberDraftStoreTests
         MedicalNotes = "Warfarin, mornings",
         EmergencyContactName = "Dr Patel",
         EmergencyContactPhone = "+441632960111",
+        CreationKey = "f1e2d3c4b5a60718293a4b5c6d7e8f90",
     };
 
     [Fact]
@@ -47,6 +48,25 @@ public class CardiMemberDraftStoreTests
         Assert.Equal("Warfarin, mornings", restored.MedicalNotes);
         Assert.Equal("Dr Patel", restored.EmergencyContactName);
         Assert.Equal("+441632960111", restored.EmergencyContactPhone);
+
+        // The only persisted carrier of the idempotency key. A serialization or restore regression
+        // here re-mints the key on the next submit and quietly creates a second member, with every
+        // server-side test still green — so "every field" has to mean this one too.
+        Assert.Equal("f1e2d3c4b5a60718293a4b5c6d7e8f90", restored.CreationKey);
+    }
+
+    /// <summary>
+    /// A key with no typing behind it is not a draft. <c>HasContent</c> is what decides whether a
+    /// stored draft is worth restoring, and a form that only ever assigned itself a key must not
+    /// read as one the caregiver started filling in.
+    /// </summary>
+    [Fact]
+    public async Task ADraftHoldingOnlyACreationKey_IsNotRestored()
+    {
+        var sut = CreateSut();
+        await sut.SaveAsync(new CardiMemberDraft { CreationKey = "abc123" });
+
+        Assert.Null(await sut.LoadAsync());
     }
 
     [Fact]

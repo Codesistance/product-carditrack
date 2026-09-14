@@ -40,6 +40,7 @@ public class UnitOfWork : IUnitOfWork
     public IMemberAdviseRepository MemberAdvises { get; }
     public IReportRepository Reports { get; }
     public IExportConsentRepository ExportConsents { get; }
+    public ICardiMemberCreationKeyRepository CardiMemberCreationKeys { get; }
     public IMemberAiHoldRepository MemberAiHolds { get; }
     public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
 
@@ -77,7 +78,8 @@ public class UnitOfWork : IUnitOfWork
         IReportRepository reports,
         IExportConsentRepository exportConsents,
         IMemberAiHoldRepository memberAiHolds,
-        IDeviceHistoryRepullRepository deviceHistoryRepulls)
+        IDeviceHistoryRepullRepository deviceHistoryRepulls,
+        ICardiMemberCreationKeyRepository cardiMemberCreationKeys)
     {
         _context = context;
         Organizations = organizations;
@@ -113,6 +115,7 @@ public class UnitOfWork : IUnitOfWork
         ExportConsents = exportConsents;
         MemberAiHolds = memberAiHolds;
         DeviceHistoryRepulls = deviceHistoryRepulls;
+        CardiMemberCreationKeys = cardiMemberCreationKeys;
     }
 
     public async Task<int> SaveChangesAsync()

@@ -74,6 +74,7 @@ try
     builder.Services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
     builder.Services.AddScoped<IReportRepository, ReportRepository>();
     builder.Services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
+    builder.Services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreationKeyRepository>();
     builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
     builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
     builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();

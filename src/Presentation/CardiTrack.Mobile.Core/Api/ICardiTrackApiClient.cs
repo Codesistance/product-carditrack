@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 
 namespace CardiTrack.Mobile.Core.Api;
@@ -27,7 +27,16 @@ public interface ICardiTrackApiClient
 
     Task<OrganizationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, CancellationToken ct = default);
     Task<UserResponse> CreateUserAsync(CreateUserRequest request, CancellationToken ct = default);
-    Task<CardiMemberResponse> CreateCardiMemberAsync(CreateCardiMemberRequest request, CancellationToken ct = default);
+    /// <summary>
+    /// Adds a CardiMember.
+    /// </summary>
+    /// <param name="idempotencyKey">
+    /// This attempt’s own name, held by the form across retries. A create whose response is lost
+    /// on the way back may still have succeeded; sending the same key again returns the member
+    /// that attempt made instead of adding a second person to the care circle.
+    /// </param>
+    Task<CardiMemberResponse> CreateCardiMemberAsync(
+        CreateCardiMemberRequest request, CancellationToken ct = default, string? idempotencyKey = null);
     Task<List<CardiMemberResponse>> GetCardiMembersAsync(CancellationToken ct = default);
 
     /// <summary>Full profile for the CardiMember Detail screen (M1-13).</summary>
