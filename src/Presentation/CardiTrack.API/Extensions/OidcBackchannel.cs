@@ -111,8 +111,6 @@ public static class OidcBackchannel
     {
         var addresses = await Dns.GetHostAddressesAsync(endPoint.Host, cancellationToken)
             .ConfigureAwait(false);
-        if (addresses.Length == 0)
-            throw new SocketException((int)SocketError.HostNotFound);
 
         return await ConnectAsync(endPoint, addresses, cancellationToken).ConfigureAwait(false);
     }
@@ -127,6 +125,9 @@ public static class OidcBackchannel
     {
         var logger = Log.ForContext(typeof(OidcBackchannel));
 
+        if (addresses.Length == 0)
+            throw new SocketException((int)SocketError.HostNotFound);
+
         var perAddress = PerAddressTimeout(addresses.Length);
         var failures = new List<string>(addresses.Length);
         Exception? last = null;
@@ -135,22 +136,27 @@ public static class OidcBackchannel
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
-            {
-                NoDelay = true,
-            };
-
+            Socket? socket = null;
             using var attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             attempt.CancelAfter(perAddress);
 
             try
             {
+                // Inside the try on purpose. Constructing an AF_INET6 socket on a host with no
+                // IPv6 stack throws here, not at connect — and an AAAA address on an IPv4-only
+                // host is precisely the case this callback exists for. Thrown outside, it would
+                // abandon the loop and leave the IPv4 addresses behind it untried.
+                socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp)
+                {
+                    NoDelay = true,
+                };
+
                 await socket.ConnectAsync(address, endPoint.Port, attempt.Token).ConfigureAwait(false);
                 return new NetworkStream(socket, ownsSocket: true);
             }
             catch (Exception ex)
             {
-                socket.Dispose();
+                socket?.Dispose();
 
                 // The whole connect budget is gone, or the request was abandoned: stop rather
                 // than spend what is left of someone else's timeout on the next address.

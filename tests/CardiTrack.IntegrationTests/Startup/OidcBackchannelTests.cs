@@ -109,6 +109,18 @@ public class OidcBackchannelTests
     }
 
     [Fact]
+    public async Task Connect_ReportsHostNotFound_WhenTheIssuerResolvesToNothing()
+    {
+        // A resolver that answers with an empty set is a DNS failure, and must read as one rather
+        // than as "every address was tried" with nothing behind it.
+        var failure = await Assert.ThrowsAsync<SocketException>(async () =>
+            await OidcBackchannel.ConnectAsync(
+                new DnsEndPoint("carditrack-test.invalid", 443), [], CancellationToken.None));
+
+        Assert.Equal(SocketError.HostNotFound, failure.SocketErrorCode);
+    }
+
+    [Fact]
     public async Task Connect_StopsImmediately_WhenTheOverallBudgetIsGone()
     {
         // The per-address budget must not become a way to spend more than ConnectTimeout in
