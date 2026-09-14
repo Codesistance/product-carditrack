@@ -43,6 +43,13 @@ Table names are **not** always the entity name — the questionnaire entity live
 
 **Two columns reference a caregiver without owning the row:** `Alerts.AcknowledgedByUserId` and `MemberQuestionnaires.AnsweredByUserId` (both nullable). When a caregiver's account is erased but the member stays — another caregiver remains linked — set those to null rather than deleting the member's alert or answer; the `LIKE '%UserId'` clause above is what surfaces them, so do not narrow it back to the exact names.
 
+> **There is now code for this table.** `IMemberErasureService` runs the member-scoped
+> sequence below in one transaction — the same order, the same tables — and returns a row
+> count per table, which is the evidence this procedure asks an operator to record by hand.
+> It is not yet reachable from an endpoint: M6's worker is what will call it after an
+> account's 30-day window elapses. Until then this remains the operational path, and the
+> two must not drift — a table added here is a table the service has to delete.
+
 ### Member-scoped (`CardiMemberId`) — for a single CardiMember or a full closure
 
 | Order | Table | Notes |

@@ -42,6 +42,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IOrganizationService, CardiTrack.Application.Services.OrganizationService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IUserService, CardiTrack.Application.Services.UserService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ICardiMemberService, CardiTrack.Application.Services.CardiMemberService>();
+        // Erasure, not removal: the hard cascade behind a verified deletion request. Deliberately
+        // a separate service from ICardiMemberService, whose RemoveAsync soft-deletes — nothing
+        // should be able to reach this by tapping the wrong button.
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IMemberErasureService, CardiTrack.Infrastructure.Services.MemberErasureService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ISubscriptionService, CardiTrack.Application.Services.SubscriptionService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDashboardService, CardiTrack.Application.Services.DashboardService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDigestQueryService, CardiTrack.Application.Services.DigestQueryService>();

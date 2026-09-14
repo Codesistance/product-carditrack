@@ -129,6 +129,54 @@ public class UserService : IUserService
         return user?.HealthDataDisclosureDismissedDate != null;
     }
 
+    /// <summary>
+    /// How long an account awaiting deletion is kept before its data is erased.
+    /// </summary>
+    /// <remarks>
+    /// Thirty days because that is what the published privacy policy promises — "deleted within 30
+    /// days of a verified request" — and the number is spent as a grace period rather than merely
+    /// allowed as a deadline. Changing it changes a published commitment, not just a constant.
+    /// </remarks>
+    public static readonly TimeSpan DeletionGracePeriod = TimeSpan.FromDays(30);
+
+    public async Task<AccountDeletionStatusResponse?> GetDeletionStatusAsync(string auth0UserId)
+    {
+        var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
+        return user is null ? null : StatusOf(user.DeletionRequestedAtUtc);
+    }
+
+    public async Task<AccountDeletionStatusResponse?> RequestDeletionAsync(string auth0UserId)
+    {
+        var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
+        if (user is null) return null;
+
+        // Conditional update rather than read-then-save, the same shape the disclosure dismissal
+        // uses: whichever request lands first is the one the 30 days are counted from, and a
+        // second tap is a no-op that still reports the truth.
+        var requestedAt = DateTime.UtcNow;
+        if (await _unitOfWork.Users.TryRequestDeletionAsync(auth0UserId, requestedAt))
+            return StatusOf(requestedAt);
+
+        // Already requested. Re-read rather than assume, so the caller is told the real date the
+        // erasure is due — not today's.
+        var existing = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
+        return StatusOf(existing?.DeletionRequestedAtUtc ?? requestedAt);
+    }
+
+    public async Task<AccountDeletionStatusResponse?> CancelDeletionAsync(string auth0UserId)
+    {
+        var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
+        if (user is null) return null;
+
+        await _unitOfWork.Users.TryCancelDeletionAsync(auth0UserId);
+        return StatusOf(null);
+    }
+
+    private static AccountDeletionStatusResponse StatusOf(DateTime? requestedAtUtc) =>
+        requestedAtUtc is { } requested
+            ? new AccountDeletionStatusResponse(true, requested, requested + DeletionGracePeriod, true)
+            : new AccountDeletionStatusResponse(false, null, null, false);
+
     public async Task<bool> DismissHealthDataDisclosureAsync(string auth0UserId)
     {
         var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
