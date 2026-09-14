@@ -28,4 +28,14 @@ public class UserCardiMemberRepository : Repository<UserCardiMember>, IUserCardi
             .Include(ucm => ucm.User)
             .ToListAsync();
     }
+
+    public async Task<bool> HasWatcherNotAwaitingDeletionAsync(Guid cardiMemberId)
+    {
+        return await _dbSet
+            .AsNoTracking()
+            .AnyAsync(ucm => ucm.CardiMemberId == cardiMemberId
+                             && ucm.IsActive
+                             && _context.Users.Any(u => u.Id == ucm.UserId
+                                                        && u.DeletionRequestedAtUtc == null));
+    }
 }

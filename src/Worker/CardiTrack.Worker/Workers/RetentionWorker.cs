@@ -30,8 +30,12 @@ namespace CardiTrack.Worker.Workers;
 /// <para>
 /// <strong>It erases <em>after</em> the thirty days, never before — and the cadence rounds the
 /// same way.</strong> This runs once a day, so an account whose window closes at 05:01 is not
-/// picked up by that morning's sweep; it goes the following morning, up to twenty-four hours
-/// later. That is a deliberate choice of which promise absorbs the scheduler lag. The alternative
+/// picked up by that morning's sweep; it goes the following morning — twenty-four hours later at
+/// the outside, <em>provided the day's due set fits inside
+/// <see cref="RetentionWorkerOptions.BatchSize"/></em>. It is one batch per sweep, so a backlog
+/// larger than that, or an account failing repeatedly, defers by whole days; oldest-request-first
+/// ordering is what keeps the wait bounded by the backlog rather than arbitrary. That is a
+/// deliberate choice of which promise absorbs the scheduler lag. The alternative
 /// — selecting accounts whose window is about to close, or shortening the constant — would erase
 /// somebody while the app was still telling them they could cancel, and a caregiver who changes
 /// their mind on the last afternoon is a likelier person than an auditor timing the sweep. The

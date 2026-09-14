@@ -35,11 +35,19 @@ namespace CardiTrack.Infrastructure.Services;
 /// <para>
 /// <strong>Ingestion cannot write rows behind the cascade</strong>, though nothing here enforces
 /// that directly. A member left without a caregiver by a pending deletion is excluded from sync
-/// scheduling at all four selection sites in <c>DeviceConnectionRepository</c>, and has been since
-/// the request was made — thirty days before this runs. A sync would have to have been in flight
-/// for that whole window to insert an <c>ActivityLogs</c> row after the delete. The gate, not this
-/// service, is what makes the ordering safe; if that filter is ever narrowed, this becomes a real
-/// race with no foreign key to stop it.
+/// scheduling at the four selection sites in <c>DeviceConnectionRepository</c> <em>and</em> from
+/// <c>InactivityDetectionService</c>, which is the one pass that reaches the sync service without
+/// going through that scheduler — it probes a silent device before alerting, and that probe
+/// writes rows. Both have applied since the request was made, thirty days before this runs, so a
+/// sync would have to have been in flight for the whole window to insert an <c>ActivityLogs</c>
+/// row after the delete.
+/// </para>
+/// <para>
+/// Those gates, not this service, are what make the ordering safe, and they are a list rather
+/// than an invariant: <strong>any new path to <c>IDeviceSyncService</c> has to apply the same
+/// rule</strong> — <c>IUserCardiMemberRepository.HasWatcherNotAwaitingDeletionAsync</c> is the
+/// reusable form — or this becomes a real race with no foreign key to stop it. The first version
+/// of this paragraph claimed the four scheduler sites were the whole story; they were not.
 /// </para>
 /// <para>
 /// <strong>The races this does not close.</strong> Two reads decide destructive work: whether

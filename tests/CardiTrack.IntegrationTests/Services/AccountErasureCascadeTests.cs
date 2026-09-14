@@ -325,6 +325,24 @@ public class AccountErasureCascadeTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The post-commit delete is handed <see cref="CancellationToken.None"/>, not the caller's
+    /// token. Without this the test above would pass just as happily if the loop went back to
+    /// passing <c>ct</c> — the catch would swallow the cancellation either way — and the delete
+    /// this whole change exists to keep running would be unprotected.
+    /// </summary>
+    [Fact]
+    public async Task TheExportDeleteAfterTheCommit_IsNotGivenTheCallersToken()
+    {
+        var seed = await SeedAsync();
+
+        await EraseAsync(seed.UserId);
+
+        await _reportStorage.Received(1).DeleteAsync(
+            "reports/seeded-export.pdf",
+            Arg.Is<CancellationToken>(t => t == CancellationToken.None));
+    }
+
+    /// <summary>
     /// Re-running the cascade over an account that is already gone is how a failed run recovers,
     /// so it has to be a no-op rather than a throw.
     /// </summary>

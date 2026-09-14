@@ -126,13 +126,18 @@ public class MemberErasureService : IMemberErasureService
         // Every object under the member's prefix, not just the one the row named: an upload
         // interrupted between writing the object and saving its name leaves a face photo nothing
         // points at, and erasure is exactly when that must not survive.
+        // CancellationToken.None from here down, deliberately. Everything above is committed: the
+        // CardiMembers row is gone, and so are the Reports rows that named these objects. A
+        // cancellation at this point does not stop an erasure — it loses the only remaining record
+        // of which objects are left, turning a reportable orphan into an unfindable one. The
+        // objects are few and the deletes are quick, so finishing beats a tidy shutdown.
         try
         {
-            var leftBehind = await _photos.DeleteAllForMemberAsync(cardiMemberId, ct);
+            var leftBehind = await _photos.DeleteAllForMemberAsync(cardiMemberId, CancellationToken.None);
             orphaned.AddRange(leftBehind);
             photoRemoved = leftBehind.Count == 0;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             _logger.LogWarning(
                 ex,
@@ -143,7 +148,8 @@ public class MemberErasureService : IMemberErasureService
         }
 
         foreach (var objectName in reportObjects)
-            await RemoveObjectAsync(objectName, o => _reports.DeleteAsync(o, ct), orphaned, cardiMemberId);
+            await RemoveObjectAsync(
+                objectName, o => _reports.DeleteAsync(o, CancellationToken.None), orphaned, cardiMemberId);
 
         return new MemberErasureReport(cardiMemberId, rows, photoRemoved, orphaned);
     }
@@ -156,6 +162,11 @@ public class MemberErasureService : IMemberErasureService
     /// cannot undo the erasure, and turning a leftover file into an exception would make a
     /// completed erasure look like a failed one. The file is named in the report and logged at
     /// warning, which is what a manual clean-up needs.
+    ///
+    /// That includes cancellation. It is tempting to let a cancelled run escape so it does not
+    /// read as a finished one, and this method used to — but the rows are gone by the time this
+    /// runs, so an escaping cancellation loses the object's name rather than reporting it, and a
+    /// health export nothing points at is worse than one the report names.
     /// </remarks>
     private async Task<bool> RemoveObjectAsync(
         string objectName, Func<string, Task> delete, List<string> orphaned, Guid cardiMemberId)
@@ -165,11 +176,7 @@ public class MemberErasureService : IMemberErasureService
             await delete(objectName);
             return true;
         }
-        // Cancellation is not a storage failure: recording every remaining object as orphaned
-        // and returning a successful-looking report would hide a cancelled erasure behind one
-        // that merely left some files. The same exclusion CardiMemberService's photo cleanup
-        // makes at its own best-effort catch.
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             orphaned.Add(objectName);
             _logger.LogWarning(
