@@ -59,11 +59,20 @@ public class CardiMemberService : ICardiMemberService
     }
 
     /// <summary>
-    /// How long a creation key stays answerable. Its whole job is a retry moments after a failed
-    /// attempt, so a day is already generous; the window exists to bound the table, not to bound
-    /// correctness.
+    /// How long a spent creation key is kept. Trimming, not expiry: nothing refuses an older key,
+    /// and <see cref="ICardiMemberCreationKeyRepository.FindAsync"/> answers whatever is still
+    /// there.
     /// </summary>
-    private static readonly TimeSpan CreationKeyLifetime = TimeSpan.FromDays(1);
+    /// <remarks>
+    /// Seven days, not the one this started at, because the mobile form now persists its key with
+    /// the draft and <c>CardiMemberDraftStore.Lifetime</c> is seven days. A shorter window here
+    /// would delete the key of a draft the caregiver can still open and submit — which is exactly
+    /// the retry the key exists for, and it would fail silently by creating a second member. The
+    /// two numbers are coupled: shorten this and the draft store's protection goes with it.
+    /// Deliberately restated rather than shared, because <c>Application</c> cannot reference
+    /// <c>Mobile.Core</c> and should not learn about a client's storage to find out.
+    /// </remarks>
+    private static readonly TimeSpan CreationKeyLifetime = TimeSpan.FromDays(7);
 
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
         Guid organizationId,
@@ -80,8 +89,8 @@ public class CardiMemberService : ICardiMemberService
             var already = await _unitOfWork.CardiMemberCreationKeys.FindAsync(userId, idempotencyKey);
             if (already is not null)
             {
-                if (await StillTheirsAsync(userId, already.CardiMemberId))
-                    return (await GetByIdAsync(already.CardiMemberId))!;
+                if (await ReusableMemberAsync(userId, already.CardiMemberId) is { } theirs)
+                    return theirs;
 
                 // The attempt landed and the member has since been removed. Removal is a soft
                 // delete — the row stays with IsActive false and its links deactivated — so
@@ -153,6 +162,15 @@ public class CardiMemberService : ICardiMemberService
             // Written inside the transaction, which is the whole design: it commits with the
             // member and the link or not at all. That is what lets a retry read the key and know
             // — rather than guess — whether the attempt it is retrying actually landed.
+            //
+            // Two requests carrying one key can both pass the pre-read above and both reach here;
+            // the unique index then fails the loser's save and the caregiver sees an error. That
+            // is left as it is on purpose. Recovering the winner's member would mean recognising a
+            // unique-violation, which is a DbUpdateException — an EF Core type this layer cannot
+            // name, because Domain and Application carry zero packages (CLAUDE.md). The cost is
+            // one error message on a path the client does not take: Continue is disabled while the
+            // call is in flight, so the realistic race is a sequential retry, and that retry finds
+            // the winner's key in the pre-read and is answered correctly.
             if (!string.IsNullOrWhiteSpace(idempotencyKey))
             {
                 await _unitOfWork.CardiMemberCreationKeys.AddAsync(new CardiMemberCreationKey
@@ -231,24 +249,44 @@ public class CardiMemberService : ICardiMemberService
     }
 
     /// <summary>
-    /// Whether a member a spent creation key names is still a member this caregiver actually has:
-    /// active itself, and still linked to them by an active link.
+    /// The member a spent creation key names, if it is still a member this caregiver may be handed
+    /// back — active itself, and still theirs to view. Null otherwise, which sends the retry on to
+    /// create.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Both halves are load-bearing, and both are about soft deletion. <c>RemoveAsync</c> leaves
     /// the member row in place with <c>IsActive</c> false and deactivates every link to it, so a
-    /// row still being readable says nothing about whether the caregiver can reach it. Checking
-    /// the link as well as the member also covers a caregiver removed from a member other people
-    /// still watch — the member is active, but not theirs to be handed back.
+    /// row still being readable says nothing about whether the caregiver can reach it. The link
+    /// test also covers a caregiver removed from a member other people still watch: active member,
+    /// not theirs.
+    /// </para>
+    /// <para>
+    /// The predicate is <c>IsActive &amp;&amp; CanViewHealthData</c>, matching
+    /// <c>CardiMemberAccessService</c>'s view rule rather than a looser one of this method's own.
+    /// A caregiver whose health-data permission was revoked must not be handed the member back
+    /// through this path either, and two different answers to "may they see this member" is how
+    /// that kind of gap survives.
+    /// </para>
+    /// <para>
+    /// The member is read <em>once</em> and the response returned is built from that read, so the
+    /// row that was checked is the row that is handed back. What this cannot do is make a
+    /// concurrent removal impossible: one landing a millisecond after the response is written
+    /// would be missed by any ordering, transaction or revalidation — the retry would return a
+    /// member that has this instant stopped existing, and the next read of the dashboard corrects
+    /// it. Narrowing that window is worth doing; claiming it is closed would not be true.
+    /// </para>
     /// </remarks>
-    private async Task<bool> StillTheirsAsync(Guid userId, Guid cardiMemberId)
+    private async Task<CardiMemberResponse?> ReusableMemberAsync(Guid userId, Guid cardiMemberId)
     {
-        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
-        if (member is null || !member.IsActive)
-            return false;
+        var existing = await GetByIdAsync(cardiMemberId);
+        if (existing is null || !existing.IsActive)
+            return null;
 
         var links = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId);
-        return links.Any(l => l.UserId == userId && l.IsActive);
+        return links.Any(l => l.UserId == userId && l.IsActive && l.CanViewHealthData)
+            ? existing
+            : null;
     }
 
     public async Task<CardiMemberResponse?> GetByIdAsync(Guid id)

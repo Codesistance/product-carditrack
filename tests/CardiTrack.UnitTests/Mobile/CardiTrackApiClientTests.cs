@@ -1635,7 +1635,7 @@ public class CardiTrackApiClientTests
             return Created();
         });
 
-        await client.CreateCardiMemberAsync(BuildCreateRequest(), "key-abc123");
+        await client.CreateCardiMemberAsync(BuildCreateRequest(), idempotencyKey: "key-abc123");
 
         Assert.Equal("key-abc123", seen);
         Assert.Equal("/api/Onboarding/cardimember", http.Requests.Single().Uri!.AbsolutePath);
@@ -1680,7 +1680,7 @@ public class CardiTrackApiClientTests
             return Created();
         });
 
-        await client.CreateCardiMemberAsync(BuildCreateRequest(), "key-resend");
+        await client.CreateCardiMemberAsync(BuildCreateRequest(), idempotencyKey: "key-resend");
 
         Assert.Contains("Margaret Doe", first);
         Assert.Equal(first, second);

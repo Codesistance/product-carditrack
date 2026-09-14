@@ -311,7 +311,7 @@ public partial class AddCardiMemberPage : ContentPage
                     EmergencyContactPhone = NullIfEmpty(EmergencyPhoneEntry.Text),
                     PhotoBase64 = photoBase64,
                 },
-                _creationKey);
+                idempotencyKey: _creationKey);
 
             _submitted = true;
             await _drafts.ClearAsync();

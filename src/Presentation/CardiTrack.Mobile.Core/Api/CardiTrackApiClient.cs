@@ -62,7 +62,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         PostAsync<CreateUserRequest, UserResponse>("api/Onboarding/user", request, ct);
 
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
-        CreateCardiMemberRequest request, string? idempotencyKey = null, CancellationToken ct = default)
+        CreateCardiMemberRequest request, CancellationToken ct = default, string? idempotencyKey = null)
     {
         const string path = "api/Onboarding/cardimember";
         if (string.IsNullOrWhiteSpace(idempotencyKey))

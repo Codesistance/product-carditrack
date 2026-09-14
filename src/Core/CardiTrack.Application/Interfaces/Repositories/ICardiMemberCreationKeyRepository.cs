@@ -16,15 +16,28 @@ public interface ICardiMemberCreationKeyRepository : IRepository<CardiMemberCrea
     Task<CardiMemberCreationKey?> FindAsync(Guid userId, string key, CancellationToken ct = default);
 
     /// <summary>
-    /// Drops this caregiver's keys older than the cut-off. Their whole purpose is to answer a
-    /// retry that follows within seconds, so a key from last month answers nothing and is only
-    /// taking up room.
+    /// Drops this caregiver's keys older than the cut-off.
     /// </summary>
     /// <remarks>
-    /// Scoped to one caregiver and run on the path that has just written a key, so the table
-    /// trims itself as it is used rather than needing a job to visit it. A caregiver who never
-    /// adds another member keeps a handful of rows, which is the cost of not adding a worker for
-    /// three columns.
+    /// <para>
+    /// <strong>Trimming, not expiry.</strong> <see cref="FindAsync"/> does not filter on age, and
+    /// this runs only when the same caregiver creates another member — so a key that nothing has
+    /// swept stays answerable, and one swept an hour ago is gone. Saying it any other way would
+    /// describe a guarantee the code does not make.
+    /// </para>
+    /// <para>
+    /// Enforcing the cut-off in <see cref="FindAsync"/> instead would be worse, not better: the
+    /// mobile form persists its key with the draft, so a caregiver reopening a days-old draft is
+    /// making exactly the retry this exists for. An expiring lookup would ignore their key and
+    /// create a second member — while the surviving row made the insert collide on the unique
+    /// index. The cut-off is set to outlive the draft that carries the key.
+    /// </para>
+    /// <para>
+    /// Scoped to one caregiver and run on the path that has just written a key, so the table trims
+    /// itself as it is used rather than needing a job to visit it. A caregiver who never adds
+    /// another member keeps a handful of rows, which is the cost of not adding a worker for three
+    /// columns.
+    /// </para>
     /// </remarks>
     Task PurgeOlderThanAsync(Guid userId, DateTime cutoffUtc, CancellationToken ct = default);
 }

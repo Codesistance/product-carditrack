@@ -71,6 +71,7 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 22 | `ExportConsents` (rows naming this member) | Keyed on `OwnerUserId`, but each row's `CardiMemberIds` array names the members an export covered. For a single-member erasure delete every row whose array contains the member and re-query the array; the owner-keyed sweep at account closure is below |
 | 23 | `Reports` (rows naming this member) | Durable export metadata: `OwnerUserId`, a `CardiMemberIds` array and the export's `ObjectName` in the report-exports bucket. Delete every row whose array contains the member **and the object it names** (`gcloud storage rm gs://<report-exports-bucket>/<ObjectName>`; bucket from `Storage__Reports__Bucket` on the API service). `ExpiredReportCleanupWorker` sweeps rows past `ExpiresAt`, but an erasure must not wait for it |
 | 24 | `DeviceConnections` | Revoke upstream **before** deleting the row, or the token is orphaned at Google rather than revoked |
+| 24b | `CardiMemberCreationKeys` (rows naming this member) | Keyed on `CardiMemberId`, with no foreign key to cascade behind it. Left in place, the row outlives the member it names — and because a spent key whose member is gone makes the next retry create a fresh one, an erased member could be re-added by a stale draft the caregiver still holds. Delete by `CardiMemberId` here; the `UserId` sweep at account closure is a different pass, not a substitute |
 | 25 | `UserCardiMembers` | Cascades, but delete explicitly so the count is verifiable |
 | 26 | `CardiMembers` | Emergency contacts, medical notes **and the profile-photo object name** live on this row |
 
@@ -108,7 +109,7 @@ The account-scoped rows above assume the members go too. When another caregiver 
 | 39 | `DeviceHistoryRepulls` (rows they requested) | `RequestedByUserId` is required, so these cannot be nulled — delete them; the 48-hour re-pull cooldown resets for that member |
 | 40 | `Alerts.AcknowledgedByUserId`, `MemberQuestionnaires.AnsweredByUserId` | **Null, do not delete** — the alert and the answer belong to the member |
 | 41 | `UserCardiMembers` (this user's links) | Delete last among the member-facing rows, so the count checks above still resolve the user |
-| 41b | `CardiMemberCreationKeys` (this user's) | Keyed on `UserId`; three columns naming one creation attempt they made. Nothing depends on them — they answer a retry within 24 hours and are trimmed on the next create — so delete outright |
+| 41b | `CardiMemberCreationKeys` (this user's) | Keyed on `UserId`; three columns naming one creation attempt they made. Nothing depends on them, so delete outright |
 | 42 | `PushDeviceTokens`, `NotificationPreferences`, `ExportConsents`, `Reports` (with their bucket objects), `Users` | The user-keyed rows from the account-scoped table; `Organizations` and `Subscriptions` stay while other users remain |
 
 **Reports are durable.** Since the self-service export shipped (2026-09-07) every generated export has a `Reports` row and an object in the report-exports bucket, both listed above; the earlier statement here that reports were an in-process one-hour cache with no table to clear is no longer true.

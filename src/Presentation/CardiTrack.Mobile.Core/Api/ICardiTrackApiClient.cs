@@ -36,7 +36,7 @@ public interface ICardiTrackApiClient
     /// that attempt made instead of adding a second person to the care circle.
     /// </param>
     Task<CardiMemberResponse> CreateCardiMemberAsync(
-        CreateCardiMemberRequest request, string? idempotencyKey = null, CancellationToken ct = default);
+        CreateCardiMemberRequest request, CancellationToken ct = default, string? idempotencyKey = null);
     Task<List<CardiMemberResponse>> GetCardiMembersAsync(CancellationToken ct = default);
 
     /// <summary>Full profile for the CardiMember Detail screen (M1-13).</summary>
