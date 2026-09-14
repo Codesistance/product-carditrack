@@ -268,6 +268,48 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(expected, report.RowsByTable.Select(r => r.Table));
     }
 
+    /// <summary>
+    /// Same rule as the account cascade: once the rows are committed, the names of the storage
+    /// objects they pointed at exist nowhere else, so the clean-up runs to completion rather than
+    /// honouring a shutdown. A cancellation that escaped here would turn a reportable orphan — a
+    /// complete identified health export, or a member's face — into an unfindable one.
+    /// </summary>
+    [Fact]
+    public async Task ACancellationWhileClearingStorage_IsReportedAsOrphaned_NotThrown()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        _photos.DeleteAllForMemberAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<IReadOnlyList<string>>(new OperationCanceledException()));
+        _reportStorage.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException(new OperationCanceledException()));
+
+        var report = await EraseAsync(memberId);
+
+        Assert.Contains($"members/{memberId}/", report.OrphanedObjects);
+        Assert.Contains("reports/seeded-export.pdf", report.OrphanedObjects);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.Id == memberId));
+    }
+
+    /// <summary>
+    /// And the delete really is given <see cref="CancellationToken.None"/> — the assertion above
+    /// would pass on a swallowed cancellation from the caller's token too.
+    /// </summary>
+    [Fact]
+    public async Task TheStorageDeletesAfterTheCommit_AreNotGivenTheCallersToken()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+
+        await EraseAsync(memberId);
+
+        await _photos.Received(1).DeleteAllForMemberAsync(
+            memberId, Arg.Is<CancellationToken>(t => t == CancellationToken.None));
+        await _reportStorage.Received(1).DeleteAsync(
+            "reports/seeded-export.pdf", Arg.Is<CancellationToken>(t => t == CancellationToken.None));
+    }
+
     private async Task<MemberErasureReport> EraseAsync(Guid memberId)
     {
         using var scope = _services.CreateScope();

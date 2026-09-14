@@ -178,6 +178,17 @@ public class InactivityDetectionService : IInactivityDetectionService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
+        // Nobody left to tell, and nobody left to collect for. Asking to delete an account stops
+        // monitoring for any member it leaves without a caregiver, and this pass is the one place
+        // that reaches the sync service without going through the scheduler that already applies
+        // that rule: the probe below calls SyncCardiMemberAsync, which writes DeviceActivityLogs
+        // and ActivityLogs rows. Without this check a member whose only caregiver is thirty days
+        // into deleting their account keeps being pulled every fifteen minutes — and, at the end
+        // of it, can have rows written behind the erasure cascade, which has no foreign key to
+        // stop them.
+        if (!await _unitOfWork.UserCardiMembers.HasWatcherNotAwaitingDeletionAsync(memberId))
+            return false;
+
         var rulePrefs = AlertRuleOverrides.FromJson(
             (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
         if (!rulePrefs.IsEnabled(AlertRuleCatalogue.DeviceSilence))

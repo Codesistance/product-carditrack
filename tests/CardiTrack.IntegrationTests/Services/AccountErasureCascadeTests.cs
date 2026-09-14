@@ -299,6 +299,50 @@ public class AccountErasureCascadeTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A cancellation while the export objects are being cleared must not escape. By that point
+    /// the rows naming them are committed away, and so is the user the next sweep would have found
+    /// them from — an escaping cancellation would lose the name rather than report it, stranding a
+    /// complete identified health export in a bucket that nothing in the database points at.
+    /// </summary>
+    [Fact]
+    public async Task ACancellationWhileClearingExports_IsReportedAsOrphaned_NotThrown()
+    {
+        var seed = await SeedAsync();
+        _reportStorage
+            .DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException(new OperationCanceledException()));
+
+        var report = await EraseAsync(seed.UserId);
+
+        Assert.Contains("reports/seeded-export.pdf", report.OrphanedObjects);
+
+        // And the erasure still finished: the rows are gone, which is what makes the orphan
+        // recoverable only from this report.
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.Users.CountAsync(u => u.Id == seed.UserId));
+        Assert.Equal(0, await db.Reports.CountAsync(r => r.OwnerUserId == seed.UserId));
+    }
+
+    /// <summary>
+    /// The post-commit delete is handed <see cref="CancellationToken.None"/>, not the caller's
+    /// token. Without this the test above would pass just as happily if the loop went back to
+    /// passing <c>ct</c> — the catch would swallow the cancellation either way — and the delete
+    /// this whole change exists to keep running would be unprotected.
+    /// </summary>
+    [Fact]
+    public async Task TheExportDeleteAfterTheCommit_IsNotGivenTheCallersToken()
+    {
+        var seed = await SeedAsync();
+
+        await EraseAsync(seed.UserId);
+
+        await _reportStorage.Received(1).DeleteAsync(
+            "reports/seeded-export.pdf",
+            Arg.Is<CancellationToken>(t => t == CancellationToken.None));
+    }
+
+    /// <summary>
     /// Re-running the cascade over an account that is already gone is how a failed run recovers,
     /// so it has to be a no-op rather than a throw.
     /// </summary>

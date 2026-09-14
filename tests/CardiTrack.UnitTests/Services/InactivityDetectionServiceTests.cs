@@ -56,6 +56,11 @@ public class InactivityDetectionServiceTests
         // exactly as it did before the probe existed.
         _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns([]);
 
+        // Somebody is watching, unless a test says otherwise: a member whose caregivers have all
+        // asked for their accounts to go is not monitored at all, so without this every case here
+        // would be testing the wrong thing.
+        _links.HasWatcherNotAwaitingDeletionAsync(Arg.Any<Guid>()).Returns(true);
+
         // Defaults: one active London-anchored member whose device has been silent for two and
         // a half hours, with no standing alerts.
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId]);
@@ -172,6 +177,43 @@ public class InactivityDetectionServiceTests
         Assert.Equal(0, raised);
         await _deviceSync.Received(1).SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>());
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>
+    /// Asking to delete your account stops monitoring for anyone it leaves without a caregiver —
+    /// and this pass is the one place that reaches the sync service without going through the
+    /// scheduler that already applies that rule. Both halves matter: no pull, because it writes
+    /// health rows for somebody we have been asked to stop collecting for, and no alert, because
+    /// there is nobody left to send it to.
+    /// </summary>
+    [Fact]
+    public async Task AMemberLeftWithoutACaregiverByAPendingDeletion_IsNeitherProbedNorAlerted()
+    {
+        SetupConnectedDevice();
+        _links.HasWatcherNotAwaitingDeletionAsync(_memberId).Returns(false);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(0, raised);
+        await _deviceSync.DidNotReceiveWithAnyArgs()
+            .SyncCardiMemberAsync(default!, default);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>
+    /// The other side of it: one caregiver deleting their account does not stop monitoring for a
+    /// member somebody else still watches.
+    /// </summary>
+    [Fact]
+    public async Task AMemberSomebodyElseStillWatches_IsProbedAndAlertedAsUsual()
+    {
+        SetupConnectedDevice();
+        _links.HasWatcherNotAwaitingDeletionAsync(_memberId).Returns(true);
+
+        var raised = await CreateSut().DetectAsync(UtcNow, Rules);
+
+        Assert.Equal(1, raised);
+        await _deviceSync.Received(1).SyncCardiMemberAsync(Arg.Any<DeviceConnection>(), Arg.Any<SyncScope>());
     }
 
     /// <summary>A pull that runs and still finds nothing is what makes the alert trustworthy.</summary>

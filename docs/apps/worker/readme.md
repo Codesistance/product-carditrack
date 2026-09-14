@@ -267,13 +267,24 @@ because somebody asked. Two rules, both of them published commitments:
   through `IAccountErasureService`, which erases the members the departing caregiver was the last
   active watcher of (via `IMemberErasureService`, 29 tables in one transaction plus the profile
   photo and report exports), **releases** the members somebody else still watches, and then removes
-  the account's own rows. `AuditLogs` are retained under Art. 17(3)(b); billing rows for six years.
+  the account's own rows. `AuditLogs` are retained under Art. 17(3)(b). The subscription row is
+  **not** retained: the policy's six-year billing exception has nothing to apply to yet, because
+  Stripe is R2 and no payment has ever been taken — see `IAccountErasureService` for the exception
+  an invoice will need when billing ships.
 - **Member chat, 90 days.** Whole conversations, aged on their **newest turn** — derived from
   `MemberChatTurn`, not `MemberChatSession.LastTurnAtUtc`, which merely reopening a thread bumps.
   A session that never got a turn is dated from `StartedAtUtc`, or the empty shells would never
   expire.
 
 - Runs daily at 05:00 UTC (`0 0 5 * * *` by default), after the photo and report sweeps.
+- **Erasure lands *after* the thirty days, not within them.** An account whose window closes at
+  05:01 misses that morning's sweep and goes the next one — thirty days and up to twenty-four
+  hours, or longer if the day's due set exceeds `BatchSize` or an account keeps failing. This is a
+  recorded deviation from the published *within 30 days* wording, decided 2026-09-14: the
+  caregiver keeps their full cancellation window and the deadline absorbs the sweep lag. **A
+  next-morning deletion is normal, not a missed promise** — see
+  [manual_erasure_runbook.md](../../technical/manual_erasure_runbook.md) and the M6 row in
+  [dpia.md](../../compliance/dpia.md).
 - Takes a **non-blocking Postgres advisory lock** through `AdvisoryLock.TryRunAsync` (key
   `8_472_100_005`): a second Cloud Run instance skips the run rather than erasing the same estate
   twice.
