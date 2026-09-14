@@ -27,6 +27,19 @@ public interface IProfilePhotoStorage
     Task DeleteAsync(string objectName, CancellationToken ct = default);
 
     /// <summary>
+    /// Deletes every object stored for this member, not only the one their row currently names.
+    /// Returns the object names it could not remove.
+    /// </summary>
+    /// <remarks>
+    /// Erasure needs this and <see cref="DeleteAsync"/> cannot give it. Every upload gets a fresh
+    /// name, so a replacement interrupted between writing the new object and saving the new name
+    /// leaves a second face photo under the same member — reachable by nobody, and invisible to a
+    /// cleanup keyed on what the row points at. Deleting only the referenced object would leave a
+    /// photograph of an erased person's face in the bucket.
+    /// </remarks>
+    Task<IReadOnlyList<string>> DeleteAllForMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// A short-lived signed GET URL for a stored photo, or null when storage is not configured or
     /// signing is unavailable — read surfaces degrade to the initials avatar, they never throw.
     /// The URL is a bearer capability: callers must not persist or log it.

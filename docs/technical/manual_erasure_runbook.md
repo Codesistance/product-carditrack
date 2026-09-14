@@ -8,9 +8,10 @@ Last updated: 2026-09-14
 
 [privacy-policy](https://carditrack.com/privacy-policy) §5 and the [account deletion page](https://carditrack.com/delete-account) both commit to completing deletion **within 30 days of a verified request**, and confirming by email. The Google Health API section of the policy makes the same commitment for data collected under Google scopes, which makes it a commitment to Google as well as to the data subject.
 
-No code delivers this. Per [data_protection_architecture.md](./data_protection_architecture.md) findings 5 and 6, and [dpia.md](../compliance/dpia.md):
+Code now delivers part of it, and the part it does not deliver is the part that erases. Per [data_protection_architecture.md](./data_protection_architecture.md) findings 5 and 6, and [dpia.md](../compliance/dpia.md):
 
-- There is **no account-deletion endpoint** and no erasure endpoint of any kind.
+- A caregiver **can now ask** for their account to be deleted — `GET`/`POST`/`DELETE /api/v1/users/me/deletion` record, report and cancel the request, and a pending request stops the account working and stops collection for any member it leaves unwatched ([users.md](../execution/backend/api/users.md)). **Nothing yet carries the erasure out**: there is no erasure endpoint and no worker, so the thirty days elapse and then this procedure is what happens. Checking for accounts past their window is an operational duty until M6 ships.
+- The member-scoped cascade below **exists in code** as `IMemberErasureService` and is exercised against a real database, but nothing in production calls it yet — M6's worker is what will.
 - `CardiMemberService.RemoveAsync` and `DeviceConnectionService.DisconnectAsync` are **soft deletes** — they flip `IsActive` and discard OAuth tokens. No PHI row is removed.
 - The schema is deliberately almost free of foreign keys. Only `UserCardiMembers` and `Subscriptions` cascade. Deleting a CardiMember **orphans** its `ActivityLogs`, `Alerts`, `PatternBaselines`, `DeviceConnections` and `AuditLogs` rows, which stay live and queryable.
 

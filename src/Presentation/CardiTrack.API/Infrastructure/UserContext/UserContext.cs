@@ -12,6 +12,7 @@ public class UserContext : IUserContext
     public bool IsAuthenticated { get; private set; }
     public string Locale { get; private set; } = "en-US";
     public bool? EmailVerified { get; private set; }
+    public DateTime? DeletionRequestedAtUtc { get; private set; }
 
     public void SetAuthenticatedUser(string auth0UserId, string email, string locale, bool? emailVerified = null)
     {
@@ -22,10 +23,12 @@ public class UserContext : IUserContext
         IsAuthenticated = true;
     }
 
-    public void SetFullUserContext(Guid userId, Guid organizationId, UserRole role)
+    public void SetFullUserContext(
+        Guid userId, Guid organizationId, UserRole role, DateTime? deletionRequestedAtUtc = null)
     {
         UserId = userId;
         OrganizationId = organizationId;
         Role = role;
+        DeletionRequestedAtUtc = deletionRequestedAtUtc;
     }
 }

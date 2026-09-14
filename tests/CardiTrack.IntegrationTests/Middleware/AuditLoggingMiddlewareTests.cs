@@ -38,6 +38,7 @@ public class AuditLoggingMiddlewareTests
         public bool IsAuthenticated { get; init; }
         public string Locale => "en-GB";
         public bool? EmailVerified => true;
+        public DateTime? DeletionRequestedAtUtc => null;
     }
 
     private static DefaultHttpContext BuildContext(

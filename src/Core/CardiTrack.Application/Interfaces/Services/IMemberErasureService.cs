@@ -29,7 +29,8 @@ public sealed record MemberErasureReport(
 }
 
 /// <summary>
-/// Hard-erases one CardiMember and everything that references them.
+/// Hard-erases one CardiMember and every row that describes them — with one deliberate
+/// exception.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -37,6 +38,13 @@ public sealed record MemberErasureReport(
 /// <c>docs/technical/manual_erasure_runbook.md</c>, which is the interim procedure this is meant
 /// to replace. The order is the runbook's order, and it is load-bearing: it exists so that no
 /// delete trips a foreign key it should have outlived.
+/// </para>
+/// <para>
+/// <strong>`AuditLogs` are kept.</strong> The runbook retains them on purpose: they are the
+/// compliance record of who read this member's health data, and destroying that record is not
+/// what an erasure request asks for. So a successful report is <em>not</em> proof that no
+/// member-linked row exists anywhere — it is proof that every row this contract covers is
+/// gone. A caller that needs the stronger claim does not have it.
 /// </para>
 /// <para>
 /// <strong>Erasure, not removal.</strong> <c>ICardiMemberService.RemoveAsync</c> soft-deletes —

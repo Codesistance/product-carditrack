@@ -1,9 +1,11 @@
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -40,10 +42,19 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         sc.AddDbContext<CardiTrackDbContext>(options =>
             options.UseNpgsql(_container.GetConnectionString(),
                 b => b.MigrationsAssembly("CardiTrack.Infrastructure")));
+        sc.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
+        sc.AddLogging();
         _services = sc.BuildServiceProvider();
 
         using var scope = _services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>().Database.MigrateAsync();
+
+        // Four of the tables in the cascade are partitioned by date, and a freshly migrated
+        // database has no partition for today — `PartitionMaintenanceWorker` creates them in a
+        // running system. Without this the seed cannot write a digest, an assessment, a granular
+        // hour or a rollup, and the erasure would be tested against the tables that are easy.
+        await scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>()
+            .EnsureUpcomingPartitionsAsync(daysAhead: 7);
     }
 
     public async Task DisposeAsync()
@@ -68,9 +79,9 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
 
-        // Named one at a time rather than swept in a loop: a loop over DbSets would silently start
-        // passing for a table nobody remembered to seed, and the failure this guards against is
-        // exactly a table nobody remembered.
+        // Every table in the cascade, named one at a time. A loop over DbSets would silently
+        // start passing for a table nobody remembered to seed, and a table nobody remembered is
+        // precisely the failure this exists to catch.
         Assert.Equal(0, await db.CardiMembers.CountAsync(x => x.Id == memberId));
         Assert.Equal(0, await db.UserCardiMembers.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.ActivityLogs.CountAsync(x => x.CardiMemberId == memberId));
@@ -81,9 +92,32 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.MemberChatSessions.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberStatusLines.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MetricAlarms.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MetricAlarmStates.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.DeviceConnections.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.CardiMemberCreationKeys.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Notifications.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.NotificationDeliveries.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.NotificationMutes.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.RealtimeAssessments.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.DigestEntries.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.EnvironmentalReadings.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.GranularMetricHours.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MetricRollupsHourly.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MemberQuestionnaires.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.Set<MemberAdvise>().CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MemberAiHolds.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.DeviceHistoryRepulls.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.ExportConsents.CountAsync(x => x.CardiMemberIds.Contains(memberId)));
+        Assert.Equal(0, await db.Reports.CountAsync(x => x.CardiMemberIds.Contains(memberId)));
+
+        // Emptiness proves nothing if the seed never wrote there. Every step that names a table
+        // this test seeded must report having removed something, or the assertions above are
+        // passing on absence rather than on deletion.
+        var seeded = report.RowsByTable
+            .Where(r => r.Table is not ("MemberChatTurnUsages" or "MemberAdvises"))
+            .ToList();
+        Assert.All(seeded, r => Assert.True(
+            r.Rows > 0, $"{r.Table} was seeded but the cascade removed nothing from it"));
 
         // The caregiver and their organization are not the member's to take with them.
         Assert.Equal(1, await db.Users.CountAsync(x => x.Id == userId));
@@ -126,10 +160,17 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     public async Task ErasingAMember_RemovesReportsNamingThem_AndTheirExportObjects()
     {
         var (_, userId, memberId) = await SeedMemberWithDataAsync();
+        _photos.DeleteAllForMemberAsync(memberId, Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<string>());
 
         var report = await EraseAsync(memberId);
 
         await _reportStorage.Received(1).DeleteAsync("reports/seeded-export.pdf", Arg.Any<CancellationToken>());
+
+        // The member's whole photo prefix, not the one object the row named — an interrupted
+        // replacement leaves a second face photo that nothing points at.
+        await _photos.Received(1).DeleteAllForMemberAsync(memberId, Arg.Any<CancellationToken>());
+        Assert.True(report.PhotoObjectRemoved);
         Assert.Empty(report.OrphanedObjects);
 
         using var scope = _services.CreateScope();
@@ -187,15 +228,45 @@ public class MemberErasureCascadeTests : IAsyncLifetime
 
         var report = await EraseAsync(memberId);
 
-        var tables = report.RowsByTable.Select(r => r.Table).ToList();
         Assert.Equal(memberId, report.CardiMemberId);
 
-        // Children before parents: if CardiMembers were not last, the deletes before it would be
-        // running against rows whose foreign key had already gone.
-        Assert.Equal("CardiMembers", tables[^1]);
-        Assert.True(tables.IndexOf("ActivityLogs") < tables.IndexOf("CardiMembers"));
-        Assert.True(tables.IndexOf("MemberChatTurns") < tables.IndexOf("MemberChatSessions"));
-        Assert.Contains("DeviceActivityLogs", tables);
+        // The runbook's member-scoped order, in full. Spot checks let a middle step be removed or
+        // renamed without a failure, and the order is the one thing about a cascade that cannot be
+        // inferred from anywhere else — so it is written out and compared whole.
+        string[] expected =
+        [
+            "NotificationDeliveries",
+            "NotificationMutes",
+            "Notifications",
+            "AlertPreferences",
+            "Alerts",
+            "PatternBaselines",
+            "RealtimeAssessments",
+            "DigestEntries",
+            "EnvironmentalReadings",
+            "GranularMetricHours",
+            "MetricRollupsHourly",
+            "DeviceActivityLogs",
+            "ActivityLogs",
+            "MemberQuestionnaires",
+            "MemberChatTurnUsages",
+            "MemberChatTurns",
+            "MemberChatSessions",
+            "MemberAdvises",
+            "MetricAlarmStates",
+            "MetricAlarms",
+            "MemberStatusLines",
+            "MemberAiHolds",
+            "DeviceHistoryRepulls",
+            "ExportConsents",
+            "Reports",
+            "DeviceConnections",
+            "CardiMemberCreationKeys",
+            "UserCardiMembers",
+            "CardiMembers",
+        ];
+
+        Assert.Equal(expected, report.RowsByTable.Select(r => r.Table));
     }
 
     private async Task<MemberErasureReport> EraseAsync(Guid memberId)
@@ -236,6 +307,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             DateOfBirth = new DateOnly(1948, 4, 2),
             Gender = Gender.Female,
             IsActive = true,
+            PhotoObjectName = $"members/{Guid.NewGuid():N}/photo.jpg",
         };
         db.CardiMembers.Add(member);
         await db.SaveChangesAsync();
@@ -313,6 +385,99 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             OwnerUserId = user.Id,
             CardiMemberIds = [member.Id],
             ObjectName = "reports/seeded-export.pdf",
+        });
+        db.ExportConsents.Add(new ExportConsent
+        {
+            OwnerUserId = user.Id,
+            CardiMemberIds = [member.Id],
+            DateRangeFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7)),
+            DateRangeTo = DateOnly.FromDateTime(DateTime.UtcNow),
+            PolicyVersion = "2026-09-01",
+        });
+        db.NotificationDeliveries.Add(new NotificationDelivery
+        {
+            SourceId = Guid.NewGuid(),
+            UserId = user.Id,
+            CardiMemberId = member.Id,
+        });
+        db.NotificationMutes.Add(new NotificationMute
+        {
+            UserId = user.Id,
+            CardiMemberId = member.Id,
+            MutedDate = DateTime.UtcNow,
+        });
+        db.RealtimeAssessments.Add(new RealtimeAssessment
+        {
+            CardiMemberId = member.Id,
+            WindowStartUtc = DateTime.UtcNow.AddHours(-1),
+            WindowEndUtc = DateTime.UtcNow,
+        });
+        db.DigestEntries.Add(new DigestEntry
+        {
+            CardiMemberId = member.Id,
+            LocalDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            Text = "A steady day.",
+        });
+        db.MemberQuestionnaires.Add(new MemberQuestionnaire
+        {
+            CardiMemberId = member.Id,
+            QuestionText = "Has she been sleeping well?",
+        });
+        db.Set<MemberAdvise>().Add(new MemberAdvise
+        {
+            CardiMemberId = member.Id,
+            Summary = "A short walk after lunch.",
+        });
+        db.MemberAiHolds.Add(new MemberAiHold
+        {
+            CardiMemberId = member.Id,
+            HeldUntilUtc = DateTime.UtcNow.AddHours(1),
+            LastFailedAtUtc = DateTime.UtcNow,
+        });
+
+        // These carry DeviceConnectionId, so they wait until the connection above has an id.
+        await db.SaveChangesAsync();
+        var connectionId = await db.DeviceConnections
+            .Where(c => c.CardiMemberId == member.Id).Select(c => c.Id).FirstAsync();
+        var alarmId = await db.MetricAlarms
+            .Where(a => a.CardiMemberId == member.Id).Select(a => a.Id).FirstAsync();
+
+        db.GranularMetricHours.Add(new GranularMetricHour
+        {
+            DeviceConnectionId = connectionId,
+            CardiMemberId = member.Id,
+            Metric = GranularMetric.HeartRate,
+            HourStartUtc = DateTime.UtcNow.AddHours(-2),
+        });
+        db.MetricRollupsHourly.Add(new MetricRollupHourly
+        {
+            CardiMemberId = member.Id,
+            Metric = GranularMetric.HeartRate,
+            HourStartUtc = DateTime.UtcNow.AddHours(-2),
+            Min = 58,
+            Max = 74,
+        });
+        db.EnvironmentalReadings.Add(new EnvironmentalReading
+        {
+            CardiMemberId = member.Id,
+            DeviceConnectionId = connectionId,
+            SessionStartUtc = DateTime.UtcNow.AddHours(-2),
+            SessionEndUtc = DateTime.UtcNow.AddHours(-1),
+        });
+        db.DeviceHistoryRepulls.Add(new DeviceHistoryRepull
+        {
+            DeviceConnectionId = connectionId,
+            CardiMemberId = member.Id,
+            RequestedByUserId = user.Id,
+            FromDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-30)),
+            ToDate = DateOnly.FromDateTime(DateTime.UtcNow),
+        });
+        db.MetricAlarmStates.Add(new MetricAlarmState
+        {
+            MetricAlarmId = alarmId,
+            CardiMemberId = member.Id,
+            StateSinceUtc = DateTime.UtcNow.AddHours(-3),
+            LastEvaluatedUtc = DateTime.UtcNow,
         });
 
         var session = new MemberChatSession

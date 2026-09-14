@@ -51,12 +51,9 @@ public class MemberErasureService : IMemberErasureService
     public async Task<MemberErasureReport> EraseAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
         // Read before deleting: these name files outside Postgres, and once the rows are gone
-        // nothing remembers which. Collected first, removed after the commit.
-        var photoObject = await _db.CardiMembers
-            .Where(m => m.Id == cardiMemberId)
-            .Select(m => m.PhotoObjectName)
-            .FirstOrDefaultAsync(ct);
-
+        // nothing remembers which. Collected first, removed after the commit. The photo is the
+        // exception — it is found by prefix rather than by name, because the row names only the
+        // object it last pointed at (see IProfilePhotoStorage.DeleteAllForMemberAsync).
         var reportObjects = await _db.Reports
             .Where(r => r.CardiMemberIds.Contains(cardiMemberId) && r.ObjectName != null)
             .Select(r => r.ObjectName!)
@@ -126,9 +123,24 @@ public class MemberErasureService : IMemberErasureService
         var orphaned = new List<string>();
         var photoRemoved = false;
 
-        if (!string.IsNullOrEmpty(photoObject))
-            photoRemoved = await RemoveObjectAsync(
-                photoObject, o => _photos.DeleteAsync(o, ct), orphaned, cardiMemberId);
+        // Every object under the member's prefix, not just the one the row named: an upload
+        // interrupted between writing the object and saving its name leaves a face photo nothing
+        // points at, and erasure is exactly when that must not survive.
+        try
+        {
+            var leftBehind = await _photos.DeleteAllForMemberAsync(cardiMemberId, ct);
+            orphaned.AddRange(leftBehind);
+            photoRemoved = leftBehind.Count == 0;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Erasure of CardiMember {CardiMemberId} removed its rows but could not clear its "
+                + "photo prefix. Those objects need deleting by hand.",
+                cardiMemberId);
+            orphaned.Add($"members/{cardiMemberId}/");
+        }
 
         foreach (var objectName in reportObjects)
             await RemoveObjectAsync(objectName, o => _reports.DeleteAsync(o, ct), orphaned, cardiMemberId);
@@ -153,7 +165,11 @@ public class MemberErasureService : IMemberErasureService
             await delete(objectName);
             return true;
         }
-        catch (Exception ex)
+        // Cancellation is not a storage failure: recording every remaining object as orphaned
+        // and returning a successful-looking report would hide a cancelled erasure behind one
+        // that merely left some files. The same exclusion CardiMemberService's photo cleanup
+        // makes at its own best-effort catch.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             orphaned.Add(objectName);
             _logger.LogWarning(
