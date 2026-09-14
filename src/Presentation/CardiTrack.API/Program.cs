@@ -237,6 +237,10 @@ try
     app.UseCors("AllowSpecificOrigins");
     app.UseAuthentication();
     app.UseMiddleware<UserContextMiddleware>();
+    // Immediately after the context is resolved, because the gate reads the deletion stamp that
+    // middleware just loaded — and before anything that touches health data, which is the whole
+    // point of it.
+    app.UseMiddleware<PendingDeletionGateMiddleware>();
     app.UseAuthorization();
     app.MapControllers();
     app.MapHealthChecks("/health")

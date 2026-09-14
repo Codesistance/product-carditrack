@@ -127,6 +127,40 @@ public class GcsProfilePhotoStorage : IProfilePhotoStorage
         }
     }
 
+    public async Task<IReadOnlyList<string>> DeleteAllForMemberAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var bucket = RequireBucket();
+        var client = await _client.Value;
+
+        // The prefix UploadAsync writes under. Listed rather than assumed from the row, because
+        // the row names one object and an interrupted replacement can leave a second.
+        var prefix = $"members/{cardiMemberId}/";
+        var failed = new List<string>();
+
+        await foreach (var obj in client.ListObjectsAsync(bucket, prefix).WithCancellation(ct))
+        {
+            try
+            {
+                await client.DeleteObjectAsync(bucket, obj.Name, cancellationToken: ct);
+            }
+            catch (GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                // Already gone is the outcome delete exists to produce.
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Named, not thrown: the caller is erasing and needs to know which objects are
+                // still there, not to have the whole erasure reported as failed for one file.
+                _logger.LogWarning(
+                    ex, "Could not delete {ObjectName} while erasing a member's photos.", obj.Name);
+                failed.Add(obj.Name);
+            }
+        }
+
+        return failed;
+    }
+
     public async IAsyncEnumerable<(string ObjectName, DateTimeOffset CreatedAt)> ListAsync(
         [EnumeratorCancellation] CancellationToken ct = default)
     {

@@ -95,6 +95,90 @@ public class UsersController : BaseApiController
 
         return Success("Thanks — we won't show that again.");
     }
+
+    /// <summary>
+    /// Whether this account is awaiting deletion, and when its data is due to go.
+    /// </summary>
+    /// <remarks>
+    /// Read on sign-in as well as from Settings: a caregiver who asked for deletion and changed
+    /// their mind finds out here that the request is still standing and can be called off.
+    /// </remarks>
+    [HttpGet("me/deletion")]
+    [ProducesResponseType(typeof(ApiResponse<AccountDeletionStatusResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AccountDeletionStatusResponse>>> GetAccountDeletion()
+    {
+        if (!UserContext.IsAuthenticated || string.IsNullOrWhiteSpace(UserContext.Auth0UserId))
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+
+        var status = await _users.GetDeletionStatusAsync(UserContext.Auth0UserId);
+        return status is null
+            ? Error("We couldn't find your account — please sign in again.", StatusCodes.Status404NotFound)
+            : Success(status);
+    }
+
+    /// <summary>
+    /// Asks for this account and its members' health data to be deleted.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Records the request; it does not erase anything. The published policy promises erasure
+    /// within 30 days, and those days are a grace period the caregiver can spend changing their
+    /// mind — signing in again and calling it off is what <c>DELETE me/deletion</c> is for.
+    /// </para>
+    /// <para>
+    /// Idempotent by design: asking twice returns the first request's due date rather than
+    /// starting the 30 days over, because a restarted clock would keep the data longer than the
+    /// caregiver was told it would be kept.
+    /// </para>
+    /// <para>
+    /// A client that gets a 200 here should sign the caregiver out — an account awaiting deletion
+    /// has no business going on monitoring someone.
+    /// </para>
+    /// </remarks>
+    [HttpPost("me/deletion")]
+    [ProducesResponseType(typeof(ApiResponse<AccountDeletionStatusResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AccountDeletionStatusResponse>>> RequestAccountDeletion()
+    {
+        if (!UserContext.IsAuthenticated || string.IsNullOrWhiteSpace(UserContext.Auth0UserId))
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+
+        Logger.LogInformation(
+            "Account deletion requested by Auth0 user {Auth0UserId}", UserContext.Auth0UserId);
+
+        var status = await _users.RequestDeletionAsync(UserContext.Auth0UserId);
+        return status is null
+            ? Error("We couldn't find your account — please sign in again.", StatusCodes.Status404NotFound)
+            : Success(status, "Your account is scheduled for deletion. Sign in before then to stop it.");
+    }
+
+    /// <summary>
+    /// Calls off an outstanding deletion request.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent in the forgiving direction: cancelling when nothing was requested succeeds and
+    /// reports an account that is not awaiting deletion, which is the state the caller wanted.
+    /// </remarks>
+    [HttpDelete("me/deletion")]
+    [ProducesResponseType(typeof(ApiResponse<AccountDeletionStatusResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AccountDeletionStatusResponse>>> CancelAccountDeletion()
+    {
+        if (!UserContext.IsAuthenticated || string.IsNullOrWhiteSpace(UserContext.Auth0UserId))
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+
+        Logger.LogInformation(
+            "Account deletion cancelled by Auth0 user {Auth0UserId}", UserContext.Auth0UserId);
+
+        var status = await _users.CancelDeletionAsync(UserContext.Auth0UserId);
+        return status is null
+            ? Error("We couldn't find your account — please sign in again.", StatusCodes.Status404NotFound)
+            : Success(status, "Your account is staying put.");
+    }
 }
 
 public class UpdateTimeZoneRequest

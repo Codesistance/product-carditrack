@@ -9,6 +9,9 @@ The signed-in caregiver's own account settings — `api/v1/users/me/*`. Everythi
 | `PUT /api/v1/users/me/timezone` | Set the caller's IANA time zone — documented with the notification engine that needs it, in [notifications.md](notifications.md) |
 | `GET /api/v1/users/me/health-data-disclosure` | Whether the caller has dismissed the Google-mandated health-data disclosure |
 | `POST /api/v1/users/me/health-data-disclosure/dismiss` | Record that the caller has read it |
+| `GET /api/v1/users/me/deletion` | Whether this account is awaiting deletion, and when |
+| `POST /api/v1/users/me/deletion` | Ask for the account and its members' data to be deleted |
+| `DELETE /api/v1/users/me/deletion` | Call an outstanding request off |
 
 ## Health-data disclosure
 
@@ -31,3 +34,61 @@ A client shows the banner while `dismissed` is `false`. **Clients must not serve
 No body. **Response:** `200 OK` with the standard envelope and no data. Idempotent — a second dismissal keeps the first timestamp.
 
 `404` when there is no user row for the caller's identity yet (the disclosure must keep showing rather than be recorded against nobody); `403` when the caller has no identity. A client hides the banner only on `200`.
+
+## Account deletion
+
+Play's account-deletion policy and Apple's Guideline 5.1.1(v) both require deletion to be
+reachable **inside the app**; the web form at `/delete-account` does not substitute for it. These
+three endpoints are the server half. (The in-app screen that calls them is a later slice of #148 —
+today the mobile app still opens a pre-addressed email.)
+
+**A request, not an erasure.** The published privacy policy promises erasure *within 30 days of a
+verified request*, and those 30 days are spent as a grace period rather than merely allowed as a
+deadline: the request is recorded, and signing in again during the window calls it off. A
+caregiver watching over a relative's health should be able to take back a 2am tap.
+
+**Asking twice does not restart the clock.** A second request returns the first one's
+`scheduledForUtc`. A restarted clock would fail in the one direction that matters — it would keep
+the data longer than the caregiver was told it would be kept.
+
+**What carries it out.** The erasure itself is M6's RetentionWorker, which is not built yet; until
+it is, [manual_erasure_runbook.md](../../../technical/manual_erasure_runbook.md) is the operational
+path and these endpoints are what tell an operator a request exists. The member-scoped cascade the
+worker will use — `IMemberErasureService` — **is** built and tested: 26 tables in one transaction,
+plus the profile photo and any report exports in GCS.
+
+### GET `/api/v1/users/me/deletion`
+
+**Response:** `200 OK`.
+
+```json
+{ "success": true, "message": "Here you go!", "data": {
+  "deletionRequested": true,
+  "requestedAtUtc": "2026-09-14T11:00:00Z",
+  "scheduledForUtc": "2026-10-14T11:00:00Z",
+  "canCancel": true
+}, "timestamp": "2026-09-14T11:05:00Z" }
+```
+
+`canCancel` is true for the whole window — someone who changes their mind on day 29 is exactly who
+it is for. `403` when the caller has no identity; `404` when there is no user row for it.
+
+### POST `/api/v1/users/me/deletion`
+
+No body. **Response:** `200 OK` with the same shape as `GET`.
+
+Idempotent: a second request reports the first one's dates.
+
+**A client that receives `200` should sign the caregiver out** — an account awaiting deletion has
+no business going on monitoring anyone. It signs back in to cancel.
+
+`403` / `404` as above.
+
+### DELETE `/api/v1/users/me/deletion`
+
+No body. **Response:** `200 OK`, `deletionRequested: false`.
+
+Idempotent in the forgiving direction: cancelling when nothing was requested succeeds, because the
+state the caller wanted is the state they get.
+
+`403` / `404` as above.

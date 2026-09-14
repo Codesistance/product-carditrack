@@ -43,7 +43,8 @@ public class UserContextMiddleware
                         var user = await userRepository.GetByAuth0UserIdAsync(auth0UserId);
                         if (user is not null)
                         {
-                            concreteContext.SetFullUserContext(user.Id, user.OrganizationId, user.Role);
+                            concreteContext.SetFullUserContext(
+                                user.Id, user.OrganizationId, user.Role, user.DeletionRequestedAtUtc);
                         }
                     }
 

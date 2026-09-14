@@ -121,6 +121,26 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     /// See <see cref="SyncableStatuses"/> for why a sync-errored connection is still pulled.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// The last clause stops collection for a member whose caregivers have all asked to be
+    /// deleted. It is a filter rather than a stored flag on purpose: cancelling a deletion has to
+    /// restore monitoring, and a read-time predicate does that by itself, where deactivating
+    /// connections would need remembering which of them were already inactive before.
+    /// <para>
+    /// "All" matters. A member watched by two caregivers, one of whom is leaving, goes on being
+    /// monitored — only the member whose last active link belongs to a departing account stops.
+    /// That member is not watched for the thirty days the request can still be cancelled, which is
+    /// the cost of the decision recorded in <c>PendingDeletionGateMiddleware</c> and in the terms
+    /// of service.
+    /// </para>
+    /// <para>
+    /// A member with <em>no</em> active link at all is deliberately left alone by this clause and
+    /// goes on syncing as before. Whether an unlinked member should still be collected from is a
+    /// real question, but it is not this one, and answering it here would change behaviour nobody
+    /// asked to change — which is what the repository tests caught when an earlier version of this
+    /// predicate swept them up.
+    /// </para>
+    /// </remarks>
     public async Task<IEnumerable<DeviceConnection>> GetDueForSyncAsync()
     {
         var now = DateTime.UtcNow;
@@ -131,7 +151,12 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
                              || dc.LastSyncDate.Value.AddMinutes(dc.SyncFrequencyMinutes) <= now))
             .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
             .Where(x => x.cm.IsActive
-                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now))
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)
+                        && (!_context.UserCardiMembers.Any(l => l.CardiMemberId == x.cm.Id && l.IsActive)
+                            || _context.UserCardiMembers.Any(l =>
+                                l.CardiMemberId == x.cm.Id
+                                && l.IsActive
+                                && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
             .Select(x => x.dc)
             .ToListAsync();
     }
@@ -171,7 +196,12 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             .Where(dc => dc.IsActive && dc.ConnectionStatus == ConnectionStatus.Connected)
             .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
             .Where(x => x.cm.IsActive
-                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now))
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)
+                        && (!_context.UserCardiMembers.Any(l => l.CardiMemberId == x.cm.Id && l.IsActive)
+                            || _context.UserCardiMembers.Any(l =>
+                                l.CardiMemberId == x.cm.Id
+                                && l.IsActive
+                                && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
             .Select(x => x.dc)
             .OrderBy(_ => EF.Functions.Random())
             .Take(count)
@@ -221,7 +251,12 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
                          && (dc.NextAuthRecoveryAt == null || dc.NextAuthRecoveryAt <= utcNow))
             .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
             .Where(x => x.cm.IsActive
-                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= utcNow))
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= utcNow)
+                        && (!_context.UserCardiMembers.Any(l => l.CardiMemberId == x.cm.Id && l.IsActive)
+                            || _context.UserCardiMembers.Any(l =>
+                                l.CardiMemberId == x.cm.Id
+                                && l.IsActive
+                                && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
             .Select(x => x.dc)
             .ToListAsync();
     }
@@ -300,7 +335,12 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
                          && SyncableStatuses.Contains(dc.ConnectionStatus))
             .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
             .Where(x => x.cm.IsActive
-                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now))
+                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)
+                        && (!_context.UserCardiMembers.Any(l => l.CardiMemberId == x.cm.Id && l.IsActive)
+                            || _context.UserCardiMembers.Any(l =>
+                                l.CardiMemberId == x.cm.Id
+                                && l.IsActive
+                                && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
             .Select(x => x.dc)
             .ToListAsync();
     }

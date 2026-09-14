@@ -16,4 +16,19 @@ public interface IUserRepository : IRepository<User>
     /// already recorded or there is no such user.
     /// </summary>
     Task<bool> TryRecordHealthDataDisclosureDismissalAsync(string auth0UserId, DateTime dismissedAtUtc);
+
+    /// <summary>
+    /// Stamps the account as awaiting deletion, if it is not already. Returns false when a request
+    /// is already outstanding, so a second tap does not restart the 30 days.
+    /// </summary>
+    /// <remarks>
+    /// A restarted clock would be the wrong behaviour in the one direction that matters: it would
+    /// keep the data longer than the first request promised.
+    /// </remarks>
+    Task<bool> TryRequestDeletionAsync(string auth0UserId, DateTime requestedAtUtc);
+
+    /// <summary>
+    /// Clears an outstanding deletion request. Returns false when there was nothing to cancel.
+    /// </summary>
+    Task<bool> TryCancelDeletionAsync(string auth0UserId);
 }

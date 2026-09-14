@@ -40,4 +40,23 @@ public class UserRepository : Repository<User>, IUserRepository
             .ExecuteUpdateAsync(set => set.SetProperty(u => u.HealthDataDisclosureDismissedDate, dismissedAtUtc));
         return rows > 0;
     }
+
+    public async Task<bool> TryRequestDeletionAsync(string auth0UserId, DateTime requestedAtUtc)
+    {
+        // The null check is the whole point, not a guard against a race: it makes the first
+        // request's timestamp the one the 30 days are counted from. A repeated tap that restarted
+        // the clock would quietly hold the data longer than the caregiver was promised.
+        var rows = await _dbSet
+            .Where(u => u.Auth0UserId == auth0UserId && u.DeletionRequestedAtUtc == null)
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.DeletionRequestedAtUtc, requestedAtUtc));
+        return rows > 0;
+    }
+
+    public async Task<bool> TryCancelDeletionAsync(string auth0UserId)
+    {
+        var rows = await _dbSet
+            .Where(u => u.Auth0UserId == auth0UserId && u.DeletionRequestedAtUtc != null)
+            .ExecuteUpdateAsync(set => set.SetProperty(u => u.DeletionRequestedAtUtc, (DateTime?)null));
+        return rows > 0;
+    }
 }
