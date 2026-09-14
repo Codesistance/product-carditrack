@@ -2,7 +2,7 @@
 
 **Status: operational procedure. This is how the published 30-day deletion promise is kept until an erasure endpoint exists.**
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 ## Why this document exists
 
@@ -61,7 +61,7 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 12 | `DeviceActivityLogs` | **Raw per-device rows.** Easy to miss — `ActivityLogs` is the merged view, this is the source |
 | 13 | `ActivityLogs` | The primary daily store. **No partition drop covers this table** — retained indefinitely unless deleted here |
 | 14 | `MemberQuestionnaires` | Question text and free-text answers, AES-256-GCM encrypted at rest |
-| 15 | `MemberChatSessions` | Caregiver Q&A about this member — the full question and answer text per turn, plus the encrypted theme. `MemberChatTurns` and `MemberChatTurnUsages` cascade from the session (`MemberChatSessionConfiguration`), but re-query both to verify the count. Also carries `UserId`. **No partition drop and no retention worker covers these** — retained indefinitely unless deleted here |
+| 15 | `MemberChatSessions` | Caregiver Q&A about this member — the full question and answer text per turn, plus the encrypted theme. `MemberChatTurns` and `MemberChatTurnUsages` cascade from the session (`MemberChatSessionConfiguration`), but re-query both to verify the count. Also carries `UserId`. **No partition drop and no retention worker covers these yet** — the policy is 90 days from a session's **last written turn** (#488, decided 2026-09-14), and M6's RetentionWorker is what will enforce it. Until then there is no automatic removal and this procedure is the operational one: a session goes when deleted here, or by the caregiver in the app |
 | 16 | `MemberAdvises` | The current "Something to try" suggestion — one row per member per topic, derived from health data; overwritten on each regeneration, so this is the whole history |
 | 17 | `MetricAlarmStates` | Per-member state of each custom alarm (`MetricAlarmId`, `CardiMemberId`) — a child of `MetricAlarms`, so it goes first — delete these before the alarm rows below |
 | 18 | `MetricAlarms` (member rows) | Caregiver-defined alarms **tuned for this member** — rows where `CardiMemberId` is this member. Account-level rows (`CardiMemberId` null) are account-scoped, below |
