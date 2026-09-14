@@ -212,6 +212,18 @@ public sealed class OidcDiscoveryWarmup(
         var root = chain[^1];
         var rootType = root.GetType().Name;
 
+        // Before the socket branch below, not after. When every address fails fast — four
+        // ConnectionRefused in a row, say — the aggregate carries the last address's
+        // SocketException as its inner, and reporting that alone would say "TCP connect failed
+        // (ConnectionRefused)" as though one address had been tried. The per-address log lines and
+        // the logged exception still carry each address's own error; this line's job is to say how
+        // much was tried.
+        if (chain.Any(static e => e.Message.Contains(
+                OidcBackchannel.AllAddressesFailedMarker, StringComparison.Ordinal)))
+        {
+            return $"{rootType}: every address the issuer resolved to was tried and none answered";
+        }
+
         if (chain.OfType<SocketException>().FirstOrDefault() is { } socket)
         {
             return socket.SocketErrorCode is SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain
@@ -221,12 +233,6 @@ public sealed class OidcDiscoveryWarmup(
 
         if (chain.OfType<AuthenticationException>().Any())
             return $"{rootType}: TLS handshake failed";
-
-        if (chain.Any(static e => e.Message.Contains(
-                OidcBackchannel.AllAddressesFailedMarker, StringComparison.Ordinal)))
-        {
-            return $"{rootType}: every address the issuer resolved to was tried and none answered";
-        }
 
         if (chain.Any(static e => e.Message.Contains(ConnectTimeoutMarker, StringComparison.Ordinal)))
         {

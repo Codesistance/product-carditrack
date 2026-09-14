@@ -121,10 +121,8 @@ public class OidcBackchannelTests
     }
 
     [Fact]
-    public async Task Connect_StopsImmediately_WhenTheOverallBudgetIsGone()
+    public async Task Connect_StopsImmediately_WhenTheBudgetIsAlreadyGone()
     {
-        // The per-address budget must not become a way to spend more than ConnectTimeout in
-        // total: once the outer token is cancelled the loop gives up where it stands.
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
 
@@ -135,10 +133,41 @@ public class OidcBackchannelTests
                 cancelled.Token));
     }
 
+    [Fact]
+    public async Task Connect_GivesUpMidAttempt_WhenTheOverallBudgetRunsOut()
+    {
+        // This is the path that keeps the per-address floor honest. Enough addresses and
+        // MinPerAddressTimeout sums past ConnectTimeout — 20 addresses is 15 s of floor against a
+        // 5 s budget — so the guarantee that a connect never outlives ConnectTimeout rests
+        // entirely on the outer token cutting the loop short while an attempt is in flight, not on
+        // the arithmetic. Cancelling between addresses would not exercise that.
+        Assert.True(
+            OidcBackchannel.PerAddressTimeout(20) * 20 > OidcBackchannel.ConnectTimeout,
+            "a long address list is meant to overrun the budget; the outer token is what stops it");
+
+        using var budget = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        var perAddress = OidcBackchannel.PerAddressTimeout(4);
+
+        var started = Stopwatch.GetTimestamp();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await OidcBackchannel.ConnectAsync(
+                new DnsEndPoint("carditrack-test.invalid", 9),
+                [Unroutable, UnroutableToo, UnroutableThird, UnroutableFourth],
+                budget.Token));
+
+        Assert.True(
+            Stopwatch.GetElapsedTime(started) < perAddress * 2,
+            "cancellation must end the connect where it stands, not after the address list is walked");
+    }
+
     // TEST-NET-1 (RFC 5737): reserved for documentation and not routed, so a SYN to it goes
-    // unanswered rather than reaching anything.
+    // unanswered rather than reaching anything. The tests above that measure elapsed time depend
+    // on that silence; on a network that answers with an ICMP unreachable instead they fail rather
+    // than quietly prove less, which is the right way round.
     private static readonly IPAddress Unroutable = IPAddress.Parse("192.0.2.1");
     private static readonly IPAddress UnroutableToo = IPAddress.Parse("192.0.2.2");
+    private static readonly IPAddress UnroutableThird = IPAddress.Parse("192.0.2.3");
+    private static readonly IPAddress UnroutableFourth = IPAddress.Parse("192.0.2.4");
 
     [Fact]
     public void DiscoveryWarmup_IsRegisteredOnce_AcrossBothSchemes()

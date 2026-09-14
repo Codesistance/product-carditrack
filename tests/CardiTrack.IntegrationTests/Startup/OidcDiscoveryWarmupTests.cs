@@ -224,6 +224,19 @@ public class OidcDiscoveryWarmupTests
                 "every address the issuer resolved to was tried and none answered"
             },
             {
+                // Same aggregate, but every address was refused outright rather than silent, so
+                // the last address's SocketException rides along inside it. The aggregate still
+                // has to win: "TCP connect failed (ConnectionRefused)" would describe one address
+                // as though it were the whole issuer.
+                Idx20803(new HttpRequestException(
+                    "no address accepted a connection: carditrack-test.invalid:443 resolved to 2 address(es) "
+                    + "and none answered within 2500 ms each — 203.0.113.7 (ConnectionRefused); "
+                    + "203.0.113.8 (ConnectionRefused)",
+                    new SocketException((int)SocketError.ConnectionRefused))),
+                TimeSpan.FromMilliseconds(40),
+                "every address the issuer resolved to was tried and none answered"
+            },
+            {
                 Idx20803(new HttpRequestException(HttpRequestError.ProxyTunnelError, "proxy")),
                 TimeSpan.FromMilliseconds(30),
                 "HttpRequestException: ProxyTunnelError"
@@ -282,11 +295,15 @@ public class OidcDiscoveryWarmupTests
     private sealed class ScriptedConfigurationManager(Func<int, CancellationToken, Task<OpenIdConnectConfiguration>> script)
         : IConfigurationManager<OpenIdConnectConfiguration>
     {
+        // The runtime's nesting, not a convenient approximation of it: the cancellation says only
+        // that the operation was cancelled, and the marker sits on the TimeoutException beneath.
+        // The retry-path tests are the ones that assert on what gets logged, so they are the ones
+        // that most need to be failing the way production fails.
         private static readonly InvalidOperationException Failure = new(
             "IDX20803: Unable to obtain configuration from: 'https://carditrack-test.invalid/'.",
             new TaskCanceledException(
-                "A connection could not be established within the configured ConnectTimeout.",
-                new TimeoutException("timeout")));
+                "The operation was canceled.",
+                new TimeoutException("A connection could not be established within the configured ConnectTimeout.")));
 
         private int _calls;
         private readonly SemaphoreSlim _called = new(0);
