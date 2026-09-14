@@ -269,12 +269,37 @@ internal static partial class JournalRegisterGuards
     /// Whether the first sentence using <paramref name="term"/> leaves it unexplained. False when
     /// no sentence uses it at all.
     /// </summary>
+    /// <remarks>
+    /// An explanation follows the term it explains and precedes the next term, so only a marker
+    /// between the term's first use and the next tracked term counts. A marker anywhere in the
+    /// sentence used to do, which let one term's explanation vouch for a bare term beside it in
+    /// either order — "her sleep efficiency (…) and her HRV held steady" and "her HRV and her
+    /// sleep efficiency (…) held steady" both passed with HRV unexplained.
+    /// </remarks>
     private static bool IsUnglossed(IReadOnlyList<string> sentences, string term)
     {
         var pattern = TermPattern(term);
-        var first = sentences.FirstOrDefault(s => pattern.IsMatch(s));
-        return first is not null
-            && !GlossMarkers.Any(marker => first.Contains(marker, StringComparison.Ordinal));
+        foreach (var sentence in sentences)
+        {
+            var match = pattern.Match(sentence);
+            if (!match.Success)
+                continue;
+
+            // Bounded at the next tracked term — this one's own next use included, so an
+            // explanation on a repeat does not count for the bare first use before it.
+            var after = sentence[(match.Index + match.Length)..];
+            var nextTerm = TermsNeedingAGloss
+                .Select(other => TermPattern(other).Match(after))
+                .Where(m => m.Success)
+                .Select(m => m.Index)
+                .DefaultIfEmpty(after.Length)
+                .Min();
+            var explanation = after[..nextTerm];
+
+            return !GlossMarkers.Any(marker => explanation.Contains(marker, StringComparison.Ordinal));
+        }
+
+        return false;
     }
 
     private static List<string> Sentences(string text) =>

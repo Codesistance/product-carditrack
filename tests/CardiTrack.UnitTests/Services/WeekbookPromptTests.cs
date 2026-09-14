@@ -409,6 +409,66 @@ public class WeekbookPromptTests
         Assert.Equal(["sleep efficiency", "hrv"], glossed);
     }
 
+    /// <summary>
+    /// One term's own explanation does not vouch for a second, bare term later in the sentence:
+    /// an explanation follows the term it explains, so only a marker after the term counts.
+    /// </summary>
+    [Fact]
+    public void A_glossed_term_does_not_excuse_a_bare_one_later_in_the_sentence()
+    {
+        const string reply = "Her sleep efficiency (the share of the night actually asleep) and her HRV held steady.";
+
+        Assert.Equal("hrv", WeekbookPrompt.UnglossedTerm(reply));
+
+        var (text, glossed) = WeekbookPrompt.Gloss(reply);
+
+        Assert.Equal(
+            "Her sleep efficiency (the share of the night actually asleep) and her HRV "
+            + "(the natural variation in the gap between one heartbeat and the next) held steady.",
+            text);
+        Assert.Equal(["hrv"], glossed);
+        Assert.Null(WeekbookPrompt.UnglossedTerm(text));
+    }
+
+    /// <summary>
+    /// The mirror of the case above: an explanation that follows a later term does not reach back
+    /// to a bare one before it. Only a marker between the term and the next tracked term counts.
+    /// </summary>
+    [Fact]
+    public void A_later_terms_explanation_does_not_reach_back_to_a_bare_one()
+    {
+        const string reply = "Her HRV and her sleep efficiency (the share of the night actually asleep) held steady.";
+
+        Assert.Equal("hrv", WeekbookPrompt.UnglossedTerm(reply));
+
+        var (text, glossed) = WeekbookPrompt.Gloss(reply);
+
+        Assert.Equal(
+            "Her HRV (the natural variation in the gap between one heartbeat and the next) and her "
+            + "sleep efficiency (the share of the night actually asleep) held steady.",
+            text);
+        Assert.Equal(["hrv"], glossed);
+        Assert.Null(WeekbookPrompt.UnglossedTerm(text));
+    }
+
+    /// <summary>
+    /// A term used twice in one sentence is judged on its first use: an explanation on the
+    /// repeat does not reach back to it.
+    /// </summary>
+    [Fact]
+    public void An_explanation_on_a_repeat_does_not_reach_back_to_the_first_use()
+    {
+        const string reply = "Her HRV was 41 ms, and her HRV, which is the variation between heartbeats, held steady.";
+
+        Assert.Equal("hrv", WeekbookPrompt.UnglossedTerm(reply));
+
+        var (text, glossed) = WeekbookPrompt.Gloss(reply);
+
+        Assert.StartsWith("Her HRV (the natural variation in the gap between one heartbeat and the next) was 41 ms", text);
+        Assert.Equal(["hrv"], glossed);
+        Assert.Null(WeekbookPrompt.UnglossedTerm(text));
+    }
+
     /// <summary>A bare term followed by punctuation is still a bare term.</summary>
     [Fact]
     public void A_term_ending_a_sentence_is_still_seen()

@@ -277,10 +277,12 @@ public class DashboardMetric
     public int? QualityScore { get; set; }
 
     /// <summary>
-    /// One point per day, oldest first, always running to today — a day the member reported
-    /// nothing for is a point with a null <see cref="MetricPoint.Value"/>, not a missing point.
-    /// Its length is <c>MemberInsightsCalculator.SeriesDays</c>; clients showing a shorter window
-    /// take the tail.
+    /// One point per day, oldest first, running to today — or, on a member detail asked for
+    /// with <c>seriesEndsOn</c> naming a past day, to that day, while the rest of the metric
+    /// stays about today. A <c>seriesEndsOn</c> of today or later, or one too early to have a
+    /// full window before it, gives today's series. A day the member reported nothing for is a
+    /// point with a null <see cref="MetricPoint.Value"/>, not a missing point. Its length is
+    /// <c>MemberInsightsCalculator.SeriesDays</c>; clients showing a shorter window take the tail.
     /// </summary>
     public List<MetricPoint> Series { get; set; } = new();
 
