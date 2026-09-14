@@ -554,8 +554,8 @@ public class CardiMemberService : ICardiMemberService
         var healthStatus = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, baseline is null, metrics);
 
         // A journal entry is an account of a closed period and draws the series that ended with
-        // it — a Monthbook's ends a month or more ago, which a series that always ran to today
-        // could never reach. Only the series moves: the latest reading, its status and its
+        // it — a Monthbook's series ends a month or more ago, which a series that always ran to
+        // today could never reach. Only the series moves: the latest reading, its status and its
         // comparison are built from today's window above and stay what they are, because the
         // profile is about now whichever period its charts are drawn for. A member with nothing
         // in today's window still gets the series, on metrics that carry no current reading.

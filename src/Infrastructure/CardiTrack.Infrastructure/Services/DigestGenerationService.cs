@@ -820,7 +820,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         {
             _logger.LogWarning(
                 "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "{Sentences} sentence(s) is not an account of a month.",
+                + "its sentence count ({Sentences}) is below the minimum for an account of a month.",
                 memberId, monthEnd, JournalRegisterGuards.SentenceCount(text));
             return false;
         }
@@ -1046,7 +1046,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         {
             _logger.LogWarning(
                 "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "{Sentences} sentence(s) is not an account of a week.",
+                + "its sentence count ({Sentences}) is below the minimum for an account of a week.",
                 memberId, weekEnd, JournalRegisterGuards.SentenceCount(text));
             return false;
         }
