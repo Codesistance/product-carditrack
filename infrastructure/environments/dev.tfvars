@@ -78,6 +78,13 @@ apm_metrics_enabled = true
 # report this field" case. Raised from Information after the 2026-08-23 sync outage, where
 # the raw payload behind the crash had to be reconstructed from a bare stack trace. Web
 # stays lean — it never touches a device sync.
+# Rehearsal for RetentionWorker's first run against dev. The deletion pipeline reached dev on
+# 2026-09-14 and the 05:00 UTC sweep would be its first ever pass over an estate that already
+# holds accounts and chat sessions — some of them old enough to be due. On for one night so the
+# log can be read before anything is erased; turn it off once that log looks right, because a
+# retention job left rehearsing is a published promise quietly not being kept.
+retention_worker_dry_run = true
+
 log_minimum_level = {
   api    = "Debug"
   web    = "Warning"

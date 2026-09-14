@@ -298,7 +298,11 @@ because somebody asked. Two rules, both of them published commitments:
   `ChatRetentionDays` (default 90) *is* configurable, so a published figure can change without a
   deploy.
 - **`DryRun`** (`Workers:RetentionWorker:DryRun`, default `false`) logs every account and
-  conversation that would go and deletes nothing.
+  conversation that would go and deletes nothing. **Dev is currently on** — Terraform sets it from
+  `retention_worker_dry_run`, `true` in `dev.tfvars` since the deletion pipeline reached dev on
+  2026-09-14, so that the first sweep over an estate with real accounts and chat sessions can be
+  read before anything is erased. **Turn it off once that log looks right:** a retention job left
+  rehearsing is a published promise quietly not being kept, and nothing else will notice.
 - Per-account error boundary: one account that throws is logged at **Error** and the rest of the
   sweep continues. The cascade is re-entrant — the user row survives until its final step — so a
   half-finished erasure is simply due again next run. A failure that repeats run after run means the
