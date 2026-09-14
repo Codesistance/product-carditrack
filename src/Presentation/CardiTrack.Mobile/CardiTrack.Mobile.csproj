@@ -17,6 +17,9 @@
 		     connection JSON (base64 or raw), embed-safe identifiers only. Empty = off. -->
 		<ApmEngine Condition="'$(ApmEngine)' == ''"></ApmEngine>
 		<ApmData Condition="'$(ApmData)' == ''"></ApmData>
+		<!-- Error-log relay key (MobileDiagnosticsContract): CI stamps it from Secret Manager;
+		     empty keeps Error+ lines on the device only. -->
+		<MobileDiagnosticsKey Condition="'$(MobileDiagnosticsKey)' == ''"></MobileDiagnosticsKey>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -26,6 +29,7 @@
 		<AssemblyMetadata Include="Auth0Audience" Value="$(Auth0Audience)" />
 		<AssemblyMetadata Include="ApmEngine" Value="$(ApmEngine)" />
 		<AssemblyMetadata Include="ApmData" Value="$(ApmData)" />
+		<AssemblyMetadata Include="MobileDiagnosticsKey" Value="$(MobileDiagnosticsKey)" />
 	</ItemGroup>
 
 	<PropertyGroup>

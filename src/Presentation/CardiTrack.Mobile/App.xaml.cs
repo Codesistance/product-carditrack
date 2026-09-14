@@ -37,7 +37,13 @@ public partial class App : Microsoft.Maui.Controls.Application
         // away is already there, without a pull-to-refresh. Window-level because MAUI raises
         // the foreground transition here and nowhere else; the notifier fans it out to pages.
         var resumes = ServiceHelper.GetRequiredService<AppResumeNotifier>();
-        window.Resumed += (_, _) => resumes.NotifyResumed();
+        window.Resumed += (_, _) =>
+        {
+            resumes.NotifyResumed();
+            // A phone that was offline when it logged an error is often back online by the
+            // time the caregiver returns to the app; the queued lines go now.
+            AppLogging.FlushDiagnostics();
+        };
 
         return window;
     }

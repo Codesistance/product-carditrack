@@ -721,6 +721,7 @@ jobs:
             auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
             apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
+            mobile_diagnostics_key:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-mobile-diagnostics-key
 
       - name: Decode keystore
         if: steps.gate.outputs.available == 'true'
@@ -757,6 +758,7 @@ jobs:
             -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
             -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
             -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
+            -p:MobileDiagnosticsKey=${{ steps.secrets.outputs.mobile_diagnostics_key }} \
             -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
             -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 
@@ -845,6 +847,7 @@ jobs:
             auth0_mobile_client_id:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
             apm_mobile_engine:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
             apm_mobile_data:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
+            mobile_diagnostics_key:${{ needs.changes.outputs.gcp_project_id }}/carditrack-dev-mobile-diagnostics-key
 
       - name: Install certificate and provisioning profile
         if: steps.gate.outputs.available == 'true'
@@ -901,6 +904,7 @@ jobs:
             -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
             -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
             -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
+            -p:MobileDiagnosticsKey=${{ steps.secrets.outputs.mobile_diagnostics_key }} \
             -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
             -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
 

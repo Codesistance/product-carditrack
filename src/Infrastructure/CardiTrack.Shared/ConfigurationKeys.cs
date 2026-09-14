@@ -85,6 +85,18 @@ public static class ConfigurationKeys
         public const string Token = "Health:Token";
     }
 
+    public static class MobileDiagnostics
+    {
+        /// <summary>
+        /// The shared key the mobile app presents on <c>POST /api/v1/mobile/diagnostics/logs</c>
+        /// (<c>MobileDiagnosticsContract.KeyHeader</c>). Terraform-owned
+        /// (<c>carditrack-&lt;env&gt;-mobile-diagnostics-key</c>), injected as
+        /// <c>MobileDiagnostics__Key</c> and stamped into store builds by CI. Absent or a
+        /// placeholder, the endpoint answers 404 — see <c>MobileDiagnosticsKey</c>.
+        /// </summary>
+        public const string Key = "MobileDiagnostics:Key";
+    }
+
     /// <summary>
     /// Local-development affordances. Everything here is absent-by-default: no key is declared in
     /// any appsettings.json and none is injected by Terraform, so the surfaces these unlock exist

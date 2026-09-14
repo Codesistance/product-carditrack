@@ -71,7 +71,7 @@ Do **not** re-apply an old copy of this configuration (or revert these files) wi
   ```
 - **Secrets that need no human value are generated inside Terraform** (`random_password` for the DB password and health token, `random_bytes` for `encryption-key`) — never placed in tfvars, never committed.
 - `encryption-key` carries `ignore_changes = [secret_data]` for a reason beyond the usual one: rotating it makes existing device OAuth tokens undecryptable. The envelope does record which key wrote a value (`v1:{keyId}:{base64}`, added 2026-09-09), but a key id identifies the key — it does not substitute for holding it. An environment provisioned before this became Terraform-owned keeps whatever value it holds — check it is a real base64 32-byte key, not `REPLACE_ME`.
-- Terraform-owned values (DB connection string, `apm-mobile-engine`) track Terraform; do not edit them by hand.
+- Terraform-owned values (DB connection string, `apm-mobile-engine`) track Terraform; do not edit them by hand. `mobile-diagnostics-key` is Terraform-minted but `ignore_changes`-pinned like `encryption-key`: it is compiled into shipped app builds, so rotate it by adding a version deliberately and shipping builds that carry it, never by letting an apply replace it.
 - `medgemma-service-url` points at the shared GPU service. Seeded from the `medgemma_service_url` variable and written by `deploy-medgemma-common.yml`. It is set explicitly rather than derived: this project issues Cloud Run's hash URL form, so the address cannot be built from parts, and this stack cannot read the common stack's state to ask.
 
 Helper scripts (prompt for values, keep current version on empty input):
