@@ -106,6 +106,13 @@ builder.Services.AddScoped<IMetricAlarmEngine, MetricAlarmEngine>();
 builder.Services.AddScoped<IQuietReassuranceService, QuietReassuranceService>();
 builder.Services.AddScoped<IDeviceAuthRecoveryService, DeviceAuthRecoveryService>();
 
+// The erasure cascades, which RetentionWorker is the only production caller of. Both are
+// destructive and irreversible, which is why they are registered in the one host whose job it is
+// to run them rather than everywhere an IUnitOfWork is available.
+builder.Services.AddScoped<IMemberErasureService, MemberErasureService>();
+builder.Services.AddScoped<IAccountErasureService, AccountErasureService>();
+builder.Services.AddScoped<IChatRetentionService, ChatRetentionService>();
+
 // External clients
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
 
@@ -166,6 +173,14 @@ builder.Services.Configure<OrphanedPhotoCleanupOptions>(
 builder.Services.AddWorker<ExpiredReportCleanupWorker>(configuration, nameof(ExpiredReportCleanupWorker));
 builder.Services.Configure<ExpiredReportCleanupOptions>(
     configuration.GetSection($"Workers:{nameof(ExpiredReportCleanupWorker)}"));
+
+// The two published retention promises, kept by hand until now: erase an account once its
+// thirty-day cancellation window has elapsed, and delete a member chat conversation ninety days
+// after its last turn. DryRun, ChatRetentionDays and BatchSize share the worker's config section,
+// like the audit sample.
+builder.Services.AddWorker<RetentionWorker>(configuration, nameof(RetentionWorker));
+builder.Services.Configure<RetentionWorkerOptions>(
+    configuration.GetSection($"Workers:{nameof(RetentionWorker)}"));
 
 // Push delivery spine (notification_engine.md Phase 3)
 builder.Services.AddWorker<NotificationDispatchWorker>(configuration, nameof(NotificationDispatchWorker));

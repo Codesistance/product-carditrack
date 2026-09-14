@@ -59,4 +59,17 @@ public class UserRepository : Repository<User>, IUserRepository
             .ExecuteUpdateAsync(set => set.SetProperty(u => u.DeletionRequestedAtUtc, (DateTime?)null));
         return rows > 0;
     }
+
+    public async Task<IReadOnlyList<Guid>> GetAccountsDueForErasureAsync(DateTime cutoffUtc, int limit)
+    {
+        // Inclusive of the cutoff: a window that closed exactly now has closed. Erring the other
+        // way would leave an account waiting a whole extra run past a published thirty days.
+        return await _dbSet
+            .AsNoTracking()
+            .Where(u => u.DeletionRequestedAtUtc != null && u.DeletionRequestedAtUtc <= cutoffUtc)
+            .OrderBy(u => u.DeletionRequestedAtUtc)
+            .Select(u => u.Id)
+            .Take(limit)
+            .ToListAsync();
+    }
 }
