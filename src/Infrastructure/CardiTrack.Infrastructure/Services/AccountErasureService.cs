@@ -33,6 +33,15 @@ namespace CardiTrack.Infrastructure.Services;
 /// Google until it expires. The runbook's "revoke before deleting" step is still a manual duty.
 /// </para>
 /// <para>
+/// <strong>Ingestion cannot write rows behind the cascade</strong>, though nothing here enforces
+/// that directly. A member left without a caregiver by a pending deletion is excluded from sync
+/// scheduling at all four selection sites in <c>DeviceConnectionRepository</c>, and has been since
+/// the request was made — thirty days before this runs. A sync would have to have been in flight
+/// for that whole window to insert an <c>ActivityLogs</c> row after the delete. The gate, not this
+/// service, is what makes the ordering safe; if that filter is ever narrowed, this becomes a real
+/// race with no foreign key to stop it.
+/// </para>
+/// <para>
 /// <strong>The races this does not close.</strong> Two reads decide destructive work: whether
 /// anyone else still watches a member, and whether anyone else is still in the organisation.
 /// Both are re-asked as late as they can be — the member check immediately before each erasure,
@@ -213,8 +222,15 @@ public class AccountErasureService : IAccountErasureService
             throw;
         }
 
+        // CancellationToken.None, deliberately, and this is the one place in the cascade where
+        // honouring the token would do harm. Everything above is committed: the Reports rows that
+        // named these objects are gone, and so is the user the next sweep would have found them
+        // from. A cancellation here does not stop an erasure — it strands a complete identified
+        // health export in a bucket with nothing left in the database that knows its name. The
+        // objects are few and the deletes are quick, so finishing is strictly better than a tidy
+        // shutdown.
         foreach (var objectName in reportObjects)
-            await RemoveReportObjectAsync(objectName, orphaned, userId, ct);
+            await RemoveReportObjectAsync(objectName, orphaned, userId, CancellationToken.None);
 
         _logger.LogInformation(
             "Account erasure for {UserId} complete. Members erased: {Erased}, released: " +
@@ -264,8 +280,16 @@ public class AccountErasureService : IAccountErasureService
     /// <summary>
     /// Deletes one export object, recording it as orphaned rather than throwing if it will not go
     /// — the rows are already committed, so an exception here would make a completed erasure look
-    /// like a failed one. Same stance, and the same cancellation exclusion, as the member cascade.
+    /// like a failed one.
     /// </summary>
+    /// <remarks>
+    /// Unlike the member cascade's equivalent, this catches <see cref="OperationCanceledException"/>
+    /// too. There, excluding it keeps a cancelled erasure from reading as one that merely left
+    /// files behind. Here there is nothing left to be honest to: the rows naming these objects are
+    /// already committed away, so a cancellation that escaped would lose the name rather than
+    /// report it, and the object would be unfindable rather than merely orphaned. It is logged and
+    /// listed like any other failure.
+    /// </remarks>
     private async Task RemoveReportObjectAsync(
         string objectName, List<string> orphaned, Guid userId, CancellationToken ct)
     {
@@ -273,7 +297,7 @@ public class AccountErasureService : IAccountErasureService
         {
             await _reports.DeleteAsync(objectName, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             orphaned.Add(objectName);
             _logger.LogWarning(

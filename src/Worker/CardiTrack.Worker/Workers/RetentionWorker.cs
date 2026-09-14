@@ -28,6 +28,17 @@ namespace CardiTrack.Worker.Workers;
 /// still had the right to keep.
 /// </para>
 /// <para>
+/// <strong>It erases <em>after</em> the thirty days, never before — and the cadence rounds the
+/// same way.</strong> This runs once a day, so an account whose window closes at 05:01 is not
+/// picked up by that morning's sweep; it goes the following morning, up to twenty-four hours
+/// later. That is a deliberate choice of which promise absorbs the scheduler lag. The alternative
+/// — selecting accounts whose window is about to close, or shortening the constant — would erase
+/// somebody while the app was still telling them they could cancel, and a caregiver who changes
+/// their mind on the last afternoon is a likelier person than an auditor timing the sweep. The
+/// published "within 30 days" wording is the half that needs reconciling with this; see
+/// <c>docs/technical/manual_erasure_runbook.md</c>.
+/// </para>
+/// <para>
 /// The worker itself only schedules, bounds and reports; both cascades live behind Application
 /// ports (<see cref="IAccountErasureService"/>, <see cref="IChatRetentionService"/>) so what they
 /// delete can be tested against a real database without a host.
@@ -254,9 +265,13 @@ public class RetentionWorker : CronBackgroundService
             // take. Ids only; nothing of what was said.
             foreach (var sessionId in expired)
             {
+                // "last activity", not "last turn": a session that never got a turn is dated
+                // from when it was started, and a rehearsal an operator is meant to review must
+                // not explain an empty shell as though it had a conversation in it.
                 _logger.LogInformation(
-                    "Retention would delete chat conversation {SessionId}, whose last turn " +
-                    "predates {Cutoff}.", sessionId, cutoff);
+                    "Retention would delete chat conversation {SessionId}, whose last activity " +
+                    "— its newest turn, or its start time if it has none — predates {Cutoff}.",
+                    sessionId, cutoff);
             }
 
             _logger.LogInformation(
