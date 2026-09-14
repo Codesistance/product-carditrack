@@ -158,7 +158,8 @@ public class ChatRouteDecisionTests
         // The documented miss: movement/activity words must still classify as steps. Stated as a
         // mapping, not a quoted caregiver question — MedGemma would otherwise copy the quote.
         Assert.Contains(
-            "Movement, walking, being up and about, and being active name steps", prompt);
+            "Moved, walking, being up and about, and being active name steps", prompt);
+        Assert.Contains("Exercise, walking and sleep habits are this", prompt);
     }
 
     [Theory]

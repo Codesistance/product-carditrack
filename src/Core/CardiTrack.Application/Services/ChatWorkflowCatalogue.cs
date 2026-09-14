@@ -144,7 +144,8 @@ public static class ChatWorkflowCatalogue
             new(MemberChatWorkflow.Advise,
                 "advise",
                 "What could be done about the member's wellbeing — including what kind, how much "
-                + "or how often of something would suit them. "
+                + "or how often of something would suit them. Exercise, walking and sleep habits "
+                + "are this. "
                 + "Choose this when answering would mean recommending an action.",
                 ChatClaimClass.Suggestion,
                 []),
