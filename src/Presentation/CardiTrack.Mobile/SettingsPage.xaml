@@ -343,7 +343,7 @@
                                 Opacity="0.5"
                                 HorizontalOptions="Fill"
                                 Clicked="OnDeleteAccountClicked"
-                                SemanticProperties.Hint="Opens an email to support asking for your account to be deleted"/>
+                                SemanticProperties.Hint="Asks us to delete your account. Checks your fingerprint or face first, then signs you out. Monitoring stops straight away and you have 30 days to cancel"/>
                     </VerticalStackLayout>
                 </Border>
 

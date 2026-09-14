@@ -4,6 +4,7 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
+using Serilog;
 // CardiTrack.Application (the DTO assembly's root namespace) shadows MAUI's Application in
 // any file importing it, so the control type is aliased rather than qualified at each use.
 using MauiApplication = Microsoft.Maui.Controls.Application;
@@ -16,6 +17,7 @@ public partial class SettingsPage : ContentPage
     private readonly IPopupService _popups;
     private readonly CardiMemberDraftStore _drafts;
     private readonly ICardiTrackApiClient _api;
+    private readonly IDeviceBiometric _biometric;
 
     // A Switch raises Toggled when set from code too; this keeps OnAppearing from writing the
     // preference back and re-announcing a consent the caregiver did not just change.
@@ -32,6 +34,7 @@ public partial class SettingsPage : ContentPage
         _popups = popups;
         _drafts = drafts;
         _api = api;
+        _biometric = ServiceHelper.GetRequiredService<IDeviceBiometric>();
     }
 
     protected override void OnAppearing()
@@ -148,30 +151,144 @@ public partial class SettingsPage : ContentPage
         DeleteAccountBtn.Opacity = e.Value ? 1 : 0.5;
     }
 
+    /// <summary>
+    /// Starts an account deletion, in the app, the way Play's account-deletion policy and Apple's
+    /// Guideline 5.1.1(v) both require.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three gates, in this order: the tick box says they have read what happens, the device
+    /// biometric says the person holding the phone is its owner, and a last dialog states the
+    /// consequence the terms of service now spell out — that monitoring stops today, not in thirty
+    /// days. The biometric is the same step an export already takes; deleting an account should
+    /// not be easier than downloading a PDF.
+    /// </para>
+    /// <para>
+    /// On success the caregiver is signed out, because every other endpoint will now refuse them.
+    /// Leaving them on a signed-in session that can load nothing would look like the app breaking
+    /// rather than like their request being honoured.
+    /// </para>
+    /// </remarks>
     private async void OnDeleteAccountClicked(object? sender, EventArgs e)
     {
         if (!DeleteConfirmCheck.IsChecked)
             return;
 
-        // The request has to name the account; without the address support cannot act on it.
-        var email = _authService.CurrentUserEmail;
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            await _popups.ShowWarningAsync(
-                "We don't have an email address for this account. Please email support@carditrack.com from the address you sign in with.",
-                "Can't start the request");
+        if (!await ConfirmItIsThemAsync())
             return;
-        }
 
-        var subject = Uri.EscapeDataString("Delete my account");
-        var body = Uri.EscapeDataString($"Please delete the CardiTrack account for {email}.");
+        // Said last, and said in terms of the person they watch over rather than of the account:
+        // "your data will be deleted" is not the sentence that makes someone stop and think.
+        var confirmed = await _popups.ConfirmWarningAsync(
+            "Monitoring stops now — not in 30 days. Anyone you watch over who has no other "
+            + "caregiver will not be monitored, and no alerts will be sent about them.\n\n"
+            + "You have 30 days to change your mind: sign in again and cancel. After that "
+            + "everything is deleted and cannot be brought back.",
+            "Delete this account?",
+            confirmText: "Delete my account",
+            cancelText: "Keep my account");
+
+        if (!confirmed)
+            return;
+
+        DeleteAccountBtn.IsEnabled = false;
         try
         {
-            await Launcher.Default.OpenAsync(new Uri($"mailto:support@carditrack.com?subject={subject}&body={body}"));
+            var status = await _api.RequestAccountDeletionAsync();
+
+            // Signed out, then told — in that order, so the message is the last thing on screen
+            // rather than something dismissed on the way to a sign-in page.
+            await SignOutForDeletionAsync();
+
+            var due = status.ScheduledForUtc?.ToLocalTime();
+            await _popups.ShowInfoAsync(
+                due is { } when_
+                    ? $"Your account will be deleted on {when_:d MMMM yyyy}. Sign in before then to stop it."
+                    : "Your account is scheduled for deletion. Sign in within 30 days to stop it.",
+                "Request received");
         }
-        catch (Exception)
+        catch (ApiException ex)
         {
-            await _popups.ShowInfoAsync("Email support@carditrack.com with the subject \"Delete my account\".", "No mail app found");
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't start the deletion");
+        }
+        finally
+        {
+            DeleteAccountBtn.IsEnabled = true;
+        }
+    }
+
+    /// <summary>
+    /// The device's own check that the phone's owner is present. Refuses rather than degrades when
+    /// there is nothing enrolled: an account deletion is not a step to wave through because a
+    /// caregiver never set up a fingerprint.
+    /// </summary>
+    private async Task<bool> ConfirmItIsThemAsync()
+    {
+        if (!_biometric.IsAvailable)
+        {
+            // Fingerprint or face only — not "a screen lock". DeviceBiometric allows
+            // BiometricStrong | BiometricWeak, so a PIN does not satisfy it, and telling a
+            // caregiver to set one up would send them away to do something that still gets
+            // refused. Worth being exact about: this message is the whole of their next step.
+            await _popups.ShowWarningAsync(
+                _biometric.CanEnroll
+                    ? "Set up a fingerprint or face unlock on this phone first — we ask for it "
+                      + "before deleting an account."
+                    : "This phone cannot do fingerprint or face unlock, and we ask for one before "
+                      + "deleting an account. Email support@carditrack.com and we will do it for you.",
+                "We need to check it is you");
+            return false;
+        }
+
+        return await _biometric.AuthenticateAsync("Confirm it is you before deleting your account");
+    }
+
+    /// <summary>
+    /// The same clearing as an ordinary sign-out. Deliberately the same code path: an account
+    /// awaiting deletion must not leave a draft, a cached reading or a remembered consent behind
+    /// on the phone any more than a signed-out one does.
+    /// </summary>
+    private async Task SignOutForDeletionAsync()
+    {
+        // Fail-closed, step by step. By the time this runs the server has already accepted the
+        // deletion, so there is nothing to roll back and no useful way to report a half-failure:
+        // one step throwing must not stop the rest, or a token or a cached reading survives on a
+        // phone whose owner has just asked for all of it to go. An ordinary sign-out can afford to
+        // surface the failure; this one cannot afford to stop.
+        await TryAsync(() => _authService.SignOutAsync(), "sign-out");
+        Try(() => Preferences.Default.Remove("PrimaryCardiMemberId"), "primary member");
+        Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");
+        Try(() => Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey), "disclosure hint");
+        Try(() => Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey), "wizard resume flag");
+        Try(DiagnosticsConsent.Clear, "diagnostics consent");
+        await TryAsync(() => _drafts.ClearAsync(), "member draft");
+
+        // Always, even if every step above failed: leaving them inside an app that can no longer
+        // load anything is the worst of the available outcomes.
+        WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
+    }
+
+    private void Try(Action step, string what)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Deletion sign-out could not clear the {What}.", what);
+        }
+    }
+
+    private async Task TryAsync(Func<Task> step, string what)
+    {
+        try
+        {
+            await step();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Deletion sign-out could not complete the {What}.", what);
         }
     }
 

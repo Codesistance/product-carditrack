@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
@@ -20,20 +21,34 @@ public sealed class PostLoginRouter
 {
     private readonly ICardiTrackApiClient _api;
     private readonly IOfflineCacheWarmer _cacheWarmer;
+    private readonly IPopupService _popups;
+    private readonly IAuthService _auth;
     private readonly ILogger<PostLoginRouter>? _logger;
 
     public PostLoginRouter(
         ICardiTrackApiClient api,
         IOfflineCacheWarmer cacheWarmer,
+        IPopupService popups,
+        IAuthService auth,
         ILogger<PostLoginRouter>? logger = null)
     {
         _api = api;
         _cacheWarmer = cacheWarmer;
+        _popups = popups;
+        _auth = auth;
         _logger = logger;
     }
 
     public async Task RouteAsync(Page current, CancellationToken ct = default)
     {
+        // Asked before onboarding status, because an account awaiting deletion is refused
+        // everything else: the gate 403s the onboarding call, and a caregiver signing in to take
+        // their deletion back would have met a generic "couldn't load your account" instead of the
+        // one screen that can help them. This is the only route out of a pending deletion, so it
+        // runs first.
+        if (await OfferedToCancelDeletionAsync(current, ct))
+            return;
+
         OnboardingStatusResponse status;
         try
         {
@@ -116,6 +131,77 @@ public sealed class PostLoginRouter
         catch (Exception ex)
         {
             _logger?.LogDebug(ex, "Warming the on-device cache after login failed.");
+        }
+    }
+
+    /// <summary>
+    /// If this account is awaiting deletion, asks whether to call it off. Returns true when the
+    /// caller should stop — either the account is still going, or cancelling failed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Declining is a real answer, not a dead end: the caregiver is signed out again, because
+    /// every other endpoint refuses them and there is no app to show. Cancelling falls through to
+    /// ordinary routing, so the next thing they see is their dashboard.
+    /// </para>
+    /// <para>
+    /// A failure to read the status is deliberately not fatal here. The endpoint is reachable for
+    /// accounts that are <em>not</em> being deleted too, so an error means "unknown", and treating
+    /// unknown as "being deleted" would strand a caregiver whose network hiccuped at the one
+    /// moment it mattered. Onboarding status is asked next and will fail loudly if the account
+    /// really is gated.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> OfferedToCancelDeletionAsync(Page current, CancellationToken ct)
+    {
+        AccountDeletionStatusResponse deletion;
+        try
+        {
+            deletion = await _api.GetAccountDeletionAsync(ct);
+        }
+        catch (ApiException ex)
+        {
+            _logger?.LogInformation(
+                ex, "Could not read deletion status after sign-in; carrying on to onboarding.");
+            return false;
+        }
+
+        if (!deletion.DeletionRequested)
+            return false;
+
+        var due = deletion.ScheduledForUtc?.ToLocalTime();
+        var keep = await _popups.ConfirmWarningAsync(
+            due is { } when_
+                ? $"This account is set to be deleted on {when_:d MMMM yyyy}, and monitoring has "
+                  + "stopped until then. Do you want to keep it?"
+                : "This account is set to be deleted and monitoring has stopped until then. "
+                  + "Do you want to keep it?",
+            "Your account is being deleted",
+            confirmText: "Keep my account",
+            cancelText: "Go on deleting it");
+
+        if (!keep)
+        {
+            // Nothing else will load for them, so leaving them inside the app would be a worse
+            // answer than the sign-in page they came from.
+            await _auth.SignOutAsync();
+            await MainThread.InvokeOnMainThreadAsync(() =>
+                WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
+            return true;
+        }
+
+        try
+        {
+            await _api.CancelAccountDeletionAsync(ct);
+            return false;
+        }
+        catch (ApiException ex)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't stop the deletion");
+            await _auth.SignOutAsync();
+            await MainThread.InvokeOnMainThreadAsync(() =>
+                WindowNavigation.SetRootPage(current, new NavigationPage(new SignInPage())));
+            return true;
         }
     }
 
