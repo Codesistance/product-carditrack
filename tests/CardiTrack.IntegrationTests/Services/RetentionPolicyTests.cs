@@ -128,6 +128,80 @@ public class RetentionPolicyTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The regression the whole derivation exists for: <c>ContinueSessionAsync</c> sets
+    /// <c>LastTurnAtUtc</c> to now when a caregiver merely reopens a past conversation, without
+    /// adding a turn. An implementation that read that column would keep such a thread forever,
+    /// and browsing your own history would be enough to do it.
+    /// </summary>
+    /// <remarks>
+    /// The sibling test above cannot catch this: it gives its revived session a real recent turn,
+    /// so the column and the newest turn agree and either implementation passes. Here they
+    /// disagree on purpose.
+    /// </remarks>
+    [Fact]
+    public async Task AReopenedConversationWithNoNewTurn_StillExpires()
+    {
+        var (_, userId, memberId) = await SeedMemberAsync();
+        var reopenedOnly = await SeedSessionAsync(userId, memberId,
+            startedDaysAgo: 200, turnDaysAgo: [200, 190]);
+
+        // Reopened this morning; nobody has said anything since February.
+        await SetLastTurnAtAsync(reopenedOnly, DateTime.UtcNow);
+
+        var expired = await FindExpiredSessionsAsync(cutoffDaysAgo: 90, limit: 50);
+
+        Assert.Contains(reopenedOnly, expired);
+    }
+
+    /// <summary>
+    /// A caregiver replying between the find and the delete makes the conversation live again.
+    /// The advisory lock keeps a second worker out; it does not keep them out, so the delete
+    /// re-asks and leaves the thread alone.
+    /// </summary>
+    [Fact]
+    public async Task AConversationRepliedToAfterItWasSelected_IsNotDeleted()
+    {
+        var (_, userId, memberId) = await SeedMemberAsync();
+        var stale = await SeedSessionAsync(userId, memberId, startedDaysAgo: 120, turnDaysAgo: [120]);
+        var alsoStale = await SeedSessionAsync(userId, memberId, startedDaysAgo: 150, turnDaysAgo: [150]);
+
+        var expired = await FindExpiredSessionsAsync(cutoffDaysAgo: 90, limit: 50);
+        Assert.Equal(2, expired.Count);
+
+        // The reply lands after the list was taken.
+        await AddTurnAsync(stale, daysAgo: 0);
+
+        var report = await DeleteSessionsAsync(expired);
+
+        Assert.Equal(1, report.Sessions);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(1, await db.MemberChatSessions.CountAsync(s => s.Id == stale));
+        Assert.Equal(0, await db.MemberChatSessions.CountAsync(s => s.Id == alsoStale));
+    }
+
+    /// <summary>
+    /// Oldest first means oldest <em>by the rule that decides expiry</em>, not by start date. A
+    /// bounded batch that ordered by <c>StartedAtUtc</c> would let a long-abandoned conversation
+    /// wait behind one that is merely old but was answered recently.
+    /// </summary>
+    [Fact]
+    public async Task ExpiredConversations_ComeBackOldestByTheirNewestTurn()
+    {
+        var (_, userId, memberId) = await SeedMemberAsync();
+
+        // Started earliest, but answered most recently of the two.
+        await SeedSessionAsync(userId, memberId, startedDaysAgo: 400, turnDaysAgo: [400, 100]);
+        var quietestThread = await SeedSessionAsync(
+            userId, memberId, startedDaysAgo: 200, turnDaysAgo: [200, 195]);
+
+        var expired = await FindExpiredSessionsAsync(cutoffDaysAgo: 90, limit: 1);
+
+        Assert.Equal([quietestThread], expired);
+    }
+
+    /// <summary>
     /// A session opened and never used has no turns to be dated from. Without the fallback to
     /// <c>StartedAtUtc</c> it would have no age at all and would sit in the table forever — the
     /// quiet way a retention period stops being kept.
@@ -209,12 +283,38 @@ public class RetentionPolicyTests : IAsyncLifetime
         return await sut.FindExpiredSessionsAsync(DateTime.UtcNow.AddDays(-cutoffDaysAgo), limit);
     }
 
-    private async Task<ChatRetentionReport> DeleteSessionsAsync(IReadOnlyList<Guid> sessionIds)
+    private async Task<ChatRetentionReport> DeleteSessionsAsync(
+        IReadOnlyList<Guid> sessionIds, int cutoffDaysAgo = 90)
     {
         using var scope = _services.CreateScope();
         var sut = new ChatRetentionService(
             scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>());
-        return await sut.DeleteSessionsAsync(sessionIds);
+        return await sut.DeleteSessionsAsync(sessionIds, DateTime.UtcNow.AddDays(-cutoffDaysAgo));
+    }
+
+    private async Task AddTurnAsync(Guid sessionId, int daysAgo)
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        db.MemberChatTurns.Add(new MemberChatTurn
+        {
+            SessionId = sessionId,
+            Role = ChatTurnRole.User,
+            Content = "encrypted-question",
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-daysAgo),
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SetLastTurnAtAsync(Guid sessionId, DateTime lastTurnAtUtc)
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        var session = await db.MemberChatSessions.SingleAsync(s => s.Id == sessionId);
+        session.LastTurnAtUtc = lastTurnAtUtc;
+        await db.SaveChangesAsync();
     }
 
     private async Task<Guid> SeedOrganizationAsync()

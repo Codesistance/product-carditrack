@@ -59,8 +59,9 @@ public class AccountErasureCascadeTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The ordinary case: the members nobody else watches go, and so does the account — down to
-    /// the household it was the last member of, and that household's subscription.
+    /// The ordinary case: the members nobody else watches go, and so does everything the account
+    /// itself owns. The household's own fate is a separate question with its own tests — a
+    /// released member keeps this organisation alive.
     /// </summary>
     [Fact]
     public async Task ClosingASoleCaregiversAccount_ErasesTheMemberAndTheAccount()
@@ -79,16 +80,12 @@ public class AccountErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.CardiMembers.CountAsync(x => x.Id == seed.SoleMemberId));
         Assert.Equal(0, await db.ActivityLogs.CountAsync(x => x.CardiMemberId == seed.SoleMemberId));
         Assert.Equal(0, await db.Users.CountAsync(x => x.Id == seed.UserId));
-        Assert.Equal(0, await db.Organizations.CountAsync(x => x.Id == seed.OrganizationId));
-        Assert.Equal(0, await db.Subscriptions.CountAsync(x => x.OrganizationId == seed.OrganizationId));
         Assert.Equal(0, await db.PushDeviceTokens.CountAsync(x => x.UserId == seed.UserId));
         Assert.Equal(0, await db.NotificationPreferences.CountAsync(x => x.UserId == seed.UserId));
         Assert.Equal(0, await db.ExportConsents.CountAsync(x => x.OwnerUserId == seed.UserId));
         Assert.Equal(0, await db.Reports.CountAsync(x => x.OwnerUserId == seed.UserId));
         Assert.Equal(0, await db.CardiMemberCreationKeys.CountAsync(x => x.UserId == seed.UserId));
         Assert.Equal(0, await db.UserCardiMembers.CountAsync(x => x.UserId == seed.UserId));
-        Assert.Equal(0, await db.MetricAlarms.CountAsync(
-            x => x.OrganizationId == seed.OrganizationId && x.CardiMemberId == null));
     }
 
     /// <summary>
@@ -210,6 +207,95 @@ public class AccountErasureCascadeTests : IAsyncLifetime
 
         await db.SaveChangesAsync();
         return (organization.Id, leaving.Id, staying.Id);
+    }
+
+    /// <summary>
+    /// The organisation survives a member it still owns, even when every user in it has gone.
+    /// Nothing enforces <c>CardiMember.OrganizationId</c> — there is no foreign key — so deleting
+    /// the row a released member points at would not fail loudly, it would quietly make them
+    /// unreachable to every organisation-scoped read. Same definition
+    /// <c>OrphanedOrganizationCleanupWorker</c> uses: spent means no users <em>and</em> no
+    /// members.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_KeepsTheOrganisationAReleasedMemberStillBelongsTo()
+    {
+        var seed = await SeedAsync();
+
+        await EraseAsync(seed.UserId);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        // The shared member belongs to the departing caregiver's organisation, and the caregiver
+        // who stays is in a different household — so this organisation has no users left and one
+        // member left, and the member is what keeps it.
+        var member = await db.CardiMembers.SingleAsync(m => m.Id == seed.SharedMemberId);
+        Assert.Equal(seed.OrganizationId, member.OrganizationId);
+        Assert.Equal(1, await db.Organizations.CountAsync(o => o.Id == seed.OrganizationId));
+        Assert.Equal(0, await db.Users.CountAsync(u => u.Id == seed.UserId));
+    }
+
+    /// <summary>
+    /// An account-wide alarm is deleted with its states, never ahead of them. The member cascade
+    /// only clears states for a member it is erasing, so a released member's state rows would be
+    /// left naming an alarm id that no longer resolves, and nothing would ever collect them.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_ClearsTheStatesOfTheAccountAlarmsItDeletes()
+    {
+        var (organizationId, leaving, _, memberId, alarmId) =
+            await SeedHouseholdWithAccountAlarmStateAsync();
+
+        await EraseAsync(leaving);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        // The member is erased with the account here, so the alarm and its state both go — the
+        // assertion that matters is that no state row outlives its alarm.
+        Assert.Equal(0, await db.MetricAlarms.CountAsync(a => a.Id == alarmId));
+        Assert.Equal(0, await db.MetricAlarmStates.CountAsync(s => s.MetricAlarmId == alarmId));
+        Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.Id == memberId));
+        Assert.Equal(0, await db.Organizations.CountAsync(o => o.Id == organizationId));
+    }
+
+    /// <summary>One household, one member, and an account-wide alarm with a state row for it.</summary>
+    private async Task<(Guid OrganizationId, Guid Leaving, Guid Member, Guid MemberId, Guid AlarmId)>
+        SeedHouseholdWithAccountAlarmStateAsync()
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        var organization = new Organization { Name = "Hale family", Type = OrganizationType.Family };
+        db.Organizations.Add(organization);
+
+        var leaving = NewUser(organization.Id, "Ruth Hale");
+        db.Users.Add(leaving);
+
+        var member = NewMember(organization.Id, "Edward Hale");
+        db.CardiMembers.Add(member);
+        await db.SaveChangesAsync();
+
+        db.UserCardiMembers.Add(NewLink(leaving.Id, member.Id, active: true));
+
+        var alarm = new MetricAlarm
+        {
+            OrganizationId = organization.Id,
+            CardiMemberId = null,
+            Name = "Account default",
+        };
+        db.MetricAlarms.Add(alarm);
+        await db.SaveChangesAsync();
+
+        db.MetricAlarmStates.Add(new MetricAlarmState
+        {
+            MetricAlarmId = alarm.Id,
+            CardiMemberId = member.Id,
+        });
+        await db.SaveChangesAsync();
+
+        return (organization.Id, leaving.Id, member.Id, member.Id, alarm.Id);
     }
 
     /// <summary>

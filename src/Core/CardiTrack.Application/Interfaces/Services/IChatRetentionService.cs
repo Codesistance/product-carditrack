@@ -34,8 +34,15 @@ public interface IChatRetentionService
         DateTime cutoffUtc, int limit, CancellationToken ct = default);
 
     /// <summary>
-    /// Deletes the named conversations with their turns and usage rows, in one transaction.
+    /// Deletes the named conversations with their turns and usage rows, in one transaction —
+    /// skipping any that are no longer expired.
     /// </summary>
+    /// <param name="cutoffUtc">
+    /// Re-applied inside the deletion transaction. The ids come from an earlier read, and the
+    /// advisory lock this runs under keeps a second worker out, not a caregiver: a reply written
+    /// in the gap makes a conversation live again, and deleting it on the strength of a stale
+    /// list would take a thread somebody is in the middle of.
+    /// </param>
     Task<ChatRetentionReport> DeleteSessionsAsync(
-        IReadOnlyList<Guid> sessionIds, CancellationToken ct = default);
+        IReadOnlyList<Guid> sessionIds, DateTime cutoffUtc, CancellationToken ct = default);
 }

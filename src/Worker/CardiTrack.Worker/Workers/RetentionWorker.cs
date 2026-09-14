@@ -1,8 +1,6 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
-using CardiTrack.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Worker.Workers;
@@ -79,35 +77,11 @@ public class RetentionWorker : CronBackgroundService
 
     protected override async Task ExecuteJobAsync(CancellationToken stoppingToken)
     {
-        using var lockScope = _scopeFactory.CreateScope();
-        var lockContext = lockScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var ran = await AdvisoryLock.TryRunAsync(
+            _scopeFactory, AdvisoryLockKey, () => SweepAsync(stoppingToken), stoppingToken);
 
-        // Session-scoped and non-blocking, exactly as the other destructive sweeps take it: an
-        // instance that cannot get the lock skips the run rather than queueing behind it and
-        // sweeping the same estate again afterwards.
-        var connection = lockContext.Database.GetDbConnection();
-        await connection.OpenAsync(stoppingToken);
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"SELECT pg_try_advisory_lock({AdvisoryLockKey});";
-        var acquired = (bool?)await command.ExecuteScalarAsync(stoppingToken) ?? false;
-
-        if (!acquired)
-        {
+        if (!ran)
             _logger.LogInformation("Retention skipped — another instance holds the advisory lock.");
-            return;
-        }
-
-        try
-        {
-            await SweepAsync(stoppingToken);
-        }
-        finally
-        {
-            await using var unlock = connection.CreateCommand();
-            unlock.CommandText = $"SELECT pg_advisory_unlock({AdvisoryLockKey});";
-            await unlock.ExecuteScalarAsync(CancellationToken.None);
-        }
     }
 
     /// <summary>The sweep behind the advisory lock. Protected so tests can drive it directly.</summary>
@@ -115,6 +89,22 @@ public class RetentionWorker : CronBackgroundService
     {
         var options = _options.CurrentValue;
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+
+        // Checked before anything is read, let alone deleted, the same way
+        // PartitionMaintenanceWorker gates its own retention values. The failure this prevents is
+        // not a crash: a negative ChatRetentionDays puts the cutoff in the *future*, at which
+        // point every conversation on the platform is expired and a job whose whole purpose is to
+        // delete them would do exactly that, quietly and correctly by its own arithmetic. A zero
+        // or negative BatchSize is the harmless twin — it silently retains everything instead —
+        // but a retention job doing nothing is also worth a loud line rather than a clean one.
+        if (options.ChatRetentionDays <= 0 || options.BatchSize <= 0)
+        {
+            _logger.LogError(
+                "Retention skipped: invalid configuration (ChatRetentionDays={ChatDays}, " +
+                "BatchSize={BatchSize}). Both must be positive.",
+                options.ChatRetentionDays, options.BatchSize);
+            return;
+        }
 
         _logger.LogInformation(
             "Retention triggered at {Time} (dry run: {DryRun}).", utcNow, options.DryRun);
@@ -127,11 +117,22 @@ public class RetentionWorker : CronBackgroundService
     /// Erases every account whose thirty-day cancellation window has closed.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Each account gets its own scope and its own error boundary. The cascade is long and
     /// re-entrant — the user row and its <c>DeletionRequestedAtUtc</c> survive until the final
     /// step — so an account that throws halfway is simply due again next run, with most of its
     /// rows already gone. A failure that recurs run after run is the signal to look at, which is
     /// why the log line is at Error.
+    /// </para>
+    /// <para>
+    /// <strong>A cancellation cannot be lost in the gap between selecting an account and erasing
+    /// it</strong>, because cancelling and erasing are decided by the same boundary:
+    /// <c>UserService.CancelDeletionAsync</c> refuses once <c>UtcNow</c> has reached
+    /// <c>requestedAt + DeletionGracePeriod</c>, and this pass selects exactly the accounts that
+    /// have passed it. An account the worker can see is one the API will no longer un-delete. The
+    /// re-read below is belt to that braces — it costs one query and it is the assertion that
+    /// keeps the two halves honest if either boundary is ever changed alone.
+    /// </para>
     /// </remarks>
     private async Task EraseDueAccountsAsync(
         RetentionWorkerOptions options, DateTime utcNow, CancellationToken ct)
@@ -170,8 +171,23 @@ public class RetentionWorker : CronBackgroundService
             try
             {
                 using var accountScope = _scopeFactory.CreateScope();
-                var erasure = accountScope.ServiceProvider.GetRequiredService<IAccountErasureService>();
+                var unitOfWork = accountScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
+                // See the remarks above: this should never be empty for an account this pass
+                // selected. If it is, the two boundaries have drifted and the safe reading is
+                // the caregiver's.
+                var account = await unitOfWork.Users.GetByIdAsync(userId);
+                if (account?.DeletionRequestedAtUtc is not { } requestedAt || requestedAt > cutoff)
+                {
+                    _logger.LogWarning(
+                        "Retention skipped account {UserId}: its deletion request is no longer " +
+                        "outstanding. Cancelling after the window closes should be impossible — " +
+                        "check UserService.CancelDeletionAsync against this worker's cutoff.",
+                        userId);
+                    continue;
+                }
+
+                var erasure = accountScope.ServiceProvider.GetRequiredService<IAccountErasureService>();
                 var report = await erasure.EraseAsync(userId, ct);
                 erased++;
 
@@ -233,13 +249,33 @@ public class RetentionWorker : CronBackgroundService
 
         if (options.DryRun)
         {
+            // Every id, as the account pass does. A rehearsal that reports only a count cannot be
+            // reviewed — an operator has no way to tell which conversations the real run will
+            // take. Ids only; nothing of what was said.
+            foreach (var sessionId in expired)
+            {
+                _logger.LogInformation(
+                    "Retention would delete chat conversation {SessionId}, whose last turn " +
+                    "predates {Cutoff}.", sessionId, cutoff);
+            }
+
             _logger.LogInformation(
-                "Retention would delete {Count} chat conversation(s) whose last turn predates " +
-                "{Cutoff}.", expired.Count, cutoff);
+                "Retention would delete {Count} chat conversation(s) in total.", expired.Count);
             return;
         }
 
-        var report = await retention.DeleteSessionsAsync(expired, ct);
+        var report = await retention.DeleteSessionsAsync(expired, cutoff, ct);
+
+        // Fewer than were found means somebody replied between the two calls and the service
+        // rightly declined to take their thread — worth a line, because otherwise the counts
+        // simply disagree with no explanation.
+        if (report.Sessions < expired.Count)
+        {
+            _logger.LogInformation(
+                "Retention left {Count} of {Found} chat conversation(s): a turn was written " +
+                "after they were selected, so they are no longer expired.",
+                expired.Count - report.Sessions, expired.Count);
+        }
 
         _logger.LogInformation(
             "Retention chat pass complete. Conversations deleted: {Sessions}, turns: {Turns}, " +

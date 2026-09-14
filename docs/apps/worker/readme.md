@@ -4,7 +4,7 @@
 
 `CardiTrack.Worker` hosts the platform's **non-AI scheduled background jobs**, driven by cron expressions and the [Cronos](https://github.com/HangfireIO/Cronos) library. Although it is a background service, the project uses the **`Microsoft.NET.Sdk.Web` SDK with `Exe` output** — Cloud Run requires an HTTP listener for startup probes, so the worker binds Kestrel to the `PORT` env var (default 8080) and exposes a minimal `GET /healthz` endpoint alongside its hosted services.
 
-The 18 workers registered today (crons from `appsettings.json`):
+The 19 workers registered today (crons from `appsettings.json`):
 
 | Worker | Default cron (UTC) | Purpose |
 |---|---|---|
@@ -12,6 +12,7 @@ The 18 workers registered today (crons from `appsettings.json`):
 | `HistoryRepullWorker` | `0 6-59/10 * * * *` (every 10 min, offset) | Executes caregiver-requested history re-pulls (M1-15) — one 7-day chunk per request per tick, up to 5 requests a tick |
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `OrphanedPhotoCleanupWorker` | `0 30 3 * * *` (daily 03:30) | Deletes member-photo blobs no active member references (24 h grace) and clears photos left on soft-deleted members — the enforcement backstop behind the API's best-effort deletes |
+| `ExpiredReportCleanupWorker` | `0 0 4 * * *` (daily 04:00) | Deletes health-data export objects and rows past their download window, and fails out generations abandoned by a restart |
 | `RetentionWorker` | `0 0 5 * * *` (daily 05:00) | The two published retention promises: erases an account once its 30-day cancellation window has elapsed, and deletes member chat conversations 90 days after their last turn |
 | `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
 | `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly; `RunOnStartup: true`) | Pre-creates partitions for the partitioned time-series tables and drops the ones past retention — granular 90 d, hourly rollups 13 mo, **digests 7 mo, real-time assessments 90 d, environmental readings 90 d** |
@@ -273,8 +274,13 @@ because somebody asked. Two rules, both of them published commitments:
   expire.
 
 - Runs daily at 05:00 UTC (`0 0 5 * * *` by default), after the photo and report sweeps.
-- Takes a **non-blocking Postgres advisory lock** (key `8_472_100_005`): a second Cloud Run instance
-  skips the run rather than erasing the same estate twice.
+- Takes a **non-blocking Postgres advisory lock** through `AdvisoryLock.TryRunAsync` (key
+  `8_472_100_005`): a second Cloud Run instance skips the run rather than erasing the same estate
+  twice.
+- **Validates its configuration before reading anything.** A non-positive `ChatRetentionDays` or
+  `BatchSize` skips the whole sweep with an Error line, the way `PartitionMaintenanceWorker` gates
+  its own retention values — a negative retention period would put the cutoff in the *future*, at
+  which point every conversation on the platform is expired.
 - The 30-day threshold is **not configurable** — it is `UserService.DeletionGracePeriod`, the same
   constant the API uses to tell a caregiver the date they can cancel until. A worker that could
   disagree with that sentence would erase an account somebody still had the right to keep.
@@ -445,7 +451,7 @@ public static IServiceCollection AddWorker<T>(
     return services;
 }
 
-// Program.cs — one line per job (abridged; 18 in total):
+// Program.cs — one line per job (abridged; 19 in total):
 builder.Services.AddWorker<WearableSyncWorker>(configuration, nameof(WearableSyncWorker));
 builder.Services.AddWorker<OrphanedOrganizationCleanupWorker>(configuration, nameof(OrphanedOrganizationCleanupWorker));
 builder.Services.AddWorker<OrphanedPhotoCleanupWorker>(configuration, nameof(OrphanedPhotoCleanupWorker));

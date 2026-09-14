@@ -32,6 +32,18 @@ namespace CardiTrack.Infrastructure.Services;
 /// deletes the <c>DeviceConnections</c> row, which stops collection, but the token stays live at
 /// Google until it expires. The runbook's "revoke before deleting" step is still a manual duty.
 /// </para>
+/// <para>
+/// <strong>The races this does not close.</strong> Two reads decide destructive work: whether
+/// anyone else still watches a member, and whether anyone else is still in the organisation.
+/// Both are re-asked as late as they can be — the member check immediately before each erasure,
+/// the organisation check inside the final transaction — but neither takes a lock, so under
+/// <c>READ COMMITTED</c> a link or a user created in the remaining gap is not seen. That gap is
+/// currently unreachable: <c>CardiMemberService</c> is the only code that creates a
+/// <c>UserCardiMember</c>, and it creates exactly one, for the caregiver adding the member, so no
+/// member has a second watcher and no user joins an existing organisation. **When family sharing
+/// ships (R2), this needs a real claim** — a row lock on the user, or a status column the erasure
+/// transitions through — not a re-read.
+/// </para>
 /// </remarks>
 public class AccountErasureService : IAccountErasureService
 {
@@ -71,10 +83,30 @@ public class AccountErasureService : IAccountErasureService
         var rows = new List<(string Table, int Rows)>();
         var orphaned = new List<string>();
         var erased = new List<Guid>();
+        var released = toRelease.ToList();
+
+        // The members about to go. Named as a set because the organisation check below has to
+        // ignore them: they still have rows at that point in the loop's own transaction history,
+        // but they are not what keeps an organisation alive.
+        var toEraseSet = toErase.ToHashSet();
 
         foreach (var memberId in toErase)
         {
             ct.ThrowIfCancellationRequested();
+
+            // Asked again, immediately before the irreversible part. The caller decided this
+            // member was unwatched some time ago — a whole cascade ago, if this is the second
+            // member in the loop — and erasing somebody a relative started watching in the
+            // meantime is the one mistake here that cannot be explained to them afterwards.
+            if (await IsStillWatchedByAnotherAsync(memberId, userId, ct))
+            {
+                _logger.LogWarning(
+                    "Account erasure for {UserId} skipped CardiMember {CardiMemberId}: another "
+                    + "caregiver started watching them after the cascade began. Released instead.",
+                    userId, memberId);
+                released.Add(memberId);
+                continue;
+            }
 
             var report = await _members.EraseAsync(memberId, ct);
             erased.Add(memberId);
@@ -92,11 +124,18 @@ public class AccountErasureService : IAccountErasureService
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         try
         {
-            // Asked before the user row goes, because afterwards the question cannot be asked —
-            // and inside the transaction, so somebody joining the household while the cascade
-            // runs cannot leave their own organisation deleted underneath them.
-            var lastInOrganization = !await _db.Users
-                .AnyAsync(u => u.OrganizationId == user.OrganizationId && u.Id != userId, ct);
+            // The same definition OrphanedOrganizationCleanupWorker uses: an organisation is
+            // spent when it has no users **and no CardiMembers**. The members half is not
+            // theoretical — a released member keeps an OrganizationId pointing here, and with no
+            // foreign key behind it, deleting the organisation would leave them unreachable by
+            // every organisation-scoped read rather than merely unwatched by this caregiver.
+            // Asked inside the transaction, and as late as possible, because afterwards the
+            // question cannot be asked at all.
+            var organizationSpent =
+                !await _db.Users.AnyAsync(
+                    u => u.OrganizationId == user.OrganizationId && u.Id != userId, ct)
+                && !await _db.CardiMembers.AnyAsync(
+                    m => m.OrganizationId == user.OrganizationId && !toEraseSet.Contains(m.Id), ct);
 
             async Task Step<T>(string table, IQueryable<T> query) where T : class =>
                 rows.Add((table, await query.ExecuteDeleteAsync(ct)));
@@ -137,19 +176,33 @@ public class AccountErasureService : IAccountErasureService
             await Step("CardiMemberCreationKeys", _db.CardiMemberCreationKeys.Where(x => x.UserId == userId));
             await Step("UserCardiMembers", _db.UserCardiMembers.Where(x => x.UserId == userId));
 
-            if (lastInOrganization)
+            if (organizationSpent)
             {
                 // Account-wide alarm defaults are keyed on the organisation, not the user, so
-                // they are shared configuration while anyone else is still in it.
+                // they are shared configuration while anyone else is still in it. States first,
+                // the same order MetricAlarmService.DeleteAsync takes: an alarm row removed
+                // ahead of its states leaves rows naming an alarm id that no longer resolves,
+                // and nothing else would ever collect them — the member cascade only deletes
+                // states for a member it is erasing.
+                await Step("MetricAlarmStates (account alarms)", _db.MetricAlarmStates
+                    .Where(s => _db.MetricAlarms.Any(a =>
+                        a.Id == s.MetricAlarmId
+                        && a.OrganizationId == user.OrganizationId
+                        && a.CardiMemberId == null)));
                 await Step("MetricAlarms (account rows)", _db.MetricAlarms
                     .Where(a => a.OrganizationId == user.OrganizationId && a.CardiMemberId == null));
+
+                // Trial and plan records, not a billing ledger: no payment has ever been taken
+                // (Stripe is R2, unbuilt), so there is nothing here that UK tax law requires be
+                // kept. Revisit when billing ships — an invoice is not a subscription row, and
+                // whatever holds one will need an exception of its own.
                 await Step("Subscriptions", _db.Subscriptions
                     .Where(s => s.OrganizationId == user.OrganizationId));
             }
 
             await Step("Users", _db.Users.Where(u => u.Id == userId));
 
-            if (lastInOrganization)
+            if (organizationSpent)
                 await Step("Organizations", _db.Organizations.Where(o => o.Id == user.OrganizationId));
 
             await transaction.CommitAsync(ct);
@@ -166,10 +219,17 @@ public class AccountErasureService : IAccountErasureService
         _logger.LogInformation(
             "Account erasure for {UserId} complete. Members erased: {Erased}, released: " +
             "{Released}, tables touched: {Tables}, orphaned objects: {Orphaned}.",
-            userId, erased.Count, toRelease.Count, rows.Count, orphaned.Count);
+            userId, erased.Count, released.Count, rows.Count, orphaned.Count);
 
-        return new AccountErasureReport(userId, erased, toRelease, rows, orphaned);
+        return new AccountErasureReport(userId, erased, released, rows, orphaned);
     }
+
+    /// <summary>
+    /// Whether any caregiver other than the departing one still actively watches this member.
+    /// </summary>
+    private Task<bool> IsStillWatchedByAnotherAsync(Guid memberId, Guid userId, CancellationToken ct) =>
+        _db.UserCardiMembers.AnyAsync(
+            l => l.CardiMemberId == memberId && l.UserId != userId && l.IsActive, ct);
 
     /// <summary>
     /// Splits the members this caregiver is linked to into the ones they were the last active

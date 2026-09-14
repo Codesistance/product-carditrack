@@ -42,10 +42,16 @@ public sealed record AccountErasureReport(
 /// </para>
 /// <para>
 /// <strong><c>AuditLogs</c> are kept</strong>, as they are for a member erasure: they are the
-/// record of who read health data, which an erasure request does not ask to destroy. Billing rows
-/// are kept too, for the six years UK tax law requires — see the policy's §5. So a successful
-/// report means every row this contract covers is gone, not that no row anywhere names this
-/// person.
+/// record of who read health data, which an erasure request does not ask to destroy. So a
+/// successful report means every row this contract covers is gone, not that no row anywhere names
+/// this person.
+/// </para>
+/// <para>
+/// <strong>The subscription row goes.</strong> The policy's §5 keeps billing records for the six
+/// years UK tax law requires, but there are none: Stripe is R2 and unbuilt, no payment has ever
+/// been taken, and a <c>Subscription</c> row is a trial and plan record rather than a ledger
+/// entry. When billing ships, whatever holds an invoice will need an exception here — and this
+/// paragraph is the reminder that it does not have one yet.
 /// </para>
 /// </remarks>
 public interface IAccountErasureService

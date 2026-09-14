@@ -59,8 +59,9 @@ exports in GCS — releases the members somebody else still watches, and then re
 own rows.
 
 **Built is not the same as running.** The worker is merged and tested but takes effect in an
-environment only once that environment has been deployed and the `AddUserDeletionRequest` migration
-applied. Until then, and for anything the worker reports as an orphaned storage object,
+environment only once that environment has been deployed and both pending migrations applied —
+`AddUserDeletionRequest` and `AddCardiMemberCreationKeys`, the latter because the member cascade
+deletes from the table it creates. Until then, and for anything the worker reports as an orphaned storage object,
 [manual_erasure_runbook.md](../../../technical/manual_erasure_runbook.md) is still the operational
 path, and these endpoints are what tell an operator a request exists.
 
