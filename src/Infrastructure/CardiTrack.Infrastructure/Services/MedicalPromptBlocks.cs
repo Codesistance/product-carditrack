@@ -505,8 +505,7 @@ internal static partial class MedicalPromptBlocks
         what has reached us — not a statement that the person did nothing, and not a sign that
         anything is wrong. Asked about such a day, say plainly that no reading arrived for it.
         Never answer with a different day's figure in its place, and never say why it is missing:
-        a device not worn, a phone that did not sync and a provider publishing late cannot be told
-        apart from this data.
+        the causes cannot be told apart from this data.
         """;
 
     /// <summary>

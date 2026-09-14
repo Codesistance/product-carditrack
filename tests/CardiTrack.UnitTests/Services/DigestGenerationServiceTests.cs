@@ -901,6 +901,7 @@ public class DigestGenerationServiceTests
     [InlineData("Respond with: headline, a label of two to five words naming what this is about.")]
     [InlineData("Everything about the last day looked broadly settled, with steady readings "
                 + "through the evening and a full night's sleep afterwards, which is what we hoped for.")]
+    [MemberData(nameof(ParrotedHeadlineLabels))]
     public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineIsUnusable(string headline)
     {
         _rewriteAi.GenerateStructuredAsync<DigestGenerationService.DigestAiResponse>(
@@ -918,6 +919,9 @@ public class DigestGenerationServiceTests
             Arg.Is<DigestEntry>(d => d.Headline == null && d.Text == "A quiet, steady day."),
             Arg.Any<CancellationToken>());
     }
+
+    public static IEnumerable<object[]> ParrotedHeadlineLabels() =>
+        DigestGenerationService.ParrotedHeadlines.Select(h => new object[] { h });
 
     /// <summary>
     /// The headline from the card that prompted all of this. The read compared a daytime

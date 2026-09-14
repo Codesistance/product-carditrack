@@ -1,4 +1,6 @@
-﻿using System.Reflection;
+﻿using System.ComponentModel;
+using System.Reflection;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Services.PromptContext;
@@ -448,15 +450,92 @@ public class MedicalPromptToneTests
         Assert.DoesNotContain("Reading through the last week of sleep", waiting, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// MedGemma completes from the nearest text. A phrase that would be a valid answer becomes
+    /// the answer, member after member — the digest already shipped "Ask how they slept" that way.
+    /// Rules only: no "for example", no "e.g.", no sample labels offered as the thing not to write.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Prompts))]
+    public void No_prompt_offers_a_few_shot_example_to_copy(string name, string prompt) =>
+        AssertNoFewShot(name, prompt);
+
+    [Fact]
+    public void Routing_and_planning_prompts_offer_no_few_shot_example_to_copy()
+    {
+        AssertNoFewShot("ChatRouter", ChatRouterService.BuildPrompt("how did he sleep?", null));
+        AssertNoFewShot(
+            "DataQueryPlanner",
+            DataQueryPlannerService.BuildPrompt("how did he sleep?", null, ChatDataRegistry.All));
+
+        foreach (var entry in ChatWorkflowCatalogue.Routable)
+            AssertNoFewShot($"ChatWorkflowCatalogue.{entry.Label}", entry.Purpose);
+
+        AssertNoFewShot("ChatTheme", ChatThemeServiceInstructions());
+    }
+
+    [Fact]
+    public void Reply_schema_descriptions_offer_no_few_shot_example_to_copy()
+    {
+        Type[] services =
+        [
+            ..PromptServices,
+            typeof(ChatRouterService),
+            typeof(DataQueryPlannerService),
+            typeof(ChatThemeService),
+        ];
+
+        foreach (var type in services)
+        {
+            foreach (var nested in type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                foreach (var prop in nested.GetProperties())
+                {
+                    var description = prop.GetCustomAttribute<DescriptionAttribute>()?.Description;
+                    if (description is null)
+                        continue;
+
+                    AssertNoFewShot($"{type.Name}.{nested.Name}.{prop.Name}", description);
+                }
+            }
+        }
+    }
+
+    private static string ChatThemeServiceInstructions()
+    {
+        var field = typeof(ChatThemeService).GetField(
+            "ThemeInstructions", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(field);
+        return (string)field.GetRawConstantValue()!;
+    }
+
+    private static void AssertNoFewShot(string name, string text)
+    {
+        Assert.False(
+            text.Contains("for example", StringComparison.OrdinalIgnoreCase),
+            $"{name} still carries 'for example'.");
+        Assert.False(
+            text.Contains("e.g.", StringComparison.OrdinalIgnoreCase),
+            $"{name} still carries 'e.g.'.");
+        foreach (var label in DigestGenerationService.ParrotedHeadlines)
+        {
+            Assert.False(
+                text.Contains($"like {label}", StringComparison.OrdinalIgnoreCase),
+                $"{name} still names '{label}' as an illustration.");
+        }
+    }
+
     [Fact]
     public void Triage_does_not_treat_a_worried_verdict_as_advice()
     {
         var triage = AllPrompts().Single(p => p.Field == "MaliciousCheckInstructions").Prompt;
+        var adviceStart = triage.IndexOf("isAskingForAdvice", StringComparison.Ordinal);
+        Assert.True(adviceStart >= 0);
+        var adviceSection = triage[adviceStart..];
 
-        Assert.Contains("should I be worried about her?", triage, StringComparison.Ordinal);
-        Assert.Contains("is not this", triage, StringComparison.Ordinal);
-        var adviceLine = triage.Split('\n').First(l => l.Contains("isAskingForAdvice", StringComparison.Ordinal));
-        Assert.DoesNotContain("should I be worried about her?", adviceLine, StringComparison.Ordinal);
+        Assert.Contains("whether it is worth attention", adviceSection, StringComparison.Ordinal);
+        Assert.Contains("is not this", adviceSection, StringComparison.Ordinal);
+        Assert.DoesNotContain("should I be worried", triage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

@@ -71,9 +71,8 @@ internal static class DaybookPrompt
           readings mean for the family — plainly, before any figures, so a reader who gets no
           further still has the answer. Then the account, keeping every number it has now.
         - headline: a five-to-seven-word qualification of the day you just described — what kind
-          of day it was, never a generic label like day summary or day's readings, which could
-          title any day at all. Sentence case, no full stop, no name and no CardiTrackCardiMember, not a
-          sentence.
+          of day it was, never a generic label that could title any day at all. Sentence case, no
+          full stop, no name and no CardiTrackCardiMember, not a sentence.
         - suggestion: one supportive, specific thing the family could do, at most 25 words,
           answering something in the day's readings closely enough that a reader could tell what it
           came from. It may reference an already-known routine fact. Never a diagnosis, never a

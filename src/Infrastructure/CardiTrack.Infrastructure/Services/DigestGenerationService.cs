@@ -218,6 +218,27 @@ public partial class DigestGenerationService : IDigestGenerationService
     ];
 
     /// <summary>
+    /// Headlines that are the brief's old illustrations rather than this period. The journal
+    /// briefs and their reply schemas used to name "day summary" / "day's readings" (and the
+    /// week/month twins) as the generic labels to avoid, and those labels came back as the title
+    /// — the same nearest-text completion <see cref="ParrotedSuggestions"/> already caught. The
+    /// illustrations are gone; these stay as the backstop.
+    /// </summary>
+    /// <remarks>
+    /// Matched whole, like <see cref="ParrotedSuggestions"/>: "A quieter day's readings at rest"
+    /// is a real qualification and must survive.
+    /// </remarks>
+    internal static readonly string[] ParrotedHeadlines =
+    [
+        "day summary",
+        "day's readings",
+        "weekly summary",
+        "week's readings",
+        "monthly summary",
+        "month's readings",
+    ];
+
+    /// <summary>
     /// Stems that make a suggestion a diagnosis rather than a supportive action. The prompt already
     /// asks the model not to name or guess at a medical condition; this is the backstop for when it
     /// does anyway — the same "written but rejected" pattern as <see cref="ParrotedSuggestions"/>,
@@ -2140,6 +2161,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         {
             0 => "the model returned none",
             > MaxHeadlineLength => $"it ran to {cleaned.Length} characters",
+            _ when ParrotedHeadlines.Contains(cleaned, StringComparer.OrdinalIgnoreCase)
+                => "it repeated a generic label",
             _ => ReadsLikeTheInstructions(cleaned) ? "it restated the instructions" : null,
         };
 
@@ -2661,8 +2684,8 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         [Description(
             "A five-to-seven-word qualification of the day described above, in sentence case — "
-            + "what kind of day it was, never a generic label like day summary or day's "
-            + "readings. No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
+            + "what kind of day it was, never a generic label that could title any day at all. "
+            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
         public required string Headline { get; init; }
 
@@ -2695,8 +2718,8 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         [Description(
             "A five-to-seven-word qualification of the week described above, in sentence case — "
-            + "what kind of week it was, never a generic label like weekly summary or week's "
-            + "readings. No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
+            + "what kind of week it was, never a generic label that could title any week at all. "
+            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
         public required string Headline { get; init; }
 
@@ -2726,8 +2749,8 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         [Description(
             "A five-to-seven-word qualification of the month described above, in sentence case — "
-            + "what kind of month it was, never a generic label like monthly summary or month's "
-            + "readings. No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
+            + "what kind of month it was, never a generic label that could title any month at all. "
+            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
         public required string Headline { get; init; }
 

@@ -85,9 +85,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
 
         Respond with:
         - message: 1-3 plain sentences a caregiver can act on.
-        - severity: exactly one of critical, high, medium, or low — critical means seek help
-          now, high means look today, medium means worth a mention in the daily summary, low
-          means all is well.
+        - severity: exactly one of critical, high, medium, or low, from most to least severe.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     private readonly IUnitOfWork _unitOfWork;
