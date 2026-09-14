@@ -333,7 +333,7 @@ Visible on tab roots (Dashboard / Alerts / Journal / Settings). Onboarding hides
 
 - Badge count on Alerts tab for unread alerts
 - **The third tab is the Journal (CardiJournal), not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the daybook entries had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Journal / Settings, SVG icons). Alerts opens the real M1-10 list; the Journal lists the Daybook entries; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Journal / Settings, SVG icons). Alerts opens the real M1-10 list; the Journal lists the Daybook entries; Settings carries the account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, then four grouped section cards (Notifications, Account, Privacy, About), Sign out and the account-deletion request — see M2-01 below. Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 
@@ -1344,7 +1344,7 @@ Extends MVP 1 with account management, trend history, notification preferences, 
 **Entry:** Tab bar (Settings)
 **Exit:** → M2-02 Subscription | → M2-04 Notification Settings | → M1-13 CardiMember Detail | → M1-15 Device Management | → M1-17 Health Data Export
 
-> **As built today (MVP 1 `SettingsPage`):** account card, a **"Silenced reminders"** card listing every held notification mute with a "Show me everything again" reset, an "M2-01 coming soon" placeholder card, and Sign out. The full grouped list below is the MVP 2 design intent.
+> **As built today (MVP 1 `SettingsPage`):** an account card, a **"Silenced reminders"** card listing every held notification mute with a "Show me everything again" reset, then four grouped section cards — **Notifications** (quiet hours and what to hear about), **Account** (change password, export health data, export confirmations), **Privacy** (send diagnostics, opt-in and default off), **About** (terms, privacy policy, version) — then Sign out and the account-deletion request card. The groups follow Journal Settings’ shape: a section card naming the group with one line on what it is for, and inside it an outlined card of rows parted by hairlines, each row carrying its control on the right (a chevron, a switch, or a value). The placeholder card is gone. The grouped list below is still the MVP 2 design intent — subscription, family sharing and profile editing are not built.
 
 **User Profile Section (top card):**
 - Profile photo (large, tappable to edit)

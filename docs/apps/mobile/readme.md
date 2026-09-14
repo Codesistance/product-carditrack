@@ -50,7 +50,7 @@ src/Presentation/CardiTrack.Mobile/
 ├── DashboardPage                             # Main tab — hero, quick actions, key metrics, nudges
 ├── AlertsPage                                # Real M1-10 alerts list (API-backed)
 ├── JournalPage                             # Tab — the CardiJournal; Days / Weeks / Months control
-├── SettingsPage                              # Minimal (account card, silenced reminders, sign-out)
+├── SettingsPage                              # Account card, mutes, four grouped sections, sign-out, delete request
 ├── CardiMemberDetailPage                     # M1-13 (routed page)
 ├── EditCardiMemberPage                       # M1-14 (routed page)
 ├── DeviceManagementPage                      # M1-15 (routed page)

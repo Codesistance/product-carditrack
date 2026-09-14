@@ -90,150 +90,192 @@
                     </VerticalStackLayout>
                 </Border>
 
-                <!-- Rows follow Journal Settings' shape — title, one line of what it does, the
-                     current value or a chevron on the right — so the two settings screens read
-                     as one. Per-member settings (alert rules, journal timing, devices) stay on
-                     Member Details: this page is about the caregiver and the app. -->
-                <Label Text="Notifications"
-                       Style="{StaticResource DashboardSectionTitle}"
-                       Margin="4,8,4,-4"/>
+                <!-- Grouped the way Journal Settings groups: a section card that names the group
+                     and says in one line what it is for, and inside it an outlined card of rows
+                     parted by hairlines — each row a title, one line of what it does, and on the
+                     right the control that changes it (a chevron into a screen, a switch, or a
+                     value). The rows already followed that shape; the cards did not, so a reader
+                     coming from Journal Settings met four loose headings over eight separate
+                     cards and had to work out the grouping from the spacing.
 
-                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                          SemanticProperties.Description="Notification preferences"
-                          SemanticProperties.Hint="Quiet hours, lock-screen detail and what to hear about">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnNotificationPreferencesTapped"/>
-                        </Grid.GestureRecognizers>
-                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                            <Label Text="Quiet hours and what to hear about" Style="{StaticResource Body1SemiBoldDark}"/>
-                            <Label x:Name="NotificationSummary"
-                                   Text="Loading…"
-                                   Style="{StaticResource Body2}"/>
-                        </VerticalStackLayout>
-                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
-                               VerticalTextAlignment="Center"/>
-                    </Grid>
+                     Per-member settings (alert rules, journal timing, devices) stay on Member
+                     Details: this page is about the caregiver and the app. -->
+                <Border Style="{StaticResource ElevatedCard}">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Notifications" Style="{StaticResource DashboardSectionTitle}"/>
+                        <Label Text="Quiet hours, and what a locked screen shows."
+                               Style="{StaticResource Body2}"/>
+                        <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                            <VerticalStackLayout Spacing="0">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                      SemanticProperties.Description="Notification preferences"
+                                      SemanticProperties.Hint="Quiet hours, lock-screen detail and what to hear about">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnNotificationPreferencesTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="Quiet hours and what to hear about"
+                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                        <Label x:Name="NotificationSummary"
+                                               Text="Loading…"
+                                               Style="{StaticResource Body2}" FontSize="13"/>
+                                    </VerticalStackLayout>
+                                    <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+                    </VerticalStackLayout>
                 </Border>
 
-                <Label Text="Account"
-                       Style="{StaticResource DashboardSectionTitle}"
-                       Margin="4,8,4,-4"/>
+                <Border Style="{StaticResource ElevatedCard}">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Account" Style="{StaticResource DashboardSectionTitle}"/>
+                        <Label Text="Your sign-in, and copies you can take with you."
+                               Style="{StaticResource Body2}"/>
+                        <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                            <VerticalStackLayout Spacing="0">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                      SemanticProperties.Description="Change password"
+                                      SemanticProperties.Hint="Emails you a link to set a new password">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnChangePasswordTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="Change password"
+                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                        <Label x:Name="ChangePasswordDetail"
+                                               Text="We'll email you a link to set a new one"
+                                               Style="{StaticResource Body2}" FontSize="13"/>
+                                    </VerticalStackLayout>
+                                    <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
 
-                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                          SemanticProperties.Description="Change password"
-                          SemanticProperties.Hint="Emails you a link to set a new password">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnChangePasswordTapped"/>
-                        </Grid.GestureRecognizers>
-                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                            <Label Text="Change password" Style="{StaticResource Body1SemiBoldDark}"/>
-                            <Label x:Name="ChangePasswordDetail"
-                                   Text="We'll email you a link to set a new one"
-                                   Style="{StaticResource Body2}"/>
-                        </VerticalStackLayout>
-                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
-                               VerticalTextAlignment="Center"/>
-                    </Grid>
+                                <BoxView Style="{StaticResource DividerLine}"/>
+
+                                <!-- M1-17's second entry point. Under Account rather than its own
+                                     group: it is a thing the caregiver does with their data,
+                                     alongside the password and the deletion request at the foot. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                      SemanticProperties.Description="Export health data"
+                                      SemanticProperties.Hint="Download records as a PDF, spreadsheet or FHIR bundle">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnExportHealthDataTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="Export health data"
+                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                        <!-- Not the three formats: naming PDF, spreadsheet and FHIR
+                                             wrapped the line and asked a caregiver to pick a file
+                                             format before they had decided to export anything. The
+                                             formats are on the export screen, where choosing one is
+                                             the actual question. -->
+                                        <Label Text="Hard copy for a doctor's visit"
+                                               Style="{StaticResource Body2}" FontSize="13"/>
+                                    </VerticalStackLayout>
+                                    <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
+
+                                <BoxView Style="{StaticResource DividerLine}"/>
+
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                      SemanticProperties.Description="Export confirmations"
+                                      SemanticProperties.Hint="Stop a kept confirmation, or see earlier ones">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnExportConsentsTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="Export confirmations"
+                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                        <Label Text="Stop a kept confirmation, or see earlier ones"
+                                               Style="{StaticResource Body2}" FontSize="13"/>
+                                    </VerticalStackLayout>
+                                    <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+                    </VerticalStackLayout>
                 </Border>
 
-                <!-- M1-17's second entry point. Under Account rather than its own section:
-                     it is a thing the caregiver does with their data, alongside the password
-                     and the deletion request at the foot of this page. -->
-                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                          SemanticProperties.Description="Export health data"
-                          SemanticProperties.Hint="Download records as a PDF, spreadsheet or FHIR bundle">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnExportHealthDataTapped"/>
-                        </Grid.GestureRecognizers>
-                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                            <Label Text="Export health data" Style="{StaticResource Body1SemiBoldDark}"/>
-                            <Label Text="A PDF, spreadsheet or FHIR bundle for a doctor's visit"
-                                   Style="{StaticResource Body2}"/>
-                        </VerticalStackLayout>
-                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
-                               VerticalTextAlignment="Center"/>
-                    </Grid>
+                <Border Style="{StaticResource ElevatedCard}">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="Privacy" Style="{StaticResource DashboardSectionTitle}"/>
+                        <!-- Diagnostics are opt-in and ship off. On, the app sends its own logs and
+                             network timings so a crash can be traced; it never sends health data —
+                             the monitoring SDK is handed none, and Session Replay is not enabled.
+                             Off is a real off: nothing is collected and held waiting for a yes. -->
+                        <Label Text="What this phone says about how the app is running."
+                               Style="{StaticResource Body2}"/>
+                        <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                            <VerticalStackLayout Spacing="0">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="Send diagnostics"
+                                               Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
+                                        <Label Text="How the app behaves — never health data."
+                                               Style="{StaticResource Body2}" FontSize="13"
+                                               LineBreakMode="WordWrap"/>
+                                    </VerticalStackLayout>
+                                    <Switch x:Name="DiagnosticsSwitch"
+                                            Grid.Column="1"
+                                            OnColor="{StaticResource Primary}"
+                                            VerticalOptions="Center"
+                                            Toggled="OnDiagnosticsToggled"
+                                            SemanticProperties.Description="Send diagnostics"
+                                            SemanticProperties.Hint="Off sends nothing about how you use the app"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+                    </VerticalStackLayout>
                 </Border>
 
-                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                          SemanticProperties.Description="Export confirmations"
-                          SemanticProperties.Hint="Stop a kept confirmation, or see earlier ones">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnExportConsentsTapped"/>
-                        </Grid.GestureRecognizers>
-                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                            <Label Text="Export confirmations" Style="{StaticResource Body1SemiBoldDark}"/>
-                            <Label Text="Stop a kept confirmation, or see earlier ones"
-                                   Style="{StaticResource Body2}"/>
-                        </VerticalStackLayout>
-                        <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
-                               VerticalTextAlignment="Center"/>
-                    </Grid>
-                </Border>
+                <Border Style="{StaticResource ElevatedCard}">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="About" Style="{StaticResource DashboardSectionTitle}"/>
+                        <Label Text="What you agreed to, and which build you are running."
+                               Style="{StaticResource Body2}"/>
+                        <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                            <VerticalStackLayout Spacing="0">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                      SemanticProperties.Description="Terms of Service">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnTermsTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Label Text="Terms of Service" Style="{StaticResource Body1SemiBoldDark}"
+                                           FontSize="15" VerticalTextAlignment="Center"/>
+                                    <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
 
-                <!-- Diagnostics are opt-in and ship off. On, the app sends its own logs and
-                     network timings so a crash can be traced; it never sends health data — the
-                     monitoring SDK is handed none, and Session Replay is not enabled. Off is a
-                     real off: nothing is collected and held on the phone waiting for a yes. -->
-                <Label Text="Privacy"
-                       Style="{StaticResource DashboardSectionTitle}"
-                       Margin="4,8,4,-4"/>
+                                <BoxView Style="{StaticResource DividerLine}"/>
 
-                <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                    <!-- MinimumHeightRequest, not HeightRequest: the one line below fits the row at
-                         the default text size, and at a caregiver's enlarged system font it wraps —
-                         the row has to grow with it rather than crowd the card. -->
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" MinimumHeightRequest="60">
-                        <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center" Padding="0,8">
-                            <Label Text="Send diagnostics" Style="{StaticResource Body1SemiBoldDark}"/>
-                            <!-- Not "crash reports": Datadog crash reporting rides on RUM, which is
-                                 not enabled. What actually ships is the app's own logs and traces. -->
-                            <Label Text="How the app behaves — never health data."
-                                   Style="{StaticResource Body2}"
-                                   LineBreakMode="WordWrap"/>
-                        </VerticalStackLayout>
-                        <Switch x:Name="DiagnosticsSwitch"
-                                Grid.Column="1"
-                                OnColor="{StaticResource Primary}"
-                                VerticalOptions="Center"
-                                Toggled="OnDiagnosticsToggled"
-                                SemanticProperties.Description="Send diagnostics"
-                                SemanticProperties.Hint="Off sends nothing about how you use the app"/>
-                    </Grid>
-                </Border>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48"
+                                      SemanticProperties.Description="Privacy Policy">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnPrivacyTapped"/>
+                                    </Grid.GestureRecognizers>
+                                    <Label Text="Privacy Policy" Style="{StaticResource Body1SemiBoldDark}"
+                                           FontSize="15" VerticalTextAlignment="Center"/>
+                                    <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}"
+                                           VerticalTextAlignment="Center"/>
+                                </Grid>
 
-                <Label Text="About"
-                       Style="{StaticResource DashboardSectionTitle}"
-                       Margin="4,8,4,-4"/>
+                                <BoxView Style="{StaticResource DividerLine}"/>
 
-                <Border Style="{StaticResource ElevatedCard}" Padding="14,6">
-                    <VerticalStackLayout Spacing="0">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="48"
-                              SemanticProperties.Description="Terms of Service">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnTermsTapped"/>
-                            </Grid.GestureRecognizers>
-                            <Label Text="Terms of Service" Style="{StaticResource Body1SemiBoldDark}" VerticalTextAlignment="Center"/>
-                            <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}" VerticalTextAlignment="Center"/>
-                        </Grid>
-                        <BoxView Style="{StaticResource DividerLine}"/>
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="48"
-                              SemanticProperties.Description="Privacy Policy">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnPrivacyTapped"/>
-                            </Grid.GestureRecognizers>
-                            <Label Text="Privacy Policy" Style="{StaticResource Body1SemiBoldDark}" VerticalTextAlignment="Center"/>
-                            <Label Text="›" Grid.Column="1" FontSize="26" TextColor="{StaticResource MutedText}" VerticalTextAlignment="Center"/>
-                        </Grid>
-                        <BoxView Style="{StaticResource DividerLine}"/>
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="48">
-                            <Label Text="Version" Style="{StaticResource Body1SemiBoldDark}" VerticalTextAlignment="Center"/>
-                            <Label x:Name="VersionLabel" Grid.Column="1" Style="{StaticResource Body2}" VerticalTextAlignment="Center"/>
-                        </Grid>
+                                <!-- The one row here that is not a way through to something else, so
+                                     its value stays in the muted ink rather than the accent one a
+                                     tappable value wears on Journal Settings. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48">
+                                    <Label Text="Version" Style="{StaticResource Body1SemiBoldDark}"
+                                           FontSize="15" VerticalTextAlignment="Center"/>
+                                    <Label x:Name="VersionLabel" Grid.Column="1" Style="{StaticResource Body2}"
+                                           FontSize="13" VerticalTextAlignment="Center"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
                     </VerticalStackLayout>
                 </Border>
 
@@ -276,9 +318,16 @@
                             <Label Text="•  Nothing can be recovered afterwards." Style="{StaticResource Body2Dark}"/>
                         </VerticalStackLayout>
                         <!-- The label ticks the box on its own now — that is the control's, not a
-                             gesture this page wires — and the tick is DangerRed, as the box was. -->
+                             gesture this page wires — and the tick is DangerRed, as the box was.
+
+                             The negative margin is CheckField's own geometry, not a nudge by eye:
+                             its 22pt box is centred in a 44pt tap target, so the box draws 11pt in
+                             from the control's left edge and sat indented from every line of text
+                             above it. Pulling the control back by that 11 puts the box on the same
+                             left edge as the wording it is confirming. The -8 top closes the gap
+                             the same tap target opens above the box. -->
                         <controls:CheckField x:Name="DeleteConfirmCheck"
-                                             Margin="0,4,0,0"
+                                             Margin="-11,-8,0,0"
                                              Text="I understand this can't be undone"
                                              CheckedColor="{StaticResource DangerRed}"
                                              CheckedChanged="OnDeleteConfirmChanged"
