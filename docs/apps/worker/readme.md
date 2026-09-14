@@ -303,11 +303,13 @@ because somebody asked. Two rules, both of them published commitments:
   sweep continues. The cascade is re-entrant — the user row survives until its final step — so a
   half-finished erasure is simply due again next run. A failure that repeats run after run means the
   published 30-day promise is being missed and is the thing to investigate.
-- **It does not revoke the upstream OAuth grant.** Erasure deletes the `DeviceConnections` row,
-  which stops collection, but the token stays live at Google until it expires
-  ([#148](https://github.com/Codesistance/product-carditrack/issues/148) item 4). Nor does it send
-  the confirmation email the promise also makes. Both remain steps in
-  [manual_erasure_runbook.md](../../technical/manual_erasure_runbook.md).
+- **It revokes the upstream OAuth grant** before deleting the `DeviceConnections` row that holds
+  the token ([#148](https://github.com/Codesistance/product-carditrack/issues/148) item 4). A grant
+  the provider will not confirm revoked is logged at **Warning** and named in the erasure report:
+  it is the one failure here that can never be retried, because the token goes with the row, and
+  the only route left is the wearer's own provider account.
+- **It does not send the confirmation email** the published promise also makes. That remains a step
+  in [manual_erasure_runbook.md](../../technical/manual_erasure_runbook.md).
 - Log lines carry ids and counts only — never a member's name, a reading, or a line of a
   conversation.
 

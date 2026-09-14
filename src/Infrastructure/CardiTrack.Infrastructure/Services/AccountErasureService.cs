@@ -92,13 +92,14 @@ public class AccountErasureService : IAccountErasureService
             _logger.LogInformation(
                 "Account erasure for {UserId} found no user row; treating as already complete.",
                 userId);
-            return new AccountErasureReport(userId, [], [], [], []);
+            return new AccountErasureReport(userId, [], [], [], [], []);
         }
 
         var (toErase, toRelease) = await PartitionMembersAsync(userId, ct);
 
         var rows = new List<(string Table, int Rows)>();
         var orphaned = new List<string>();
+        var unrevoked = new List<Guid>();
         var erased = new List<Guid>();
         var released = toRelease.ToList();
 
@@ -134,6 +135,7 @@ public class AccountErasureService : IAccountErasureService
             erased.Add(memberId);
             rows.AddRange(report.RowsByTable.Select(r => ($"{r.Table} ({memberId})", r.Rows)));
             orphaned.AddRange(report.OrphanedObjects);
+            unrevoked.AddRange(report.UnrevokedGrants);
         }
 
         // From here the run is uninterruptible if any member has already been erased. Their
@@ -256,10 +258,11 @@ public class AccountErasureService : IAccountErasureService
 
         _logger.LogInformation(
             "Account erasure for {UserId} complete. Members erased: {Erased}, released: " +
-            "{Released}, tables touched: {Tables}, orphaned objects: {Orphaned}.",
-            userId, erased.Count, released.Count, rows.Count, orphaned.Count);
+            "{Released}, tables touched: {Tables}, unrevoked grants: {Unrevoked}, " +
+            "orphaned objects: {Orphaned}.",
+            userId, erased.Count, released.Count, rows.Count, unrevoked.Count, orphaned.Count);
 
-        return new AccountErasureReport(userId, erased, released, rows, orphaned);
+        return new AccountErasureReport(userId, erased, released, rows, unrevoked, orphaned);
     }
 
     /// <summary>

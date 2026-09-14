@@ -134,6 +134,7 @@ public static class ServiceCollectionExtensions
 
         // External clients
         services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Clients.IOAuthGrantRevoker, OAuthGrantRevoker>();
         services.AddScoped<IOAuthCodeExchangeService, OAuthCodeExchangeService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAuth0ManagementService, Auth0ManagementClient>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionService,

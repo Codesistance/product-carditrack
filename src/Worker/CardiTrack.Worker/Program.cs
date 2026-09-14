@@ -115,6 +115,7 @@ builder.Services.AddScoped<IChatRetentionService, ChatRetentionService>();
 
 // External clients
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
+builder.Services.AddScoped<CardiTrack.Application.Interfaces.Clients.IOAuthGrantRevoker, OAuthGrantRevoker>();
 
 // Fitbit provider (keyed IDeviceApiClient + keyed IDeviceSyncService)
 builder.Services.AddGoogleHealthProvider();

@@ -1,3 +1,4 @@
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
@@ -28,6 +29,7 @@ public class DeviceConnectionServiceTests
     private readonly IEncryptionService _encryption = Substitute.For<IEncryptionService>();
     private readonly IOAuthCodeExchangeService _codeExchange = Substitute.For<IOAuthCodeExchangeService>();
     private readonly IOAuthTokenRefreshService _tokenRefresh = Substitute.For<IOAuthTokenRefreshService>();
+    private readonly IOAuthGrantRevoker _grantRevoker = Substitute.For<IOAuthGrantRevoker>();
     private readonly IDistributedCache _cache =
         new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
 
@@ -85,7 +87,8 @@ public class DeviceConnectionServiceTests
             _tokenRefresh,
             new CardiMemberAccessService(_unitOfWork),
             new NoOpNotificationGapResolver(),
-            Options.Create(new List<DeviceProviderSettings> { fitbit }));
+            Options.Create(new List<DeviceProviderSettings> { fitbit }),
+            _grantRevoker);
     }
 
     private static ConnectDeviceRequest FitbitRequest() => new()
@@ -781,6 +784,49 @@ public class DeviceConnectionServiceTests
         var device = (await CreateSut().GetDevicesAsync(_userId, _memberId)).Devices.Single();
 
         Assert.Empty(device.Scopes);
+    }
+
+    /// <summary>
+    /// The provider is told before the token is forgotten. Order is the whole point: after the
+    /// nulling there is nothing left to revoke with, and the grant would stay live at Google —
+    /// CardiTrack still listed among the apps that can read this person's health data — while the
+    /// app showed the device as disconnected.
+    /// </summary>
+    [Fact]
+    public async Task Disconnect_RevokesTheGrant_WhileTheTokenIsStillThere()
+    {
+        var connection = SeedConnection(isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+
+        string? refreshTokenAtRevocation = null;
+        _grantRevoker.TryRevokeAsync(connection, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                refreshTokenAtRevocation = connection.RefreshToken;
+                return true;
+            });
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
+
+        await _grantRevoker.Received(1).TryRevokeAsync(connection, Arg.Any<CancellationToken>());
+        Assert.NotNull(refreshTokenAtRevocation);
+    }
+
+    /// <summary>
+    /// Disconnecting is the caregiver's decision and it is irreversible here whatever Google says,
+    /// so a provider that will not answer cannot fail the request they made.
+    /// </summary>
+    [Fact]
+    public async Task Disconnect_StillCompletes_WhenTheGrantCannotBeRevoked()
+    {
+        var connection = SeedConnection(isPrimary: true);
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(_memberId).Returns([connection]);
+        _grantRevoker.TryRevokeAsync(connection, Arg.Any<CancellationToken>()).Returns(false);
+
+        await CreateSut().DisconnectAsync(_userId, _memberId, connection.Id);
+
+        Assert.False(connection.IsActive);
+        Assert.Null(connection.RefreshToken);
     }
 
     [Fact]

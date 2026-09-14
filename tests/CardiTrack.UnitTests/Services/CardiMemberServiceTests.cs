@@ -57,8 +57,11 @@ public class CardiMemberServiceTests
         });
     }
 
+    private readonly IOAuthGrantRevoker _grantRevoker = Substitute.For<IOAuthGrantRevoker>();
+
     private CardiMemberService CreateSut() => new(
-        _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor, _photoStorage);
+        _unitOfWork, _access, _encryption, new NoOpNotificationGapResolver(), _photoProcessor,
+        _photoStorage, _grantRevoker);
 
     private static CreateCardiMemberRequest BuildRequest() => new()
     {
@@ -883,6 +886,39 @@ public class CardiMemberServiceTests
 
         Assert.False(member.IsActive);
         Assert.Null(member.PhotoObjectName);
+    }
+
+    /// <summary>
+    /// Removing a member ends their device grants at the provider too — before the tokens are
+    /// cleared, or the grant outlives the membership it was given for.
+    /// </summary>
+    [Fact]
+    public async Task Remove_RevokesEachDeviceGrant_WhileTheTokenIsStillThere()
+    {
+        var member = SeedMember();
+        var connection = new DeviceConnection
+        {
+            Id = Guid.NewGuid(),
+            CardiMemberId = member.Id,
+            DeviceType = DeviceType.Fitbit,
+            IsActive = true,
+            RefreshToken = "enc(refresh)",
+        };
+        _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(member.Id).Returns([connection]);
+
+        string? refreshTokenAtRevocation = null;
+        _grantRevoker.TryRevokeAsync(connection, Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                refreshTokenAtRevocation = connection.RefreshToken;
+                return true;
+            });
+
+        await CreateSut().RemoveAsync(_userId, member.Id);
+
+        await _grantRevoker.Received(1).TryRevokeAsync(connection, Arg.Any<CancellationToken>());
+        Assert.Equal("enc(refresh)", refreshTokenAtRevocation);
+        Assert.Null(connection.RefreshToken);
     }
 
     [Fact]

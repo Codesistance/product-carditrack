@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -34,17 +35,20 @@ public class MemberErasureService : IMemberErasureService
     private readonly CardiTrackDbContext _db;
     private readonly IProfilePhotoStorage _photos;
     private readonly IReportStorage _reports;
+    private readonly IOAuthGrantRevoker _grantRevoker;
     private readonly ILogger<MemberErasureService> _logger;
 
     public MemberErasureService(
         CardiTrackDbContext db,
         IProfilePhotoStorage photos,
         IReportStorage reports,
+        IOAuthGrantRevoker grantRevoker,
         ILogger<MemberErasureService> logger)
     {
         _db = db;
         _photos = photos;
         _reports = reports;
+        _grantRevoker = grantRevoker;
         _logger = logger;
     }
 
@@ -58,6 +62,31 @@ public class MemberErasureService : IMemberErasureService
             .Where(r => r.CardiMemberIds.Contains(cardiMemberId) && r.ObjectName != null)
             .Select(r => r.ObjectName!)
             .ToListAsync(ct);
+
+        // Before the rows, not after: the runbook's "revoke upstream before deleting" step, which
+        // until now was a thing an operator had to remember. Once DeviceConnections is deleted the
+        // refresh token is gone and nothing can ever end that grant — the wearer would be left
+        // with CardiTrack still listed among the apps that can read their health data, for a
+        // member whose every row we have just destroyed. A provider that will not answer cannot
+        // stop the erasure, so failures are collected and reported rather than thrown.
+        var unrevoked = new List<Guid>();
+        foreach (var connection in await _db.DeviceConnections
+                     .Where(c => c.CardiMemberId == cardiMemberId)
+                     .ToListAsync(ct))
+        {
+            if (!await _grantRevoker.TryRevokeAsync(connection, ct))
+                unrevoked.Add(connection.Id);
+        }
+
+        if (unrevoked.Count > 0)
+        {
+            _logger.LogWarning(
+                "Erasure of CardiMember {CardiMemberId} could not confirm revocation of "
+                + "{Count} device grant(s): {Connections}. They are still live at the provider "
+                + "and the tokens that could have ended them are about to be deleted — revoke "
+                + "from the wearer's provider account by hand.",
+                cardiMemberId, unrevoked.Count, string.Join(", ", unrevoked));
+        }
 
         var rows = new List<(string Table, int Rows)>();
 
@@ -151,7 +180,7 @@ public class MemberErasureService : IMemberErasureService
             await RemoveObjectAsync(
                 objectName, o => _reports.DeleteAsync(o, CancellationToken.None), orphaned, cardiMemberId);
 
-        return new MemberErasureReport(cardiMemberId, rows, photoRemoved, orphaned);
+        return new MemberErasureReport(cardiMemberId, rows, photoRemoved, unrevoked, orphaned);
     }
 
     /// <summary>

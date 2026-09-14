@@ -12,6 +12,11 @@ namespace CardiTrack.Application.Interfaces.Services;
 /// caregiver is gone; the member and their readings are not, and must not be.
 /// </param>
 /// <param name="RowsByTable">Account-scoped rows removed per table, in the order removed.</param>
+/// <param name="UnrevokedGrants">
+/// Device connections whose grant could not be confirmed revoked before the row was deleted —
+/// aggregated from the member erasures this closure performed. Same meaning, and the same manual
+/// job: see <see cref="MemberErasureReport"/>.
+/// </param>
 /// <param name="OrphanedObjects">
 /// Storage objects the rows named that could not be deleted. Empty is the expected result;
 /// anything here is a manual job and the erasure is not complete until it is done.
@@ -21,6 +26,7 @@ public sealed record AccountErasureReport(
     IReadOnlyList<Guid> MembersErased,
     IReadOnlyList<Guid> MembersReleased,
     IReadOnlyList<(string Table, int Rows)> RowsByTable,
+    IReadOnlyList<Guid> UnrevokedGrants,
     IReadOnlyList<string> OrphanedObjects);
 
 /// <summary>

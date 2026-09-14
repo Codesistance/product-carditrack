@@ -56,10 +56,11 @@ namespace CardiTrack.Worker.Workers;
 /// reading, or a line of a conversation.
 /// </para>
 /// <para>
-/// <strong>What it still does not do:</strong> revoke the upstream OAuth grant. Erasing an
-/// account deletes its <c>DeviceConnections</c> rows, which stops collection, but the token stays
-/// live at Google until it expires. That is issue #148 item 4 and remains a manual step in the
-/// runbook.
+/// <strong>It now revokes the upstream grant too</strong> (issue #148 item 4), through the
+/// member cascade, before the <c>DeviceConnections</c> row that holds the token is deleted. A
+/// provider that will not answer cannot stop an erasure, so a failure is reported rather than
+/// thrown — and reported loudly, because at that point nothing can retry it: the token is gone
+/// with the row, and the grant has to be ended from the wearer's own provider account.
 /// </para>
 /// </remarks>
 public class RetentionWorker : CronBackgroundService
@@ -215,6 +216,19 @@ public class RetentionWorker : CronBackgroundService
                         "behind; they need deleting by hand: {Objects}.",
                         userId, report.OrphanedObjects.Count,
                         string.Join(", ", report.OrphanedObjects));
+                }
+
+                // The other half of an incomplete erasure, and the worse one to lose: a grant
+                // nothing can end any more, because the token that could have ended it went with
+                // the row. Warning, for the same reason an orphaned object is.
+                if (report.UnrevokedGrants.Count > 0)
+                {
+                    _logger.LogWarning(
+                        "Retention erased account {UserId} but could not confirm revocation of " +
+                        "{Count} device grant(s): {Connections}. They are still live at the " +
+                        "provider and must be revoked from the wearer's own account.",
+                        userId, report.UnrevokedGrants.Count,
+                        string.Join(", ", report.UnrevokedGrants));
                 }
 
                 _logger.LogInformation(
