@@ -270,10 +270,11 @@ internal static partial class JournalRegisterGuards
     /// no sentence uses it at all.
     /// </summary>
     /// <remarks>
-    /// An explanation follows the term it explains, so only a marker after the term's first use
-    /// counts. A marker anywhere in the sentence used to do, which let one term's explanation
-    /// vouch for a second, bare term later in the same sentence — "her sleep efficiency (…) and
-    /// her HRV held steady" passed with HRV unexplained.
+    /// An explanation follows the term it explains and precedes the next term, so only a marker
+    /// between the term's first use and the next tracked term counts. A marker anywhere in the
+    /// sentence used to do, which let one term's explanation vouch for a bare term beside it in
+    /// either order — "her sleep efficiency (…) and her HRV held steady" and "her HRV and her
+    /// sleep efficiency (…) held steady" both passed with HRV unexplained.
     /// </remarks>
     private static bool IsUnglossed(IReadOnlyList<string> sentences, string term)
     {
@@ -285,7 +286,16 @@ internal static partial class JournalRegisterGuards
                 continue;
 
             var after = sentence[(match.Index + match.Length)..];
-            return !GlossMarkers.Any(marker => after.Contains(marker, StringComparison.Ordinal));
+            var nextTerm = TermsNeedingAGloss
+                .Where(other => other != term)
+                .Select(other => TermPattern(other).Match(after))
+                .Where(m => m.Success)
+                .Select(m => m.Index)
+                .DefaultIfEmpty(after.Length)
+                .Min();
+            var explanation = after[..nextTerm];
+
+            return !GlossMarkers.Any(marker => explanation.Contains(marker, StringComparison.Ordinal));
         }
 
         return false;

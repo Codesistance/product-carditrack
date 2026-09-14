@@ -430,6 +430,27 @@ public class WeekbookPromptTests
         Assert.Null(WeekbookPrompt.UnglossedTerm(text));
     }
 
+    /// <summary>
+    /// The mirror of the case above: an explanation that follows a later term does not reach back
+    /// to a bare one before it. Only a marker between the term and the next tracked term counts.
+    /// </summary>
+    [Fact]
+    public void A_later_terms_explanation_does_not_reach_back_to_a_bare_one()
+    {
+        const string reply = "Her HRV and her sleep efficiency (the share of the night actually asleep) held steady.";
+
+        Assert.Equal("hrv", WeekbookPrompt.UnglossedTerm(reply));
+
+        var (text, glossed) = WeekbookPrompt.Gloss(reply);
+
+        Assert.Equal(
+            "Her HRV (the natural variation in the gap between one heartbeat and the next) and her "
+            + "sleep efficiency (the share of the night actually asleep) held steady.",
+            text);
+        Assert.Equal(["hrv"], glossed);
+        Assert.Null(WeekbookPrompt.UnglossedTerm(text));
+    }
+
     /// <summary>A bare term followed by punctuation is still a bare term.</summary>
     [Fact]
     public void A_term_ending_a_sentence_is_still_seen()
