@@ -246,6 +246,12 @@ Get full details for a single CardiMember.
 |-----------|-------------|
 | `id` | CardiMember ID |
 
+### Query Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `seriesEndsOn` | Optional `YYYY-MM-DD`. The last day each metric's 30-point `series` runs to, in the member's local dates; omitted, the series run to today. A journal entry passes the day it accounts for, so a Monthbook's charts draw its month rather than nothing. A future date is treated as today. Everything else on the payload is about now regardless. |
+
 ### Response `200 OK`
 
 ```json

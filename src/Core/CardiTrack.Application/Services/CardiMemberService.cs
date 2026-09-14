@@ -348,11 +348,11 @@ public class CardiMemberService : ICardiMemberService
     }
 
     public async Task<CardiMemberDetailResponse> GetDetailAsync(
-        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
+        Guid requestingUserId, Guid cardiMemberId, DateOnly? seriesEndsOn = null, CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
         var member = await RequireActiveMemberAsync(cardiMemberId);
-        return await BuildDetailAsync(requestingUserId, member, ct);
+        return await BuildDetailAsync(requestingUserId, member, seriesEndsOn, ct);
     }
 
     public async Task<CardiMemberDetailResponse> UpdateAsync(
@@ -420,7 +420,7 @@ public class CardiMemberService : ICardiMemberService
         // still sitting there when the screen pops.
         await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
 
-        return await BuildDetailAsync(requestingUserId, member, ct);
+        return await BuildDetailAsync(requestingUserId, member, seriesEndsOn: null, ct);
     }
 
     public async Task RemoveAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
@@ -528,14 +528,20 @@ public class CardiMemberService : ICardiMemberService
     }
 
     private async Task<CardiMemberDetailResponse> BuildDetailAsync(
-        Guid requestingUserId, CardiMember member, CancellationToken ct = default)
+        Guid requestingUserId, CardiMember member, DateOnly? seriesEndsOn, CancellationToken ct = default)
     {
         // The relationship shown is the requesting caregiver's own ("Dad"), not whatever the
         // first link in the table happens to say.
         var link = await FindLinkAsync(requestingUserId, member.Id);
         var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(member.Id)).ToList();
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // The series' last day: today, or the day a journal entry asked for, whichever is earlier.
+        // A journal entry is an account of a closed period and draws the series that ended with
+        // it — a Monthbook's ends a month or more ago, which a series that always ran to today
+        // could never reach. Everything else on the payload (the latest reading, freshness, the
+        // pause state) is about now regardless: the charts hang off the member's profile today.
+        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = seriesEndsOn is { } requested && requested < utcToday ? requested : utcToday;
         var logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                 member.Id, today.AddDays(-(BaselineProgress.PeriodDays - 1)), today))
             .ToList();

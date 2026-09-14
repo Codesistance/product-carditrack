@@ -121,6 +121,10 @@ internal static class MonthbookPrompt
     internal static string? UnglossedTerm(string text) =>
         JournalRegisterGuards.UnglossedTerm(text);
 
+    /// <inheritdoc cref="JournalRegisterGuards.Gloss"/>
+    internal static (string Text, IReadOnlyList<string> Glossed) Gloss(string text) =>
+        JournalRegisterGuards.Gloss(text);
+
     /// <summary>
     /// The month's readings: each metric's monthly average against the member's own usual and the
     /// published band, how many days carried it, and the week that sat furthest from the month's

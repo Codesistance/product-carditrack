@@ -140,6 +140,34 @@ public class WeekbookPromptTests
     }
 
     /// <summary>
+    /// A difference too small to mean anything is not quoted: told "24 steps above", the model
+    /// says "24 steps above", and a period read as a recital of negligible differences. Two per
+    /// cent of the usual is the line; a difference over it is still said by its amount.
+    /// </summary>
+    [Fact]
+    public void A_negligible_difference_from_their_usual_reads_as_about_level()
+    {
+        var days = Week(i => Day(WeekStart.AddDays(i), steps: 4040));
+        var baseline = new PatternBaseline { AvgSteps = 4000 };
+
+        var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
+
+        Assert.Contains("Their usual is 4,000 steps, and the week sat about level with it", section);
+        Assert.DoesNotContain("40 steps above", section);
+    }
+
+    [Fact]
+    public void A_difference_worth_saying_is_still_said_by_its_amount()
+    {
+        var days = Week(i => Day(WeekStart.AddDays(i), steps: 4200));
+        var baseline = new PatternBaseline { AvgSteps = 4000 };
+
+        var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
+
+        Assert.Contains("and the week sat 200 steps above it", section);
+    }
+
+    /// <summary>
     /// One prompt, one idea of what a section looks like. These two used to be a heading with the
     /// dashes on the line beneath, while the member-context sections above them in the same prompt
     /// were <c>--- label ---</c> — and the guardrail then named one of these as a section to
@@ -315,6 +343,60 @@ public class WeekbookPromptTests
 
         Assert.Null(WeekbookPrompt.UnglossedTerm(
             "Her sleep efficiency — the share of time in bed actually spent asleep — held steady."));
+    }
+
+    /// <summary>
+    /// A bare term is explained in code rather than costing the week. The discard it replaced
+    /// selected, across a day of retries, for the reply that named the fewest readings.
+    /// </summary>
+    [Fact]
+    public void A_bare_term_is_explained_where_it_is_first_used()
+    {
+        var (text, glossed) = WeekbookPrompt.Gloss(
+            "Her sleep efficiency held steady across the week. Her sleep efficiency was 96% on Sunday.");
+
+        Assert.Equal(
+            "Her sleep efficiency (the share of time in bed actually spent asleep) held steady across the week. "
+            + "Her sleep efficiency was 96% on Sunday.",
+            text);
+        Assert.Equal(["sleep efficiency"], glossed);
+        Assert.Null(WeekbookPrompt.UnglossedTerm(text));
+    }
+
+    [Fact]
+    public void A_term_that_already_explains_itself_is_left_alone()
+    {
+        const string text = "Her HRV, which is the variation between heartbeats, was 41 ms overnight.";
+
+        var (glossedText, glossed) = WeekbookPrompt.Gloss(text);
+
+        Assert.Equal(text, glossedText);
+        Assert.Empty(glossed);
+    }
+
+    /// <summary>
+    /// Whole words in the reply's own casing: "REM" is glossed, "remained" is not, and a phrase
+    /// takes its gloss after the whole phrase rather than inside it.
+    /// </summary>
+    [Fact]
+    public void A_gloss_lands_after_the_whole_term_and_never_inside_another_word()
+    {
+        var (text, glossed) = WeekbookPrompt.Gloss(
+            "Her REM sleep remained short all week. Her circadian rhythm held.");
+
+        Assert.Equal(
+            "Her REM sleep (the dreaming stage of sleep) remained short all week. "
+            + "Her circadian rhythm (the body's built-in daily clock) held.",
+            text);
+        Assert.Equal(["rem sleep", "circadian rhythm"], glossed);
+    }
+
+    [Fact]
+    public void Sentences_are_counted_the_way_the_gloss_rule_splits_them()
+    {
+        Assert.Equal(1, JournalRegisterGuards.SentenceCount("A quiet week."));
+        Assert.Equal(3, JournalRegisterGuards.SentenceCount(
+            "A quiet week. Blood oxygen averaged 95.4% and held. Steps fell on Friday!"));
     }
 
     [Fact]

@@ -816,6 +816,26 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        if (JournalRegisterGuards.SentenceCount(text) < JournalRegisterGuards.MinimumSentences)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "{Sentences} sentence(s) is not an account of a month.",
+                memberId, monthEnd, JournalRegisterGuards.SentenceCount(text));
+            return false;
+        }
+
+        // A bare term is explained in code rather than costing the month — see
+        // JournalRegisterGuards.Gloss for why the discard did more harm than the term.
+        var (glossedText, glossed) = MonthbookPrompt.Gloss(text);
+        if (glossed.Count > 0)
+        {
+            _logger.LogInformation(
+                "Glossed {Terms} in the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}.",
+                string.Join(", ", glossed), memberId, monthEnd);
+            text = glossedText;
+        }
+
         if (MonthbookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(
@@ -1009,6 +1029,26 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        if (JournalRegisterGuards.SentenceCount(text) < JournalRegisterGuards.MinimumSentences)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "{Sentences} sentence(s) is not an account of a week.",
+                memberId, weekEnd, JournalRegisterGuards.SentenceCount(text));
+            return false;
+        }
+
+        // A bare term is explained in code rather than costing the week — see
+        // JournalRegisterGuards.Gloss for why the discard did more harm than the term.
+        var (glossedText, glossed) = WeekbookPrompt.Gloss(text);
+        if (glossed.Count > 0)
+        {
+            _logger.LogInformation(
+                "Glossed {Terms} in the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}.",
+                string.Join(", ", glossed), memberId, weekEnd);
+            text = glossedText;
+        }
+
         if (WeekbookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(
@@ -1200,8 +1240,18 @@ public partial class DigestGenerationService : IDigestGenerationService
         }
 
         // The readability half of the same allowance. A precise term earns its place by explaining
-        // itself where it is first used; one that does not has quietly turned the review into the
-        // clinic-speak the register rules out.
+        // itself where it is first used; one that does not is explained in code, because the
+        // discard that used to follow selected for the reply that named the fewest readings — see
+        // JournalRegisterGuards.Gloss. Only a term with no explanation on file still costs the day.
+        var (glossedText, glossed) = DaybookPrompt.Gloss(text);
+        if (glossed.Count > 0)
+        {
+            _logger.LogInformation(
+                "Glossed {Terms} in the daybook entry for CardiMember {CardiMemberId} on {LocalDate}.",
+                string.Join(", ", glossed), memberId, reviewedDate);
+            text = glossedText;
+        }
+
         if (DaybookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(

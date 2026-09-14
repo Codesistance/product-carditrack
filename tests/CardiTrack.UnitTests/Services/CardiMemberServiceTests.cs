@@ -295,6 +295,43 @@ public class CardiMemberServiceTests
         return member;
     }
 
+    /// <summary>
+    /// A journal entry draws the series that ended with the period it accounts for. Asked for a
+    /// day, the series runs the thirty days up to it and reads the logs of exactly those days; a
+    /// day in the future is today.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_EndsTheSeriesOnTheDayAskedFor()
+    {
+        var member = SeedMember();
+        var monthEnd = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-45);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, monthEnd.AddDays(-29), monthEnd)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = monthEnd, Steps = 4100 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: monthEnd);
+
+        var series = detail.Metrics!.Steps.Series;
+        Assert.Equal(30, series.Count);
+        Assert.Equal(monthEnd.AddDays(-29), series[0].Date);
+        Assert.Equal(monthEnd, series[^1].Date);
+        Assert.Equal(4100m, series[^1].Value);
+    }
+
+    [Fact]
+    public async Task GetDetail_TreatsAFutureSeriesEndAsToday()
+    {
+        var member = SeedMember();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, today.AddDays(-29), today)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = today, Steps = 900 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: today.AddDays(10));
+
+        Assert.Equal(today, detail.Metrics!.Steps.Series[^1].Date);
+    }
+
     [Fact]
     public async Task GetDetail_DecryptsMedicalNotes()
     {

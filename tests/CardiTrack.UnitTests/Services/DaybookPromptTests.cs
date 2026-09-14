@@ -844,6 +844,21 @@ public class DaybookPromptTests
     }
 
     /// <summary>
+    /// The Daybook shares the repair: a bare term is explained in code where it is first used,
+    /// with the subscript spelling of SpO₂ bounded correctly, and the review then passes the guard
+    /// it would have failed.
+    /// </summary>
+    [Fact]
+    public void Gloss_ExplainsABareTermInPlace()
+    {
+        var (text, glossed) = DaybookPrompt.Gloss("Her SpO₂ dipped to 93% at 3am and recovered by 4am.");
+
+        Assert.Equal("Her SpO₂ (the oxygen level in the blood) dipped to 93% at 3am and recovered by 4am.", text);
+        Assert.Equal(["spo₂"], glossed);
+        Assert.Null(DaybookPrompt.UnglossedTerm(text));
+    }
+
+    /// <summary>
     /// A decimal point is not a sentence boundary. This text quotes figures by design, and
     /// splitting "95.4%" in half used to move a term and the gloss that follows its figure into
     /// different fragments — flagging a compliant review, which a caregiver loses for good since

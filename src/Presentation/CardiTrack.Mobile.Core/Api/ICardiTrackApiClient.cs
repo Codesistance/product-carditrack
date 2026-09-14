@@ -42,6 +42,15 @@ public interface ICardiTrackApiClient
     /// <summary>Full profile for the CardiMember Detail screen (M1-13).</summary>
     Task<CardiMemberDetailResponse> GetCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The same profile with its metric series ending on <paramref name="seriesEndsOn"/> rather
+    /// than today. For a journal entry, whose charts draw the period it accounts for: a
+    /// Monthbook's is a whole series ending a month or more ago, which the live profile's series,
+    /// always running to today, cannot reach.
+    /// </summary>
+    Task<CardiMemberDetailResponse> GetCardiMemberAsync(
+        Guid cardiMemberId, DateOnly seriesEndsOn, CancellationToken ct = default);
+
     /// <summary>Saves the edit form (M1-14).</summary>
     Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
         Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default);
@@ -478,6 +487,8 @@ public interface ICardiTrackApiClient
 
     Task<List<CardiMemberResponse>?> PeekCardiMembersAsync(CancellationToken ct = default);
     Task<CardiMemberDetailResponse?> PeekCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
+    Task<CardiMemberDetailResponse?> PeekCardiMemberAsync(
+        Guid cardiMemberId, DateOnly seriesEndsOn, CancellationToken ct = default);
     Task<DashboardResponse?> PeekDashboardAsync(Guid cardiMemberId, CancellationToken ct = default);
     Task<AlertDetailResponse?> PeekAlertAsync(Guid alertId, CancellationToken ct = default);
     Task<DigestResponse?> PeekDigestAsync(Guid cardiMemberId, CancellationToken ct = default);

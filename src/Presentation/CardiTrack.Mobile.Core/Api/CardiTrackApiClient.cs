@@ -100,6 +100,14 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<CardiMemberDetailResponse?> PeekCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         PeekAsync<CardiMemberDetailResponse>(ApiPaths.CardiMember(cardiMemberId), ct);
 
+    public Task<CardiMemberDetailResponse> GetCardiMemberAsync(
+        Guid cardiMemberId, DateOnly seriesEndsOn, CancellationToken ct = default) =>
+        GetAsync<CardiMemberDetailResponse>(ApiPaths.CardiMember(cardiMemberId, seriesEndsOn), ct);
+
+    public Task<CardiMemberDetailResponse?> PeekCardiMemberAsync(
+        Guid cardiMemberId, DateOnly seriesEndsOn, CancellationToken ct = default) =>
+        PeekAsync<CardiMemberDetailResponse>(ApiPaths.CardiMember(cardiMemberId, seriesEndsOn), ct);
+
     public async Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
         Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default)
     {

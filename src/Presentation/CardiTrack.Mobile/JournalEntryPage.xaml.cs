@@ -16,12 +16,15 @@ namespace CardiTrack.Mobile;
 /// detail is pushed above the Alerts list.
 /// </summary>
 /// <remarks>
-/// The charts draw the fortnight ending on the day the review describes, and the section title
-/// names that day. A daybook is a closure summary: days after its day — today's running totals
-/// included — are of no consequence to it and are never drawn. The dashboard series runs a fixed
-/// window back from today, so an entry old enough to have fallen off its reach shows no charts at
-/// all rather than a window quietly shifted toward the present. The awareness lines count exactly
-/// the days the chart draws, so a caregiver can check every claim against the picture beside it.
+/// The charts draw the fortnight (a month, for a Monthbook) ending on the day the review
+/// describes, and the section title names that day. A daybook is a closure summary: days after
+/// its day — today's running totals included — are of no consequence to it and are never drawn.
+/// So the series is asked for ending on the entry's own day rather than today: the dashboard's
+/// live series runs a fixed window back from now, and a Monthbook's month — or a Weekbook a
+/// fortnight old — lies entirely outside it. Should a series still fall short of the window, the
+/// charts are absent rather than quietly shifted toward the present. The awareness lines count
+/// exactly the days the chart draws, so a caregiver can check every claim against the picture
+/// beside it.
 /// Counts, never scores: the release matrix's standing decision is that trend interpretation
 /// carries no risk scores, and the footer states the register plainly.
 /// </remarks>
@@ -96,6 +99,9 @@ public partial class JournalEntryPage : ContentPage
         set
         {
             _cadence = JournalCadenceExtensions.ParseCadence(Uri.UnescapeDataString(value ?? string.Empty));
+            // The line under the title names the period, or a Monthbook would announce itself
+            // as one day's reading.
+            HeaderSubtitle.Text = $"One {JournalPage.PeriodNoun(_cadence)}, read against what is usual for them";
             HeaderTitle.Text = _headerPersonalised && _memberFirstName is { } name
                 ? $"{name}'s {_cadence.EntryName()}"
                 : _cadence.EntryName();
@@ -227,7 +233,13 @@ public partial class JournalEntryPage : ContentPage
                         // page's. Tracking the charts would date the banner from whichever of
                         // the two was saved longer ago and could call the page offline over a
                         // review the device saved a minute earlier.
-                        var member = await _api.PeekCardiMemberAsync(memberId, ct);
+                        //
+                        // The series this entry was last drawn from, or failing that the live
+                        // profile the device holds anyway — whose series reaches an entry only
+                        // while it is recent, and the window check hides the charts when it
+                        // does not, rather than drawing days the entry is not about.
+                        var member = await _api.PeekCardiMemberAsync(memberId, date, ct)
+                            ?? await _api.PeekCardiMemberAsync(memberId, ct);
                         return new EntryLoad(review, member);
                     }
                     : null,
@@ -240,7 +252,10 @@ public partial class JournalEntryPage : ContentPage
                         // Not tracked: the review is what the page is, so the review's provenance
                         // is the page's — charts served from the device beside a live review are
                         // still charts, not a reason to call the page offline.
-                        member = await _api.GetCardiMemberAsync(memberId, ct);
+                        //
+                        // The series ending on the entry's own day, so a month-old Monthbook
+                        // draws its month rather than nothing.
+                        member = await _api.GetCardiMemberAsync(memberId, date, ct);
                     }
                     catch (ApiException) when (!ct.IsCancellationRequested)
                     {

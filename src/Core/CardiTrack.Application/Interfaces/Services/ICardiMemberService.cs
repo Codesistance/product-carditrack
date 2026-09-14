@@ -28,8 +28,15 @@ public interface ICardiMemberService
     /// The full M1-13 detail payload. Requires view access; throws
     /// <see cref="KeyNotFoundException"/> otherwise, so callers surface a 404.
     /// </summary>
+    /// <param name="seriesEndsOn">
+    /// The last day the metric series run to, in the member's own local dates; null, the usual
+    /// case, ends them today. A journal entry reads its charts against the period it accounts
+    /// for, which for a Monthbook is a whole series ending a month or more ago — a series that
+    /// always ran to today could never reach it. Days after this date are not drawn; a date in
+    /// the future is treated as today.
+    /// </param>
     Task<CardiMemberDetailResponse> GetDetailAsync(
-        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+        Guid requestingUserId, Guid cardiMemberId, DateOnly? seriesEndsOn = null, CancellationToken ct = default);
 
     /// <summary>Saves the M1-14 edit form. Requires manage access.</summary>
     Task<CardiMemberDetailResponse> UpdateAsync(

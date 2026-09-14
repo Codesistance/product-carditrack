@@ -103,6 +103,52 @@ internal static partial class JournalRegisterGuards
     ];
 
     /// <summary>
+    /// The plain-words explanation written in for each term of <see cref="TermsNeedingAGloss"/>
+    /// the model uses bare, spelled exactly as that list spells them (so the two agree on what
+    /// counts as a use) and in the order they are tried: a phrase precedes its stem ("rem sleep"
+    /// before "rem", "circadian rhythm" before "circadian") so the gloss lands after the whole
+    /// phrase rather than inside it. <c>arrhythmi</c> has no entry: it is a condition, and
+    /// <see cref="NamesACondition"/> has already refused the reply by the time this runs.
+    /// </summary>
+    /// <remarks>
+    /// Written in code rather than asked for again, because asking again was the failure. The
+    /// brief asks for the gloss and the model gives it perhaps one time in five; the discard that
+    /// followed did not make the next attempt any likelier to comply, it only selected — across a
+    /// day of half-hourly retries — for the reply that named the fewest readings, which is the
+    /// reply that said the least. Each explanation says what the term measures and nothing about
+    /// what the figure means, so writing it in cannot add a claim the account did not make.
+    /// </remarks>
+    private static readonly (string Term, string Gloss)[] Glosses =
+    [
+        ("sleep efficiency", "the share of time in bed actually spent asleep"),
+        ("sleep latency", "how long it took to fall asleep"),
+        ("rem sleep", "the dreaming stage of sleep"),
+        ("rem ", "the dreaming stage of sleep"),
+        ("oxygen saturation", "the oxygen level in the blood"),
+        ("spo2", "the oxygen level in the blood"),
+        ("spo₂", "the oxygen level in the blood"),
+        ("respiratory rate", "breaths a minute"),
+        ("vo2", "how much oxygen the body can use when working hard"),
+        ("vo₂", "how much oxygen the body can use when working hard"),
+        ("heart rate variability", "the natural variation in the gap between one heartbeat and the next"),
+        ("hrv", "the natural variation in the gap between one heartbeat and the next"),
+        ("sedentary", "sitting or lying still"),
+        ("nadir", "the lowest point"),
+        ("diurnal", "across the day"),
+        ("circadian rhythm", "the body's built-in daily clock"),
+        ("circadian", "the body's built-in daily clock"),
+        ("perfusion", "blood flow through the tissues"),
+    ];
+
+    /// <summary>
+    /// The fewest sentences an account of a week or a month may run to. Both briefs ask for six
+    /// or more and allow an unremarkable period a short account; below three the reply is not an
+    /// account of anything, whatever it says — it is the single line the discard-and-retry loop
+    /// used to select for.
+    /// </summary>
+    internal const int MinimumSentences = 3;
+
+    /// <summary>
     /// Whether the reply is the brief read back rather than an account of anything.
     /// </summary>
     /// <param name="echoes">
@@ -140,22 +186,78 @@ internal static partial class JournalRegisterGuards
     /// </remarks>
     internal static string? UnglossedTerm(string text)
     {
-        var sentences = SentenceEnds().Split(Flatten(text))
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToList();
+        var sentences = Sentences(text);
 
         foreach (var term in TermsNeedingAGloss)
         {
-            var first = sentences.FirstOrDefault(s => s.Contains(term, StringComparison.Ordinal));
-            if (first is null)
-                continue;
-
-            if (!GlossMarkers.Any(marker => first.Contains(marker, StringComparison.Ordinal)))
+            if (IsUnglossed(sentences, term))
                 return term.Trim();
         }
 
         return null;
     }
+
+    /// <summary>
+    /// The reply with a plain-words explanation written in after the first use of each precise
+    /// term it left bare, and the terms so treated. Unchanged, with no terms, when every term
+    /// already explained itself — the brief's own gloss is always kept over this one.
+    /// </summary>
+    /// <remarks>
+    /// The gloss goes straight after the term, in brackets, which is one of the shapes
+    /// <see cref="UnglossedTerm"/> accepts — so a reply this has touched passes that guard, and a
+    /// term it has no explanation for still fails it. Whole words only: "rem" must not fire inside
+    /// "remained", and the same insertion made a second time would re-explain a term the first
+    /// pass already explained.
+    /// </remarks>
+    internal static (string Text, IReadOnlyList<string> Glossed) Gloss(string text)
+    {
+        var result = text;
+        var glossed = new List<string>();
+
+        foreach (var (term, gloss) in Glosses)
+        {
+            if (!IsUnglossed(Sentences(result), term))
+                continue;
+
+            var match = WholeTerm(term.Trim()).Match(result);
+            if (!match.Success)
+                continue;
+
+            result = result.Insert(match.Index + match.Length, $" ({gloss})");
+            glossed.Add(term.Trim());
+        }
+
+        return (result, glossed);
+    }
+
+    /// <summary>How many sentences the reply runs to, split the way the gloss rule splits them.</summary>
+    internal static int SentenceCount(string text) => Sentences(text).Count;
+
+    /// <summary>
+    /// Whether the first sentence using <paramref name="term"/> leaves it unexplained. False when
+    /// no sentence uses it at all.
+    /// </summary>
+    private static bool IsUnglossed(IReadOnlyList<string> sentences, string term)
+    {
+        var first = sentences.FirstOrDefault(s => s.Contains(term, StringComparison.Ordinal));
+        return first is not null
+            && !GlossMarkers.Any(marker => first.Contains(marker, StringComparison.Ordinal));
+    }
+
+    private static List<string> Sentences(string text) =>
+        SentenceEnds().Split(Flatten(text))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+
+    /// <summary>
+    /// <paramref name="term"/> as whole words in the reply's own casing and line breaks: bounded
+    /// by anything that is not a letter or digit (a plain <c>\b</c> would not close after the
+    /// subscript two in "SpO₂"), with a run of whitespace allowed wherever the term has a space.
+    /// </summary>
+    private static Regex WholeTerm(string term) =>
+        new(
+            @"(?<![\p{L}\p{N}])" + Regex.Escape(term).Replace(@"\ ", @"\s+") + @"(?![\p{L}\p{N}])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>
     /// A sentence boundary: terminal punctuation, except a full stop with a digit on both sides —
