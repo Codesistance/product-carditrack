@@ -1617,6 +1617,95 @@ public class CardiTrackApiClientTests
         Assert.Contains("find your account", ex.Message);
     }
 
+    /// <summary>
+    /// The whole duplicate-member guard depends on this header reaching the server, and nothing on
+    /// the server side can notice if the client stops sending it: every integration test there
+    /// passes the key straight to the service. This is the only place that link is checked.
+    /// </summary>
+    [Fact]
+    public async Task CreateCardiMember_SendsTheIdempotencyKey()
+    {
+        var (client, http) = CreateSut();
+        string? seen = null;
+        http.Enqueue(request =>
+        {
+            seen = request.Headers.TryGetValues("Idempotency-Key", out var values)
+                ? values.SingleOrDefault()
+                : null;
+            return Created();
+        });
+
+        await client.CreateCardiMemberAsync(BuildCreateRequest(), "key-abc123");
+
+        Assert.Equal("key-abc123", seen);
+        Assert.Equal("/api/Onboarding/cardimember", http.Requests.Single().Uri!.AbsolutePath);
+        Assert.Contains("Margaret Doe", http.Requests.Single().Body);
+    }
+
+    /// <summary>
+    /// No key, no header. The endpoint reads its absence as "behave as you always did", so an
+    /// empty one would be a different request from the one intended.
+    /// </summary>
+    [Fact]
+    public async Task CreateCardiMember_SendsNoHeader_WhenNoKeyIsGiven()
+    {
+        var (client, http) = CreateSut();
+        var present = true;
+        http.Enqueue(request =>
+        {
+            present = request.Headers.Contains("Idempotency-Key");
+            return Created();
+        });
+
+        await client.CreateCardiMemberAsync(BuildCreateRequest());
+
+        Assert.False(present);
+    }
+
+    /// <summary>
+    /// <c>AuthHttpMessageHandler</c> re-sends this very <c>HttpRequestMessage</c> after refreshing
+    /// an expired token. That resend is only safe if the body can be read a second time — a
+    /// one-shot stream would resend empty, and the server would see a different request under the
+    /// same key. This asserts the prerequisite the hand-built request has to keep.
+    /// </summary>
+    [Fact]
+    public async Task CreateCardiMember_BuildsARequestWhoseBodyCanBeReadTwice()
+    {
+        var (client, http) = CreateSut();
+        string? first = null, second = null;
+        http.Enqueue(request =>
+        {
+            first = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            second = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return Created();
+        });
+
+        await client.CreateCardiMemberAsync(BuildCreateRequest(), "key-resend");
+
+        Assert.Contains("Margaret Doe", first);
+        Assert.Equal(first, second);
+    }
+
+    private static HttpResponseMessage Created() =>
+        new(HttpStatusCode.Created)
+        {
+            Content = new StringContent(CreatedMemberEnvelope, Encoding.UTF8, "application/json"),
+        };
+
+    private const string CreatedMemberEnvelope =
+        """
+        {"success":true,"message":"ok","data":{"id":"11111111-1111-1111-1111-111111111111","name":"Margaret Doe","dateOfBirth":"1948-04-02","age":78,"gender":2,"isPrimaryCaregiver":true,"isActive":true,"createdDate":"2026-09-14T00:00:00Z"},"timestamp":"2026-09-14T00:00:00Z"}
+        """;
+
+    private static CreateCardiMemberRequest BuildCreateRequest() => new()
+    {
+        Name = "Margaret Doe",
+        DateOfBirth = new DateOnly(1948, 4, 2),
+        Gender = Gender.Female,
+        RelationshipType = RelationshipType.Parent,
+        IsPrimaryCaregiver = true,
+    };
+
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
         IOfflineReadCache? cache = null)
     {

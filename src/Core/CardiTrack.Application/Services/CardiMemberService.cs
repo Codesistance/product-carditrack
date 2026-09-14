@@ -80,13 +80,16 @@ public class CardiMemberService : ICardiMemberService
             var already = await _unitOfWork.CardiMemberCreationKeys.FindAsync(userId, idempotencyKey);
             if (already is not null)
             {
-                if (await GetByIdAsync(already.CardiMemberId) is { } existing)
-                    return existing;
+                if (await StillTheirsAsync(userId, already.CardiMemberId))
+                    return (await GetByIdAsync(already.CardiMemberId))!;
 
-                // The attempt landed and its member has since been removed. Retrying is then a
-                // request to add that person again, which is a thing a caregiver may legitimately
-                // want — so clear the spent key rather than letting the create below collide with
-                // it on the unique index and fail with a 500 nobody can act on.
+                // The attempt landed and the member has since been removed. Removal is a soft
+                // delete — the row stays with IsActive false and its links deactivated — so
+                // "is it still there" is the wrong question: handing that row back would return a
+                // member this caregiver can no longer reach, with their profile data, and would
+                // silently skip the re-add they asked for. Retrying after a removal is a request
+                // to add that person again, so clear the spent key and create, rather than
+                // leaving it to collide on the unique index and fail with a 500 nobody can act on.
                 _unitOfWork.CardiMemberCreationKeys.Remove(already);
                 await _unitOfWork.SaveChangesAsync();
             }
@@ -225,6 +228,27 @@ public class CardiMemberService : ICardiMemberService
             CreatedDate = cardiMember.CreatedDate,
             PhotoUrl = await PhotoUrlOf(cardiMember)
         };
+    }
+
+    /// <summary>
+    /// Whether a member a spent creation key names is still a member this caregiver actually has:
+    /// active itself, and still linked to them by an active link.
+    /// </summary>
+    /// <remarks>
+    /// Both halves are load-bearing, and both are about soft deletion. <c>RemoveAsync</c> leaves
+    /// the member row in place with <c>IsActive</c> false and deactivates every link to it, so a
+    /// row still being readable says nothing about whether the caregiver can reach it. Checking
+    /// the link as well as the member also covers a caregiver removed from a member other people
+    /// still watch — the member is active, but not theirs to be handed back.
+    /// </remarks>
+    private async Task<bool> StillTheirsAsync(Guid userId, Guid cardiMemberId)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        if (member is null || !member.IsActive)
+            return false;
+
+        var links = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId);
+        return links.Any(l => l.UserId == userId && l.IsActive);
     }
 
     public async Task<CardiMemberResponse?> GetByIdAsync(Guid id)

@@ -46,17 +46,21 @@ public partial class AddCardiMemberPage : ContentPage
     private bool _submitted;
 
     /// <summary>
-    /// This form’s name for the member it is adding, fixed when the page is built and reused by
-    /// every attempt it makes.
+    /// This form’s name for the member it is adding, reused by every attempt it makes.
     /// </summary>
     /// <remarks>
     /// The failure it closes: a create the server committed whose response never came back. The
-    /// caregiver sees an error, taps Continue again, and a second attempt with a fresh key would
-    /// add a second copy of the same person to the care circle. Held for the life of the page, so
-    /// every retry of <em>this</em> member carries one key — and a genuinely new member, on a new
-    /// page, gets a new one.
+    /// caregiver sees an error, taps Continue again, and a second attempt under a fresh key would
+    /// add a second copy of the same person to the care circle.
+    /// <para>
+    /// Restored from the draft rather than minted per page instance, because the draft is what
+    /// outlives the page. A caregiver who backs out of a failed attempt and comes back finds their
+    /// typing again — and has to find the same key with it, or the retry the draft encourages is
+    /// exactly the duplicate this is here to stop. A genuinely new member starts from no draft,
+    /// and so gets a new key.
+    /// </para>
     /// </remarks>
-    private readonly string _creationKey = Guid.NewGuid().ToString("N");
+    private string _creationKey = Guid.NewGuid().ToString("N");
     private Window? _window;
 
     public AddCardiMemberPage(WizardContext ctx)
@@ -133,6 +137,7 @@ public partial class AddCardiMemberPage : ContentPage
         EmergencyContactName = EmergencyNameEntry.Text,
         EmergencyContactPhone = EmergencyPhoneEntry.Text,
         PhotoPath = _photoPath,
+        CreationKey = _creationKey,
     };
 
     private async Task RestoreDraftAsync()
@@ -141,6 +146,11 @@ public partial class AddCardiMemberPage : ContentPage
         // Never overwrite something the user has already started typing while we loaded.
         if (draft is null || CurrentDraft().HasContent)
             return;
+
+        // Before the fields, because a restored draft's key is the one its earlier attempt used
+        // and every retry from here has to carry it.
+        if (!string.IsNullOrWhiteSpace(draft.CreationKey))
+            _creationKey = draft.CreationKey;
 
         NameEntry.Text = draft.Name;
         if (draft.DateOfBirth is { } dob)

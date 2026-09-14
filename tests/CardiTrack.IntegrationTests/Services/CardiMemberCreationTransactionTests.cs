@@ -259,11 +259,18 @@ public class CardiMemberCreationTransactionTests : IAsyncLifetime
 
     /// <summary>
     /// The attempt landed and its member was later removed. Retrying under the same key is then a
-    /// request to add that person again — which must work, rather than colliding with the spent
-    /// key on the unique index and failing with a 500 nobody can act on.
+    /// request to add that person again — which must work, rather than handing back the removed
+    /// member or colliding with the spent key on the unique index.
     /// </summary>
+    /// <remarks>
+    /// Removal goes through <c>RemoveAsync</c>, not a hard delete, because that is what the app
+    /// actually does: the member row stays with <c>IsActive</c> false and its links deactivated.
+    /// An earlier version of this test deleted the rows outright, and so passed against a service
+    /// that would have handed the removed member back — it was exercising a path production never
+    /// takes.
+    /// </remarks>
     [Fact]
-    public async Task AKeyWhoseMemberIsGone_CreatesAgainRatherThanFailing()
+    public async Task AKeyWhoseMemberWasRemoved_CreatesAgainRatherThanReturningTheRemovedOne()
     {
         var organizationId = await SeedOrganizationAsync();
         var userId = await SeedUserAsync(organizationId);
@@ -278,10 +285,9 @@ public class CardiMemberCreationTransactionTests : IAsyncLifetime
 
         using (var scope = _services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
-            db.UserCardiMembers.RemoveRange(db.UserCardiMembers.Where(l => l.CardiMemberId == first));
-            db.CardiMembers.RemoveRange(db.CardiMembers.Where(m => m.Id == first));
-            await db.SaveChangesAsync();
+            // The substituted access service allows by default; the gate is not what this is about.
+            var sut = CreateSut(scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+            await sut.RemoveAsync(userId, first);
         }
 
         Guid second;
@@ -296,7 +302,50 @@ public class CardiMemberCreationTransactionTests : IAsyncLifetime
         using (var scope = _services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
-            Assert.Equal(1, await db.CardiMemberCreationKeys.CountAsync(k => k.Key == key));
+
+            // The removed member is still on the table — soft delete — and must not be what the
+            // retry got back.
+            Assert.False(await db.CardiMembers.Where(m => m.Id == first).Select(m => m.IsActive).SingleAsync());
+            Assert.True(await db.CardiMembers.Where(m => m.Id == second).Select(m => m.IsActive).SingleAsync());
+
+            // One key, repointed at the member the retry actually created.
+            var keyRow = await db.CardiMemberCreationKeys.SingleAsync(k => k.UserId == userId && k.Key == key);
+            Assert.Equal(second, keyRow.CardiMemberId);
+        }
+    }
+
+    /// <summary>
+    /// The claim the whole design rests on: the key row is inside the transaction. Proven by
+    /// failing <em>at the key insert</em> and showing the member and the link went with it.
+    /// </summary>
+    /// <remarks>
+    /// <c>AFailedCreate_LeavesNoKeyBehind</c> does not prove this on its own — its caregiver link
+    /// fails before the key is ever added, so an implementation that wrote the key after the commit
+    /// would pass it too. Here the key is longer than the column, which the controller's
+    /// 64-character cap refuses in production but the service does not, so the failure lands on the
+    /// last insert of the transaction with the member and link already saved inside it.
+    /// </remarks>
+    [Fact]
+    public async Task AFailureAtTheKeyInsert_RollsBackTheMemberAndTheLink()
+    {
+        var organizationId = await SeedOrganizationAsync();
+        var userId = await SeedUserAsync(organizationId);
+        var tooLongForTheColumn = new string('k', 65);
+
+        using (var scope = _services.CreateScope())
+        {
+            var sut = CreateSut(scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+            await Assert.ThrowsAsync<DbUpdateException>(
+                () => sut.CreateCardiMemberAsync(
+                    organizationId, userId, BuildRequest(), tooLongForTheColumn));
+        }
+
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.OrganizationId == organizationId));
+            Assert.Equal(0, await db.UserCardiMembers.CountAsync(l => l.UserId == userId));
+            Assert.Equal(0, await db.CardiMemberCreationKeys.CountAsync(k => k.UserId == userId));
         }
     }
 
