@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-14",
+      "slack_ts": null,
+      "item_count": 4,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,42 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-14",
+      "slug": "heart-research-uk-net-grants-2026",
+      "title": "Heart Research UK Novel & Emerging Technologies Grant — up to £300k, outline deadline 2 Oct 2026",
+      "url": "https://heartresearch.org.uk/professionals/apply-for-research-grant/new-and-emerging-technologies-net/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-14-heart-research-uk-net-grants-2026.md"
+    },
+    {
+      "date": "2026-09-14",
+      "slug": "mhra-national-ai-healthcare-commission-recommendations-2026-09-10",
+      "title": "MHRA-commissioned National Commission on AI in Healthcare publishes UK regulatory recommendations (10 Sep 2026)",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-14-mhra-national-ai-healthcare-commission-recommendations-2026-09-10.md"
+    },
+    {
+      "date": "2026-09-14",
+      "slug": "fda-genai-medical-device-discussion-paper-2026-08-18",
+      "title": "FDA discussion paper proposes two-axis risk framework for generative-AI medical devices, comments due 19 Oct 2026",
+      "url": "https://www.fda.gov/medical-devices/digital-health-center-excellence/considerations-regulation-generative-ai-enabled-medical-devices-discussion-paper-and-request",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-14-fda-genai-medical-device-discussion-paper-2026-08-18.md"
+    },
+    {
+      "date": "2026-09-14",
+      "slug": "samsung-connected-care-heart-health-family-sharing",
+      "title": "Samsung adds family heart-data sharing with Galaxy Watch 'Connected Care'",
+      "url": "https://www.koreaherald.com/article/10867861",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-14-samsung-connected-care-heart-health-family-sharing.md"
     }
   ]
 }
