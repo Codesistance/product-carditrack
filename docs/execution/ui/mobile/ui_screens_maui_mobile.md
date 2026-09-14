@@ -333,7 +333,7 @@ Visible on tab roots (Dashboard / Alerts / Journal / Settings). Onboarding hides
 
 - Badge count on Alerts tab for unread alerts
 - **The third tab is the Journal (CardiJournal), not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the daybook entries had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Journal / Settings, SVG icons). Alerts opens the real M1-10 list; the Journal lists the Daybook entries; Settings is minimal (account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, "More settings (M2-01) coming soon", Sign out). Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Journal / Settings, SVG icons). Alerts opens the real M1-10 list; the Journal lists the Daybook entries; Settings carries the account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, then four grouped section cards (Notifications, Account, Privacy, About), Sign out and the account-deletion request — see M2-01 below. Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
 
 ### Flyout Menu
 
