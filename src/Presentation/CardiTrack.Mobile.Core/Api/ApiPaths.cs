@@ -17,6 +17,13 @@ internal static class ApiPaths
     public const string HealthDataDisclosure = "api/v1/users/me/health-data-disclosure";
 
     public static string CardiMember(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}";
+
+    /// <summary>
+    /// The same profile with its metric series ending on <paramref name="seriesEndsOn"/> rather
+    /// than today — what a journal entry reads its charts from.
+    /// </summary>
+    public static string CardiMember(Guid cardiMemberId, DateOnly seriesEndsOn) =>
+        $"{CardiMember(cardiMemberId)}?seriesEndsOn={seriesEndsOn:yyyy-MM-dd}";
     public static string Dashboard(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/dashboard";
     public static string AlertPreferences(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/alert-preferences";
     public static string MemberAlarms(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/alarms";

@@ -551,9 +551,15 @@ precise term may name a measurement; it may never name a condition.* A term must
 what it measures in plain words in the sentence that first uses it** — judged on first use only.
 Both halves are enforced in code as well as asked for (`JournalRegisterGuards.NamesACondition`,
 `.UnglossedTerm`, shared by every book so the line cannot drift between them; the sentence split ignores a full stop with a digit on both sides, so "95.4%"
-cannot strand a gloss); a reply that trips either is discarded whole — nothing rather than
-something wrong, and with more behind it here, since a discarded entry is not replaced half an
-hour later. The condition list logs the phrase that tripped it, and deliberately excludes
+cannot strand a gloss). A reply that names a condition is discarded whole — nothing rather than
+something wrong. A reply that leaves a term bare is **repaired, not discarded**
+(`JournalRegisterGuards.Gloss`): the plain-words explanation is written in after the term's first
+use, and only a term with no explanation on file still costs the entry. Discarding was the wrong
+tool for that half: the half-hourly pass retried all day, the model kept naming its terms whenever
+it said anything specific, and the reply that finally landed was the one that said the least — a
+single line. That shape is now refused outright: a Weekbook or Monthbook under
+`JournalRegisterGuards.MinimumSentences` (three) is not an account of its period, whatever it says.
+The condition list logs the phrase that tripped it, and deliberately excludes
 **"consistent with"**: the prompt instructs the model to say where each reading sat against the
 member's own usual, and that is one of the natural ways to answer it.
 

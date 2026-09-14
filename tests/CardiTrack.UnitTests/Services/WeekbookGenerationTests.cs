@@ -73,7 +73,10 @@ public class WeekbookGenerationTests
             .Returns([]);
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
 
-        SetupModelReply("A steadier week for sleep", "Ada slept a little more than usual this week.");
+        SetupModelReply(
+            "A steadier week for sleep",
+            "Ada slept a little more than usual this week. Her resting heart rate held at her usual. "
+            + "Steps were lower on Thursday than on the other six days.");
     }
 
     private CardiMember Member() => new()
@@ -272,10 +275,51 @@ public class WeekbookGenerationTests
         await AssertNothingWritten();
     }
 
+    /// <summary>
+    /// A bare term no longer costs the week: it is explained in code where it is first used, and
+    /// the reply is written with the explanation in. The discard it replaced was the mechanism
+    /// that left a one-line "unremarkable week" as the only reply to survive a day of retries.
+    /// </summary>
     [Fact]
-    public async Task A_reply_using_a_precise_term_without_explaining_it_is_discarded()
+    public async Task A_reply_using_a_precise_term_without_explaining_it_is_glossed_and_written()
     {
-        SetupModelReply("A steady week", "Her sleep efficiency held steady across the whole week.");
+        SetupModelReply(
+            "A steady week",
+            "Her sleep efficiency held steady across the whole week. Her resting heart rate sat at her usual. "
+            + "Steps were lower than usual on four of the seven days.");
+
+        Assert.Equal(1, await CreateSut().GenerateDueWeekbooksAsync(UtcNow));
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d =>
+                d.Text.StartsWith("Her sleep efficiency (the share of time in bed actually spent asleep) held steady")),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The gloss lengthens a reply the model had already finished, so a reply near the column's
+    /// cap can be pushed over it — refused here, not by the database on the insert.
+    /// </summary>
+    [Fact]
+    public async Task A_reply_the_gloss_pushes_over_the_text_cap_is_discarded()
+    {
+        // 3,986 characters as the model wrote it — under the cap until the gloss adds its 49.
+        var filler = new string('x', DigestEntry.MaxTextLength - 90);
+        SetupModelReply(
+            "A steady week",
+            $"Her sleep efficiency held steady. Her resting heart rate sat at her usual. {filler}.");
+
+        await AssertNothingWritten();
+    }
+
+    /// <summary>
+    /// One sentence is not an account of a week, whatever it says: the brief asks for six or
+    /// more, and the single-line reply was the shape the old discard loop selected for.
+    /// </summary>
+    [Fact]
+    public async Task A_reply_too_short_to_be_an_account_is_discarded()
+    {
+        SetupModelReply("An unremarkable week", "Ada had an unremarkable week, with every reading in its usual range.");
 
         await AssertNothingWritten();
     }

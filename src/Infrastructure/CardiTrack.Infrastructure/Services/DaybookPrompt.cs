@@ -879,4 +879,8 @@ internal static class DaybookPrompt
     /// <inheritdoc cref="JournalRegisterGuards.UnglossedTerm"/>
     internal static string? UnglossedTerm(string text) =>
         JournalRegisterGuards.UnglossedTerm(text);
+
+    /// <inheritdoc cref="JournalRegisterGuards.Gloss"/>
+    internal static (string Text, IReadOnlyList<string> Glossed) Gloss(string text) =>
+        JournalRegisterGuards.Gloss(text);
 }

@@ -388,6 +388,24 @@ public static class MemberInsightsCalculator
         };
     }
 
+    /// <summary>
+    /// Gives <paramref name="target"/> the series of <paramref name="source"/>, metric for
+    /// metric, and nothing else of it. For a journal entry's charts: the entry draws the window
+    /// ending on its own day, while the latest reading, its status and its comparison stay what
+    /// they are today — a profile is about now, whichever period its charts are drawn for.
+    /// </summary>
+    public static void ReplaceSeries(DashboardMetrics target, DashboardMetrics source)
+    {
+        target.Steps.Series = source.Steps.Series;
+        target.RestingHeartRate.Series = source.RestingHeartRate.Series;
+        target.Sleep.Series = source.Sleep.Series;
+        target.Temperature.Series = source.Temperature.Series;
+        target.SpO2.Series = source.SpO2.Series;
+        target.BreathingRate.Series = source.BreathingRate.Series;
+        target.HeartRateVariability.Series = source.HeartRateVariability.Series;
+        target.OvernightBreathingRate.Series = source.OvernightBreathingRate.Series;
+    }
+
     private static List<MetricPoint> BuildSeries(
         Dictionary<DateOnly, ActivityLog> byDate, DateOnly today, Func<ActivityLog, decimal?> selector)
     {

@@ -46,20 +46,24 @@ public class CardiMembersController : BaseApiController
         _pauseValidator = pauseValidator;
     }
 
-    /// <summary>Full profile for one CardiMember (M1-13).</summary>
+    /// <summary>
+    /// Full profile for one CardiMember (M1-13). Optional <c>?seriesEndsOn=YYYY-MM-DD</c> ends
+    /// the metric series on that day rather than today, for a journal entry drawing the charts of
+    /// the period it accounts for.
+    /// </summary>
     [HttpGet("cardimembers/{cardiMemberId:guid}")]
     [ProducesResponseType(typeof(ApiResponse<CardiMemberDetailResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<CardiMemberDetailResponse>>> GetDetail(
-        Guid cardiMemberId, CancellationToken ct)
+        Guid cardiMemberId, [FromQuery] DateOnly? seriesEndsOn, CancellationToken ct)
     {
         if (NotSignedIn(out var error))
             return error;
 
         try
         {
-            return Success(await _cardiMembers.GetDetailAsync(UserContext.UserId, cardiMemberId, ct));
+            return Success(await _cardiMembers.GetDetailAsync(UserContext.UserId, cardiMemberId, seriesEndsOn, ct));
         }
         catch (KeyNotFoundException ex)
         {

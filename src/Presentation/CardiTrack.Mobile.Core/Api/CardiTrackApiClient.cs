@@ -100,6 +100,12 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<CardiMemberDetailResponse?> PeekCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         PeekAsync<CardiMemberDetailResponse>(ApiPaths.CardiMember(cardiMemberId), ct);
 
+    // Not cached: MemberProfileKeys cannot spell every date this could be asked for, so a
+    // cached copy would outlive an edit, a pause or a removal of the member it describes.
+    public Task<CardiMemberDetailResponse> GetCardiMemberAsync(
+        Guid cardiMemberId, DateOnly seriesEndsOn, CancellationToken ct = default) =>
+        GetAsync<CardiMemberDetailResponse>(ApiPaths.CardiMember(cardiMemberId, seriesEndsOn), ct, cache: false);
+
     public async Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
         Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default)
     {

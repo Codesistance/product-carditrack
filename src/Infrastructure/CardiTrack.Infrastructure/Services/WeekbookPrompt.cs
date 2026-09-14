@@ -122,6 +122,10 @@ internal static class WeekbookPrompt
     internal static string? UnglossedTerm(string text) =>
         JournalRegisterGuards.UnglossedTerm(text);
 
+    /// <inheritdoc cref="JournalRegisterGuards.Gloss"/>
+    internal static (string Text, IReadOnlyList<string> Glossed) Gloss(string text) =>
+        JournalRegisterGuards.Gloss(text);
+
     /// <summary>
     /// The week's readings: each metric's weekly average against the member's own usual and the
     /// published band, how many of the seven days carried it, and the day that sat furthest from

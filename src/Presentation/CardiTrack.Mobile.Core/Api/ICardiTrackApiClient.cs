@@ -42,6 +42,17 @@ public interface ICardiTrackApiClient
     /// <summary>Full profile for the CardiMember Detail screen (M1-13).</summary>
     Task<CardiMemberDetailResponse> GetCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>
+    /// The same profile with its metric series ending on <paramref name="seriesEndsOn"/> rather
+    /// than today. For a journal entry, whose charts draw the period it accounts for: a
+    /// Monthbook's is a whole series ending a month or more ago, which the live profile's series,
+    /// always running to today, cannot reach. Never cached: the payload is the member's current
+    /// profile under a key the profile's own invalidation (an edit, a pause, a removal) does not
+    /// spell, and a journal entry read offline draws from the live profile instead.
+    /// </summary>
+    Task<CardiMemberDetailResponse> GetCardiMemberAsync(
+        Guid cardiMemberId, DateOnly seriesEndsOn, CancellationToken ct = default);
+
     /// <summary>Saves the edit form (M1-14).</summary>
     Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
         Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default);

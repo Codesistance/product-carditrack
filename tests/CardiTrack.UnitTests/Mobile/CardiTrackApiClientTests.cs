@@ -11,6 +11,25 @@ namespace CardiTrack.UnitTests.Mobile;
 
 public class CardiTrackApiClientTests
 {
+    /// <summary>
+    /// A journal entry's charts come from the profile with its series ending on the entry's own
+    /// day, asked for by query on the profile's path. Not cached — offline, the entry page reads
+    /// the live profile the device holds instead.
+    /// </summary>
+    [Fact]
+    public async Task GetCardiMember_ForAJournalEntry_AsksForTheSeriesEndingOnItsDay()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, EmptyObjectEnvelope);
+        var id = Guid.Parse("11111111-2222-3333-4444-555555555555");
+
+        await client.GetCardiMemberAsync(id, new DateOnly(2026, 8, 31));
+
+        Assert.Equal(
+            "/api/v1/cardimembers/11111111-2222-3333-4444-555555555555?seriesEndsOn=2026-08-31",
+            http.Requests.Single().Uri!.PathAndQuery);
+    }
+
     [Fact]
     public async Task ResendVerification_PostsToAuthRoute()
     {

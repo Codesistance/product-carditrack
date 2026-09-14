@@ -73,7 +73,10 @@ public class MonthbookGenerationTests
             .Returns([]);
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
 
-        SetupModelReply("A steady month for sleep", "Ada's July held together well.");
+        SetupModelReply(
+            "A steady month for sleep",
+            "Ada's July held together well. Sleep ran a little longer than her usual across all four weeks. "
+            + "The week of 20 July was the quietest for steps.");
     }
 
     private CardiMember Member() => new()
@@ -303,6 +306,36 @@ public class MonthbookGenerationTests
     public async Task An_empty_reply_is_discarded()
     {
         SetupModelReply("A month", "   ");
+
+        await AssertNothingWritten();
+    }
+
+    /// <summary>
+    /// A bare term is explained in code where it is first used rather than costing the month —
+    /// the Monthbook was discarded dozens of times a day for this before one reply happened to
+    /// name nothing precise.
+    /// </summary>
+    [Fact]
+    public async Task A_reply_using_a_precise_term_without_explaining_it_is_glossed_and_written()
+    {
+        SetupModelReply(
+            "A steady month",
+            "Her heart rate variability sat a little under her usual all month. Sleep held at her usual. "
+            + "The week of 13 July was the most active.");
+
+        Assert.Equal(1, await CreateSut().GenerateDueMonthbooksAsync(UtcNow));
+
+        await _digests.Received(1).AddAsync(
+            Arg.Is<DigestEntry>(d =>
+                d.Text.StartsWith(
+                    "Her heart rate variability (the natural variation in the gap between one heartbeat and the next) sat")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_reply_too_short_to_be_an_account_is_discarded()
+    {
+        SetupModelReply("A typical month", "July was a fairly typical month for Ada.");
 
         await AssertNothingWritten();
     }

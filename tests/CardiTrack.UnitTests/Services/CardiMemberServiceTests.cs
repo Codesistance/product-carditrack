@@ -298,6 +298,109 @@ public class CardiMemberServiceTests
         return member;
     }
 
+    /// <summary>
+    /// A journal entry draws the series that ended with the period it accounts for. Asked for a
+    /// day, the series runs the thirty days up to it and reads the logs of exactly those days —
+    /// even for a member with nothing in today's window, whose metrics then carry no current
+    /// reading but still the series.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_EndsTheSeriesOnTheDayAskedFor()
+    {
+        var member = SeedMember();
+        var monthEnd = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-45);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, monthEnd.AddDays(-29), monthEnd)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = monthEnd, Steps = 4100 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: monthEnd);
+
+        var series = detail.Metrics!.Steps.Series;
+        Assert.Equal(30, series.Count);
+        Assert.Equal(monthEnd.AddDays(-29), series[0].Date);
+        Assert.Equal(monthEnd, series[^1].Date);
+        Assert.Equal(4100m, series[^1].Value);
+        Assert.Null(detail.Metrics.Steps.Value);
+    }
+
+    /// <summary>
+    /// Only the series moves. The latest reading and everything built on it are today's,
+    /// because the profile is about now whichever period its charts are drawn for.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_KeepsTheLatestReadingCurrentWhenTheSeriesIsHistoric()
+    {
+        var member = SeedMember();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var monthEnd = today.AddDays(-45);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, today.AddDays(-29), today)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = today.AddDays(-1), RestingHeartRate = 61 }]);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, monthEnd.AddDays(-29), monthEnd)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = monthEnd, RestingHeartRate = 74 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: monthEnd);
+
+        var heartRate = detail.Metrics!.RestingHeartRate;
+        Assert.Equal(61m, heartRate.Value);
+        Assert.Equal(monthEnd, heartRate.Series[^1].Date);
+        Assert.Equal(74m, heartRate.Series[^1].Value);
+    }
+
+    /// <summary>
+    /// The status is a statement about the member now. A member with nothing in today's window
+    /// reads the same whether or not an old month's series was asked for.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_JudgesHealthStatusOnTodaysWindowNotTheHistoricSeries()
+    {
+        var member = SeedMember();
+        var monthEnd = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-45);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, monthEnd.AddDays(-29), monthEnd)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = monthEnd, Steps = 4100 }]);
+
+        var plain = await CreateSut().GetDetailAsync(_userId, member.Id);
+        var dated = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: monthEnd);
+
+        Assert.Null(plain.Metrics);
+        Assert.NotNull(dated.Metrics);
+        Assert.Equal(plain.HealthStatus, dated.HealthStatus);
+    }
+
+    /// <summary>
+    /// The query binder accepts any date, including one with no thirty days before it. That is
+    /// not a request for a window; it gets today's series rather than a 500.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_IgnoresASeriesEndTooEarlyToHaveAWindow()
+    {
+        var member = SeedMember();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, today.AddDays(-29), today)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = today, Steps = 900 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: DateOnly.MinValue);
+
+        Assert.Equal(today, detail.Metrics!.Steps.Series[^1].Date);
+    }
+
+    [Fact]
+    public async Task GetDetail_TreatsAFutureSeriesEndAsToday()
+    {
+        var member = SeedMember();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, today.AddDays(-29), today)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = today, Steps = 900 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: today.AddDays(10));
+
+        Assert.Equal(today, detail.Metrics!.Steps.Series[^1].Date);
+    }
+
     [Fact]
     public async Task GetDetail_DecryptsMedicalNotes()
     {

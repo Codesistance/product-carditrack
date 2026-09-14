@@ -49,7 +49,8 @@
                        Text="Daybook"
                        Style="{StaticResource Heading3}"
                        TextColor="{StaticResource White}"/>
-                    <Label Text="One day, read against what is usual for them"
+                    <Label x:Name="HeaderSubtitle"
+                           Text="One day, read against what is usual for them"
                            FontFamily="Quicksand"
                            FontSize="12"
                            TextColor="{StaticResource White}"

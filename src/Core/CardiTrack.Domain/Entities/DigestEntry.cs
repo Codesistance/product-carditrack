@@ -41,6 +41,14 @@ public class DigestEntry
     public string Text { get; set; } = string.Empty;
 
     /// <summary>
+    /// The most characters <see cref="Text"/> can hold — the column's cap, a guard against a
+    /// runaway generation ever being stored rather than a length any summary approaches. Named
+    /// here so a generator that lengthens a reply after the model returned it (a gloss written
+    /// in) can refuse the reply before the database does.
+    /// </summary>
+    public const int MaxTextLength = 4000;
+
+    /// <summary>
     /// One short, specific thing the family could do to support this CardiMember today, generated
     /// with the summary so it follows from the same readings the summary describes. Null when the
     /// model returned none, or returned one that did not survive validation — the apps show

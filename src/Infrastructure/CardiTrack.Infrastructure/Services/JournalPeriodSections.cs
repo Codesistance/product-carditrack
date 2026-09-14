@@ -30,6 +30,12 @@ namespace CardiTrack.Infrastructure.Services;
 internal static class JournalPeriodSections
 {
     /// <summary>
+    /// The share of the member's usual within which a period's average is "about level with it"
+    /// rather than a quoted amount above or below.
+    /// </summary>
+    internal const decimal NegligibleShare = 0.02m;
+
+    /// <summary>
     /// One metric's period: the average over the days that carried it, how many those were, where
     /// that sat against the member's own usual and by how much, the published band, and the
     /// standout the calling book computes. Returns 1 when a line was written, 0 when the metric was
@@ -86,12 +92,20 @@ internal static class JournalPeriodSections
         {
             sb.Append(". Their usual is ").Append(format(usualValue));
 
+            // A difference too small to mean anything is said as "about level" rather than by
+            // the amount: the brief tells the model to quote the amount given, and given "24
+            // steps above" it does — a Monthbook read as a recital of one-minute and half-a-beat
+            // differences, each true and none worth a sentence. Two per cent of the usual is
+            // eight or nine minutes of a seven-hour night, a beat and a half of a resting heart
+            // rate, and under a hundred steps of a day's walking.
             var difference = average - usualValue;
+            var negligible = Math.Abs(usualValue) * NegligibleShare;
             sb.Append(difference switch
             {
+                0 => $", and the {periodNoun} sat level with it",
+                _ when Math.Abs(difference) <= negligible => $", and the {periodNoun} sat about level with it",
                 > 0 => $", and the {periodNoun} sat {format(difference)} above it",
-                < 0 => $", and the {periodNoun} sat {format(-difference)} below it",
-                _ => $", and the {periodNoun} sat level with it",
+                _ => $", and the {periodNoun} sat {format(-difference)} below it",
             });
         }
 
