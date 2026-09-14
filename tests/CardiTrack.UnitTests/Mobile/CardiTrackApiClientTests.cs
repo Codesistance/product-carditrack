@@ -1706,6 +1706,89 @@ public class CardiTrackApiClientTests
         IsPrimaryCaregiver = true,
     };
 
+    /// <summary>
+    /// The three account-deletion calls: route, verb, and the envelope they unwrap. A typo in any
+    /// of them would only surface against a deployed API, on the one flow that cannot be retried
+    /// casually.
+    /// </summary>
+    [Fact]
+    public async Task GetAccountDeletion_ReadsTheStatus_AndIsNeverServedFromCache()
+    {
+        var cache = Substitute.For<IOfflineReadCache>();
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, PendingDeletionEnvelope);
+
+        var status = await client.GetAccountDeletionAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal("/api/v1/users/me/deletion", request.Uri!.AbsolutePath);
+        Assert.True(status.DeletionRequested);
+        Assert.Equal(new DateTime(2026, 10, 14, 11, 0, 0, DateTimeKind.Utc), status.ScheduledForUtc);
+
+        // A stale "not requested" would hide a live deletion, and a stale "pending" would offer to
+        // cancel something already cancelled. This answer decides whether the app works at all.
+        await cache.DidNotReceiveWithAnyArgs().TryGetAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task RequestAccountDeletion_PostsToTheDeletionRoute()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, PendingDeletionEnvelope);
+
+        var status = await client.RequestAccountDeletionAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/v1/users/me/deletion", request.Uri!.AbsolutePath);
+        Assert.True(status.DeletionRequested);
+    }
+
+    [Fact]
+    public async Task CancelAccountDeletion_SendsDelete_AndReportsAnAccountThatIsStaying()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, ClearedDeletionEnvelope);
+
+        var status = await client.CancelAccountDeletionAsync();
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal("/api/v1/users/me/deletion", request.Uri!.AbsolutePath);
+        Assert.False(status.DeletionRequested);
+        Assert.Null(status.ScheduledForUtc);
+    }
+
+    /// <summary>
+    /// The refusal has to reach the caller as the server's own sentence. Settings shows it
+    /// verbatim, and "something went wrong" on an account deletion tells a caregiver nothing about
+    /// whether their request landed.
+    /// </summary>
+    [Fact]
+    public async Task RequestAccountDeletion_SurfacesTheServersMessage_WhenRefused()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.NotFound,
+            """
+        {"success":false,"message":"We couldn't find your account \u2014 please sign in again.","timestamp":"2026-09-14T11:00:00Z"}
+        """);
+
+        var ex = await Assert.ThrowsAsync<ApiException>(() => client.RequestAccountDeletionAsync());
+
+        Assert.Contains("find your account", ex.Message);
+    }
+
+    private const string PendingDeletionEnvelope =
+        """
+        {"success":true,"message":"ok","data":{"deletionRequested":true,"requestedAtUtc":"2026-09-14T11:00:00Z","scheduledForUtc":"2026-10-14T11:00:00Z","canCancel":true},"timestamp":"2026-09-14T11:05:00Z"}
+        """;
+
+    private const string ClearedDeletionEnvelope =
+        """
+        {"success":true,"message":"ok","data":{"deletionRequested":false,"requestedAtUtc":null,"scheduledForUtc":null,"canCancel":false},"timestamp":"2026-09-14T11:05:00Z"}
+        """;
+
     private static (CardiTrackApiClient Client, FakeHttpMessageHandler Http) CreateSut(
         IOfflineReadCache? cache = null)
     {

@@ -4,6 +4,7 @@ using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
+using Serilog;
 // CardiTrack.Application (the DTO assembly's root namespace) shadows MAUI's Application in
 // any file importing it, so the control type is aliased rather than qualified at each use.
 using MauiApplication = Microsoft.Maui.Controls.Application;
@@ -225,12 +226,16 @@ public partial class SettingsPage : ContentPage
     {
         if (!_biometric.IsAvailable)
         {
+            // Fingerprint or face only — not "a screen lock". DeviceBiometric allows
+            // BiometricStrong | BiometricWeak, so a PIN does not satisfy it, and telling a
+            // caregiver to set one up would send them away to do something that still gets
+            // refused. Worth being exact about: this message is the whole of their next step.
             await _popups.ShowWarningAsync(
                 _biometric.CanEnroll
-                    ? "Set up a fingerprint, face unlock or a screen lock on this phone first — we "
-                      + "ask for it before deleting an account."
-                    : "This phone has no screen lock, and we ask for one before deleting an "
-                      + "account. Email support@carditrack.com and we will do it for you.",
+                    ? "Set up a fingerprint or face unlock on this phone first — we ask for it "
+                      + "before deleting an account."
+                    : "This phone cannot do fingerprint or face unlock, and we ask for one before "
+                      + "deleting an account. Email support@carditrack.com and we will do it for you.",
                 "We need to check it is you");
             return false;
         }
@@ -245,14 +250,46 @@ public partial class SettingsPage : ContentPage
     /// </summary>
     private async Task SignOutForDeletionAsync()
     {
-        await _authService.SignOutAsync();
-        Preferences.Default.Remove("PrimaryCardiMemberId");
-        Preferences.Default.Remove("VerifyEmailNudgeDismissed");
-        Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey);
-        Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
-        DiagnosticsConsent.Clear();
-        await _drafts.ClearAsync();
+        // Fail-closed, step by step. By the time this runs the server has already accepted the
+        // deletion, so there is nothing to roll back and no useful way to report a half-failure:
+        // one step throwing must not stop the rest, or a token or a cached reading survives on a
+        // phone whose owner has just asked for all of it to go. An ordinary sign-out can afford to
+        // surface the failure; this one cannot afford to stop.
+        await TryAsync(() => _authService.SignOutAsync(), "sign-out");
+        Try(() => Preferences.Default.Remove("PrimaryCardiMemberId"), "primary member");
+        Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");
+        Try(() => Preferences.Default.Remove(DashboardPage.HealthDataDisclosureConfirmedKey), "disclosure hint");
+        Try(() => Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey), "wizard resume flag");
+        Try(DiagnosticsConsent.Clear, "diagnostics consent");
+        await TryAsync(() => _drafts.ClearAsync(), "member draft");
+
+        // Always, even if every step above failed: leaving them inside an app that can no longer
+        // load anything is the worst of the available outcomes.
         WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
+    }
+
+    private void Try(Action step, string what)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Deletion sign-out could not clear the {What}.", what);
+        }
+    }
+
+    private async Task TryAsync(Func<Task> step, string what)
+    {
+        try
+        {
+            await step();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Deletion sign-out could not complete the {What}.", what);
+        }
     }
 
     /// <summary>Settings is a tab root reachable by deep link (notification preferences,

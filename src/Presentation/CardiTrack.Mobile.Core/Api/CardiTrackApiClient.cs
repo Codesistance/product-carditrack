@@ -685,7 +685,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             new UpdateTimeZoneBody { TimeZoneId = timeZoneId }, ct);
 
     public Task<AccountDeletionStatusResponse> GetAccountDeletionAsync(CancellationToken ct = default) =>
-        GetAsync<AccountDeletionStatusResponse>("api/v1/users/me/deletion", ct);
+        // Never cached, for the same reason the health-data disclosure is not: a stale "not
+        // requested" would hide a deletion made on another device, and a stale "pending" would
+        // offer to cancel something already cancelled. This answer decides whether the app
+        // works at all, so it is always asked live.
+        GetAsync<AccountDeletionStatusResponse>("api/v1/users/me/deletion", ct, cache: false);
 
     public Task<AccountDeletionStatusResponse> RequestAccountDeletionAsync(CancellationToken ct = default) =>
         SendAsync<AccountDeletionStatusResponse>(HttpMethod.Post, "api/v1/users/me/deletion", ct);
