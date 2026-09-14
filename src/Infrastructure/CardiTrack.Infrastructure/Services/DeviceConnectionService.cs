@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Exceptions;
@@ -55,6 +56,7 @@ public class DeviceConnectionService : IDeviceConnectionService
     private readonly ICardiMemberAccessService _access;
     private readonly INotificationGapResolver _gapResolver;
     private readonly List<DeviceProviderSettings> _providerConfigs;
+    private readonly IOAuthGrantRevoker _grantRevoker;
 
     public DeviceConnectionService(
         IUnitOfWork unitOfWork,
@@ -64,8 +66,10 @@ public class DeviceConnectionService : IDeviceConnectionService
         IOAuthTokenRefreshService tokenRefresh,
         ICardiMemberAccessService access,
         INotificationGapResolver gapResolver,
-        IOptions<List<DeviceProviderSettings>> providerConfigs)
+        IOptions<List<DeviceProviderSettings>> providerConfigs,
+        IOAuthGrantRevoker grantRevoker)
     {
+        _grantRevoker = grantRevoker;
         _unitOfWork = unitOfWork;
         _encryption = encryption;
         _cache = cache;
@@ -328,7 +332,14 @@ public class DeviceConnectionService : IDeviceConnectionService
         var connections = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId)).ToList();
         var connection = RequireConnection(connections, deviceId);
 
+        // Told to the provider before it is forgotten here: after the next three lines there is
+        // no token left to revoke with, and the grant would stay live at Google — CardiTrack still
+        // listed among the apps with access to this person's health data — while the app showed
+        // the device as disconnected. Best effort by design: a provider outage must not stop a
+        // caregiver disconnecting a device.
         var now = DateTime.UtcNow;
+        await _grantRevoker.TryRevokeAsync(connection, ct);
+
         connection.IsActive = false;
         connection.IsPrimary = false;
         connection.ConnectionStatus = ConnectionStatus.Disconnected;

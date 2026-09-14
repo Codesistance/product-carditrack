@@ -32,6 +32,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     private ServiceProvider _services = null!;
     private readonly IProfilePhotoStorage _photos = Substitute.For<IProfilePhotoStorage>();
     private readonly IReportStorage _reportStorage = Substitute.For<IReportStorage>();
+    private readonly IOAuthGrantRevoker _grantRevoker = Substitute.For<IOAuthGrantRevoker>();
 
     public async Task InitializeAsync()
     {
@@ -314,6 +315,46 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "reports/seeded-export.pdf", Arg.Is<CancellationToken>(t => t == CancellationToken.None));
     }
 
+    /// <summary>
+    /// The grant is ended before the row holding its token is deleted — the runbook's "revoke
+    /// upstream before deleting" step, which until now an operator had to remember.
+    /// </summary>
+    [Fact]
+    public async Task ErasingAMember_RevokesItsDeviceGrantsFirst()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+
+        await EraseAsync(memberId);
+
+        await _grantRevoker.Received(1).TryRevokeAsync(
+            Arg.Is<DeviceConnection>(c => c.CardiMemberId == memberId), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A grant that could not be revoked is named in the report, not swallowed. This is the one
+    /// failure in the cascade that can never be retried: the refresh token goes with the row, so
+    /// nothing will ever be able to end that grant again, and the only route left is the wearer's
+    /// own provider account. An erasure that reported success here would be claiming something
+    /// untrue about a live grant on a person's health data.
+    /// </summary>
+    [Fact]
+    public async Task AGrantThatCouldNotBeRevoked_IsNamedInTheReport()
+    {
+        var (_, _, memberId) = await SeedMemberWithDataAsync();
+        _grantRevoker.TryRevokeAsync(Arg.Any<DeviceConnection>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        var report = await EraseAsync(memberId);
+
+        var connectionId = Assert.Single(report.UnrevokedGrants);
+
+        // And the erasure still finished — the report is the only record that anything is left.
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.DeviceConnections.CountAsync(c => c.Id == connectionId));
+        Assert.Equal(0, await db.CardiMembers.CountAsync(m => m.Id == memberId));
+    }
+
     private async Task<MemberErasureReport> EraseAsync(
         Guid memberId, CancellationToken ct = default)
     {
@@ -322,6 +363,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>(),
             _photos,
             _reportStorage,
+            _grantRevoker,
             NullLogger<MemberErasureService>.Instance);
         return await sut.EraseAsync(memberId, ct);
     }

@@ -33,6 +33,7 @@ public class AccountErasureCascadeTests : IAsyncLifetime
     private ServiceProvider _services = null!;
     private readonly IProfilePhotoStorage _photos = Substitute.For<IProfilePhotoStorage>();
     private readonly IReportStorage _reportStorage = Substitute.For<IReportStorage>();
+    private readonly IOAuthGrantRevoker _grantRevoker = Substitute.For<IOAuthGrantRevoker>();
 
     public async Task InitializeAsync()
     {
@@ -371,7 +372,8 @@ public class AccountErasureCascadeTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
 
         var members = new MemberErasureService(
-            db, _photos, _reportStorage, NullLogger<MemberErasureService>.Instance);
+            db, _photos, _reportStorage, _grantRevoker,
+            NullLogger<MemberErasureService>.Instance);
         var sut = new AccountErasureService(
             db, members, _reportStorage, NullLogger<AccountErasureService>.Instance);
 

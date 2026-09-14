@@ -112,6 +112,7 @@ builder.Services.AddScoped<IChatThemeService, ChatThemeService>();
 builder.Services.Configure<List<DeviceProviderSettings>>(
     configuration.GetSection(DeviceProviderSettings.SectionName));
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
+builder.Services.AddScoped<CardiTrack.Application.Interfaces.Clients.IOAuthGrantRevoker, OAuthGrantRevoker>();
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 builder.Services.AddGoogleHealthProvider();
 

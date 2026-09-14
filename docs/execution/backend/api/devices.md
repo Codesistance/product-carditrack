@@ -384,7 +384,7 @@ Initiate a token refresh for a device with an expired or revoked OAuth token.
 
 > **Implemented** (M1-15). Requires a **primary-caregiver** link, not merely an active one.
 
-Removes a device connection. Soft delete: the connection is deactivated, its status set to `disconnected`, and its **stored OAuth tokens discarded** — revoking the grant at the provider remains the user's own step. If the removed device was the primary, another active connection is promoted, so a member with devices always has a primary.
+Removes a device connection. Soft delete: the connection is deactivated, its status set to `disconnected`, and its **stored OAuth tokens revoked at the provider and then discarded**. Revocation happens first, while the token still exists to revoke with: CardiTrack stops appearing in the wearer's list of apps with access to their health data, and a leaked copy of the refresh token is no longer exchangeable for readings. Best effort by design — a provider outage is logged and the disconnect still completes, because it is the caregiver's decision and it is irreversible here whatever the provider says. If the removed device was the primary, another active connection is promoted, so a member with devices always has a primary.
 
 Historical data synced via this device is retained. A CardiMember **may have zero connected devices** (e.g. before their first connection); the dashboard reports `device.hasActiveConnection: false` in that state.
 

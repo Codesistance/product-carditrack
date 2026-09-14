@@ -14,6 +14,12 @@ namespace CardiTrack.Application.Interfaces.Services;
 /// Whether a profile-photo object was deleted. False when the member had no photo, and also when
 /// the object could not be removed — see <see cref="OrphanedObjects"/>.
 /// </param>
+/// <param name="UnrevokedGrants">
+/// Device connections whose grant could not be confirmed revoked at the provider before the row
+/// was deleted. Empty is the expected result. Anything here is a live grant nothing can end any
+/// more — the token it needed is gone with the row — so it has to be revoked from the wearer's
+/// own provider account, and the erasure is not complete until it is.
+/// </param>
 /// <param name="OrphanedObjects">
 /// Storage objects the database rows named but which could not be deleted. Empty is the expected
 /// result. Non-empty means the rows are gone and these files are not, which is a manual job and
@@ -23,6 +29,7 @@ public sealed record MemberErasureReport(
     Guid CardiMemberId,
     IReadOnlyList<(string Table, int Rows)> RowsByTable,
     bool PhotoObjectRemoved,
+    IReadOnlyList<Guid> UnrevokedGrants,
     IReadOnlyList<string> OrphanedObjects)
 {
     public int TotalRows => RowsByTable.Sum(r => r.Rows);

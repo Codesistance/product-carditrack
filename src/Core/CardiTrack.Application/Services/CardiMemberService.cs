@@ -19,6 +19,7 @@ public class CardiMemberService : ICardiMemberService
     private readonly INotificationGapResolver _gapResolver;
     private readonly IProfilePhotoProcessor _photoProcessor;
     private readonly IProfilePhotoStorage _photoStorage;
+    private readonly IOAuthGrantRevoker _grantRevoker;
 
     public CardiMemberService(
         IUnitOfWork unitOfWork,
@@ -26,8 +27,10 @@ public class CardiMemberService : ICardiMemberService
         IEncryptionService encryption,
         INotificationGapResolver gapResolver,
         IProfilePhotoProcessor photoProcessor,
-        IProfilePhotoStorage photoStorage)
+        IProfilePhotoStorage photoStorage,
+        IOAuthGrantRevoker grantRevoker)
     {
+        _grantRevoker = grantRevoker;
         _unitOfWork = unitOfWork;
         _access = access;
         _encryption = encryption;
@@ -449,10 +452,13 @@ public class CardiMemberService : ICardiMemberService
             _unitOfWork.UserCardiMembers.Update(link);
         }
 
-        // Devices must stop syncing, and their tokens should not outlive the member.
+        // Devices must stop syncing, and their tokens should not outlive the member — at the
+        // provider as well as here. Revoked before the token is cleared, or the grant stays live
+        // at Google for a member who has been removed from the app.
         foreach (var connection in await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(cardiMemberId))
         {
             if (!connection.IsActive) continue;
+            await _grantRevoker.TryRevokeAsync(connection, ct);
             connection.IsActive = false;
             connection.ConnectionStatus = ConnectionStatus.Disconnected;
             connection.AccessToken = null;

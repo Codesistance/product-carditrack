@@ -360,7 +360,8 @@ public class CardiMemberCreationTransactionTests : IAsyncLifetime
             encryption,
             Substitute.For<INotificationGapResolver>(),
             Substitute.For<IProfilePhotoProcessor>(),
-            Substitute.For<IProfilePhotoStorage>());
+            Substitute.For<IProfilePhotoStorage>(),
+            Substitute.For<IOAuthGrantRevoker>());
     }
 
     private static CreateCardiMemberRequest BuildRequest() => new()

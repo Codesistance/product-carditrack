@@ -21,6 +21,14 @@ public class DeviceProviderSettings
     public string ClientSecret { get; set; } = string.Empty;
     public string AuthorizationUrl { get; set; } = string.Empty;
     public string TokenUrl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where a grant is ended — Google's is <c>https://oauth2.googleapis.com/revoke</c>. Empty
+    /// means this provider cannot be told, and a disconnect only forgets the token at our end;
+    /// <see cref="Application.Interfaces.Clients.IOAuthGrantRevoker"/> says so in the log rather
+    /// than failing, because a missing endpoint must not stop a caregiver disconnecting a device.
+    /// </summary>
+    public string RevocationUrl { get; set; } = string.Empty;
     public string ApiBaseUrl { get; set; } = string.Empty;
     public List<string> Scopes { get; set; } = [];
 
