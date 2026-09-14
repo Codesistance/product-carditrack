@@ -271,6 +271,7 @@ jobs:
             -f net10.0-ios \
             -c Release \
             /p:ArchiveOnBuild=true \
+            /p:CreateDsymDirectory=true \
             /p:CodesignKey="iPhone Distribution" \
             /p:CodesignProvision="carditrack"
       - name: Upload to App Store Connect
@@ -282,3 +283,38 @@ jobs:
             --apiKey $(jq -r '.key_id' asc-key.json) \
             --apiIssuer $(jq -r '.issuer_id' asc-key.json)
           echo "### iOS deployed @ \`${{ needs.validate-tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+
+      # Same reasoning as deploy-apps-dev.yml's "Stage iOS symbols": the store binary
+      # is stripped and the .dSYM is the only way to read a crash report from it. This
+      # job rebuilds from the tag rather than promoting the dev IPA, so its binary has
+      # its own build UUID and the dev build's symbols do not match it — hence a
+      # separate copy, under prod-symbols/ so the two are never mistaken for each
+      # other in the bucket.
+      #
+      # After the store upload, not before it, and that is the one place this differs
+      # from the dev job: missing symbols there stop a TestFlight build nobody has yet,
+      # which is cheap. Here the release is the point, so it ships first and a symbol
+      # failure turns the job red afterwards — visible, and recoverable by re-running
+      # the build against the same tag.
+      - name: Upload iOS symbols
+        env:
+          BUCKET: gs://${{ needs.env.outputs.gcs_builds_bucket }}
+          TAG: ${{ needs.validate-tag.outputs.tag }}
+        run: |
+          SEARCH="src/Presentation/CardiTrack.Mobile/bin/Release/net10.0-ios"
+          if [ -d "$HOME/Library/Developer/Xcode/Archives" ]; then
+            SEARCH="$SEARCH $HOME/Library/Developer/Xcode/Archives"
+          fi
+          find $SEARCH \( -name '*.dSYM' -o -name '*.mSYM' \) -prune -print \
+            > "$RUNNER_TEMP/symbols.txt"
+          if [ ! -s "$RUNNER_TEMP/symbols.txt" ]; then
+            echo "::error::No .dSYM found under $SEARCH — this release shipped, but no crash from it can be symbolicated."
+            exit 1
+          fi
+          mkdir -p prod-symbols
+          while IFS= read -r SYM; do
+            NAME=$(basename "$SYM")
+            if [ -f "$GITHUB_WORKSPACE/prod-symbols/$NAME.zip" ]; then continue; fi
+            (cd "$(dirname "$SYM")" && zip -qry "$GITHUB_WORKSPACE/prod-symbols/$NAME.zip" "$NAME")
+          done < "$RUNNER_TEMP/symbols.txt"
+          gcloud storage cp prod-symbols/* "$BUCKET/$TAG/ios/prod-symbols/"

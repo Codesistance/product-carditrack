@@ -303,7 +303,12 @@ Consequences, all confirmed on a device (2026-08-11):
   app fell back to the `Eu1` intake where the UK1 application ID does not exist.
 - **Datadog crash reporting went with it** (`NativeCrashReportEnabled = false`) — crash
   reporting is a RUM feature. Play Console → **Quality → Android vitals → Crashes and ANRs**
-  is the source for mobile crashes and ANRs.
+  is the source for mobile crashes and ANRs; on iOS it is **TestFlight / Xcode Organizer**,
+  whose reports arrive as raw addresses and need the build's `.dSYM` (see
+  [apps/mobile/readme.md](../apps/mobile/readme.md#symbolicating-an-ios-crash)).
+- Either way there is **no crash telemetry of our own**, so the on-device Serilog file is
+  often the only record of what the app was doing: Settings → Privacy → **Share app logs**
+  gets it off the handset without a developer machine.
 - Any fix that reaches the native `useCustomEndpoint` directly is Android-only (the native
   bindings ship as `Datadog.Android.*` packages; there is no iOS equivalent here), which the
   project's Android/iOS parity rule rules out.

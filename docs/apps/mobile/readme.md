@@ -276,7 +276,7 @@ Dev / internal-track mobile CI lives in `.github/workflows/deploy-apps-dev.yml` 
 - **Pull requests** — validation builds only: Android (unsigned APK), iOS (simulator), Windows (MSIX). No signing secrets are exposed to PR runs.
 - **Push to `main`** — in addition to the validation builds:
   - **Android**: a signed AAB + APK is produced (`build-mobile-android-signed`) and the AAB is uploaded to the **Play Console internal testing track** (`deploy-play-internal`). Release builds run R8 (`AndroidLinkTool=r8` in the csproj), and the upload includes the R8 deobfuscation map (`mapping.txt`) plus a `native-debug-symbols.zip` built from the pre-strip native libraries (`obj/**/app_shared_libraries`), so Play crash reports show readable stack traces. Note: symbol coverage extends to the app's own native libs; Microsoft does not ship unstripped Mono runtime libraries, so frames inside e.g. `libmonosgen-2.0.so` remain unsymbolicated.
-  - **iOS**: a signed device IPA is produced (`build-mobile-ios-device`) and uploaded to **TestFlight** (`deploy-testflight`) via the App Store Connect API.
+  - **iOS**: a signed device IPA is produced (`build-mobile-ios-device`) and uploaded to **TestFlight** (`deploy-testflight`) via the App Store Connect API. The same job zips the build's `.dSYM` and ships it as the `mobile-ios-symbols` artifact (90-day retention) and to `…/ios/symbols/` in the builds bucket, because the store binary is stripped and that bundle is the only thing that can name the frames in a crash report — AOT'd managed methods included. The step fails the build if no `.dSYM` is found: a build nobody can symbolicate is indistinguishable from a working one until the first crash arrives.
   - Signed artifacts are archived to GCS under the release tag (`upload-mobile-artifacts`).
 
 Store versioning is stamped by CI: `ApplicationDisplayVersion` comes from the computed semver tag and `ApplicationVersion` (iOS build number / Android versionCode) from the monotonic commit count — the values in the csproj are placeholders.
@@ -290,6 +290,25 @@ Release-note: Chat replies now arrive faster and remember where you left off.
 ```
 
 The trailer text becomes the bullet verbatim, whatever paths the commit touched. `Release-note: none` hides a commit that would otherwise be listed. Testers see the result as TestFlight **What to Test** and Play internal **What's new** (Play is capped at 500 characters, TestFlight at 4000; bullets are dropped from the oldest end to fit). The same text is written to the Actions job summary.
+
+### Symbolicating an iOS crash
+
+A TestFlight crash report names no frames of ours — the shipped binary is stripped, so everything in the app appears as `CardiTrack.Mobile 0x… 0x100704000 + 53662144`. Turning those back into method names needs the `.dSYM` for that exact build, matched on the UUID in the report's **Binary Images** section.
+
+1. Read the build off the report header (`Version: 0.2.303 (1510)`) and the UUID off the `CardiTrack.Mobile` line under Binary Images.
+2. Fetch the symbols for that release tag: `gcloud storage cp -r gs://carditrack-common-builds/v0.2.303/ios/symbols ./`. Production builds are under `…/ios/prod-symbols` — `deploy-apps-prod.yml` rebuilds from the tag rather than promoting the dev IPA, so its binary has its own UUID and the dev symbols will not match it. The bucket deletes everything after **10 days**; past that, take the `mobile-ios-symbols` artifact off the build's Actions run, which is kept for 90.
+3. Confirm they match, or the output will be silently wrong: `dwarfdump --uuid CardiTrack.Mobile.app.dSYM` against the UUID from step 1.
+4. Resolve a frame: `atos -o CardiTrack.Mobile.app.dSYM/Contents/Resources/DWARF/CardiTrack.Mobile -arch arm64 -l 0x100704000 0x103a311c0`, where `-l` is the app's load address (the first number on the Binary Images line) and the last argument is the frame address.
+
+Reading the result: offsets below roughly 50 MB are AOT-compiled managed code and come back as method names; the band above it is the Mono runtime linked into the same binary, and frames there stay anonymous. A stack that is *entirely* runtime frames, ending at `abort`, is the signature of an unhandled managed exception — the managed frames were unwound before the abort, so the on-device log (below) is the only place the exception itself survives.
+
+Before symbols existed in CI, a build's `.dSYM` died with the runner: builds up to **1510** cannot be symbolicated at all unless the tag is rebuilt on a Mac.
+
+### Getting the log off a device
+
+The app writes Warning-and-above to a rolling Serilog file under `FileSystem.AppDataDirectory/logs`, and `AppLogging.HookUnhandledExceptions` writes the full exception there before the process dies. **Settings → Privacy → Share app logs** zips those files with a short `about.txt` (version, build, model, OS) and hands them to the share sheet, which is the only route off an iPhone that does not need Xcode's Download Container and a developer machine. The row works whether or not **Send diagnostics** is on: that toggle governs what the app sends by itself, this is the caregiver sending a file deliberately.
+
+Known gap: an exception thrown inside `MauiProgram.CreateMauiApp` before `HookUnhandledExceptions` runs is still lost — Serilog is configured by then, but nothing is catching.
 
 Signing material and store credentials live in GCP Secret Manager (`carditrack-common-*` secrets, defined in `infrastructure/common/secret_manager.tf`):
 
