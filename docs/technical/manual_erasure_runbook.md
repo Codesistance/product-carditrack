@@ -108,6 +108,7 @@ The account-scoped rows above assume the members go too. When another caregiver 
 | 39 | `DeviceHistoryRepulls` (rows they requested) | `RequestedByUserId` is required, so these cannot be nulled — delete them; the 48-hour re-pull cooldown resets for that member |
 | 40 | `Alerts.AcknowledgedByUserId`, `MemberQuestionnaires.AnsweredByUserId` | **Null, do not delete** — the alert and the answer belong to the member |
 | 41 | `UserCardiMembers` (this user's links) | Delete last among the member-facing rows, so the count checks above still resolve the user |
+| 41b | `CardiMemberCreationKeys` (this user's) | Keyed on `UserId`; three columns naming one creation attempt they made. Nothing depends on them — they answer a retry within 24 hours and are trimmed on the next create — so delete outright |
 | 42 | `PushDeviceTokens`, `NotificationPreferences`, `ExportConsents`, `Reports` (with their bucket objects), `Users` | The user-keyed rows from the account-scoped table; `Organizations` and `Subscriptions` stay while other users remain |
 
 **Reports are durable.** Since the self-service export shipped (2026-09-07) every generated export has a `Reports` row and an object in the report-exports bucket, both listed above; the earlier statement here that reports were an in-process one-hour cache with no table to clear is no longer true.

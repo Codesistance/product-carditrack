@@ -58,11 +58,40 @@ public class CardiMemberService : ICardiMemberService
         }
     }
 
+    /// <summary>
+    /// How long a creation key stays answerable. Its whole job is a retry moments after a failed
+    /// attempt, so a day is already generous; the window exists to bound the table, not to bound
+    /// correctness.
+    /// </summary>
+    private static readonly TimeSpan CreationKeyLifetime = TimeSpan.FromDays(1);
+
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
         Guid organizationId,
         Guid userId,
-        CreateCardiMemberRequest request)
+        CreateCardiMemberRequest request,
+        string? idempotencyKey = null)
     {
+        // The retry's question, asked before any work: has this caregiver already made this
+        // attempt? A hit means the earlier transaction committed — the key row could not exist
+        // otherwise — so the member it names is the one they meant to create, whatever the
+        // response they actually saw.
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            var already = await _unitOfWork.CardiMemberCreationKeys.FindAsync(userId, idempotencyKey);
+            if (already is not null)
+            {
+                if (await GetByIdAsync(already.CardiMemberId) is { } existing)
+                    return existing;
+
+                // The attempt landed and its member has since been removed. Retrying is then a
+                // request to add that person again, which is a thing a caregiver may legitimately
+                // want — so clear the spent key rather than letting the create below collide with
+                // it on the unique index and fail with a 500 nobody can act on.
+                _unitOfWork.CardiMemberCreationKeys.Remove(already);
+                await _unitOfWork.SaveChangesAsync();
+            }
+        }
+
         var cardiMember = new CardiMember
         {
             OrganizationId = organizationId,
@@ -118,6 +147,20 @@ public class CardiMemberService : ICardiMemberService
             await _unitOfWork.UserCardiMembers.AddAsync(userCardiMember);
             await _unitOfWork.SaveChangesAsync();
 
+            // Written inside the transaction, which is the whole design: it commits with the
+            // member and the link or not at all. That is what lets a retry read the key and know
+            // — rather than guess — whether the attempt it is retrying actually landed.
+            if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            {
+                await _unitOfWork.CardiMemberCreationKeys.AddAsync(new CardiMemberCreationKey
+                {
+                    UserId = userId,
+                    Key = idempotencyKey,
+                    CardiMemberId = cardiMember.Id,
+                });
+                await _unitOfWork.SaveChangesAsync();
+            }
+
             commitAttempted = true;
             await _unitOfWork.CommitTransactionAsync();
         }
@@ -148,6 +191,23 @@ public class CardiMemberService : ICardiMemberService
 
             await DiscardUploadedPhotoAsync(cardiMember);
             throw;
+        }
+
+        // After the commit, never before it, and never inside the transaction: trimming this
+        // caregiver's spent keys is housekeeping, and housekeeping must not be able to fail a
+        // creation that has already succeeded. Best-effort for the same reason.
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            try
+            {
+                await _unitOfWork.CardiMemberCreationKeys.PurgeOlderThanAsync(
+                    userId, DateTime.UtcNow - CreationKeyLifetime);
+            }
+            catch
+            {
+                // A key that outlives its window costs three columns. Saying so to the caregiver,
+                // after their member was created, would cost them the member.
+            }
         }
 
         return new CardiMemberResponse

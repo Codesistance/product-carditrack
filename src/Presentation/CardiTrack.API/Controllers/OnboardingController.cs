@@ -25,6 +25,12 @@ public class OnboardingController : BaseApiController
     private readonly IValidator<CreateOrganizationRequest> _organizationValidator;
     private readonly IValidator<CreateCardiMemberRequest> _cardiMemberValidator;
 
+    /// <summary>
+    /// Matches the column. A GUID in any of its spellings fits comfortably; anything longer is a
+    /// client using the header as storage rather than as a name.
+    /// </summary>
+    private const int MaxIdempotencyKeyLength = 64;
+
     public OnboardingController(
         IUserContext userContext,
         ILogger<OnboardingController> logger,
@@ -146,6 +152,21 @@ public class OnboardingController : BaseApiController
             return Error("Let's set up your organization first — then you can add a CardiMember.", 403);
         }
 
+        // The caregiver's own name for this attempt, so a retry after a lost response returns the
+        // member the first attempt made rather than making a second one (#1074). Optional: an
+        // installed app that predates this header still creates members exactly as before. A
+        // malformed key is refused rather than ignored — silently dropping it would leave the
+        // client believing it had protection it did not have, which is worse than no protection.
+        var idempotencyKey = Request.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            idempotencyKey = null;
+        }
+        else if (idempotencyKey.Length > MaxIdempotencyKeyLength)
+        {
+            return Error($"Idempotency-Key must be {MaxIdempotencyKeyLength} characters or fewer.", 400);
+        }
+
         Logger.LogInformation(
             "Creating CardiMember {Name} for organization {OrgId}",
             request.Name,
@@ -157,7 +178,8 @@ public class OnboardingController : BaseApiController
             response = await _cardiMemberService.CreateCardiMemberAsync(
                 UserContext.OrganizationId,
                 UserContext.UserId,
-                request);
+                request,
+                idempotencyKey);
         }
         catch (CardiMemberCreationOutcomeUnknownException ex)
         {

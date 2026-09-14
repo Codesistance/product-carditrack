@@ -33,6 +33,7 @@ public interface IUnitOfWork : IDisposable
     IMemberAdviseRepository MemberAdvises { get; }
     IReportRepository Reports { get; }
     IExportConsentRepository ExportConsents { get; }
+    ICardiMemberCreationKeyRepository CardiMemberCreationKeys { get; }
     IMemberAiHoldRepository MemberAiHolds { get; }
     IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
 

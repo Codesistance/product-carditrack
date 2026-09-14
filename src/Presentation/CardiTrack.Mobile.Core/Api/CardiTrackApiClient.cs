@@ -61,8 +61,32 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<UserResponse> CreateUserAsync(CreateUserRequest request, CancellationToken ct = default) =>
         PostAsync<CreateUserRequest, UserResponse>("api/Onboarding/user", request, ct);
 
-    public Task<CardiMemberResponse> CreateCardiMemberAsync(CreateCardiMemberRequest request, CancellationToken ct = default) =>
-        PostAsync<CreateCardiMemberRequest, CardiMemberResponse>("api/Onboarding/cardimember", request, ct);
+    public async Task<CardiMemberResponse> CreateCardiMemberAsync(
+        CreateCardiMemberRequest request, string? idempotencyKey = null, CancellationToken ct = default)
+    {
+        const string path = "api/Onboarding/cardimember";
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            return await PostAsync<CreateCardiMemberRequest, CardiMemberResponse>(path, request, ct);
+
+        // Built by hand rather than through PostAsJsonAsync, only because this is the one call
+        // with a header to set. JsonContent, like the shared helpers use, because it re-serializes
+        // on each read — which is what lets the auth handler re-send this request after a 401.
+        using var message = new HttpRequestMessage(HttpMethod.Post, path);
+        message.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+        message.Content = JsonContent.Create(request, mediaType: null, Json);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(message, ct);
+        }
+        catch (Exception ex) when (IsTransport(ex))
+        {
+            throw NetworkError("POST", path, ex, ct);
+        }
+
+        return await ReadEnvelopeAsync<CardiMemberResponse>("POST", path, response, ct);
+    }
 
     public Task<List<CardiMemberResponse>> GetCardiMembersAsync(CancellationToken ct = default) =>
         GetAsync<List<CardiMemberResponse>>(ApiPaths.CardiMembers, ct);

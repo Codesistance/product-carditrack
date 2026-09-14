@@ -69,6 +69,7 @@ public class CardiTrackDbContext : DbContext
     /// Append-only aside from the consume stamp.
     /// </summary>
     public DbSet<ExportConsent> ExportConsents => Set<ExportConsent>();
+    public DbSet<CardiMemberCreationKey> CardiMemberCreationKeys => Set<CardiMemberCreationKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
