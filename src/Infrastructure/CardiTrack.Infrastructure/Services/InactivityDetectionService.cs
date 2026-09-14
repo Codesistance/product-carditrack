@@ -186,7 +186,12 @@ public class InactivityDetectionService : IInactivityDetectionService
         // into deleting their account keeps being pulled every fifteen minutes — and, at the end
         // of it, can have rows written behind the erasure cascade, which has no foreign key to
         // stop them.
-        if (!await _unitOfWork.UserCardiMembers.HasWatcherNotAwaitingDeletionAsync(memberId))
+        //
+        // The predicate is the scheduler's, exactly: a member with no active link at all is still
+        // collected for, here as there. Skipping those too would silently stop a member's
+        // inactivity alerts after an ordinary link removal while routine sync carried on filling
+        // their history — one collection path disagreeing with another about the same member.
+        if (await _unitOfWork.UserCardiMembers.IsLeftUnwatchedByPendingDeletionAsync(memberId))
             return false;
 
         var rulePrefs = AlertRuleOverrides.FromJson(

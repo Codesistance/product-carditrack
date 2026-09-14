@@ -335,7 +335,12 @@ public class AccountErasureCascadeTests : IAsyncLifetime
     {
         var seed = await SeedAsync();
 
-        await EraseAsync(seed.UserId);
+        // A live, distinct token — not the default. Called with CancellationToken.None the
+        // assertion below proves nothing, because a regression to forwarding `ct` would hand the
+        // storage the very same value and pass.
+        using var caller = new CancellationTokenSource();
+
+        await EraseAsync(seed.UserId, caller.Token);
 
         await _reportStorage.Received(1).DeleteAsync(
             "reports/seeded-export.pdf",
@@ -359,7 +364,8 @@ public class AccountErasureCascadeTests : IAsyncLifetime
         Assert.Empty(second.OrphanedObjects);
     }
 
-    private async Task<AccountErasureReport> EraseAsync(Guid userId)
+    private async Task<AccountErasureReport> EraseAsync(
+        Guid userId, CancellationToken ct = default)
     {
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
@@ -369,7 +375,7 @@ public class AccountErasureCascadeTests : IAsyncLifetime
         var sut = new AccountErasureService(
             db, members, _reportStorage, NullLogger<AccountErasureService>.Instance);
 
-        return await sut.EraseAsync(userId);
+        return await sut.EraseAsync(userId, ct);
     }
 
     private sealed record Seed(
