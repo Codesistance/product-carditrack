@@ -58,10 +58,10 @@ erases the members this caregiver was the last active watcher of — via the sam
 exports in GCS — releases the members somebody else still watches, and then removes the account's
 own rows.
 
-**Built is not the same as running.** The worker is merged and tested but takes effect in an
-environment only once that environment has been deployed and both pending migrations applied —
-`AddUserDeletionRequest` and `AddCardiMemberCreationKeys`, the latter because the member cascade
-deletes from the table it creates. Until then, and for anything the worker reports as an orphaned storage object,
+**Live in dev, not in prod.** CI run 34901698217 applied both migrations and deployed the Worker
+on 2026-09-14, so these endpoints now lead to a real erasure in dev — though its first sweep runs
+in rehearsal (`retention_worker_dry_run`), logging what it would erase rather than erasing it.
+Prod has no deploy of this: there, a request recorded here still waits for the manual runbook. Until then, and for anything the worker reports as an orphaned storage object,
 [manual_erasure_runbook.md](../../../technical/manual_erasure_runbook.md) is still the operational
 path, and these endpoints are what tell an operator a request exists.
 

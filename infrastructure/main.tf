@@ -261,6 +261,11 @@ module "deployments" {
       "Storage__MemberPhotos__Bucket" = local.member_photos_bucket_name
       # Likewise for ExpiredReportCleanupWorker: the same export bucket the API writes to.
       "Storage__Reports__Bucket" = local.report_exports_bucket_name
+      # RetentionWorker is the only job that deletes health data because time has passed, and
+      # its first run against an estate that already has data cannot be undone. The rehearsal
+      # switch is here rather than in appsettings so it can be flipped per environment without
+      # a code deploy — see the data-protection ADR §5.2.
+      "Workers__RetentionWorker__DryRun" = tostring(var.retention_worker_dry_run)
     },
     # The Worker hosts device pull and the audit pull today, so it is where the cadence
     # parameters land.

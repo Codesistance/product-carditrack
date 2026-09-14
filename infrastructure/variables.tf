@@ -197,6 +197,12 @@ variable "apm_mobile_engine" {
   default     = "Datadog"
 }
 
+variable "retention_worker_dry_run" {
+  description = "Run RetentionWorker in rehearsal: it logs every account and conversation it would erase and deletes nothing. Default false, because the job exists to delete and an environment silently not deleting is the failure nobody notices. Turn it on for the first run against an estate that already has data, read the log, then turn it off"
+  type        = bool
+  default     = false
+}
+
 variable "apm_metrics_enabled" {
   description = "Export OTel metrics (runtime, ASP.NET Core, HttpClient, Npgsql, GenAI) from API/Web/Worker to the APM backend. Off by default: metrics bill as custom metrics and stream around the clock"
   type        = bool
