@@ -13,7 +13,8 @@ public class CardiTrackApiClientTests
 {
     /// <summary>
     /// A journal entry's charts come from the profile with its series ending on the entry's own
-    /// day, on a path of its own so the device caches it beside the live profile, not over it.
+    /// day, asked for by query on the profile's path. Not cached — offline, the entry page reads
+    /// the live profile the device holds instead.
     /// </summary>
     [Fact]
     public async Task GetCardiMember_ForAJournalEntry_AsksForTheSeriesEndingOnItsDay()

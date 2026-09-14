@@ -258,7 +258,10 @@ public partial class JournalEntryPage : ContentPage
                     }
                     catch (ApiException) when (!ct.IsCancellationRequested)
                     {
-                        // The review stands on its own; the charts section hides itself.
+                        // The review stands on its own. The live profile the device holds, if
+                        // any, draws what charts its series still reaches — the same fallback
+                        // the first load makes — and failing that the section hides itself.
+                        member = await _api.PeekCardiMemberAsync(memberId, ct);
                     }
                     return new EntryLoad(review, member);
                 },

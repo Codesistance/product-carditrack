@@ -345,6 +345,45 @@ public class CardiMemberServiceTests
         Assert.Equal(74m, heartRate.Series[^1].Value);
     }
 
+    /// <summary>
+    /// The status is a statement about the member now. A member with nothing in today's window
+    /// reads the same whether or not an old month's series was asked for.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_JudgesHealthStatusOnTodaysWindowNotTheHistoricSeries()
+    {
+        var member = SeedMember();
+        var monthEnd = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-45);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, monthEnd.AddDays(-29), monthEnd)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = monthEnd, Steps = 4100 }]);
+
+        var plain = await CreateSut().GetDetailAsync(_userId, member.Id);
+        var dated = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: monthEnd);
+
+        Assert.Null(plain.Metrics);
+        Assert.NotNull(dated.Metrics);
+        Assert.Equal(plain.HealthStatus, dated.HealthStatus);
+    }
+
+    /// <summary>
+    /// The query binder accepts any date, including one with no thirty days before it. That is
+    /// not a request for a window; it gets today's series rather than a 500.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_IgnoresASeriesEndTooEarlyToHaveAWindow()
+    {
+        var member = SeedMember();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, today.AddDays(-29), today)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = today, Steps = 900 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: DateOnly.MinValue);
+
+        Assert.Equal(today, detail.Metrics!.Steps.Series[^1].Date);
+    }
+
     [Fact]
     public async Task GetDetail_TreatsAFutureSeriesEndAsToday()
     {

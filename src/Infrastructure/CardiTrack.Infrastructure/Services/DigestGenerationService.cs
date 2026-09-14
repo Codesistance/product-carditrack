@@ -836,15 +836,6 @@ public partial class DigestGenerationService : IDigestGenerationService
             text = glossedText;
         }
 
-        if (text.Length > DigestEntry.MaxTextLength)
-        {
-            _logger.LogWarning(
-                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "{Length} characters is over the {Max} the table holds.",
-                memberId, monthEnd, text.Length, DigestEntry.MaxTextLength);
-            return false;
-        }
-
         if (MonthbookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(
@@ -864,13 +855,26 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        // The cap is checked on the text as it will be stored — after the gloss and the name,
+        // the two steps that lengthen a reply the model had finished — and refused here rather
+        // than by the database on the insert.
+        var storedText = NamePlaceholder.Resolve(text, name)!;
+        if (storedText.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, monthEnd, storedText.Length, DigestEntry.MaxTextLength);
+            return false;
+        }
+
         await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
             CardiMemberId = memberId,
             LocalDate = monthEnd,
             Audience = DigestAudience.Monthbook,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, monthEnd), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
+            Text = storedText,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, monthEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, monthEnd),
@@ -1058,17 +1062,6 @@ public partial class DigestGenerationService : IDigestGenerationService
             text = glossedText;
         }
 
-        // Checked after the gloss, which is the one step that lengthens a reply the model had
-        // already finished: refused here rather than by the database on the insert.
-        if (text.Length > DigestEntry.MaxTextLength)
-        {
-            _logger.LogWarning(
-                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "{Length} characters is over the {Max} the table holds.",
-                memberId, weekEnd, text.Length, DigestEntry.MaxTextLength);
-            return false;
-        }
-
         if (WeekbookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(
@@ -1088,13 +1081,26 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        // The cap is checked on the text as it will be stored — after the gloss and the name,
+        // the two steps that lengthen a reply the model had finished — and refused here rather
+        // than by the database on the insert.
+        var storedText = NamePlaceholder.Resolve(text, name)!;
+        if (storedText.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, weekEnd, storedText.Length, DigestEntry.MaxTextLength);
+            return false;
+        }
+
         await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
             CardiMemberId = memberId,
             LocalDate = weekEnd,
             Audience = DigestAudience.Weekbook,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, weekEnd), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
+            Text = storedText,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, weekEnd), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, weekEnd),
@@ -1272,15 +1278,6 @@ public partial class DigestGenerationService : IDigestGenerationService
             text = glossedText;
         }
 
-        if (text.Length > DigestEntry.MaxTextLength)
-        {
-            _logger.LogWarning(
-                "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: "
-                + "{Length} characters is over the {Max} the table holds.",
-                memberId, reviewedDate, text.Length, DigestEntry.MaxTextLength);
-            return false;
-        }
-
         if (DaybookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(
@@ -1300,13 +1297,26 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        // The cap is checked on the text as it will be stored — after the gloss and the name,
+        // the two steps that lengthen a reply the model had finished — and refused here rather
+        // than by the database on the insert.
+        var storedText = NamePlaceholder.Resolve(text, name)!;
+        if (storedText.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, reviewedDate, storedText.Length, DigestEntry.MaxTextLength);
+            return false;
+        }
+
         await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
             CardiMemberId = memberId,
             LocalDate = reviewedDate,
             Audience = DigestAudience.Daybook,
             Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, reviewedDate), name),
-            Text = NamePlaceholder.Resolve(text, name)!,
+            Text = storedText,
             Suggestion = NamePlaceholder.Resolve(
                 CleanSuggestion(aiResponse.Suggestion, memberId, reviewedDate), name),
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, reviewedDate),

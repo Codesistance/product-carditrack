@@ -548,13 +548,27 @@ public class CardiMemberService : ICardiMemberService
         var age = CalculateAge(member.DateOfBirth);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
 
+        // Judged on today's window, before the series can move: the status is a statement about
+        // the member now, and a member with nothing current must not read as steady because an
+        // old month's series was asked for.
+        var healthStatus = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, baseline is null, metrics);
+
         // A journal entry is an account of a closed period and draws the series that ended with
         // it — a Monthbook's ends a month or more ago, which a series that always ran to today
         // could never reach. Only the series moves: the latest reading, its status and its
         // comparison are built from today's window above and stay what they are, because the
         // profile is about now whichever period its charts are drawn for. A member with nothing
         // in today's window still gets the series, on metrics that carry no current reading.
-        if (seriesEndsOn is { } requested && requested < today)
+        //
+        // The comparison is against the UTC calendar day, which is what the series above ends on.
+        // A journal entry is dated on a finished local day, which is never after the UTC day
+        // (the furthest-ahead zone's yesterday is UTC's today at most), so a journal date is
+        // either earlier — and gets its own window — or equal, where today's window already
+        // ends on it. A day too early for its own thirty-day window to exist is nonsense rather
+        // than a request, and gets today's series.
+        if (seriesEndsOn is { } requested
+            && requested < today
+            && requested.DayNumber >= BaselineProgress.PeriodDays - 1)
         {
             var seriesLogs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                     member.Id, requested.AddDays(-(BaselineProgress.PeriodDays - 1)), requested))
@@ -602,7 +616,7 @@ public class CardiMemberService : ICardiMemberService
             DataFreshness = freshnessTier,
             DataFreshnessMessage = freshnessMessage,
             Baseline = BaselineProgress.From(logs, baseline),
-            HealthStatus = MemberInsightsCalculator.ComputeHealthStatus(unresolvedAlerts, baseline is null, metrics),
+            HealthStatus = healthStatus,
             Metrics = metrics,
             Weather = WeatherSnapshotMapper.From(
                 member.EnvironmentalContextConsentGranted, environmentalReading),
