@@ -1344,7 +1344,7 @@ Extends MVP 1 with account management, trend history, notification preferences, 
 **Entry:** Tab bar (Settings)
 **Exit:** → M2-02 Subscription | → M2-04 Notification Settings | → M1-13 CardiMember Detail | → M1-15 Device Management | → M1-17 Health Data Export
 
-> **As built today (MVP 1 `SettingsPage`):** account card, a **"Silenced reminders"** card listing every held notification mute with a "Show me everything again" reset, an "M2-01 coming soon" placeholder card, and Sign out. The full grouped list below is the MVP 2 design intent.
+> **As built today (MVP 1 `SettingsPage`):** an account card, a **"Silenced reminders"** card listing every held notification mute with a "Show me everything again" reset, then four grouped section cards — **Notifications** (quiet hours and what to hear about), **Account** (change password, export health data, export confirmations), **Privacy** (send diagnostics, opt-in and default off), **About** (terms, privacy policy, version) — then Sign out and the account-deletion request card. The groups follow Journal Settings’ shape: a section card naming the group with one line on what it is for, and inside it an outlined card of rows parted by hairlines, each row carrying its control on the right (a chevron, a switch, or a value). The placeholder card is gone. The grouped list below is still the MVP 2 design intent — subscription, family sharing and profile editing are not built.
 
 **User Profile Section (top card):**
 - Profile photo (large, tappable to edit)
