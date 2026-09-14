@@ -409,6 +409,27 @@ public class WeekbookPromptTests
         Assert.Equal(["sleep efficiency", "hrv"], glossed);
     }
 
+    /// <summary>
+    /// One term's own explanation does not vouch for a second, bare term later in the sentence:
+    /// an explanation follows the term it explains, so only a marker after the term counts.
+    /// </summary>
+    [Fact]
+    public void A_glossed_term_does_not_excuse_a_bare_one_later_in_the_sentence()
+    {
+        const string reply = "Her sleep efficiency (the share of the night actually asleep) and her HRV held steady.";
+
+        Assert.Equal("hrv", WeekbookPrompt.UnglossedTerm(reply));
+
+        var (text, glossed) = WeekbookPrompt.Gloss(reply);
+
+        Assert.Equal(
+            "Her sleep efficiency (the share of the night actually asleep) and her HRV "
+            + "(the natural variation in the gap between one heartbeat and the next) held steady.",
+            text);
+        Assert.Equal(["hrv"], glossed);
+        Assert.Null(WeekbookPrompt.UnglossedTerm(text));
+    }
+
     /// <summary>A bare term followed by punctuation is still a bare term.</summary>
     [Fact]
     public void A_term_ending_a_sentence_is_still_seen()

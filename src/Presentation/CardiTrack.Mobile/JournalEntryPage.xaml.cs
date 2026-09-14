@@ -10,10 +10,12 @@ using CardiTrack.Mobile.Services;
 namespace CardiTrack.Mobile;
 
 /// <summary>
-/// One day's review in full: the account, the suggestion, and the trailing fortnight's charts to
-/// read it against — each with the member's own usual dashed, the published band shaded with its
-/// source named, and a counted awareness line. Pushed above the Daybook tab the way an alert's
-/// detail is pushed above the Alerts list.
+/// One journal entry in full — a Daybook, a Weekbook or a Monthbook, chosen by the cadence
+/// parameter: the account, the suggestion, and the charts of the period it accounts for to read
+/// it against (a fortnight for a day or a week, thirty days for a month) — each with the
+/// member's own usual dashed, the published band shaded with its source named, and a counted
+/// awareness line. Pushed above the Journal tab the way an alert's detail is pushed above the
+/// Alerts list.
 /// </summary>
 /// <remarks>
 /// The charts draw the fortnight (a month, for a Monthbook) ending on the day the review

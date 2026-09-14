@@ -269,12 +269,26 @@ internal static partial class JournalRegisterGuards
     /// Whether the first sentence using <paramref name="term"/> leaves it unexplained. False when
     /// no sentence uses it at all.
     /// </summary>
+    /// <remarks>
+    /// An explanation follows the term it explains, so only a marker after the term's first use
+    /// counts. A marker anywhere in the sentence used to do, which let one term's explanation
+    /// vouch for a second, bare term later in the same sentence — "her sleep efficiency (…) and
+    /// her HRV held steady" passed with HRV unexplained.
+    /// </remarks>
     private static bool IsUnglossed(IReadOnlyList<string> sentences, string term)
     {
         var pattern = TermPattern(term);
-        var first = sentences.FirstOrDefault(s => pattern.IsMatch(s));
-        return first is not null
-            && !GlossMarkers.Any(marker => first.Contains(marker, StringComparison.Ordinal));
+        foreach (var sentence in sentences)
+        {
+            var match = pattern.Match(sentence);
+            if (!match.Success)
+                continue;
+
+            var after = sentence[(match.Index + match.Length)..];
+            return !GlossMarkers.Any(marker => after.Contains(marker, StringComparison.Ordinal));
+        }
+
+        return false;
     }
 
     private static List<string> Sentences(string text) =>
