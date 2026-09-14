@@ -390,6 +390,26 @@ public interface ICardiTrackApiClient
     /// </summary>
     Task<HealthDataDisclosureResponse> GetHealthDataDisclosureAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Where this account stands with respect to deletion — read on sign-in as well as from
+    /// Settings, so a caregiver who asked and changed their mind is told the request still stands.
+    /// </summary>
+    Task<AccountDeletionStatusResponse> GetAccountDeletionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Asks for this account and its members' health data to be deleted.
+    /// </summary>
+    /// <remarks>
+    /// The server records the request and refuses the account from that moment; it does not erase
+    /// anything for thirty days. A caller that gets a result here must sign the caregiver out —
+    /// every other endpoint will refuse them, and staying on a signed-in session that cannot load
+    /// anything looks like the app breaking rather than like a request being honoured.
+    /// </remarks>
+    Task<AccountDeletionStatusResponse> RequestAccountDeletionAsync(CancellationToken ct = default);
+
+    /// <summary>Calls off an outstanding deletion request and restores the account.</summary>
+    Task<AccountDeletionStatusResponse> CancelAccountDeletionAsync(CancellationToken ct = default);
+
     /// <summary>Records that the caller has read the disclosure; the banner hides only once this succeeds.</summary>
     Task DismissHealthDataDisclosureAsync(CancellationToken ct = default);
 

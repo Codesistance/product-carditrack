@@ -684,6 +684,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             HttpMethod.Put, "api/v1/users/me/timezone",
             new UpdateTimeZoneBody { TimeZoneId = timeZoneId }, ct);
 
+    public Task<AccountDeletionStatusResponse> GetAccountDeletionAsync(CancellationToken ct = default) =>
+        GetAsync<AccountDeletionStatusResponse>("api/v1/users/me/deletion", ct);
+
+    public Task<AccountDeletionStatusResponse> RequestAccountDeletionAsync(CancellationToken ct = default) =>
+        SendAsync<AccountDeletionStatusResponse>(HttpMethod.Post, "api/v1/users/me/deletion", ct);
+
+    public Task<AccountDeletionStatusResponse> CancelAccountDeletionAsync(CancellationToken ct = default) =>
+        SendAsync<AccountDeletionStatusResponse>(HttpMethod.Delete, "api/v1/users/me/deletion", ct);
+
     public Task<HealthDataDisclosureResponse> GetHealthDataDisclosureAsync(CancellationToken ct = default) =>
         GetAsync<HealthDataDisclosureResponse>(ApiPaths.HealthDataDisclosure, ct, cache: false);
 
