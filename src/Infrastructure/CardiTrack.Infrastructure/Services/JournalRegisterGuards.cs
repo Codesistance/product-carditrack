@@ -285,9 +285,10 @@ internal static partial class JournalRegisterGuards
             if (!match.Success)
                 continue;
 
+            // Bounded at the next tracked term — this one's own next use included, so an
+            // explanation on a repeat does not count for the bare first use before it.
             var after = sentence[(match.Index + match.Length)..];
             var nextTerm = TermsNeedingAGloss
-                .Where(other => other != term)
                 .Select(other => TermPattern(other).Match(after))
                 .Where(m => m.Success)
                 .Select(m => m.Index)

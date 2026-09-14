@@ -451,6 +451,24 @@ public class WeekbookPromptTests
         Assert.Null(WeekbookPrompt.UnglossedTerm(text));
     }
 
+    /// <summary>
+    /// A term used twice in one sentence is judged on its first use: an explanation on the
+    /// repeat does not reach back to it.
+    /// </summary>
+    [Fact]
+    public void An_explanation_on_a_repeat_does_not_reach_back_to_the_first_use()
+    {
+        const string reply = "Her HRV was 41 ms, and her HRV, which is the variation between heartbeats, held steady.";
+
+        Assert.Equal("hrv", WeekbookPrompt.UnglossedTerm(reply));
+
+        var (text, glossed) = WeekbookPrompt.Gloss(reply);
+
+        Assert.StartsWith("Her HRV (the natural variation in the gap between one heartbeat and the next) was 41 ms", text);
+        Assert.Equal(["hrv"], glossed);
+        Assert.Null(WeekbookPrompt.UnglossedTerm(text));
+    }
+
     /// <summary>A bare term followed by punctuation is still a bare term.</summary>
     [Fact]
     public void A_term_ending_a_sentence_is_still_seen()
