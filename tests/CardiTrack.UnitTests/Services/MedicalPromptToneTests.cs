@@ -517,15 +517,12 @@ public class MedicalPromptToneTests
         Assert.False(
             text.Contains("e.g.", StringComparison.OrdinalIgnoreCase),
             $"{name} still carries 'e.g.'.");
-        Assert.False(
-            text.Contains("like day summary", StringComparison.OrdinalIgnoreCase),
-            $"{name} still names 'day summary' as an illustration.");
-        Assert.False(
-            text.Contains("like weekly summary", StringComparison.OrdinalIgnoreCase),
-            $"{name} still names 'weekly summary' as an illustration.");
-        Assert.False(
-            text.Contains("like monthly summary", StringComparison.OrdinalIgnoreCase),
-            $"{name} still names 'monthly summary' as an illustration.");
+        foreach (var label in DigestGenerationService.ParrotedHeadlines)
+        {
+            Assert.False(
+                text.Contains($"like {label}", StringComparison.OrdinalIgnoreCase),
+                $"{name} still names '{label}' as an illustration.");
+        }
     }
 
     [Fact]

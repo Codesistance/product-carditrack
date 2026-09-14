@@ -228,7 +228,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// Matched whole, like <see cref="ParrotedSuggestions"/>: "A quieter day's readings at rest"
     /// is a real qualification and must survive.
     /// </remarks>
-    private static readonly string[] ParrotedHeadlines =
+    internal static readonly string[] ParrotedHeadlines =
     [
         "day summary",
         "day's readings",

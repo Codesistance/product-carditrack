@@ -87,7 +87,7 @@ public class ChatRouterService : IChatRouter
             - workflow: the one way of answering, exactly as named above.
             - runnerUp: a second way that also genuinely fits, exactly as named above, or omit it.
             - namedMetric: the wearable reading the question is about, exactly one of: {metrics}.
-              Everyday words for movement name steps. Use all when they asked
+              Movement, walking, being up and about, and being active name steps. Use all when they asked
               for the readings or numbers themselves. Omit when the question is about how the
               person is in general, or is not about a reading.
             - adviseTopic: when workflow is advise, the area they named, exactly one of: {topics}.
