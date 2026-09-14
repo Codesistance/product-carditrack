@@ -23,7 +23,8 @@ internal static class ApiPaths
     /// than today — what a journal entry reads its charts from.
     /// </summary>
     public static string CardiMember(Guid cardiMemberId, DateOnly seriesEndsOn) =>
-        $"{CardiMember(cardiMemberId)}?seriesEndsOn={seriesEndsOn:yyyy-MM-dd}";
+        $"{CardiMember(cardiMemberId)}?seriesEndsOn="
+        + seriesEndsOn.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
     public static string Dashboard(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/dashboard";
     public static string AlertPreferences(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/alert-preferences";
     public static string MemberAlarms(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/alarms";

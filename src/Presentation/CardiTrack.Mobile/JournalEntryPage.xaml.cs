@@ -256,12 +256,15 @@ public partial class JournalEntryPage : ContentPage
                         // draws its month rather than nothing.
                         member = await _api.GetCardiMemberAsync(memberId, date, ct);
                     }
-                    catch (ApiException) when (!ct.IsCancellationRequested)
+                    catch (ApiException ex) when (!ct.IsCancellationRequested)
                     {
-                        // The review stands on its own. The live profile the device holds, if
-                        // any, draws what charts its series still reaches — the same fallback
-                        // the first load makes — and failing that the section hides itself.
-                        member = await _api.PeekCardiMemberAsync(memberId, ct);
+                        // The review stands on its own. Offline, the live profile the device
+                        // holds, if any, draws what charts its series still reaches — the same
+                        // fallback the first load makes. Any other refusal (access gone, member
+                        // removed) leaves the section absent: a saved profile must not stand in
+                        // for one the server has just declined to give.
+                        if (ex.IsNetworkFailure)
+                            member = await _api.PeekCardiMemberAsync(memberId, ct);
                     }
                     return new EntryLoad(review, member);
                 },
