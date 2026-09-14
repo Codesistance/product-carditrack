@@ -33,7 +33,7 @@ public class DigestEntryConfiguration : IEntityTypeConfiguration<DigestEntry>
         // generation ever being stored, not a format the text is expected to approach.
         builder.Property(d => d.Text)
             .IsRequired()
-            .HasMaxLength(4000);
+            .HasMaxLength(DigestEntry.MaxTextLength);
 
         // Nullable because a generation that produced no usable suggestion stores none — see
         // DigestGenerationService.CleanSuggestion.

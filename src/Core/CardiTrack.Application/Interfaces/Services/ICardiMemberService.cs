@@ -32,8 +32,9 @@ public interface ICardiMemberService
     /// The last day the metric series run to, in the member's own local dates; null, the usual
     /// case, ends them today. A journal entry reads its charts against the period it accounts
     /// for, which for a Monthbook is a whole series ending a month or more ago — a series that
-    /// always ran to today could never reach it. Days after this date are not drawn; a date in
-    /// the future is treated as today.
+    /// always ran to today could never reach it. Only the series moves: each metric's latest
+    /// reading, status and comparison, and everything else on the payload, stay about now. A
+    /// date today or in the future is today.
     /// </param>
     Task<CardiMemberDetailResponse> GetDetailAsync(
         Guid requestingUserId, Guid cardiMemberId, DateOnly? seriesEndsOn = null, CancellationToken ct = default);

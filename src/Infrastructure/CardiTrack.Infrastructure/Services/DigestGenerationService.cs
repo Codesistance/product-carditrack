@@ -836,6 +836,15 @@ public partial class DigestGenerationService : IDigestGenerationService
             text = glossedText;
         }
 
+        if (text.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, monthEnd, text.Length, DigestEntry.MaxTextLength);
+            return false;
+        }
+
         if (MonthbookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(
@@ -1049,6 +1058,17 @@ public partial class DigestGenerationService : IDigestGenerationService
             text = glossedText;
         }
 
+        // Checked after the gloss, which is the one step that lengthens a reply the model had
+        // already finished: refused here rather than by the database on the insert.
+        if (text.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, weekEnd, text.Length, DigestEntry.MaxTextLength);
+            return false;
+        }
+
         if (WeekbookPrompt.UnglossedTerm(text) is { } term)
         {
             _logger.LogWarning(
@@ -1250,6 +1270,15 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Glossed {Terms} in the daybook entry for CardiMember {CardiMemberId} on {LocalDate}.",
                 string.Join(", ", glossed), memberId, reviewedDate);
             text = glossedText;
+        }
+
+        if (text.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, reviewedDate, text.Length, DigestEntry.MaxTextLength);
+            return false;
         }
 
         if (DaybookPrompt.UnglossedTerm(text) is { } term)

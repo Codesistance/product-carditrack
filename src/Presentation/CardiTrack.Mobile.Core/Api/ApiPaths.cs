@@ -20,8 +20,7 @@ internal static class ApiPaths
 
     /// <summary>
     /// The same profile with its metric series ending on <paramref name="seriesEndsOn"/> rather
-    /// than today — what a journal entry reads its charts from. A distinct path, so the device
-    /// caches it beside the live profile rather than over it.
+    /// than today — what a journal entry reads its charts from.
     /// </summary>
     public static string CardiMember(Guid cardiMemberId, DateOnly seriesEndsOn) =>
         $"{CardiMember(cardiMemberId)}?seriesEndsOn={seriesEndsOn:yyyy-MM-dd}";

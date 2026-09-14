@@ -297,8 +297,9 @@ public class CardiMemberServiceTests
 
     /// <summary>
     /// A journal entry draws the series that ended with the period it accounts for. Asked for a
-    /// day, the series runs the thirty days up to it and reads the logs of exactly those days; a
-    /// day in the future is today.
+    /// day, the series runs the thirty days up to it and reads the logs of exactly those days —
+    /// even for a member with nothing in today's window, whose metrics then carry no current
+    /// reading but still the series.
     /// </summary>
     [Fact]
     public async Task GetDetail_EndsTheSeriesOnTheDayAskedFor()
@@ -316,6 +317,32 @@ public class CardiMemberServiceTests
         Assert.Equal(monthEnd.AddDays(-29), series[0].Date);
         Assert.Equal(monthEnd, series[^1].Date);
         Assert.Equal(4100m, series[^1].Value);
+        Assert.Null(detail.Metrics.Steps.Value);
+    }
+
+    /// <summary>
+    /// Only the series moves. The latest reading and everything built on it are today's,
+    /// because the profile is about now whichever period its charts are drawn for.
+    /// </summary>
+    [Fact]
+    public async Task GetDetail_KeepsTheLatestReadingCurrentWhenTheSeriesIsHistoric()
+    {
+        var member = SeedMember();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var monthEnd = today.AddDays(-45);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, today.AddDays(-29), today)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = today.AddDays(-1), RestingHeartRate = 61 }]);
+        _activityLogs
+            .GetByCardiMemberAndDateRangeAsync(member.Id, monthEnd.AddDays(-29), monthEnd)
+            .Returns([new ActivityLog { CardiMemberId = member.Id, Date = monthEnd, RestingHeartRate = 74 }]);
+
+        var detail = await CreateSut().GetDetailAsync(_userId, member.Id, seriesEndsOn: monthEnd);
+
+        var heartRate = detail.Metrics!.RestingHeartRate;
+        Assert.Equal(61m, heartRate.Value);
+        Assert.Equal(monthEnd, heartRate.Series[^1].Date);
+        Assert.Equal(74m, heartRate.Series[^1].Value);
     }
 
     [Fact]

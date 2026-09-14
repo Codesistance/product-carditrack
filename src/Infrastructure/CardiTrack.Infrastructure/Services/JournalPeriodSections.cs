@@ -96,8 +96,8 @@ internal static class JournalPeriodSections
             // the amount: the brief tells the model to quote the amount given, and given "24
             // steps above" it does — a Monthbook read as a recital of one-minute and half-a-beat
             // differences, each true and none worth a sentence. Two per cent of the usual is
-            // under a minute of a night's sleep, a beat and a half of a resting heart rate, and
-            // under a hundred steps of a day's walking.
+            // eight or nine minutes of a seven-hour night, a beat and a half of a resting heart
+            // rate, and under a hundred steps of a day's walking.
             var difference = average - usualValue;
             var negligible = Math.Abs(usualValue) * NegligibleShare;
             sb.Append(difference switch

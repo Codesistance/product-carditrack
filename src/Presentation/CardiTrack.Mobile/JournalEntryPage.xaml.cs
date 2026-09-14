@@ -234,12 +234,11 @@ public partial class JournalEntryPage : ContentPage
                         // the two was saved longer ago and could call the page offline over a
                         // review the device saved a minute earlier.
                         //
-                        // The series this entry was last drawn from, or failing that the live
-                        // profile the device holds anyway — whose series reaches an entry only
-                        // while it is recent, and the window check hides the charts when it
-                        // does not, rather than drawing days the entry is not about.
-                        var member = await _api.PeekCardiMemberAsync(memberId, date, ct)
-                            ?? await _api.PeekCardiMemberAsync(memberId, ct);
+                        // The live profile the device holds: the series ending on the entry's
+                        // day is never cached, so offline the charts come from a series that
+                        // reaches an entry only while it is recent — and the window check hides
+                        // them when it does not, rather than drawing days the entry is not about.
+                        var member = await _api.PeekCardiMemberAsync(memberId, ct);
                         return new EntryLoad(review, member);
                     }
                     : null,

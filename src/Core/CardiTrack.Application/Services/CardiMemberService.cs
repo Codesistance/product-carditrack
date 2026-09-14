@@ -535,13 +535,7 @@ public class CardiMemberService : ICardiMemberService
         var link = await FindLinkAsync(requestingUserId, member.Id);
         var connections = (await _unitOfWork.DeviceConnections.GetActiveByCardiMemberIdAsync(member.Id)).ToList();
 
-        // The series' last day: today, or the day a journal entry asked for, whichever is earlier.
-        // A journal entry is an account of a closed period and draws the series that ended with
-        // it — a Monthbook's ends a month or more ago, which a series that always ran to today
-        // could never reach. Everything else on the payload (the latest reading, freshness, the
-        // pause state) is about now regardless: the charts hang off the member's profile today.
-        var utcToday = DateOnly.FromDateTime(DateTime.UtcNow);
-        var today = seriesEndsOn is { } requested && requested < utcToday ? requested : utcToday;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var logs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
                 member.Id, today.AddDays(-(BaselineProgress.PeriodDays - 1)), today))
             .ToList();
@@ -553,6 +547,25 @@ public class CardiMemberService : ICardiMemberService
         var pause = PauseStateOf(member, now);
         var age = CalculateAge(member.DateOfBirth);
         var metrics = logs.Count == 0 ? null : MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
+
+        // A journal entry is an account of a closed period and draws the series that ended with
+        // it — a Monthbook's ends a month or more ago, which a series that always ran to today
+        // could never reach. Only the series moves: the latest reading, its status and its
+        // comparison are built from today's window above and stay what they are, because the
+        // profile is about now whichever period its charts are drawn for. A member with nothing
+        // in today's window still gets the series, on metrics that carry no current reading.
+        if (seriesEndsOn is { } requested && requested < today)
+        {
+            var seriesLogs = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
+                    member.Id, requested.AddDays(-(BaselineProgress.PeriodDays - 1)), requested))
+                .ToList();
+            if (metrics is not null || seriesLogs.Count > 0)
+            {
+                metrics ??= MemberInsightsCalculator.BuildMetrics(logs, baseline, today, age);
+                MemberInsightsCalculator.ReplaceSeries(
+                    metrics, MemberInsightsCalculator.BuildMetrics(seriesLogs, baseline, requested, age));
+            }
+        }
         var lastSyncedAt = member.LastSyncDate ?? connections.Max(c => c.LastSyncDate);
         var latestAssessment = await _unitOfWork.RealtimeAssessments.GetLatestAsync(member.Id, ct);
         var (freshnessTier, freshnessMessage) = MemberInsightsCalculator.ComputeDataFreshness(

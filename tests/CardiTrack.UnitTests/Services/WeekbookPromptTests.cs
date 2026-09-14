@@ -391,6 +391,46 @@ public class WeekbookPromptTests
         Assert.Equal(["rem sleep", "circadian rhythm"], glossed);
     }
 
+    /// <summary>
+    /// Two bare terms in one sentence each get their own explanation. The guard reads a marker
+    /// anywhere in the sentence as the explanation, so the bracket written in for the first term
+    /// must not be allowed to vouch for the second.
+    /// </summary>
+    [Fact]
+    public void Two_bare_terms_in_one_sentence_are_both_explained()
+    {
+        var (text, glossed) = WeekbookPrompt.Gloss(
+            "Her sleep efficiency and her HRV both held steady all week.");
+
+        Assert.Equal(
+            "Her sleep efficiency (the share of time in bed actually spent asleep) and her HRV "
+            + "(the natural variation in the gap between one heartbeat and the next) both held steady all week.",
+            text);
+        Assert.Equal(["sleep efficiency", "hrv"], glossed);
+    }
+
+    /// <summary>A bare term followed by punctuation is still a bare term.</summary>
+    [Fact]
+    public void A_term_ending_a_sentence_is_still_seen()
+    {
+        Assert.Equal("rem", WeekbookPrompt.UnglossedTerm("She spent little of the night in REM."));
+
+        var (text, _) = WeekbookPrompt.Gloss("She spent little of the night in REM.");
+
+        Assert.Equal("She spent little of the night in REM (the dreaming stage of sleep).", text);
+    }
+
+    /// <summary>
+    /// The condition stem catches every form of the word, so a reply the gloss has no
+    /// explanation for is refused as the diagnosis it is rather than as an unexplained term.
+    /// </summary>
+    [Fact]
+    public void An_arrhythmic_reading_is_a_condition_in_any_form_of_the_word()
+    {
+        Assert.Equal("arrhythmi", WeekbookPrompt.NamesACondition("Her heart looked arrhythmic on Tuesday."));
+        Assert.Equal("arrhythmi", WeekbookPrompt.NamesACondition("Signs pointed to an arrhythmia."));
+    }
+
     [Fact]
     public void Sentences_are_counted_the_way_the_gloss_rule_splits_them()
     {
