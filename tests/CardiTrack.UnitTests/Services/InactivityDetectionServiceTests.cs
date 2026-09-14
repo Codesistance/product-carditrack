@@ -56,10 +56,11 @@ public class InactivityDetectionServiceTests
         // exactly as it did before the probe existed.
         _connections.GetActiveByCardiMemberIdAsync(_memberId).Returns([]);
 
-        // Somebody is watching, unless a test says otherwise: a member whose caregivers have all
-        // asked for their accounts to go is not monitored at all, so without this every case here
-        // would be testing the wrong thing.
-        _links.HasWatcherNotAwaitingDeletionAsync(Arg.Any<Guid>()).Returns(true);
+        // Not abandoned by a pending deletion, unless a test says otherwise: a member whose
+        // watchers have all asked for their accounts to go is not monitored at all, so without
+        // this every case here would be testing the wrong thing. The substitute's own default is
+        // already false, but saying it makes the dependency visible where the cases below read.
+        _links.IsLeftUnwatchedByPendingDeletionAsync(Arg.Any<Guid>()).Returns(false);
 
         // Defaults: one active London-anchored member whose device has been silent for two and
         // a half hours, with no standing alerts.
@@ -190,7 +191,7 @@ public class InactivityDetectionServiceTests
     public async Task AMemberLeftWithoutACaregiverByAPendingDeletion_IsNeitherProbedNorAlerted()
     {
         SetupConnectedDevice();
-        _links.HasWatcherNotAwaitingDeletionAsync(_memberId).Returns(false);
+        _links.IsLeftUnwatchedByPendingDeletionAsync(_memberId).Returns(true);
 
         var raised = await CreateSut().DetectAsync(UtcNow, Rules);
 
@@ -202,13 +203,15 @@ public class InactivityDetectionServiceTests
 
     /// <summary>
     /// The other side of it: one caregiver deleting their account does not stop monitoring for a
-    /// member somebody else still watches.
+    /// member somebody else still watches. This is also the case that pins the predicate to the
+    /// scheduler's — a member with no active link at all answers the same way, and is still
+    /// probed, because routine sync keeps collecting for them too.
     /// </summary>
     [Fact]
-    public async Task AMemberSomebodyElseStillWatches_IsProbedAndAlertedAsUsual()
+    public async Task AMemberNotAbandonedByAPendingDeletion_IsProbedAndAlertedAsUsual()
     {
         SetupConnectedDevice();
-        _links.HasWatcherNotAwaitingDeletionAsync(_memberId).Returns(true);
+        _links.IsLeftUnwatchedByPendingDeletionAsync(_memberId).Returns(false);
 
         var raised = await CreateSut().DetectAsync(UtcNow, Rules);
 

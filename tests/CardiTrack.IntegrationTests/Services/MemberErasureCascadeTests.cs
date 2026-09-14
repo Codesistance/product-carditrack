@@ -302,7 +302,11 @@ public class MemberErasureCascadeTests : IAsyncLifetime
     {
         var (_, _, memberId) = await SeedMemberWithDataAsync();
 
-        await EraseAsync(memberId);
+        // A live, distinct token — not the default. Called with CancellationToken.None these
+        // assertions prove nothing, because forwarding `ct` would hand the storage the same value.
+        using var caller = new CancellationTokenSource();
+
+        await EraseAsync(memberId, caller.Token);
 
         await _photos.Received(1).DeleteAllForMemberAsync(
             memberId, Arg.Is<CancellationToken>(t => t == CancellationToken.None));
@@ -310,7 +314,8 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "reports/seeded-export.pdf", Arg.Is<CancellationToken>(t => t == CancellationToken.None));
     }
 
-    private async Task<MemberErasureReport> EraseAsync(Guid memberId)
+    private async Task<MemberErasureReport> EraseAsync(
+        Guid memberId, CancellationToken ct = default)
     {
         using var scope = _services.CreateScope();
         var sut = new MemberErasureService(
@@ -318,7 +323,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             _photos,
             _reportStorage,
             NullLogger<MemberErasureService>.Instance);
-        return await sut.EraseAsync(memberId);
+        return await sut.EraseAsync(memberId, ct);
     }
 
     /// <summary>

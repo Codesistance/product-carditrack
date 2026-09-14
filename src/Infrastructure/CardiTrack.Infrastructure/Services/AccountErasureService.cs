@@ -109,13 +109,18 @@ public class AccountErasureService : IAccountErasureService
 
         foreach (var memberId in toErase)
         {
-            ct.ThrowIfCancellationRequested();
+            // The same rule as below, applied from the second member on: once one cascade has
+            // committed, its orphan names live only in the list above, and a cancellation while
+            // erasing the next member would discard them. Before the first commit there is
+            // nothing to lose, so a shutdown can still stop the run cleanly there.
+            var step = erased.Count > 0 ? CancellationToken.None : ct;
+            step.ThrowIfCancellationRequested();
 
             // Asked again, immediately before the irreversible part. The caller decided this
             // member was unwatched some time ago — a whole cascade ago, if this is the second
             // member in the loop — and erasing somebody a relative started watching in the
             // meantime is the one mistake here that cannot be explained to them afterwards.
-            if (await IsStillWatchedByAnotherAsync(memberId, userId, ct))
+            if (await IsStillWatchedByAnotherAsync(memberId, userId, step))
             {
                 _logger.LogWarning(
                     "Account erasure for {UserId} skipped CardiMember {CardiMemberId}: another "
@@ -125,20 +130,29 @@ public class AccountErasureService : IAccountErasureService
                 continue;
             }
 
-            var report = await _members.EraseAsync(memberId, ct);
+            var report = await _members.EraseAsync(memberId, step);
             erased.Add(memberId);
             rows.AddRange(report.RowsByTable.Select(r => ($"{r.Table} ({memberId})", r.Rows)));
             orphaned.AddRange(report.OrphanedObjects);
         }
+
+        // From here the run is uninterruptible if any member has already been erased. Their
+        // cascades are committed, and the only record of what they left behind is the in-memory
+        // `orphaned` list — a throw anywhere below discards it, and on the retry the member and
+        // its Reports rows are gone, so a bucket object nobody can name survives instead of one
+        // the report names. Nothing is lost by finishing: what remains is a short query, one
+        // transaction and a handful of storage deletes. With nothing erased yet there is nothing
+        // to protect, so the caller's token still applies.
+        var rest = erased.Count > 0 ? CancellationToken.None : ct;
 
         // Read before deleting, as the member cascade does: once the rows are gone nothing
         // remembers which objects they named.
         var reportObjects = await _db.Reports
             .Where(r => r.OwnerUserId == userId && r.ObjectName != null)
             .Select(r => r.ObjectName!)
-            .ToListAsync(ct);
+            .ToListAsync(rest);
 
-        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await _db.Database.BeginTransactionAsync(rest);
         try
         {
             // The same definition OrphanedOrganizationCleanupWorker uses: an organisation is
@@ -150,22 +164,22 @@ public class AccountErasureService : IAccountErasureService
             // question cannot be asked at all.
             var organizationSpent =
                 !await _db.Users.AnyAsync(
-                    u => u.OrganizationId == user.OrganizationId && u.Id != userId, ct)
+                    u => u.OrganizationId == user.OrganizationId && u.Id != userId, rest)
                 && !await _db.CardiMembers.AnyAsync(
-                    m => m.OrganizationId == user.OrganizationId && !toEraseSet.Contains(m.Id), ct);
+                    m => m.OrganizationId == user.OrganizationId && !toEraseSet.Contains(m.Id), rest);
 
             async Task Step<T>(string table, IQueryable<T> query) where T : class =>
-                rows.Add((table, await query.ExecuteDeleteAsync(ct)));
+                rows.Add((table, await query.ExecuteDeleteAsync(rest)));
 
             // Null, do not delete (runbook row 40). The alert and the answer belong to the
             // member, who may still be being watched by somebody else; only the name of the
             // caregiver who touched them goes.
             rows.Add(("Alerts.AcknowledgedByUserId (nulled)", await _db.Alerts
                 .Where(a => a.AcknowledgedByUserId == userId)
-                .ExecuteUpdateAsync(s => s.SetProperty(a => a.AcknowledgedByUserId, (Guid?)null), ct)));
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.AcknowledgedByUserId, (Guid?)null), rest)));
             rows.Add(("MemberQuestionnaires.AnsweredByUserId (nulled)", await _db.MemberQuestionnaires
                 .Where(q => q.AnsweredByUserId == userId)
-                .ExecuteUpdateAsync(s => s.SetProperty(q => q.AnsweredByUserId, (Guid?)null), ct)));
+                .ExecuteUpdateAsync(s => s.SetProperty(q => q.AnsweredByUserId, (Guid?)null), rest)));
 
             // Their transcripts about members other people still watch. Turns and usages cascade
             // from the session, but go explicitly so the counts are real rather than inferred.
@@ -222,11 +236,11 @@ public class AccountErasureService : IAccountErasureService
             if (organizationSpent)
                 await Step("Organizations", _db.Organizations.Where(o => o.Id == user.OrganizationId));
 
-            await transaction.CommitAsync(ct);
+            await transaction.CommitAsync(rest);
         }
         catch
         {
-            await transaction.RollbackAsync(ct);
+            await transaction.RollbackAsync(rest);
             throw;
         }
 

@@ -29,9 +29,21 @@ public class UserCardiMemberRepository : Repository<UserCardiMember>, IUserCardi
             .ToListAsync();
     }
 
-    public async Task<bool> HasWatcherNotAwaitingDeletionAsync(Guid cardiMemberId)
+    public async Task<bool> IsLeftUnwatchedByPendingDeletionAsync(Guid cardiMemberId)
     {
-        return await _dbSet
+        // Two halves, and both are load-bearing: the member must have an active watcher at all,
+        // and none of those watchers may be staying. Written as the exact negation of the
+        // condition DeviceConnectionRepository applies at its four sync-scheduling sites, because
+        // a collection path that disagrees with the scheduler is worse than one that is simply
+        // wrong — it stops one kind of collecting and not another for the same member.
+        var hasActiveWatcher = await _dbSet
+            .AsNoTracking()
+            .AnyAsync(ucm => ucm.CardiMemberId == cardiMemberId && ucm.IsActive);
+
+        if (!hasActiveWatcher)
+            return false;
+
+        return !await _dbSet
             .AsNoTracking()
             .AnyAsync(ucm => ucm.CardiMemberId == cardiMemberId
                              && ucm.IsActive
