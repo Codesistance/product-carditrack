@@ -10,8 +10,9 @@ Last updated: 2026-09-14
 
 Code now delivers part of it, and the part it does not deliver is the part that erases. Per [data_protection_architecture.md](./data_protection_architecture.md) findings 5 and 6, and [dpia.md](../compliance/dpia.md):
 
-- A caregiver **can now ask** for their account to be deleted — `GET`/`POST`/`DELETE /api/v1/users/me/deletion` record, report and cancel the request, and a pending request stops the account working and stops collection for any member it leaves unwatched ([users.md](../execution/backend/api/users.md)). **Nothing yet carries the erasure out**: there is no erasure endpoint and no worker, so the thirty days elapse and then this procedure is what happens. Checking for accounts past their window is an operational duty until M6 ships.
-- The member-scoped cascade below **exists in code** as `IMemberErasureService` and is exercised against a real database, but nothing in production calls it yet — M6's worker is what will.
+- A caregiver **can now ask** for their account to be deleted — `GET`/`POST`/`DELETE /api/v1/users/me/deletion` record, report and cancel the request, and a pending request stops the account working and stops collection for any member it leaves unwatched ([users.md](../execution/backend/api/users.md)).
+- **The erasure is now carried out in code.** `RetentionWorker` (M6) runs daily at 05:00 UTC and erases every account whose thirty days have elapsed, through `IAccountErasureService` → `IMemberErasureService`. Both cascades are exercised against a real database. **Built is not running**: the worker takes effect in an environment only once that environment has been deployed and **both** pending migrations applied — `AddUserDeletionRequest` (the column the worker selects on) and `AddCardiMemberCreationKeys` (row 24b below, which the member cascade deletes from; without it the cascade fails when it reaches that table), so checking for accounts past their window stays an operational duty until the deploy lands — and afterwards for anything the worker's log reports as an orphaned storage object, which it cannot finish by itself.
+- **Two steps this procedure still owns outright.** Revoking the upstream OAuth grant before the `DeviceConnections` row goes (#148 item 4 — the worker stops collection but leaves the token live at Google until it expires), and confirming completion to the requester by email.
 - `CardiMemberService.RemoveAsync` and `DeviceConnectionService.DisconnectAsync` are **soft deletes** — they flip `IsActive` and discard OAuth tokens. No PHI row is removed.
 - The schema is deliberately almost free of foreign keys. Only `UserCardiMembers` and `Subscriptions` cascade. Deleting a CardiMember **orphans** its `ActivityLogs`, `Alerts`, `PatternBaselines`, `DeviceConnections` and `AuditLogs` rows, which stay live and queryable.
 
@@ -47,9 +48,10 @@ Table names are **not** always the entity name — the questionnaire entity live
 > **There is now code for this table.** `IMemberErasureService` runs the member-scoped
 > sequence below in one transaction — the same order, the same tables — and returns a row
 > count per table, which is the evidence this procedure asks an operator to record by hand.
-> It is not yet reachable from an endpoint: M6's worker is what will call it after an
-> account's 30-day window elapses. Until then this remains the operational path, and the
-> two must not drift — a table added here is a table the service has to delete.
+> `RetentionWorker` calls it, through `IAccountErasureService`, once an account's 30-day
+> window elapses. This remains the operational path for a single-member request, for an
+> environment the worker has not been deployed to, and for anything it reports as orphaned —
+> and the two must not drift: a table added here is a table the service has to delete.
 
 ### Member-scoped (`CardiMemberId`) — for a single CardiMember or a full closure
 
@@ -69,7 +71,7 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 12 | `DeviceActivityLogs` | **Raw per-device rows.** Easy to miss — `ActivityLogs` is the merged view, this is the source |
 | 13 | `ActivityLogs` | The primary daily store. **No partition drop covers this table** — retained indefinitely unless deleted here |
 | 14 | `MemberQuestionnaires` | Question text and free-text answers, AES-256-GCM encrypted at rest |
-| 15 | `MemberChatSessions` | Caregiver Q&A about this member — the full question and answer text per turn, plus the encrypted theme. `MemberChatTurns` and `MemberChatTurnUsages` cascade from the session (`MemberChatSessionConfiguration`), but re-query both to verify the count. Also carries `UserId`. **No partition drop and no retention worker covers these yet** — the policy is 90 days from a session's **last written turn** (#488, decided 2026-09-14), and M6's RetentionWorker is what will enforce it. Until then there is no automatic removal and this procedure is the operational one: a session goes when deleted here, or by the caregiver in the app |
+| 15 | `MemberChatSessions` | Caregiver Q&A about this member — the full question and answer text per turn, plus the encrypted theme. `MemberChatTurns` and `MemberChatTurnUsages` cascade from the session (`MemberChatSessionConfiguration`), but re-query both to verify the count. Also carries `UserId`. No partition drop covers these — the policy is 90 days from a session's **last written turn** (#488, decided 2026-09-14), enforced by `RetentionWorker` (M6) through `IChatRetentionService`, which deletes whole conversations and falls back to `StartedAtUtc` for a session that never got a turn. An erasure must not wait for that period: deleting a member here takes their sessions with them whatever their age |
 | 16 | `MemberAdvises` | The current "Something to try" suggestion — one row per member per topic, derived from health data; overwritten on each regeneration, so this is the whole history |
 | 17 | `MetricAlarmStates` | Per-member state of each custom alarm (`MetricAlarmId`, `CardiMemberId`) — a child of `MetricAlarms`, so it goes first — delete these before the alarm rows below |
 | 18 | `MetricAlarms` (member rows) | Caregiver-defined alarms **tuned for this member** — rows where `CardiMemberId` is this member. Account-level rows (`CardiMemberId` null) are account-scoped, below |

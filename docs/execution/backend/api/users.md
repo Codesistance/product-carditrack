@@ -51,11 +51,19 @@ caregiver watching over a relative's health should be able to take back a 2am ta
 `scheduledForUtc`. A restarted clock would fail in the one direction that matters — it would keep
 the data longer than the caregiver was told it would be kept.
 
-**What carries it out.** The erasure itself is M6's RetentionWorker, which is not built yet; until
-it is, [manual_erasure_runbook.md](../../../technical/manual_erasure_runbook.md) is the operational
-path and these endpoints are what tell an operator a request exists. The member-scoped cascade the
-worker will use — `IMemberErasureService` — **is** built and tested: 26 tables in one transaction,
-plus the profile photo and any report exports in GCS.
+**What carries it out.** `RetentionWorker` in `CardiTrack.Worker` (M6), which runs daily at 05:00
+UTC and erases every account whose 30 days have elapsed. It calls `IAccountErasureService`, which
+erases the members this caregiver was the last active watcher of — via the same
+`IMemberErasureService` cascade, 29 tables in one transaction plus the profile photo and any report
+exports in GCS — releases the members somebody else still watches, and then removes the account's
+own rows.
+
+**Built is not the same as running.** The worker is merged and tested but takes effect in an
+environment only once that environment has been deployed and both pending migrations applied —
+`AddUserDeletionRequest` and `AddCardiMemberCreationKeys`, the latter because the member cascade
+deletes from the table it creates. Until then, and for anything the worker reports as an orphaned storage object,
+[manual_erasure_runbook.md](../../../technical/manual_erasure_runbook.md) is still the operational
+path, and these endpoints are what tell an operator a request exists.
 
 ### GET `/api/v1/users/me/deletion`
 

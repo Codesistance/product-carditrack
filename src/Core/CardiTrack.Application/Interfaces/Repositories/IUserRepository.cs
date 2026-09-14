@@ -31,4 +31,17 @@ public interface IUserRepository : IRepository<User>
     /// Clears an outstanding deletion request. Returns false when there was nothing to cancel.
     /// </summary>
     Task<bool> TryCancelDeletionAsync(string auth0UserId);
+
+    /// <summary>
+    /// The accounts whose cancellation window has closed — a deletion was requested at or before
+    /// <paramref name="cutoffUtc"/> and has not been cancelled since. Oldest request first, so a
+    /// bounded run always takes the account that has been waiting longest.
+    /// </summary>
+    /// <remarks>
+    /// The cutoff is passed in rather than computed here because the grace period belongs to
+    /// <c>UserService.DeletionGracePeriod</c> — the same constant the app quotes to a caregiver
+    /// as the date they can cancel until. A second copy of it inside a query is the shape that
+    /// erases an account somebody still had the right to keep.
+    /// </remarks>
+    Task<IReadOnlyList<Guid>> GetAccountsDueForErasureAsync(DateTime cutoffUtc, int limit);
 }
