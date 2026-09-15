@@ -109,11 +109,22 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
     /// that empties it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Moves the mark forward only. A plain exchange lets a caller that sampled the session,
     /// then paused across a sign-in, write its stale reading back — which drops the mark below
-    /// where the new session left it and clears entries that session had already recorded. The
-    /// generation is monotonic (<see cref="SessionGeneration.Advance"/> only increments), so
-    /// refusing to move it backwards is enough and needs no lock.
+    /// where the new session left it. The generation is monotonic
+    /// (<see cref="SessionGeneration.Advance"/> only increments), so refusing to move it
+    /// backwards is enough and needs no lock.
+    /// </para>
+    /// <para>
+    /// The clear itself is housekeeping, not the guard. It is outside the compare-exchange, so a
+    /// caller paused between the two can wipe entries a later session has since written. Nothing
+    /// is riding on that: what makes a stale entry harmless is the session stamped on it, and
+    /// what a lost clear costs is one read of a card whose timestamp went missing. The failure is
+    /// one-sided by construction — clearing can only make a card look due, never make a stale one
+    /// look fresh — which is why this is left unsynchronised rather than given a lock it would
+    /// hold on the UI thread.
+    /// </para>
     /// </remarks>
     private void DropIfSessionChanged()
     {

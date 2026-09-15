@@ -133,6 +133,15 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private bool _returningFromPopup;
 
+    /// <summary>
+    /// Set on the way to a screen that can answer or dismiss this member's questions, and
+    /// consumed by the load that follows the way back. The questions screen is pushed over this
+    /// page, so returning finds the same instance with the old card still up, and the mutation
+    /// evicted the saved copy — leaving the cadence nothing to fall back on and no reason to go
+    /// and look.
+    /// </summary>
+    private bool _questionsChangedElsewhere;
+
     public CardiMemberDetailPage(
         ICardiTrackApiClient api,
         IPopupService popups,
@@ -330,8 +339,13 @@ public partial class CardiMemberDetailPage : ContentPage
             // this pass skip it and nothing else. A skipped read is not recorded either, or
             // closing the editor would leave a question another caregiver has already answered
             // sitting there for the rest of the window.
+            // The flag is consumed whether or not the read happens, so an editor open on the way
+            // back does not leave it standing for a later pass to act on.
+            var changedElsewhere = _questionsChangedElsewhere;
+            _questionsChangedElsewhere = false;
+
             var questionsDue = !PendingQuestionCard.IsEditing
-                && _schedule.IsDue(memberId, GeneratedCard.Questions, requested);
+                && _schedule.IsDue(memberId, GeneratedCard.Questions, requested || changedElsewhere);
 
             // Fire-and-forget, not awaited: each is a separate round trip that shouldn't hold
             // up the rest of the screen or the pull-to-refresh spinner.
@@ -1424,6 +1438,12 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private async void OnQuestionsTapped(object? sender, EventArgs e)
     {
+        // The questions screen is pushed over this page rather than replacing it, so coming back
+        // returns to this instance with whatever was on it still up — including a question that
+        // was answered over there. The cadence must not hold that card for the rest of its
+        // window, so the return is told to read the questions whatever the clock says.
+        _questionsChangedElsewhere = true;
+
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
         await Shell.Current.GoToAsync(
             $"{QuestionnairesPage.Route}?memberId={_memberId}&name={name}");
