@@ -86,19 +86,10 @@ public class GeneratedContentScheduleTests
         Assert.True(schedule.IsDue(Dad, GeneratedCard.Questions, requestedByCaregiver: false));
     }
 
-    /// <summary>
-    /// A pass that never put the member on screen records nothing, so the next one is still due.
-    /// This is the transition the page-level tests could not reach.
-    /// </summary>
-    [Fact]
-    public void A_pass_that_recorded_nothing_leaves_the_next_one_due()
-    {
-        var schedule = Schedule();
-
-        Advance(TimeSpan.FromSeconds(30));
-
-        Assert.True(schedule.IsDue(Dad, GeneratedCard.Digest, requestedByCaregiver: false));
-    }
+    // Not tested here: that a pass which never put the member on screen records nothing. Whether
+    // Record is called is CardiMemberDetailPage's decision, and asserting it from this side only
+    // restates "never read is due", which the first test already covers. A version of that test
+    // was written and removed for claiming more than it checked.
 
     /// <summary>
     /// A shared phone. The next caregiver must not inherit the last one's timings, and their

@@ -945,6 +945,13 @@ public partial class CardiMemberDetailPage : ContentPage
             // the reconciliation is the wanted behaviour and the open question is how to take a
             // card away from under someone's half-written answer, not whether to try.
             _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen, fetchLive: true);
+
+            // Recorded here because this path does not go through LoadAsync, which is where
+            // every other read is written down. Recorded up front rather than on success, for
+            // the same reason as there: a read that failed is still a read, and retrying it on
+            // every tick is what the cadence exists to avoid. The member is certainly on screen
+            // — this runs from its own visible card.
+            _schedule.Record(_memberId, GeneratedCard.Questions);
         }
         finally
         {
