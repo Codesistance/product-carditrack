@@ -955,12 +955,12 @@ public partial class CardiMemberDetailPage : ContentPage
             // card away from under someone's half-written answer, not whether to try.
             _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen, fetchLive: true);
 
-            // Recorded here because this path does not go through LoadAsync, which is where
-            // every other read is written down. Recorded up front rather than on success, for
-            // the same reason as there: a read that failed is still a read, and retrying it on
-            // every tick is what the cadence exists to avoid. The member is certainly on screen
-            // — this runs from its own visible card.
-            _schedule.Record(_memberId, GeneratedCard.Questions, _schedule.CurrentSession);
+            // Nothing is recorded for it, because nothing is read. The editor is deliberately
+            // still open here so the text can be retried, and the reload stops at the editing
+            // guard before it asks for anything (#1106). Recording a read that did not happen
+            // would hold the next real one back for the whole window — after a failed save is
+            // exactly when a question answered by somebody else needs to be noticed. Whatever
+            // makes this path fetch should record it at the point it does the fetching.
         }
         finally
         {
