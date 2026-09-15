@@ -8,12 +8,18 @@ namespace CardiTrack.Mobile.Core.Offline;
 /// <remarks>
 /// <para>
 /// The member detail screen used to refetch all four on the same thirty-second tick. Three of
-/// them cannot have changed in thirty seconds: the pipeline's digest job runs half-hourly and
-/// again after each assessor pass, and the assessor runs every five minutes, so five minutes is
-/// the floor on how often any of this can be rewritten at all. A regeneration floor then admits
-/// at most three ordinary summaries an hour on top of that. Polling faster than the fastest
-/// possible write buys nothing and is paid for per minute of watching, on a screen caregivers
-/// leave open.
+/// them cannot have changed in thirty seconds. The pipeline's assessor runs every five minutes
+/// and the digest job runs behind it, so five minutes is the floor on how often any of this can
+/// be rewritten at all. In the ordinary case it is far slower than that:
+/// <c>DigestGenerationService.MinimumRegenerationInterval</c> holds a member to one summary an
+/// hour. Only a waiver beats that floor — an alert raised or resolved, a yellow-or-above
+/// real-time window or an SSA jump, or daily readings that diverge from the baseline — and a
+/// waiver can land on any assessor pass, which is why this interval tracks the five minutes
+/// rather than the hour.
+/// </para>
+/// <para>
+/// Polling faster than the fastest possible write buys nothing, and it is paid for per minute of
+/// watching on a screen caregivers leave open.
 /// </para>
 /// <para>
 /// Lives in Mobile.Core rather than beside <c>PeriodicRefresh</c> in Mobile so the decision can
@@ -25,7 +31,7 @@ public static class GeneratedContentRefresh
     /// <summary>
     /// The gap an unattended pass must clear before it re-reads the generated cards. Matched to
     /// the assessor cadence above, not chosen for its own sake: it is the interval below which
-    /// there is provably nothing new to fetch.
+    /// there is provably nothing new to fetch, even for a waived regeneration.
     /// </summary>
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
 

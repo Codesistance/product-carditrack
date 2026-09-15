@@ -72,11 +72,18 @@ public partial class CardiMemberDetailPage : ContentPage
     private DateTime _lastLoadedUtc = DateTime.MinValue;
 
     /// <summary>
-    /// When this page last read the pipeline-written cards — the summary, the suggestion and the
-    /// questions. Held apart from <see cref="_lastLoadedUtc"/> because they move on a different
-    /// clock from the member's own state; see <see cref="GeneratedContentRefresh"/>.
+    /// When this page last read the summary and the suggestion. Held apart from
+    /// <see cref="_lastLoadedUtc"/> because they move on a different clock from the member's own
+    /// state; see <see cref="GeneratedContentRefresh"/>.
     /// </summary>
     private DateTime _lastGeneratedUtc = DateTime.MinValue;
+
+    /// <summary>
+    /// When this page last read the questions. Separate from <see cref="_lastGeneratedUtc"/>
+    /// only because an open editor can make a pass skip this one alone, and a skipped read must
+    /// not be recorded as a read.
+    /// </summary>
+    private DateTime _lastQuestionsUtc = DateTime.MinValue;
 
     private CardiMemberDetailResponse? _member;
 
@@ -152,6 +159,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // Whoever was on screen before must not be the reason the next CardiMember's cards
             // are held back: the slow cadence is per member, and this page is reused for both.
             _lastGeneratedUtc = DateTime.MinValue;
+            _lastQuestionsUtc = DateTime.MinValue;
             UrgencyRow.IsVisible = false;
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
@@ -291,23 +299,37 @@ public partial class CardiMemberDetailPage : ContentPage
             // member's own is what left the summary card on its placeholder copy for two trips
             // instead of one.
             //
-            // Stamped when the pass decides to read them rather than when the reads succeed. A
-            // failing endpoint is best-effort here — the page is complete without it — and
-            // retrying it on every tick is the cost this exists to avoid.
-            if (GeneratedContentRefresh.IsDue(
-                    requestedByCaregiver: !unattended, _lastGeneratedUtc, DateTime.UtcNow))
-            {
-                _lastGeneratedUtc = DateTime.UtcNow;
+            // The stamps are not advanced here. They record a read that reached the screen, and
+            // this pass may yet fail to render a member at all — on a cold load that would leave
+            // the summary on its placeholder for the whole cadence window while the tick that
+            // finally fetched the member declined to fetch the summary beside it.
+            var now = DateTime.UtcNow;
+            var generatedDue = GeneratedContentRefresh.IsDue(
+                requestedByCaregiver: !unattended, _lastGeneratedUtc, now);
 
-                // Fire-and-forget, not awaited: each is a separate round trip that shouldn't hold
-                // up the rest of the screen or the pull-to-refresh spinner.
-                // Each of these lands above or around where the caregiver is reading and changes
-                // the height of it — the digest rewrites the summary, the questionnaires add or
-                // remove a whole card — so the anchor is re-asserted as each one finishes rather
-                // than only after Apply. Restoring is a no-op when nothing moved.
-                var rendered = memberOnScreen.Task;
+            // Its own stamp, because it has its own reason not to run. An editor someone is
+            // typing in makes this pass skip the question — and a skipped read must not be
+            // recorded as a read, or closing the editor would leave a question another caregiver
+            // has already answered sitting there for the rest of the window.
+            var questionsDue = !PendingQuestionCard.IsEditing
+                && GeneratedContentRefresh.IsDue(
+                    requestedByCaregiver: !unattended, _lastQuestionsUtc, now);
+
+            // Fire-and-forget, not awaited: each is a separate round trip that shouldn't hold
+            // up the rest of the screen or the pull-to-refresh spinner.
+            // Each of these lands above or around where the caregiver is reading and changes
+            // the height of it — the digest rewrites the summary, the questionnaires add or
+            // remove a whole card — so the anchor is re-asserted as each one finishes rather
+            // than only after Apply. Restoring is a no-op when nothing moved.
+            var rendered = memberOnScreen.Task;
+            if (generatedDue)
+            {
                 _ = LoadThenRestoreAsync(LoadDigestAsync(memberId, rendered), anchor, focusAdvise);
                 _ = LoadThenRestoreAsync(LoadAdviseAsync(memberId, rendered), anchor, focusAdvise);
+            }
+
+            if (questionsDue)
+            {
                 _ = LoadThenRestoreAsync(
                     LoadQuestionnairesAsync(memberId, rendered), anchor, focusAdvise);
             }
@@ -323,8 +345,15 @@ public partial class CardiMemberDetailPage : ContentPage
                     ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
                     Apply(member);
                     SetState(loaded: true);
-                    // This member is now the one on the page, so the generated cards may paint.
+                    // This member is now the one on the page, so the generated cards may paint —
+                    // and only now are the reads this pass started worth recording. A failing
+                    // endpoint still counts: the page is complete without it, and retrying it on
+                    // every tick is the cost the cadence exists to avoid.
                     memberOnScreen.TrySetResult(true);
+                    if (generatedDue)
+                        _lastGeneratedUtc = DateTime.UtcNow;
+                    if (questionsDue)
+                        _lastQuestionsUtc = DateTime.UtcNow;
                     _ = RestoreScrollAnchorAsync(anchor, focusAdvise);
                 },
                 _feedback);
@@ -744,8 +773,11 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </remarks>
     private async Task LoadQuestionnairesAsync(Guid memberId, Task<bool> memberOnScreen)
     {
-        // An unattended refresh must not close an editor someone is typing in. Same courtesy the
-        // pause drop down gets; the cost is one stale card until the next load.
+        // A refresh must not rebuild the card under an editor someone is typing in. Same courtesy
+        // the pause drop down gets; the cost is one stale card until the next load. LoadAsync
+        // checks this too, so that a pass it stops here is not recorded as a read — this copy is
+        // what covers the other caller, the reconcile after a failed answer, which deliberately
+        // runs with the editor still open.
         if (PendingQuestionCard.IsEditing)
             return;
 
