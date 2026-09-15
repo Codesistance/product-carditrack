@@ -63,6 +63,14 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private bool _isBusy;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
+
+    /// <summary>
+    /// When this page last read the pipeline-written cards — the summary, the suggestion and the
+    /// questions. Held apart from <see cref="_lastLoadedUtc"/> because they move on a different
+    /// clock from the member's own state; see <see cref="GeneratedContentRefresh"/>.
+    /// </summary>
+    private DateTime _lastGeneratedUtc = DateTime.MinValue;
+
     private CardiMemberDetailResponse? _member;
 
     private readonly LoadGate _gate = new();
@@ -134,6 +142,9 @@ public partial class CardiMemberDetailPage : ContentPage
             // from it must not be read as the next CardiMember's.
             _digestRendered = false;
             _digest = null;
+            // Whoever was on screen before must not be the reason the next CardiMember's cards
+            // are held back: the slow cadence is per member, and this page is reused for both.
+            _lastGeneratedUtc = DateTime.MinValue;
             UrgencyRow.IsVisible = false;
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
@@ -210,12 +221,15 @@ public partial class CardiMemberDetailPage : ContentPage
     private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
-            : LoadAsync(silent: true);
+            : LoadAsync(unattended: true);
 
-    /// <param name="silent">
-    /// Suppresses the "Couldn't refresh" popup for loads the user did not ask for.
+    /// <param name="unattended">
+    /// True for the loads nobody asked for — the timer tick and the app resume. It suppresses
+    /// the "Couldn't refresh" popup, and it is what <see cref="GeneratedContentRefresh"/> reads
+    /// to decide whether this pass re-reads the pipeline-written cards or leaves the ones that
+    /// are up.
     /// </param>
-    private async Task LoadAsync(bool silent = false)
+    private async Task LoadAsync(bool unattended = false)
     {
         if (_gate.IsLoading)
             return;
@@ -252,6 +266,32 @@ public partial class CardiMemberDetailPage : ContentPage
 
         try
         {
+            // Started before the member is awaited, not after it. These three only ever needed
+            // the member id, which is known here, and queueing them behind the member's own round
+            // trip is what left the summary card on its placeholder copy for two round trips
+            // instead of one. Nothing about landing early disturbs the render that follows:
+            // Apply() skips the placeholder once a summary is up, recomputes the urgency rung
+            // from the digest it holds, and never touches the Advise or question cards.
+            //
+            // Stamped when the pass decides to read them rather than when the reads succeed. A
+            // failing endpoint is best-effort here — the page is complete without it — and
+            // retrying it on every tick is the cost this exists to avoid.
+            if (GeneratedContentRefresh.IsDue(
+                    requestedByCaregiver: !unattended, _lastGeneratedUtc, DateTime.UtcNow))
+            {
+                _lastGeneratedUtc = DateTime.UtcNow;
+
+                // Fire-and-forget, not awaited: each is a separate round trip that shouldn't hold
+                // up the rest of the screen or the pull-to-refresh spinner.
+                // Each of these lands above or around where the caregiver is reading and changes
+                // the height of it — the digest rewrites the summary, the questionnaires add or
+                // remove a whole card — so the anchor is re-asserted as each one finishes rather
+                // than only after Apply. Restoring is a no-op when nothing moved.
+                _ = LoadThenRestoreAsync(LoadDigestAsync(memberId), anchor, focusAdvise);
+                _ = LoadThenRestoreAsync(LoadAdviseAsync(memberId), anchor, focusAdvise);
+                _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(memberId), anchor, focusAdvise);
+            }
+
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
                 peek: _member is null ? ct => _api.PeekCardiMemberAsync(memberId, ct) : null,
@@ -282,23 +322,12 @@ public partial class CardiMemberDetailPage : ContentPage
 
             if (outcome.IsFresh)
                 _lastLoadedUtc = DateTime.UtcNow;
-            else if (!silent && outcome.Error is not null)
+            else if (!unattended && outcome.Error is not null)
             {
                 // Something is already on screen and the banner says it is saved; the caregiver
                 // asked for this refresh, so the reason it did not happen is said as well.
                 await _popups.ShowWarningAsync(outcome.Error.Message, "Couldn't refresh");
             }
-
-            // Fire-and-forget, not awaited: Apply already rendered the placeholder summary
-            // copy, and the digest read is a separate round trip that shouldn't hold up the
-            // rest of the screen or the pull-to-refresh spinner.
-            // Each of these lands above or around where the caregiver is reading and changes the
-            // height of it — the digest rewrites the summary, the questionnaires add or remove a
-            // whole card — so the anchor is re-asserted as each one finishes rather than only
-            // after Apply. Restoring is a no-op when nothing moved.
-            _ = LoadThenRestoreAsync(LoadDigestAsync(memberId), anchor, focusAdvise);
-            _ = LoadThenRestoreAsync(LoadAdviseAsync(memberId), anchor, focusAdvise);
-            _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(memberId), anchor, focusAdvise);
         }
         catch (Exception ex)
         {
@@ -508,12 +537,13 @@ public partial class CardiMemberDetailPage : ContentPage
         SemanticProperties.SetDescription(
             LastContactLabel, $"{member.DataFreshnessMessage}. {LastContactLabel.Text}");
 
-        // The digest loads on its own round trip (LoadDigestAsync) and lands after this method has
-        // returned, so writing the placeholder every time meant every refresh — including the
-        // silent periodic one — shrank this card back to two lines and then grew it again a moment
-        // later. That is two layout passes for a summary that has usually not changed at all, and
-        // it shoves Key Metric Trends and everything under it down the page and back twice while
-        // the caregiver is reading them. The placeholder is for a screen that has nothing better
+        // The digest loads on its own round trip (LoadDigestAsync), which now runs alongside the
+        // member's rather than behind it — so it lands either side of this method and the guard
+        // has to hold for both. Writing the placeholder every time meant every refresh —
+        // including the unattended periodic one — shrank this card back to two lines and then
+        // grew it again a moment later. That is two layout passes for a summary that has usually
+        // not changed at all, and it shoves Key Metric Trends and everything under it down the
+        // page and back twice while the caregiver is reading them. The placeholder is for a screen that has nothing better
         // on it; once a summary is up it stays up until there is a new one, which is the same
         // stance the failed-refresh path above takes.
         if (!_digestRendered)
@@ -539,8 +569,9 @@ public partial class CardiMemberDetailPage : ContentPage
 
     /// <summary>
     /// Best-effort, like the dashboard's live status line: no spinner, no error state. The
-    /// placeholder <see cref="Apply"/> already rendered is a complete fallback on its own, so a
-    /// 404 (nothing generated yet) or a failed call just leaves it as is.
+    /// placeholder <see cref="Apply"/> renders is a complete fallback on its own, so a 404
+    /// (nothing generated yet) or a failed call just leaves the card to it. Runs alongside the
+    /// member's own load rather than after it, so it may resolve either side of that render.
     /// </summary>
     private async Task LoadDigestAsync(Guid memberId)
     {
