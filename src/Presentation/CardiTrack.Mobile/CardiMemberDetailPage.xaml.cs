@@ -299,10 +299,11 @@ public partial class CardiMemberDetailPage : ContentPage
             // member's own is what left the summary card on its placeholder copy for two trips
             // instead of one.
             //
-            // The stamps are not advanced here. They record a read that reached the screen, and
-            // this pass may yet fail to render a member at all — on a cold load that would leave
-            // the summary on its placeholder for the whole cadence window while the tick that
-            // finally fetched the member declined to fetch the summary beside it.
+            // The stamps are not advanced here. They record a read made for a member the page
+            // ends up showing, and this pass may not leave one there at all — on a cold load,
+            // stamping on intent left the summary on its placeholder for the whole cadence
+            // window while the tick that finally fetched the member declined to fetch the
+            // summary beside it. They are settled below, once the member load has.
             var now = DateTime.UtcNow;
             var generatedDue = GeneratedContentRefresh.IsDue(
                 requestedByCaregiver: !unattended, _lastGeneratedUtc, now);
@@ -345,15 +346,6 @@ public partial class CardiMemberDetailPage : ContentPage
                     ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
                     Apply(member);
                     SetState(loaded: true);
-                    // This member is now the one on the page, so the generated cards may paint —
-                    // and only now are the reads this pass started worth recording. A failing
-                    // endpoint still counts: the page is complete without it, and retrying it on
-                    // every tick is the cost the cadence exists to avoid.
-                    memberOnScreen.TrySetResult(true);
-                    if (generatedDue)
-                        _lastGeneratedUtc = DateTime.UtcNow;
-                    if (questionsDue)
-                        _lastQuestionsUtc = DateTime.UtcNow;
                     _ = RestoreScrollAnchorAsync(anchor, focusAdvise);
                 },
                 _feedback);
@@ -369,6 +361,28 @@ public partial class CardiMemberDetailPage : ContentPage
                     ErrorDetailLabel.Text = outcome.Error!.Message;
                     SetState(error: true);
                     return;
+            }
+
+            // The gate resolves once, here, rather than on the first render. SnapshotRefresh can
+            // render twice — the saved copy, then the live one — and a card painted between them
+            // is addressed to the saved copy: a name edited on another device would stay wrong on
+            // the question card, which Apply never rebinds.
+            //
+            // The test is what the page is actually showing, not whether a render happened. A
+            // refresh that failed over a member already up still counts: that member is on the
+            // screen, these cards belong to them, and the reads this pass made are worth
+            // recording. Counting only renders meant a passing outage relaunched all three on
+            // every thirty-second tick for as long as it lasted, which is the opposite of the
+            // cadence's purpose. A page still showing the *previous* member — the reused-page
+            // window before the new one lands — fails the test, which is what it is for.
+            var showingThisMember = _member?.Id == memberId;
+            memberOnScreen.TrySetResult(showingThisMember);
+            if (showingThisMember)
+            {
+                if (generatedDue)
+                    _lastGeneratedUtc = DateTime.UtcNow;
+                if (questionsDue)
+                    _lastQuestionsUtc = DateTime.UtcNow;
             }
 
             if (outcome.IsFresh)
