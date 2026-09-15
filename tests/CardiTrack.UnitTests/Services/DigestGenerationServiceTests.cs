@@ -214,7 +214,13 @@ public class DigestGenerationServiceTests
         var statusLines = Substitute.For<IMemberStatusLineRepository>();
         statusLines.GetByCardiMemberAsync(_memberId).Returns((MemberStatusLine?)null);
         _unitOfWork.MemberStatusLines.Returns(statusLines);
-        _medicalAi.GenerateStructuredAsync<StatusLineGenerationService.CurrentStatusAiResponse>(
+        _medicalAi.GenerateStructuredAsync<StatusLineGenerationService.StatusClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new StatusLineGenerationService.StatusClinicalAiResponse
+            {
+                Finding = "Activity sat well below the usual step total.",
+            });
+        _rewriteAi.GenerateStructuredAsync<StatusLineGenerationService.CurrentStatusAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new StatusLineGenerationService.CurrentStatusAiResponse
             {
@@ -225,7 +231,7 @@ public class DigestGenerationServiceTests
             _unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption,
             new StatusLineGenerationService(
-                _unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+                _unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
                 NullLogger<StatusLineGenerationService>.Instance),
             InertAdviseGenerator.Create(),
             NullLogger<DigestGenerationService>.Instance);

@@ -286,7 +286,6 @@ public class MedicalPromptToneTests
     /// <summary>Prompts that send no name, so the pronoun rule would be an instruction to invent.</summary>
     private static readonly string[] NamelessProsePrompts =
     [
-        "StatusLineGenerationService.CurrentStatusInstructions",
         "RealtimeAssessmentService.AssessmentInstructions",
         "HealthInsightService.BaselineInstructions",
         "HealthInsightService.LearningInstructions",
@@ -296,8 +295,9 @@ public class MedicalPromptToneTests
     private static bool IsNameless(string name) =>
         NamelessProsePrompts.Contains(name, StringComparer.Ordinal);
 
-    /// <summary>The one prompt the pronoun rule is deliberately kept out of for latency.</summary>
-    private const string StatusPrompt = "StatusLineGenerationService.CurrentStatusInstructions";
+    /// <summary>The clinical half of the hero line — the rewrite is a findings-only brief.</summary>
+    private const string StatusClinicalPrompt = "StatusLineGenerationService.ClinicalInstructions";
+    private const string StatusRewritePrompt = "StatusLineGenerationService.RewriteInstructions";
 
     /// <summary>
     /// The prompts that receive no member context at all — only a <c>DeidentifiedFindings</c> —
@@ -308,6 +308,7 @@ public class MedicalPromptToneTests
     [
         "AdviseGenerationService.RewriteInstructions",
         "DigestGenerationService.FamilyDigestRewriteInstructions",
+        "StatusLineGenerationService.RewriteInstructions",
     ];
 
     /// <summary>
@@ -323,6 +324,7 @@ public class MedicalPromptToneTests
         "AdviseGenerationService.RewriteInstructions",
         "DigestGenerationService.FamilyDigestRewriteInstructions",
         "MemberChatService.RewriteInstructions",
+        "StatusLineGenerationService.RewriteInstructions",
     ];
 
     /// <summary>
@@ -392,7 +394,7 @@ public class MedicalPromptToneTests
 
     /// <summary>
     /// The clause that survived the split. A brief that is told nothing about the person can still
-    /// invent a name, and the token rule is the only pronoun rule those three briefs now carry.
+    /// invent a name, and the token rule is the only pronoun rule those four briefs now carry.
     /// </summary>
     [Fact]
     public void The_token_pronoun_rule_still_forbids_inventing_a_name() =>
@@ -609,11 +611,22 @@ public class MedicalPromptToneTests
     }
 
     [Fact]
-    public void The_status_prompt_uses_the_shared_caregiver_register()
+    public void The_status_rewrite_uses_the_shared_caregiver_register()
     {
-        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusPrompt).Prompt;
+        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusRewritePrompt).Prompt;
 
         Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), status, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_status_clinical_read_is_never_throttled_with_Tone()
+    {
+        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusClinicalPrompt).Prompt;
+
+        Assert.StartsWith(MedicalPromptBlocks.ClinicalRead, status, StringComparison.Ordinal);
+        Assert.DoesNotContain(MedicalPromptBlocks.ToneAudience, status, StringComparison.Ordinal);
+        Assert.DoesNotContain(MedicalPromptBlocks.ToneNoDiagnosis, status, StringComparison.Ordinal);
+        Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), status, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -775,9 +788,9 @@ public class MedicalPromptToneTests
     }
 
     [Fact]
-    public void The_status_prompt_does_not_name_questionnaire_answers_it_never_receives()
+    public void The_status_clinical_prompt_does_not_name_questionnaire_answers_it_never_receives()
     {
-        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusPrompt).Prompt;
+        var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusClinicalPrompt).Prompt;
 
         Assert.Contains(MedicalPromptBlocks.ContextGuardrailNotesOnly.Trim(), status, StringComparison.Ordinal);
         Assert.DoesNotContain(

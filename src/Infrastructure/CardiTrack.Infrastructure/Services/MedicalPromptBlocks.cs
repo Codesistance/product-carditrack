@@ -246,12 +246,11 @@ internal static partial class MedicalPromptBlocks
     /// caregiver. "They" remains only for that nameless, sex-not-stated case.
     /// </para>
     /// <para>
-    /// Not part of <see cref="Tone"/>, and not appended to <c>CurrentStatusInstructions</c>, for
-    /// the same reason: that prompt asks for a two-to-five-word headline and one sentence under
-    /// fifteen words, where a pronoun scarcely arises and its own instructions already settle how
-    /// the person is named. It is also the only prompt on a request path a caregiver waits on, and
-    /// the one under a character budget — so a rule that buys nothing there would be paid for in
-    /// latency on nearly every dashboard view. See <c>StatusLineGenerationService.StatusPromptBudget</c>.
+    /// Not part of <see cref="Tone"/>. The status line's clinical half is given no name to use
+    /// and does not carry this block; its rewrite half carries <see cref="PronounsByToken"/> like
+    /// the other Rewrite-slot briefs, now that the line is two-slot and the latency argument for
+    /// omitting a naming rule no longer applies. See
+    /// <c>StatusLineGenerationService.StatusPromptBudget</c>.
     /// </para>
     /// <para>
     /// Not split further, unlike the blocks around it. The three clauses are one truth table over
@@ -262,10 +261,10 @@ internal static partial class MedicalPromptBlocks
     /// <para>
     /// "Never invent a name" leads. It used to close the line, after a semicolon, at the end of
     /// forty-five words — while "if sex is not stated, use a given name instead of they" led. The
-    /// briefs that send no name (status, baseline, learning, provisional, assessor, chat-clinical)
+    /// briefs that send no name (baseline, learning, provisional, assessor, chat-clinical)
     /// no longer carry this block; the ones that do send <c>CardiTrackCardiMember</c> — digest,
-    /// journals, advise rewrite, member-chat rewrite, alert — meet the clause they can satisfy
-    /// first. The wording of all three is unchanged; only which one the model reads first is.
+    /// journals, advise rewrite, member-chat rewrite, status rewrite, alert — meet the clause they
+    /// can satisfy first. The wording of all three is unchanged; only which one the model reads first is.
     /// </para>
     /// </remarks>
     internal const string Pronouns =
@@ -280,7 +279,7 @@ internal static partial class MedicalPromptBlocks
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The three rewrite briefs — digest, advise, member chat — hold the
+    /// The four rewrite briefs — digest, advise, member chat, status — hold the
     /// <see cref="NamePlaceholder.Token"/> and write everything a caregiver reads, and each one
     /// receives a <c>DeidentifiedFindings</c> and nothing else. The sex travels in the member
     /// context, which those briefs do not get, so <see cref="Pronouns"/>'s first clause asked them

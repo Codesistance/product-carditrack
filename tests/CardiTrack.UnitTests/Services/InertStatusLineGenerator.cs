@@ -22,6 +22,7 @@ internal static class InertStatusLineGenerator
         return new StatusLineGenerationService(
             unitOfWork,
             Substitute.For<IMedicalAiService>(),
+            Substitute.For<IRewriteAiService>(),
             PromptContextFactory.Composer(unitOfWork),
             NullLogger<StatusLineGenerationService>.Instance);
     }
