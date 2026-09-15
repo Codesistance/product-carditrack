@@ -57,9 +57,15 @@ internal static class FieldAutofill
             handler.PlatformView.ImportantForAutofill = Importance(view));
 #elif IOS
         EntryHandler.Mapper.AppendToMapping(MappingName, (handler, view) =>
-            handler.PlatformView.TextContentType = ContentType(view));
+        {
+            if (!IsEnabled(view))
+                handler.PlatformView.TextContentType = NoContentType;
+        });
         EditorHandler.Mapper.AppendToMapping(MappingName, (handler, view) =>
-            handler.PlatformView.TextContentType = ContentType(view));
+        {
+            if (!IsEnabled(view))
+                handler.PlatformView.TextContentType = NoContentType;
+        });
 #endif
     }
 
@@ -74,12 +80,19 @@ internal static class FieldAutofill
             : Android.Views.ImportantForAutofill.NoExcludeDescendants;
 #elif IOS
     /// <summary>
-    /// iOS offers AutoFill for the content type a field declares. An empty type declares none,
-    /// which is how UIKit is told a field is not part of anyone's saved identity; a field that
-    /// wants it is left on the platform default so the keyboard's own heuristics still apply.
+    /// iOS offers AutoFill for the content type a field declares. The empty type declares none,
+    /// which is how UIKit is told a field is not part of anyone's saved identity.
     /// </summary>
-    private static Foundation.NSString? ContentType(IView view) =>
-        IsEnabled(view) ? null : new Foundation.NSString(string.Empty);
+    /// <remarks>
+    /// A field that wants AutoFill is left untouched rather than assigned a default, because on
+    /// iOS there is nothing to assign: UIKit's "no declared type" is nil, and the
+    /// <c>UITextField.TextContentType</c> binding rejects it — <c>GetNonNullHandle</c> raises
+    /// <see cref="ArgumentNullException"/>. Assigning it crashed the app in the handler mapper,
+    /// on the first opted-in <see cref="Entry"/> to be given a handler; that is the sign-in
+    /// email, so every launch. Not assigning is also the more truthful policy: a field this
+    /// policy permits is one it has not touched at all, and the keyboard's own heuristics apply.
+    /// </remarks>
+    private static readonly Foundation.NSString NoContentType = new(string.Empty);
 #endif
 
 #if ANDROID || IOS
