@@ -136,6 +136,11 @@ public static class MauiProgram
         // should be reported to the server once, not once per screen that notices.
         builder.Services.AddSingleton<IQuestionValidityService, QuestionValidityService>();
 
+        // Singleton because outliving the page is the point: CardiMemberDetailPage is transient
+        // behind a registered route, so Shell builds a new one on every navigation and anything
+        // it remembers about how recently it read the generated cards goes with the old one.
+        builder.Services.AddSingleton<IGeneratedContentSchedule, GeneratedContentSchedule>();
+
         // One instance behind both types: App raises the foreground signal on the concrete
         // class, pages listen through the interface.
         builder.Services.AddSingleton<AppResumeNotifier>();
