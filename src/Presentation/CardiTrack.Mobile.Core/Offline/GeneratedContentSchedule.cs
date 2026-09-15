@@ -62,6 +62,14 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
             ? entry.At
             : DateTime.MinValue;
 
+        // Read again after the lookup. A sign-out between the two would otherwise let the
+        // previous caregiver's entry match the snapshot above and answer "not due" for the one
+        // who replaced them — and their API cache was wiped at sign-out, so the peek behind that
+        // answer finds nothing and the card sits empty. When in doubt, due: a read nobody needed
+        // costs a request, and the alternative costs a caregiver the summary.
+        if (_session.Current != session)
+            return true;
+
         return GeneratedContentRefresh.IsDue(requestedByCaregiver, lastRead, _utcNow());
     }
 
@@ -83,7 +91,15 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
         if (session != _session.Current)
             return;
 
-        _lastRead[(cardiMemberId, card)] = (session, _utcNow());
+        // Never lowers the session on an entry. Between the check above and this write a newer
+        // session can have recorded the same card, and a plain assignment would put the older
+        // one back — after which every reader in the new session ignores it and re-reads. The
+        // sessions only ever increase, so "keep the higher" is the whole rule.
+        var now = _utcNow();
+        _lastRead.AddOrUpdate(
+            (cardiMemberId, card),
+            (session, now),
+            (_, existing) => existing.Session > session ? existing : (session, now));
     }
 
     /// <summary>
@@ -92,10 +108,28 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
     /// unwire and no ordering to get wrong: the first question asked after a sign-out is the one
     /// that empties it.
     /// </summary>
+    /// <remarks>
+    /// Moves the mark forward only. A plain exchange lets a caller that sampled the session,
+    /// then paused across a sign-in, write its stale reading back — which drops the mark below
+    /// where the new session left it and clears entries that session had already recorded. The
+    /// generation is monotonic (<see cref="SessionGeneration.Advance"/> only increments), so
+    /// refusing to move it backwards is enough and needs no lock.
+    /// </remarks>
     private void DropIfSessionChanged()
     {
         var current = _session.Current;
-        if (Interlocked.Exchange(ref _generation, current) != current)
-            _lastRead.Clear();
+
+        while (true)
+        {
+            var seen = Volatile.Read(ref _generation);
+            if (seen >= current)
+                return;
+
+            if (Interlocked.CompareExchange(ref _generation, current, seen) == seen)
+            {
+                _lastRead.Clear();
+                return;
+            }
+        }
     }
 }
