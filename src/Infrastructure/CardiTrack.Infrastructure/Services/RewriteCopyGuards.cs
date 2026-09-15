@@ -10,9 +10,10 @@ namespace CardiTrack.Infrastructure.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Shared by the digest and Advise rather than living in either, because the two briefs are the
-/// same shape — a clinical read in, family-facing copy out, on a slot that is shown no member
-/// context — and a guard on one of them that the other lacks is a gap nobody meant to leave.
+/// Shared by the digest, Advise and the status line rather than living in any one of them,
+/// because those briefs are the same shape — a clinical read in, family-facing copy out, on a
+/// slot that is shown no member context — and a guard on one of them that the others lack is a
+/// gap nobody meant to leave.
 /// <see cref="AdviseRegisterGuards"/> and <see cref="JournalRegisterGuards"/> stay where they are:
 /// those guard a register, which differs per surface, while these two guard what the copy claims,
 /// which does not.
