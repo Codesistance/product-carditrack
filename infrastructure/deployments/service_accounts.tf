@@ -168,6 +168,14 @@ resource "google_secret_manager_secret_iam_member" "api_ack_token_key" {
   member    = local.api_sa
 }
 
+# The mobile error-log relay's shared key (secret_manager.tf). The API is its only runtime
+# reader; CI's deploy account is granted beside the secret itself.
+resource "google_secret_manager_secret_iam_member" "api_mobile_diagnostics_key" {
+  secret_id = google_secret_manager_secret.mobile_diagnostics_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.api_sa
+}
+
 # Dev-only, and the API is the only reader — the endpoint this key authorizes exists nowhere
 # else (notification_engine.md §13). Counted off in prod alongside the secret itself.
 resource "google_secret_manager_secret_iam_member" "api_dev_push_token_key" {
@@ -316,6 +324,7 @@ resource "time_sleep" "api_iam_propagation" {
       google_secret_manager_secret_iam_member.api_redis_connection_string[*].id,
       google_secret_manager_secret_iam_member.api_redis_ca[*].id,
       google_secret_manager_secret_iam_member.api_dev_push_token_key[*].id,
+      [google_secret_manager_secret_iam_member.api_mobile_diagnostics_key.id],
     ))))
   }
 
@@ -333,6 +342,7 @@ resource "time_sleep" "api_iam_propagation" {
     google_secret_manager_secret_iam_member.api_redis_connection_string,
     google_secret_manager_secret_iam_member.api_redis_ca,
     google_secret_manager_secret_iam_member.api_dev_push_token_key,
+    google_secret_manager_secret_iam_member.api_mobile_diagnostics_key,
     google_storage_bucket_iam_member.api_member_photos,
     google_service_account_iam_member.api_self_token_creator,
   ]

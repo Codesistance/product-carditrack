@@ -23,6 +23,14 @@ public static class AppConfig
     /// </summary>
     public static string ApmData { get; } = DecodeApmData(Read("ApmData"));
 
+    /// <summary>
+    /// The shared key for the error-log relay (<c>MobileDiagnosticsContract.KeyHeader</c>),
+    /// stamped by CI from <c>carditrack-&lt;env&gt;-mobile-diagnostics-key</c>. Empty = the
+    /// relay is off and Error+ lines stay in the on-device file only. An abuse limiter rather
+    /// than a secret — it ships inside the app — see <c>MobileDiagnosticsKey</c> in the API.
+    /// </summary>
+    public static string MobileDiagnosticsKey { get; } = Read("MobileDiagnosticsKey");
+
     private static string DecodeApmData(string value)
     {
         if (string.IsNullOrWhiteSpace(value) || value.TrimStart().StartsWith('{'))

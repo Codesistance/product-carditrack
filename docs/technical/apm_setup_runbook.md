@@ -277,8 +277,8 @@ below), so a client token buys nothing here. Leave `carditrack-<env>-apm-mobile-
 at its `REPLACE_ME` placeholder: placeholder data stamps as empty at build time, which
 disables monitoring cleanly (a bad engine name or malformed JSON likewise logs and
 skips at app startup — monitoring must never brick the app). Mobile diagnostics come
-from the **on-device Serilog log files** and **Play Console → Quality → Android
-vitals** instead.
+from the **on-device Serilog log files**, **Play Console → Quality → Android vitals**,
+and the **error-log relay through the API** (below) instead.
 
 ### `Site` must be one the SDK can name — UK1 cannot be reached
 
@@ -306,9 +306,10 @@ Consequences, all confirmed on a device (2026-08-11):
   is the source for mobile crashes and ANRs; on iOS it is **TestFlight / Xcode Organizer**,
   whose reports arrive as raw addresses and need the build's `.dSYM` (see
   [apps/mobile/readme.md](../apps/mobile/readme.md#symbolicating-an-ios-crash)).
-- Either way there is **no crash telemetry of our own**, so the on-device Serilog file is
-  often the only record of what the app was doing: Settings → Privacy → **Share app logs**
-  gets it off the handset without a developer machine.
+- The SDK's crash reporting went with RUM, so the app relays its own Error+ lines and
+  unhandled exceptions through the API instead (next section). The on-device Serilog file
+  remains the fuller record: Settings → Privacy → **Share app logs** gets it off the
+  handset without a developer machine.
 - Any fix that reaches the native `useCustomEndpoint` directly is Android-only (the native
   bindings ship as `Datadog.Android.*` packages; there is no iOS equivalent here), which the
   project's Android/iOS parity rule rules out.
@@ -322,6 +323,49 @@ with the toggle off ships no logs or traces at all — when mobile telemetry is 
 Datadog, check the toggle on the device before suspecting the stamping. The app sets
 `FirstPartyHosts` for the API host with Datadog + W3C `traceparent` tracing headers, so
 mobile spans join the API's OTel traces.
+
+### Error logs reach Datadog through the API instead
+
+Since the SDK cannot ship here, the app relays its own **Error-and-above** Serilog events —
+including the unhandled exception `AppLogging.HookUnhandledExceptions` writes just before the
+process dies — to `POST /api/v1/mobile/diagnostics/logs`. The API re-logs each entry and its
+Datadog sink ships those events as **`service:carditrack-mobile`** rather than `api`
+(`DatadogApmProvider` routes on the `RelayedService` property, `LogRelay.cs`). Query them with
+`service:carditrack-mobile env:dev` in Logs; an exception arrives with `error.stack`,
+`error.kind` and `error.message`, so Error Tracking groups repeats of one crash into one issue.
+
+| Piece | Where | Notes |
+|---|---|---|
+| Queue + send | `Mobile.Core/Diagnostics/MobileDiagnosticsRelay.cs` | One JSON line per entry in `logs/diagnostics-queue.jsonl`, newest 200 kept; batches of 50 |
+| Serilog sink | `Mobile/Services/MobileDiagnosticsSink.cs` | Error+ only (the file sink keeps Warning+); wired in `AppLogging.Configure` |
+| Flush points | `AppLogging.FlushDiagnostics` | After `CreateMauiApp` builds the app (for the previous run's crash), on every resume, and **blocking for up to 3 s** inside the unhandled-exception handler |
+| Endpoint | `API/Controllers/MobileDiagnosticsController.cs` | Anonymous; `X-Mobile-Diagnostics-Key` must match; 404 when no key is configured; 12/min and 120/h per IP |
+| Key | `carditrack-<env>-mobile-diagnostics-key` | Terraform-owned `random_bytes`, `ignore_changes` on the value; the API reads it as `MobileDiagnostics__Key`, CI stamps it into builds as `-p:MobileDiagnosticsKey` |
+| Payload | `MobileDiagnosticsLogRequest` (Application DTOs) | Envelope: platform, app version, manufacturer, model, OS version and description, architecture, runtime, locale, time zone, assembly informational version, module version id, install id. Entry: level, rendered message, source context, the full exception chain as text, exception type and message, up to 128 structured frames (type, method, assembly, IL offset, native offset, native IP and image base as hex, file and line when symbols exist), current screen, connectivity, uptime, thread, managed and working-set memory, and on a crash the last 16 KB of the device's own Warning+ log |
+
+The key ships inside the app binary, so it is an abuse limiter rather than a secret — the
+rate limit bounds what a leaked key can do, and nothing the endpoint accepts is trusted beyond
+being written to our own logs. A 401 or 404 from the endpoint makes the app drop its queue and
+stop for the rest of the process (the build's key is not this environment's, or the environment
+has no relay); transport failures leave the queue for the next launch.
+
+**Not behind the Send diagnostics toggle.** That toggle governs the SDK's session telemetry and
+lives in Settings, behind sign-in — the crash this exists for happens on the sign-in screen. The
+relay carries what a crash needs to be read and nothing about the person: the log line, the
+exception chain and frames, build and runtime identity, handset, current screen, thread and
+device state, the tail of the app's own log, and a random per-install id. No account identity,
+no health values. Recorded in the DPIA as A9.
+
+**Reading frames from an AOT build.** iOS ships fully AOT-compiled, so a frame's `Method` and
+`Type` come from runtime metadata and are always present, while `File`/`Line` are not (no
+symbols are shipped). Where the runtime exposes `NativeIp`, that address minus the crash's load
+address is what `atos` resolves against the build's `.dSYM` — the same procedure as
+[apps/mobile/readme.md](../apps/mobile/readme.md#symbolicating-an-ios-crash), now with the
+managed exception already named.
+
+Rotating the key is a deliberate act, not an apply: add a new secret version by hand, ship
+builds that carry it, then disable the old version. Rotating on apply would 401 every installed
+build's relay at once.
 
 ## 6. Release version on telemetry
 

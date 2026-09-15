@@ -380,6 +380,54 @@ resource "google_secret_manager_secret_version" "dev_push_token_key" {
 # wrong and useless: the API still could not read it, and the revision would
 # fail to start.
 
+# ── Mobile diagnostics relay key (Terraform-owned) ────────────────────────────
+# Authorizes POST /api/v1/mobile/diagnostics/logs — the anonymous endpoint the app
+# posts its Error+ log lines and unhandled exceptions to, so they reach Datadog as
+# service:carditrack-mobile. The mobile SDK cannot ship to this org's UK1 site
+# (docs/technical/apm_setup_runbook.md §5), so this relay is the only route a crash
+# on a caregiver's phone has into our telemetry.
+#
+# Two readers. The API resolves it at runtime as MobileDiagnostics__Key (grant in
+# service_accounts.tf, with the other API grants, so it joins the propagation
+# barrier); CI's deploy account reads it to stamp the value into every store build
+# (-p:MobileDiagnosticsKey in deploy-apps-dev.yml). It ships inside the app binary,
+# so it is an abuse limiter backed by the route's rate limit, not a secret in the
+# cryptographic sense — see MobileDiagnosticsKey in the API for why that is enough.
+#
+# ignore_changes, like ack_token_key and for a similar reason: the value is compiled
+# into shipped apps, so a rotation on apply would turn every installed build's relay
+# into a 401 — exactly when a crash report is needed most. Rotate deliberately: add a
+# version by hand, ship builds carrying it, then disable the old version.
+
+resource "random_bytes" "mobile_diagnostics_key" {
+  length = 32 # 256 bits; 44 characters as base64
+}
+
+resource "google_secret_manager_secret" "mobile_diagnostics_key" {
+  secret_id = "${var.secret_id_prefix}-mobile-diagnostics-key"
+  replication {
+    auto {}
+  }
+  labels     = var.secret_labels
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "mobile_diagnostics_key" {
+  secret      = google_secret_manager_secret.mobile_diagnostics_key.id
+  secret_data = random_bytes.mobile_diagnostics_key.base64
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# CI reads it at build time, the same way it reads apm-mobile-engine.
+resource "google_secret_manager_secret_iam_member" "mobile_diagnostics_key_deploy_accessor" {
+  secret_id = google_secret_manager_secret.mobile_diagnostics_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.deploy_service_account}"
+}
+
 # ── Mobile APM engine (Terraform-owned — the mobile monitoring switch) ────────
 # Mirrors the server's Apm__Engine env var: flip apm_mobile_engine in tfvars and
 # apply; CI stamps the value into mobile builds. Not in placeholder_secrets on

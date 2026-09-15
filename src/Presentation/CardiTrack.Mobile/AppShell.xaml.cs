@@ -25,7 +25,7 @@ public partial class AppShell : Shell
     public const string SettingsRoute = "//settings";
 
     /// <summary>
-    /// <see cref="Routing.RegisterRoute"/> is process-wide. A second <see cref="AppShell"/>
+    /// <see cref="Routing.RegisterRoute(string, Type)"/> is process-wide. A second <see cref="AppShell"/>
     /// — first-run onboarding after a prior sign-out discarded the last shell — must
     /// not register the same names again.
     /// </summary>

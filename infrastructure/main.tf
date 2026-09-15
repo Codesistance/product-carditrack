@@ -219,6 +219,7 @@ module "deployments" {
       # this key. Not injected into the pipeline jobs below: they never send push directly.
       "Notifications__AckTokenKey"       = "${var.project_name}-${local.environment}-ack-token-key"
       "Health__Token"                    = "${var.project_name}-${local.environment}-health-token"
+      "MobileDiagnostics__Key"           = "${var.project_name}-${local.environment}-mobile-diagnostics-key"
       "DeviceProviders__0__ClientId"     = "${var.project_name}-${local.environment}-devices-fitbit-client-id"
       "DeviceProviders__0__ClientSecret" = "${var.project_name}-${local.environment}-devices-fitbit-client-secret"
       "AI__Private__BaseUrl"             = "${var.project_name}-${local.environment}-medgemma-service-url"

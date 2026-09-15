@@ -300,7 +300,7 @@ A TestFlight crash report names no frames of ours — the shipped binary is stri
 3. Confirm they match, or the output will be silently wrong: `dwarfdump --uuid CardiTrack.Mobile.app.dSYM` against the UUID from step 1.
 4. Resolve a frame: `atos -o CardiTrack.Mobile.app.dSYM/Contents/Resources/DWARF/CardiTrack.Mobile -arch arm64 -l 0x100704000 0x103a311c0`, where `-l` is the app's load address (the first number on the Binary Images line) and the last argument is the frame address.
 
-Reading the result: offsets below roughly 50 MB are AOT-compiled managed code and come back as method names; the band above it is the Mono runtime linked into the same binary, and frames there stay anonymous. A stack that is *entirely* runtime frames, ending at `abort`, is the signature of an unhandled managed exception — the managed frames were unwound before the abort, so the on-device log (below) is the only place the exception itself survives.
+Reading the result: offsets below roughly 50 MB are AOT-compiled managed code and come back as method names; the band above it is the Mono runtime linked into the same binary, and frames there stay anonymous. A stack that is *entirely* runtime frames, ending at `abort`, is the signature of an unhandled managed exception — the managed frames were unwound before the abort, so the on-device log (below) and the error-log relay are the only places the exception itself survives.
 
 Before symbols existed in CI, a build's `.dSYM` died with the runner: builds up to **1510** cannot be symbolicated at all unless the tag is rebuilt on a Mac.
 
@@ -308,7 +308,11 @@ Before symbols existed in CI, a build's `.dSYM` died with the runner: builds up 
 
 The app writes Warning-and-above to a rolling Serilog file under `FileSystem.AppDataDirectory/logs`, and `AppLogging.HookUnhandledExceptions` writes the full exception there before the process dies. **Settings → Privacy → Share app logs** zips those files with a short `about.txt` (version, build, model, OS) and hands them to the share sheet, which is the only route off an iPhone that does not need Xcode's Download Container and a developer machine. The row works whether or not **Send diagnostics** is on: that toggle governs what the app sends by itself, this is the caregiver sending a file deliberately.
 
-Known gap: an exception thrown inside `MauiProgram.CreateMauiApp` before `HookUnhandledExceptions` runs is still lost — Serilog is configured by then, but nothing is catching.
+### Getting the exception without the device
+
+Stamped builds also **relay** every Error-and-above line — the unhandled exception included — to `POST /api/v1/mobile/diagnostics/logs`, which the API re-emits to Datadog as `service:carditrack-mobile` (`MobileDiagnosticsRelay.cs`, `MobileDiagnosticsSink.cs`; the full account is in [apm_setup_runbook.md §5](../../technical/apm_setup_runbook.md#5-mobile-app-monitoring)). The unhandled handler blocks for up to three seconds to send the crash before the runtime aborts; anything that does not make it is queued on disk and sent at the next launch or resume. So for a crash on a stamped build, look in Datadog Logs under `service:carditrack-mobile` first — `error.stack` is the managed exception chain the `.ips` file cannot give you, `MobileFrames` the same stack as structured frames (with native addresses for the dSYM where the runtime exposes them), and `MobileRecentLog` the tail of the device log — and fall back to Share app logs only when the relay had no network.
+
+Known gap: an exception thrown inside `MauiProgram.CreateMauiApp` before `HookUnhandledExceptions` runs is still lost — Serilog is configured by then, but nothing is catching, and the relay only sends what Serilog saw.
 
 Signing material and store credentials live in GCP Secret Manager (`carditrack-common-*` secrets, defined in `infrastructure/common/secret_manager.tf`):
 

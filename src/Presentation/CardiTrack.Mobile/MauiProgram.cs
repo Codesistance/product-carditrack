@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
@@ -9,7 +8,6 @@ using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
-using CardiTrack.Shared.Http;
 #if ANDROID || IOS
 using CardiTrack.Mobile.Notifications;
 using Microsoft.Maui.LifecycleEvents;
@@ -112,7 +110,7 @@ public static class MauiProgram
         {
             client.BaseAddress = new Uri(AppConfig.ApiBaseUrl);
             client.DefaultRequestHeaders.Add("Accept", "application/json");
-            AddClientIdentityHeaders(client.DefaultRequestHeaders);
+            ClientIdentity.Apply(client.DefaultRequestHeaders);
             // Ceiling only — TimeoutHandler holds every request to 30 s unless the request
             // asked for more (the member-chat send does; its answer is a chain of CPU-served
             // model calls). HttpClient.Timeout can never be extended per request, so it must
@@ -170,6 +168,9 @@ public static class MauiProgram
 
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);
+        // Whatever the last run queued — above all an unhandled exception it aborted on —
+        // goes to the API now, before anything else can crash this run.
+        AppLogging.FlushDiagnostics();
 #if ANDROID || IOS
         // Constructing the coordinator is what subscribes its FCM handlers. AppShell used to
         // be the first resolver, so a push that woke a killed process reached
@@ -186,41 +187,5 @@ public static class MauiProgram
         }
 #endif
         return app;
-    }
-
-    /// <summary>
-    /// Stamps every API call with which build is making it. The API turns these into tags on the
-    /// request's server span and properties on every log line it writes, so a slow call or a 500
-    /// can be attributed to an exact client build and platform instead of to "the mobile app".
-    ///
-    /// Default headers rather than a <c>DelegatingHandler</c>: both values are fixed for the
-    /// process lifetime, so re-deriving them per request would buy nothing. Only the CardiTrack
-    /// client gets them — Auth0's host is not ours to describe our builds to, and its client is
-    /// deliberately outside our handler pipeline for the same reason.
-    ///
-    /// Either header is omitted rather than guessed at if its source value is missing or
-    /// malformed; the API treats an absent header as "unknown", which is honest.
-    /// </summary>
-    private static void AddClientIdentityHeaders(HttpRequestHeaders headers)
-    {
-        var version = ClientHeaders.FormatVersion(AppInfo.Current.VersionString, AppInfo.Current.BuildString);
-        if (version is not null)
-            headers.Add(ClientHeaderNames.ClientVersion, version);
-
-        // DevicePlatform is a struct whose ToString is the platform name ("Android", "iOS",
-        // "WinUI"); ClientHeaders lowercases it so one platform can't appear under two spellings.
-        var platform = ClientHeaders.NormalizePlatform(DeviceInfo.Current.Platform.ToString());
-        if (platform is not null)
-            headers.Add(ClientHeaderNames.ClientPlatform, platform);
-
-        // A User-Agent as well: HttpClient sends none by default, and at the edge an absent UA
-        // is indistinguishable from an anonymous scanner — Cloud Armor's logs classed the app's
-        // whole traffic as bot-like on exactly that (dev scan, 2026-08-20). The custom headers
-        // above never leave our API's spans; the User-Agent is what the WAF and LB logs see.
-        headers.UserAgent.Add(version is null
-            ? new ProductInfoHeaderValue(new ProductHeaderValue("CardiTrack-Mobile"))
-            : new ProductInfoHeaderValue("CardiTrack-Mobile", version));
-        if (platform is not null)
-            headers.UserAgent.Add(new ProductInfoHeaderValue($"({platform})"));
     }
 }

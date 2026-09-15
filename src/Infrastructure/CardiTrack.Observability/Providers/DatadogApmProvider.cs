@@ -38,28 +38,55 @@ public sealed class DatadogApmProvider : IApmProvider
     /// that shared identity, not the log record's attributes, is what lets Datadog treat
     /// all three signals as one service and resolve a log's "Related Trace".
     /// </summary>
+    /// <remarks>
+    /// Two sinks, not one: events carrying <see cref="LogRelay.ServiceProperty"/> were written
+    /// by this host on behalf of the mobile app (see <c>MobileDiagnosticsController</c>) and
+    /// ship under <see cref="ApmServiceNames.Mobile"/> instead, without this host's
+    /// service.version — the app's own build is on the event as <c>ClientVersion</c>, and
+    /// stamping the API's release on a phone's crash would pin it to the wrong deploy. Every
+    /// other event is excluded from that sink and included in the host's, so nothing ships twice
+    /// and nothing ships under two names.
+    /// </remarks>
     public LoggerConfiguration AddLogShipping(
         LoggerConfiguration loggerConfiguration, ApmOptions options, string serviceName) =>
-        loggerConfiguration.WriteTo.Logger(
-            // The enricher rides this sub-logger, not the root: "level" is a Datadog intake
-            // contract (see DatadogLogStatusEnricher), so the console and other engines
-            // never carry it.
-            lc => lc.Enrich.With(new DatadogLogStatusEnricher()).WriteTo.OpenTelemetry(otlp =>
-            {
-                otlp.Endpoint = LogsIntakeUrl(options);
-                otlp.Protocol = OtlpProtocol.HttpProtobuf;
-                otlp.Headers = new Dictionary<string, string> { ["dd-api-key"] = options.Data.IngestToken! };
-                otlp.ResourceAttributes = ResourceAttributes(options, serviceName);
-            }),
-            restrictedToMinimumLevel: options.ShipLevel);
+        loggerConfiguration
+            .WriteTo.Logger(
+                lc => lc
+                    .Filter.ByExcluding(LogRelay.IsRelayed)
+                    .Enrich.With(new DatadogLogStatusEnricher())
+                    .WriteTo.OpenTelemetry(otlp => ConfigureLogsExporter(
+                        otlp, options, ResourceAttributes(options, serviceName, includeVersion: true))),
+                restrictedToMinimumLevel: options.ShipLevel)
+            .WriteTo.Logger(
+                lc => lc
+                    .Filter.ByIncludingOnly(e => LogRelay.IsRelayedTo(e, ApmServiceNames.Mobile))
+                    .Enrich.With(new DatadogLogStatusEnricher())
+                    .WriteTo.OpenTelemetry(otlp => ConfigureLogsExporter(
+                        otlp, options, ResourceAttributes(options, ApmServiceNames.Mobile, includeVersion: false))),
+                restrictedToMinimumLevel: options.ShipLevel);
 
-    private static Dictionary<string, object> ResourceAttributes(ApmOptions options, string serviceName)
+    private static void ConfigureLogsExporter(
+        BatchedOpenTelemetrySinkOptions otlp, ApmOptions options, Dictionary<string, object> resourceAttributes)
+    {
+        // The enricher rides the sub-loggers, not the root: "level" is a Datadog intake
+        // contract (see DatadogLogStatusEnricher), so the console and other engines
+        // never carry it.
+        otlp.Endpoint = LogsIntakeUrl(options);
+        otlp.Protocol = OtlpProtocol.HttpProtobuf;
+        otlp.Headers = new Dictionary<string, string> { ["dd-api-key"] = options.Data.IngestToken! };
+        otlp.ResourceAttributes = resourceAttributes;
+    }
+
+    private static Dictionary<string, object> ResourceAttributes(
+        ApmOptions options, string serviceName, bool includeVersion)
     {
         var attributes = new Dictionary<string, object>
         {
             ["service.name"] = serviceName,
-            ["service.version"] = DeploymentInfo.Version,
         };
+
+        if (includeVersion)
+            attributes["service.version"] = DeploymentInfo.Version;
 
         if (DeploymentInfo.EnvironmentName is { } environmentName)
         {

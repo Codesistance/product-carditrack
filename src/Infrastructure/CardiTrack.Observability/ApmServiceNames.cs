@@ -19,6 +19,13 @@ public static class ApmServiceNames
     public const string PipelineJobs = "pipeline-jobs";
     public const string WebhookReceiver = "webhook-receiver";
 
+    /// <summary>
+    /// Not a backend host: the MAUI app, as its own (inert — see apm_setup_runbook.md §5) SDK
+    /// names itself and as the API's log relay re-emits its entries. Kept out of
+    /// <see cref="All"/>, which lists the hosts that call <c>AddApmTracing</c>.
+    /// </summary>
+    public const string Mobile = CardiTrack.Shared.Http.MobileDiagnosticsContract.ServiceName;
+
     /// <summary>Every backend service name, for tests and diagnostics.</summary>
     public static IReadOnlyList<string> All { get; } = [Api, Web, Worker, PipelineJobs, WebhookReceiver];
 }

@@ -8,6 +8,7 @@ using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Observability;
 using CardiTrack.Shared;
+using CardiTrack.Shared.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 using Serilog.Events;
@@ -89,6 +90,24 @@ try
             "Dev push endpoint is DISABLED despite {Key} being set — either the environment is " +
             "prod ('{Environment}'), or the key is not a valid base64-encoded 256-bit value.",
             ConfigurationKeys.Dev.PushTokenKey, DeploymentInfo.EnvironmentName ?? "unset");
+    }
+
+    // The mobile app's error-log relay (docs/technical/apm_setup_runbook.md §5). The phone's
+    // Datadog SDK cannot reach this org's site, so it posts its Error+ lines and unhandled
+    // exceptions to POST /api/v1/mobile/diagnostics/logs and this host's sink re-emits them as
+    // service:carditrack-mobile. One shared key — Terraform-owned, stamped into store builds by
+    // CI and read here from Secret Manager — is the whole of the authorization; absent, the
+    // endpoint answers 404 and the app's relay drops its queue rather than retrying forever.
+    var mobileDiagnosticsKey = MobileDiagnosticsKey.FromConfiguration(
+        configLoader.Get(ConfigurationKeys.MobileDiagnostics.Key));
+    builder.Services.AddSingleton(mobileDiagnosticsKey);
+    if (!mobileDiagnosticsKey.IsConfigured)
+    {
+        Log.Warning(
+            "Mobile diagnostics relay is DISABLED: {Key} is unset, a placeholder, or shorter than " +
+            "{MinimumLength} characters — POST {Path} answers 404 and no mobile error logs will arrive.",
+            ConfigurationKeys.MobileDiagnostics.Key, MobileDiagnosticsKey.MinimumLength,
+            MobileDiagnosticsContract.LogsPath);
     }
 
     // 4. API VERSIONING

@@ -32,6 +32,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<MemberChatMessageRequest>, MemberChatMessageValidator>();
         services.AddScoped<IValidator<GenerateReportRequest>, GenerateReportValidator>();
         services.AddScoped<IValidator<RecordExportConsentRequest>, RecordExportConsentValidator>();
+        services.AddScoped<IValidator<MobileDiagnosticsLogRequest>, MobileDiagnosticsLogValidator>();
         services.AddScoped<ReuseExportConsentValidator>();
         return services;
     }
