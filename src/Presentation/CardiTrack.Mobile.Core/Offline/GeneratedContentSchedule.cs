@@ -28,7 +28,15 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
 {
     private readonly SessionGeneration _session;
     private readonly Func<DateTime> _utcNow;
-    private readonly ConcurrentDictionary<(Guid Member, GeneratedCard Card), DateTime> _lastRead = new();
+    /// <summary>
+    /// Every entry carries the session it was written in, and a reader ignores one from any
+    /// other. That, rather than the check in <see cref="Record"/>, is what actually closes the
+    /// door: the check and the write cannot be made atomic between them, so a read that passed
+    /// the check can still land after a sign-out has emptied the dictionary and reinsert itself.
+    /// Stamped, such an entry is inert when it lands — the next reader does not recognise it, and
+    /// the next <see cref="DropIfSessionChanged"/> takes it away.
+    /// </summary>
+    private readonly ConcurrentDictionary<(Guid Member, GeneratedCard Card), (int Session, DateTime At)> _lastRead = new();
 
     private int _generation;
 
@@ -49,7 +57,11 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
     {
         DropIfSessionChanged();
 
-        var lastRead = _lastRead.TryGetValue((cardiMemberId, card), out var at) ? at : DateTime.MinValue;
+        var session = _session.Current;
+        var lastRead = _lastRead.TryGetValue((cardiMemberId, card), out var entry) && entry.Session == session
+            ? entry.At
+            : DateTime.MinValue;
+
         return GeneratedContentRefresh.IsDue(requestedByCaregiver, lastRead, _utcNow());
     }
 
@@ -64,10 +76,14 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
         // the caregiver who replaced them has usually looked already, so the schedule is current
         // and the drop has nothing to do. What is stale is the read, and only the session it
         // started in can say so.
+        //
+        // This turns a stale read away at the door; the session stamped on the entry is what
+        // handles the one that gets past — nothing can hold the check and the write together, so
+        // a read that passed here can still be overtaken by a sign-out before it writes.
         if (session != _session.Current)
             return;
 
-        _lastRead[(cardiMemberId, card)] = _utcNow();
+        _lastRead[(cardiMemberId, card)] = (session, _utcNow());
     }
 
     /// <summary>
