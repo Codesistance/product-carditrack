@@ -38,6 +38,13 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <summary>Every metric the carousel swipes through — see <see cref="TrendMetricCatalogue"/>.</summary>
     private static IReadOnlyList<TrendMetricCatalogue.Entry> TrendCards => TrendMetricCatalogue.All;
 
+    /// <summary>
+    /// The render gate for a reload made from the page while the caregiver is looking at it —
+    /// the member is already up, so there is nothing to wait for. See the gate's own comment in
+    /// <see cref="LoadAsync"/> for what the loads use it to avoid.
+    /// </summary>
+    private static readonly Task<bool> AlreadyOnScreen = Task.FromResult(true);
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly IQuestionValidityService _questionValidity;
@@ -264,14 +271,25 @@ public partial class CardiMemberDetailPage : ContentPage
         var focusAdvise = _focusAdvise;
         _focusAdvise = false;
 
+        // Completed true once this pass has put this member on the screen, and false when it
+        // never does. The three loads below start their round trips at once but wait on this
+        // before they paint, because all three read state that belongs to the rendered member
+        // rather than to the id they were given: the digest's urgency rung is computed against
+        // _member, the question card is addressed with _member's first name, and the Advise card
+        // marks its generation seen the moment it is drawn. Until the render, _member is still
+        // whoever the page was showing before — on a reused page, a different CardiMember.
+        //
+        // Continuations run asynchronously so that none of that painting happens inside
+        // SnapshotRefresh's render callback.
+        var memberOnScreen = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         try
         {
             // Started before the member is awaited, not after it. These three only ever needed
-            // the member id, which is known here, and queueing them behind the member's own round
-            // trip is what left the summary card on its placeholder copy for two round trips
-            // instead of one. Nothing about landing early disturbs the render that follows:
-            // Apply() skips the placeholder once a summary is up, recomputes the urgency rung
-            // from the digest it holds, and never touches the Advise or question cards.
+            // the member id, which is known here, and queueing their round trips behind the
+            // member's own is what left the summary card on its placeholder copy for two trips
+            // instead of one.
             //
             // Stamped when the pass decides to read them rather than when the reads succeed. A
             // failing endpoint is best-effort here — the page is complete without it — and
@@ -287,9 +305,11 @@ public partial class CardiMemberDetailPage : ContentPage
                 // the height of it — the digest rewrites the summary, the questionnaires add or
                 // remove a whole card — so the anchor is re-asserted as each one finishes rather
                 // than only after Apply. Restoring is a no-op when nothing moved.
-                _ = LoadThenRestoreAsync(LoadDigestAsync(memberId), anchor, focusAdvise);
-                _ = LoadThenRestoreAsync(LoadAdviseAsync(memberId), anchor, focusAdvise);
-                _ = LoadThenRestoreAsync(LoadQuestionnairesAsync(memberId), anchor, focusAdvise);
+                var rendered = memberOnScreen.Task;
+                _ = LoadThenRestoreAsync(LoadDigestAsync(memberId, rendered), anchor, focusAdvise);
+                _ = LoadThenRestoreAsync(LoadAdviseAsync(memberId, rendered), anchor, focusAdvise);
+                _ = LoadThenRestoreAsync(
+                    LoadQuestionnairesAsync(memberId, rendered), anchor, focusAdvise);
             }
 
             var outcome = await SnapshotRefresh.RunAsync(
@@ -303,6 +323,8 @@ public partial class CardiMemberDetailPage : ContentPage
                     ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
                     Apply(member);
                     SetState(loaded: true);
+                    // This member is now the one on the page, so the generated cards may paint.
+                    memberOnScreen.TrySetResult(true);
                     _ = RestoreScrollAnchorAsync(anchor, focusAdvise);
                 },
                 _feedback);
@@ -346,6 +368,10 @@ public partial class CardiMemberDetailPage : ContentPage
         }
         finally
         {
+            // Every path that got here without rendering: superseded, a 404 over nothing, a
+            // failed refresh that left the previous member's page up, or a fault inside Apply.
+            // A no-op once the render has already set it.
+            memberOnScreen.TrySetResult(false);
             _gate.Release(ticket);
         }
     }
@@ -537,13 +563,13 @@ public partial class CardiMemberDetailPage : ContentPage
         SemanticProperties.SetDescription(
             LastContactLabel, $"{member.DataFreshnessMessage}. {LastContactLabel.Text}");
 
-        // The digest loads on its own round trip (LoadDigestAsync), which now runs alongside the
-        // member's rather than behind it — so it lands either side of this method and the guard
-        // has to hold for both. Writing the placeholder every time meant every refresh —
-        // including the unattended periodic one — shrank this card back to two lines and then
-        // grew it again a moment later. That is two layout passes for a summary that has usually
-        // not changed at all, and it shoves Key Metric Trends and everything under it down the
-        // page and back twice while the caregiver is reading them. The placeholder is for a screen that has nothing better
+        // The digest has its own round trip (LoadDigestAsync). That trip now runs alongside this
+        // one rather than behind it, but it still paints after this method has returned — it
+        // waits on the render — so writing the placeholder every time meant every refresh,
+        // including the unattended periodic one, shrank this card back to two lines and then grew
+        // it again a moment later. That is two layout passes for a summary that has usually not
+        // changed at all, and it shoves Key Metric Trends and everything under it down the page
+        // and back twice while the caregiver is reading them. The placeholder is for a screen that has nothing better
         // on it; once a summary is up it stays up until there is a new one, which is the same
         // stance the failed-refresh path above takes.
         if (!_digestRendered)
@@ -570,21 +596,34 @@ public partial class CardiMemberDetailPage : ContentPage
     /// <summary>
     /// Best-effort, like the dashboard's live status line: no spinner, no error state. The
     /// placeholder <see cref="Apply"/> renders is a complete fallback on its own, so a 404
-    /// (nothing generated yet) or a failed call just leaves the card to it. Runs alongside the
-    /// member's own load rather than after it, so it may resolve either side of that render.
+    /// (nothing generated yet) or a failed call just leaves the card to it. The read runs
+    /// alongside the member's own rather than behind it; the drawing still waits for that render.
     /// </summary>
-    private async Task LoadDigestAsync(Guid memberId)
+    private async Task LoadDigestAsync(Guid memberId, Task<bool> memberOnScreen)
     {
+        // Started before anything is awaited — this round trip running alongside the member's own
+        // is the whole point of the early start. Only the painting below waits.
+        var fetch = _api.GetDigestAsync(memberId);
+
         try
         {
+            if (!await memberOnScreen)
+            {
+                // The pass never put this member on the page, so there is nothing to write this
+                // onto. The answer is moot; awaiting it anyway is what keeps a failure from
+                // becoming a task nobody observed.
+                await fetch;
+                return;
+            }
+
             // The device's saved summary first, when nothing is up yet, so the card reads as
-            // written rather than as a placeholder for the round trip; the live one lands on top
-            // and only re-fades when the words actually moved. No overlay for these follow-up
-            // loads — the page's own replacement already had one.
+            // written rather than as a placeholder for a round trip that is still out; the live
+            // one lands on top and only re-fades when the words actually moved. No overlay for
+            // these follow-up loads — the page's own replacement already had one.
             if (!_digestRendered && await _api.PeekDigestAsync(memberId) is { } saved && memberId == _memberId)
                 ApplyDigest(saved);
 
-            var digest = await _api.GetDigestAsync(memberId);
+            var digest = await fetch;
             if (memberId != _memberId)
                 return;
 
@@ -634,15 +673,27 @@ public partial class CardiMemberDetailPage : ContentPage
     /// blank <see cref="AdviseResponse.Suggestion"/> (<see cref="ApplyAdvise"/> hides the card for
     /// it) — a 404 means access was refused or the member doesn't exist.
     /// </summary>
-    private async Task LoadAdviseAsync(Guid memberId)
+    private async Task LoadAdviseAsync(Guid memberId, Task<bool> memberOnScreen)
     {
+        var fetch = _api.GetAdviseAsync(memberId);
+
         try
         {
+            // Waited on rather than raced, and this card is the sharpest reason why: ApplyAdvise
+            // marks the generation seen as it draws, so painting it over a page that is still a
+            // skeleton — or still the previous CardiMember — would take the Advise glyph off the
+            // dashboard for a suggestion nobody has been shown.
+            if (!await memberOnScreen)
+            {
+                await fetch;
+                return;
+            }
+
             // Saved suggestion first when the card is not up yet; the live one lands on top.
             if (!AdviseCard.IsVisible && await _api.PeekAdviseAsync(memberId) is { } saved && memberId == _memberId)
                 ApplyAdvise(saved);
 
-            var advise = await _api.GetAdviseAsync(memberId);
+            var advise = await fetch;
             if (memberId != _memberId)
                 return;
 
@@ -691,15 +742,26 @@ public partial class CardiMemberDetailPage : ContentPage
     /// Best-effort in the same way as the summary — a question is an extra, and a failed call
     /// leaves the page looking exactly as it does for a member with nothing to answer.
     /// </remarks>
-    private async Task LoadQuestionnairesAsync(Guid memberId)
+    private async Task LoadQuestionnairesAsync(Guid memberId, Task<bool> memberOnScreen)
     {
-        // A silent refresh must not close an editor someone is typing in. Same courtesy the pause
-        // drop down gets; the cost is one stale card until the next load.
+        // An unattended refresh must not close an editor someone is typing in. Same courtesy the
+        // pause drop down gets; the cost is one stale card until the next load.
         if (PendingQuestionCard.IsEditing)
             return;
 
+        var fetch = _api.GetQuestionnairesAsync(memberId);
+
         try
         {
+            // ApplyQuestionnaires addresses the card with _member's first name, so drawing it
+            // before the render would ask after whoever the page was showing before — or after
+            // nobody at all, on a first load.
+            if (!await memberOnScreen)
+            {
+                await fetch;
+                return;
+            }
+
             // The saved page first when no card is up yet — a question the device already holds
             // is on screen at once — and the live page on top of it. The validity check below
             // runs on both, which is what stops a saved question about a day that has ended
@@ -708,7 +770,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 && await _api.PeekQuestionnairesAsync(memberId) is { } saved && memberId == _memberId)
                 ApplyQuestionnaires(saved);
 
-            var result = await _api.GetQuestionnairesAsync(memberId);
+            var result = await fetch;
             if (memberId != _memberId)
                 return;
 
@@ -789,7 +851,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
             // Reconciles the case where someone else answered it first: the reload finds nothing
             // pending and takes the card away.
-            _ = LoadQuestionnairesAsync(_memberId);
+            _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen);
         }
         finally
         {
