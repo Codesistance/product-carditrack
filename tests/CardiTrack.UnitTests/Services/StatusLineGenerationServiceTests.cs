@@ -272,6 +272,49 @@ public class StatusLineGenerationServiceTests
             s.Headline == null && s.Message == "Margaret seems steady today."));
     }
 
+    /// <summary>
+    /// Pronoun tokens are built on the name token, so <see cref="NamePlaceholder.IsPresentIn"/>
+    /// does not match them. Resolving the headline would turn CardiTrackCardiMemberTheir into the
+    /// first name when sex is not stated — the card already shows who this is, so the headline
+    /// is dropped instead.
+    /// </summary>
+    [Fact]
+    public async Task HeadlineThatStillCarriesAPronounToken_IsDropped_NotResolvedIntoAName()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            Gender = Gender.PreferNotToSay,
+            IsActive = true,
+        });
+        RewriteAnswers(
+            "CardiTrackCardiMemberTheir quieter day",
+            "CardiTrackCardiMember seems steady today.");
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        await _statusLines.Received(1).AddAsync(Arg.Is<MemberStatusLine>(s =>
+            s.Headline == null && s.Message == "Margaret seems steady today."));
+    }
+
+    /// <summary>
+    /// Caregiver notes reach MedGemma unredacted. If the clinical read repeats the member's
+    /// name, that identifier must not leave the estate on the Rewrite slot.
+    /// </summary>
+    [Fact]
+    public async Task ClinicalFindingThatRepeatsTheMembersName_IsRedactedBeforeTheRewrite()
+    {
+        ClinicalAnswers("Margaret's step total sat well below the usual.");
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        var prompt = (string)_rewriteAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("CardiTrackCardiMember", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Margaret", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task NoUnresolvedAlerts_SendsGreenAsTheSeverityTier()
     {

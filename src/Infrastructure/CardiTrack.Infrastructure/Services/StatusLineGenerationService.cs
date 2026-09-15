@@ -88,7 +88,8 @@ public class StatusLineGenerationService
     /// This is the step that holds <see cref="NamePlaceholder.Token"/> and the whole
     /// not-a-medical-device boundary, and the only one whose output a caregiver reads. It receives
     /// a <see cref="DeidentifiedFindings"/> and nothing else — DPIA row A20's compile-time
-    /// boundary, the same contract the digest, Advise and member chat honour.
+    /// boundary, the same contract the digest, Advise and member chat honour. The status line
+    /// itself is inventoried as A24.
     /// </remarks>
     private const string RewriteInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.PronounsByToken + """
@@ -245,7 +246,13 @@ public class StatusLineGenerationService
             return;
         }
 
-        var read = RenderClinicalRead(clinical.Finding, severity);
+        // DemographicsContextSource decrypts caregiver notes but does not redact the member's
+        // name from them. MedGemma may repeat that name in the finding; wrapping it unchanged
+        // would send the identifier to Vertex. Same swap the questionnaire and chat paths run
+        // before anything leaves the estate.
+        var read = RenderClinicalRead(
+            NamePlaceholder.Redact(clinical.Finding, member.Name) ?? clinical.Finding,
+            severity);
         CurrentStatusAiResponse aiResponse;
         try
         {
@@ -281,20 +288,13 @@ public class StatusLineGenerationService
         var message = voice.Resolve(aiResponse.Message.Trim()) ?? string.Empty;
         if (MemberVoice.IsUnresolvedIn(message))
             message = string.Empty;
-        // The headline is asked not to name them, and the card already shows who this is — a
-        // leftover name token is dropped rather than turned into a name in the title. A missing
-        // headline does not sink the sentence.
-        string? headline;
-        if (NamePlaceholder.IsPresentIn(aiResponse.Headline))
-        {
-            headline = null;
-        }
-        else
-        {
-            headline = CleanStatusHeadline(voice.Resolve(aiResponse.Headline));
-            if (MemberVoice.IsUnresolvedIn(headline))
-                headline = null;
-        }
+        // The headline is asked not to name them, and the card already shows who this is. A
+        // leftover name or pronoun token is dropped rather than resolved into the title —
+        // PreferNotToSay would otherwise turn CardiTrackCardiMemberTheir into the first name.
+        // A missing headline does not sink the sentence.
+        var headline = MemberVoice.IsUnresolvedIn(aiResponse.Headline)
+            ? null
+            : CleanStatusHeadline(aiResponse.Headline);
 
         if (string.IsNullOrWhiteSpace(message))
         {
@@ -494,7 +494,8 @@ public class StatusLineGenerationService
     /// The clinical read as the one thing the rewrite prompt is allowed to carry — no member
     /// context, no readings, no monitoring section. The computed tier is appended in code so the
     /// rewrite always has the seriousness the hero is already showing, even if the finding is
-    /// terse. Flattened, so a multi-line finding cannot forge a section heading.
+    /// terse. Flattened, so a multi-line finding cannot forge a section heading. The caller
+    /// redacts the member's name before this wrap; this method does not.
     /// </summary>
     private static string RenderClinicalRead(string finding, string severity) =>
         $"finding: {MedicalPromptBlocks.Flatten(finding)}\nseriousness: {severity}";
