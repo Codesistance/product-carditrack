@@ -53,9 +53,20 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
         return GeneratedContentRefresh.IsDue(requestedByCaregiver, lastRead, _utcNow());
     }
 
-    public void Record(Guid cardiMemberId, GeneratedCard card)
+    public int CurrentSession => _session.Current;
+
+    public void Record(Guid cardiMemberId, GeneratedCard card, int session)
     {
         DropIfSessionChanged();
+
+        // Checked after the drop, not before it. The drop only notices that the session moved
+        // since this object last looked; by the time a read from a signed-out caregiver lands,
+        // the caregiver who replaced them has usually looked already, so the schedule is current
+        // and the drop has nothing to do. What is stale is the read, and only the session it
+        // started in can say so.
+        if (session != _session.Current)
+            return;
+
         _lastRead[(cardiMemberId, card)] = _utcNow();
     }
 

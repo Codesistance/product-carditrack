@@ -45,8 +45,21 @@ public interface IGeneratedContentSchedule
     bool IsDue(Guid cardiMemberId, GeneratedCard card, bool requestedByCaregiver);
 
     /// <summary>
+    /// The session a pass is starting in. Captured before the reads begin and handed back to
+    /// <see cref="Record"/> when they land.
+    /// </summary>
+    int CurrentSession { get; }
+
+    /// <summary>
     /// Records that this card was read for this member, now. Called for a read that was made for
     /// a member the screen ends up showing — not for one that was launched and abandoned.
     /// </summary>
-    void Record(Guid cardiMemberId, GeneratedCard card);
+    /// <param name="session">
+    /// The <see cref="CurrentSession"/> the read started in. A read that outlived its session is
+    /// dropped rather than written: a load is not cancelled by sign-out, so one belonging to the
+    /// caregiver who has just signed out can otherwise land in the next caregiver's schedule and
+    /// hold back a member they have never opened. Same guard, and the same reason, as the
+    /// generation the API client captures before a GET and checks before caching its body.
+    /// </param>
+    void Record(Guid cardiMemberId, GeneratedCard card, int session);
 }

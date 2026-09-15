@@ -174,6 +174,11 @@ public partial class CardiMemberDetailPage : ContentPage
             _digestRendered = false;
             _digest = null;
             UrgencyRow.IsVisible = false;
+            // Hidden with the rest, and load-bearing now that a pass can skip the round trip:
+            // LoadAdviseAsync reads the saved suggestion only when this card is down, so a card
+            // left up from the CardiMember before would have stood, unrefreshed, under the new
+            // one's name for as long as the cadence held.
+            AdviseCard.IsVisible = false;
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
         }
@@ -314,6 +319,10 @@ public partial class CardiMemberDetailPage : ContentPage
             // intent left the summary on its placeholder for a whole cadence window while the
             // tick that finally fetched the member declined to fetch the summary beside it. The
             // reads are recorded below, once the member load has settled.
+            // Captured before the reads start, checked when they are written down. A load is not
+            // cancelled by sign-out, so this pass can land after the next caregiver has signed in.
+            var session = _schedule.CurrentSession;
+
             var digestDue = _schedule.IsDue(memberId, GeneratedCard.Digest, requested);
             var adviseDue = _schedule.IsDue(memberId, GeneratedCard.Advise, requested);
 
@@ -393,11 +402,11 @@ public partial class CardiMemberDetailPage : ContentPage
             if (showingThisMember)
             {
                 if (digestDue)
-                    _schedule.Record(memberId, GeneratedCard.Digest);
+                    _schedule.Record(memberId, GeneratedCard.Digest, session);
                 if (adviseDue)
-                    _schedule.Record(memberId, GeneratedCard.Advise);
+                    _schedule.Record(memberId, GeneratedCard.Advise, session);
                 if (questionsDue)
-                    _schedule.Record(memberId, GeneratedCard.Questions);
+                    _schedule.Record(memberId, GeneratedCard.Questions, session);
             }
 
             if (outcome.IsFresh)
@@ -951,7 +960,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // the same reason as there: a read that failed is still a read, and retrying it on
             // every tick is what the cadence exists to avoid. The member is certainly on screen
             // — this runs from its own visible card.
-            _schedule.Record(_memberId, GeneratedCard.Questions);
+            _schedule.Record(_memberId, GeneratedCard.Questions, _schedule.CurrentSession);
         }
         finally
         {

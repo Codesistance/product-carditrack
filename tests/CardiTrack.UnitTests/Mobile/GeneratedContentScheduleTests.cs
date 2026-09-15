@@ -32,7 +32,7 @@ public class GeneratedContentScheduleTests
     public void A_read_survives_the_page_that_made_it()
     {
         var schedule = Schedule();
-        schedule.Record(Dad, GeneratedCard.Digest);
+        schedule.Record(Dad, GeneratedCard.Digest, schedule.CurrentSession);
 
         Advance(TimeSpan.FromSeconds(30));
 
@@ -43,7 +43,7 @@ public class GeneratedContentScheduleTests
     public void A_read_stops_holding_once_the_interval_has_passed()
     {
         var schedule = Schedule();
-        schedule.Record(Dad, GeneratedCard.Digest);
+        schedule.Record(Dad, GeneratedCard.Digest, schedule.CurrentSession);
 
         Advance(GeneratedContentRefresh.Interval);
 
@@ -57,7 +57,7 @@ public class GeneratedContentScheduleTests
     public void A_caregiver_who_asks_is_never_held_back()
     {
         var schedule = Schedule();
-        schedule.Record(Dad, GeneratedCard.Digest);
+        schedule.Record(Dad, GeneratedCard.Digest, schedule.CurrentSession);
 
         Assert.True(schedule.IsDue(Dad, GeneratedCard.Digest, requestedByCaregiver: true));
     }
@@ -66,7 +66,7 @@ public class GeneratedContentScheduleTests
     public void One_member_s_read_says_nothing_about_another_s()
     {
         var schedule = Schedule();
-        schedule.Record(Dad, GeneratedCard.Digest);
+        schedule.Record(Dad, GeneratedCard.Digest, schedule.CurrentSession);
 
         Assert.True(schedule.IsDue(Mum, GeneratedCard.Digest, requestedByCaregiver: false));
     }
@@ -80,8 +80,8 @@ public class GeneratedContentScheduleTests
     public void One_card_s_read_says_nothing_about_another_card()
     {
         var schedule = Schedule();
-        schedule.Record(Dad, GeneratedCard.Digest);
-        schedule.Record(Dad, GeneratedCard.Advise);
+        schedule.Record(Dad, GeneratedCard.Digest, schedule.CurrentSession);
+        schedule.Record(Dad, GeneratedCard.Advise, schedule.CurrentSession);
 
         Assert.True(schedule.IsDue(Dad, GeneratedCard.Questions, requestedByCaregiver: false));
     }
@@ -100,10 +100,34 @@ public class GeneratedContentScheduleTests
     {
         var session = new SessionGeneration();
         var schedule = Schedule(session);
-        schedule.Record(Dad, GeneratedCard.Digest);
+        schedule.Record(Dad, GeneratedCard.Digest, schedule.CurrentSession);
         Assert.False(schedule.IsDue(Dad, GeneratedCard.Digest, requestedByCaregiver: false));
 
         session.Advance();
+
+        Assert.True(schedule.IsDue(Dad, GeneratedCard.Digest, requestedByCaregiver: false));
+    }
+
+    /// <summary>
+    /// The read that outlived its caregiver. A detail-page load is not cancelled by sign-out, so
+    /// one started by the caregiver signing out can land after the next one has signed in — by
+    /// which time the next caregiver has usually looked at something, so the schedule is already
+    /// current and has nothing to drop. Only the session the read started in can say it is stale.
+    /// Left unguarded, a member the new caregiver has never opened would be held back on their
+    /// first visit, showing the placeholder over a summary they cannot see.
+    /// </summary>
+    [Fact]
+    public void A_read_that_outlived_its_session_is_not_written()
+    {
+        var session = new SessionGeneration();
+        var schedule = Schedule(session);
+        var startedIn = schedule.CurrentSession;
+
+        session.Advance();                 // sign-out
+        session.Advance();                 // the next caregiver signs in
+        _ = schedule.IsDue(Mum, GeneratedCard.Digest, requestedByCaregiver: false);
+
+        schedule.Record(Dad, GeneratedCard.Digest, startedIn);
 
         Assert.True(schedule.IsDue(Dad, GeneratedCard.Digest, requestedByCaregiver: false));
     }
@@ -113,7 +137,7 @@ public class GeneratedContentScheduleTests
     {
         var session = new SessionGeneration();
         var schedule = Schedule(session);
-        schedule.Record(Dad, GeneratedCard.Digest);
+        schedule.Record(Dad, GeneratedCard.Digest, schedule.CurrentSession);
 
         Assert.False(schedule.IsDue(Dad, GeneratedCard.Digest, requestedByCaregiver: false));
         Assert.False(schedule.IsDue(Dad, GeneratedCard.Digest, requestedByCaregiver: false));
