@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-15",
+      "slack_ts": null,
+      "item_count": 9,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,87 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "haidef-terms-no-2026-revision-found",
+      "title": "HAIDEF Terms of Use — no 2026 revision found; last-modified is Nov 15, 2024 (resolves 2026-09-04 open item)",
+      "url": "https://developers.google.com/health-ai-developer-foundations/terms",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-15-haidef-terms-no-2026-revision-found.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "medgemma-guide-grounded-ecg-hallucination",
+      "title": "Guide-grounded prompting cuts hallucination in LLM-generated ECG reports (BERTScore 0.818→0.953)",
+      "url": "https://arxiv.org/abs/2607.20814",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-15-medgemma-guide-grounded-ecg-hallucination.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "mhra-national-ai-commission-44-recommendations",
+      "title": "MHRA's National Commission publishes 44 recommendations — staged \"L-plate\" AI authorisation model proposed",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-15-mhra-national-ai-commission-44-recommendations.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "fda-genai-medical-devices-discussion-paper",
+      "title": "FDA discussion paper on Generative-AI-Enabled Medical Devices — comment period open to 2026-10-19",
+      "url": "https://www.fda.gov/medical-devices/digital-health-center-excellence/considerations-regulation-generative-ai-enabled-medical-devices-discussion-paper-and-request",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-15-fda-genai-medical-devices-discussion-paper.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "eit-health-transformative-instrument-deadline-tomorrow",
+      "title": "EIT Health Transformative Healthcare Instrument — deadline is tomorrow (2026-09-16), no extension found",
+      "url": "https://eithealth.eu/opportunity/transformative-healthcare-instrument/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-15-eit-health-transformative-instrument-deadline-tomorrow.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "eit-health-innovation-uptake-deadline-tomorrow",
+      "title": "EIT Health Innovation Uptake Call — deadline is tomorrow (2026-09-16), consortium required, no extension found",
+      "url": "https://eithealth.eu/opportunity/innovation-uptake/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-15-eit-health-innovation-uptake-deadline-tomorrow.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "nhs-productivity-challenge-additional-rounds",
+      "title": "NHS Productivity Challenge — two further rounds confirmed (2026-12-01, 2027-02-01) beyond the Oct 1 deadline",
+      "url": "https://www.gov.uk/government/news/100-million-competition-to-back-british-ai-companies-to-fix-public-services",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-15-nhs-productivity-challenge-additional-rounds.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "eic-accelerator-cutoff-correction",
+      "title": "EIC Accelerator — cutoff-date correction: next is 2026-11-04, not 2026-10-06",
+      "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-15-eic-accelerator-cutoff-correction.md"
+    },
+    {
+      "date": "2026-09-15",
+      "slug": "luffu-link-preorder-pricing",
+      "title": "Luffu Link opens preorders: $249.99, $19.99-29.99/mo family plans, early-2027 shipping",
+      "url": "https://luffu.com/products/luffu-link",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-15-luffu-link-preorder-pricing.md"
     }
   ]
 }
