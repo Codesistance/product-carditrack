@@ -346,11 +346,11 @@ public partial class CardiMemberDetailPage : ContentPage
             // suggestion card hidden — a far worse trade than the request it saved.
             var rendered = memberOnScreen.Task;
             _ = LoadThenRestoreAsync(
-                LoadDigestAsync(memberId, rendered, digestDue, session), anchor, focusAdvise);
+                LoadDigestAsync(memberId, rendered, digestDue), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(
-                LoadAdviseAsync(memberId, rendered, adviseDue, session), anchor, focusAdvise);
+                LoadAdviseAsync(memberId, rendered, adviseDue), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(
-                LoadQuestionnairesAsync(memberId, rendered, questionsDue, session), anchor, focusAdvise);
+                LoadQuestionnairesAsync(memberId, rendered, questionsDue), anchor, focusAdvise);
 
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
@@ -666,8 +666,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// (nothing generated yet) or a failed call just leaves the card to it. The read runs
     /// alongside the member's own rather than behind it; the drawing still waits for that render.
     /// </summary>
-    private async Task LoadDigestAsync(
-        Guid memberId, Task<bool> memberOnScreen, bool fetchLive, int session)
+    private async Task LoadDigestAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
     {
         // Started before anything is awaited — this round trip running alongside the member's own
         // is the whole point of the early start. Only the painting below waits.
@@ -697,16 +696,13 @@ public partial class CardiMemberDetailPage : ContentPage
             // so without it a caregiver stepping back in would meet the "Still getting to know
             // them" placeholder instead of the summary they just read.
             //
-            // Which leaves the case where the device has nothing to peek — the read this pass
-            // deferred to may still be in flight, or the entry may have aged out. Skipping then
-            // would leave the card empty for the rest of the window, which is worse than the
-            // request it saved, so the cadence gives way and reads it.
-            if (fetch is null && saved is null && !_digestRendered)
-            {
-                fetch = _api.GetDigestAsync(memberId);
-                _schedule.Record(memberId, GeneratedCard.Digest, session);
-            }
-
+            // And it is why a skipped read needs no fallback to the network when the device has
+            // nothing saved. That happens for two reasons and neither wants a request here. The
+            // member may have no summary yet, in which case the placeholder is the right answer
+            // and fetching on every tick to be told so again is the cost this whole change
+            // exists to remove. Or another pass's read is still in flight, in which case its
+            // answer lands in the cache within moments and the peek above — which runs on every
+            // pass while the card is empty — picks it up on the next tick.
             if (fetch is null)
                 return;
 
@@ -760,8 +756,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// blank <see cref="AdviseResponse.Suggestion"/> (<see cref="ApplyAdvise"/> hides the card for
     /// it) — a 404 means access was refused or the member doesn't exist.
     /// </summary>
-    private async Task LoadAdviseAsync(
-        Guid memberId, Task<bool> memberOnScreen, bool fetchLive, int session)
+    private async Task LoadAdviseAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
     {
         var fetch = fetchLive ? _api.GetAdviseAsync(memberId) : null;
 
@@ -785,16 +780,10 @@ public partial class CardiMemberDetailPage : ContentPage
             if (saved is not null && memberId == _memberId)
                 ApplyAdvise(saved);
 
-            // Nothing skipped, nothing saved, nothing on the card: see LoadDigestAsync. A saved
-            // answer with a blank suggestion still counts as an answer — ApplyAdvise hides the
-            // card for it — so it is the peek coming back empty that sends this to the network,
-            // not the card being down.
-            if (fetch is null && saved is null && !AdviseCard.IsVisible)
-            {
-                fetch = _api.GetAdviseAsync(memberId);
-                _schedule.Record(memberId, GeneratedCard.Advise, session);
-            }
-
+            // No fallback to the network when the peek finds nothing — see LoadDigestAsync. It
+            // bites hardest here: a member with no suggestion yet has nothing to cache, so a
+            // fallback would put this endpoint back on the thirty-second tick for exactly the
+            // members it has least to say about.
             if (fetch is null)
                 return;
 
@@ -847,8 +836,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// Best-effort in the same way as the summary — a question is an extra, and a failed call
     /// leaves the page looking exactly as it does for a member with nothing to answer.
     /// </remarks>
-    private async Task LoadQuestionnairesAsync(
-        Guid memberId, Task<bool> memberOnScreen, bool fetchLive, int session)
+    private async Task LoadQuestionnairesAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
     {
         // A refresh must not rebuild the card under an editor someone is typing in — QuestionCard
         // .Apply closes it and replaces its text, so this is someone's half-written answer. Same
@@ -890,15 +878,9 @@ public partial class CardiMemberDetailPage : ContentPage
             if (saved is not null && memberId == _memberId && !PendingQuestionCard.IsEditing)
                 ApplyQuestionnaires(saved);
 
-            // Nothing skipped, nothing saved, nothing up: see LoadDigestAsync. A saved page with
-            // no pending question still counts as an answer — the card and the row stay down for
-            // it — so it is the peek coming back empty that sends this to the network.
-            if (fetch is null && saved is null && nothingUp)
-            {
-                fetch = _api.GetQuestionnairesAsync(memberId);
-                _schedule.Record(memberId, GeneratedCard.Questions, session);
-            }
-
+            // No fallback to the network when the peek finds nothing — see LoadDigestAsync. A
+            // member with nothing to answer is the ordinary case here, and it is indistinguishable
+            // from an empty cache without asking.
             if (fetch is null)
                 return;
 
@@ -987,8 +969,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // stops at the editing guard — see #1106. Left in place rather than removed, because
             // the reconciliation is the wanted behaviour and the open question is how to take a
             // card away from under someone's half-written answer, not whether to try.
-            _ = LoadQuestionnairesAsync(
-                _memberId, AlreadyOnScreen, fetchLive: true, _schedule.CurrentSession);
+            _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen, fetchLive: true);
 
             // Nothing is recorded for it, because nothing is read. The editor is deliberately
             // still open here so the text can be retried, and the reload stops at the editing
