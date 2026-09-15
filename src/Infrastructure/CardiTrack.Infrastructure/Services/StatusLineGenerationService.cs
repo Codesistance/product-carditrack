@@ -270,15 +270,17 @@ public class StatusLineGenerationService
         var voice = MemberVoice.For(member);
         var copyForGuards = $"{aiResponse.Headline} {aiResponse.Message}";
         var invented = RewriteCopyGuards.NamesAReadingTheReadDidNot(copyForGuards, clinical.Finding);
+        var namedCondition = JournalRegisterGuards.NamesACondition(copyForGuards);
         if (invented is not null
+            || namedCondition is not null
             || RewriteCopyGuards.StatesAnUnsupportedSex(aiResponse.Headline, voice.Gender)
             || RewriteCopyGuards.StatesAnUnsupportedSex(aiResponse.Message, voice.Gender))
         {
             _logger.LogWarning(
                 "Status line rewrite for CardiMember {CardiMemberId} stated a sex the record does "
-                + "not bear out, or named a reading the clinical read did not ({Reading}); "
-                + "keeping the previous line.",
-                cardiMemberId, invented ?? "none");
+                + "not bear out, named a reading the clinical read did not ({Reading}), or named "
+                + "a condition ({Condition}); keeping the previous line.",
+                cardiMemberId, invented ?? "none", namedCondition ?? "none");
             return;
         }
 

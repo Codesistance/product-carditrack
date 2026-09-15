@@ -211,6 +211,18 @@ public class StatusLineGenerationServiceTests
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task RewriteThatNamesACondition_IsDiscarded()
+    {
+        ClinicalAnswers("Overnight heart rate sat a little above the usual resting figure.");
+        RewriteAnswers("Needs a look", "The readings look consistent with an arrhythmia today.");
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        await _statusLines.DidNotReceive().AddAsync(Arg.Any<MemberStatusLine>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
     /// <summary>
     /// The digest pass and the assessor can regenerate the same member concurrently; both read
     /// no-row, both insert, and the unique index fails the loser. The loser detaches its staged
