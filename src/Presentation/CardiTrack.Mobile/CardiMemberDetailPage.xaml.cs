@@ -45,9 +45,37 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private static readonly Task<bool> AlreadyOnScreen = Task.FromResult(true);
 
+    /// <summary>
+    /// Why a load is happening. Two independent things hang off it, which is why it is not a
+    /// bool: whether a failure is worth interrupting the caregiver about, and whether this counts
+    /// as asking for the generated cards again.
+    /// </summary>
+    private enum LoadTrigger
+    {
+        /// <summary>
+        /// Landing on the screen. The member is always refetched — coming back from the edit
+        /// screen or device management, the cached copy is exactly the thing that just changed —
+        /// but navigation is not a request for the generated cards, so their cadence stands.
+        /// </summary>
+        Arrival,
+
+        /// <summary>
+        /// A pull, the retry button, or a reload after something the caregiver just did. Reads
+        /// everything, whatever the clock says: someone who pulls the screen down is entitled to
+        /// be told that nothing moved.
+        /// </summary>
+        Requested,
+
+        /// <summary>
+        /// The timer and the app resume. Nobody asked, so a failure passes without a popup.
+        /// </summary>
+        Unattended,
+    }
+
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly IQuestionValidityService _questionValidity;
+    private readonly IGeneratedContentSchedule _schedule;
 
     private readonly List<MetricTrend> _trends = [];
     private readonly List<BoxView> _trendIndicators = [];
@@ -70,21 +98,6 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private bool _isBusy;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
-
-    /// <summary>
-    /// When this page last read the summary and the suggestion. Held apart from
-    /// <see cref="_lastLoadedUtc"/> because they move on a different clock from the member's own
-    /// state; see <see cref="GeneratedContentRefresh"/>.
-    /// </summary>
-    private DateTime _lastGeneratedUtc = DateTime.MinValue;
-
-    /// <summary>
-    /// When this page last read the questions. Separate from <see cref="_lastGeneratedUtc"/>
-    /// only because an open editor can make a pass skip this one alone, and a skipped read must
-    /// not be recorded as a read.
-    /// </summary>
-    private DateTime _lastQuestionsUtc = DateTime.MinValue;
-
     private CardiMemberDetailResponse? _member;
 
     private readonly LoadGate _gate = new();
@@ -120,13 +133,26 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </summary>
     private bool _returningFromPopup;
 
+    /// <summary>
+    /// Set on the way to a screen that can answer or dismiss this member's questions, and
+    /// consumed by the load that follows the way back. The questions screen is pushed over this
+    /// page, so returning finds the same instance with the old card still up, and the mutation
+    /// evicted the saved copy — leaving the cadence nothing to fall back on and no reason to go
+    /// and look.
+    /// </summary>
+    private bool _questionsChangedElsewhere;
+
     public CardiMemberDetailPage(
-        ICardiTrackApiClient api, IPopupService popups, IQuestionValidityService questionValidity)
+        ICardiTrackApiClient api,
+        IPopupService popups,
+        IQuestionValidityService questionValidity,
+        IGeneratedContentSchedule schedule)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
         _questionValidity = questionValidity;
+        _schedule = schedule;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
         BuildPauseDurations();
         PendingQuestionCard.AnswerSubmitted += OnQuestionAnswered;
@@ -156,11 +182,12 @@ public partial class CardiMemberDetailPage : ContentPage
             // from it must not be read as the next CardiMember's.
             _digestRendered = false;
             _digest = null;
-            // Whoever was on screen before must not be the reason the next CardiMember's cards
-            // are held back: the slow cadence is per member, and this page is reused for both.
-            _lastGeneratedUtc = DateTime.MinValue;
-            _lastQuestionsUtc = DateTime.MinValue;
             UrgencyRow.IsVisible = false;
+            // Hidden with the rest, and load-bearing now that a pass can skip the round trip:
+            // LoadAdviseAsync reads the saved suggestion only when this card is down, so a card
+            // left up from the CardiMember before would have stood, unrefreshed, under the new
+            // one's name for as long as the cadence held.
+            AdviseCard.IsVisible = false;
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
         }
@@ -196,7 +223,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
         // Otherwise always refetch: coming back from the edit screen or device management, the
         // cached copy is exactly the thing that just changed.
-        _ = LoadAsync();
+        _ = LoadAsync(LoadTrigger.Arrival);
     }
 
     /// <summary>
@@ -221,11 +248,11 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
-        await LoadAsync();
+        await LoadAsync(LoadTrigger.Requested);
         Refresher.IsRefreshing = false;
     }
 
-    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(LoadTrigger.Requested);
 
     /// <summary>
     /// The quiet reload behind both unattended paths — the app returning to the foreground, and
@@ -236,16 +263,13 @@ public partial class CardiMemberDetailPage : ContentPage
     private Task RefreshUnattendedAsync() =>
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
-            : LoadAsync(unattended: true);
+            : LoadAsync(LoadTrigger.Unattended);
 
-    /// <param name="unattended">
-    /// True for the loads nobody asked for — the timer tick and the app resume. It suppresses
-    /// the "Couldn't refresh" popup, and it is what <see cref="GeneratedContentRefresh"/> reads
-    /// to decide whether this pass re-reads the pipeline-written cards or leaves the ones that
-    /// are up.
-    /// </param>
-    private async Task LoadAsync(bool unattended = false)
+    private async Task LoadAsync(LoadTrigger trigger)
     {
+        var unattended = trigger == LoadTrigger.Unattended;
+        var requested = trigger == LoadTrigger.Requested;
+
         if (_gate.IsLoading)
             return;
 
@@ -299,22 +323,29 @@ public partial class CardiMemberDetailPage : ContentPage
             // member's own is what left the summary card on its placeholder copy for two trips
             // instead of one.
             //
-            // The stamps are not advanced here. They record a read made for a member the page
-            // ends up showing, and this pass may not leave one there at all — on a cold load,
-            // stamping on intent left the summary on its placeholder for the whole cadence
-            // window while the tick that finally fetched the member declined to fetch the
-            // summary beside it. They are settled below, once the member load has.
-            var now = DateTime.UtcNow;
-            var generatedDue = GeneratedContentRefresh.IsDue(
-                requestedByCaregiver: !unattended, _lastGeneratedUtc, now);
+            // Nothing is recorded here. The schedule wants reads that were made for a member the
+            // page ends up showing, and this pass may not leave one there at all — recording on
+            // intent left the summary on its placeholder for a whole cadence window while the
+            // tick that finally fetched the member declined to fetch the summary beside it. The
+            // reads are recorded below, once the member load has settled.
+            // Captured before the reads start, checked when they are written down. A load is not
+            // cancelled by sign-out, so this pass can land after the next caregiver has signed in.
+            var session = _schedule.CurrentSession;
 
-            // Its own stamp, because it has its own reason not to run. An editor someone is
-            // typing in makes this pass skip the question — and a skipped read must not be
-            // recorded as a read, or closing the editor would leave a question another caregiver
-            // has already answered sitting there for the rest of the window.
+            var digestDue = _schedule.IsDue(memberId, GeneratedCard.Digest, requested);
+            var adviseDue = _schedule.IsDue(memberId, GeneratedCard.Advise, requested);
+
+            // The question has its own reason not to run: an editor someone is typing in makes
+            // this pass skip it and nothing else. A skipped read is not recorded either, or
+            // closing the editor would leave a question another caregiver has already answered
+            // sitting there for the rest of the window.
+            // The flag is consumed whether or not the read happens, so an editor open on the way
+            // back does not leave it standing for a later pass to act on.
+            var changedElsewhere = _questionsChangedElsewhere;
+            _questionsChangedElsewhere = false;
+
             var questionsDue = !PendingQuestionCard.IsEditing
-                && GeneratedContentRefresh.IsDue(
-                    requestedByCaregiver: !unattended, _lastQuestionsUtc, now);
+                && _schedule.IsDue(memberId, GeneratedCard.Questions, requested || changedElsewhere);
 
             // Fire-and-forget, not awaited: each is a separate round trip that shouldn't hold
             // up the rest of the screen or the pull-to-refresh spinner.
@@ -322,18 +353,18 @@ public partial class CardiMemberDetailPage : ContentPage
             // the height of it — the digest rewrites the summary, the questionnaires add or
             // remove a whole card — so the anchor is re-asserted as each one finishes rather
             // than only after Apply. Restoring is a no-op when nothing moved.
+            // All three run on every pass; what the cadence decides is whether each makes its
+            // round trip. Each still reads the device's saved copy and puts it up, which is what
+            // keeps a skipped read invisible: the page is rebuilt on every arrival, so a load
+            // that simply did not run would leave the summary on its placeholder and the
+            // suggestion card hidden — a far worse trade than the request it saved.
             var rendered = memberOnScreen.Task;
-            if (generatedDue)
-            {
-                _ = LoadThenRestoreAsync(LoadDigestAsync(memberId, rendered), anchor, focusAdvise);
-                _ = LoadThenRestoreAsync(LoadAdviseAsync(memberId, rendered), anchor, focusAdvise);
-            }
-
-            if (questionsDue)
-            {
-                _ = LoadThenRestoreAsync(
-                    LoadQuestionnairesAsync(memberId, rendered), anchor, focusAdvise);
-            }
+            _ = LoadThenRestoreAsync(
+                LoadDigestAsync(memberId, rendered, digestDue), anchor, focusAdvise);
+            _ = LoadThenRestoreAsync(
+                LoadAdviseAsync(memberId, rendered, adviseDue), anchor, focusAdvise);
+            _ = LoadThenRestoreAsync(
+                LoadQuestionnairesAsync(memberId, rendered, questionsDue), anchor, focusAdvise);
 
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
@@ -376,18 +407,20 @@ public partial class CardiMemberDetailPage : ContentPage
             // cadence's purpose. A page still showing the *previous* member — the reused-page
             // window before the new one lands — fails the test, which is what it is for.
             // Both halves are needed. The first says the page is showing this member; the second
-            // says the page still wants to. A pass can finish after the caregiver has moved to
-            // another CardiMember — the MemberId setter has already cleared the stamps for the
-            // new one, and without this an outgoing pass would stamp the newcomer's clocks and
-            // hold its cards back for the whole window.
+            // says the page still wants to — a pass can finish after the caregiver has been sent
+            // on to another CardiMember. The schedule is keyed by member, so a late pass can no
+            // longer hold back somebody else's cards; what this still stops is recording a read
+            // as having reached a screen that had already moved on from it.
             var showingThisMember = _member?.Id == memberId && memberId == _memberId;
             memberOnScreen.TrySetResult(showingThisMember);
             if (showingThisMember)
             {
-                if (generatedDue)
-                    _lastGeneratedUtc = DateTime.UtcNow;
+                if (digestDue)
+                    _schedule.Record(memberId, GeneratedCard.Digest, session);
+                if (adviseDue)
+                    _schedule.Record(memberId, GeneratedCard.Advise, session);
                 if (questionsDue)
-                    _lastQuestionsUtc = DateTime.UtcNow;
+                    _schedule.Record(memberId, GeneratedCard.Questions, session);
             }
 
             if (outcome.IsFresh)
@@ -647,11 +680,11 @@ public partial class CardiMemberDetailPage : ContentPage
     /// (nothing generated yet) or a failed call just leaves the card to it. The read runs
     /// alongside the member's own rather than behind it; the drawing still waits for that render.
     /// </summary>
-    private async Task LoadDigestAsync(Guid memberId, Task<bool> memberOnScreen)
+    private async Task LoadDigestAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
     {
         // Started before anything is awaited — this round trip running alongside the member's own
         // is the whole point of the early start. Only the painting below waits.
-        var fetch = _api.GetDigestAsync(memberId);
+        var fetch = fetchLive ? _api.GetDigestAsync(memberId) : null;
 
         try
         {
@@ -660,7 +693,8 @@ public partial class CardiMemberDetailPage : ContentPage
                 // The pass never put this member on the page, so there is nothing to write this
                 // onto. The answer is moot; awaiting it anyway is what keeps a failure from
                 // becoming a task nobody observed.
-                await fetch;
+                if (fetch is not null)
+                    await fetch;
                 return;
             }
 
@@ -668,8 +702,23 @@ public partial class CardiMemberDetailPage : ContentPage
             // written rather than as a placeholder for a round trip that is still out; the live
             // one lands on top and only re-fades when the words actually moved. No overlay for
             // these follow-up loads — the page's own replacement already had one.
-            if (!_digestRendered && await _api.PeekDigestAsync(memberId) is { } saved && memberId == _memberId)
+            var saved = _digestRendered ? null : await _api.PeekDigestAsync(memberId);
+            if (saved is not null && memberId == _memberId)
                 ApplyDigest(saved);
+
+            // The peek is why a skipped read is invisible: the page is rebuilt on every arrival,
+            // so without it a caregiver stepping back in would meet the "Still getting to know
+            // them" placeholder instead of the summary they just read.
+            //
+            // And it is why a skipped read needs no fallback to the network when the device has
+            // nothing saved. That happens for two reasons and neither wants a request here. The
+            // member may have no summary yet, in which case the placeholder is the right answer
+            // and fetching on every tick to be told so again is the cost this whole change
+            // exists to remove. Or another pass's read is still in flight, in which case its
+            // answer lands in the cache within moments and the peek above — which runs on every
+            // pass while the card is empty — picks it up on the next tick.
+            if (fetch is null)
+                return;
 
             var digest = await fetch;
             if (memberId != _memberId)
@@ -721,9 +770,9 @@ public partial class CardiMemberDetailPage : ContentPage
     /// blank <see cref="AdviseResponse.Suggestion"/> (<see cref="ApplyAdvise"/> hides the card for
     /// it) — a 404 means access was refused or the member doesn't exist.
     /// </summary>
-    private async Task LoadAdviseAsync(Guid memberId, Task<bool> memberOnScreen)
+    private async Task LoadAdviseAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
     {
-        var fetch = _api.GetAdviseAsync(memberId);
+        var fetch = fetchLive ? _api.GetAdviseAsync(memberId) : null;
 
         try
         {
@@ -733,13 +782,24 @@ public partial class CardiMemberDetailPage : ContentPage
             // dashboard for a suggestion nobody has been shown.
             if (!await memberOnScreen)
             {
-                await fetch;
+                if (fetch is not null)
+                    await fetch;
                 return;
             }
 
-            // Saved suggestion first when the card is not up yet; the live one lands on top.
-            if (!AdviseCard.IsVisible && await _api.PeekAdviseAsync(memberId) is { } saved && memberId == _memberId)
+            // Saved suggestion first when the card is not up yet; the live one lands on top. On a
+            // pass the cadence has skipped, the saved one is all there is — and all there needs
+            // to be, the page having been rebuilt around it since it was written.
+            var saved = AdviseCard.IsVisible ? null : await _api.PeekAdviseAsync(memberId);
+            if (saved is not null && memberId == _memberId)
                 ApplyAdvise(saved);
+
+            // No fallback to the network when the peek finds nothing — see LoadDigestAsync. It
+            // bites hardest here: a member with no suggestion yet has nothing to cache, so a
+            // fallback would put this endpoint back on the thirty-second tick for exactly the
+            // members it has least to say about.
+            if (fetch is null)
+                return;
 
             var advise = await fetch;
             if (memberId != _memberId)
@@ -790,7 +850,7 @@ public partial class CardiMemberDetailPage : ContentPage
     /// Best-effort in the same way as the summary — a question is an extra, and a failed call
     /// leaves the page looking exactly as it does for a member with nothing to answer.
     /// </remarks>
-    private async Task LoadQuestionnairesAsync(Guid memberId, Task<bool> memberOnScreen)
+    private async Task LoadQuestionnairesAsync(Guid memberId, Task<bool> memberOnScreen, bool fetchLive)
     {
         // A refresh must not rebuild the card under an editor someone is typing in — QuestionCard
         // .Apply closes it and replaces its text, so this is someone's half-written answer. Same
@@ -799,7 +859,7 @@ public partial class CardiMemberDetailPage : ContentPage
         if (PendingQuestionCard.IsEditing)
             return;
 
-        var fetch = _api.GetQuestionnairesAsync(memberId);
+        var fetch = fetchLive ? _api.GetQuestionnairesAsync(memberId) : null;
 
         try
         {
@@ -808,7 +868,8 @@ public partial class CardiMemberDetailPage : ContentPage
             // nobody at all, on a first load.
             if (!await memberOnScreen)
             {
-                await fetch;
+                if (fetch is not null)
+                    await fetch;
                 return;
             }
 
@@ -817,7 +878,8 @@ public partial class CardiMemberDetailPage : ContentPage
             // an editor opened during either of them holds text that Apply would throw away.
             if (PendingQuestionCard.IsEditing)
             {
-                await fetch;
+                if (fetch is not null)
+                    await fetch;
                 return;
             }
 
@@ -825,10 +887,16 @@ public partial class CardiMemberDetailPage : ContentPage
             // is on screen at once — and the live page on top of it. The validity check below
             // runs on both, which is what stops a saved question about a day that has ended
             // being asked again.
-            if (!PendingQuestionCard.IsVisible && !QuestionsRow.IsVisible
-                && await _api.PeekQuestionnairesAsync(memberId) is { } saved && memberId == _memberId
-                && !PendingQuestionCard.IsEditing)
+            var nothingUp = !PendingQuestionCard.IsVisible && !QuestionsRow.IsVisible;
+            var saved = nothingUp ? await _api.PeekQuestionnairesAsync(memberId) : null;
+            if (saved is not null && memberId == _memberId && !PendingQuestionCard.IsEditing)
                 ApplyQuestionnaires(saved);
+
+            // No fallback to the network when the peek finds nothing — see LoadDigestAsync. A
+            // member with nothing to answer is the ordinary case here, and it is indistinguishable
+            // from an empty cache without asking.
+            if (fetch is null)
+                return;
 
             var result = await fetch;
             if (memberId != _memberId || PendingQuestionCard.IsEditing)
@@ -915,7 +983,14 @@ public partial class CardiMemberDetailPage : ContentPage
             // stops at the editing guard — see #1106. Left in place rather than removed, because
             // the reconciliation is the wanted behaviour and the open question is how to take a
             // card away from under someone's half-written answer, not whether to try.
-            _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen);
+            _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen, fetchLive: true);
+
+            // Nothing is recorded for it, because nothing is read. The editor is deliberately
+            // still open here so the text can be retried, and the reload stops at the editing
+            // guard before it asks for anything (#1106). Recording a read that did not happen
+            // would hold the next real one back for the whole window — after a failed save is
+            // exactly when a question answered by somebody else needs to be noticed. Whatever
+            // makes this path fetch should record it at the point it does the fetching.
         }
         finally
         {
@@ -1363,6 +1438,12 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private async void OnQuestionsTapped(object? sender, EventArgs e)
     {
+        // The questions screen is pushed over this page rather than replacing it, so coming back
+        // returns to this instance with whatever was on it still up — including a question that
+        // was answered over there. The cadence must not hold that card for the rest of its
+        // window, so the return is told to read the questions whatever the clock says.
+        _questionsChangedElsewhere = true;
+
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
         await Shell.Current.GoToAsync(
             $"{QuestionnairesPage.Route}?memberId={_memberId}&name={name}");
@@ -1405,12 +1486,12 @@ public partial class CardiMemberDetailPage : ContentPage
         {
             _member = null;
             await _api.ResumeMonitoringAsync(_memberId);
-            await LoadAsync();
+            await LoadAsync(LoadTrigger.Requested);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, "Couldn't change monitoring");
-            await LoadAsync();
+            await LoadAsync(LoadTrigger.Requested);
         }
         catch (ApiException)
         {
@@ -1479,12 +1560,12 @@ public partial class CardiMemberDetailPage : ContentPage
 
             _member = null;
             await _api.PauseMonitoringAsync(_memberId, new PauseMonitoringRequest { DurationHours = hours });
-            await LoadAsync();
+            await LoadAsync(LoadTrigger.Requested);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
         {
             await _popups.ShowErrorAsync(ex.Message, "Couldn't change monitoring");
-            await LoadAsync();
+            await LoadAsync(LoadTrigger.Requested);
         }
         catch (ApiException)
         {
