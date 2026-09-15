@@ -248,10 +248,12 @@ public class StatusLineGenerationService
 
         // DemographicsContextSource decrypts caregiver notes but does not redact the member's
         // name from them. MedGemma may repeat that name in the finding; wrapping it unchanged
-        // would send the identifier to Vertex. Same swap the questionnaire and chat paths run
-        // before anything leaves the estate.
+        // would send the identifier to Vertex. Flatten first so a line-break between first name
+        // and surname still matches the full-name form, then the same swap the questionnaire
+        // and chat paths run.
+        var flattened = MedicalPromptBlocks.Flatten(clinical.Finding);
         var read = RenderClinicalRead(
-            NamePlaceholder.Redact(clinical.Finding, member.Name) ?? clinical.Finding,
+            NamePlaceholder.Redact(flattened, member.Name) ?? flattened,
             severity);
         CurrentStatusAiResponse aiResponse;
         try

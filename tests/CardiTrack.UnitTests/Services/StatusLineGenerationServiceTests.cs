@@ -328,6 +328,20 @@ public class StatusLineGenerationServiceTests
     }
 
     [Fact]
+    public async Task ClinicalFindingThatBreaksTheNameAcrossLines_IsRedactedAsOneName()
+    {
+        ClinicalAnswers("Margaret\nDoe walked less than usual.");
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        var prompt = (string)_rewriteAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("CardiTrackCardiMember", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("Margaret", prompt, StringComparison.OrdinalIgnoreCase);
+        var findingLine = prompt.Split('\n').Single(l => l.StartsWith("finding:", StringComparison.Ordinal));
+        Assert.DoesNotContain("Doe", findingLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task NoUnresolvedAlerts_SendsGreenAsTheSeverityTier()
     {
         await CreateSut().RegenerateAsync(_memberId);
