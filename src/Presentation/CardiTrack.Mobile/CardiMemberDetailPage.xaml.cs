@@ -375,7 +375,12 @@ public partial class CardiMemberDetailPage : ContentPage
             // every thirty-second tick for as long as it lasted, which is the opposite of the
             // cadence's purpose. A page still showing the *previous* member — the reused-page
             // window before the new one lands — fails the test, which is what it is for.
-            var showingThisMember = _member?.Id == memberId;
+            // Both halves are needed. The first says the page is showing this member; the second
+            // says the page still wants to. A pass can finish after the caregiver has moved to
+            // another CardiMember — the MemberId setter has already cleared the stamps for the
+            // new one, and without this an outgoing pass would stamp the newcomer's clocks and
+            // hold its cards back for the whole window.
+            var showingThisMember = _member?.Id == memberId && memberId == _memberId;
             memberOnScreen.TrySetResult(showingThisMember);
             if (showingThisMember)
             {
@@ -787,11 +792,10 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </remarks>
     private async Task LoadQuestionnairesAsync(Guid memberId, Task<bool> memberOnScreen)
     {
-        // A refresh must not rebuild the card under an editor someone is typing in. Same courtesy
-        // the pause drop down gets; the cost is one stale card until the next load. LoadAsync
-        // checks this too, so that a pass it stops here is not recorded as a read — this copy is
-        // what covers the other caller, the reconcile after a failed answer, which deliberately
-        // runs with the editor still open.
+        // A refresh must not rebuild the card under an editor someone is typing in — QuestionCard
+        // .Apply closes it and replaces its text, so this is someone's half-written answer. Same
+        // courtesy the pause drop down gets; the cost is one stale card until the next load.
+        // LoadAsync checks this too, so that a pass it stops there is not recorded as a read.
         if (PendingQuestionCard.IsEditing)
             return;
 
@@ -808,16 +812,26 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
             }
 
+            // Re-checked against every apply below, not only on the way in. The guard at the top
+            // of this method runs before two waits — the member render and the round trip — and
+            // an editor opened during either of them holds text that Apply would throw away.
+            if (PendingQuestionCard.IsEditing)
+            {
+                await fetch;
+                return;
+            }
+
             // The saved page first when no card is up yet — a question the device already holds
             // is on screen at once — and the live page on top of it. The validity check below
             // runs on both, which is what stops a saved question about a day that has ended
             // being asked again.
             if (!PendingQuestionCard.IsVisible && !QuestionsRow.IsVisible
-                && await _api.PeekQuestionnairesAsync(memberId) is { } saved && memberId == _memberId)
+                && await _api.PeekQuestionnairesAsync(memberId) is { } saved && memberId == _memberId
+                && !PendingQuestionCard.IsEditing)
                 ApplyQuestionnaires(saved);
 
             var result = await fetch;
-            if (memberId != _memberId)
+            if (memberId != _memberId || PendingQuestionCard.IsEditing)
                 return;
 
             ApplyQuestionnaires(result);
@@ -895,8 +909,12 @@ public partial class CardiMemberDetailPage : ContentPage
             // The editor stays open with the text intact, so retrying does not mean retyping.
             await _popups.ShowWarningAsync(ex.Message, "Couldn't save your answer");
 
-            // Reconciles the case where someone else answered it first: the reload finds nothing
-            // pending and takes the card away.
+            // Meant to reconcile the case where someone else answered it first, by finding
+            // nothing pending and taking the card away. It does not currently get that far: the
+            // editor is deliberately left open here so the text can be retried, and this reload
+            // stops at the editing guard — see #1106. Left in place rather than removed, because
+            // the reconciliation is the wanted behaviour and the open question is how to take a
+            // card away from under someone's half-written answer, not whether to try.
             _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen);
         }
         finally
