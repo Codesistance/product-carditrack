@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 using Microsoft.Maui.Controls.Shapes;
@@ -56,7 +57,7 @@ public partial class ExportHealthDataPage : ContentPage
     private readonly IExportConsentFlow _consent;
     private readonly Dictionary<ReportFormat, Border> _formatCards = [];
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private List<CardiMemberResponse> _members = [];
     private ReportFormat _selectedFormat = ReportFormat.Pdf;
     private CancellationTokenSource? _generation;
@@ -81,11 +82,20 @@ public partial class ExportHealthDataPage : ContentPage
         BuildFormatCards();
     }
 
+    /// <summary>
+    /// Who the export opens on. Unlike the other member-scoped pages this id never goes into a
+    /// request — the page lists every member and preselects one — so a late arrival costs no
+    /// 404. What it costs is the preselection, and silently: the form would sit on whoever the
+    /// picker happened to default to, on the screen that exports somebody's health data. So a
+    /// form built before the id arrived reselects when it does.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                SelectRoutedMember();
+        }
     }
 
     protected override void OnAppearing()
@@ -192,19 +202,40 @@ public partial class ExportHealthDataPage : ContentPage
         var selectedId = MemberPicker.SelectedIndex >= 0
             && MemberPicker.SelectedIndex < _members.Count
                 ? _members[MemberPicker.SelectedIndex].Id
-                : _memberId;
+                : _route.Id;
         MemberPicker.ItemsSource = _members.Select(m => m.Name).ToList();
         var index = _members.FindIndex(m => m.Id == selectedId);
+        MemberPicker.SelectedIndex = index >= 0 ? index : 0;
+    }
+
+    /// <summary>
+    /// Puts the picker on whoever the caregiver came from, if they came from a member's detail
+    /// page, and otherwise on the first member.
+    /// </summary>
+    /// <remarks>
+    /// Only ever called while the form is being built or re-selected from the route, never after
+    /// a caregiver may have chosen for themselves — the picker raises nothing this page could
+    /// use to tell the two apart, so the rule is to touch it only on the page's own behalf.
+    /// </remarks>
+    private void SelectRoutedMember()
+    {
+        // Nothing to select on yet. Marked, so the id arriving afterwards comes back here rather
+        // than leaving the form on a member the caregiver never asked for.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            MemberPicker.SelectedIndex = _members.Count > 0 ? 0 : -1;
+            return;
+        }
+
+        var index = _members.FindIndex(m => m.Id == _route.Id);
         MemberPicker.SelectedIndex = index >= 0 ? index : 0;
     }
 
     private void PopulateForm()
     {
         MemberPicker.ItemsSource = _members.Select(m => m.Name).ToList();
-
-        // Whoever the caregiver came from, if they came from a member's detail page.
-        var index = _members.FindIndex(m => m.Id == _memberId);
-        MemberPicker.SelectedIndex = index >= 0 ? index : 0;
+        SelectRoutedMember();
 
         HeaderSubtitleLabel.Text = "For a doctor's visit, or your own records";
 

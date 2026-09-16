@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
@@ -34,7 +35,7 @@ public partial class MetricAlarmsPage : ContentPage
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private string _memberName = string.Empty;
     private bool _canManage;
     private IReadOnlyList<MetricAlarmResponse>? _alarms;
@@ -56,11 +57,17 @@ public partial class MetricAlarmsPage : ContentPage
         _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
+    /// <summary>
+    /// Whose alarms these are. Shell may set this after the page has already appeared and tried
+    /// to load, so an arrival that leaves a load owed runs it — see <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                _ = LoadAsync(force: true);
+        }
     }
 
     public string MemberName
@@ -103,8 +110,20 @@ public partial class MetricAlarmsPage : ContentPage
     {
         if (_gate.IsLoading && !force)
             return;
+
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ShowError(MemberRoute.MissingMessage);
+            return;
+        }
+
         var ticket = _gate.Begin();
-        var memberId = _memberId;
+        var memberId = _route.Id;
 
         try
         {
@@ -131,11 +150,7 @@ public partial class MetricAlarmsPage : ContentPage
             if (outcome.Result == RefreshResult.NothingAndFailed)
             {
                 _alarms = null;
-                AlarmsPanel.IsVisible = false;
-                ErrorDetailLabel.Text = outcome.Error!.Message;
-                LoadingSpinner.IsVisible = false;
-                LoadingSpinner.IsRunning = false;
-                ErrorPanel.IsVisible = true;
+                ShowError(outcome.Error!.Message);
             }
         }
         finally
@@ -143,6 +158,22 @@ public partial class MetricAlarmsPage : ContentPage
             _gate.Release(ticket);
         }
     }
+
+    /// <summary>
+    /// The error panel in place of the list, with the spinner stopped. Paired with Try again in
+    /// the markup: this page has no periodic tick, so a failed load that a caregiver cannot
+    /// re-run is the screen for as long as they stay on it.
+    /// </summary>
+    private void ShowError(string detail)
+    {
+        AlarmsPanel.IsVisible = false;
+        ErrorDetailLabel.Text = detail;
+        LoadingSpinner.IsVisible = false;
+        LoadingSpinner.IsRunning = false;
+        ErrorPanel.IsVisible = true;
+    }
+
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     private void Render(IReadOnlyList<MetricAlarmResponse> alarms)
     {
@@ -289,7 +320,7 @@ public partial class MetricAlarmsPage : ContentPage
         {
             // Switching an inherited alarm off writes this member an override that is off — which
             // is what an opt-out is. The server takes the account alarm's id and works that out.
-            await _api.SaveMemberAlarmAsync(_memberId, alarm.Id, ToRequest(alarm, enabled));
+            await _api.SaveMemberAlarmAsync(_route.Id, alarm.Id, ToRequest(alarm, enabled));
 
             // Reload rather than trust the row we hold. The server may have answered with a
             // different row — switching an opt-out back on puts the account default back, under
@@ -368,7 +399,7 @@ public partial class MetricAlarmsPage : ContentPage
         // cached one. Clearing here is what makes coming back show the change.
         _alarms = null;
 
-        var route = $"{MetricAlarmEditPage.Route}?memberId={_memberId}"
+        var route = $"{MetricAlarmEditPage.Route}?memberId={_route.Id}"
             + $"&name={Uri.EscapeDataString(_memberName)}";
         if (alarm is not null)
             route += $"&alarmId={alarm.Id}";
@@ -378,5 +409,5 @@ public partial class MetricAlarmsPage : ContentPage
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(
-            $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+            $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 }

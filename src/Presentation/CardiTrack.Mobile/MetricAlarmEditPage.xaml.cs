@@ -4,6 +4,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Alarms;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile;
@@ -36,7 +37,7 @@ public partial class MetricAlarmEditPage : ContentPage
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private Guid? _alarmId;
     private AlarmProvenance? _provenance;
     private AlarmDraft? _draft;
@@ -67,11 +68,17 @@ public partial class MetricAlarmEditPage : ContentPage
         _popups = popups;
     }
 
+    /// <summary>
+    /// Whose alarm this is. Shell may set this after the page has already appeared and tried to
+    /// load, so an arrival that leaves a load owed runs it — see <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                _ = LoadAsync();
+        }
     }
 
     public string MemberName
@@ -103,6 +110,17 @@ public partial class MetricAlarmEditPage : ContentPage
 
     private async Task LoadAsync()
     {
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ShowError(MemberRoute.MissingMessage);
+            return;
+        }
+
         try
         {
             // The options a custom alert may be built from do not change between two openings of
@@ -112,7 +130,7 @@ public partial class MetricAlarmEditPage : ContentPage
             if (await _api.PeekAlarmCatalogueAsync() is { } savedCatalogue)
             {
                 var savedExisting = _alarmId is { } savedId
-                    ? (await _api.PeekMemberAlarmsAsync(_memberId))?.FirstOrDefault(a => a.Id == savedId)
+                    ? (await _api.PeekMemberAlarmsAsync(_route.Id))?.FirstOrDefault(a => a.Id == savedId)
                     : null;
 
                 // Never a saved *new* alarm form over an edit whose alarm the device does not
@@ -126,7 +144,7 @@ public partial class MetricAlarmEditPage : ContentPage
             MetricAlarmResponse? existing = null;
             if (_alarmId is { } id)
             {
-                var alarms = await _api.GetMemberAlarmsAsync(_memberId);
+                var alarms = await _api.GetMemberAlarmsAsync(_route.Id);
                 existing = alarms.FirstOrDefault(a => a.Id == id);
 
                 if (existing is null)
@@ -160,15 +178,19 @@ public partial class MetricAlarmEditPage : ContentPage
                 return;
 
             _loaded = false;
-            FormPanel.IsVisible = false;
-            SaveButton.IsVisible = false;
-            ErrorDetailLabel.Text = ex.IsNotFound
-                ? "This alert is no longer available."
-                : ex.Message;
-            LoadingSpinner.IsVisible = false;
-            LoadingSpinner.IsRunning = false;
-            ErrorPanel.IsVisible = true;
+            ShowError(ex.IsNotFound ? "This alert is no longer available." : ex.Message);
         }
+    }
+
+    /// <summary>The error panel in place of the form, with the spinner stopped.</summary>
+    private void ShowError(string detail)
+    {
+        FormPanel.IsVisible = false;
+        SaveButton.IsVisible = false;
+        ErrorDetailLabel.Text = detail;
+        LoadingSpinner.IsVisible = false;
+        LoadingSpinner.IsRunning = false;
+        ErrorPanel.IsVisible = true;
     }
 
     /// <summary>
@@ -564,9 +586,9 @@ public partial class MetricAlarmEditPage : ContentPage
         try
         {
             if (_alarmId is { } id)
-                await _api.SaveMemberAlarmAsync(_memberId, id, _draft.Request);
+                await _api.SaveMemberAlarmAsync(_route.Id, id, _draft.Request);
             else
-                await _api.CreateMemberAlarmAsync(_memberId, _draft.Request);
+                await _api.CreateMemberAlarmAsync(_route.Id, _draft.Request);
 
             await Shell.Current.GoToAsync("..");
         }
@@ -612,7 +634,7 @@ public partial class MetricAlarmEditPage : ContentPage
         _saving = true;
         try
         {
-            await _api.DeleteMemberAlarmAsync(_memberId, id);
+            await _api.DeleteMemberAlarmAsync(_route.Id, id);
             await Shell.Current.GoToAsync("..");
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)

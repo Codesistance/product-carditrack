@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
@@ -33,7 +34,7 @@ public partial class MetricTrendPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private string? _metricName;
     private int _days = TrendWindowSelector.DefaultDays;
     private MetricTrend? _trend;
@@ -54,11 +55,17 @@ public partial class MetricTrendPage : ContentPage
         Card.ShowExpand = false;
     }
 
+    /// <summary>
+    /// Whose trend this is. Shell may set this after the page has already appeared and tried
+    /// to load, so an arrival that leaves a load owed runs it — see <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                _ = LoadAsync();
+        }
     }
 
     public string MetricName
@@ -94,7 +101,7 @@ public partial class MetricTrendPage : ContentPage
     }
 
     private async void OnBackTapped(object? sender, EventArgs e) =>
-        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
@@ -114,8 +121,20 @@ public partial class MetricTrendPage : ContentPage
     {
         if (_gate.IsLoading)
             return;
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ErrorDetailLabel.Text = MemberRoute.MissingMessage;
+            SetState(error: true);
+            return;
+        }
+
         var ticket = _gate.Begin();
-        var memberId = _memberId;
+        var memberId = _route.Id;
 
         if (_member is null)
             SetState(loading: true);
@@ -175,7 +194,7 @@ public partial class MetricTrendPage : ContentPage
         }
 
         var firstName = NameFormatting.FirstName(member.Name);
-        ChatBot.MemberId = _memberId;
+        ChatBot.MemberId = _route.Id;
         ChatBot.MemberFirstName = firstName;
         var reading = entry.Select(metrics);
 

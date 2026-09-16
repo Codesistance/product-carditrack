@@ -5,6 +5,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Localization;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Media;
 using CardiTrack.Mobile.Services;
 
@@ -61,7 +62,7 @@ public partial class EditCardiMemberPage : ContentPage
     private readonly IPopupService _popups;
     private readonly IProfilePhotoTranscoder _photoTranscoder;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private string? _focusField;
     private CardiMemberDetailResponse? _member;
     private bool _isSaving;
@@ -90,11 +91,18 @@ public partial class EditCardiMemberPage : ContentPage
         PhoneEntry.Placeholder = phonePlaceholder;
     }
 
+    /// <summary>
+    /// Whose profile is being edited. Shell may set this after the page has already appeared
+    /// and tried to load, so an arrival that leaves a load owed runs it — see
+    /// <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                _ = LoadAsync();
+        }
     }
 
     /// <summary>
@@ -123,6 +131,18 @@ public partial class EditCardiMemberPage : ContentPage
 
     private async Task LoadAsync()
     {
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ErrorDetailLabel.Text = MemberRoute.MissingMessage;
+            SetState(error: true);
+            return;
+        }
+
         if (_member is null)
             SetState(loading: true);
 
@@ -131,17 +151,17 @@ public partial class EditCardiMemberPage : ContentPage
             // The profile the device already holds fills the form at once — a caregiver who came
             // here to change a phone number should not watch an empty form while the values they
             // are about to edit are fetched.
-            if (_member is null && await _api.PeekCardiMemberAsync(_memberId) is { } saved)
+            if (_member is null && await _api.PeekCardiMemberAsync(_route.Id) is { } saved)
             {
                 _member = saved;
-                ChatBot.MemberId = _memberId;
+                ChatBot.MemberId = _route.Id;
                 ChatBot.MemberFirstName = NameFormatting.FirstName(saved.Name);
                 Fill(saved);
                 SetState(form: true);
                 await ApplyFocusAsync();
             }
 
-            var member = await _api.GetCardiMemberAsync(_memberId);
+            var member = await _api.GetCardiMemberAsync(_route.Id);
 
             // What they have typed is theirs. HasUnsavedChanges compares the form against the
             // profile it was filled from, so anything they have changed makes this true and the
@@ -157,7 +177,7 @@ public partial class EditCardiMemberPage : ContentPage
                 return;
 
             _member = member;
-            ChatBot.MemberId = _memberId;
+            ChatBot.MemberId = _route.Id;
             ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
             Fill(member);
             SetState(form: true);
@@ -321,7 +341,7 @@ public partial class EditCardiMemberPage : ContentPage
     // so a save lands the same either way. Member Detail is the floor for a push with nothing
     // behind it.
     private Task NavigateBackToDetailAsync() =>
-        this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 
     private bool HasUnsavedChanges()
     {
@@ -379,7 +399,7 @@ public partial class EditCardiMemberPage : ContentPage
             };
             photoEdit.ApplyTo(request);
 
-            await _api.UpdateCardiMemberAsync(_memberId, request);
+            await _api.UpdateCardiMemberAsync(_route.Id, request);
 
             // Detail refetches on appearing, so it picks these up without extra plumbing.
             await NavigateBackToDetailAsync();
