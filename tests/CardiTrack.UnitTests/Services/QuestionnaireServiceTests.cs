@@ -1,7 +1,9 @@
+using System.Diagnostics.Metrics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Shared.Telemetry;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -252,6 +254,23 @@ public class QuestionnaireServiceTests
         Assert.NotNull(stored.AnsweredAtUtc);
         Assert.Equal("She moved bedrooms.", result.AnswerText);
         await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Answering_RecordsTheAnsweredCounter_WithScopeAndOrigin()
+    {
+        using var capture = new QuestionnaireMetricCapture();
+        var stored = Questionnaire(scope: QuestionnaireScope.Permanent);
+        stored.Origin = QuestionnaireOrigin.Digest;
+        _questionnaires.GetByIdAsync(_questionnaireId).Returns(stored);
+
+        await CreateSut().AnswerAsync(_userId, _questionnaireId, "She moved bedrooms.");
+
+        Assert.Contains(capture.Longs, m =>
+            m.Instrument == "questionnaire.answered"
+            && m.Value == 1
+            && m.Tags.GetValueOrDefault("questionnaire.scope") as string == "permanent"
+            && m.Tags.GetValueOrDefault("questionnaire.origin") as string == "digest");
     }
 
     /// <summary>
@@ -519,5 +538,35 @@ public class QuestionnaireServiceTests
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().OfferStandingFactAsync(_outsiderId, _memberId, "anything"));
         await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>Captures questionnaire-meter counts so a missed Record* call fails a test.</summary>
+    private sealed class QuestionnaireMetricCapture : IDisposable
+    {
+        private readonly MeterListener _listener = new();
+
+        public List<(string Instrument, long Value, Dictionary<string, object?> Tags)> Longs { get; } = [];
+
+        public QuestionnaireMetricCapture()
+        {
+            _listener.InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Meter.Name == TelemetryNames.QuestionnaireSource)
+                    listener.EnableMeasurementEvents(instrument);
+            };
+            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+            {
+                lock (Longs)
+                {
+                    var dictionary = new Dictionary<string, object?>();
+                    foreach (var tag in tags)
+                        dictionary[tag.Key] = tag.Value;
+                    Longs.Add((instrument.Name, value, dictionary));
+                }
+            });
+            _listener.Start();
+        }
+
+        public void Dispose() => _listener.Dispose();
     }
 }

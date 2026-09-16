@@ -1510,6 +1510,13 @@ public partial class DigestGenerationService : IDigestGenerationService
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, memberId, describedDate, utcNow, PromptPurpose.Digest), ct);
 
+        // Same rows the composer just put in the prompt, captured before the model is called.
+        // Recap and the informed/recited counters have to judge this generation against what it
+        // was shown — a fact volunteered (or deleted) during inference is not this pass's doing.
+        var familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
+            await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
+            _encryption, utcNow, member?.Name);
+
         var prompt = $"""
             {FamilyDigestClinicalInstructions}
 
@@ -1589,14 +1596,9 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
-        // Same "written but rejected" stance as the instruction-echo check: a summary that is the
-        // family's own answers read back is worse than the previous card, and the prompt asking
-        // the model not to retell them is a request, not a guarantee. Same questionnaire rows and
-        // truncation as the prompt section (a standalone answer may omit the question in the
-        // prompt; the recap check still sees both halves).
-        var familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
-            await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
-            _encryption, utcNow, member?.Name);
+        // The prompt asking the model not to retell family answers is a request, not a
+        // guarantee. Same questionnaire rows and truncation as the prompt section (a standalone
+        // answer may omit the question in the prompt; the recap check still sees both halves).
         if (RestatesFamilyAnswers(text, familyFacts) is { } recap)
         {
             _logger.LogWarning(

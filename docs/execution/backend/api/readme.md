@@ -110,9 +110,9 @@ IP-based (AspNetCoreRateLimit, in-memory), returning **429** when exceeded:
 
 Cross-origin requests are restricted to a configured **origin allow-list** (`Cors:AllowedOrigins`); allowed origins get any header/method with credentials. Non-listed origins are refused CORS headers.
 
-## Implemented Endpoints (August 2026)
+## Implemented Endpoints (September 2026)
 
-The full implemented surface is 58 endpoints across 13 controllers:
+The full implemented surface is 68 endpoints across 13 controllers:
 
 | Method + Route | Purpose | Doc |
 |----------------|---------|-----|
@@ -220,6 +220,6 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 
 ---
 
-**Document Version:** 2.3
-**Last Updated:** August 14, 2026
+**Document Version:** 2.4
+**Last Updated:** September 16, 2026
 **Owner:** Backend Engineering Team

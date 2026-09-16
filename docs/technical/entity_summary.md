@@ -248,7 +248,7 @@ The 32 domain enums:
 - **DigestAudience**: Family, Wearer, Daybook, Weekbook, Monthbook (Wearer generated only once wearer logins exist — currently never. Daybook is the once-daily account of a finished day: same family reader as Family, different reading-mode — see [llm_design.md](../llm_design.md)). `Weekbook` and `Monthbook` are the accounts of a finished week and calendar month, each dated by its period's last day and each with its own partial unique index (one index per audience — a member has entries of several audiences on the same date) — the audience persists as its name, so new values cost no migration
 - **QuestionnaireStatus**: Pending, Answered, Dismissed
 - **QuestionnaireScope**: TimeScoped (1), Permanent (2) — standing facts stay in every future prompt until deleted; momentary ones age out
-- **QuestionnaireOrigin**: Digest (1), Family (2) — who put the row on file. Digest questions count as asks for the quiet interval; family ones are standing facts a caregiver volunteered and do not
+- **QuestionnaireOrigin**: Digest (1), Family (2) — who put the row on file. Digest questions count as asks for the quiet interval; family ones are standing facts a caregiver volunteered and do not move that clock
 - **DigestUrgency**: Watch (1), CheckIn, Concerning, ActNow — the model's read of how soon the family should act on a digest; never drives Alert rows
 - **SubscriptionTier**: Basic, Complete, Plus
 - **SubscriptionStatus**: Trial (1), Active, PastDue, Cancelled, Suspended

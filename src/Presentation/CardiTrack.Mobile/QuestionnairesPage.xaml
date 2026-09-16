@@ -143,6 +143,7 @@
                                                 BackgroundColor="Transparent"
                                                 Placeholder="She moved to the downstairs bedroom last week."
                                                 AutoSize="Disabled"
+                                                MaxLength="2000"
                                                 TextChanged="OnOfferChanged"/>
                                     </Border>
                                     <Button x:Name="OfferSaveButton"
