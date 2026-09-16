@@ -1523,7 +1523,8 @@ public partial class DigestGenerationService : IDigestGenerationService
 
             if (familyFacts.Count > 0
                 && !memberContext.Contains(
-                    QuestionnaireAnswersContextSource.SectionLabel, StringComparison.Ordinal))
+                    $"--- {QuestionnaireAnswersContextSource.SectionLabel} ---",
+                    StringComparison.Ordinal))
             {
                 familyFacts = [];
             }

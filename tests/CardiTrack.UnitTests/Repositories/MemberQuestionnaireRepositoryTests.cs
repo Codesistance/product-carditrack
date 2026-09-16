@@ -205,8 +205,10 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
         var expired = await repo.ExpireLapsedPendingAsync(now, limit: 1_000);
 
         Assert.True(expired >= 1);
-        Assert.Equal(QuestionnaireStatus.Expired,
-            (await context.MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == lapsedPending.Id)).Status);
+        var storedLapsed = await context.MemberQuestionnaires.AsNoTracking()
+            .SingleAsync(q => q.Id == lapsedPending.Id);
+        Assert.Equal(QuestionnaireStatus.Expired, storedLapsed.Status);
+        Assert.NotNull(storedLapsed.UpdatedDate);
         Assert.Equal(QuestionnaireStatus.Pending,
             (await context.MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == stillAskable.Id)).Status);
         Assert.Equal(QuestionnaireStatus.Answered,

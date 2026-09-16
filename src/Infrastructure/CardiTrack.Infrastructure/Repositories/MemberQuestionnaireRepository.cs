@@ -75,17 +75,28 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
     public async Task<int> ExpireLapsedPendingAsync(
         DateTime utcNow, int limit, CancellationToken ct = default)
     {
-        // ExecuteUpdate, so a concurrent answer or another expiry path cannot be overwritten —
-        // the SET only matches rows that are still Pending. Take/OrderBy keep the same bounded,
-        // oldest-first batch GetLapsedPendingAsync uses for the probe.
-        return await _dbSet
+        // Two statements on purpose. OrderBy/Take+ExecuteUpdate can compile as "update the ids
+        // the subquery saw as Pending", so a concurrent answer between those two moments would
+        // still be overwritten. Selecting the ids first, then updating only rows that are still
+        // Pending, is the same discipline as TryClaimAlertAsync. ExecuteUpdate also skips
+        // SaveChanges' timestamp hook, so UpdatedDate is set here.
+        var ids = await _dbSet
+            .AsNoTracking()
             .Where(q => q.Status == QuestionnaireStatus.Pending
                         && q.AskableUntilUtc != null
                         && q.AskableUntilUtc <= utcNow)
             .OrderBy(q => q.AskableUntilUtc)
             .Take(limit)
+            .Select(q => q.Id)
+            .ToListAsync(ct);
+        if (ids.Count == 0)
+            return 0;
+
+        return await _dbSet
+            .Where(q => ids.Contains(q.Id) && q.Status == QuestionnaireStatus.Pending)
             .ExecuteUpdateAsync(s => s
-                .SetProperty(q => q.Status, QuestionnaireStatus.Expired), ct);
+                .SetProperty(q => q.Status, QuestionnaireStatus.Expired)
+                .SetProperty(q => q.UpdatedDate, utcNow), ct);
     }
 
     public async Task<IReadOnlyList<MemberQuestionnaire>> GetDueForAlertAsync(
