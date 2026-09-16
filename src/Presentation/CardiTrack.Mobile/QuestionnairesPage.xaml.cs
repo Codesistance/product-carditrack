@@ -282,7 +282,10 @@ public partial class QuestionnairesPage : ContentPage
             await _api.OfferStandingFactAsync(
                 _memberId, new OfferStandingFactRequest { FactText = fact! });
 
-            OfferEditor.Text = string.Empty;
+            // A second fact typed while this save was in flight must not be wiped by clearing
+            // the box. Only the text we actually posted is ours to remove.
+            if (string.Equals(OfferEditor.Text?.Trim(), fact, StringComparison.Ordinal))
+                OfferEditor.Text = string.Empty;
             await LoadAsync(showSkeleton: false);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)

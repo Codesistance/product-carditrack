@@ -669,6 +669,11 @@ public partial class CardiMemberDetailPage : ContentPage
         ApplyTrends(member.Metrics);
         ApplyContacts(member);
 
+        // Standing way in: a caregiver can volunteer a fact before the service has asked
+        // anything. Independent of LoadQuestionnairesAsync, which a cadence skip can return
+        // from without painting when there is nothing cached.
+        QuestionsRow.IsVisible = true;
+
         // Only a primary caregiver may edit, pause or remove — the API enforces this and
         // would answer 404, so showing the controls would just be a trap.
         EditButton.IsVisible = member.IsPrimaryCaregiver;
