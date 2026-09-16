@@ -33,7 +33,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 - **So that** I don't abandon the setup process due to complexity
 - **Acceptance Criteria:**
   - Progressive disclosure (collect basic info first, details later)
-  - Required fields: Name, Date of Birth, Sex (Male/Female — the Sex picker is a **deliberate divergence from the Figma comps**; it sets the reference range readings are judged against)
+  - Required fields: Name, Date of Birth, Sex (Male/Female — the Sex picker is a **deliberate divergence from the Figma comps**; it sets the reference range readings are judged against). Continue stays off until they pick a date of birth; submit refuses a missing or out-of-range date rather than standing in today
   - Optional fields: Relationship (falls back to Other), Photo, medical notes (encrypted), emergency contacts
   - Clear privacy messaging ("Your parent will be notified")
   - Visual progress indicator (Step 2 of 4)

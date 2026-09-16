@@ -24,7 +24,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 - **So that** I don't abandon the setup process due to complexity
 - **Acceptance Criteria:**
   - Progressive disclosure (collect basic info first, details later)
-  - Required fields: Name and Sex (Male/Female) — the Sex picker is a **deliberate divergence from the Figma comps** (it sets the reference range readings are judged against); Date of Birth defaults to today
+  - Required fields: Name, Date of Birth, and Sex (Male/Female) — the Sex picker is a **deliberate divergence from the Figma comps** (it sets the reference range readings are judged against). Continue stays off until they pick a date of birth; submit refuses a missing or out-of-range date rather than standing in today
   - Optional fields: Relationship (falls back to Other), Photo, medical notes (encrypted), emergency contacts
   - Privacy card **not built** (the "Your parent will be notified" AC is unmet)
   - Visual progress indicator (Step 2 of 4)
