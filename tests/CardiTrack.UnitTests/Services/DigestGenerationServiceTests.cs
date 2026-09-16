@@ -915,7 +915,7 @@ public class DigestGenerationServiceTests
 
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
-        Assert.Equal(1, generated);
+        Assert.Equal(0, generated);
         Assert.DoesNotContain(capture.Longs, m => m.Instrument == "questionnaire.digest.informed");
     }
 

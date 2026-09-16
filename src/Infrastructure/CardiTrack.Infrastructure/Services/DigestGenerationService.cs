@@ -1702,7 +1702,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // nothing was stored. Informed, the question, the status line and Advise are side-effects
         // of a digest the family will actually read — not of a generation that lost the insert.
         if (!stored)
-            return true;
+            return false;
 
         if (familyFacts.Count > 0)
             QuestionnaireTelemetry.RecordDigestInformed();
