@@ -14,7 +14,11 @@ public interface IDigestRepository
     /// only a re-run that collides on the whole natural key — the same member, day, audience and
     /// generation instant — is absorbed, which is the concurrent-execution case, not a rewrite.
     /// </summary>
-    Task AddAsync(DigestEntry entry, CancellationToken ct = default);
+    /// <returns>
+    /// True when a row was inserted; false when a concurrent run already held the key and the
+    /// insert was absorbed.
+    /// </returns>
+    Task<bool> AddAsync(DigestEntry entry, CancellationToken ct = default);
 
     /// <summary>
     /// The most recent summary for one member's local day, or null when none was generated.

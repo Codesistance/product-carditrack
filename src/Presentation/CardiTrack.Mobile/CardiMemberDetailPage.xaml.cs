@@ -844,7 +844,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     /// <summary>
     /// Loads the questions asked about this member: the one still waiting goes on the page, and the
-    /// row through to the rest appears once there is anything behind it.
+    /// Q&amp;A row is the standing way in to volunteer a fact or read earlier answers.
     /// </summary>
     /// <remarks>
     /// Best-effort in the same way as the summary — a question is an extra, and a failed call
@@ -883,12 +883,16 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
             }
 
-            // The saved page first when no card is up yet — a question the device already holds
-            // is on screen at once — and the live page on top of it. The validity check below
-            // runs on both, which is what stops a saved question about a day that has ended
-            // being asked again.
-            var nothingUp = !PendingQuestionCard.IsVisible && !QuestionsRow.IsVisible;
-            var saved = nothingUp ? await _api.PeekQuestionnairesAsync(memberId) : null;
+            // The saved page first when no pending card is up yet — a question the device already
+            // holds is on screen at once — and the live page on top of it. The Q&A row is a
+            // standing way in (volunteer a fact before anything has been asked), not a signal that
+            // questionnaire data has been applied, so it is not part of this check. Same shape as
+            // Advise peeking while its card is down. The validity check below runs on both the
+            // saved and live pages, which is what stops a saved question about a day that has
+            // ended being asked again.
+            var saved = PendingQuestionCard.IsVisible
+                ? null
+                : await _api.PeekQuestionnairesAsync(memberId);
             if (saved is not null && memberId == _memberId && !PendingQuestionCard.IsEditing)
                 ApplyQuestionnaires(saved);
 

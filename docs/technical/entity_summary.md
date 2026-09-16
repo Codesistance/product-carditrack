@@ -212,7 +212,7 @@ Planned relationships (when the planned entities land): Organization→FamilyInv
 
 ## Enums
 
-The 32 domain enums:
+The 33 domain enums:
 
 - **OrganizationType**: Family, Business
 - **UserRole**: Member, Admin, Staff (displays "Member" / "Administrator" / "Staff Member")

@@ -1517,6 +1517,15 @@ public partial class DigestGenerationService : IDigestGenerationService
             await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
             _encryption, utcNow, member?.Name);
 
+        // ComposeAsync omits a source that threw; this second read can still succeed. Recap and
+        // informed judge what the model was actually shown, not rows that never reached the prompt.
+        if (familyFacts.Count > 0
+            && !memberContext.Contains(
+                QuestionnaireAnswersContextSource.SectionLabel, StringComparison.Ordinal))
+        {
+            familyFacts = [];
+        }
+
         var prompt = $"""
             {FamilyDigestClinicalInstructions}
 
@@ -1659,7 +1668,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
-        await _unitOfWork.Digests.AddAsync(new DigestEntry
+        var stored = await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
             CardiMemberId = memberId,
             LocalDate = describedDate,
@@ -1678,7 +1687,9 @@ public partial class DigestGenerationService : IDigestGenerationService
             PromptVersion = CurrentPromptVersion,
         }, ct);
 
-        if (familyFacts.Count > 0)
+        // AddAsync is INSERT ON CONFLICT DO NOTHING: a colliding run still reaches here, but
+        // nothing was stored, so this pass did not inform a digest the family will read.
+        if (stored && familyFacts.Count > 0)
             QuestionnaireTelemetry.RecordDigestInformed();
 
         // Strictly after the summary is stored, and only then: a question is a by-product of a

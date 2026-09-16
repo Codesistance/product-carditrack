@@ -119,4 +119,20 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         Assert.NotNull(stored);
         Assert.Null(stored.Urgency);
     }
+
+    /// <summary>
+    /// The insert is ON CONFLICT DO NOTHING. Callers that increment product counters after a
+    /// write need to know whether a row landed, or a colliding run is counted as if it stored one.
+    /// </summary>
+    [Fact]
+    public async Task AddAsync_ReturnsFalse_WhenTheSameGenerationIsInsertedTwice()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
+        var entry = Entry(Guid.NewGuid(), "a");
+
+        Assert.True(await repo.AddAsync(entry));
+        Assert.False(await repo.AddAsync(entry));
+    }
 }

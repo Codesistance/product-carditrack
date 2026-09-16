@@ -1,5 +1,7 @@
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Reflection;
+using CardiTrack.Application.Diagnostics;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -8,6 +10,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Services.PromptContext;
+using CardiTrack.Shared.Telemetry;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -99,6 +102,10 @@ public class DigestGenerationServiceTests
             .Returns(false);
         _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns((DateTime?)null);
+        // The insert reports whether a row landed. NSubstitute's Task<bool> default is false,
+        // which would look like every write colliding; the ordinary path in this suite is a
+        // successful insert.
+        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(true);
         // The family digest is two calls: MedGemma reads the day, the rewrite slot writes the
         // family's copy from that read alone. Both are stubbed by default so a test that cares
         // about neither still gets a stored summary.
@@ -823,10 +830,14 @@ public class DigestGenerationServiceTests
                 Summary = "She moved bedrooms last week.",
             });
 
+        using var capture = new QuestionnaireMetricCapture();
+
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(0, generated);
         await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        Assert.Contains(capture.Longs, m => m.Instrument == "questionnaire.digest.recited" && m.Value == 1);
+        Assert.DoesNotContain(capture.Longs, m => m.Instrument == "questionnaire.digest.informed");
     }
 
     /// <summary>
@@ -847,12 +858,65 @@ public class DigestGenerationServiceTests
                     + "and her resting rate sat above usual.",
             });
 
+        using var capture = new QuestionnaireMetricCapture();
+
         var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         Assert.Equal(1, generated);
         await _digests.Received(1).AddAsync(
             Arg.Is<DigestEntry>(d => d.Text.Contains("resting rate", StringComparison.Ordinal)),
             Arg.Any<CancellationToken>());
+        Assert.Contains(capture.Longs, m => m.Instrument == "questionnaire.digest.informed" && m.Value == 1);
+        Assert.DoesNotContain(capture.Longs, m => m.Instrument == "questionnaire.digest.recited");
+    }
+
+    /// <summary>
+    /// ComposeAsync omits a source that threw. The second VisibleFacts read can still succeed;
+    /// recap and informed have to follow the prompt, not the extra read.
+    /// </summary>
+    [Fact]
+    public async Task DoesNotCountTheDigestAsInformed_WhenTheQuestionnaireSectionWasOmitted()
+    {
+        var answered = new MemberQuestionnaire
+        {
+            CardiMemberId = _memberId,
+            QuestionText = PromptContextFactory.Encryption.Encrypt("Has anything changed at home recently?"),
+            AnswerText = PromptContextFactory.Encryption.Encrypt("She moved bedrooms last week."),
+            Status = QuestionnaireStatus.Answered,
+            GeneratedAtUtc = UtcNow.AddDays(-1),
+            Scope = QuestionnaireScope.TimeScoped,
+        };
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(
+                _ => throw new InvalidOperationException("questionnaire source failed"),
+                _ => [answered]);
+
+        using var capture = new QuestionnaireMetricCapture();
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        Assert.DoesNotContain(capture.Longs, m => m.Instrument == "questionnaire.digest.informed");
+        Assert.DoesNotContain(capture.Longs, m => m.Instrument == "questionnaire.digest.recited");
+    }
+
+    /// <summary>
+    /// AddAsync is INSERT ON CONFLICT DO NOTHING. A colliding run still reaches the informed
+    /// counter, but nothing was stored, so the family never read a digest this pass informed.
+    /// </summary>
+    [Fact]
+    public async Task DoesNotCountTheDigestAsInformed_WhenTheInsertWasAbsorbed()
+    {
+        GivenAnsweredQuestion(
+            "Has anything changed at home recently?", "She moved bedrooms last week.");
+        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(false);
+
+        using var capture = new QuestionnaireMetricCapture();
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        Assert.DoesNotContain(capture.Longs, m => m.Instrument == "questionnaire.digest.informed");
     }
 
     /// <summary>
@@ -2205,6 +2269,8 @@ public class DigestGenerationServiceTests
     {
         ReturnsQuestion("Has anything changed at home recently?", "Yesterday looked quieter than usual.");
 
+        using var capture = new QuestionnaireMetricCapture();
+
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
 
         await _questionnaires.Received(1).AddAsync(Arg.Is<MemberQuestionnaire>(q =>
@@ -2213,6 +2279,10 @@ public class DigestGenerationServiceTests
             && q.TriggerContext == "Yesterday looked quieter than usual."
             && q.GeneratedAtUtc == UtcNow));
         await _unitOfWork.Received().SaveChangesAsync();
+        Assert.Contains(capture.Longs, m =>
+            m.Instrument == "questionnaire.asked"
+            && m.Value == 1
+            && m.Tags.GetValueOrDefault(QuestionnaireTelemetry.ScopeTag) as string == "timescoped");
     }
 
     /// <summary>
@@ -2898,5 +2968,35 @@ public class DigestGenerationServiceTests
 
         Assert.NotNull(prompt);
         return prompt;
+    }
+
+    /// <summary>Captures questionnaire-meter counts so a missed Record* call fails a test.</summary>
+    private sealed class QuestionnaireMetricCapture : IDisposable
+    {
+        private readonly MeterListener _listener = new();
+
+        public List<(string Instrument, long Value, Dictionary<string, object?> Tags)> Longs { get; } = [];
+
+        public QuestionnaireMetricCapture()
+        {
+            _listener.InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Meter.Name == TelemetryNames.QuestionnaireSource)
+                    listener.EnableMeasurementEvents(instrument);
+            };
+            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+            {
+                lock (Longs)
+                {
+                    var dictionary = new Dictionary<string, object?>();
+                    foreach (var tag in tags)
+                        dictionary[tag.Key] = tag.Value;
+                    Longs.Add((instrument.Name, value, dictionary));
+                }
+            });
+            _listener.Start();
+        }
+
+        public void Dispose() => _listener.Dispose();
     }
 }
