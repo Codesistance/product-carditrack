@@ -36,6 +36,12 @@ public partial class MetricTrendPage : ContentPage
 
     private readonly MemberRoute _route = new();
     private string? _metricName;
+
+    /// <summary>
+    /// The metric name's half of <see cref="MemberRoute"/>'s bargain: a render that ran before
+    /// the route had named a metric, and so is owed again once it does.
+    /// </summary>
+    private bool _renderedWithoutMetric;
     private int _days = TrendWindowSelector.DefaultDays;
     private MetricTrend? _trend;
     private CardiMemberDetailResponse? _member;
@@ -68,12 +74,28 @@ public partial class MetricTrendPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Which trend to draw. Rides the same route as the member id and can land just as late —
+    /// and a render that ran without it said "This trend isn't available for them", which is a
+    /// statement about the member rather than about the route. So, like the id, a name that
+    /// arrives after a render went without one runs the load again.
+    /// </summary>
     public string MetricName
     {
         set
         {
-            _metricName = Uri.UnescapeDataString(value ?? string.Empty);
-            TitleLabel.Text = _metricName;
+            var name = Uri.UnescapeDataString(value ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(name) || name == _metricName)
+                return;
+
+            _metricName = name;
+            TitleLabel.Text = name;
+
+            if (_renderedWithoutMetric)
+            {
+                _renderedWithoutMetric = false;
+                _ = LoadAsync();
+            }
         }
     }
 
@@ -121,6 +143,7 @@ public partial class MetricTrendPage : ContentPage
     {
         if (_gate.IsLoading)
             return;
+
         // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
         // every CardiMember endpoint answers it with "CardiMember not found", which reads as
         // this member being gone — so the request is not made at all, and the arrival that
@@ -187,8 +210,13 @@ public partial class MetricTrendPage : ContentPage
         if (TrendMetricCatalogue.ByName(_metricName) is not { } entry
             || member.Metrics is not { } metrics)
         {
-            // A route naming a metric this build does not carry, or a member with nothing recorded.
-            ErrorDetailLabel.Text = "This trend isn't available for them.";
+            // A route naming a metric this build does not carry, or a member with nothing
+            // recorded — or the route simply not having named one yet, which is not the same
+            // thing and is the setter's to put right.
+            _renderedWithoutMetric = string.IsNullOrWhiteSpace(_metricName);
+            ErrorDetailLabel.Text = _renderedWithoutMetric
+                ? "We couldn't tell which trend this is — go back and try again."
+                : "This trend isn't available for them.";
             SetState(error: true);
             return;
         }
