@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-16",
+      "slack_ts": null,
+      "item_count": 9,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,87 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "ollama-cve-2026-85180-ssrf-tensor-blob",
+      "title": "Ollama SSRF (CVE-2026-85180, CVSS 7.5) via cross-host tensor-blob redirect — fixed upstream in 0.33.3, but CardiTrack's MedGemma image still floats on `:latest`",
+      "url": "https://www.vulncheck.com/advisories/ollama-0.30.0-through-0.33.2-ssrf-via-cross-host-tensor-blob-redirect",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-16-ollama-cve-2026-85180-ssrf-tensor-blob.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "mhra-ai-healthcare-commission-recommendations",
+      "title": "MHRA's National Commission on AI in Healthcare publishes recommendations — names direct-to-consumer wearables/apps for tailored guidance",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "HIGH",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-16-mhra-ai-healthcare-commission-recommendations.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "digital-europe-ai-health-63m-cardiovascular-call",
+      "title": "Digital Europe Programme opens €63.2M AI-in-health call bundle, incl. €9M for cardiovascular screening — deadline 2026-10-01",
+      "url": "https://digital-strategy.ec.europa.eu/en/news/commission-makes-eu632-million-available-support-ai-innovation-health-and-online-safety",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-16-digital-europe-ai-health-63m-cardiovascular-call.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "eic-accelerator-cutoff-correction-nov4",
+      "title": "Correction: EIC Accelerator's next cutoff is 4 November 2026, not 6 October 2026",
+      "url": "https://www.rasph.com/eic-accelerator-cut-off-dates-2026",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-16-eic-accelerator-cutoff-correction-nov4.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "garmin-developer-program-freeze-strava-fallout",
+      "title": "Garmin Connect Developer Program freeze traced to Strava lawsuit fallout — full program \"redesign,\" no reopening ETA",
+      "url": "https://the5krunner.com/2026/09/14/garmin-developer-api-access-paused/",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-16-garmin-developer-program-freeze-strava-fallout.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "google-play-target-sdk36-extension-request-live",
+      "title": "Google Play's \"request more time\" extension flow for target API 36 is now live in Play Console",
+      "url": "https://support.google.com/googleplay/android-developer/answer/15644220",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-16-google-play-target-sdk36-extension-request-live.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "terraform-google-provider-v8-breaking-release",
+      "title": "hashicorp/google Terraform provider ships breaking v8.0.0 — outside CardiTrack's `~> 7.23` pin today, but a future upgrade would break",
+      "url": "https://github.com/hashicorp/terraform-provider-google/blob/main/CHANGELOG.md",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-16-terraform-google-provider-v8-breaking-release.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "auth0-third-party-app-security-controls-oct23",
+      "title": "Auth0 mandates PKCE + explicit API authorization for third-party apps from 2026-10-23 — likely N/A to CardiTrack, needs one confirmation",
+      "url": "https://community.auth0.com/t/action-required-enhanced-security-controls-for-third-party-applications/202087",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-16-auth0-third-party-app-security-controls-oct23.md"
+    },
+    {
+      "date": "2026-09-16",
+      "slug": "ling-3-flash-sante-medical-model",
+      "title": "Ant Group ships Ling-3.0-Flash-Santé, a medical-tuned open MoE model — alternative worth tracking",
+      "url": "https://huggingface.co/inclusionai/ling-3.0-flash-sante",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-16-ling-3-flash-sante-medical-model.md"
     }
   ]
 }
