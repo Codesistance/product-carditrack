@@ -1510,20 +1510,30 @@ public partial class DigestGenerationService : IDigestGenerationService
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, memberId, describedDate, utcNow, PromptPurpose.Digest), ct);
 
-        // Same rows the composer just put in the prompt, captured before the model is called.
-        // Recap and the informed/recited counters have to judge this generation against what it
-        // was shown — a fact volunteered (or deleted) during inference is not this pass's doing.
-        var familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
-            await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
-            _encryption, utcNow, member?.Name);
-
-        // ComposeAsync omits a source that threw; this second read can still succeed. Recap and
-        // informed judge what the model was actually shown, not rows that never reached the prompt.
-        if (familyFacts.Count > 0
-            && !memberContext.Contains(
-                QuestionnaireAnswersContextSource.SectionLabel, StringComparison.Ordinal))
+        // Recap and informed have to judge this generation against what the model was shown.
+        // ComposeAsync already isolated a source failure by omitting the section; this second
+        // read is bookkeeping and must not discard a prompt that was already built. A throw here
+        // is treated as "no facts to recap against", the same shape as an omitted section.
+        IReadOnlyList<QuestionnaireAnswersContextSource.FamilyFact> familyFacts = [];
+        try
         {
-            familyFacts = [];
+            familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
+                await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
+                _encryption, utcNow, member?.Name);
+
+            if (familyFacts.Count > 0
+                && !memberContext.Contains(
+                    QuestionnaireAnswersContextSource.SectionLabel, StringComparison.Ordinal))
+            {
+                familyFacts = [];
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Could not reload family answers for CardiMember {CardiMemberId} after composing the "
+                + "prompt; recap and informed counters skip this pass.",
+                memberId);
         }
 
         var prompt = $"""
@@ -1688,8 +1698,12 @@ public partial class DigestGenerationService : IDigestGenerationService
         }, ct);
 
         // AddAsync is INSERT ON CONFLICT DO NOTHING: a colliding run still reaches here, but
-        // nothing was stored, so this pass did not inform a digest the family will read.
-        if (stored && familyFacts.Count > 0)
+        // nothing was stored. Informed, the question, the status line and Advise are side-effects
+        // of a digest the family will actually read — not of a generation that lost the insert.
+        if (!stored)
+            return true;
+
+        if (familyFacts.Count > 0)
             QuestionnaireTelemetry.RecordDigestInformed();
 
         // Strictly after the summary is stored, and only then: a question is a by-product of a
@@ -2098,6 +2112,11 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         foreach (var existing in previous)
         {
+            // A volunteered standing fact was never asked. Its canned heading would otherwise
+            // gag a later digest proposal that happens to use the same wording.
+            if (existing.Origin == QuestionnaireOrigin.Family)
+                continue;
+
             var text = EncryptedFieldReader.Reveal(_encryption, existing.QuestionText);
             if (text is null || NormalizeQuestion(text) != needle)
                 continue;

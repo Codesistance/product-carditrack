@@ -52,6 +52,15 @@ public interface IMemberQuestionnaireRepository : IRepository<MemberQuestionnair
         DateTime utcNow, int limit, CancellationToken ct = default);
 
     /// <summary>
+    /// Retires questions that have outlived the moment they asked about, and only those still
+    /// waiting. A conditional update — the same discipline as <see cref="TryClaimAlertAsync"/> —
+    /// so a concurrent answer or another expiry path cannot be overwritten, and the return is
+    /// the number of rows that actually moved to <c>Expired</c>.
+    /// </summary>
+    Task<int> ExpireLapsedPendingAsync(
+        DateTime utcNow, int limit, CancellationToken ct = default);
+
+    /// <summary>
     /// Questions still waiting on a family that are due for a push — never yet pushed, or pushed
     /// more than <paramref name="reminderCutoffUtc"/> ago and still under
     /// <paramref name="maxPushes"/> — what <c>QuestionnaireAlertWorker</c>'s sweep reads.

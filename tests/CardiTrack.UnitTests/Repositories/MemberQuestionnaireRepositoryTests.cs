@@ -184,6 +184,61 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
     }
 
     /// <summary>
+    /// The expiry sweep's write, not just its probe: only rows still Pending move, so a
+    /// concurrent answer is left alone, and the return is how many rows actually expired.
+    /// </summary>
+    [Fact]
+    public async Task ExpireLapsedPendingAsync_ExpiresOnlyWaitingQuestionsPastTheirDay()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+
+        var lapsedPending = Questionnaire(Guid.NewGuid(), now.AddDays(-1), askableUntilUtc: now.AddHours(-5));
+        var stillAskable = Questionnaire(Guid.NewGuid(), now.AddHours(-2), askableUntilUtc: now.AddHours(5));
+        var answered = Questionnaire(Guid.NewGuid(), now.AddDays(-9), QuestionnaireStatus.Answered,
+            answer: "Yes.", askableUntilUtc: now.AddDays(-8));
+
+        var repo = await SaveAsync(scope, lapsedPending, stillAskable, answered);
+        var context = scope.ServiceProvider
+            .GetRequiredService<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>();
+
+        var expired = await repo.ExpireLapsedPendingAsync(now, limit: 1_000);
+
+        Assert.True(expired >= 1);
+        Assert.Equal(QuestionnaireStatus.Expired,
+            (await context.MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == lapsedPending.Id)).Status);
+        Assert.Equal(QuestionnaireStatus.Pending,
+            (await context.MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == stillAskable.Id)).Status);
+        Assert.Equal(QuestionnaireStatus.Answered,
+            (await context.MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == answered.Id)).Status);
+    }
+
+    [Fact]
+    public async Task ExpireLapsedPendingAsync_TakesTheOldestUpToTheLimit()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+
+        // Uniquely old so this test's rows win OrderBy against leftovers in the shared container.
+        var rows = Enumerable.Range(1, 5)
+            .Select(i => Questionnaire(
+                Guid.NewGuid(), now.AddDays(-i), askableUntilUtc: now.AddYears(-50).AddHours(-i)))
+            .ToArray();
+        var repo = await SaveAsync(scope, rows);
+        var context = scope.ServiceProvider
+            .GetRequiredService<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>();
+
+        var expired = await repo.ExpireLapsedPendingAsync(now, limit: 2);
+        var ours = await context.MemberQuestionnaires.AsNoTracking()
+            .Where(q => rows.Select(r => r.Id).Contains(q.Id))
+            .ToListAsync();
+
+        Assert.Equal(2, expired);
+        Assert.Equal(2, ours.Count(q => q.Status == QuestionnaireStatus.Expired));
+        Assert.Equal(3, ours.Count(q => q.Status == QuestionnaireStatus.Pending));
+    }
+
+    /// <summary>
     /// Measured across every status: declining to answer must not read as an invitation to ask
     /// again tomorrow.
     /// </summary>

@@ -920,6 +920,52 @@ public class DigestGenerationServiceTests
     }
 
     /// <summary>
+    /// A colliding insert must not ask a question on the strength of a digest nobody stored.
+    /// Two overlapping passes can both see no pending question; only the winning insert asks.
+    /// </summary>
+    [Fact]
+    public async Task DoesNotAsk_WhenTheInsertWasAbsorbed()
+    {
+        ReturnsQuestion("Has anything changed at home recently?");
+        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(false);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The second VisibleFacts read is bookkeeping. A transient failure after ComposeAsync
+    /// already included the section must not discard the digest.
+    /// </summary>
+    [Fact]
+    public async Task StoresTheDigest_WhenTheFamilyFactsReloadFails()
+    {
+        var answered = new MemberQuestionnaire
+        {
+            CardiMemberId = _memberId,
+            QuestionText = PromptContextFactory.Encryption.Encrypt("Has anything changed at home recently?"),
+            AnswerText = PromptContextFactory.Encryption.Encrypt("She moved bedrooms last week."),
+            Status = QuestionnaireStatus.Answered,
+            GeneratedAtUtc = UtcNow.AddDays(-1),
+            Scope = QuestionnaireScope.TimeScoped,
+        };
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns(
+                _ => [answered],
+                _ => throw new InvalidOperationException("reload failed"));
+
+        using var capture = new QuestionnaireMetricCapture();
+
+        var generated = await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        Assert.Equal(1, generated);
+        await _digests.Received(1).AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(capture.Longs, m => m.Instrument == "questionnaire.digest.informed");
+    }
+
+    /// <summary>
     /// A quiz transcript in the prompt is what MedGemma recites. The family already knows the
     /// exchange; the model needs the fact.
     /// </summary>
@@ -2783,6 +2829,24 @@ public class DigestGenerationServiceTests
         await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
     }
 
+    /// <summary>
+    /// A volunteered standing fact was never asked. Its canned heading must not gag a later
+    /// digest proposal that happens to use the same wording.
+    /// </summary>
+    [Fact]
+    public async Task StillAsksTheCannedVolunteerWording_WhenAFamilyOfferedFactAlreadyUsesIt()
+    {
+        const string canned = "What should we know about them?";
+        ReturnsQuestion(canned);
+        GivenPreviousQuestion(
+            canned, UtcNow.AddDays(-8), QuestionnaireStatus.Answered,
+            QuestionnaireScope.Permanent, QuestionnaireOrigin.Family);
+
+        await CreateSut().GenerateDueDigestsAsync(UtcNow);
+
+        await _questionnaires.Received(1).AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
     [Fact]
     public async Task GapBackedQuestion_MayAskSomethingDifferent_SoonerThanTheOrdinaryFloor()
     {
@@ -2879,7 +2943,8 @@ public class DigestGenerationServiceTests
         string question,
         DateTime askedAt,
         QuestionnaireStatus status = QuestionnaireStatus.Answered,
-        QuestionnaireScope scope = QuestionnaireScope.TimeScoped)
+        QuestionnaireScope scope = QuestionnaireScope.TimeScoped,
+        QuestionnaireOrigin origin = QuestionnaireOrigin.Digest)
     {
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
             .Returns(
@@ -2891,6 +2956,7 @@ public class DigestGenerationServiceTests
                     Status = status,
                     GeneratedAtUtc = askedAt,
                     Scope = scope,
+                    Origin = origin,
                 },
             ]);
         _questionnaires.GetLatestGeneratedAtAsync(_memberId, Arg.Any<CancellationToken>())

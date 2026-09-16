@@ -173,7 +173,8 @@ public class QuestionnaireService : IQuestionnaireService
         // question had outlived its day, but "the client says it has lapsed" is not a fact the
         // server takes on trust — a wrong device clock would otherwise let one caregiver retire a
         // question the rest of the family still has in front of them.
-        if (questionnaire.HasLapsed(DateTime.UtcNow))
+        if (questionnaire.HasLapsed(DateTime.UtcNow)
+            && questionnaire.Status == QuestionnaireStatus.Pending)
         {
             questionnaire.Status = QuestionnaireStatus.Expired;
             _unitOfWork.MemberQuestionnaires.Update(questionnaire);

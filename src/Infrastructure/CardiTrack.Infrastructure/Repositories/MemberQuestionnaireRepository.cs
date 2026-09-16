@@ -72,6 +72,22 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
             .ToListAsync(ct);
     }
 
+    public async Task<int> ExpireLapsedPendingAsync(
+        DateTime utcNow, int limit, CancellationToken ct = default)
+    {
+        // ExecuteUpdate, so a concurrent answer or another expiry path cannot be overwritten —
+        // the SET only matches rows that are still Pending. Take/OrderBy keep the same bounded,
+        // oldest-first batch GetLapsedPendingAsync uses for the probe.
+        return await _dbSet
+            .Where(q => q.Status == QuestionnaireStatus.Pending
+                        && q.AskableUntilUtc != null
+                        && q.AskableUntilUtc <= utcNow)
+            .OrderBy(q => q.AskableUntilUtc)
+            .Take(limit)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(q => q.Status, QuestionnaireStatus.Expired), ct);
+    }
+
     public async Task<IReadOnlyList<MemberQuestionnaire>> GetDueForAlertAsync(
         DateTime utcNow, DateTime reminderCutoffUtc, int maxPushes, int limit, CancellationToken ct = default)
     {

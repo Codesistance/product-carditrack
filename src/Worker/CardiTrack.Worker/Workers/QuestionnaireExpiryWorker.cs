@@ -50,23 +50,14 @@ public class QuestionnaireExpiryWorker : CronBackgroundService
         using var scope = _scopeFactory.CreateScope();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
-        var lapsed = await unitOfWork.MemberQuestionnaires
-            .GetLapsedPendingAsync(DateTime.UtcNow, BatchSize, stoppingToken);
-        if (lapsed.Count == 0)
+        var expired = await unitOfWork.MemberQuestionnaires
+            .ExpireLapsedPendingAsync(DateTime.UtcNow, BatchSize, stoppingToken);
+        if (expired == 0)
             return;
 
-        foreach (var questionnaire in lapsed)
-        {
-            // Already tracked by GetLapsedPendingAsync — setting Status is enough. Calling Update
-            // would mark every column modified and risk overwriting a concurrent answer.
-            questionnaire.Status = QuestionnaireStatus.Expired;
-        }
-
-        await unitOfWork.SaveChangesAsync();
-
-        QuestionnaireTelemetry.RecordExpired(lapsed.Count);
+        QuestionnaireTelemetry.RecordExpired(expired);
         _logger.LogInformation(
             "QuestionnaireExpiry retired {Count} questions that outlived the day they asked about.",
-            lapsed.Count);
+            expired);
     }
 }
