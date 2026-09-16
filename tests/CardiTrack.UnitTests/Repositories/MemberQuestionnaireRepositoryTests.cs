@@ -205,6 +205,49 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
         Assert.Null(await repo.GetLatestGeneratedAtAsync(Guid.NewGuid()));
     }
 
+    /// <summary>
+    /// A standing fact the family volunteered is not an ask. Counting it here would start the
+    /// seven-day quiet as if we had just nagged them.
+    /// </summary>
+    [Fact]
+    public async Task GetLatestGeneratedAtAsync_IgnoresAStandingFactTheFamilyVolunteered()
+    {
+        using var scope = fixture.CreateScope();
+        var memberId = Guid.NewGuid();
+        var digestAsked = DateTime.UtcNow.AddDays(-3);
+        var volunteered = DateTime.UtcNow.AddHours(-1);
+
+        var familyNote = Questionnaire(
+            memberId, volunteered, QuestionnaireStatus.Answered, answer: "Yes.");
+        familyNote.Origin = QuestionnaireOrigin.Family;
+        familyNote.Scope = QuestionnaireScope.Permanent;
+
+        var repo = await SaveAsync(scope,
+            Questionnaire(memberId, digestAsked, QuestionnaireStatus.Dismissed),
+            familyNote);
+
+        var latest = await repo.GetLatestGeneratedAtAsync(memberId);
+
+        Assert.NotNull(latest);
+        Assert.Equal(digestAsked, latest.Value, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task GetLatestGeneratedAtAsync_IsNullWhenTheFamilyHasOnlyVolunteeredFacts()
+    {
+        using var scope = fixture.CreateScope();
+        var memberId = Guid.NewGuid();
+
+        var familyNote = Questionnaire(
+            memberId, DateTime.UtcNow, QuestionnaireStatus.Answered, answer: "Yes.");
+        familyNote.Origin = QuestionnaireOrigin.Family;
+        familyNote.Scope = QuestionnaireScope.Permanent;
+
+        var repo = await SaveAsync(scope, familyNote);
+
+        Assert.Null(await repo.GetLatestGeneratedAtAsync(memberId));
+    }
+
     [Fact]
     public async Task GetPendingAsync_ReturnsTheLiveRow_AndNullOnceItLapsesOrHasNone()
     {

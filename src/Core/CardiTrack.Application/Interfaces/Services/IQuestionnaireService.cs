@@ -42,6 +42,14 @@ public interface IQuestionnaireService
         Guid requestingUserId, Guid questionnaireId, string answerText, CancellationToken ct = default);
 
     /// <summary>
+    /// Stores a standing fact the family volunteered, as an already-answered permanent row.
+    /// Not an ask — it does not occupy the pending slot, does not start the quiet interval,
+    /// and is never pushed.
+    /// </summary>
+    Task<QuestionnaireResponse> OfferStandingFactAsync(
+        Guid requestingUserId, Guid cardiMemberId, string factText, CancellationToken ct = default);
+
+    /// <summary>
     /// Skips the question without answering it. The record survives, so the same ground is not
     /// covered again — see <see cref="DeleteAsync"/> for the destructive option.
     /// </summary>

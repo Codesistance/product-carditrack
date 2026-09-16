@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using CardiTrack.Application.Diagnostics;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
@@ -112,6 +113,40 @@ public class QuestionnaireService : IQuestionnaireService
         _unitOfWork.MemberQuestionnaires.Update(questionnaire);
         await _unitOfWork.SaveChangesAsync();
 
+        QuestionnaireTelemetry.RecordAnswered(questionnaire.Scope, questionnaire.Origin);
+        return ToResponse(questionnaire);
+    }
+
+    /// <summary>
+    /// The question stored on a volunteered standing fact, so the Q&amp;A list has a heading
+    /// and a short yes/no still has a topic in the prompt. Name-free: the member's name is
+    /// not ours to put in a field that is later decrypted into a model prompt.
+    /// </summary>
+    internal const string FamilyOfferedQuestion = "What should we know about them?";
+
+    public async Task<QuestionnaireResponse> OfferStandingFactAsync(
+        Guid requestingUserId, Guid cardiMemberId, string factText, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
+
+        var utcNow = DateTime.UtcNow;
+        var questionnaire = new MemberQuestionnaire
+        {
+            CardiMemberId = cardiMemberId,
+            QuestionText = _encryption.Encrypt(FamilyOfferedQuestion),
+            AnswerText = _encryption.Encrypt(factText.Trim()),
+            Status = QuestionnaireStatus.Answered,
+            GeneratedAtUtc = utcNow,
+            AnsweredAtUtc = utcNow,
+            AnsweredByUserId = requestingUserId,
+            Scope = QuestionnaireScope.Permanent,
+            Origin = QuestionnaireOrigin.Family,
+        };
+
+        await _unitOfWork.MemberQuestionnaires.AddAsync(questionnaire);
+        await _unitOfWork.SaveChangesAsync();
+
+        QuestionnaireTelemetry.RecordOffered();
         return ToResponse(questionnaire);
     }
 
@@ -125,6 +160,7 @@ public class QuestionnaireService : IQuestionnaireService
         _unitOfWork.MemberQuestionnaires.Update(questionnaire);
         await _unitOfWork.SaveChangesAsync();
 
+        QuestionnaireTelemetry.RecordDismissed();
         return ToResponse(questionnaire);
     }
 
@@ -142,6 +178,7 @@ public class QuestionnaireService : IQuestionnaireService
             questionnaire.Status = QuestionnaireStatus.Expired;
             _unitOfWork.MemberQuestionnaires.Update(questionnaire);
             await _unitOfWork.SaveChangesAsync();
+            QuestionnaireTelemetry.RecordExpired();
         }
 
         return ToResponse(questionnaire);
@@ -202,6 +239,7 @@ public class QuestionnaireService : IQuestionnaireService
         AnsweredAtUtc = questionnaire.AnsweredAtUtc,
         AnsweredByUserId = questionnaire.AnsweredByUserId,
         Scope = questionnaire.Scope.ToString().ToLowerInvariant(),
+        Origin = questionnaire.Origin.ToString().ToLowerInvariant(),
         AskableUntilUtc = questionnaire.AskableUntilUtc,
     };
 

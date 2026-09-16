@@ -98,7 +98,13 @@ emits one consumer span per pulled Pub/Sub message (span-linked to the publishin
 webhook span), and `TelemetryNames.PushSource` emits one span per FCM send — needed
 because FirebaseAdmin bypasses `IHttpClientFactory`, so no HttpClient span would exist
 otherwise. Push delivery also carries its own `notification.*` meters (including
-`notification.time_to_ack`), behind the same `apm_metrics_enabled` switch.
+`notification.time_to_ack`), behind the same `apm_metrics_enabled` switch. The
+questionnaire funnel is a meter-only source (`TelemetryNames.QuestionnaireSource` /
+`CardiTrack.Questionnaires`): `questionnaire.asked`, `.answered`, `.dismissed`,
+`.expired`, `.offered`, `.digest.informed` and `.digest.recited`. Tags are closed
+vocabularies (`questionnaire.scope`, `questionnaire.origin`) — no question text,
+no answer text, no member id. There is no matching ActivitySource; the product
+question is a rate, not a trace.
 
 ### How each app identifies itself
 

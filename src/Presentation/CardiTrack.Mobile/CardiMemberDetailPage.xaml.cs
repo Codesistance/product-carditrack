@@ -912,7 +912,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void ApplyQuestionnaires(QuestionnairesPageResponse result)
     {
-        QuestionsRow.IsVisible = result.HasAny;
+        QuestionsRow.IsVisible = true;
 
         // Checked before it is drawn, not trusted because the API sent it. A card held on
         // screen across midnight, or a page served from the offline cache after a night with no

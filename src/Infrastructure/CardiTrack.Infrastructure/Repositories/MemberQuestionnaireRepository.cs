@@ -128,9 +128,12 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
     {
         // Max over a nullable projection rather than ordering and taking one: no row yields null,
         // which is the "never asked" answer the caller wants, without a second existence check.
+        // Only questions the service asked. A standing fact the family volunteered is not an
+        // ask — counting it here would start the seven-day quiet as if we had just nagged them.
         return await _dbSet
             .AsNoTracking()
-            .Where(q => q.CardiMemberId == cardiMemberId)
+            .Where(q => q.CardiMemberId == cardiMemberId
+                        && q.Origin == QuestionnaireOrigin.Digest)
             .MaxAsync(q => (DateTime?)q.GeneratedAtUtc, ct);
     }
 }

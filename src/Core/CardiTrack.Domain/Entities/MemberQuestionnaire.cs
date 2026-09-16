@@ -57,6 +57,12 @@ public class MemberQuestionnaire : BaseEntity
     public QuestionnaireScope Scope { get; set; } = QuestionnaireScope.TimeScoped;
 
     /// <summary>
+    /// Who put this row on file. Defaults to <see cref="QuestionnaireOrigin.Digest"/> so every
+    /// row written before the family could volunteer a standing fact keeps counting as an ask.
+    /// </summary>
+    public QuestionnaireOrigin Origin { get; set; } = QuestionnaireOrigin.Digest;
+
+    /// <summary>
     /// When a <see cref="QuestionnaireScope.TimeScoped"/> answer stops being read back into prompts
     /// — set once, at generation, from a fixed duration rather than a date the model guessed at (see
     /// <c>DigestGenerationService.TimeScopedAnswerLifetime</c>). Null for

@@ -266,12 +266,44 @@ public partial class QuestionnairesPage : ContentPage
 
     private void OnRemainingItemsThresholdReached(object? sender, EventArgs e) => _ = LoadMoreAsync();
 
+    private void OnOfferChanged(object? sender, TextChangedEventArgs e) =>
+        OfferSaveButton.IsEnabled = !_isBusy && MemberQuestionnaires.IsAnswerable(e.NewTextValue);
+
+    private async void OnOfferSaveClicked(object? sender, EventArgs e)
+    {
+        var fact = OfferEditor.Text?.Trim();
+        if (_isBusy || !MemberQuestionnaires.IsAnswerable(fact))
+            return;
+
+        _isBusy = true;
+        OfferSaveButton.IsEnabled = false;
+        try
+        {
+            await _api.OfferStandingFactAsync(
+                _memberId, new OfferStandingFactRequest { FactText = fact! });
+
+            OfferEditor.Text = string.Empty;
+            await LoadAsync(showSkeleton: false);
+        }
+        catch (ApiException ex) when (!ex.IsSessionExpired)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't save that note");
+        }
+        finally
+        {
+            _isBusy = false;
+            OfferSaveButton.IsEnabled = MemberQuestionnaires.IsAnswerable(OfferEditor.Text);
+        }
+    }
+
     private void ApplyHeader(QuestionnairesPageResponse result)
     {
         var name = string.IsNullOrWhiteSpace(_memberName) ? "them" : _memberName;
         IntroLabel.Text =
-            $"Things we've asked about {name}, and what you told us. Your answers help us read "
-            + "their readings properly.";
+            $"Things we've asked about {name}, and what you told us. You can also tell us "
+            + "something we should know — we'll keep it with their standing answers.";
+        OfferHintLabel.Text =
+            $"A standing fact about {name} — not a diagnosis or a dose. We'll keep it here.";
 
         // Same check the member's page makes before drawing this card, and for the same reasons —
         // see CardiMemberDetailPage.LoadQuestionnairesAsync.
@@ -302,8 +334,8 @@ public partial class QuestionnairesPage : ContentPage
         {
             EmptyTitleLabel.Text = "Nothing to look back on yet";
             EmptyDetailLabel.Text =
-                $"Standing answers about {name} stay here. Ones just for the moment drop off "
-                + "once they no longer apply.";
+                $"Standing answers about {name} stay here — including anything you tell us "
+                + "above. Ones just for the moment drop off once they no longer apply.";
         }
     }
 

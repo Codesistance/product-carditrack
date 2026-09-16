@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Exceptions;
+using CardiTrack.Application.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -1601,6 +1602,8 @@ public partial class DigestGenerationService : IDigestGenerationService
             _logger.LogWarning(
                 "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: {Reason}.",
                 memberId, describedDate, recap);
+            if (familyFacts.Count > 0)
+                QuestionnaireTelemetry.RecordDigestRecited();
             return false;
         }
 
@@ -1672,6 +1675,9 @@ public partial class DigestGenerationService : IDigestGenerationService
             GeneratedAtUtc = utcNow,
             PromptVersion = CurrentPromptVersion,
         }, ct);
+
+        if (familyFacts.Count > 0)
+            QuestionnaireTelemetry.RecordDigestInformed();
 
         // Strictly after the summary is stored, and only then: a question is a by-product of a
         // generation that was good enough to keep. Every discard path above has already returned,
@@ -1931,6 +1937,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // above — without this the question would be dropped when the scope ended.
         await _unitOfWork.SaveChangesAsync();
 
+        QuestionnaireTelemetry.RecordAsked(scope);
         _logger.LogInformation(
             "Asked the family a new question about CardiMember {CardiMemberId} (scope: {Scope}).",
             memberId, scope);

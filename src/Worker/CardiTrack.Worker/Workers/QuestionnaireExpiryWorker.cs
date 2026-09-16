@@ -1,3 +1,4 @@
+using CardiTrack.Application.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Domain.Enums;
 using Microsoft.Extensions.Options;
@@ -63,6 +64,7 @@ public class QuestionnaireExpiryWorker : CronBackgroundService
 
         await unitOfWork.SaveChangesAsync();
 
+        QuestionnaireTelemetry.RecordExpired(lapsed.Count);
         _logger.LogInformation(
             "QuestionnaireExpiry retired {Count} questions that outlived the day they asked about.",
             lapsed.Count);

@@ -158,4 +158,32 @@ public class QuestionnaireApiClientTests
         Assert.Equal(HttpMethod.Delete, request.Method);
         Assert.Equal($"/api/v1/questionnaires/{questionnaireId}", request.Uri!.AbsolutePath);
     }
+
+    [Fact]
+    public async Task OfferStandingFact_PostsTheFactOnTheMember()
+    {
+        var (client, http) = CreateSut();
+        var memberId = Guid.NewGuid();
+        var questionnaireId = Guid.NewGuid();
+        http.Enqueue(HttpStatusCode.Created, $$"""
+            {"success":true,"message":"ok","data":{"id":"{{questionnaireId}}",
+             "cardiMemberId":"{{memberId}}","questionText":"What should we know about them?",
+             "answerText":"She moved bedrooms.","triggerContext":null,"status":"answered",
+             "scope":"permanent","origin":"family",
+             "generatedAtUtc":"2026-09-16T09:00:00Z","answeredAtUtc":"2026-09-16T09:00:00Z",
+             "answeredByUserId":null},"timestamp":"2026-09-16T09:00:00Z"}
+            """);
+
+        var result = await client.OfferStandingFactAsync(
+            memberId, new OfferStandingFactRequest { FactText = "She moved bedrooms." });
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal($"/api/v1/cardimembers/{memberId}/questionnaires", request.Uri!.AbsolutePath);
+        Assert.Contains("She moved bedrooms.", request.Body);
+        Assert.Equal("family", result.Origin);
+        Assert.Equal("permanent", result.Scope);
+        Assert.Equal("answered", result.Status);
+        Assert.Equal("She moved bedrooms.", result.AnswerText);
+    }
 }

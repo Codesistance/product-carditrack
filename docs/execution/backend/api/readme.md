@@ -151,8 +151,10 @@ The full implemented surface is 58 endpoints across 13 controllers:
 | `DELETE /api/v1/alerts/{alertId}/acknowledge` | Undo acknowledgment (idempotent; 400 if already resolved) | [alerts.md](alerts.md) |
 | `DELETE /api/v1/alerts/{alertId}` | Remove an alert from the caller's lists (204) | [alerts.md](alerts.md) |
 | `GET /api/v1/cardimembers/{id}/questionnaires` | Questions asked about a member, and their answers | [questionnaires.md](questionnaires.md) |
+| `POST /api/v1/cardimembers/{id}/questionnaires` | Volunteer a standing fact (201) | [questionnaires.md](questionnaires.md) |
 | `PUT /api/v1/questionnaires/{id}/answer` | Answer a question, or replace an answer | [questionnaires.md](questionnaires.md) |
 | `PUT /api/v1/questionnaires/{id}/dismiss` | Skip a question | [questionnaires.md](questionnaires.md) |
+| `PUT /api/v1/questionnaires/{id}/expire` | Retire a question whose day has ended | [questionnaires.md](questionnaires.md) |
 | `DELETE /api/v1/questionnaires/{id}` | Remove a question and its answer (204) | [questionnaires.md](questionnaires.md) |
 | `POST /api/v1/reports` | Queue async report generation (202) | [reports.md](reports.md) |
 | `GET /api/v1/reports/{reportId}` | Poll report status | [reports.md](reports.md) |
@@ -196,7 +198,7 @@ Plus `GET /health` — anonymous liveness probe gated by the `X-Health-Token` he
 | [devices.md](devices.md) | Device Management | **Implemented** (connect/list/OAuth/remove/primary/sync/refresh); get-single-device planned | 1.3, 6.2 |
 | [health-data.md](health-data.md) | Health Data & Dashboard | **Partially implemented** (per-member dashboard, AI baseline) | 2.1, 2.2, 2.3, 5.2, 10.1 |
 | [alerts.md](alerts.md) | Alerts & Notification Preferences | **Partially implemented** — list/detail/acknowledge/undo-ack/delete shipped; status transitions, notes, photos planned | 3.1, 3.2, 3.3, 11.1–11.3 |
-| [questionnaires.md](questionnaires.md) | Family Questionnaires | **Implemented** — pipeline-generated questions, answered/edited/deleted by caregivers | — |
+| [questionnaires.md](questionnaires.md) | Family Questionnaires | **Implemented** — pipeline-generated questions, answered/edited/deleted by caregivers; standing facts volunteered without being asked | — |
 | [family.md](family.md) | Family Collaboration | **Planned** | 4.1, 4.2, 8.3 |
 | [notifications.md](notifications.md) | Push Notifications | **Implemented** — in-app inbox + push delivery spine | 3.2, 5.1 |
 | [subscriptions.md](subscriptions.md) | Subscription Management | **Planned** — trial auto-created at onboarding | 6.1 |

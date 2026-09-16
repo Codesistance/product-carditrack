@@ -35,4 +35,11 @@ public static class TelemetryNames
     /// filterable by one value even where the spans don't share a trace id.
     /// </summary>
     public const string PushDeliveryIdTag = "notification.delivery_id";
+
+    /// <summary>
+    /// Meter name for the family-questionnaire funnel (asked, answered, skipped, expired,
+    /// volunteered, and whether the next digest kept or recited those facts). Counters only —
+    /// there is no matching ActivitySource; the product question is a rate, not a trace.
+    /// </summary>
+    public const string QuestionnaireSource = "CardiTrack.Questionnaires";
 }

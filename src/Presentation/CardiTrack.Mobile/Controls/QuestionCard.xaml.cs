@@ -53,8 +53,11 @@ public partial class QuestionCard : ContentView
 
         var isAnswered = MemberQuestionnaires.IsAnswerable(questionnaire.AnswerText);
         var name = string.IsNullOrWhiteSpace(memberFirstName) ? "them" : memberFirstName;
+        var familyTold = MemberQuestionnaires.IsFamilyOffered(questionnaire.Origin);
 
-        TitleLabel.Text = isAnswered ? "You answered" : $"A quick question about {name}";
+        TitleLabel.Text = isAnswered
+            ? familyTold ? "You told us" : "You answered"
+            : $"A quick question about {name}";
         QuestionLabel.Text = questionnaire.QuestionText;
 
         RationaleCard.IsVisible = !string.IsNullOrWhiteSpace(questionnaire.TriggerContext);

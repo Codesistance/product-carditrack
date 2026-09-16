@@ -29,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         services.AddScoped<IValidator<HistoryRepullRequest>, HistoryRepullValidator>();
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
+        services.AddScoped<IValidator<OfferStandingFactRequest>, OfferStandingFactValidator>();
         services.AddScoped<IValidator<MemberChatMessageRequest>, MemberChatMessageValidator>();
         services.AddScoped<IValidator<GenerateReportRequest>, GenerateReportValidator>();
         services.AddScoped<IValidator<RecordExportConsentRequest>, RecordExportConsentValidator>();

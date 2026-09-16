@@ -448,4 +448,76 @@ public class QuestionnaireServiceTests
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().ExpireAsync(requestingUserId, _questionnaireId));
     }
+
+    [Fact]
+    public async Task Listing_CarriesTheOrigin_AsItsLowercaseWireValue()
+    {
+        var volunteered = Questionnaire(
+            QuestionnaireStatus.Answered, "Pacemaker since 2020.", QuestionnaireScope.Permanent);
+        volunteered.Origin = QuestionnaireOrigin.Family;
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([volunteered]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        var only = Assert.Single(result.Answered.Items);
+        Assert.Equal("family", only.Origin);
+        Assert.Equal("permanent", only.Scope);
+    }
+
+    [Fact]
+    public async Task OfferingAStandingFact_StoresAnEncryptedPermanentFamilyRow_AlreadyAnswered()
+    {
+        MemberQuestionnaire? stored = null;
+        _questionnaires.When(r => r.AddAsync(Arg.Any<MemberQuestionnaire>()))
+            .Do(call => stored = call.Arg<MemberQuestionnaire>());
+
+        var result = await CreateSut().OfferStandingFactAsync(
+            _userId, _memberId, "  Pacemaker since 2020.  ");
+
+        Assert.NotNull(stored);
+        Assert.Equal(_memberId, stored.CardiMemberId);
+        Assert.Equal(QuestionnaireStatus.Answered, stored.Status);
+        Assert.Equal(QuestionnaireScope.Permanent, stored.Scope);
+        Assert.Equal(QuestionnaireOrigin.Family, stored.Origin);
+        Assert.Equal(_userId, stored.AnsweredByUserId);
+        Assert.NotNull(stored.AnsweredAtUtc);
+        Assert.Equal(
+            "What should we know about them?",
+            PromptContextFactory.Encryption.Decrypt(stored.QuestionText));
+        Assert.Equal(
+            "Pacemaker since 2020.",
+            PromptContextFactory.Encryption.Decrypt(stored.AnswerText!));
+        Assert.Equal("family", result.Origin);
+        Assert.Equal("permanent", result.Scope);
+        Assert.Equal("answered", result.Status);
+        Assert.Equal("Pacemaker since 2020.", result.AnswerText);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// A volunteered fact is not an ask. It must not occupy the pending slot the digest job
+    /// and the member's card treat as "one question waiting".
+    /// </summary>
+    [Fact]
+    public async Task OfferingAStandingFact_DoesNotLeaveAPendingQuestion()
+    {
+        MemberQuestionnaire? stored = null;
+        _questionnaires.When(r => r.AddAsync(Arg.Any<MemberQuestionnaire>()))
+            .Do(call => stored = call.Arg<MemberQuestionnaire>());
+
+        await CreateSut().OfferStandingFactAsync(_userId, _memberId, "Pacemaker since 2020.");
+
+        Assert.NotEqual(QuestionnaireStatus.Pending, stored!.Status);
+        Assert.Null(stored.AskableUntilUtc);
+        Assert.Null(stored.ExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task OfferingAStandingFact_IsRefusedToSomeoneWhoIsNotTheirCaregiver()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().OfferStandingFactAsync(_outsiderId, _memberId, "anything"));
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
 }

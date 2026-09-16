@@ -41,6 +41,13 @@ public class QuestionnaireResponse
     public string Scope { get; set; } = "timescoped";
 
     /// <summary>
+    /// digest / family, lowercase — the same string convention as <see cref="Status"/>.
+    /// Digest questions were proposed by the summary; family ones are standing facts a
+    /// caregiver volunteered.
+    /// </summary>
+    public string Origin { get; set; } = "digest";
+
+    /// <summary>
     /// The last moment this question is still worth asking, or null when it never stops being — a
     /// standing-fact question, or a row written before questions carried a validity at all.
     /// </summary>
