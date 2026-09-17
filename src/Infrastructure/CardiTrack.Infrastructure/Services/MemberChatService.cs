@@ -715,7 +715,7 @@ public class MemberChatService : IMemberChatService
         // and the only method that can unwrap it is the one building the Private-slot prompt. The
         // rewrite builder's signature takes DeidentifiedFindings and cannot take this.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
@@ -774,7 +774,7 @@ public class MemberChatService : IMemberChatService
         // The status line carries the member's resolved name, which is why it renders here — into
         // the Private-slot block — and never into the rewrite prompt.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}"
             + (dashboard is { } status ? $"\n\n{FormatDashboardStatus(status)}" : string.Empty)
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
@@ -866,7 +866,7 @@ public class MemberChatService : IMemberChatService
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today)}"
             + $"\n\n--- What else was happening around the same time ---\n{FormatFetchedData(surroundings, today)}"
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(

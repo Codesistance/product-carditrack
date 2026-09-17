@@ -169,6 +169,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         "clinical reasoning AI",
         "do not provide a formal diagnosis",
         "physiological stressors",
+        "do not invent a usual",
         "read this person's recent readings",
         "you are writing for a concerned family member",
         "never suggest the family has missed something",

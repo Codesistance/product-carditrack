@@ -94,8 +94,8 @@ public class AdviseGenerationService
 
         [OUTPUT FORMAT]
         Return a JSON object with this layout:
-        {"entries":[{"topic":"Sleep, Activity, HeartRate or General","finding":"the baseline-deviation trajectory","action":"what would address that shortfall","guidelineCited":"what the finding draws on"}]}
-        Include at most one entry per topic. Empty entries when the data give nothing to say. Each finding is a trajectory against baseline, not a diagnosis. Each action is what would address that shortfall, not a treatment.
+        {"entries":[{"topic":"Sleep","finding":"the trajectory against known baselines","action":"what would address that shortfall","guidelineCited":"what the finding draws on"}]}
+        topic is exactly one of Sleep, Activity, HeartRate or General. At most one entry per topic. Empty entries when the data give nothing to say. Each finding is a trajectory against known baselines when they are given, not a diagnosis. Each action is what would address that shortfall, not a treatment. When known baselines say none are established, return an empty entries list rather than inventing a usual.
 
         JSON:
         """;

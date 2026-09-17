@@ -114,7 +114,7 @@ public class StatusLineGenerationService
     /// <summary>
     /// Ceiling on <see cref="ClinicalInstructions"/>, in characters — the MedGemma-paid half of
     /// the pair. Sitting exactly on the measured length is the point: with no slack, the next
-    /// addition of any size has to come here and say what it is buying. Reset to 1,501 when
+    /// addition of any size has to come here and say what it is buying. Reset to 1,622 when
     /// the Google wearable role and data constraints were added: MedGemma is briefed as a
     /// longitudinal reasoner rather than a copywriter, which is what the extra characters buy.
     /// </summary>
@@ -131,7 +131,7 @@ public class StatusLineGenerationService
     /// constant exists to deny, so the measurement below normalizes instead.
     /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_501;
+    internal const int StatusPromptBudget = 1_622;
 
     /// <summary>
     /// Exposed for the budget test — the instructions themselves stay private.

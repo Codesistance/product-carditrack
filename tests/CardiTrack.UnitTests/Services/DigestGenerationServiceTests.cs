@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Reflection;
+using System.Text.Json.Nodes;
 using CardiTrack.Application.Diagnostics;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
@@ -1337,10 +1338,12 @@ public class DigestGenerationServiceTests
         Assert.Contains("\"steps\": 3442", prompt);
         Assert.Contains("\"date\":", prompt);
 
-        // The day label lives on the object, ahead of the numbers it governs.
-        Assert.True(
-            prompt.IndexOf($"Yesterday ({Today.AddDays(-1)}, complete day)", StringComparison.Ordinal)
-            < prompt.IndexOf("\"steps\": 3835", StringComparison.Ordinal));
+        var days = FencedReadings(prompt);
+        Assert.Equal(2, days.Count);
+        Assert.Contains("Yesterday", days[0]!["day"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(3835, days[0]!["steps"]!.GetValue<int>());
+        Assert.Contains("Today so far", days[1]!["day"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(3442, days[1]!["steps"]!.GetValue<int>());
     }
 
     [Fact]
@@ -1376,6 +1379,16 @@ public class DigestGenerationServiceTests
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
         Assert.NotNull(prompt);
         return prompt;
+    }
+
+    private static JsonArray FencedReadings(string prompt)
+    {
+        var open = prompt.IndexOf("```json", StringComparison.Ordinal);
+        Assert.True(open >= 0, "prompt has no JSON fence");
+        var start = open + "```json".Length;
+        var close = prompt.IndexOf("```", start, StringComparison.Ordinal);
+        Assert.True(close > start, "JSON fence is unclosed");
+        return JsonNode.Parse(prompt[start..close].Trim())!.AsArray();
     }
 
     /// <summary>

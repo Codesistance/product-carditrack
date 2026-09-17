@@ -230,7 +230,7 @@ internal static partial class MedicalPromptBlocks
     /// readings, not a wellness copywriter. First line of every two-slot clinical brief.
     /// </summary>
     internal const string WearableClinicalRole =
-        "You are a clinical reasoning AI specializing in longitudinal wearable data analysis. Your role is to analyze a structured dataset of daily wearable readings to identify deviations from this person's established physiological baseline.";
+        "You are a clinical reasoning AI specializing in longitudinal wearable data analysis. Your role is to analyze a structured dataset of daily wearable readings against this person's known baselines when they are given, and otherwise to describe the trajectory without inventing a usual.";
 
     /// <summary>
     /// Google's three data constraints, one bullet per line. Adjunct, not diagnosis; physiology
@@ -240,7 +240,8 @@ internal static partial class MedicalPromptBlocks
     internal const string WearableDataConstraints =
         "- Analyze the data strictly as an adjunct assistant. Do not provide a formal diagnosis." + NL
         + "- Differentiate physiological stressors (a change in resting heart rate) from behavioural changes (missed activity)." + NL
-        + "- If a data point is missing or null, note the gap rather than interpolating a value." + NL;
+        + "- If a data point is missing or null, note the gap rather than interpolating a value." + NL
+        + "- When known baselines say none are established, do not invent a usual." + NL;
 
     /// <summary>
     /// Role, constraints and the undistorted-read rule — the fixed prefix every two-slot clinical
@@ -948,16 +949,24 @@ internal static partial class MedicalPromptBlocks
         if (baseline is null)
             return "No baseline established yet — this member is still being learned.";
 
+        var parts = new List<string>();
+        if (baseline.AvgSteps is { } steps)
+            parts.Add($"Steps: {steps}±{baseline.StdDevSteps}");
+        if (baseline.AvgRestingHeartRate is { } resting)
+            parts.Add($"Resting HR: {resting}±{baseline.StdDevHeartRate}");
+        if (baseline.AvgSleepMinutes is { } sleep)
+            parts.Add($"Sleep: {sleep} min");
+        if (baseline.AvgHeartRateVariabilityMs is { } hrv)
+            parts.Add($"HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight");
+
+        if (parts.Count == 0)
+            return "No baseline metrics have settled yet — this member is still being learned.";
+
         var window = provisional
             ? $"{baseline.PeriodDays}-day (provisional)"
             : $"{baseline.PeriodDays}-day";
 
-        return $"{window} — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
-               $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
-               $"Sleep: {baseline.AvgSleepMinutes} min" +
-               (baseline.AvgHeartRateVariabilityMs is { } hrv
-                   ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
-                   : string.Empty);
+        return $"{window} — {string.Join(", ", parts)}";
     }
 
     private static readonly JsonSerializerOptions WearableJson = new()

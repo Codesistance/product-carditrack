@@ -1,4 +1,5 @@
-﻿using CardiTrack.Application.Interfaces.Repositories;
+﻿using System.Text.Json.Nodes;
+using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -660,14 +661,20 @@ public class StatusLineGenerationServiceTests
 
         var prompt = await PromptAtAsync(LondonMorningUtc);
 
-        Assert.Contains("\"overnight_hrv_ms\": 41.2", prompt);
-        Assert.Contains("\"overnight_breathing_rate\": 14.1", prompt);
-        Assert.Contains("\"spo2_average\": 96.4", prompt);
+        var days = FencedReadings(prompt);
+        Assert.Equal(2, days.Count);
+        var yesterday = days.Single(d => d!["date"]!.GetValue<string>() == "2026-09-06");
+        var today = days.Single(d => d!["date"]!.GetValue<string>() == "2026-09-07");
+        Assert.Equal(41.2, yesterday!["overnight_hrv_ms"]!.GetValue<double>());
+        Assert.Equal(14.1, yesterday["overnight_breathing_rate"]!.GetValue<double>());
+        Assert.Equal(6100, yesterday["steps"]!.GetValue<int>());
+        Assert.Equal(96.4, today!["spo2_average"]!.GetValue<double>());
+        Assert.Equal(900, today["steps"]!.GetValue<int>());
+        Assert.Null(today["overnight_hrv_ms"]);
         Assert.DoesNotContain("steps=,", prompt);
         Assert.DoesNotContain("--- Recent readings", prompt);
         Assert.Contains("[INPUT DATA]", prompt);
         Assert.Contains("yesterday and today", prompt);
-        Assert.Contains("\"steps\": 6100", prompt);
     }
 
     [Fact]
@@ -861,6 +868,16 @@ public class StatusLineGenerationServiceTests
     {
         await CreateSut(new FrozenTimeProvider(utc)).RegenerateAsync(_memberId);
         return (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+    }
+
+    private static JsonArray FencedReadings(string prompt)
+    {
+        var open = prompt.IndexOf("```json", StringComparison.Ordinal);
+        Assert.True(open >= 0, "prompt has no JSON fence");
+        var start = open + "```json".Length;
+        var close = prompt.IndexOf("```", start, StringComparison.Ordinal);
+        Assert.True(close > start, "JSON fence is unclosed");
+        return JsonNode.Parse(prompt[start..close].Trim())!.AsArray();
     }
 
     /// <summary>

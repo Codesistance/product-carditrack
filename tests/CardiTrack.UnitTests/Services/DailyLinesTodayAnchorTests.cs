@@ -246,4 +246,22 @@ public class DailyLinesTodayAnchorTests
         Assert.Contains("\"steps\": 900", json);
         Assert.Contains("\"complete\": false", json);
     }
+
+    [Fact]
+    public void BaselineSummary_OmitsMetricsThatHaveNotSettled()
+    {
+        var settled = MedicalPromptBlocks.BaselineSummary(new PatternBaseline
+        {
+            PeriodDays = 30,
+            AvgSteps = 6000,
+            StdDevSteps = 400,
+            AvgRestingHeartRate = 62,
+            StdDevHeartRate = 3,
+        });
+
+        Assert.Contains("Steps: 6000±400", settled);
+        Assert.Contains("Resting HR: 62±3", settled);
+        Assert.DoesNotContain("Sleep:", settled);
+        Assert.DoesNotContain("Steps: ±", MedicalPromptBlocks.BaselineSummary(new PatternBaseline { PeriodDays = 30 }));
+    }
 }
