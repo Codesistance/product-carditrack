@@ -1,0 +1,6 @@
+{
+  "$comment": "Cursor cloud / background agent environment. install runs once when the VM snapshot is built; start runs on every boot. Secrets (GH_TOKEN, DD_API_KEY, DD_APP_KEY) are set in the Cursor dashboard, never here. See AGENTS.md.",
+  "install": "INSTALL_MAUI=1 bash .devcontainer/bootstrap.sh",
+  "start": "bash scripts/agent/services-up.sh",
+  "terminals": []
+}

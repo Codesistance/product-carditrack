@@ -57,13 +57,21 @@ fi
 
 # ── Warm the NuGet cache ─────────────────────────────────────────────────────
 # CardiTrack.Server.slnf is the whole solution minus CardiTrack.Mobile, which
-# needs the maui-android workload and the Android SDK. Set INSTALL_MAUI=1 on
-# install-toolchain.sh to add those and restore CardiTrack.sln instead.
+# needs the maui-android workload and the Android SDK. With INSTALL_MAUI=1 the
+# toolchain step above installed those, so restore CardiTrack.sln instead —
+# under its own marker, so a container first bootstrapped without mobile
+# restores again when the variable is later switched on.
+if [ "${INSTALL_MAUI:-0}" = "1" ]; then
+  SOLUTION="${REPO_ROOT}/CardiTrack.sln"
+  MARKER="${MARKER}-sln"
+else
+  SOLUTION="${REPO_ROOT}/CardiTrack.Server.slnf"
+fi
 if [ -f "$MARKER" ]; then
   log "Packages already restored in this container — skipping"
 else
-  log "Restoring NuGet packages (first run in this container)"
-  if dotnet restore "${REPO_ROOT}/CardiTrack.Server.slnf" --nologo 2>&1 | tail -3; then
+  log "Restoring NuGet packages for $(basename "$SOLUTION") (first run in this container)"
+  if dotnet restore "$SOLUTION" --nologo 2>&1 | tail -3; then
     mkdir -p "$(dirname "$MARKER")" && touch "$MARKER"
     log "Restore complete"
   else
@@ -72,3 +80,6 @@ else
 fi
 
 log "Ready: dotnet $(dotnet --version 2>/dev/null || echo MISSING), terraform $(terraform version 2>/dev/null | head -1 | awk '{print $2}' || echo MISSING)"
+if [ "${INSTALL_MAUI:-0}" = "1" ]; then
+  log "Mobile: maui-android $(dotnet workload list 2>/dev/null | grep -q '^maui-android' && echo present || echo MISSING); Android SDK $([ -d "${ANDROID_SDK_ROOT_DIR:-$HOME/Android/Sdk}/platforms" ] && echo present || echo MISSING)"
+fi
