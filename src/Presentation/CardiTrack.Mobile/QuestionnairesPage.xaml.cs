@@ -92,7 +92,7 @@ public partial class QuestionnairesPage : ContentPage
         set
         {
             if (_route.Accept(value))
-                _ = LoadAsync(showSkeleton: true);
+                this.WhenRouteHasLanded(() => _ = LoadAsync(showSkeleton: true));
         }
     }
 

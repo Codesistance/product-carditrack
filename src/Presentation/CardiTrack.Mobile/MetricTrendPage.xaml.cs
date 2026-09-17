@@ -70,7 +70,7 @@ public partial class MetricTrendPage : ContentPage
         set
         {
             if (_route.Accept(value))
-                _ = LoadAsync();
+                this.WhenRouteHasLanded(() => _ = LoadAsync());
         }
     }
 
@@ -94,7 +94,7 @@ public partial class MetricTrendPage : ContentPage
             if (_renderedWithoutMetric)
             {
                 _renderedWithoutMetric = false;
-                _ = LoadAsync();
+                this.WhenRouteHasLanded(() => _ = LoadAsync());
             }
         }
     }

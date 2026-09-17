@@ -94,7 +94,7 @@ public partial class ExportHealthDataPage : ContentPage
         set
         {
             if (_route.Accept(value))
-                SelectRoutedMember();
+                this.WhenRouteHasLanded(SelectRoutedMember);
         }
     }
 

@@ -178,7 +178,16 @@ public partial class CardiMemberDetailPage : ContentPage
             // Shell may set this after the page has already appeared and tried to load. Until
             // now the thirty-second tick below was what put that right, so a caregiver could sit
             // in front of the error card for most of a minute; the arrival itself reloads.
+            var previous = _route.Id;
             var owed = _route.Accept(value);
+
+            // A value the route could not use leaves the page alone. MemberRoute deliberately
+            // keeps the id it already had rather than taking Guid.Empty, so clearing the cards
+            // below would blank half a working screen for a member who is still on it — and
+            // with no new id, nothing would come back to fill it in again.
+            if (_route.Id == previous)
+                return;
+
             // Whatever summary is on screen belongs to whoever was on screen before. It must not
             // be the reason the next CardiMember's placeholder is skipped, and the rung drawn
             // from it must not be read as the next CardiMember's.
@@ -194,7 +203,7 @@ public partial class CardiMemberDetailPage : ContentPage
             QuestionsRow.IsVisible = false;
 
             if (owed)
-                _ = LoadAsync(LoadTrigger.Arrival);
+                this.WhenRouteHasLanded(() => _ = LoadAsync(LoadTrigger.Arrival));
         }
     }
 

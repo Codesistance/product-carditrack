@@ -66,7 +66,7 @@ public partial class MetricAlarmsPage : ContentPage
         set
         {
             if (_route.Accept(value))
-                _ = LoadAsync(force: true);
+                this.WhenRouteHasLanded(() => _ = LoadAsync(force: true));
         }
     }
 
