@@ -104,6 +104,7 @@ public class JournalChatRequestTests
     [Theory]
     [InlineData("rewrite", JournalChatAction.Rewrite)]
     [InlineData("Regenerate", JournalChatAction.Rewrite)]
+    [InlineData("refresh", JournalChatAction.Rewrite)]
     [InlineData("discard", JournalChatAction.Discard)]
     [InlineData("delete", JournalChatAction.Discard)]
     [InlineData("show", JournalChatAction.Show)]

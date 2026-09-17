@@ -87,13 +87,15 @@ public class JournalRewriteTests
         IsActive = true,
     };
 
-    private void SetupWeek(int daysWithData)
+    private void SetupWeek(int daysWithData) => SetupDays(WeekStart, daysWithData);
+
+    private void SetupDays(DateOnly from, int daysWithData)
     {
         var logs = Enumerable.Range(0, daysWithData)
             .Select(i => new ActivityLog
             {
                 CardiMemberId = _memberId,
-                Date = WeekStart.AddDays(i),
+                Date = from.AddDays(i),
                 Steps = 5000,
                 RestingHeartRate = 64,
                 SleepMinutes = 430,
@@ -243,6 +245,50 @@ public class JournalRewriteTests
         Assert.Equal(JournalRewriteOutcome.NoReadings, result.Outcome);
         Assert.Equal(2, result.DaysWithData);
         Assert.Equal(4, result.DaysNeeded);
+        await AssertNothingChanged();
+    }
+
+    /// <summary>
+    /// The third book goes through the same replacement: a finished month, dated by its last day,
+    /// composed from the month's own days.
+    /// </summary>
+    [Fact]
+    public async Task Rewrites_a_monthbook_for_a_finished_month()
+    {
+        var monthStart = new DateOnly(2026, 7, 1);
+        var monthEnd = new DateOnly(2026, 7, 31);
+        SetupDays(monthStart, daysWithData: 20);
+        _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.MonthbookAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DigestGenerationService.MonthbookAiResponse>(
+                new DigestGenerationService.MonthbookAiResponse
+                {
+                    Headline = "A steady month for sleep",
+                    Summary = "Ada's July held together well. Sleep ran a little longer than her usual across "
+                        + "all four weeks. The week of 20 July was the quietest for steps.",
+                    Urgency = "watch",
+                },
+                new AiUsage { ModelName = "test-medical" }));
+
+        var result = await Rewrite(monthEnd, DigestAudience.Monthbook);
+
+        Assert.Equal(JournalRewriteOutcome.Written, result.Outcome);
+        Assert.NotNull(result.Entry);
+        Assert.Equal(monthEnd, result.Entry.LocalDate);
+        Assert.Equal(DigestAudience.Monthbook, result.Entry.Audience);
+        Assert.Equal("A steady month for sleep", result.Entry.Headline);
+    }
+
+    [Fact]
+    public async Task A_month_too_thin_to_account_for_says_how_thin()
+    {
+        SetupDays(new DateOnly(2026, 7, 1), daysWithData: 10);
+
+        var result = await Rewrite(new DateOnly(2026, 7, 31), DigestAudience.Monthbook);
+
+        Assert.Equal(JournalRewriteOutcome.NoReadings, result.Outcome);
+        Assert.Equal(10, result.DaysWithData);
+        Assert.Equal(14, result.DaysNeeded);
         await AssertNothingChanged();
     }
 

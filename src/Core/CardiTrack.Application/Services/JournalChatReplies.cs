@@ -181,8 +181,11 @@ public static class JournalChatReplies
 
         return result.Outcome switch
         {
+            // One outcome for two states — paused, or no longer active — so the sentence names both
+            // rather than guessing at the one the caregiver would recognise.
             JournalRewriteOutcome.MemberUnavailable =>
-                $"I can't write to {Whose(firstName)} journal while their monitoring is paused.",
+                $"I can't write to {Whose(firstName)} journal just now — their monitoring is paused, or their "
+                + "account is no longer active.",
             JournalRewriteOutcome.PeriodNotFinished => NotFinished(request.Audience),
             JournalRewriteOutcome.NoReadings when request.Audience == DigestAudience.Daybook =>
                 $"There are no readings for {period}, so there's nothing to write a {book} from.",

@@ -54,7 +54,9 @@ public sealed record JournalChatRequest(JournalChatAction Action, DigestAudience
         "show" => JournalChatAction.Show,
         "list" => JournalChatAction.List,
         "discard" or "delete" or "remove" => JournalChatAction.Discard,
-        "rewrite" or "regenerate" or "recreate" or "redo" => JournalChatAction.Rewrite,
+        // Every synonym the resolution brief names, so a model that answers with the brief's own
+        // word for it is understood rather than sent back to "which would you like?".
+        "rewrite" or "regenerate" or "recreate" or "redo" or "refresh" => JournalChatAction.Rewrite,
         _ => null,
     };
 

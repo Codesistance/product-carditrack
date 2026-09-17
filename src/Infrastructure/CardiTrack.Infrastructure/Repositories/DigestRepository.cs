@@ -120,10 +120,7 @@ public class DigestRepository : IDigestRepository
             .ToListAsync(ct);
     }
 
-    /// <summary>
-    /// Escapes LIKE's wildcards in a caregiver's own search text, so "100%" searches for the
-    /// string "100%" rather than for "100" followed by anything.
-    /// </summary>
+    /// <inheritdoc />
     public async Task<int> DeleteBookAsync(
         Guid cardiMemberId, DateOnly localDate, DigestAudience audience, CancellationToken ct = default)
     {
@@ -144,6 +141,7 @@ public class DigestRepository : IDigestRepository
             .ExecuteDeleteAsync(ct);
     }
 
+    /// <inheritdoc />
     public async Task<(int Removed, bool Inserted)> ReplaceBookAsync(DigestEntry entry, CancellationToken ct = default)
     {
         // One transaction, so a failure between the delete and the insert — a transient database
@@ -172,6 +170,10 @@ public class DigestRepository : IDigestRepository
         }
     }
 
+    /// <summary>
+    /// Escapes LIKE's wildcards in a caregiver's own search text, so "100%" searches for the
+    /// string "100%" rather than for "100" followed by anything.
+    /// </summary>
     private static string EscapeLikePattern(string value) =>
         value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 }

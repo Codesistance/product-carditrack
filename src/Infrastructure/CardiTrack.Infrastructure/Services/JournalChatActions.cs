@@ -267,8 +267,12 @@ public sealed class JournalChatActions
                 []);
         }
 
-        var hadABook = await _unitOfWork.Digests.GetLatestByDateAsync(cardiMemberId, periodEnd, request.Audience, ct) is not null;
         var result = await _books.RewriteBookAsync(cardiMemberId, request.Audience, periodEnd, utcNow, ct);
+
+        // Read after the attempt, not before it: a rewrite can take a minute, and the reply for a
+        // refused one says what stands for the period *now* — not what stood when the yes arrived.
+        var hasABook = result.Outcome != JournalRewriteOutcome.Written
+            && await _unitOfWork.Digests.GetLatestByDateAsync(cardiMemberId, periodEnd, request.Audience, ct) is not null;
 
         var calls = result.Usage is { } usage
             ? new List<AiCallRecord> { new(AiCallStep.JournalWrite, AiProviderSlot.Private, usage) }
@@ -281,7 +285,7 @@ public sealed class JournalChatActions
         return Result(
             result.Outcome == JournalRewriteOutcome.Written
                 ? JournalChatReplies.Written(result, localToday)
-                : JournalChatReplies.NotWritten(result, request, hadABook, firstName, localToday),
+                : JournalChatReplies.NotWritten(result, request, hasABook, firstName, localToday),
             calls);
     }
 

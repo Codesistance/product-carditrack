@@ -286,10 +286,55 @@ public class MemberChatJournalRungTests
         Assert.Equal($"Rewrite|Weekbook|{sunday:yyyy-MM-dd}", _session!.PendingAction);
     }
 
+    /// <summary>
+    /// Tomorrow rather than today: the service reads its own clock, and a test that crossed UTC
+    /// midnight between the fixture's read and the service's would find "today" already finished.
+    /// A day in the future is unfinished on either side of midnight.
+    /// </summary>
+    /// <summary>
+    /// The third book: any day of a finished month resolves to the month's last day, which is the
+    /// date the stored Monthbook carries — February's 28th, not the 30th a week-style count would give.
+    /// </summary>
+    [Fact]
+    public async Task A_month_is_dated_by_its_last_day()
+    {
+        var twoMonthsBack = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-2);
+        var midMonth = twoMonthsBack.AddDays(9);
+        var monthEnd = new DateOnly(twoMonthsBack.Year, twoMonthsBack.Month, DateTime.DaysInMonth(twoMonthsBack.Year, twoMonthsBack.Month));
+        Resolves("rewrite", "month", midMonth);
+
+        var result = await Send("redo that month's monthbook");
+
+        Assert.Contains("Monthbook for", result.Reply, StringComparison.Ordinal);
+        Assert.Equal($"Rewrite|Monthbook|{monthEnd:yyyy-MM-dd}", _session!.PendingAction);
+    }
+
+    [Fact]
+    public async Task Showing_a_monthbook_reads_the_stored_month_back()
+    {
+        var twoMonthsBack = new DateOnly(Today.Year, Today.Month, 1).AddMonths(-2);
+        var monthEnd = new DateOnly(twoMonthsBack.Year, twoMonthsBack.Month, DateTime.DaysInMonth(twoMonthsBack.Year, twoMonthsBack.Month));
+        Resolves("show", "month", twoMonthsBack.AddDays(3));
+        _digests.GetLatestByDateAsync(_memberId, monthEnd, DigestAudience.Monthbook, Arg.Any<CancellationToken>())
+            .Returns(new DigestEntry
+            {
+                CardiMemberId = _memberId,
+                LocalDate = monthEnd,
+                Audience = DigestAudience.Monthbook,
+                Headline = "A month that held together",
+                Text = "Sleep and steps stayed close to Moses's usual across all four weeks.",
+            });
+
+        var result = await Send("what did that month's monthbook say");
+
+        Assert.Contains("A month that held together", result.Reply, StringComparison.Ordinal);
+        Assert.Contains("all four weeks", result.Reply, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_period_that_has_not_finished_is_refused_before_any_offer()
     {
-        Resolves("rewrite", "day", Today);
+        Resolves("rewrite", "day", Today.AddDays(1));
 
         var result = await Send("rewrite today's daybook");
 
