@@ -289,8 +289,12 @@ jobs:
       # First on purpose: checkout wipes untracked files from the workspace, so
       # anything it runs after loses its output — the downloaded IPA, and the
       # gha-creds-*.json the auth step leaves there for every later gcloud call.
-      # Only here for .github/scripts/testflight-release-notes.py.
+      # Only here for .github/scripts/testflight-release-notes.py and the bundle
+      # id it reads from the csproj — at the tag being pushed, since an older
+      # tag's project may not match today's main.
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'

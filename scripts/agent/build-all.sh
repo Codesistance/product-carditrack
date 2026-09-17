@@ -13,7 +13,8 @@
 #      with only the mobile ticks on, and wait for it. A branch dispatch runs the
 #      unsigned compile gates (Release Android, Debug iOS simulator) and ships
 #      nothing; signed builds, the archive and the tag are main-only. Needs
-#      `gh` with a token carrying the `workflow` scope (GH_TOKEN), and the branch pushed.
+#      `gh` with a GH_TOKEN that can dispatch workflows (fine-grained PAT: Actions
+#      read and write, Contents read — see AGENTS.md), and the branch pushed.
 #
 # Usage:
 #   scripts/agent/build-all.sh                # all three
@@ -68,7 +69,7 @@ ANDROID_LOCAL=0
 # script installs to, and the two usual Windows locations (the dev box).
 android_sdk_present() {
   local d
-  for d in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" \
+  for d in "${ANDROID_SDK_ROOT_DIR:-}" "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" \
            "${LOCALAPPDATA:-}/Android/Sdk" "/c/Program Files (x86)/Android/android-sdk"; do
     [ -n "$d" ] && [ -d "$d/platforms" ] && return 0
   done
@@ -98,7 +99,7 @@ if [ "$CI" -eq 1 ]; then
   BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
   REASON=""
   if ! command -v gh >/dev/null 2>&1; then REASON="gh is not installed"; fi
-  if [ -z "$REASON" ] && ! gh auth status >/dev/null 2>&1; then REASON="gh is not authenticated (set GH_TOKEN with repo + workflow scope)"; fi
+  if [ -z "$REASON" ] && ! gh auth status >/dev/null 2>&1; then REASON="gh is not authenticated (set GH_TOKEN to a fine-grained PAT with Actions: read and write, Contents: read)"; fi
   if [ -z "$REASON" ] && [ -z "$BRANCH" -o "$BRANCH" = "HEAD" ]; then REASON="detached HEAD — check out a branch"; fi
   if [ -z "$REASON" ] && ! git rev-parse --verify -q "origin/$BRANCH" >/dev/null; then REASON="branch $BRANCH is not on origin — push it first"; fi
   if [ -z "$REASON" ] && [ -n "$(git status --porcelain)" ]; then log "note: working tree has uncommitted changes; CI builds what is pushed, not what is here"; fi
@@ -138,7 +139,7 @@ if [ "$CI" -eq 1 ]; then
         fi
       fi
     else
-      record "mobile ($PLATFORM, CI)" "FAILED — dispatch rejected (does the token have the workflow scope?)"
+      record "mobile ($PLATFORM, CI)" "FAILED — dispatch rejected (does GH_TOKEN have Actions: read and write on this repository?)"
       FAILED=1
     fi
   fi

@@ -261,7 +261,8 @@ this environment, not through `CardiTrack.sln`. The runner images ship an Androi
 so it needs no `dl.google.com` access; it just runs `dotnet workload install
 maui-android` and builds. Those jobs are the authoritative check for Mobile — treat a
 local/cloud MAUI build as faster local feedback, never as a substitute for them. From
-a session with a `GH_TOKEN` that has the `workflow` scope:
+a session whose `GH_TOKEN` can dispatch workflows (the fine-grained PAT in the Secrets
+table above):
 
 ```bash
 scripts/agent/build-all.sh          # does the dispatch below, waits for the *new* run, reports per job

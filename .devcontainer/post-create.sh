@@ -12,7 +12,8 @@ log() { printf '\033[0;36m[post-create]\033[0m %s\n' "$*"; }
 # The Android SDK cannot be fetched during the image build (it needs the Mobile
 # project, and the workspace is not there yet), so an image built with
 # INSTALL_MAUI=1 carries the workload and finishes the SDK here.
-ANDROID_SDK="${ANDROID_HOME:-$HOME/Android/Sdk}"
+# Same root the toolchain script installs into and bootstrap.sh checks.
+ANDROID_SDK="${ANDROID_SDK_ROOT_DIR:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
 if dotnet workload list 2>/dev/null | grep -q '^maui-android' && [ ! -d "$ANDROID_SDK/platforms" ]; then
   log "Installing the Android SDK into $ANDROID_SDK (maui-android workload present, SDK missing)"
   dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -f net10.0-android \

@@ -776,6 +776,11 @@ jobs:
           cp "$OUT_DIR/mapping.txt" play-extras/mapping.txt
           (cd "$OBJ_DIR/app_shared_libraries" && zip -r "$GITHUB_WORKSPACE/play-extras/native-debug-symbols.zip" . -i '*.so')
 
+      # if-no-files-found: error — upload-artifact only warns by default when a
+      # glob matches nothing, and play-extras/* alone would then make a build with
+      # no AAB look available, so the archive and the tag would go ahead and the
+      # push workflow would be the first to notice. continue-on-error keeps the
+      # failure inside `outcome`, which is what `available` reads.
       - id: upload
         uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true'
@@ -783,8 +788,10 @@ jobs:
         with:
           name: mobile-android-signed
           path: |
-            **/publish/*-Signed.*
+            **/publish/*-Signed.aab
+            **/publish/*-Signed.apk
             play-extras/*
+          if-no-files-found: error
           retention-days: 1
 
   # As with the signed Android build, security-mobile is not in `needs`. This is
@@ -961,6 +968,8 @@ jobs:
           done < "$RUNNER_TEMP/symbols.txt"
           ls -l ios-symbols
 
+      # if-no-files-found: error, for the same reason as the Android upload: a
+      # publish that produced no IPA must not be reported as available.
       - id: upload
         uses: actions/upload-artifact@v7
         if: steps.gate.outputs.available == 'true'
@@ -968,6 +977,7 @@ jobs:
         with:
           name: mobile-ios-ipa
           path: '**/*.ipa'
+          if-no-files-found: error
           retention-days: 1
 
       # Its own artifact rather than a second pattern on the one above, for two
