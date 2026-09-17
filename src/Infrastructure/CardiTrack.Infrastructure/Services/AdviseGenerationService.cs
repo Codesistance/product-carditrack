@@ -220,8 +220,8 @@ public class AdviseGenerationService
 
         // One clinical survivor per topic, defensively parsed: an unrecognised topic name is
         // dropped like any other out-of-vocabulary model answer, a second entry for the same
-        // topic loses to the first, and the register guards apply per entry — an entry that names
-        // a condition, proposes a treatment, or cites no reference is withheld, not softened.
+        // topic loses to the first. Treatment proposals are withheld here; condition names and
+        // empty citations are not — those are register questions for the rewrite.
         var clinical = new Dictionary<AdviseTopic, (string Finding, string Action, string Guideline)>();
         // Topics whose entry failed transiently rather than deliberately — a blank clinical
         // field, or a rewrite that failed its copy guards: the previous suggestion beats none, so
