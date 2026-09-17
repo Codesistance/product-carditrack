@@ -122,6 +122,29 @@ public class MemberChatRoutedDispatchTests
         await _usages.Received().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.Route));
     }
 
+    [Fact]
+    public async Task RoutingAndTheMaliciousCheck_SeeTheRedactedName_NotTheStoredOne()
+    {
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "Hi there! Ask me about CardiTrackCardiMember." },
+                new AiUsage()));
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "how is Moses today?");
+
+        await _router.Received(1).RouteAsync(
+            Arg.Is<string>(q => q.Contains("CardiTrackCardiMember", StringComparison.Ordinal)
+                                && !q.Contains("Moses", StringComparison.Ordinal)),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
+        await _rewriteAi.Received().GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(
+            Arg.Is<string>(p => p.Contains("CardiTrackCardiMember", StringComparison.Ordinal)
+                                && !p.Contains("Moses", StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
     /// <summary>
     /// The steer is a Rewrite-slot reply too, and it holds the name token — so a model given a
     /// name reaches for a pronoun to go with it. This member's sex is not on file, so the canned

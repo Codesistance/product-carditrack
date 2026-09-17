@@ -257,6 +257,45 @@ public class CardiMemberCreationTransactionTests : IAsyncLifetime
         Assert.NotEqual(a, b);
     }
 
+    [Fact]
+    public async Task TwoCreatesUnderTheSameKeyAtOnce_LeaveOneMember()
+    {
+        var organizationId = await SeedOrganizationAsync();
+        var userId = await SeedUserAsync(organizationId);
+        var key = Guid.NewGuid().ToString("N");
+
+        async Task<Guid> CreateAsync()
+        {
+            using var scope = _services.CreateScope();
+            var sut = CreateSut(scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+            return (await sut.CreateCardiMemberAsync(organizationId, userId, BuildRequest(), key)).Id;
+        }
+
+        var tasks = new[] { CreateAsync(), CreateAsync() };
+        Guid first;
+        try
+        {
+            var ids = await Task.WhenAll(tasks);
+            first = ids[0];
+            Assert.Equal(ids[0], ids[1]);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or AggregateException)
+        {
+            first = await tasks.First(t => t.IsCompletedSuccessfully);
+            using var retryScope = _services.CreateScope();
+            var sut = CreateSut(retryScope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+            var retry = await sut.CreateCardiMemberAsync(organizationId, userId, BuildRequest(), key);
+            Assert.Equal(first, retry.Id);
+        }
+
+        using (var scope = _services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            Assert.Equal(1, await db.CardiMembers.CountAsync(m => m.OrganizationId == organizationId && m.IsActive));
+            Assert.Equal(1, await db.CardiMemberCreationKeys.CountAsync(k => k.UserId == userId && k.Key == key));
+        }
+    }
+
     /// <summary>
     /// The attempt landed and its member was later removed. Retrying under the same key is then a
     /// request to add that person again — which must work, rather than handing back the removed

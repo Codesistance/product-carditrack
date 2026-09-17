@@ -93,4 +93,8 @@ public class ExportConsentPolicyTests
         Assert.Contains("It stays in force until 25 Sep 2026", notice);
         Assert.Contains("You can stop this in Settings", notice);
     }
+
+    [Fact]
+    public void AMintedToken_ExpiresInFiveMinutes() =>
+        Assert.Equal(TimeSpan.FromMinutes(5), ExportConsentPolicy.Lifetime);
 }

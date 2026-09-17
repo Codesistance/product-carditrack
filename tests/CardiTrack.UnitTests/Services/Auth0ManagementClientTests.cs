@@ -95,4 +95,68 @@ public class Auth0ManagementClientTests
         Assert.Equal(3, http.Requests.Count);
         Assert.Equal("/api/v2/users-by-email", http.Requests[2].Uri!.AbsolutePath);
     }
+
+    [Fact]
+    public async Task Delete_RemovesTheUser()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, TokenJson)
+            .Enqueue(HttpStatusCode.NoContent, "");
+
+        await client.TryDeleteUserAsync("auth0|abc");
+
+        Assert.Equal(2, http.Requests.Count);
+        Assert.Equal(HttpMethod.Delete, http.Requests[1].Method);
+        Assert.Equal("/api/v2/users/auth0%7Cabc", http.Requests[1].Uri!.AbsolutePath);
+        Assert.Equal("Bearer mgmt-token", http.Requests[1].AuthHeader);
+    }
+
+    [Fact]
+    public async Task Delete_TreatsNotFoundAsAlreadyGone()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, TokenJson)
+            .Enqueue(HttpStatusCode.NotFound, """{"statusCode":404}""");
+
+        await client.TryDeleteUserAsync("auth0|abc");
+
+        Assert.Equal(2, http.Requests.Count);
+        Assert.DoesNotContain(http.Requests, r => r.Method == HttpMethod.Patch);
+    }
+
+    [Fact]
+    public async Task Delete_BlocksWhenDeleteIsRefused()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, TokenJson)
+            .Enqueue(HttpStatusCode.Forbidden, """{"statusCode":403}""")
+            .Enqueue(HttpStatusCode.OK, """{"user_id":"auth0|abc","blocked":true}""");
+
+        await client.TryDeleteUserAsync("auth0|abc");
+
+        Assert.Equal(3, http.Requests.Count);
+        Assert.Equal(HttpMethod.Patch, http.Requests[2].Method);
+        Assert.Contains("\"blocked\":true", http.Requests[2].Body);
+    }
+
+    [Fact]
+    public async Task Delete_NeverThrows()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.Unauthorized, """{"error":"access_denied"}""");
+
+        await client.TryDeleteUserAsync("auth0|abc");
+
+        Assert.Single(http.Requests);
+    }
+
+    [Fact]
+    public async Task Delete_SkipsABlankId()
+    {
+        var (client, http) = CreateSut();
+
+        await client.TryDeleteUserAsync("  ");
+
+        Assert.Empty(http.Requests);
+    }
 }

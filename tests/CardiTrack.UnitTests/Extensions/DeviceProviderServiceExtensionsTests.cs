@@ -3,6 +3,8 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.UnitTests.Extensions;
@@ -146,6 +148,28 @@ public class DeviceProviderServiceExtensionsTests
         Assert.Null(exception);
     }
 
+    [Fact]
+    public void AddGoogleHealthProvider_AcceptsAMissingRevocationUrl_OutsideProduction()
+    {
+        var settings = GoogleHealth();
+        settings.RevocationUrl = "";
+
+        var exception = Record.Exception(() => Resolve(settings, Environments.Development));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void AddGoogleHealthProvider_ThrowsInProduction_WhenRevocationUrlIsMissing()
+    {
+        var settings = GoogleHealth();
+        settings.RevocationUrl = "";
+
+        var ex = Assert.Throws<InvalidOperationException>(() => Resolve(settings, Environments.Production));
+
+        Assert.Contains("RevocationUrl must be set in Production", ex.Message);
+    }
+
     /// <summary>
     /// The keyed <c>IDeviceSyncService</c> this extension registers is built by a factory, so a
     /// dependency it cannot resolve is not a startup error — it throws on first use, deep inside
@@ -179,19 +203,38 @@ public class DeviceProviderServiceExtensionsTests
         ClientId = "test_client",
         ClientSecret = "test_secret",
         TokenUrl = "https://oauth2.googleapis.com/token",
-        ApiBaseUrl = "https://health.googleapis.com"
+        ApiBaseUrl = "https://health.googleapis.com",
+        RevocationUrl = "https://oauth2.googleapis.com/revoke"
     };
 
     /// <summary>
     /// Forces the options to materialise, which is what runs the PostConfigure validation.
     /// </summary>
-    private static List<DeviceProviderSettings> Resolve(params DeviceProviderSettings[] providers)
+    private static List<DeviceProviderSettings> Resolve(
+        DeviceProviderSettings first, params DeviceProviderSettings[] rest) =>
+        Resolve(Environments.Development, [first, .. rest]);
+
+    private static List<DeviceProviderSettings> Resolve(
+        DeviceProviderSettings provider, string environment) =>
+        Resolve(environment, [provider]);
+
+    private static List<DeviceProviderSettings> Resolve(
+        string environment, IReadOnlyList<DeviceProviderSettings> providers)
     {
         var services = new ServiceCollection();
+        services.AddSingleton<IHostEnvironment>(new StubHostEnvironment { EnvironmentName = environment });
         services.Configure<List<DeviceProviderSettings>>(list => list.AddRange(providers));
         services.AddGoogleHealthProvider();
 
         using var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<IOptions<List<DeviceProviderSettings>>>().Value;
+    }
+
+    private sealed class StubHostEnvironment : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = Environments.Development;
+        public string ApplicationName { get; set; } = "test";
+        public string ContentRootPath { get; set; } = ".";
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 }

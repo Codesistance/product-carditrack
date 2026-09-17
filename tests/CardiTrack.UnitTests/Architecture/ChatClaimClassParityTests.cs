@@ -167,4 +167,38 @@ public class ChatClaimClassParityTests
                 + "can silently span days it was not given.");
         }
     }
+
+    /// <summary>
+    /// Every implemented, routable catalogue entry has a dispatch arm. A new rung that shipped
+    /// with only a brief would route and then fall through to analysis.
+    /// </summary>
+    [Fact]
+    public void EveryRoutableWorkflow_HasADispatchArm()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            FindRepoRoot(),
+            "src", "Infrastructure", "CardiTrack.Infrastructure", "Services", "MemberChatService.cs"));
+
+        var dispatch = source[source.IndexOf("private async Task<MemberChatWorkflowResult> DispatchRoutedAsync", StringComparison.Ordinal)..];
+        var switchBody = dispatch[dispatch.IndexOf("return primary switch", StringComparison.Ordinal)..];
+        switchBody = switchBody[..switchBody.IndexOf("private static IReadOnlyList<MemberChatWorkflow> ServableClarifyBranches", StringComparison.Ordinal)];
+
+        var missing = ChatWorkflowCatalogue.Routable
+            .Select(w => w.Id)
+            .Where(id => !switchBody.Contains($"MemberChatWorkflow.{id}", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.True(missing.Count == 0,
+            $"Routable rung(s) with no dispatch arm: {string.Join(", ", missing)}. "
+            + "DispatchRoutedAsync's switch is what runs a routed id; a missing arm falls through to analysis.");
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "CardiTrack.sln")))
+            dir = Directory.GetParent(dir)?.FullName;
+        Assert.False(dir is null, "Could not find CardiTrack.sln from the test output directory.");
+        return dir!;
+    }
 }
