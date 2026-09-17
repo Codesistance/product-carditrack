@@ -4,6 +4,7 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Charts;
 using CardiTrack.Mobile.Core.Export;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
@@ -42,8 +43,14 @@ public partial class JournalEntryPage : ContentPage
     private readonly IPopupService _popups;
     private readonly IJournalExportFlow _export;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private DateOnly _date;
+
+    /// <summary>
+    /// The date's half of <see cref="MemberRoute"/>'s bargain: a load that ran before the route
+    /// had handed one over, and so is owed again once it does.
+    /// </summary>
+    private bool _loadedWithoutDate;
     private bool _returningFromPopup;
     private bool _headerPersonalised;
 
@@ -83,11 +90,19 @@ public partial class JournalEntryPage : ContentPage
         _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
+    /// <summary>
+    /// Whose book this is. Shell may set this after the page has already appeared and tried to
+    /// load, so an arrival that leaves a load owed runs it — see <see cref="MemberRoute"/>.
+    /// Before this, a late id left the page on its skeleton for good: the load below simply
+    /// returned, and nothing ever called it again.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                this.WhenRouteHasLanded(() => _ = LoadAsync(force: true));
+        }
     }
 
     /// <summary>
@@ -133,12 +148,33 @@ public partial class JournalEntryPage : ContentPage
         _headerPersonalised = true;
     }
 
+    /// <summary>
+    /// Which day (or week, or month) this entry accounts for. The load needs this as much as it
+    /// needs the member id, and Shell sets the two independently — so, like the id, a date that
+    /// lands after the page has already tried to load runs it again rather than leaving the
+    /// skeleton up for good.
+    /// </summary>
     public string Date
     {
-        set => _date = DateOnly.TryParseExact(
-            Uri.UnescapeDataString(value ?? string.Empty), "yyyy-MM-dd", out var date)
-            ? date
-            : default;
+        set
+        {
+            var parsed = DateOnly.TryParseExact(
+                Uri.UnescapeDataString(value ?? string.Empty), "yyyy-MM-dd", out var date)
+                ? date
+                : default;
+
+            // An unusable value leaves the page as it was, for the reason MemberRoute.Accept
+            // keeps a good id: emptying what the page already has takes a working screen down.
+            if (parsed == default || parsed == _date)
+                return;
+
+            var owed = _loadedWithoutDate;
+            _loadedWithoutDate = false;
+            _date = parsed;
+
+            if (owed)
+                this.WhenRouteHasLanded(() => _ = LoadAsync(force: true));
+        }
     }
 
     protected override void OnAppearing()
@@ -178,12 +214,12 @@ public partial class JournalEntryPage : ContentPage
     /// </summary>
     private async void OnExportTapped(object? sender, TappedEventArgs e)
     {
-        if (_memberId == Guid.Empty || _date == default)
+        if (_route.IsMissing || _date == default)
             return;
 
         var name = _memberFirstName ?? "CardiJournal";
         await _export.RunAsync(
-            _memberId,
+            _route.Id,
             name,
             _date,
             _date,
@@ -205,12 +241,34 @@ public partial class JournalEntryPage : ContentPage
     /// </param>
     private async Task LoadAsync(bool force = false)
     {
-        if (_memberId == Guid.Empty || _date == default)
-            return;
         if (_gate.IsLoading && !force)
             return;
+
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ErrorDetailLabel.Text = MemberRoute.MissingMessage;
+            SetState(error: true);
+            return;
+        }
+
+        // The date rides in on the same route and can land just as late. Same bargain as the
+        // id: say nothing was loaded, and the setter that brings it runs this again. Its own
+        // wording, though — the member is known by here, and it is the day that is not.
+        if (_date == default)
+        {
+            _loadedWithoutDate = true;
+            ErrorDetailLabel.Text = "We couldn't tell which day this is — go back and try again.";
+            SetState(error: true);
+            return;
+        }
+
         var ticket = _gate.Begin();
-        var (memberId, cadence, date) = (_memberId, _cadence, _date);
+        var (memberId, cadence, date) = (_route.Id, _cadence, _date);
 
         if (_last is null)
             SetState(loading: true);
@@ -322,7 +380,7 @@ public partial class JournalEntryPage : ContentPage
             return;
         }
 
-        ChatBot.MemberId = _memberId;
+        ChatBot.MemberId = _route.Id;
         ChatBot.MemberFirstName = NameFormatting.FirstName(member.Name);
         if (!_headerPersonalised)
             ApplyHeaderName(NameFormatting.FirstName(member.Name));

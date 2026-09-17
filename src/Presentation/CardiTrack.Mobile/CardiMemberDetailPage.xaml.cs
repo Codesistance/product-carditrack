@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
@@ -87,7 +88,7 @@ public partial class CardiMemberDetailPage : ContentPage
     ];
     private bool _contactsBound;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
 
     /// <summary>
     /// Set by <see cref="FocusSection"/>, consumed by the first <see cref="LoadAsync"/> after
@@ -174,9 +175,19 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         set
         {
-            _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-                ? id
-                : Guid.Empty;
+            // Shell may set this after the page has already appeared and tried to load. Until
+            // now the thirty-second tick below was what put that right, so a caregiver could sit
+            // in front of the error card for most of a minute; the arrival itself reloads.
+            var previous = _route.Id;
+            var owed = _route.Accept(value);
+
+            // A value the route could not use leaves the page alone. MemberRoute deliberately
+            // keeps the id it already had rather than taking Guid.Empty, so clearing the cards
+            // below would blank half a working screen for a member who is still on it — and
+            // with no new id, nothing would come back to fill it in again.
+            if (_route.Id == previous)
+                return;
+
             // Whatever summary is on screen belongs to whoever was on screen before. It must not
             // be the reason the next CardiMember's placeholder is skipped, and the rung drawn
             // from it must not be read as the next CardiMember's.
@@ -190,6 +201,9 @@ public partial class CardiMemberDetailPage : ContentPage
             AdviseCard.IsVisible = false;
             PendingQuestionCard.IsVisible = false;
             QuestionsRow.IsVisible = false;
+
+            if (owed)
+                this.WhenRouteHasLanded(() => _ = LoadAsync(LoadTrigger.Arrival));
         }
     }
 
@@ -277,15 +291,16 @@ public partial class CardiMemberDetailPage : ContentPage
         // refresh timer below, an empty id became a request for member 00000000-… every thirty
         // seconds for as long as the page was on screen (seen live from dev, 2026-08-20). The
         // 404 the API would return lands on the same error card — just without the round trips.
-        if (_memberId == Guid.Empty)
+        if (_route.IsMissing)
         {
-            ErrorDetailLabel.Text = "We couldn't tell whose page this is — go back and try again.";
+            _route.LoadedWithoutId();
+            ErrorDetailLabel.Text = MemberRoute.MissingMessage;
             SetState(error: true);
             return;
         }
 
         var ticket = _gate.Begin();
-        var memberId = _memberId;
+        var memberId = _route.Id;
 
         if (_member is null)
             SetState(loading: true);
@@ -411,7 +426,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // on to another CardiMember. The schedule is keyed by member, so a late pass can no
             // longer hold back somebody else's cards; what this still stops is recording a read
             // as having reached a screen that had already moved on from it.
-            var showingThisMember = _member?.Id == memberId && memberId == _memberId;
+            var showingThisMember = _member?.Id == memberId && memberId == _route.Id;
             memberOnScreen.TrySetResult(showingThisMember);
             if (showingThisMember)
             {
@@ -708,7 +723,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // one lands on top and only re-fades when the words actually moved. No overlay for
             // these follow-up loads — the page's own replacement already had one.
             var saved = _digestRendered ? null : await _api.PeekDigestAsync(memberId);
-            if (saved is not null && memberId == _memberId)
+            if (saved is not null && memberId == _route.Id)
                 ApplyDigest(saved);
 
             // The peek is why a skipped read is invisible: the page is rebuilt on every arrival,
@@ -726,7 +741,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
 
             var digest = await fetch;
-            if (memberId != _memberId)
+            if (memberId != _route.Id)
                 return;
 
             ApplyDigest(digest);
@@ -796,7 +811,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // pass the cadence has skipped, the saved one is all there is — and all there needs
             // to be, the page having been rebuilt around it since it was written.
             var saved = AdviseCard.IsVisible ? null : await _api.PeekAdviseAsync(memberId);
-            if (saved is not null && memberId == _memberId)
+            if (saved is not null && memberId == _route.Id)
                 ApplyAdvise(saved);
 
             // No fallback to the network when the peek finds nothing — see LoadDigestAsync. It
@@ -807,7 +822,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
 
             var advise = await fetch;
-            if (memberId != _memberId)
+            if (memberId != _route.Id)
                 return;
 
             ApplyAdvise(advise);
@@ -843,7 +858,7 @@ public partial class CardiMemberDetailPage : ContentPage
         AdviseGeneratedLabel.IsVisible = true;
         // Rendering it is reading it: the dashboard card's Advise glyph stops being coloured for
         // this generation whether the caregiver came through that button or scrolled here.
-        AttentionMarks.MarkSeen(AttentionMarks.Advise, _memberId, advise.GeneratedAt.UtcDateTime);
+        AttentionMarks.MarkSeen(AttentionMarks.Advise, _route.Id, advise.GeneratedAt.UtcDateTime);
         AdviseCard.IsVisible = true;
     }
 
@@ -898,7 +913,7 @@ public partial class CardiMemberDetailPage : ContentPage
             var saved = PendingQuestionCard.IsVisible
                 ? null
                 : await _api.PeekQuestionnairesAsync(memberId);
-            if (saved is not null && memberId == _memberId && !PendingQuestionCard.IsEditing)
+            if (saved is not null && memberId == _route.Id && !PendingQuestionCard.IsEditing)
                 ApplyQuestionnaires(saved);
 
             // No fallback to the network when the peek finds nothing — see LoadDigestAsync. A
@@ -908,7 +923,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
 
             var result = await fetch;
-            if (memberId != _memberId || PendingQuestionCard.IsEditing)
+            if (memberId != _route.Id || PendingQuestionCard.IsEditing)
                 return;
 
             ApplyQuestionnaires(result);
@@ -992,7 +1007,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // stops at the editing guard — see #1106. Left in place rather than removed, because
             // the reconciliation is the wanted behaviour and the open question is how to take a
             // card away from under someone's half-written answer, not whether to try.
-            _ = LoadQuestionnairesAsync(_memberId, AlreadyOnScreen, fetchLive: true);
+            _ = LoadQuestionnairesAsync(_route.Id, AlreadyOnScreen, fetchLive: true);
 
             // Nothing is recorded for it, because nothing is read. The editor is deliberately
             // still open here so the text can be retried, and the reload stops at the editing
@@ -1116,7 +1131,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 icon, ink, name, value, axis, select(metrics!), TrendWindowPicker.SelectedDays,
                 firstName)
             {
-                MemberId = _memberId,
+                MemberId = _route.Id,
             });
         }
 
@@ -1241,7 +1256,7 @@ public partial class CardiMemberDetailPage : ContentPage
         await this.GoBackAsync(AppShell.DashboardRoute);
 
     private async void OnMedicalTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync($"{MedicalInformationPage.Route}?memberId={_memberId}");
+        await Shell.Current.GoToAsync($"{MedicalInformationPage.Route}?memberId={_route.Id}");
 
     /// <summary>
     /// Which alerts CardiTrack checks for. The name rides along so the page's subtitle is right
@@ -1253,7 +1268,7 @@ public partial class CardiMemberDetailPage : ContentPage
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
         var canManage = _member?.IsPrimaryCaregiver == true;
         await Shell.Current.GoToAsync(
-            $"{AlertSettingsPage.Route}?memberId={_memberId}&name={name}&canManage={canManage}");
+            $"{AlertSettingsPage.Route}?memberId={_route.Id}&name={name}&canManage={canManage}");
     }
 
     private async void OnMetricAlarmsTapped(object? sender, TappedEventArgs e)
@@ -1261,7 +1276,7 @@ public partial class CardiMemberDetailPage : ContentPage
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
         var canManage = _member?.IsPrimaryCaregiver == true;
         await Shell.Current.GoToAsync(
-            $"{MetricAlarmsPage.Route}?memberId={_memberId}&name={name}&canManage={canManage}");
+            $"{MetricAlarmsPage.Route}?memberId={_route.Id}&name={name}&canManage={canManage}");
     }
 
     private async void OnContactCallTapped(object? sender, TappedEventArgs e)
@@ -1375,7 +1390,7 @@ public partial class CardiMemberDetailPage : ContentPage
             // stored rather than from what was typed. ApplyContacts alone rather than the whole
             // of Apply: nothing else on this screen reads these two fields, and re-running Apply
             // would move sections the caregiver is not looking at.
-            _member = await _api.UpdateCardiMemberAsync(_memberId, request);
+            _member = await _api.UpdateCardiMemberAsync(_route.Id, request);
             ApplyContacts(_member);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
@@ -1416,7 +1431,7 @@ public partial class CardiMemberDetailPage : ContentPage
     };
 
     private async void OnEditClicked(object? sender, EventArgs e) =>
-        await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={_memberId}");
+        await Shell.Current.GoToAsync($"{EditCardiMemberPage.Route}?memberId={_route.Id}");
 
     private async void OnWeatherTapped(object? sender, TappedEventArgs e)
     {
@@ -1425,12 +1440,12 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     private async void OnManageDevicesTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_memberId}");
+        await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_route.Id}");
 
     /// <summary>This member's daybook — the tab, already filtered to them, with the origin
     /// remembered so back returns here rather than to wherever the tab was last left.</summary>
     private async void OnDaybookTapped(object? sender, EventArgs e) =>
-        await Shell.Current.GoToTabAsync($"{AppShell.JournalRoute}?memberId={_memberId}");
+        await Shell.Current.GoToTabAsync($"{AppShell.JournalRoute}?memberId={_route.Id}");
 
     /// <summary>When this member's books are written. The name rides along so the page's
     /// subtitle is right from the first frame, the way the journal entry page takes it.</summary>
@@ -1438,12 +1453,12 @@ public partial class CardiMemberDetailPage : ContentPage
     {
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
         await Shell.Current.GoToAsync(
-            $"{JournalTimingPage.Route}?memberId={_memberId}&name={name}");
+            $"{JournalTimingPage.Route}?memberId={_route.Id}&name={name}");
     }
 
     /// <summary>M1-17 Health Data Export, scoped to the member whose page this is.</summary>
     private async void OnExportDataTapped(object? sender, TappedEventArgs e) =>
-        await Shell.Current.GoToAsync($"{ExportHealthDataPage.Route}?memberId={_memberId}");
+        await Shell.Current.GoToAsync($"{ExportHealthDataPage.Route}?memberId={_route.Id}");
 
     private async void OnQuestionsTapped(object? sender, EventArgs e)
     {
@@ -1455,16 +1470,16 @@ public partial class CardiMemberDetailPage : ContentPage
 
         var name = Uri.EscapeDataString(NameFormatting.FirstName(_member?.Name) ?? string.Empty);
         await Shell.Current.GoToAsync(
-            $"{QuestionnairesPage.Route}?memberId={_memberId}&name={name}");
+            $"{QuestionnairesPage.Route}?memberId={_route.Id}&name={name}");
     }
 
     private void OnChatTapped(object? sender, EventArgs e) =>
-        MemberChatLauncher.ShowOverlay(RootGrid, _memberId, NameFormatting.FirstName(_member?.Name));
+        MemberChatLauncher.ShowOverlay(RootGrid, _route.Id, NameFormatting.FirstName(_member?.Name));
 
     private async void OnViewAlertsClicked(object? sender, EventArgs e) =>
         // Naming the member is what lets back come back to *this* page rather than to whichever
         // member the dashboard would resolve on its own.
-        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute, $"memberId={_memberId}");
+        await Shell.Current.GoToTabAsync(AppShell.AlertsRoute, $"memberId={_route.Id}");
 
     /// <summary>
     /// The row does one of two things depending on where monitoring stands: while it is live the
@@ -1494,7 +1509,7 @@ public partial class CardiMemberDetailPage : ContentPage
         try
         {
             _member = null;
-            await _api.ResumeMonitoringAsync(_memberId);
+            await _api.ResumeMonitoringAsync(_route.Id);
             await LoadAsync(LoadTrigger.Requested);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
@@ -1568,7 +1583,7 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
 
             _member = null;
-            await _api.PauseMonitoringAsync(_memberId, new PauseMonitoringRequest { DurationHours = hours });
+            await _api.PauseMonitoringAsync(_route.Id, new PauseMonitoringRequest { DurationHours = hours });
             await LoadAsync(LoadTrigger.Requested);
         }
         catch (ApiException ex) when (!ex.IsSessionExpired)
@@ -1670,7 +1685,7 @@ public partial class CardiMemberDetailPage : ContentPage
         _isBusy = true;
         try
         {
-            await _api.RemoveCardiMemberAsync(_memberId);
+            await _api.RemoveCardiMemberAsync(_route.Id);
             // The dashboard resolves the primary member from scratch, so clearing the cached
             // id keeps it from asking for someone who no longer exists.
             Preferences.Default.Remove(DashboardPage.PrimaryMemberIdKey);

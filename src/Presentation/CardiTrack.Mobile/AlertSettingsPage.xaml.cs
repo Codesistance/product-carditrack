@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
@@ -30,7 +31,7 @@ public partial class AlertSettingsPage : ContentPage
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private bool _canManage;
     private AlertPreferencesResponse? _prefs;
 
@@ -51,11 +52,18 @@ public partial class AlertSettingsPage : ContentPage
         _feedback = new RefreshFeedback(SavedBanner, Updating);
     }
 
+    /// <summary>
+    /// Whose alert rules these are. Shell may set this after the page has already appeared and
+    /// tried to load, so an arrival that leaves a load owed runs it — see
+    /// <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                this.WhenRouteHasLanded(() => _ = LoadAsync(force: true));
+        }
     }
 
     public string MemberName
@@ -89,12 +97,24 @@ public partial class AlertSettingsPage : ContentPage
         await LoadAsync();
     }
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(bool force = false)
     {
-        if (_gate.IsLoading)
+        if (_gate.IsLoading && !force)
             return;
+
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ShowError(MemberRoute.MissingMessage);
+            return;
+        }
+
         var ticket = _gate.Begin();
-        var memberId = _memberId;
+        var memberId = _route.Id;
 
         try
         {
@@ -119,11 +139,7 @@ public partial class AlertSettingsPage : ContentPage
                 // see and tap, over a null field every handler early-returns on, is worse
                 // than an honest error panel on its own.
                 _prefs = null;
-                SettingsPanel.IsVisible = false;
-                ErrorDetailLabel.Text = outcome.Error!.Message;
-                LoadingSpinner.IsVisible = false;
-                LoadingSpinner.IsRunning = false;
-                ErrorPanel.IsVisible = true;
+                ShowError(outcome.Error!.Message);
             }
         }
         finally
@@ -131,6 +147,22 @@ public partial class AlertSettingsPage : ContentPage
             _gate.Release(ticket);
         }
     }
+
+    /// <summary>
+    /// The error panel in place of the rules, with the spinner stopped. Paired with Try again in
+    /// the markup: this page has no periodic tick, so a failed load that a caregiver cannot
+    /// re-run is the screen for as long as they stay on it.
+    /// </summary>
+    private void ShowError(string detail)
+    {
+        SettingsPanel.IsVisible = false;
+        ErrorDetailLabel.Text = detail;
+        LoadingSpinner.IsVisible = false;
+        LoadingSpinner.IsRunning = false;
+        ErrorPanel.IsVisible = true;
+    }
+
+    private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(force: true);
 
     private void Render(AlertPreferencesResponse prefs)
     {
@@ -309,7 +341,7 @@ public partial class AlertSettingsPage : ContentPage
             toggle.IsEnabled = false;
             try
             {
-                await _api.SetAlertRuleEnabledAsync(_memberId, rule.Id, args.Value);
+                await _api.SetAlertRuleEnabledAsync(_route.Id, rule.Id, args.Value);
             }
             catch (ApiException ex) when (!ex.IsSessionExpired)
             {
@@ -335,5 +367,5 @@ public partial class AlertSettingsPage : ContentPage
 
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(
-            $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+            $"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 }

@@ -82,6 +82,14 @@
                             <Label Text="Couldn't load these settings"
                                    Style="{StaticResource Body1SemiBoldDark}"/>
                             <Label x:Name="ErrorDetailLabel" Style="{StaticResource Body2}"/>
+                            <!-- This page has no periodic tick and nothing to pull on, so
+                                 without this a first load that failed was the screen until the
+                                 caregiver backed out of it. -->
+                            <Button Text="Try again"
+                                    Style="{StaticResource SecondaryOutlineButton}"
+                                    HorizontalOptions="Start"
+                                    Margin="0,4,0,0"
+                                    Clicked="OnRetryClicked"/>
                         </VerticalStackLayout>
                     </Border>
                 </VerticalStackLayout>

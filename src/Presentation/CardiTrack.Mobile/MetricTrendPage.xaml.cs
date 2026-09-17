@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Services;
 
@@ -33,8 +34,14 @@ public partial class MetricTrendPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private string? _metricName;
+
+    /// <summary>
+    /// The metric name's half of <see cref="MemberRoute"/>'s bargain: a render that ran before
+    /// the route had named a metric, and so is owed again once it does.
+    /// </summary>
+    private bool _renderedWithoutMetric;
     private int _days = TrendWindowSelector.DefaultDays;
     private MetricTrend? _trend;
     private CardiMemberDetailResponse? _member;
@@ -54,19 +61,41 @@ public partial class MetricTrendPage : ContentPage
         Card.ShowExpand = false;
     }
 
+    /// <summary>
+    /// Whose trend this is. Shell may set this after the page has already appeared and tried
+    /// to load, so an arrival that leaves a load owed runs it — see <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                this.WhenRouteHasLanded(() => _ = LoadAsync());
+        }
     }
 
+    /// <summary>
+    /// Which trend to draw. Rides the same route as the member id and can land just as late —
+    /// and a render that ran without it said "This trend isn't available for them", which is a
+    /// statement about the member rather than about the route. So, like the id, a name that
+    /// arrives after a render went without one runs the load again.
+    /// </summary>
     public string MetricName
     {
         set
         {
-            _metricName = Uri.UnescapeDataString(value ?? string.Empty);
-            TitleLabel.Text = _metricName;
+            var name = Uri.UnescapeDataString(value ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(name) || name == _metricName)
+                return;
+
+            _metricName = name;
+            TitleLabel.Text = name;
+
+            if (_renderedWithoutMetric)
+            {
+                _renderedWithoutMetric = false;
+                this.WhenRouteHasLanded(() => _ = LoadAsync());
+            }
         }
     }
 
@@ -94,7 +123,7 @@ public partial class MetricTrendPage : ContentPage
     }
 
     private async void OnBackTapped(object? sender, EventArgs e) =>
-        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync();
 
@@ -114,8 +143,21 @@ public partial class MetricTrendPage : ContentPage
     {
         if (_gate.IsLoading)
             return;
+
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ErrorDetailLabel.Text = MemberRoute.MissingMessage;
+            SetState(error: true);
+            return;
+        }
+
         var ticket = _gate.Begin();
-        var memberId = _memberId;
+        var memberId = _route.Id;
 
         if (_member is null)
             SetState(loading: true);
@@ -168,14 +210,19 @@ public partial class MetricTrendPage : ContentPage
         if (TrendMetricCatalogue.ByName(_metricName) is not { } entry
             || member.Metrics is not { } metrics)
         {
-            // A route naming a metric this build does not carry, or a member with nothing recorded.
-            ErrorDetailLabel.Text = "This trend isn't available for them.";
+            // A route naming a metric this build does not carry, or a member with nothing
+            // recorded — or the route simply not having named one yet, which is not the same
+            // thing and is the setter's to put right.
+            _renderedWithoutMetric = string.IsNullOrWhiteSpace(_metricName);
+            ErrorDetailLabel.Text = _renderedWithoutMetric
+                ? "We couldn't tell which trend this is — go back and try again."
+                : "This trend isn't available for them.";
             SetState(error: true);
             return;
         }
 
         var firstName = NameFormatting.FirstName(member.Name);
-        ChatBot.MemberId = _memberId;
+        ChatBot.MemberId = _route.Id;
         ChatBot.MemberFirstName = firstName;
         var reading = entry.Select(metrics);
 
