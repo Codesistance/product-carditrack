@@ -4,7 +4,7 @@ namespace CardiTrack.Domain.Enums;
 
 /// <summary>
 /// How long a caregiver's export confirmation may authorize later exports
-/// without asking again. The generate token itself stays two minutes; this
+/// without asking again. The generate token itself stays five minutes; this
 /// is the standing grant that later exports may reuse.
 /// </summary>
 public enum ExportConsentRememberFor

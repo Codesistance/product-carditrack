@@ -31,7 +31,7 @@ public class RecordExportConsentRequest
 
     /// <summary>
     /// How long this confirmation may authorize later exports. Omitted or
-    /// <see cref="ExportConsentRememberFor.ThisExport"/> keeps today's two-minute token.
+    /// <see cref="ExportConsentRememberFor.ThisExport"/> keeps today's five-minute token.
     /// </summary>
     public ExportConsentRememberFor RememberFor { get; init; } = ExportConsentRememberFor.ThisExport;
 }
