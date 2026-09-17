@@ -110,6 +110,51 @@
                                    Style="{StaticResource Body2}"
                                    LineBreakMode="WordWrap"/>
 
+                            <!-- A standing fact the family volunteered, not an answer to a
+                                 question the service asked. Same chrome as QuestionCard (no
+                                 severity rail — this is also an invitation). Always on this
+                                 page so a caregiver can tell us something before the digest
+                                 has asked. -->
+                            <Border BackgroundColor="{StaticResource White}"
+                                    StrokeThickness="0"
+                                    Padding="16,14,14,16">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="20"/>
+                                </Border.StrokeShape>
+                                <Border.Shadow>
+                                    <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.12" Radius="12" Offset="0,3"/>
+                                </Border.Shadow>
+                                <VerticalStackLayout Spacing="8">
+                                    <Label Text="Something we should know"
+                                           Style="{StaticResource DashboardSectionTitle}"
+                                           LineBreakMode="WordWrap"/>
+                                    <Label x:Name="OfferHintLabel"
+                                           Style="{StaticResource Body2}"
+                                           FontSize="12"
+                                           LineBreakMode="WordWrap"/>
+                                    <Border Style="{StaticResource AuthEntryBorder}"
+                                            HeightRequest="100"
+                                            Padding="16,8">
+                                        <Editor x:Name="OfferEditor"
+                                                FontFamily="Quicksand"
+                                                FontSize="14"
+                                                PlaceholderColor="{StaticResource BodyText}"
+                                                TextColor="{StaticResource HeadingText}"
+                                                BackgroundColor="Transparent"
+                                                Placeholder="She moved to the downstairs bedroom last week."
+                                                AutoSize="Disabled"
+                                                MaxLength="2000"
+                                                TextChanged="OnOfferChanged"/>
+                                    </Border>
+                                    <Button x:Name="OfferSaveButton"
+                                            Text="Save"
+                                            Style="{StaticResource PrimaryGradientButton}"
+                                            HeightRequest="40"
+                                            IsEnabled="False"
+                                            Clicked="OnOfferSaveClicked"/>
+                                </VerticalStackLayout>
+                            </Border>
+
                             <!-- The one still waiting, if there is one: a caregiver who scrolled past
                                  it on the member's page can still answer it here. -->
                             <controls:QuestionCard x:Name="PendingCard" IsVisible="False"/>

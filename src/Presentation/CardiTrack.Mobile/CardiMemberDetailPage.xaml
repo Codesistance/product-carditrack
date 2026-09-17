@@ -492,12 +492,8 @@
                                                    Spacing="6"/>
                         </VerticalStackLayout>
 
-                        <!-- Questions and answers, once any have been asked. A row rather than a
-                             section: the answers are worth keeping and worth editing, but they are
-                             not what a caregiver opens this page to read. It leads the two rows
-                             under it because it is the only one that goes somewhere: those two
-                             open in place, so leaving this one below them would have put a
-                             navigation row wherever the open one happened to end. -->
+                        <!-- Questions and answers. Always a way in: a caregiver can volunteer a
+                             standing fact here before the service has asked anything. -->
                         <Border x:Name="QuestionsRow"
                                 Style="{StaticResource ElevatedCard}"
                                 Padding="14,4"

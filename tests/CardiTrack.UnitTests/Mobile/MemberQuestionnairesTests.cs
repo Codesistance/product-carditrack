@@ -45,4 +45,15 @@ public class MemberQuestionnairesTests
     {
         Assert.Equal(expected, MemberQuestionnaires.Softener(scope, isAnswered));
     }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("digest", false)]
+    [InlineData("family", true)]
+    [InlineData("Family", true)]
+    public void IsFamilyOffered_IsTrueOnlyForTheFamilyWireValue(string? origin, bool expected)
+    {
+        Assert.Equal(expected, MemberQuestionnaires.IsFamilyOffered(origin));
+    }
 }

@@ -269,18 +269,24 @@ public partial class AddCardiMemberPage : ContentPage
 
     private void OnFormChanged(object? sender, EventArgs e)
     {
-        // Name and sex. Relationship is optional — an unpicked one is sent as "Other", so gating
-        // Continue on it would make an optional field compulsory in everything but the label.
+        // Name, sex, and a date of birth they actually chose. Relationship is optional — an
+        // unpicked one is sent as "Other", so gating Continue on it would make an optional field
+        // compulsory in everything but the label.
         //
         // Sex is gated, unlike every other field here, because an unanswered picker has nowhere
         // harmless to fall back to: it would store PreferNotToSay, which is exactly the state
         // this field exists to stop the whole population sitting in. A default that quietly
         // reproduces the bug is worse than one more tap.
+        //
+        // Date of birth is gated the same way: the field used to stand in today's date for one
+        // that was never chosen, which created a member born this morning. An unset DateField
+        // is null, not today, and Continue stays off until they pick a day.
         var name = NameEntry.Text?.Trim();
         ContinueBtn.IsEnabled =
             !string.IsNullOrWhiteSpace(name)
             && name.Length >= 2
-            && SexPicker.SelectedIndex >= 0;
+            && SexPicker.SelectedIndex >= 0
+            && DobPicker.Date is not null;
     }
 
     private async void OnContinueClicked(object? sender, EventArgs e)

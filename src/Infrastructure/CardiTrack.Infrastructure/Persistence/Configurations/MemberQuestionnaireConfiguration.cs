@@ -40,6 +40,11 @@ public class MemberQuestionnaireConfiguration : IEntityTypeConfiguration<MemberQ
             .HasMaxLength(20)
             .IsRequired();
 
+        builder.Property(q => q.Origin)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
         builder.Property(q => q.CreatedDate)
             .HasDefaultValueSql("NOW()");
 

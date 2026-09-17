@@ -72,6 +72,33 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
             .ToListAsync(ct);
     }
 
+    public async Task<int> ExpireLapsedPendingAsync(
+        DateTime utcNow, int limit, CancellationToken ct = default)
+    {
+        // Two statements on purpose. OrderBy/Take+ExecuteUpdate can compile as "update the ids
+        // the subquery saw as Pending", so a concurrent answer between those two moments would
+        // still be overwritten. Selecting the ids first, then updating only rows that are still
+        // Pending, is the same discipline as TryClaimAlertAsync. ExecuteUpdate also skips
+        // SaveChanges' timestamp hook, so UpdatedDate is set here.
+        var ids = await _dbSet
+            .AsNoTracking()
+            .Where(q => q.Status == QuestionnaireStatus.Pending
+                        && q.AskableUntilUtc != null
+                        && q.AskableUntilUtc <= utcNow)
+            .OrderBy(q => q.AskableUntilUtc)
+            .Take(limit)
+            .Select(q => q.Id)
+            .ToListAsync(ct);
+        if (ids.Count == 0)
+            return 0;
+
+        return await _dbSet
+            .Where(q => ids.Contains(q.Id) && q.Status == QuestionnaireStatus.Pending)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(q => q.Status, QuestionnaireStatus.Expired)
+                .SetProperty(q => q.UpdatedDate, utcNow), ct);
+    }
+
     public async Task<IReadOnlyList<MemberQuestionnaire>> GetDueForAlertAsync(
         DateTime utcNow, DateTime reminderCutoffUtc, int maxPushes, int limit, CancellationToken ct = default)
     {
@@ -128,9 +155,12 @@ public class MemberQuestionnaireRepository : Repository<MemberQuestionnaire>, IM
     {
         // Max over a nullable projection rather than ordering and taking one: no row yields null,
         // which is the "never asked" answer the caller wants, without a second existence check.
+        // Only questions the service asked. A standing fact the family volunteered is not an
+        // ask — counting it here would start the seven-day quiet as if we had just nagged them.
         return await _dbSet
             .AsNoTracking()
-            .Where(q => q.CardiMemberId == cardiMemberId)
+            .Where(q => q.CardiMemberId == cardiMemberId
+                        && q.Origin == QuestionnaireOrigin.Digest)
             .MaxAsync(q => (DateTime?)q.GeneratedAtUtc, ct);
     }
 }

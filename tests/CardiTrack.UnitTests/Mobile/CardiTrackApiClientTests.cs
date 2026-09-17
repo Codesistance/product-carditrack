@@ -1127,6 +1127,28 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
+    public async Task OfferStandingFact_EvictsUsingTheMemberIdFromTheResponse()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        foreach (var key in new[]
+                 {
+                     $"api/v1/cardimembers/{memberId}/questionnaires?page=1&pageSize=20",
+                     $"api/v1/cardimembers/{memberId}/dashboard",
+                     $"api/v1/cardimembers/{memberId}",
+                 })
+            cache.Items[key] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.Created, """
+            {"success":true,"message":"ok","data":{"id":"%Q%","cardiMemberId":"%M%"},"timestamp":"2026-09-16T00:00:00Z"}
+            """.Replace("%Q%", Guid.NewGuid().ToString()).Replace("%M%", memberId.ToString()));
+
+        await client.OfferStandingFactAsync(memberId, new OfferStandingFactRequest { FactText = "a standing fact" });
+
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
     public async Task DismissNotification_EvictsTheOpenInboxSummaryAndMutes()
     {
         var cache = new MemoryOfflineCache();
