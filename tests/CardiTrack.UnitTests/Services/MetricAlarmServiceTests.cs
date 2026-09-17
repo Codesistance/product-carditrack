@@ -260,7 +260,7 @@ public class MetricAlarmServiceTests
 
         // Someone else moved it to 125 after the proposal was written.
         own.ThresholdValue = 125m;
-        await Assert.ThrowsAsync<CardiTrack.Application.Exceptions.AlarmChangedException>(() =>
+        await Assert.ThrowsAsync<CardiTrack.Application.Exceptions.AlertSettingsChangedException>(() =>
             Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, request, asProposed));
         Assert.Equal(125m, own.ThresholdValue);
 
@@ -271,7 +271,7 @@ public class MetricAlarmServiceTests
 
         // And a delete against a stale picture is refused the same way.
         own.ThresholdValue = 125m;
-        await Assert.ThrowsAsync<CardiTrack.Application.Exceptions.AlarmChangedException>(() =>
+        await Assert.ThrowsAsync<CardiTrack.Application.Exceptions.AlertSettingsChangedException>(() =>
             Service().DeleteMemberAlarmAsync(_userId, _memberId, own.Id, asProposed));
         Assert.True(own.IsActive);
     }

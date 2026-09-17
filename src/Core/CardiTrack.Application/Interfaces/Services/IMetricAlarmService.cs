@@ -43,7 +43,7 @@ public interface IMetricAlarmService
     /// <param name="expectedFingerprint">
     /// <see cref="Services.MetricAlarmFingerprint"/> of the effective row the request was written
     /// against, or null to write unconditionally. When given, the save is refused with
-    /// <see cref="Exceptions.AlarmChangedException"/> if the row no longer matches — the check
+    /// <see cref="Exceptions.AlertSettingsChangedException"/> if the row no longer matches — the check
     /// and the write share one read, so a change landing between a caller's earlier look and
     /// this call is caught rather than overwritten.
     /// </param>

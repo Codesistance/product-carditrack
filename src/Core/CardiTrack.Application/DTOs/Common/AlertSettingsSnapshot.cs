@@ -21,6 +21,11 @@ public sealed record AlertSettingsSnapshot
     /// <summary>The member's effective alarms — inherited, overridden and their own.</summary>
     public required IReadOnlyList<AlarmSnapshotEntry> Alarms { get; init; }
 
+    /// <summary>The disabled-rule list as read, in its normalised JSON form
+    /// (<see cref="Services.AlertRuleOverrides.ToJson"/>) — what a rule proposal is written
+    /// against, and what the preference service compares before writing.</summary>
+    public string RulesFingerprint { get; init; } = "[]";
+
     /// <summary>The label the prompt gives the alarm at <paramref name="index"/>.</summary>
     public static string LabelFor(int index) => $"alarm-{index + 1}";
 

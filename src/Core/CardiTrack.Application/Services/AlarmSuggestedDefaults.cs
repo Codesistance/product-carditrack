@@ -53,7 +53,10 @@ public static class AlarmSuggestedDefaults
             // different alarm from the one they asked for.
             PeriodMinutes = plan.PeriodMinutes ?? DefaultPeriod(definition),
             EvaluationPeriods = plan.EvaluationPeriods ?? DefaultEvaluationPeriods(definition),
-            DatapointsToAlarm = plan.DatapointsToAlarm ?? DefaultDatapoints(definition),
+            // Never more than the readings looked at: a caregiver who asked for one reading and
+            // said nothing about the count meant one of one, not the suggested two of one.
+            DatapointsToAlarm = plan.DatapointsToAlarm
+                ?? Math.Min(DefaultDatapoints(definition), plan.EvaluationPeriods ?? DefaultEvaluationPeriods(definition)),
             ContextGate = plan.ContextGate ?? DefaultGate(definition),
             Severity = plan.Severity ?? AlertSeverity.Yellow,
             MissingDataTreatment = AlarmMissingDataTreatment.Missing,
@@ -104,7 +107,8 @@ public static class AlarmSuggestedDefaults
             ThresholdValue = plan.ThresholdValue ?? row.ThresholdValue,
             PeriodMinutes = plan.PeriodMinutes ?? row.PeriodMinutes,
             EvaluationPeriods = plan.EvaluationPeriods ?? row.EvaluationPeriods,
-            DatapointsToAlarm = plan.DatapointsToAlarm ?? row.DatapointsToAlarm,
+            DatapointsToAlarm = plan.DatapointsToAlarm
+                ?? Math.Min(row.DatapointsToAlarm, plan.EvaluationPeriods ?? row.EvaluationPeriods),
             MissingDataTreatment = row.MissingDataTreatment,
             Severity = plan.Severity ?? row.Severity,
             ContextGate = plan.ContextGate ?? row.ContextGate,

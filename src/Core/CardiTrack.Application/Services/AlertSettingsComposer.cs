@@ -162,6 +162,7 @@ public static class AlertSettingsComposer
             Kind = PendingAlertChangeKind.SetRule,
             RuleId = rule.Id,
             Enabled = enabled,
+            RulesFingerprint = snapshot.RulesFingerprint,
             Summary = summary,
             Done = $"switched {OnOff(enabled)} “{rule.Title}” for {subject}",
             ProposedAtUtc = utcNow,
@@ -210,6 +211,17 @@ public static class AlertSettingsComposer
 
         if (Refusal(request) is { } refusal)
             return new AlertSettingsReply(refusal);
+
+        // "Change that alarm" with nothing named changes nothing — and confirmed against an
+        // inherited default it would write a member override that says what the default says,
+        // detaching this member from the account's future edits for no reason.
+        if (SaysTheSameAs(entry.Row, request))
+        {
+            return new AlertSettingsReply(
+                $"What would you like changed about “{entry.Row.Name}”? At the moment it's: "
+                + $"{LowerFirst(TrimStop(entry.Row.Condition))}, shown as {Severity(entry.Row.Severity)} "
+                + "Tell me the level, the window, or the name you'd like instead.");
+        }
 
         var renamed = !string.Equals(request.Name, entry.Row.Name, StringComparison.Ordinal);
         var summary = renamed && MetricAlarmNarrative.Condition(request) == entry.Row.Condition
@@ -412,6 +424,22 @@ public static class AlertSettingsComposer
         string.IsNullOrWhiteSpace(firstName) ? "their" : $"{firstName}'s";
 
     private static string OnOff(bool enabled) => enabled ? "on" : "off";
+
+    /// <summary>Whether the request would write exactly what the row already says.</summary>
+    private static bool SaysTheSameAs(DTOs.Responses.MetricAlarmResponse row, SaveMetricAlarmRequest request) =>
+        string.Equals(row.Name, request.Name.Trim(), StringComparison.Ordinal)
+        && row.Metric == request.Metric
+        && row.Statistic == request.Statistic
+        && row.Operator == request.Operator
+        && row.ThresholdKind == request.ThresholdKind
+        && row.ThresholdValue == request.ThresholdValue
+        && row.PeriodMinutes == request.PeriodMinutes
+        && row.EvaluationPeriods == request.EvaluationPeriods
+        && row.DatapointsToAlarm == request.DatapointsToAlarm
+        && row.MissingDataTreatment == request.MissingDataTreatment
+        && row.Severity == request.Severity
+        && row.ContextGate == request.ContextGate
+        && row.IsEnabled == request.IsEnabled;
 
     private static string ProvenanceNote(AlarmProvenance? provenance, string subject) => provenance switch
     {

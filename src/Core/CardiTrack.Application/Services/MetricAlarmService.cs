@@ -283,7 +283,7 @@ public class MetricAlarmService : IMetricAlarmService
         var effective = MetricAlarmResolution.Resolve(rows, cardiMemberId)
             .FirstOrDefault(e => e.Alarm.Id == alarmId);
         if (effective is null || MetricAlarmFingerprint.Of(Map(effective.Alarm, effective.Provenance, state: null)) != expectedFingerprint)
-            throw new AlarmChangedException();
+            throw new AlertSettingsChangedException();
     }
 
     private static void Validate(SaveMetricAlarmRequest request)

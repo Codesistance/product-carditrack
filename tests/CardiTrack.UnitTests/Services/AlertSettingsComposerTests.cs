@@ -67,7 +67,44 @@ public class AlertSettingsComposerTests
         Assert.Equal(PendingAlertChangeKind.SetRule, reply.Pending.Kind);
         Assert.Equal(AlertRuleCatalogue.ActivityDecline, reply.Pending.RuleId);
         Assert.False(reply.Pending.Enabled);
+        Assert.Equal("[]", reply.Pending.RulesFingerprint);
         Assert.Equal(Now, reply.Pending.ProposedAtUtc);
+    }
+
+    /// <summary>"Change that alarm" naming nothing changes nothing, and is asked about rather
+    /// than proposed — confirmed against an inherited default it would have written a needless
+    /// override.</summary>
+    [Fact]
+    public void AnEditThatChangesNothing_AsksWhatToChange()
+    {
+        var row = HeartRateAlarm(provenance: AlarmProvenance.Inherited);
+        var plan = new AlertChangePlan { Action = AlertChangeAction.EditAlarm, AlarmLabel = "alarm-1" };
+
+        var reply = AlertSettingsComposer.Compose(plan, Snapshot(null, row), canManage: true, "Moses", Now);
+
+        Assert.StartsWith("What would you like changed about “High heart rate”?", reply.Reply, StringComparison.Ordinal);
+        Assert.Null(reply.Pending);
+    }
+
+    /// <summary>A one-reading alarm asked for without a count is one of one, not the suggested
+    /// two of one the builder would refuse.</summary>
+    [Fact]
+    public void AOneReadingAlarm_GetsALegalCount()
+    {
+        var plan = new AlertChangePlan
+        {
+            Action = AlertChangeAction.CreateAlarm,
+            Metric = AlarmMetric.SpO2,
+            Operator = AlarmOperator.LessThan,
+            ThresholdValue = 90,
+            EvaluationPeriods = 1,
+        };
+
+        var reply = AlertSettingsComposer.Compose(plan, Snapshot(), canManage: true, "Moses", Now);
+
+        Assert.NotNull(reply.Pending);
+        Assert.Equal(1, reply.Pending.Alarm!.EvaluationPeriods);
+        Assert.Equal(1, reply.Pending.Alarm.DatapointsToAlarm);
     }
 
     [Fact]
@@ -361,6 +398,7 @@ public class AlertSettingsComposerTests
             Kind = PendingAlertChangeKind.SetRule,
             RuleId = AlertRuleCatalogue.ActivityDecline,
             Enabled = false,
+            RulesFingerprint = "[]",
             Summary = "Switch off “Activity decline” for Moses — yesterday's steps were well below their usual",
             Done = "switched off “Activity decline” for Moses",
             ProposedAtUtc = Now,
@@ -523,6 +561,7 @@ public class AlertSettingsComposerTests
         {
             Kind = PendingAlertChangeKind.SetRule,
             RuleId = AlertRuleCatalogue.ActivityDecline,
+            RulesFingerprint = "[]",
             Summary = "x",
             ProposedAtUtc = Now,
         };

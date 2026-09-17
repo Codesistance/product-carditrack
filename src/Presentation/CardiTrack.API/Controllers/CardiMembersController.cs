@@ -232,7 +232,7 @@ public class CardiMembersController : BaseApiController
         try
         {
             var updated = await _alertPreferences.SetRuleEnabledAsync(
-                UserContext.UserId, cardiMemberId, ruleId, enabled, ct);
+                UserContext.UserId, cardiMemberId, ruleId, enabled, expectedDisabledRules: null, ct);
             return Success(updated, updated.Enabled ? "Alert rule is on." : "Alert rule is off.");
         }
         catch (KeyNotFoundException ex)

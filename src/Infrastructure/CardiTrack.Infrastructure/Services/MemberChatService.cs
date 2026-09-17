@@ -1094,6 +1094,7 @@ public class MemberChatService : IMemberChatService
         return new AlertSettingsSnapshot
         {
             Rules = rules,
+            RulesFingerprint = overrides.ToJson(),
             // The name is the caregiver's own free text and may well be "Dad's heart alarm" —
             // redacted like every other text that reaches the Rewrite slot. The row keeps the
             // real name for the reply, which no model writes.
@@ -1177,7 +1178,7 @@ public class MemberChatService : IMemberChatService
             {
                 throw;
             }
-            catch (Exception ex) when (ex is AlarmChangedException or Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+            catch (Exception ex) when (ex is AlertSettingsChangedException or Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
             {
                 // The alarm is not as the proposal saw it — retuned or removed by someone else
                 // inside the window. Either the service compared and refused before writing, or
@@ -1228,7 +1229,8 @@ public class MemberChatService : IMemberChatService
         pending.Kind switch
         {
             PendingAlertChangeKind.SetRule =>
-                _alertPreferences.SetRuleEnabledAsync(userId, cardiMemberId, pending.RuleId!, pending.Enabled, ct),
+                _alertPreferences.SetRuleEnabledAsync(
+                    userId, cardiMemberId, pending.RuleId!, pending.Enabled, pending.RulesFingerprint, ct),
             PendingAlertChangeKind.CreateAlarm =>
                 _metricAlarms.CreateMemberAlarmAsync(userId, cardiMemberId, pending.Alarm!, ct),
             PendingAlertChangeKind.SaveAlarm =>

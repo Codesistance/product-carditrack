@@ -99,6 +99,7 @@ public class MemberChatAlertSettingsRungTests
             Kind = PendingAlertChangeKind.SetRule,
             RuleId = AlertRuleCatalogue.ActivityDecline,
             Enabled = false,
+            RulesFingerprint = "[]",
             Summary = "Switch off “Activity decline” for Moses — yesterday's steps were well below their usual",
             Done = "switched off “Activity decline” for Moses",
             ProposedAtUtc = DateTime.UtcNow - age,
@@ -155,7 +156,7 @@ public class MemberChatAlertSettingsRungTests
         Assert.False(reply.ChangedAlertSettings);
 
         // Proposed, not applied.
-        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default);
+        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default, default);
 
         // The proposal rides on the assistant turn, encrypted, exactly as shown.
         var assistant = Assert.Single(_persisted, t => t.Role == ChatTurnRole.Assistant);
@@ -210,7 +211,7 @@ public class MemberChatAlertSettingsRungTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "Yes please");
 
         await _alertPreferences.Received(1).SetRuleEnabledAsync(
-            _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, Arg.Any<CancellationToken>());
+                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, "[]", Arg.Any<CancellationToken>());
         Assert.StartsWith("Done — I've switched off “Activity decline” for Moses.", reply.Reply, StringComparison.Ordinal);
         Assert.True(reply.ChangedAlertSettings);
 
@@ -351,7 +352,7 @@ public class MemberChatAlertSettingsRungTests
         _metricAlarms.SaveMemberOverrideAsync(
                 _userId, _memberId, alarmId, Arg.Any<SaveMetricAlarmRequest>(), MetricAlarmFingerprint.Of(row),
                 Arg.Any<CancellationToken>())
-            .Returns<Task<MetricAlarmResponse>>(_ => throw new AlarmChangedException());
+            .Returns<Task<MetricAlarmResponse>>(_ => throw new AlertSettingsChangedException());
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
 
@@ -394,7 +395,7 @@ public class MemberChatAlertSettingsRungTests
 
         Assert.Equal(AlertSettingsComposer.AlreadyHandledReply(), reply.Reply);
         Assert.False(reply.ChangedAlertSettings);
-        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default);
+        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default, default);
     }
 
     /// <summary>The question itself is redacted like the recalled history before it reaches the
@@ -446,7 +447,7 @@ public class MemberChatAlertSettingsRungTests
 
         Assert.Equal(AlertSettingsComposer.CancelledReply(), reply.Reply);
         Assert.False(reply.ChangedAlertSettings);
-        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default);
+        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default, default);
         await _router.DidNotReceiveWithAnyArgs().RouteAsync(default!, default, default);
         // A no takes the proposal too, so a later yes has nothing to apply.
         await _turns.Received(1).TryClaimPendingChangeAsync(_pendingTurnId, Arg.Any<CancellationToken>());
@@ -462,7 +463,7 @@ public class MemberChatAlertSettingsRungTests
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
 
         Assert.Equal(AlertSettingsComposer.LapsedReply(), reply.Reply);
-        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default);
+        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default, default);
     }
 
     /// <summary>Anything that is not a plain yes or no is a new message: it routes, and the
@@ -481,7 +482,7 @@ public class MemberChatAlertSettingsRungTests
 
         Assert.Equal("Happy to help.", reply.Reply);
         await _router.Received(1).RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
-        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default);
+        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default, default);
         var assistant = Assert.Single(_persisted, t => t.Role == ChatTurnRole.Assistant);
         Assert.Null(assistant.PendingChange);
     }
@@ -542,7 +543,7 @@ public class MemberChatAlertSettingsRungTests
     {
         AProposalIsPending(age: TimeSpan.FromMinutes(1));
         _alertPreferences.SetRuleEnabledAsync(
-                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, Arg.Any<CancellationToken>())
+                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, "[]", Arg.Any<CancellationToken>())
             .Returns<Task<AlertRuleSettingResponse>>(_ => throw new KeyNotFoundException("CardiMember not found"));
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
@@ -558,7 +559,7 @@ public class MemberChatAlertSettingsRungTests
     {
         AProposalIsPending(age: TimeSpan.FromMinutes(1));
         _alertPreferences.SetRuleEnabledAsync(
-                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, Arg.Any<CancellationToken>())
+                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, "[]", Arg.Any<CancellationToken>())
             .Returns<Task<AlertRuleSettingResponse>>(_ => throw new ArgumentException("Unknown alert rule."));
         var refused = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
         Assert.Equal("I couldn't make that change: Unknown alert rule. Nothing has been altered.", refused.Reply);
@@ -566,7 +567,7 @@ public class MemberChatAlertSettingsRungTests
         _persisted.Clear();
         AProposalIsPending(age: TimeSpan.FromMinutes(1));
         _alertPreferences.SetRuleEnabledAsync(
-                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, Arg.Any<CancellationToken>())
+                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, "[]", Arg.Any<CancellationToken>())
             .Returns<Task<AlertRuleSettingResponse>>(_ => throw new InvalidOperationException("connection string 'Host=10.0.0.4' rejected"));
         var failed = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
         Assert.Equal(AlertSettingsComposer.CouldNotApplyReply(null), failed.Reply);

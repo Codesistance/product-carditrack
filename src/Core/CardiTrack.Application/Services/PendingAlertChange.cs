@@ -58,6 +58,10 @@ public sealed record PendingAlertChange
     /// <summary>The switch for <see cref="PendingAlertChangeKind.SetRule"/>.</summary>
     public bool Enabled { get; init; }
 
+    /// <summary>For <see cref="PendingAlertChangeKind.SetRule"/>: the disabled-rule list as the
+    /// proposal saw it, so the write is refused if someone else flipped a rule in between.</summary>
+    public string? RulesFingerprint { get; init; }
+
     /// <summary>The alarm to save or delete — the account default's id or the member row's own,
     /// whichever the effective list carried, since the alarm service accepts either.</summary>
     public Guid? AlarmId { get; init; }
@@ -110,7 +114,8 @@ public sealed record PendingAlertChange
 
         return parsed.Kind switch
         {
-            PendingAlertChangeKind.SetRule when string.IsNullOrWhiteSpace(parsed.RuleId) => null,
+            PendingAlertChangeKind.SetRule
+                when string.IsNullOrWhiteSpace(parsed.RuleId) || string.IsNullOrWhiteSpace(parsed.RulesFingerprint) => null,
             PendingAlertChangeKind.CreateAlarm when parsed.Alarm is null => null,
             // A save or delete without the fingerprint of the row it was written against would
             // apply unconditionally, which is the stale-write this record exists to refuse.

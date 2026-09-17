@@ -72,6 +72,7 @@ public class MetricAlarmsController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<MetricAlarmResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<MetricAlarmResponse>>> CreateAccountAlarm(
         [FromBody] SaveMetricAlarmRequest request, CancellationToken ct)
     {
@@ -89,6 +90,7 @@ public class MetricAlarmsController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<MetricAlarmResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<MetricAlarmResponse>>> UpdateAccountAlarm(
         Guid alarmId, [FromBody] SaveMetricAlarmRequest request, CancellationToken ct)
     {
@@ -130,6 +132,7 @@ public class MetricAlarmsController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<MetricAlarmResponse>), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<MetricAlarmResponse>>> CreateMemberAlarm(
         Guid cardiMemberId, [FromBody] SaveMetricAlarmRequest request, CancellationToken ct)
     {
@@ -152,6 +155,7 @@ public class MetricAlarmsController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<MetricAlarmResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<MetricAlarmResponse>>> SaveMemberAlarm(
         Guid cardiMemberId, Guid alarmId, [FromBody] SaveMetricAlarmRequest request, CancellationToken ct)
     {
