@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -228,6 +229,51 @@ public class MetricAlarmServiceTests
         Assert.Equal(AlarmProvenance.Overridden, result.Provenance);
         Assert.True(optOut.IsActive);
         Assert.Equal(140m, optOut.ThresholdValue);
+    }
+
+    /// <summary>
+    /// A caller who writes from a picture of the row — the chat's proposal — hands over its
+    /// fingerprint, and the save refuses when the row is no longer that, in the same read it
+    /// would have written from. No fingerprint means an unconditional write, as the pages do.
+    /// </summary>
+    [Fact]
+    public async Task ASaveWithAStaleFingerprint_IsRefused_AndAMatchingOneProceeds()
+    {
+        var own = AccountAlarm("Racing heart");
+        own.CardiMemberId = _memberId;
+        _alarms.GetForMemberAsync(_organizationId, _memberId, Arg.Any<CancellationToken>()).Returns([own]);
+        var asProposed = MetricAlarmFingerprint.Of(new MetricAlarmResponse
+        {
+            Id = own.Id, Name = own.Name, Metric = own.Metric, Statistic = own.Statistic, Operator = own.Operator,
+            ThresholdKind = own.ThresholdKind, ThresholdValue = own.ThresholdValue, PeriodMinutes = own.PeriodMinutes,
+            EvaluationPeriods = own.EvaluationPeriods, DatapointsToAlarm = own.DatapointsToAlarm,
+            MissingDataTreatment = own.MissingDataTreatment, Severity = own.Severity, ContextGate = own.ContextGate,
+            IsEnabled = own.IsEnabled, Provenance = AlarmProvenance.MemberOnly,
+        });
+        var request = new SaveMetricAlarmRequest
+        {
+            Name = own.Name, Metric = own.Metric, Statistic = own.Statistic, Operator = own.Operator,
+            ThresholdKind = own.ThresholdKind, ThresholdValue = 130m, PeriodMinutes = own.PeriodMinutes,
+            EvaluationPeriods = own.EvaluationPeriods, DatapointsToAlarm = own.DatapointsToAlarm,
+            Severity = own.Severity, ContextGate = own.ContextGate, IsEnabled = true,
+        };
+
+        // Someone else moved it to 125 after the proposal was written.
+        own.ThresholdValue = 125m;
+        await Assert.ThrowsAsync<CardiTrack.Application.Exceptions.AlarmChangedException>(() =>
+            Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, request, asProposed));
+        Assert.Equal(125m, own.ThresholdValue);
+
+        // Back as proposed: the same fingerprint now matches and the save lands.
+        own.ThresholdValue = 120m;
+        var saved = await Service().SaveMemberOverrideAsync(_userId, _memberId, own.Id, request, asProposed);
+        Assert.Equal(130m, saved.ThresholdValue);
+
+        // And a delete against a stale picture is refused the same way.
+        own.ThresholdValue = 125m;
+        await Assert.ThrowsAsync<CardiTrack.Application.Exceptions.AlarmChangedException>(() =>
+            Service().DeleteMemberAlarmAsync(_userId, _memberId, own.Id, asProposed));
+        Assert.True(own.IsActive);
     }
 
     [Fact]

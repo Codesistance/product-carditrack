@@ -67,21 +67,12 @@ public sealed record PendingAlertChange
 
     /// <summary>
     /// What the alarm looked like when the change was proposed, for the save and delete kinds —
-    /// <see cref="Fingerprint"/> of the row. The apply re-reads the row and refuses when it no
+    /// <see cref="MetricAlarmFingerprint.Of"/> the row. Handed to the alarm service with the
+    /// write, which compares it against the row in the same unit of work and refuses when it no
     /// longer matches: another caregiver may have retuned the alarm inside the window, and a yes
     /// to the old proposal must not write the old fields over their change.
     /// </summary>
     public string? AlarmFingerprint { get; init; }
-
-    /// <summary>The fields a save would overwrite, in one comparable string.</summary>
-    public static string Fingerprint(DTOs.Responses.MetricAlarmResponse row)
-    {
-        ArgumentNullException.ThrowIfNull(row);
-        return string.Join("|",
-            row.Name, row.Metric, row.Statistic, row.Operator, row.ThresholdKind, row.ThresholdValue,
-            row.PeriodMinutes, row.EvaluationPeriods, row.DatapointsToAlarm, row.MissingDataTreatment,
-            row.Severity, row.ContextGate, row.IsEnabled, row.Provenance);
-    }
 
     /// <summary>The change as it was put to the caregiver — imperative, "switch off …".</summary>
     public required string Summary { get; init; }

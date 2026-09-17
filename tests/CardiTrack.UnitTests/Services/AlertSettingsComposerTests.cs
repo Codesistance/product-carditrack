@@ -255,6 +255,21 @@ public class AlertSettingsComposerTests
         Assert.Contains("130 bpm", reply.Reply, StringComparison.Ordinal);
     }
 
+    /// <summary>Switching an opted-out override back on puts the account's version back — the
+    /// alarm service's rule — and the proposal says so rather than letting the tuning vanish.</summary>
+    [Fact]
+    public void ReenablingAnOptedOutOverride_SaysTheAccountsVersionApplies()
+    {
+        var row = HeartRateAlarm(enabled: false, provenance: AlarmProvenance.Overridden);
+        var plan = new AlertChangePlan { Action = AlertChangeAction.EnableAlarm, AlarmLabel = "alarm-1" };
+
+        var reply = AlertSettingsComposer.Compose(plan, Snapshot(null, row), canManage: true, "Moses", Now);
+
+        Assert.Contains("the account's version applies again", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("the account's version applying again", reply.Pending!.Done, StringComparison.Ordinal);
+        Assert.Equal(MetricAlarmFingerprint.Of(row), reply.Pending.AlarmFingerprint);
+    }
+
     /// <summary>An inherited default is the account's, not this member's: "get rid of it" is
     /// answered with a switch-off for them, never a proposal to delete a row that is not theirs.</summary>
     [Fact]

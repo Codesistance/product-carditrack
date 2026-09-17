@@ -213,7 +213,7 @@ public static class AlertSettingsComposer
             Kind = PendingAlertChangeKind.SaveAlarm,
             AlarmId = entry.Row.Id,
             Alarm = request,
-            AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
+            AlarmFingerprint = MetricAlarmFingerprint.Of(entry.Row),
             Summary = summary,
             Done = renamed && MetricAlarmNarrative.Condition(request) == entry.Row.Condition
                 ? $"renamed “{entry.Row.Name}” to “{request.Name}” for {subject}"
@@ -243,6 +243,12 @@ public static class AlertSettingsComposer
         }
 
         var summary = $"Switch {OnOff(enabled)} “{entry.Row.Name}” for {subject} — {LowerFirst(entry.Row.Condition)}";
+        // Switching an opted-out override back on with nothing else changed puts the account's
+        // version back — the alarm service's rule, shared with the list page's toggle — and the
+        // caregiver is told so here rather than finding their tuning gone.
+        var restoresDefault = enabled && entry.Row.Provenance is AlarmProvenance.Overridden;
+        if (restoresDefault)
+            summary = $"{TrimStop(summary)} — the account's version applies again";
         // Switching a red alarm back on is agreeing to what red means, so the warning travels
         // with the proposal exactly as it does for a new red alarm. Switching off needs none.
         return Proposal(TrimStop(summary), new PendingAlertChange
@@ -250,9 +256,11 @@ public static class AlertSettingsComposer
             Kind = PendingAlertChangeKind.SaveAlarm,
             AlarmId = entry.Row.Id,
             Alarm = AlarmSuggestedDefaults.Switched(entry.Row, enabled),
-            AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
+            AlarmFingerprint = MetricAlarmFingerprint.Of(entry.Row),
             Summary = TrimStop(summary),
-            Done = $"switched {OnOff(enabled)} “{entry.Row.Name}” for {subject}",
+            Done = restoresDefault
+                ? $"switched on “{entry.Row.Name}” for {subject}, with the account's version applying again"
+                : $"switched {OnOff(enabled)} “{entry.Row.Name}” for {subject}",
             ProposedAtUtc = utcNow,
         }, enabled ? entry.Row.Severity : null);
     }
@@ -282,7 +290,7 @@ public static class AlertSettingsComposer
                 Kind = PendingAlertChangeKind.SaveAlarm,
                 AlarmId = entry.Row.Id,
                 Alarm = AlarmSuggestedDefaults.Switched(entry.Row, enabled: false),
-                AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
+                AlarmFingerprint = MetricAlarmFingerprint.Of(entry.Row),
                 Summary = offSummary,
                 Done = $"switched off “{entry.Row.Name}” for {subject}",
                 ProposedAtUtc = utcNow,
@@ -296,7 +304,7 @@ public static class AlertSettingsComposer
         {
             Kind = PendingAlertChangeKind.DeleteAlarm,
             AlarmId = entry.Row.Id,
-            AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
+            AlarmFingerprint = MetricAlarmFingerprint.Of(entry.Row),
             Summary = summary,
             Done = entry.Row.Provenance is AlarmProvenance.Overridden
                 ? $"put the account's version of “{entry.Row.Name}” back for {subject}"

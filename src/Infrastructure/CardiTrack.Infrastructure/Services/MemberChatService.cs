@@ -2,6 +2,7 @@ using System.ComponentModel;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -1145,9 +1146,6 @@ public class MemberChatService : IMemberChatService
         {
             try
             {
-                if (await AlarmChangedSinceProposedAsync(pending, userId, cardiMemberId, ct))
-                    throw new StaleProposalException();
-
                 await ApplyAsync(pending, userId, cardiMemberId, ct);
                 // Written at the apply boundary, not after the turn persists: the alert
                 // services have committed by now, and the audit row the controller files for
@@ -1164,8 +1162,11 @@ public class MemberChatService : IMemberChatService
             {
                 throw;
             }
-            catch (StaleProposalException)
+            catch (AlarmChangedException)
             {
+                // The alarm is not as the proposal saw it — retuned or removed by someone else
+                // inside the window. The service compared and refused in the same read it would
+                // have written from, so nothing of theirs was overwritten.
                 reply = AlertSettingsComposer.ChangedSinceProposedReply();
             }
             catch (KeyNotFoundException)
@@ -1202,28 +1203,11 @@ public class MemberChatService : IMemberChatService
     }
 
     /// <summary>
-    /// Whether the alarm a save or delete was proposed against is no longer as it was. The
-    /// proposal carries the whole request, so a yes would write every field; another caregiver
-    /// retuning the same alarm inside the window must not have their change overwritten by the
-    /// first caregiver's stale one. Re-read through the same effective list the proposal read.
+    /// The one call each kind of proposal turns into. A save or delete hands the service the
+    /// fingerprint of the row the proposal was written against, so the compare and the write
+    /// share one read inside the service and a stale proposal is refused rather than applied
+    /// over another caregiver's change.
     /// </summary>
-    private async Task<bool> AlarmChangedSinceProposedAsync(
-        PendingAlertChange pending, Guid userId, Guid cardiMemberId, CancellationToken ct)
-    {
-        if (pending.Kind is not (PendingAlertChangeKind.SaveAlarm or PendingAlertChangeKind.DeleteAlarm)
-            || pending.AlarmFingerprint is null)
-        {
-            return false;
-        }
-
-        var rows = await _metricAlarms.GetMemberAlarmsAsync(userId, cardiMemberId, ct);
-        var row = rows.FirstOrDefault(a => a.Id == pending.AlarmId);
-        return row is null || PendingAlertChange.Fingerprint(row) != pending.AlarmFingerprint;
-    }
-
-    /// <summary>The alarm a proposal was about is not as it was — see <see cref="AlarmChangedSinceProposedAsync"/>.</summary>
-    private sealed class StaleProposalException : Exception;
-
     private Task ApplyAsync(PendingAlertChange pending, Guid userId, Guid cardiMemberId, CancellationToken ct) =>
         pending.Kind switch
         {
@@ -1232,9 +1216,11 @@ public class MemberChatService : IMemberChatService
             PendingAlertChangeKind.CreateAlarm =>
                 _metricAlarms.CreateMemberAlarmAsync(userId, cardiMemberId, pending.Alarm!, ct),
             PendingAlertChangeKind.SaveAlarm =>
-                _metricAlarms.SaveMemberOverrideAsync(userId, cardiMemberId, pending.AlarmId!.Value, pending.Alarm!, ct),
+                _metricAlarms.SaveMemberOverrideAsync(
+                    userId, cardiMemberId, pending.AlarmId!.Value, pending.Alarm!, pending.AlarmFingerprint, ct),
             PendingAlertChangeKind.DeleteAlarm =>
-                _metricAlarms.DeleteMemberAlarmAsync(userId, cardiMemberId, pending.AlarmId!.Value, ct),
+                _metricAlarms.DeleteMemberAlarmAsync(
+                    userId, cardiMemberId, pending.AlarmId!.Value, pending.AlarmFingerprint, ct),
             _ => throw new InvalidOperationException("That change is no longer recognised."),
         };
 

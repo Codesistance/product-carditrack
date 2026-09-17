@@ -174,7 +174,7 @@ public class MetricAlarmsController : BaseApiController
             return invalid;
 
         return await Guarded(
-            () => _alarms.SaveMemberOverrideAsync(UserContext.UserId, cardiMemberId, alarmId, request, ct));
+            () => _alarms.SaveMemberOverrideAsync(UserContext.UserId, cardiMemberId, alarmId, request, expectedFingerprint: null, ct));
     }
 
     /// <summary>
@@ -191,7 +191,7 @@ public class MetricAlarmsController : BaseApiController
 
         try
         {
-            await _alarms.DeleteMemberAlarmAsync(UserContext.UserId, cardiMemberId, alarmId, ct);
+            await _alarms.DeleteMemberAlarmAsync(UserContext.UserId, cardiMemberId, alarmId, expectedFingerprint: null, ct);
             return NoContent();
         }
         catch (KeyNotFoundException ex)

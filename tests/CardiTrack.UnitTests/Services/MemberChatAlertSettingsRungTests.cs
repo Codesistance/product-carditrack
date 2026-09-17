@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -310,7 +311,7 @@ public class MemberChatAlertSettingsRungTests
             Kind = PendingAlertChangeKind.SaveAlarm,
             AlarmId = alarmId,
             Alarm = request,
-            AlarmFingerprint = PendingAlertChange.Fingerprint(row),
+            AlarmFingerprint = MetricAlarmFingerprint.Of(row),
             Summary = "Switch off “Heart rate above 120 bpm” for Moses",
             Done = "switched off “Heart rate above 120 bpm” for Moses",
             ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
@@ -321,6 +322,7 @@ public class MemberChatAlertSettingsRungTests
         await _metricAlarms.Received(1).SaveMemberOverrideAsync(
             _userId, _memberId, alarmId,
             Arg.Is<SaveMetricAlarmRequest>(r => !r.IsEnabled && r.ThresholdValue == 120),
+            MetricAlarmFingerprint.Of(row),
             Arg.Any<CancellationToken>());
         await _metricAlarms.DidNotReceiveWithAnyArgs().CreateMemberAlarmAsync(default, default, default!, default);
         Assert.StartsWith("Done — I've switched off “Heart rate above 120 bpm” for Moses.", reply.Reply, StringComparison.Ordinal);
@@ -339,28 +341,22 @@ public class MemberChatAlertSettingsRungTests
             Kind = PendingAlertChangeKind.SaveAlarm,
             AlarmId = alarmId,
             Alarm = AHeartRateRequest(enabled: false),
-            AlarmFingerprint = PendingAlertChange.Fingerprint(row),
+            AlarmFingerprint = MetricAlarmFingerprint.Of(row),
             Summary = "Switch off “Heart rate above 120 bpm” for Moses",
             Done = "switched off “Heart rate above 120 bpm” for Moses",
             ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
         });
-        // Retuned to 130 by someone else after the proposal was written.
-        AnExistingAlarm(alarmId);
-        _metricAlarms.GetMemberAlarmsAsync(_userId, _memberId, Arg.Any<CancellationToken>())
-            .Returns((IReadOnlyList<MetricAlarmResponse>)[new MetricAlarmResponse
-            {
-                Id = alarmId, Name = row.Name, Metric = row.Metric, Statistic = row.Statistic, Operator = row.Operator,
-                ThresholdKind = row.ThresholdKind, ThresholdValue = 130, PeriodMinutes = row.PeriodMinutes,
-                EvaluationPeriods = row.EvaluationPeriods, DatapointsToAlarm = row.DatapointsToAlarm,
-                Severity = row.Severity, ContextGate = row.ContextGate, IsEnabled = true,
-                Provenance = row.Provenance, Condition = row.Condition,
-            }]);
+        // Retuned by someone else after the proposal was written: the service compares the
+        // fingerprint against the row it is about to write and refuses.
+        _metricAlarms.SaveMemberOverrideAsync(
+                _userId, _memberId, alarmId, Arg.Any<SaveMetricAlarmRequest>(), MetricAlarmFingerprint.Of(row),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<MetricAlarmResponse>>(_ => throw new AlarmChangedException());
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
 
         Assert.Equal(AlertSettingsComposer.ChangedSinceProposedReply(), reply.Reply);
         Assert.False(reply.ChangedAlertSettings);
-        await _metricAlarms.DidNotReceiveWithAnyArgs().SaveMemberOverrideAsync(default, default, default, default!, default);
     }
 
     [Fact]
@@ -372,7 +368,7 @@ public class MemberChatAlertSettingsRungTests
         {
             Kind = PendingAlertChangeKind.DeleteAlarm,
             AlarmId = alarmId,
-            AlarmFingerprint = PendingAlertChange.Fingerprint(row),
+            AlarmFingerprint = MetricAlarmFingerprint.Of(row),
             Summary = "Remove the alarm “Heart rate above 120 bpm” for Moses",
             Done = "removed the alarm “Heart rate above 120 bpm” for Moses",
             ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
@@ -380,8 +376,8 @@ public class MemberChatAlertSettingsRungTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes please");
 
-        await _metricAlarms.Received(1).DeleteMemberAlarmAsync(_userId, _memberId, alarmId, Arg.Any<CancellationToken>());
-        await _metricAlarms.DidNotReceiveWithAnyArgs().SaveMemberOverrideAsync(default, default, default, default!, default);
+        await _metricAlarms.Received(1).DeleteMemberAlarmAsync(_userId, _memberId, alarmId, MetricAlarmFingerprint.Of(row), Arg.Any<CancellationToken>());
+        await _metricAlarms.DidNotReceiveWithAnyArgs().SaveMemberOverrideAsync(default, default, default, default!, default, default);
         Assert.Equal("Done — I've removed the alarm “Heart rate above 120 bpm” for Moses. Alert settings shows what applies now.", reply.Reply);
         Assert.True(reply.ChangedAlertSettings);
     }
