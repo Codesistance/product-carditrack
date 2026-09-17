@@ -61,4 +61,11 @@ public sealed record MemberChatWorkflowResult
     /// <summary>True when this turn applied a change to what is watching the member, so the
     /// response can say so and the audit entry can name it.</summary>
     public bool ChangedAlertSettings { get; init; }
+
+    /// <summary>
+    /// True when this turn deleted or replaced a CardiJournal book — a write to health-derived
+    /// data, which the audit trail files as such rather than as one more chat read. Never true on
+    /// an offer, a read-back or a refused rewrite.
+    /// </summary>
+    public bool ChangedJournal { get; init; }
 }
