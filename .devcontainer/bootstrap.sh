@@ -47,11 +47,19 @@ if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
     sudo -n sh -c 'nohup dockerd >/var/log/dockerd.log 2>&1 &' 2>/dev/null || true
   fi
   for _ in $(seq 1 15); do
-    docker info >/dev/null 2>&1 && break
+    { docker info >/dev/null 2>&1 || sudo -n docker info >/dev/null 2>&1; } && break
     sleep 1
   done
   if docker info >/dev/null 2>&1; then
     log "  Docker daemon up"
+  elif sudo -n docker info >/dev/null 2>&1; then
+    # Root's daemon, non-root session: grant the docker group rather than
+    # loosening the socket (a world-writable socket is root for every process).
+    # Group membership lands in new shells, so this one still needs sudo.
+    if getent group docker >/dev/null 2>&1 && ! id -nG | tr ' ' '\n' | grep -qx docker; then
+      sudo -n usermod -aG docker "$(id -un)" 2>/dev/null || true
+    fi
+    log "  Docker daemon up (root); $(id -un) added to the docker group — open a new terminal before running the tests, or prefix docker with sudo in this one"
   else
     log "  Could not start dockerd — Testcontainers-backed tests will fail (see /var/log/dockerd.log)"
   fi

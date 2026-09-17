@@ -130,32 +130,39 @@ set +e
 
 log() { printf '[setup] %s\n' "$*"; }
 
+# Root, or passwordless sudo, for the daemon. A non-root user gets the docker
+# group (effective in new shells) rather than a world-writable socket, and the
+# calls below go through sudo meanwhile.
+if [ "$(id -u)" -eq 0 ]; then ROOT=""; else ROOT="sudo -n"; fi
+DOCKER="docker"
+
 # Start the Docker daemon if the binary is present but nothing is running yet.
 if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
   log "starting dockerd"
-  if [ "$(id -u)" -eq 0 ]; then
-    nohup dockerd >/var/log/dockerd.log 2>&1 &
-  else
-    # Redirect inside the privileged shell; an unprivileged one cannot open the log.
-    sudo -n sh -c 'nohup dockerd >/var/log/dockerd.log 2>&1 &'
-  fi
-  for i in $(seq 1 15); do docker info >/dev/null 2>&1 && break; sleep 1; done
+  # Redirect inside the privileged shell; an unprivileged one cannot open the log.
+  $ROOT sh -c 'nohup dockerd >/var/log/dockerd.log 2>&1 &'
+  for i in $(seq 1 15); do { docker info >/dev/null 2>&1 || $ROOT docker info >/dev/null 2>&1; } && break; sleep 1; done
+fi
+if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1 && $ROOT docker info >/dev/null 2>&1; then
+  DOCKER="$ROOT docker"
+  getent group docker >/dev/null 2>&1 && $ROOT usermod -aG docker "$(id -un)" 2>/dev/null
 fi
 
-if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+if ! command -v docker >/dev/null 2>&1 || ! $DOCKER info >/dev/null 2>&1; then
   log "no usable docker daemon — skipping Postgres/Redis bring-up; run 'docker compose up -d db redis' by hand once the repo is checked out"
 else
   # Same images/credentials as the repo's docker-compose.yml, started standalone
   # since the compose file itself isn't checked out yet at this point.
-  docker start carditrack-db carditrack-redis >/dev/null 2>&1
-  docker inspect carditrack-db >/dev/null 2>&1 || docker run -d --name carditrack-db \
+  $DOCKER start carditrack-db carditrack-redis >/dev/null 2>&1
+  $DOCKER inspect carditrack-db >/dev/null 2>&1 || $DOCKER run -d --name carditrack-db \
     -e POSTGRES_DB=carditrack -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
     -p 5432:5432 postgres:17-alpine
-  docker inspect carditrack-redis >/dev/null 2>&1 || docker run -d --name carditrack-redis \
+  $DOCKER inspect carditrack-redis >/dev/null 2>&1 || $DOCKER run -d --name carditrack-redis \
     -p 6379:6379 redis:7-alpine
 
   for i in $(seq 1 30); do
-    docker exec carditrack-db pg_isready -U postgres -d carditrack >/dev/null 2>&1 && break
+    $DOCKER exec carditrack-db pg_isready -U postgres -d carditrack >/dev/null 2>&1 && \
+    [ "$($DOCKER exec carditrack-redis redis-cli ping 2>/dev/null)" = "PONG" ] && break
     sleep 2
   done
   log "Postgres + Redis up."
@@ -181,6 +188,10 @@ exit 0
 - The .NET/Terraform/`dotnet-ef`/PostgreSQL-client toolchain is *not* installed
   here — that's the `.claude/settings.json` `SessionStart` hook's job
   (`.devcontainer/bootstrap.sh`), which runs once the repo actually exists.
+- A non-root session is added to the `docker` group rather than given a
+  world-writable socket; that lands in new terminals, and the script itself goes
+  through `sudo` meanwhile. The `.claude/settings.json` hook (`bootstrap.sh`) does the
+  same when it has to start the daemon.
 - Container names (`carditrack-db`, `carditrack-redis`) make the script idempotent
   across re-runs on a warm container — `docker start` on an existing container,
   `docker run` only the first time.

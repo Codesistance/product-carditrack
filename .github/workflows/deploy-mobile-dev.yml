@@ -6,7 +6,7 @@ name: Deploy Mobile → Dev
 # mobile_ios there). Pushing costs about two Linux minutes per platform and
 # never touches a Mac.
 #
-#   gh workflow run deploy-mobile-dev.yml --ref main -f platform=android            # latest tag
+#   gh workflow run deploy-mobile-dev.yml --ref main -f platform=android            # newest tag with an AAB
 #   gh workflow run deploy-mobile-dev.yml --ref main -f platform=ios -f tag=v0.2.308
 #
 # Dispatch on main only. The bucket keeps a tag's builds for 10 days; after
@@ -23,7 +23,7 @@ on:
           - both
         default: both
       tag:
-        description: 'Release tag (v1.2.3). Empty = the latest v* tag.'
+        description: 'Release tag (v1.2.3). Empty = the newest v* tag whose builds for the platform are in the bucket.'
         type: string
         default: ''
 
@@ -87,26 +87,54 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.env.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # An explicit tag must carry every requested platform's build. With no tag
+      # given, the newest v* tag that does is used — CI / Deploy Apps → Dev tags
+      # API-only and Android-only runs too, so "newest tag" alone would often
+      # name one with nothing to push.
       - name: Resolve tag
         id: tag
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          BUCKET: gs://${{ needs.env.outputs.gcs_builds_bucket }}
+          ANDROID: ${{ steps.platforms.outputs.android }}
+          IOS: ${{ steps.platforms.outputs.ios }}
         run: |
           set -euo pipefail
           git fetch --tags --quiet
+          has_builds() {  # $1 = tag; prints the platforms missing for it
+            local missing=""
+            if [ "$ANDROID" = "true" ] && ! gcloud storage ls "$BUCKET/$1/android/**" 2>/dev/null | grep -q '\-Signed\.aab$'; then missing="$missing android"; fi
+            if [ "$IOS" = "true" ] && ! gcloud storage ls "$BUCKET/$1/ios/**" 2>/dev/null | grep -q '\.ipa$'; then missing="$missing ios"; fi
+            printf '%s' "$missing"
+          }
           TAG="$(printf '%s' "$INPUT_TAG" | tr -d '[:space:]')"
-          if [ -z "$TAG" ]; then
-            TAG=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1 || true)
-            [ -n "$TAG" ] || { echo "::error::No v* tag exists yet — run CI / Deploy Apps → Dev on main first."; exit 1; }
-            echo "Latest tag: $TAG"
-          elif ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "::error::Tag '$TAG' does not exist."; exit 1
+          if [ -n "$TAG" ]; then
+            git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "::error::Tag '$TAG' does not exist."; exit 1; }
+            MISSING=$(has_builds "$TAG")
+            if [ -n "$MISSING" ]; then
+              echo "::error::No signed build for $TAG in $BUCKET for:$MISSING. Build it first — dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks — then push. The bucket keeps builds for 10 days; an older tag has to be rebuilt."
+              exit 1
+            fi
+          else
+            # The bucket's lifecycle is 10 days, so only recent tags can qualify; 30 is plenty.
+            for CANDIDATE in $(git tag --sort=-version:refname | grep '^v[0-9]' | head -30); do
+              if [ -z "$(has_builds "$CANDIDATE")" ]; then TAG="$CANDIDATE"; break; fi
+            done
+            [ -n "$TAG" ] || { echo "::error::No recent v* tag has signed builds for the requested platform(s) in $BUCKET. Dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks first."; exit 1; }
+            echo "Newest tag with the requested builds: $TAG"
           fi
           # The build number CI stamped into the binaries: the commit count at the tag.
           BUILD_NUMBER=$(git rev-list --count "$TAG")
           echo "tag=$TAG"                   >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "Pushing $TAG (build $BUILD_NUMBER)"
+          PRESENT=""; [ "$ANDROID" = "true" ] && PRESENT="$PRESENT android"; [ "$IOS" = "true" ] && PRESENT="$PRESENT ios"
+          echo "Pushing $TAG (build $BUILD_NUMBER):$PRESENT"
 
       # Same "What's new" the builds used to carry: commits since the previous
       # v* tag, up to this tag — so the checkout moves to the tag first.
@@ -142,35 +170,16 @@ jobs:
             echo "${PLAY_DELIM}"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.env.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
-
-      - name: Verify the tag's builds are in the bucket
-        env:
-          TAG: ${{ steps.tag.outputs.tag }}
-          BUCKET: gs://${{ needs.env.outputs.gcs_builds_bucket }}
-          ANDROID: ${{ steps.platforms.outputs.android }}
-          IOS: ${{ steps.platforms.outputs.ios }}
-        run: |
-          set -euo pipefail
-          MISSING=""
-          if [ "$ANDROID" = "true" ] && ! gcloud storage ls "$BUCKET/$TAG/android/**" 2>/dev/null | grep -q '\-Signed\.aab$'; then MISSING="$MISSING android"; fi
-          if [ "$IOS" = "true" ] && ! gcloud storage ls "$BUCKET/$TAG/ios/**" 2>/dev/null | grep -q '\.ipa$'; then MISSING="$MISSING ios"; fi
-          if [ -n "$MISSING" ]; then
-            echo "::error::No signed build for $TAG in $BUCKET for:$MISSING. Build it first — dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks — then push. The bucket keeps builds for 10 days; an older tag has to be rebuilt."
-            exit 1
-          fi
-          echo "Builds present for $TAG:${ANDROID:+ android}${IOS:+ ios}"
-
   # ── Play Console (internal track) ───────────────────────────────────────────
   deploy-play-internal:
     name: Deploy → Play Console (internal)
     needs: resolve
     if: needs.resolve.outputs.android == 'true'
     runs-on: ubuntu-latest
+    # 'skipped' when the secret gate closed, 'failure' when the store rejected
+    # it: dispatch-sanity reads this rather than the job's green tick.
+    outputs:
+      pushed: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: google-github-actions/auth@v3
         with:
@@ -228,6 +237,7 @@ jobs:
           printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-GB
 
       - name: Upload to Play Console (internal track)
+        id: upload
         if: steps.gate.outputs.available == 'true'
         uses: r0adkll/upload-google-play@v1
         with:
@@ -257,6 +267,8 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.ios == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      pushed: ${{ steps.upload.outcome == 'success' }}
     steps:
       # First on purpose: checkout wipes untracked files from the workspace, so
       # anything it runs after loses its output — the downloaded IPA, and the
@@ -325,6 +337,7 @@ jobs:
       # is attached below instead. Processing is still waited on: that step
       # needs a build App Store Connect can see.
       - name: Upload to TestFlight
+        id: upload
         if: steps.gate.outputs.available == 'true'
         uses: apple-actions/upload-testflight-build@v5
         with:
@@ -382,25 +395,34 @@ jobs:
           printf '%s\n' "$NOTES" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-  # ── Did the run push anything? ──────────────────────────────────────────────
-  # A run whose graph collapses is indistinguishable from a successful one:
-  # everything skips and GitHub scores it green. Fail instead.
+  # ── Did the run push what was asked for? ────────────────────────────────────
+  # A push job goes green when its secret gate closes (nothing uploaded, by
+  # design, with a warning). That is fine for a build; it is not fine for a
+  # workflow whose only job is the upload. Fail the run instead.
   dispatch-sanity:
-    name: Dispatch ran something
+    name: Dispatch pushed something
     needs: [resolve, deploy-play-internal, deploy-testflight]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - env:
           RESOLVE: ${{ needs.resolve.result }}
-          RESULTS: ${{ needs.deploy-play-internal.result }} ${{ needs.deploy-testflight.result }}
+          ANDROID: ${{ needs.resolve.outputs.android }}
+          IOS: ${{ needs.resolve.outputs.ios }}
+          PLAY_PUSHED: ${{ needs.deploy-play-internal.outputs.pushed }}
+          TF_PUSHED: ${{ needs.deploy-testflight.outputs.pushed }}
         run: |
           set -euo pipefail
           if [ "$RESOLVE" != "success" ]; then
             echo "::error::'Resolve tag and platforms' was $RESOLVE — nothing was pushed."
             exit 1
           fi
-          case "$RESULTS" in
-            *success*|*failure*) echo "Push results: $RESULTS" ;;
-            *) echo "::error::No store push ran (results: $RESULTS)."; exit 1 ;;
-          esac
+          FAIL=0
+          if [ "$ANDROID" = "true" ] && [ "$PLAY_PUSHED" != "true" ]; then
+            echo "::error::Android was requested but nothing reached Play Console (secret gate closed, or the upload failed)."; FAIL=1
+          fi
+          if [ "$IOS" = "true" ] && [ "$TF_PUSHED" != "true" ]; then
+            echo "::error::iOS was requested but nothing reached TestFlight (secret gate closed, or the upload failed)."; FAIL=1
+          fi
+          [ "$FAIL" -eq 0 ] && echo "Pushed:${ANDROID:+ }$([ "$ANDROID" = "true" ] && echo android)$([ "$IOS" = "true" ] && echo ' ios')"
+          exit $FAIL

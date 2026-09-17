@@ -163,6 +163,8 @@ jobs:
               - 'src/Presentation/CardiTrack.Mobile.Core/**'
               - 'src/Core/CardiTrack.Domain/**'
               - 'src/Core/CardiTrack.Application/**'
+              # Mobile.Core references it directly; a change there must compile mobile too.
+              - 'src/Infrastructure/CardiTrack.Shared/**'
               - 'CardiTrack.sln'
             pipeline:
               - '.github/workflows/deploy-apps-dev.yml'
@@ -1629,13 +1631,16 @@ jobs:
   # outcome whenever the flag is off, so asserting there would fail on the normal case.
   dispatch-sanity:
     name: Dispatch ran something
-    needs: [changes]
+    needs: [changes, upload-mobile-artifacts]
     if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Assert the dispatch resolved its components
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
+          ARCHIVE_RESULT: ${{ needs.upload-mobile-artifacts.result }}
+          ON_MAIN: ${{ github.ref == 'refs/heads/main' }}
+          MOBILE_SELECTED: ${{ needs.changes.outputs.mobile_android == 'true' || needs.changes.outputs.mobile_ios == 'true' || needs.changes.outputs.mobile_windows == 'true' }}
           SELECTED: >-
             ${{ needs.changes.outputs.api }} ${{ needs.changes.outputs.web }}
             ${{ needs.changes.outputs.worker }} ${{ needs.changes.outputs.mobile_android }}
@@ -1654,3 +1659,10 @@ jobs:
             *true*) echo "Components selected: ${SELECTED}" ;;
             *) echo "::warning::Dispatch ran with every component unticked — nothing to build or deploy." ;;
           esac
+          # A mobile tick on main promises an archive in the builds bucket. If the signed
+          # build's secret gate closed or its upload was rejected, the archive job skips and
+          # the run would otherwise go green with nothing behind the tick.
+          if [ "${ON_MAIN}" = "true" ] && [ "${MOBILE_SELECTED}" = "true" ] && [ "${ARCHIVE_RESULT}" != "success" ]; then
+            echo "::error::A mobile platform was ticked but 'Upload Mobile Artifacts to GCS' was ${ARCHIVE_RESULT} — no build was archived (signing secrets missing, or the build's artifact upload was rejected). Nothing for deploy-mobile-dev.yml to push."
+            exit 1
+          fi
