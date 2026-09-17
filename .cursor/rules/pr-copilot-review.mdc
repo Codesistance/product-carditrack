@@ -6,8 +6,8 @@ alwaysApply: true
 # PR Copilot review
 
 - **Never open draft PRs.** Create them ready for review (`draft: false`). Converting a draft to ready does not request Copilot.
-- After opening or pushing to a PR, **request a GitHub Copilot code review** (reviewer `copilot-pull-request-reviewer`). A bot `@copilot` comment is not sufficient. The Cursor GitHub App token cannot add that reviewer (403); the `Request Copilot review` workflow does it with `AUTOMERGE_TOKEN`.
+- On open, ready-for-review and reopen the `Request Copilot review` workflow **requests a GitHub Copilot code review** (reviewer `copilot-pull-request-reviewer`) with `AUTOMERGE_TOKEN`. It does **not** run on push: a review costs ~5 Actions minutes, so re-requests are made on purpose, not per commit. A bot `@copilot` comment is not sufficient, and the Cursor GitHub App token cannot add that reviewer (403) — re-request through the GraphQL `requestReviews` mutation with `botIds`.
 - **Wait until Copilot finishes** — poll until `copilot-pull-request-reviewer` submits a review. Do not triage from an empty comment list.
 - Pull every Copilot review comment, verify it against the code, and **triage fix vs leave**. Do not apply comments blindly.
 - Post a triage table on the PR (valid / leave / partially valid) and fix the ones that should be fixed.
-- After pushing those fixes, re-request Copilot, wait again, and triage any new comments.
+- **Batch the fixes before pushing.** Land every fix from a triage round in one push (squash or one commit per round), then re-request Copilot once, wait, and triage any new comments. One push per round, one review per round — never a review per commit.

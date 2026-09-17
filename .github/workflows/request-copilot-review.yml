@@ -4,11 +4,17 @@ name: Request Copilot review
 # GitHub App token cannot do that (403 Resource not accessible by integration),
 # and a bot `@copilot` comment does not request a review either. This workflow
 # uses AUTOMERGE_TOKEN (a user PAT) so every non-draft PR gets a Copilot review
-# on open, on ready-for-review, and again on each push.
+# on open, on ready-for-review and on reopen.
+#
+# Not on synchronize. Each review is ~5 Linux minutes billed to this repo, and
+# with a review on every push September 2026 ran to 355 reviews across 90
+# branches — one branch took 18 — most of them on intermediate pushes nobody
+# read. Re-requests are deliberate: batch the triage fixes, push once, then
+# re-request (see .cursor/rules/pr-copilot-review.mdc).
 
 on:
   pull_request:
-    types: [opened, ready_for_review, reopened, synchronize]
+    types: [opened, ready_for_review, reopened]
 
 permissions:
   pull-requests: write
