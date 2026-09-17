@@ -75,7 +75,7 @@ public class JournalChatRequestTests
     [Fact]
     public void Yesterday_is_finished()
     {
-        Assert.Equal(JournalPeriodCheck.Ok, JournalChatRequest.Check(Today.AddDays(-1), Today));
+        Assert.True(JournalChatRequest.IsFinished(Today.AddDays(-1), Today));
     }
 
     /// <summary>
@@ -85,15 +85,18 @@ public class JournalChatRequestTests
     [Fact]
     public void A_period_ending_today_or_later_is_not_finished()
     {
-        Assert.Equal(JournalPeriodCheck.NotFinished, JournalChatRequest.Check(Today, Today));
-        Assert.Equal(JournalPeriodCheck.NotFinished, JournalChatRequest.Check(Today.AddDays(4), Today));
+        Assert.False(JournalChatRequest.IsFinished(Today, Today));
+        Assert.False(JournalChatRequest.IsFinished(Today.AddDays(4), Today));
     }
 
+    /// <summary>
+    /// No lower bound: how far back a book can reach is the data's to answer, not a constant's
+    /// that would have to track the partition worker's retention setting.
+    /// </summary>
     [Fact]
-    public void A_period_older_than_the_journal_keeps_is_beyond_retention()
+    public void A_period_long_ago_is_still_finished()
     {
-        Assert.Equal(JournalPeriodCheck.BeyondRetention, JournalChatRequest.Check(Today.AddMonths(-8), Today));
-        Assert.Equal(JournalPeriodCheck.Ok, JournalChatRequest.Check(Today.AddMonths(-6), Today));
+        Assert.True(JournalChatRequest.IsFinished(Today.AddYears(-3), Today));
     }
 
     // ── The resolution vocabulary ───────────────────────────────────────────

@@ -870,10 +870,12 @@ public partial class DigestGenerationService : IDigestGenerationService
 
     /// <inheritdoc />
     /// <remarks>
-    /// Compose first, remove second. The old book is deleted only once the new text has passed
+    /// Compose first, replace second. The old book is deleted only once the new text has passed
     /// every guard the scheduled write applies, so a refused reply leaves the caregiver with the
     /// book they had rather than with none — and a period whose readings have since been dropped
-    /// simply reports that, with the existing book untouched.
+    /// simply reports that, with the existing book untouched. The delete and the insert are one
+    /// transaction (<see cref="IDigestRepository.ReplaceBookAsync"/>), so a failure between them
+    /// cannot lose the old book either.
     /// </remarks>
     public async Task<JournalRewriteResult> RewriteBookAsync(
         Guid cardiMemberId,
@@ -915,8 +917,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 composed.Outcome, null, composed.Usage, false, composed.DaysWithData, composed.DaysNeeded);
         }
 
-        var removed = await _unitOfWork.Digests.DeleteBookAsync(cardiMemberId, periodEnd, audience, ct);
-        var inserted = await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
+        var (removed, inserted) = await _unitOfWork.Digests.ReplaceBookAsync(composed.Entry, ct);
         if (!inserted)
         {
             // The due pass landed a book for the same period between the delete and the insert.

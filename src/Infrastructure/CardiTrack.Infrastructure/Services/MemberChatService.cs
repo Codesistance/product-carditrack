@@ -493,6 +493,11 @@ public class MemberChatService : IMemberChatService
                 ? NotAQuestionResult(member?.Name)
                 : await RouteAndAnswerAsync(userId, flattened, session, cardiMemberId, member, utcNow, ct));
 
+        // The turn cap, applied once where every rung's result passes rather than inside each
+        // handler: a journal reply reads a whole stored book back, and a book plus its label can
+        // run past what one bubble is allowed to hold.
+        result = result with { Reply = CapReply(result.Reply) };
+
         var (_, assistantTurn) = await PersistTurnsAsync(
             session, flattened, result, utcNow, ct);
         await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);

@@ -44,8 +44,6 @@ public class MemberChatSession : BaseEntity
     /// </summary>
     public string? Theme { get; set; }
 
-    /// <summary>Loaded only by <c>IMemberChatSessionRepository.GetByIdWithTurnsAsync</c> — every
-    /// other read goes through <see cref="MemberChatTurn"/> directly.</summary>
     /// <summary>
     /// An action the assistant offered and is waiting on a yes for — a journal book to discard
     /// or write again — as <c>JournalChatRequest</c> serialises it. Null when nothing is pending.
@@ -62,5 +60,7 @@ public class MemberChatSession : BaseEntity
     /// </summary>
     public DateTime? PendingActionExpiresAtUtc { get; set; }
 
+    /// <summary>Loaded only by <c>IMemberChatSessionRepository.GetByIdWithTurnsAsync</c> — every
+    /// other read goes through <see cref="MemberChatTurn"/> directly.</summary>
     public ICollection<MemberChatTurn> Turns { get; set; } = new List<MemberChatTurn>();
 }

@@ -77,4 +77,39 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
             .Take(limit)
             .ToListAsync(ct);
     }
+
+    public async Task<PendingChatAction?> TryConsumePendingActionAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        // Claim and clear in one statement, outside the unit of work's save: the row is the
+        // lock. Two requests racing on the same offer both send this; one gets the row back and
+        // the other gets nothing, which is what makes "an offer is honoured once" true rather
+        // than hoped for. The offer is read through the FOR UPDATE subselect, not through the
+        // updated row: RETURNING on an UPDATE yields the row *after* the update — the nulls just
+        // written — while a FROM-list table's columns keep their pre-update values. Written as a
+        // CTE so the query stays legal if EF wraps it in a subquery.
+        var rows = await _context.Database.SqlQuery<PendingActionRow>($"""
+            WITH claimed AS (
+                UPDATE "MemberChatSessions" AS s
+                SET "PendingAction" = NULL, "PendingActionExpiresAtUtc" = NULL
+                FROM (
+                    SELECT "Id", "PendingAction", "PendingActionExpiresAtUtc"
+                    FROM "MemberChatSessions"
+                    WHERE "Id" = {sessionId} AND "PendingAction" IS NOT NULL
+                    FOR UPDATE) AS before
+                WHERE s."Id" = before."Id"
+                RETURNING before."PendingAction" AS "Action", before."PendingActionExpiresAtUtc" AS "ExpiresAtUtc")
+            SELECT "Action", "ExpiresAtUtc"
+            FROM claimed
+            """).ToListAsync(ct);
+
+        var row = rows.SingleOrDefault();
+        return row is null ? null : new PendingChatAction(row.Action, row.ExpiresAtUtc);
+    }
+
+    private sealed class PendingActionRow
+    {
+        public string Action { get; set; } = string.Empty;
+
+        public DateTime? ExpiresAtUtc { get; set; }
+    }
 }

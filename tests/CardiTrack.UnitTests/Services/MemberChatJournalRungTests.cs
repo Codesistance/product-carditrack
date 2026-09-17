@@ -74,6 +74,19 @@ public class MemberChatJournalRungTests
         _sessions.When(r => r.AddAsync(Arg.Any<MemberChatSession>()))
             .Do(call => _session = call.Arg<MemberChatSession>());
 
+        // The claim-and-clear statement, against the in-memory session: hands the offer back
+        // once, then nothing — the same contract the real one holds against the row.
+        _sessions.TryConsumePendingActionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                if (_session?.PendingAction is not { } action)
+                    return null;
+                var consumed = new PendingChatAction(action, _session.PendingActionExpiresAtUtc);
+                _session.PendingAction = null;
+                _session.PendingActionExpiresAtUtc = null;
+                return consumed;
+            });
+
         _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<MemberChatService.MaliciousCheckAiResponse>(

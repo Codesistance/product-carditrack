@@ -69,9 +69,8 @@ public class JournalRewriteTests
             .Returns([]);
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
 
-        // A book already stands for the week, and the delete reports removing it.
-        _digests.DeleteBookAsync(_memberId, WeekEnd, DigestAudience.Weekbook, Arg.Any<CancellationToken>()).Returns(1);
-        _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns(true);
+        // A book already stands for the week: the replacement reports removing it and landing.
+        _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns((1, true));
 
         SetupModelReply(
             "A steadier week for sleep",
@@ -128,6 +127,7 @@ public class JournalRewriteTests
 
     private async Task AssertNothingChanged()
     {
+        await _digests.DidNotReceive().ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
         await _digests.DidNotReceiveWithAnyArgs().DeleteBookAsync(default, default, default, default);
         await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
@@ -145,18 +145,21 @@ public class JournalRewriteTests
         Assert.NotNull(result.Entry);
         Assert.Equal(WeekEnd, result.Entry.LocalDate);
         Assert.Equal("A steadier week for sleep", result.Entry.Headline);
-        await _digests.Received(1).AddAsync(
+        await _digests.Received(1).ReplaceBookAsync(
             Arg.Is<DigestEntry>(d =>
                 d.CardiMemberId == _memberId
                 && d.Audience == DigestAudience.Weekbook
                 && d.LocalDate == WeekEnd
                 && d.GeneratedAtUtc == UtcNow),
             Arg.Any<CancellationToken>());
+        // Through the one atomic replacement, never as a separate delete and insert.
+        await _digests.DidNotReceiveWithAnyArgs().DeleteBookAsync(default, default, default, default);
+        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>The old book goes only once the new one exists to take its place.</summary>
     [Fact]
-    public async Task The_earlier_book_is_removed_after_the_new_one_has_passed_its_guards()
+    public async Task The_earlier_book_is_replaced_after_the_new_one_has_passed_its_guards()
     {
         await Rewrite(WeekEnd);
 
@@ -164,15 +167,14 @@ public class JournalRewriteTests
         {
             _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>());
-            _digests.DeleteBookAsync(_memberId, WeekEnd, DigestAudience.Weekbook, Arg.Any<CancellationToken>());
-            _digests.AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+            _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
         });
     }
 
     [Fact]
     public async Task A_week_with_no_earlier_book_is_simply_written()
     {
-        _digests.DeleteBookAsync(_memberId, WeekEnd, DigestAudience.Weekbook, Arg.Any<CancellationToken>()).Returns(0);
+        _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns((0, true));
 
         var result = await Rewrite(WeekEnd);
 
@@ -265,6 +267,7 @@ public class JournalRewriteTests
         var generated = await CreateSut().GenerateDueWeekbooksAsync(monday);
 
         Assert.Equal(1, generated);
-        await _digests.DidNotReceiveWithAnyArgs().DeleteBookAsync(default, default, default, default);
+        await _digests.Received(1).AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        await _digests.DidNotReceive().ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 }

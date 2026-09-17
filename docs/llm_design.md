@@ -662,13 +662,14 @@ could see readings for and no book to read — and the schedule only ever writes
 - **Rewrite is the scheduled write, asked for.** `DigestGenerationService.RewriteBookAsync` composes
   the book through the same `Compose{Daybook,Weekbook,Monthbook}Async` the half-hourly pass uses —
   same prompt, same coverage minimums, same register guards, same private slot — and only then
-  deletes the earlier book and stores the new one. A reply the guards refuse leaves the existing
+  replaces the earlier book with the new one, delete and insert in one transaction. A reply the guards refuse leaves the existing
   book in place and the caregiver told so. The same members are refused for the same reasons: an
   inactive or paused member, and a period that has not ended in the member's own local time.
 - **Delete is a set-based delete of one book** (`IDigestRepository.DeleteBookAsync`): one member, one
   local date, one journal audience. The family series is history and cannot be deleted this way.
 - **Confirmed on the next turn.** A delete or rewrite is offered and held on the chat session for ten
-  minutes; a plain yes carries it out, a no or anything else drops it. Manage access — the primary
+  minutes; a plain yes takes it off the row in one claim-and-clear statement and carries it out, a no
+  or anything else drops it. Manage access — the primary
   caregiver — is required at the offer and again at the yes. Reading back needs view access only.
 - **Runs in the API**, on the private slot, inline with the chat turn — the one place outside the
   pipeline host that writes a book. A cold MedGemma start makes it a slow turn, which the waiting

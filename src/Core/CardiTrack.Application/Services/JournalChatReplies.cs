@@ -94,9 +94,6 @@ public static class JournalChatReplies
         $"That {PeriodNoun(audience)} isn't over yet — a {BookName(audience)} is written once the "
         + $"{PeriodNoun(audience)} it describes has finished.";
 
-    public static string BeyondRetention() =>
-        $"That's further back than the journal keeps — entries are held for about {JournalChatRequest.RetentionMonths} months.";
-
     // ── Reading back ────────────────────────────────────────────────────────
 
     public static string NothingThere(DigestAudience audience, DateOnly? periodEnd, DateOnly today) =>

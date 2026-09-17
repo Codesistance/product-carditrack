@@ -19,18 +19,6 @@ public enum JournalChatAction
     Rewrite = 4,
 }
 
-/// <summary>Whether a period a caregiver named is one a book can be written for.</summary>
-public enum JournalPeriodCheck
-{
-    Ok = 1,
-
-    /// <summary>The period has not ended in the member's local time.</summary>
-    NotFinished = 2,
-
-    /// <summary>The period is older than the journal keeps.</summary>
-    BeyondRetention = 3,
-}
-
 /// <summary>
 /// A resolved journal ask: the action, the book, and the period the book covers — dated, like the
 /// stored book, by the period's last day. Null <see cref="PeriodEnd"/> means the caregiver named
@@ -57,13 +45,6 @@ public sealed record JournalChatRequest(JournalChatAction Action, DigestAudience
 
     /// <summary>The book labels the resolution call may answer with.</summary>
     public static IReadOnlyList<string> CadenceLabels { get; } = ["day", "week", "month"];
-
-    /// <summary>
-    /// How far back a caregiver may reach. The journal's partitions are dropped after seven
-    /// months, so a book older than that is gone whatever anyone asks for — and one just inside
-    /// would be dropped before it was read.
-    /// </summary>
-    public const int RetentionMonths = 7;
 
     /// <summary>Deleting or writing over a book: offered first, done on the next turn.</summary>
     public bool IsDestructive => Action is JournalChatAction.Discard or JournalChatAction.Rewrite;
@@ -129,19 +110,12 @@ public sealed record JournalChatRequest(JournalChatAction Action, DigestAudience
     };
 
     /// <summary>
-    /// Whether a book can exist for the period ending on <paramref name="periodEnd"/>, seen from
-    /// the member's local <paramref name="localToday"/>: the period must be over, and not yet
-    /// dropped.
+    /// Whether the period ending on <paramref name="periodEnd"/> is over, seen from the member's
+    /// local <paramref name="localToday"/>. How far <em>back</em> a book can reach is deliberately
+    /// not decided here — the stored books and the readings answer that, and a constant here would
+    /// have to agree with the partition worker's retention setting forever.
     /// </summary>
-    public static JournalPeriodCheck Check(DateOnly periodEnd, DateOnly localToday)
-    {
-        if (periodEnd >= localToday)
-            return JournalPeriodCheck.NotFinished;
-
-        return periodEnd < localToday.AddMonths(-RetentionMonths)
-            ? JournalPeriodCheck.BeyondRetention
-            : JournalPeriodCheck.Ok;
-    }
+    public static bool IsFinished(DateOnly periodEnd, DateOnly localToday) => periodEnd < localToday;
 
     // ── The pending-action line the session carries ────────────────────────
 

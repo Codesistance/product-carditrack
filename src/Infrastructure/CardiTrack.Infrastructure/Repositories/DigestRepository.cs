@@ -144,6 +144,34 @@ public class DigestRepository : IDigestRepository
             .ExecuteDeleteAsync(ct);
     }
 
+    public async Task<(int Removed, bool Inserted)> ReplaceBookAsync(DigestEntry entry, CancellationToken ct = default)
+    {
+        // One transaction, so a failure between the delete and the insert — a transient database
+        // error, a cancelled request — rolls the delete back and the caregiver keeps the book they
+        // had. Joins the unit of work's transaction when one is already open rather than nesting.
+        var owns = _context.Database.CurrentTransaction is null;
+        var transaction = owns ? await _context.Database.BeginTransactionAsync(ct) : null;
+        try
+        {
+            var removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, ct);
+            var inserted = await AddAsync(entry, ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            return (removed, inserted);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
+    }
+
     private static string EscapeLikePattern(string value) =>
         value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 }

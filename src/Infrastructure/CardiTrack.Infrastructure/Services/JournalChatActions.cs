@@ -21,7 +21,8 @@ namespace CardiTrack.Infrastructure.Services;
 /// <para>
 /// <b>Two turns for anything destructive.</b> A discard or a rewrite is offered, held on the
 /// session as a short <see cref="JournalChatRequest"/> line with a ten-minute life, and carried
-/// out only when the next message is a plain yes. The yes and the no are a closed vocabulary
+/// out only when the next message is a plain yes, and after one statement has taken the offer off
+/// the row, so a yes sent twice at once carries it out once. The yes and the no are a closed vocabulary
 /// matched in code (<see cref="JournalChatRequest.IsAffirmative"/>), so the confirming turn costs
 /// no model call and cannot be talked into a different action than the one offered. Any other
 /// message clears the offer and routes as itself.
@@ -154,16 +155,11 @@ public sealed class JournalChatActions
             ? JournalChatRequest.PeriodEndContaining(day, audience.Value, weekStartsOn)
             : null;
 
-        if (periodEnd is { } end)
-        {
-            switch (JournalChatRequest.Check(end, localToday))
-            {
-                case JournalPeriodCheck.NotFinished:
-                    return Result(JournalChatReplies.NotFinished(audience.Value), calls);
-                case JournalPeriodCheck.BeyondRetention:
-                    return Result(JournalChatReplies.BeyondRetention(), calls);
-            }
-        }
+        // A period still in progress has nothing finished to account for. How far back a book can
+        // reach is not decided here: the stored books and the readings answer that themselves, so
+        // the chat never has to agree with the retention settings the partition worker reads.
+        if (periodEnd is { } end && !JournalChatRequest.IsFinished(end, localToday))
+            return Result(JournalChatReplies.NotFinished(audience.Value), calls);
 
         if (action == JournalChatAction.Show)
         {
@@ -218,12 +214,18 @@ public sealed class JournalChatActions
         if (session.PendingAction is null)
             return null;
 
-        var pending = JournalChatRequest.TryDeserialize(session.PendingAction);
-        var live = pending is not null && session.PendingActionExpiresAtUtc is { } until && until > utcNow;
-
+        // The database is the lock: one statement takes the offer and clears it, so two requests
+        // racing on the same yes cannot both carry it out, and the clear holds even if this turn
+        // fails before its save. The tracked entity follows, so the turn's own save agrees.
+        var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session.Id, ct);
         session.PendingAction = null;
         session.PendingActionExpiresAtUtc = null;
 
+        if (consumed is null)
+            return null;
+
+        var pending = JournalChatRequest.TryDeserialize(consumed.Action);
+        var live = pending is not null && consumed.ExpiresAtUtc is { } until && until > utcNow;
         if (!live)
             return null;
 

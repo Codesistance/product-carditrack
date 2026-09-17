@@ -36,7 +36,19 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
     /// </summary>
     Task<IReadOnlyList<MemberChatSession>> ListUnthemedCompletedAsync(
         DateTime activeSinceUtc, int limit, CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes the session's pending action, if it has one, clearing it in the same statement. Of
+    /// two requests that both saw the offer, exactly one gets it back; the other gets null and
+    /// treats its message as an ordinary one. Autocommitted, so the clear holds even when the
+    /// rest of the turn fails before its save.
+    /// </summary>
+    Task<PendingChatAction?> TryConsumePendingActionAsync(Guid sessionId, CancellationToken ct = default);
 }
+
+/// <summary>What <see cref="IMemberChatSessionRepository.TryConsumePendingActionAsync"/> took off
+/// the session: the stored line and when it stopped being honoured.</summary>
+public sealed record PendingChatAction(string Action, DateTime? ExpiresAtUtc);
 
 /// <summary>One row of <see cref="IMemberChatSessionRepository.ListCompletedForMemberAsync"/>.</summary>
 public sealed record MemberChatSessionListing

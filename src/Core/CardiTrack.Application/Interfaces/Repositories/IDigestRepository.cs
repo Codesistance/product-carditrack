@@ -64,4 +64,14 @@ public interface IDigestRepository
     /// </summary>
     Task<int> DeleteBookAsync(
         Guid cardiMemberId, DateOnly localDate, DigestAudience audience, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces one CardiJournal book with <paramref name="entry"/> — the delete of any earlier
+    /// book for the same member, day and audience, and the insert of the new one, in one
+    /// transaction. A failure between the two rolls the delete back, so the book a caregiver had
+    /// is never lost to a replacement that could not be stored.
+    /// </summary>
+    /// <returns>How many earlier rows went, and whether the new one landed (false only when a
+    /// concurrent write took the period first — see <see cref="AddAsync"/>).</returns>
+    Task<(int Removed, bool Inserted)> ReplaceBookAsync(DigestEntry entry, CancellationToken ct = default);
 }
