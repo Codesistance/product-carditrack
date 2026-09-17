@@ -232,7 +232,8 @@ jobs:
           BUCKET: gs://${{ needs.resolve.outputs.gcs_builds_bucket }}
         run: |
           mkdir -p artifacts/android
-          gcloud storage cp -r "$BUCKET/$TAG/android/*" artifacts/android/
+          # ** — the AAB sits below publish/ inside the archive, and a single * does not cross /.
+          gcloud storage cp -r "$BUCKET/$TAG/android/**" artifacts/android/
 
       - name: Find AAB
         id: aab
@@ -336,7 +337,8 @@ jobs:
           BUCKET: gs://${{ needs.resolve.outputs.gcs_builds_bucket }}
         run: |
           mkdir -p artifacts/ios
-          gcloud storage cp -r "$BUCKET/$TAG/ios/*" artifacts/ios/
+          # ** for the same reason as the Android download; the symbols zips come along, harmlessly.
+          gcloud storage cp -r "$BUCKET/$TAG/ios/**" artifacts/ios/
 
       - name: Find IPA
         id: ipa

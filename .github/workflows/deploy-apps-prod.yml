@@ -80,8 +80,13 @@ jobs:
           TAG="${{ inputs.tag }}"
           BUCKET=gs://${{ needs.env.outputs.gcs_builds_bucket }}
           ANDROID=false; IOS=false
-          gcloud storage ls "$BUCKET/$TAG/android/" > /dev/null 2>&1 && ANDROID=true
-          gcloud storage ls "$BUCKET/$TAG/ios/"     > /dev/null 2>&1 && IOS=true
+          # The binaries themselves, not just the prefix: a prefix with only symbols or
+          # metadata in it must not count as a build. Listing captured before grep, as in
+          # deploy-mobile-dev.yml, so a pipeline status cannot abort the step.
+          LISTING=$(gcloud storage ls "$BUCKET/$TAG/android/**" 2>/dev/null || true)
+          printf '%s\n' "$LISTING" | grep -q '\-Signed\.aab$' && ANDROID=true
+          LISTING=$(gcloud storage ls "$BUCKET/$TAG/ios/**" 2>/dev/null || true)
+          printf '%s\n' "$LISTING" | grep -q '\.ipa$' && IOS=true
           echo "android_built=$ANDROID" >> $GITHUB_OUTPUT
           echo "ios_built=$IOS"         >> $GITHUB_OUTPUT
           if [ "$ANDROID" = "false" ] && [ "$IOS" = "false" ]; then

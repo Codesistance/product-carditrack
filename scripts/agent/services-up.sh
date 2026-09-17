@@ -103,12 +103,26 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 # ── Postgres + Redis ─────────────────────────────────────────────────────────
-log "Starting db and redis"
-$DOCKER compose up -d db redis >/dev/null 2>&1 || $DOCKER compose up -d db redis
+# The Claude cloud pre-checkout setup script (docs/technical/
+# claude_cloud_environment_setup.md) starts standalone containers named
+# carditrack-db / carditrack-redis on the same host ports before the repo
+# exists. When they are there, reuse them — a second compose project on the
+# same ports would only fail to bind — otherwise use the repo's compose file.
+if $DOCKER inspect carditrack-db >/dev/null 2>&1 && $DOCKER inspect carditrack-redis >/dev/null 2>&1; then
+  log "Starting the pre-provisioned carditrack-db and carditrack-redis containers"
+  $DOCKER start carditrack-db carditrack-redis >/dev/null
+  PG="$DOCKER exec carditrack-db"
+  RD="$DOCKER exec carditrack-redis"
+else
+  log "Starting db and redis (docker compose)"
+  $DOCKER compose up -d db redis >/dev/null 2>&1 || $DOCKER compose up -d db redis
+  PG="$DOCKER compose exec -T db"
+  RD="$DOCKER compose exec -T redis"
+fi
 
 ready() {
-  $DOCKER compose exec -T db pg_isready -U postgres -d carditrack >/dev/null 2>&1 && \
-  [ "$($DOCKER compose exec -T redis redis-cli ping 2>/dev/null | tr -d '\r')" = "PONG" ]
+  $PG pg_isready -U postgres -d carditrack >/dev/null 2>&1 && \
+  [ "$($RD redis-cli ping 2>/dev/null | tr -d '\r')" = "PONG" ]
 }
 for _ in $(seq 1 30); do
   ready && break

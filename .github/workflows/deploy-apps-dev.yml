@@ -186,6 +186,9 @@ jobs:
     name: Compute next version
     needs: changes
     # Every lane that stamps the version into an image or artifact belongs in this condition —
+  # and only those: mobile_windows is a compile check that stamps nothing, so a Windows-only
+  # dispatch computes no version and creates no tag (a tag with no build behind it is one
+  # deploy-mobile-dev.yml could never push).
     # a lane missing here makes its whole chain skip silently on a dispatch that enables only
     # that lane, while the run still reports success (issue #409: a model-only dispatch
     # built and deployed nothing, twice, before anyone noticed).
@@ -196,7 +199,6 @@ jobs:
        needs.changes.outputs.worker   == 'true' ||
        needs.changes.outputs.mobile_android == 'true' ||
        needs.changes.outputs.mobile_ios     == 'true' ||
-       needs.changes.outputs.mobile_windows == 'true' ||
        needs.changes.outputs.pipeline == 'true' ||
        needs.changes.outputs.webhook  == 'true')
     runs-on: ubuntu-latest
@@ -1238,11 +1240,17 @@ jobs:
           BUCKET: gs://${{ needs.changes.outputs.gcs_builds_bucket }}
         run: |
           # Either can be absent when it was not ticked.
-          if [ -d artifacts/android ]; then gcloud storage cp -r artifacts/android/** $BUCKET/$TAG/android/; fi
-          if [ -d artifacts/ios ];     then gcloud storage cp -r artifacts/ios/**     $BUCKET/$TAG/ios/; fi
+          #
+          # -n (no-clobber): the deploy service account holds objectCreator + objectViewer
+          # on this bucket, never objectAdmin, so an object that already exists cannot be
+          # overwritten. Without -n a rerun of a run that archived and then failed before
+          # tagging would compute the same tag and fail here on the objects it wrote the
+          # first time; with it, what is there is kept and what is missing is added.
+          if [ -d artifacts/android ]; then gcloud storage cp -n -r artifacts/android/** $BUCKET/$TAG/android/; fi
+          if [ -d artifacts/ios ];     then gcloud storage cp -n -r artifacts/ios/**     $BUCKET/$TAG/ios/; fi
           # The bucket's 10-day lifecycle rule deletes these along with the binaries;
           # the 90-day Actions artifact is the copy that outlives a late crash report.
-          if [ -d artifacts/ios-symbols ]; then gcloud storage cp -r artifacts/ios-symbols/** $BUCKET/$TAG/ios/symbols/; fi
+          if [ -d artifacts/ios-symbols ]; then gcloud storage cp -n -r artifacts/ios-symbols/** $BUCKET/$TAG/ios/symbols/; fi
 
   # ── Main only: DB Migrations + Deploy Dev ───────────────────────────────────
   run-db-migrations:
