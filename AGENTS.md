@@ -24,10 +24,12 @@ below is the non-obvious part the scripted setup does **not** cover.
 
 ### Build everything: `scripts/agent/build-all.sh`
 Server filter (Release, warning-free), then `CardiTrack.Mobile` for Android locally, then the
-platforms this VM cannot build — iOS needs macOS — by dispatching **Deploy Mobile → Dev**
-(`deploy-mobile-dev.yml`) on the current branch and waiting for it. A branch dispatch builds
-and ships nothing. The branch must be pushed. `--no-ci` keeps it local; `--platform both`
-sends Android to CI as well (a signed, R8/AOT build, unlike the local compile).
+platforms this VM cannot build — iOS needs macOS — by dispatching **CI / Deploy Apps → Dev**
+(`deploy-apps-dev.yml`) on the current branch with only the mobile ticks on, and waiting for
+it. A branch dispatch builds and ships nothing. The branch must be pushed. `--no-ci` keeps it
+local; `--platform both` sends Android to CI as well (a signed, R8/AOT build, unlike the local
+compile). Store pushes are a separate, deliberate step: `deploy-mobile-dev.yml`, by tag, on
+`main`.
 
 ### Test everything: `scripts/agent/test-all.sh`
 Builds the server filter once (Release) and runs the unit and integration suites with

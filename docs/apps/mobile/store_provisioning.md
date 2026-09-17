@@ -1,6 +1,6 @@
 # Store Provisioning — Keys, Certificates & Secrets
 
-One-time setup that enables CI (`.github/workflows/deploy-mobile-dev.yml`) to deliver signed mobile
+One-time setup that enables CI (`deploy-apps-dev.yml` to build, `deploy-mobile-dev.yml` to push) to deliver signed mobile
 builds to **TestFlight** (iOS) and the **Google Play internal testing track** (Android). Everything
 lands in GCP Secret Manager as the twelve `carditrack-common-*` secrets defined in
 `infrastructure/common/secret_manager.tf` — nine read by CI, plus three **operator-only** APNs

@@ -1,21 +1,16 @@
 name: Deploy Mobile → Dev
 
-# Mobile is dispatch-only and its own workflow. It used to be a lane inside
-# CI / Deploy Apps → Dev, where one `mobile` tick built Android, iOS *and*
-# Windows on three runners every time — the iOS device build alone is ~15
-# macOS minutes at ten times the Linux price, paid even when only the Android
-# build was wanted. Here the platform is an input, and nothing runs for a
-# platform that was not asked for.
+# Pushes an already-built release to the stores. It does not build: the signed
+# AAB and IPA come from the GCS builds bucket, where CI / Deploy Apps → Dev
+# archives them under the release tag it created (tick mobile_android /
+# mobile_ios there). Pushing costs about two Linux minutes per platform and
+# never touches a Mac.
 #
-# Any ref may be dispatched. Builds run wherever they are dispatched, which is
-# the only compile coverage a mobile change on a branch gets (issue #1111 — the
-# push/PR lane is gated off by .github/ACTIONS_ON_PUSH and mobile never built
-# there anyway). Everything that *ships* — TestFlight, Play Console, the GCS
-# builds bucket, the patch tag — is guarded on refs/heads/main.
+#   gh workflow run deploy-mobile-dev.yml --ref main -f platform=android            # latest tag
+#   gh workflow run deploy-mobile-dev.yml --ref main -f platform=ios -f tag=v0.2.308
 #
-#   gh workflow run deploy-mobile-dev.yml --ref main -f platform=android
-#   gh workflow run deploy-mobile-dev.yml --ref main -f platform=ios
-#   gh workflow run deploy-mobile-dev.yml --ref <branch> -f platform=both   # compile check, ships nothing
+# Dispatch on main only. The bucket keeps a tag's builds for 10 days; after
+# that the tag has to be rebuilt before it can be pushed.
 on:
   workflow_dispatch:
     inputs:
@@ -27,19 +22,19 @@ on:
           - ios
           - both
         default: both
-      windows:
-        description: 'Windows (MSIX to the builds bucket; nothing ships from it)'
-        type: boolean
-        default: false
+      tag:
+        description: 'Release tag (v1.2.3). Empty = the latest v* tag.'
+        type: string
+        default: ''
 
 permissions:
   id-token: write
   contents: read
 
-# Never cancel a run that may be mid-upload to a store; a second dispatch on
-# the same ref queues behind the first instead.
+# Never cancel a run that may be mid-upload to a store; a second dispatch
+# queues behind the first instead.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}
   cancel-in-progress: false
 
 jobs:
@@ -47,33 +42,35 @@ jobs:
     name: Environment
     uses: ./.github/workflows/_env.yml
 
-  # ── Which platforms, and does this ref ship? ────────────────────────────────
-  # The one place the inputs are read. Everything downstream keys off these
-  # outputs, the way `changes` worked in the apps workflow, so a job never has
-  # to spell the platform logic out for itself.
-  select:
-    name: Resolve platforms
+  # ── Which tag, which platforms, and are its builds there? ──────────────────
+  resolve:
+    name: Resolve tag and platforms
     needs: env
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     outputs:
-      android: ${{ steps.out.outputs.android }}
-      ios:     ${{ steps.out.outputs.ios }}
-      windows: ${{ steps.out.outputs.windows }}
-      # true only on main: the store uploads, the GCS copy and the patch tag
-      # look at this rather than repeating the ref check.
-      ship:    ${{ steps.out.outputs.ship }}
-      dotnet_version:      ${{ needs.env.outputs.dotnet_version }}
+      tag:          ${{ steps.tag.outputs.tag }}
+      build_number: ${{ steps.tag.outputs.build_number }}
+      android:      ${{ steps.platforms.outputs.android }}
+      ios:          ${{ steps.platforms.outputs.ios }}
+      changelog_testflight: ${{ steps.changelog.outputs.changelog_testflight }}
+      changelog_play:       ${{ steps.changelog.outputs.changelog_play }}
       gcp_project_id:      ${{ needs.env.outputs.gcp_project_id }}
       gcp_wif_provider:    ${{ needs.env.outputs.gcp_wif_provider }}
       gcp_service_account: ${{ needs.env.outputs.gcp_service_account }}
       gcs_builds_bucket:   ${{ needs.env.outputs.gcs_builds_bucket }}
-      api_url_dev:         ${{ needs.env.outputs.api_url_dev }}
     steps:
-      - id: out
+      - name: Main only
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploy Mobile → Dev pushes main's builds to the stores; dispatch it on main (got ${{ github.ref }})."
+          exit 1
+
+      - id: platforms
         env:
           PLATFORM: ${{ inputs.platform }}
-          WINDOWS: ${{ inputs.windows }}
-          REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           ANDROID=false; IOS=false
@@ -83,73 +80,54 @@ jobs:
             both)    ANDROID=true; IOS=true ;;
             *) echo "::error::Unknown platform '$PLATFORM'"; exit 1 ;;
           esac
-          SHIP=false
-          if [ "$REF" = "refs/heads/main" ]; then SHIP=true; fi
-          {
-            echo "android=$ANDROID"
-            echo "ios=$IOS"
-            echo "windows=$WINDOWS"
-            echo "ship=$SHIP"
-          } >> "$GITHUB_OUTPUT"
-          echo "Platforms: android=$ANDROID ios=$IOS windows=$WINDOWS — ref $REF ships: $SHIP"
+          echo "android=$ANDROID" >> "$GITHUB_OUTPUT"
+          echo "ios=$IOS"         >> "$GITHUB_OUTPUT"
 
-  # ── Version, build number, changelog ────────────────────────────────────────
-  # Same scheme as the apps workflow: next patch after the latest v* tag, build
-  # number = commit count. The difference is what happens when the dispatched
-  # commit already carries a v* tag — an apps deploy of the same sha will have
-  # created one — in which case that tag is the version and nothing new is
-  # tagged at the end. Two tags on one commit would otherwise be the normal
-  # outcome of deploying apps and mobile separately.
-  #
-  # The build number is the commit count, so re-dispatching the same sha
-  # produces the same versionCode / CFBundleVersion and the store rejects the
-  # duplicate. That is the existing behaviour, not a regression of the split.
-  compute-version:
-    name: Compute version
-    needs: select
-    runs-on: ubuntu-latest
-    outputs:
-      version:      ${{ steps.version.outputs.version }}
-      build_number: ${{ steps.version.outputs.build_number }}
-      create_tag:   ${{ steps.version.outputs.create_tag }}
-      changelog_testflight: ${{ steps.version.outputs.changelog_testflight }}
-      changelog_play: ${{ steps.version.outputs.changelog_play }}
-    steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Resolve version
-        id: version
+
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          git fetch --tags
-          EXISTING=$(git tag --points-at HEAD | grep '^v[0-9]' | sort -V | tail -1 || true)
-          if [ -n "$EXISTING" ]; then
-            VERSION="$EXISTING"
-            # Changelog since the tag *before* this one.
-            SINCE=$(git tag --sort=-version:refname | grep '^v[0-9]' | grep -vx "$EXISTING" | head -1 || true)
-            echo "create_tag=false" >> $GITHUB_OUTPUT
-            echo "Commit already tagged ${VERSION}; reusing it"
-          else
-            LATEST=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1 || true)
-            if [ -z "$LATEST" ]; then LATEST="v0.0.0"; fi
-            MAJOR=$(echo ${LATEST#v} | cut -d. -f1)
-            MINOR=$(echo ${LATEST#v} | cut -d. -f2)
-            PATCH=$(echo ${LATEST#v} | cut -d. -f3)
-            VERSION="v${MAJOR}.${MINOR}.$((PATCH+1))"
-            SINCE="$LATEST"
-            echo "create_tag=true" >> $GITHUB_OUTPUT
-            echo "Next version: ${VERSION}"
+          git fetch --tags --quiet
+          TAG="$(printf '%s' "$INPUT_TAG" | tr -d '[:space:]')"
+          if [ -z "$TAG" ]; then
+            TAG=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1 || true)
+            [ -n "$TAG" ] || { echo "::error::No v* tag exists yet — run CI / Deploy Apps → Dev on main first."; exit 1; }
+            echo "Latest tag: $TAG"
+          elif ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag '$TAG' does not exist."; exit 1
           fi
-          if [ -z "$SINCE" ]; then SINCE="v0.0.0"; fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          # Monotonic build number for store uploads (TestFlight CFBundleVersion / Play versionCode)
-          BUILD_NUMBER=$(git rev-list --count HEAD)
-          echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
-          echo "Build number: ${BUILD_NUMBER}"
+          # The build number CI stamped into the binaries: the commit count at the tag.
+          BUILD_NUMBER=$(git rev-list --count "$TAG")
+          echo "tag=$TAG"                   >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Pushing $TAG (build $BUILD_NUMBER)"
+
+      # Same "What's new" the builds used to carry: commits since the previous
+      # v* tag, up to this tag — so the checkout moves to the tag first.
+      - name: Release notes
+        id: changelog
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          BUILD_NUMBER: ${{ steps.tag.outputs.build_number }}
+        run: |
+          set -euo pipefail
+          git checkout --quiet "$TAG"
+          # The previous release: the highest v* tag that is an ancestor of this one.
+          SINCE=""
+          for CANDIDATE in $(git tag --sort=-version:refname | grep '^v[0-9]' | grep -vx "$TAG"); do
+            if git merge-base --is-ancestor "$CANDIDATE" "$TAG"; then SINCE="$CANDIDATE"; break; fi
+          done
+          [ -n "$SINCE" ] || SINCE=v0.0.0
+          echo "Changelog since $SINCE"
           python3 .github/scripts/mobile-build-changelog.py \
             --since "$SINCE" \
-            --version "$VERSION" \
+            --version "$TAG" \
             --build "$BUILD_NUMBER" \
             --testflight-out /tmp/changelog-testflight.txt \
             --play-out /tmp/changelog-play.txt
@@ -162,82 +140,55 @@ jobs:
             echo "changelog_play<<${PLAY_DELIM}"
             cat /tmp/changelog-play.txt
             echo "${PLAY_DELIM}"
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
-  # ── Dependency audit ────────────────────────────────────────────────────────
-  # Not in the builds' `needs` on purpose: a build is inert, and the scan used
-  # to sit on the critical path for nothing. It gates everything that leaves
-  # the runner instead (both store uploads and the GCS copy), so nothing ships
-  # unscanned.
-  security-mobile:
-    name: Security Scan (Mobile)
-    needs: select
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: ${{ needs.select.outputs.dotnet_version }}
-      - name: Dependency vulnerability audit
-        run: |
-          dotnet workload install maui-android
-          dotnet restore src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -p:TargetFrameworks=net10.0-android
-          dotnet list src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj package \
-            --vulnerable --include-transitive 2>&1 | tee audit.txt
-          if grep -E "^\s+> " audit.txt | grep -qv "GHSA-rvv3-g6hj-g44x"; then
-            echo "::error::Vulnerable packages detected — review audit.txt"
-            exit 1
-          fi
-
-  # ── Android ─────────────────────────────────────────────────────────────────
-  # Signed device build for Play Console. Gates on its signing secrets being
-  # populated (not the REPLACE_ME placeholder) and skips with a warning until
-  # the operator completes the one-time store setup.
-  build-mobile-android-signed:
-    name: Build Mobile (Android, signed)
-    needs:
-      - select
-      - compute-version
-    if: needs.select.outputs.android == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    # deploy-play and upload-mobile-artifacts download this artifact, so every
-    # reason it might be absent has to reach them — otherwise they fail looking
-    # for something that was never uploaded. The upload's own outcome is the one
-    # signal that covers all of them: 'skipped' when the signing gate closed, and
-    # 'failure' when the upload was rejected despite continue-on-error.
-    outputs:
-      available: ${{ steps.upload.outcome == 'success' }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: ${{ needs.select.outputs.dotnet_version }}
       - uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ needs.select.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.select.outputs.gcp_service_account }}
+          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.env.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
 
-      - name: Check signing secrets
+      - name: Verify the tag's builds are in the bucket
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          BUCKET: gs://${{ needs.env.outputs.gcs_builds_bucket }}
+          ANDROID: ${{ steps.platforms.outputs.android }}
+          IOS: ${{ steps.platforms.outputs.ios }}
+        run: |
+          set -euo pipefail
+          MISSING=""
+          if [ "$ANDROID" = "true" ] && ! gcloud storage ls "$BUCKET/$TAG/android/**" 2>/dev/null | grep -q '\-Signed\.aab$'; then MISSING="$MISSING android"; fi
+          if [ "$IOS" = "true" ] && ! gcloud storage ls "$BUCKET/$TAG/ios/**" 2>/dev/null | grep -q '\.ipa$'; then MISSING="$MISSING ios"; fi
+          if [ -n "$MISSING" ]; then
+            echo "::error::No signed build for $TAG in $BUCKET for:$MISSING. Build it first — dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks — then push. The bucket keeps builds for 10 days; an older tag has to be rebuilt."
+            exit 1
+          fi
+          echo "Builds present for $TAG:${ANDROID:+ android}${IOS:+ ios}"
+
+  # ── Play Console (internal track) ───────────────────────────────────────────
+  deploy-play-internal:
+    name: Deploy → Play Console (internal)
+    needs: resolve
+    if: needs.resolve.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.resolve.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.resolve.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Check Play Console secrets
         id: gate
         env:
-          PROJECT: ${{ needs.select.outputs.gcp_project_id }}
+          PROJECT: ${{ needs.resolve.outputs.gcp_project_id }}
         run: |
-          MISSING=""
-          for SECRET in carditrack-common-android-keystore carditrack-common-android-keystore-password; do
-            VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
-            if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then MISSING="$MISSING $SECRET"; fi
-          done
-          if [ -n "$MISSING" ]; then
-            echo "::warning::Skipping signed Android build — secrets not populated:$MISSING"
-            echo "### Signed Android build skipped" >> $GITHUB_STEP_SUMMARY
-            echo "Populate$MISSING in Secret Manager to enable Play Console uploads." >> $GITHUB_STEP_SUMMARY
+          SECRET=carditrack-common-play-service-account-key
+          VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
+          if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then
+            echo "::warning::Skipping Play Console upload — $SECRET not populated"
+            echo "### Play Console upload skipped" >> $GITHUB_STEP_SUMMARY
+            echo "Populate \`$SECRET\` in Secret Manager to enable Play Console uploads." >> $GITHUB_STEP_SUMMARY
             echo "available=false" >> $GITHUB_OUTPUT
           else
             echo "available=true" >> $GITHUB_OUTPUT
@@ -248,351 +199,63 @@ jobs:
         id: secrets
         with:
           secrets: |
-            keystore:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-android-keystore
-            keystore_password:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-android-keystore-password
-            auth0_domain:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
-            auth0_audience:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
-            auth0_mobile_client_id:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            apm_mobile_engine:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
-            apm_mobile_data:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
-            mobile_diagnostics_key:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-mobile-diagnostics-key
+            play_key:${{ needs.resolve.outputs.gcp_project_id }}/carditrack-common-play-service-account-key
 
-      - name: Decode keystore
+      - name: Download the build from GCS
         if: steps.gate.outputs.available == 'true'
         env:
-          KEYSTORE_B64: ${{ steps.secrets.outputs.keystore }}
-        run: echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/carditrack.keystore"
+          TAG: ${{ needs.resolve.outputs.tag }}
+          BUCKET: gs://${{ needs.resolve.outputs.gcs_builds_bucket }}
+        run: |
+          mkdir -p artifacts/android
+          gcloud storage cp -r "$BUCKET/$TAG/android/*" artifacts/android/
 
-      - name: Install MAUI workload
+      - name: Find AAB
+        id: aab
         if: steps.gate.outputs.available == 'true'
-        run: dotnet workload install maui-android
+        run: |
+          echo "path=$(find artifacts/android -name '*-Signed.aab' | head -1)" >> $GITHUB_OUTPUT
+          echo "mapping=$(find artifacts/android -name 'mapping.txt' | head -1)" >> $GITHUB_OUTPUT
+          echo "symbols=$(find artifacts/android -name 'native-debug-symbols.zip' | head -1)" >> $GITHUB_OUTPUT
 
-      - name: Publish signed AAB + APK
+      - name: Write Play release notes
         if: steps.gate.outputs.available == 'true'
         env:
-          DISPLAY_VERSION: ${{ needs.compute-version.outputs.version }}
-          BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
-          KEYSTORE_PASSWORD: ${{ steps.secrets.outputs.keystore_password }}
-          APM_DATA: ${{ steps.secrets.outputs.apm_mobile_data }}
+          NOTES: ${{ needs.resolve.outputs.changelog_play }}
         run: |
-          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
-          # AndroidPackageFormats defaults to aab;apk — don't pass it via -p:
-          # (MSBuild splits on the semicolon and misparses "apk" as a switch)
-          dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
-            -f net10.0-android \
-            -c Release \
-            -p:AndroidKeyStore=true \
-            -p:AndroidSigningKeyStore="$RUNNER_TEMP/carditrack.keystore" \
-            -p:AndroidSigningKeyAlias=carditrack \
-            -p:AndroidSigningStorePass="$KEYSTORE_PASSWORD" \
-            -p:AndroidSigningKeyPass="$KEYSTORE_PASSWORD" \
-            -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
-            -p:ApplicationVersion="$BUILD_NUMBER" \
-            -p:ApiBaseUrl=${{ needs.select.outputs.api_url_dev }} \
-            -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
-            -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
-            -p:MobileDiagnosticsKey=${{ steps.secrets.outputs.mobile_diagnostics_key }} \
-            -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
-            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
+          mkdir -p play-whatsnew
+          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-US
+          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-GB
 
-      # Play Console crash-report inputs: the R8 deobfuscation map produced by
-      # AndroidLinkTool=r8 (see CardiTrack.Mobile.csproj) and a zip of the
-      # pre-strip native libraries for symbolicated native stack traces.
-      - name: Stage Play crash-report files
+      - name: Upload to Play Console (internal track)
         if: steps.gate.outputs.available == 'true'
-        run: |
-          OUT_DIR=src/Presentation/CardiTrack.Mobile/bin/Release/net10.0-android
-          OBJ_DIR=src/Presentation/CardiTrack.Mobile/obj/Release/net10.0-android
-          mkdir -p play-extras
-          cp "$OUT_DIR/mapping.txt" play-extras/mapping.txt
-          (cd "$OBJ_DIR/app_shared_libraries" && zip -r "$GITHUB_WORKSPACE/play-extras/native-debug-symbols.zip" . -i '*.so')
-
-      - id: upload
-        uses: actions/upload-artifact@v7
-        if: steps.gate.outputs.available == 'true'
-        continue-on-error: true
+        uses: r0adkll/upload-google-play@v1
         with:
-          name: mobile-android-signed
-          path: |
-            **/publish/*-Signed.*
-            play-extras/*
-          retention-days: 1
+          serviceAccountJsonPlainText: ${{ steps.secrets.outputs.play_key }}
+          packageName: com.codesistance.carditrack.mobile
+          releaseFiles: ${{ steps.aab.outputs.path }}
+          mappingFile: ${{ steps.aab.outputs.mapping }}
+          debugSymbols: ${{ steps.aab.outputs.symbols }}
+          tracks: internal
+          status: completed
+          whatsNewDirectory: play-whatsnew
 
-  # ── iOS ─────────────────────────────────────────────────────────────────────
-  # The expensive one: ~15 minutes on macOS, billed at ten times the Linux rate.
-  # It only runs when iOS was asked for.
-  build-mobile-ios-device:
-    name: Build Mobile (iOS, device)
-    needs:
-      - select
-      - compute-version
-    if: needs.select.outputs.ios == 'true'
-    runs-on: macos-26
-    timeout-minutes: 40
-    permissions:
-      id-token: write
-      contents: read
-    # As above: deploy-testflight and upload-mobile-artifacts consume this IPA.
-    outputs:
-      available: ${{ steps.upload.outcome == 'success' }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: ${{ needs.select.outputs.dotnet_version }}
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.select.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.select.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
-
-      - name: Check signing secrets
-        id: gate
-        env:
-          PROJECT: ${{ needs.select.outputs.gcp_project_id }}
-        run: |
-          MISSING=""
-          for SECRET in carditrack-common-apple-distribution-cert-p12 carditrack-common-apple-cert-password carditrack-common-appstore-provisioning-profile; do
-            VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
-            if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then MISSING="$MISSING $SECRET"; fi
-          done
-          if [ -n "$MISSING" ]; then
-            echo "::warning::Skipping signed iOS build — secrets not populated:$MISSING"
-            echo "### Signed iOS build skipped" >> $GITHUB_STEP_SUMMARY
-            echo "Populate$MISSING in Secret Manager to enable TestFlight uploads." >> $GITHUB_STEP_SUMMARY
-            echo "available=false" >> $GITHUB_OUTPUT
-          else
-            echo "available=true" >> $GITHUB_OUTPUT
-          fi
-
-      - uses: google-github-actions/get-secretmanager-secrets@v3
-        if: steps.gate.outputs.available == 'true'
-        id: secrets
-        with:
-          secrets: |
-            cert_p12:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-apple-distribution-cert-p12
-            cert_password:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-apple-cert-password
-            provisioning_profile:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-appstore-provisioning-profile
-            auth0_domain:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
-            auth0_audience:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
-            auth0_mobile_client_id:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-            apm_mobile_engine:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-engine
-            apm_mobile_data:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-apm-mobile-data
-            mobile_diagnostics_key:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-mobile-diagnostics-key
-
-      - name: Install certificate and provisioning profile
+      - name: Summary
         if: steps.gate.outputs.available == 'true'
         env:
-          CERT_P12_B64: ${{ steps.secrets.outputs.cert_p12 }}
-          CERT_PASSWORD: ${{ steps.secrets.outputs.cert_password }}
-          PROFILE_B64: ${{ steps.secrets.outputs.provisioning_profile }}
+          NOTES: ${{ needs.resolve.outputs.changelog_play }}
         run: |
-          echo "$CERT_P12_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security create-keychain -p "" build.keychain
-          security unlock-keychain -p "" build.keychain
-          # New keychains auto-lock after 300s; codesign runs minutes later and
-          # would hang forever on the unlock prompt (headless runner).
-          security set-keychain-settings -lut 21600 build.keychain
-          security import "$RUNNER_TEMP/cert.p12" -k build.keychain \
-            -P "$CERT_PASSWORD" \
-            -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          security list-keychains -d user -s build.keychain
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$PROFILE_B64" | base64 --decode \
-            > ~/Library/MobileDevice/Provisioning\ Profiles/carditrack-appstore.mobileprovision
+          echo "### Play Console (internal) — uploaded \`${{ needs.resolve.outputs.tag }}\` (versionCode ${{ needs.resolve.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
+          echo >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          printf '%s\n' "$NOTES" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Select Xcode
-        if: steps.gate.outputs.available == 'true'
-        run: |
-          sudo xcode-select -s /Applications/Xcode_26.4.1.app
-          echo "DEVELOPER_DIR=$(xcode-select -p)" >> $GITHUB_ENV
-
-      - name: Install MAUI workload
-        if: steps.gate.outputs.available == 'true'
-        run: dotnet workload install maui-ios --version 10.0.300.1
-
-      - name: Publish signed IPA
-        if: steps.gate.outputs.available == 'true'
-        env:
-          DISPLAY_VERSION: ${{ needs.compute-version.outputs.version }}
-          BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
-          APM_DATA: ${{ steps.secrets.outputs.apm_mobile_data }}
-        run: |
-          if [ "$APM_DATA" = "REPLACE_ME" ]; then APM_DATA=""; fi
-          dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
-            -f net10.0-ios \
-            -c Release \
-            -p:RuntimeIdentifier=ios-arm64 \
-            -p:ArchiveOnBuild=true \
-            -p:CreateDsymDirectory=true \
-            -p:CodesignKey="Apple Distribution" \
-            -p:CodesignProvision="CardiTrack Distribution" \
-            -p:CodesignEntitlements=Platforms/iOS/Entitlements.Release.plist \
-            -p:ApplicationDisplayVersion="${DISPLAY_VERSION#v}" \
-            -p:ApplicationVersion="$BUILD_NUMBER" \
-            -p:ApiBaseUrl=${{ needs.select.outputs.api_url_dev }} \
-            -p:Auth0Domain=${{ steps.secrets.outputs.auth0_domain }} \
-            -p:Auth0ClientId=${{ steps.secrets.outputs.auth0_mobile_client_id }} \
-            -p:Auth0Audience=${{ steps.secrets.outputs.auth0_audience }} \
-            -p:MobileDiagnosticsKey=${{ steps.secrets.outputs.mobile_diagnostics_key }} \
-            -p:ApmEngine=${{ steps.secrets.outputs.apm_mobile_engine }} \
-            -p:ApmData=$(printf '%s' "$APM_DATA" | base64 | tr -d '\n')
-
-      # The counterpart of build-mobile-android-signed's "Stage Play crash-report
-      # files": the shipped binary is stripped, so a TestFlight crash report arrives
-      # as raw offsets into CardiTrack.Mobile and the .dSYM is the only thing that
-      # can name them again — including the managed frames, which AOT compiles into
-      # that same binary. Nothing shipped it before: the artifact below took the IPA
-      # alone, and the copies `ArchiveOnBuild=true` leaves in the build output and
-      # the .xcarchive both died with the runner. The first crash that cost us was
-      # the launch abort in build 1510, which could not be symbolicated at all.
-      #
-      # Kept twice over, because a crash report can arrive long after the build: as its
-      # own 90-day Actions artifact, and in the GCS builds bucket alongside the IPA,
-      # where the bucket's 10-day lifecycle rule reaches it. Neither is App Store
-      # Connect — the upload action takes an IPA, and dSYMs cannot be attached to a
-      # build after the fact, so symbolication always happens from one of these copies.
-      #
-      # A hard failure rather than a warning. A build nobody can symbolicate is the
-      # exact hole this step closes, and a silently absent dSYM looks identical to a
-      # working one right up until the next crash report needs it.
-      - name: Stage iOS symbols
-        if: steps.gate.outputs.available == 'true'
-        run: |
-          SEARCH="src/Presentation/CardiTrack.Mobile/bin/Release/net10.0-ios"
-          # The archive lands outside the workspace and is absent when ArchiveOnBuild
-          # has not run yet; find errors on a missing path, so only search a real one.
-          if [ -d "$HOME/Library/Developer/Xcode/Archives" ]; then
-            SEARCH="$SEARCH $HOME/Library/Developer/Xcode/Archives"
-          fi
-          # -prune: a .dSYM is a directory, and without it find walks into the bundle
-          # and reports its contents as well as the bundle itself.
-          find $SEARCH \( -name '*.dSYM' -o -name '*.mSYM' \) -prune -print \
-            > "$RUNNER_TEMP/symbols.txt"
-          if [ ! -s "$RUNNER_TEMP/symbols.txt" ]; then
-            # Print where it did look, so one failed run is enough to find the new
-            # location rather than needing a build with extra logging bolted on.
-            echo "Contents of the searched paths:"
-            find $SEARCH -maxdepth 4 \( -name '*.app' -o -name '*.xcarchive' -o -name '*SYM*' \) -print || true
-            echo "::error::No .dSYM found under $SEARCH — this build could not be symbolicated, so it is not worth shipping. Check whether the iOS SDK still writes one here (CreateDsymDirectory is set on the publish above)."
-            exit 1
-          fi
-          mkdir -p ios-symbols
-          while IFS= read -r SYM; do
-            NAME=$(basename "$SYM")
-            # The same bundle usually appears twice, in the build output and in the
-            # archive. zip would merge the second into the first rather than replace
-            # it, so take whichever is found first and skip the duplicate.
-            if [ -f "$GITHUB_WORKSPACE/ios-symbols/$NAME.zip" ]; then continue; fi
-            (cd "$(dirname "$SYM")" && zip -qry "$GITHUB_WORKSPACE/ios-symbols/$NAME.zip" "$NAME")
-          done < "$RUNNER_TEMP/symbols.txt"
-          ls -l ios-symbols
-
-      - id: upload
-        uses: actions/upload-artifact@v7
-        if: steps.gate.outputs.available == 'true'
-        continue-on-error: true
-        with:
-          name: mobile-ios-ipa
-          path: '**/*.ipa'
-          retention-days: 1
-
-      # Its own artifact rather than a second pattern on the one above, for two
-      # reasons: adding a pattern would re-root that artifact at the workspace and
-      # silently move the IPA's path in the GCS bucket, and symbols want a far longer
-      # retention than the binary — 90 days against the IPA's one, because the IPA is
-      # superseded by the next build while its symbols stay the only way to read a
-      # crash report from it. Not continue-on-error: the staging step above already
-      # refused to let an unsymbolicatable build get this far, and losing the upload
-      # would put us back exactly where build 1510 left us.
-      - name: Upload iOS symbols
-        uses: actions/upload-artifact@v7
-        if: steps.gate.outputs.available == 'true'
-        with:
-          name: mobile-ios-symbols
-          path: ios-symbols/*
-          retention-days: 90
-
-  # ── Windows (opt-in) ────────────────────────────────────────────────────────
-  # Nothing ships from the Windows target — there is no store upload and the
-  # prod workflow never references it; the msix just lands in the GCS builds
-  # bucket. Off by default for that reason, and only built on main because the
-  # bucket copy is the only consumer and that copy is main-only.
-  build-mobile-windows:
-    name: Build Mobile (Windows)
-    needs: select
-    if: needs.select.outputs.windows == 'true' && needs.select.outputs.ship == 'true'
-    runs-on: windows-latest
-    permissions:
-      id-token: write
-      contents: read
-    # upload-mobile-artifacts downloads mobile-windows, so it has to be told when
-    # there is nothing to download. `outcome` rather than the step succeeding:
-    # continue-on-error masks a rejected upload as a successful step, which would
-    # advertise an artifact that never landed.
-    outputs:
-      available: ${{ steps.upload.outcome == 'success' }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: ${{ needs.select.outputs.dotnet_version }}
-      # Do not try to cache the workload packs here. It was measured in #42 and
-      # it loses: DOTNET_ROOT\packs holds every workload preinstalled on the
-      # runner image, so saving it cost 11 min against a 2.9 min install, and a
-      # warm restore has to pull that same multi-GB archive back down. The
-      # install is cheap enough that no cache round-trip beats it.
-      - run: dotnet workload install maui-windows
-      - run: dotnet restore src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -p:TargetFrameworks=net10.0-windows10.0.19041.0 -r win-x64
-      - run: dotnet restore src/Core/CardiTrack.Application/CardiTrack.Application.csproj
-      - run: dotnet restore src/Core/CardiTrack.Domain/CardiTrack.Domain.csproj
-      - run: dotnet restore src/Presentation/CardiTrack.Mobile.Core/CardiTrack.Mobile.Core.csproj
-      # Auth0 config is stamped from Secret Manager (carditrack-dev-auth0-*).
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.select.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.select.outputs.gcp_service_account }}
-      - uses: google-github-actions/get-secretmanager-secrets@v3
-        id: auth0
-        with:
-          secrets: |
-            domain:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-domain
-            audience:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-audience
-            mobile_client_id:${{ needs.select.outputs.gcp_project_id }}/carditrack-dev-auth0-mobile-client-id
-      - run: |
-          dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj `
-            -f net10.0-windows10.0.19041.0 `
-            -c Release `
-            --no-restore `
-            -r win-x64 `
-            -p:TargetFrameworks=net10.0-windows10.0.19041.0 `
-            -p:PublishReadyToRun=false `
-            -p:ApiBaseUrl=${{ needs.select.outputs.api_url_dev }} `
-            -p:Auth0Domain=${{ steps.auth0.outputs.domain }} `
-            -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} `
-            -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
-      # Consumed by upload-mobile-artifacts → GCS.
-      - id: upload
-        uses: actions/upload-artifact@v7
-        continue-on-error: true
-        with:
-          name: mobile-windows
-          path: '**/*.msix'
-          retention-days: 1
-
-  # ── Main only: store uploads (internal testing) ─────────────────────────────
+  # ── TestFlight ──────────────────────────────────────────────────────────────
   deploy-testflight:
     name: Deploy → TestFlight
-    needs:
-      - select
-      - compute-version
-      - build-mobile-ios-device
-      # The scan gates shipping, not compiling. It finishes long before the
-      # build does, so it adds nothing to the critical path from this position.
-      - security-mobile
-    if: needs.select.outputs.ship == 'true' && needs.build-mobile-ios-device.outputs.available == 'true'
+    needs: resolve
+    if: needs.resolve.outputs.ios == 'true'
     runs-on: ubuntu-latest
     steps:
       # First on purpose: checkout wipes untracked files from the workspace, so
@@ -607,14 +270,14 @@ jobs:
 
       - uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: ${{ needs.select.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.select.outputs.gcp_service_account }}
+          workload_identity_provider: ${{ needs.resolve.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.resolve.outputs.gcp_service_account }}
       - uses: google-github-actions/setup-gcloud@v3
 
       - name: Check App Store Connect API secrets
         id: gate
         env:
-          PROJECT: ${{ needs.select.outputs.gcp_project_id }}
+          PROJECT: ${{ needs.resolve.outputs.gcp_project_id }}
         run: |
           MISSING=""
           for SECRET in carditrack-common-appstore-connect-issuer-id carditrack-common-appstore-connect-api-key-id carditrack-common-appstore-connect-api-private-key; do
@@ -635,15 +298,18 @@ jobs:
         id: secrets
         with:
           secrets: |
-            issuer_id:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-appstore-connect-issuer-id
-            api_key_id:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-key-id
-            api_private_key:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-private-key
+            issuer_id:${{ needs.resolve.outputs.gcp_project_id }}/carditrack-common-appstore-connect-issuer-id
+            api_key_id:${{ needs.resolve.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-key-id
+            api_private_key:${{ needs.resolve.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-private-key
 
-      - uses: actions/download-artifact@v8
+      - name: Download the build from GCS
         if: steps.gate.outputs.available == 'true'
-        with:
-          name: mobile-ios-ipa
-          path: artifacts/ios
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          BUCKET: gs://${{ needs.resolve.outputs.gcs_builds_bucket }}
+        run: |
+          mkdir -p artifacts/ios
+          gcloud storage cp -r "$BUCKET/$TAG/ios/*" artifacts/ios/
 
       - name: Find IPA
         id: ipa
@@ -676,8 +342,8 @@ jobs:
         if: steps.gate.outputs.available == 'true'
         continue-on-error: true
         env:
-          NOTES: ${{ needs.compute-version.outputs.changelog_testflight }}
-          BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
+          NOTES: ${{ needs.resolve.outputs.changelog_testflight }}
+          BUILD_NUMBER: ${{ needs.resolve.outputs.build_number }}
           ISSUER_ID: ${{ steps.secrets.outputs.issuer_id }}
           API_KEY_ID: ${{ steps.secrets.outputs.api_key_id }}
           API_PRIVATE_KEY: ${{ steps.secrets.outputs.api_private_key }}
@@ -703,12 +369,12 @@ jobs:
       - name: Summary
         if: steps.gate.outputs.available == 'true'
         env:
-          NOTES: ${{ needs.compute-version.outputs.changelog_testflight }}
+          NOTES: ${{ needs.resolve.outputs.changelog_testflight }}
         run: |
-          echo "### TestFlight — uploaded \`${{ needs.compute-version.outputs.version }}\` (build ${{ needs.compute-version.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
+          echo "### TestFlight — uploaded \`${{ needs.resolve.outputs.tag }}\` (build ${{ needs.resolve.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
           echo >> $GITHUB_STEP_SUMMARY
           if [ "${{ steps.notes.outcome }}" != "success" ]; then
-            echo "::warning::Build ${{ needs.compute-version.outputs.build_number }} uploaded, but its release notes did not attach."
+            echo "::warning::Build ${{ needs.resolve.outputs.build_number }} uploaded, but its release notes did not attach."
             echo "Release notes did not attach — testers see this build without them:" >> $GITHUB_STEP_SUMMARY
             echo >> $GITHUB_STEP_SUMMARY
           fi
@@ -716,222 +382,25 @@ jobs:
           printf '%s\n' "$NOTES" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-  deploy-play-internal:
-    name: Deploy → Play Console (internal)
-    needs:
-      - select
-      - compute-version
-      - build-mobile-android-signed
-      # Same reasoning as TestFlight: the scan gates shipping, not compiling.
-      - security-mobile
-    if: needs.select.outputs.ship == 'true' && needs.build-mobile-android-signed.outputs.available == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.select.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.select.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
-
-      - name: Check Play Console secrets
-        id: gate
-        env:
-          PROJECT: ${{ needs.select.outputs.gcp_project_id }}
-        run: |
-          SECRET=carditrack-common-play-service-account-key
-          VALUE=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PROJECT" 2>/dev/null || true)
-          if [ -z "$VALUE" ] || [ "$VALUE" = "REPLACE_ME" ]; then
-            echo "::warning::Skipping Play Console upload — $SECRET not populated"
-            echo "### Play Console upload skipped" >> $GITHUB_STEP_SUMMARY
-            echo "Populate \`$SECRET\` in Secret Manager to enable Play Console uploads." >> $GITHUB_STEP_SUMMARY
-            echo "available=false" >> $GITHUB_OUTPUT
-          else
-            echo "available=true" >> $GITHUB_OUTPUT
-          fi
-
-      - uses: google-github-actions/get-secretmanager-secrets@v3
-        if: steps.gate.outputs.available == 'true'
-        id: secrets
-        with:
-          secrets: |
-            play_key:${{ needs.select.outputs.gcp_project_id }}/carditrack-common-play-service-account-key
-
-      - uses: actions/download-artifact@v8
-        if: steps.gate.outputs.available == 'true'
-        with:
-          name: mobile-android-signed
-          path: artifacts/android
-
-      - name: Find AAB
-        id: aab
-        if: steps.gate.outputs.available == 'true'
-        run: |
-          echo "path=$(find artifacts/android -name '*-Signed.aab' | head -1)" >> $GITHUB_OUTPUT
-          echo "mapping=$(find artifacts/android -name 'mapping.txt' | head -1)" >> $GITHUB_OUTPUT
-          echo "symbols=$(find artifacts/android -name 'native-debug-symbols.zip' | head -1)" >> $GITHUB_OUTPUT
-
-      - name: Write Play release notes
-        if: steps.gate.outputs.available == 'true'
-        env:
-          NOTES: ${{ needs.compute-version.outputs.changelog_play }}
-        run: |
-          mkdir -p play-whatsnew
-          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-US
-          printf '%s' "$NOTES" > play-whatsnew/whatsnew-en-GB
-
-      - name: Upload to Play Console (internal track)
-        if: steps.gate.outputs.available == 'true'
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ steps.secrets.outputs.play_key }}
-          packageName: com.codesistance.carditrack.mobile
-          releaseFiles: ${{ steps.aab.outputs.path }}
-          mappingFile: ${{ steps.aab.outputs.mapping }}
-          debugSymbols: ${{ steps.aab.outputs.symbols }}
-          tracks: internal
-          status: completed
-          whatsNewDirectory: play-whatsnew
-
-      - name: Summary
-        if: steps.gate.outputs.available == 'true'
-        env:
-          NOTES: ${{ needs.compute-version.outputs.changelog_play }}
-        run: |
-          echo "### Play Console (internal) — uploaded \`${{ needs.compute-version.outputs.version }}\` (versionCode ${{ needs.compute-version.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
-          echo >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          printf '%s\n' "$NOTES" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-  # ── Main only: copy to the builds bucket ────────────────────────────────────
-  # `!cancelled()` rather than a plain needs chain: with a single platform
-  # selected the other builds are skipped, and a skipped dependency would skip
-  # this job with them. The explicit result checks below restore what the plain
-  # chain used to give — no upload after a failed build or a failed scan.
-  upload-mobile-artifacts:
-    name: Upload Mobile Artifacts to GCS
-    needs:
-      - select
-      - compute-version
-      - build-mobile-android-signed
-      - build-mobile-ios-device
-      - build-mobile-windows
-      - security-mobile
-    if: |
-      !cancelled() &&
-      needs.select.outputs.ship == 'true' &&
-      needs.security-mobile.result == 'success' &&
-      !contains(needs.*.result, 'failure') &&
-      (needs.build-mobile-android-signed.outputs.available == 'true' ||
-       needs.build-mobile-ios-device.outputs.available == 'true' ||
-       needs.build-mobile-windows.outputs.available == 'true')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ needs.select.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.select.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - uses: actions/download-artifact@v8
-        if: needs.build-mobile-android-signed.outputs.available == 'true'
-        with:
-          name: mobile-android-signed
-          path: artifacts/android
-      - uses: actions/download-artifact@v8
-        if: needs.build-mobile-ios-device.outputs.available == 'true'
-        with:
-          name: mobile-ios-ipa
-          path: artifacts/ios
-      # Alongside the IPA rather than inside artifacts/ios, so the copy below lands
-      # them at $TAG/ios/symbols/ instead of mixing zips in with the binary.
-      - uses: actions/download-artifact@v8
-        if: needs.build-mobile-ios-device.outputs.available == 'true'
-        with:
-          name: mobile-ios-symbols
-          path: artifacts/ios-symbols
-      - uses: actions/download-artifact@v8
-        if: needs.build-mobile-windows.outputs.available == 'true'
-        with:
-          name: mobile-windows
-          path: artifacts/windows
-      - name: Upload to GCS
-        env:
-          TAG: ${{ needs.compute-version.outputs.version }}
-          BUCKET: gs://${{ needs.select.outputs.gcs_builds_bucket }}
-        run: |
-          # Any of the three can be absent: not selected, signing secrets not
-          # populated, or its upload rejected.
-          if [ -d artifacts/android ]; then gcloud storage cp -r artifacts/android/** $BUCKET/$TAG/android/; fi
-          if [ -d artifacts/ios ];     then gcloud storage cp -r artifacts/ios/**     $BUCKET/$TAG/ios/; fi
-          if [ -d artifacts/windows ]; then gcloud storage cp -r artifacts/windows/** $BUCKET/$TAG/windows/; fi
-          # The bucket's 10-day lifecycle rule deletes these along with the binaries;
-          # the 90-day Actions artifact is the copy that outlives a late crash report.
-          if [ -d artifacts/ios-symbols ]; then gcloud storage cp -r artifacts/ios-symbols/** $BUCKET/$TAG/ios/symbols/; fi
-
-  # ── Main only: patch tag ────────────────────────────────────────────────────
-  # Only when compute-version minted a new version; a commit the apps workflow
-  # already tagged keeps that tag. Same "nothing failed" bar as the apps
-  # workflow's patch-tag, and the same REST create-ref (receive-pack rejects a
-  # GITHUB_TOKEN push of a commit that touches .github/workflows/*).
-  patch-tag:
-    name: Create Patch Tag
-    needs:
-      - select
-      - compute-version
-      - upload-mobile-artifacts
-      - deploy-testflight
-      - deploy-play-internal
-    permissions:
-      contents: write
-    if: |
-      always() &&
-      needs.select.outputs.ship == 'true' &&
-      needs.compute-version.result == 'success' &&
-      needs.compute-version.outputs.create_tag == 'true' &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.compute-version.outputs.version }}
-        run: |
-          gh api "repos/${{ github.repository }}/git/refs" \
-            -f ref="refs/tags/${TAG}" \
-            -f sha="${{ github.sha }}"
-          echo "### Tagged: \`$TAG\`" >> $GITHUB_STEP_SUMMARY
-
-  # ── Did the run actually build anything? ────────────────────────────────────
+  # ── Did the run push anything? ──────────────────────────────────────────────
   # A run whose graph collapses is indistinguishable from a successful one:
   # everything skips and GitHub scores it green. Fail instead.
   dispatch-sanity:
     name: Dispatch ran something
-    needs:
-      - select
-      - build-mobile-android-signed
-      - build-mobile-ios-device
-      - build-mobile-windows
+    needs: [resolve, deploy-play-internal, deploy-testflight]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Assert at least one build ran
-        env:
-          SELECT_RESULT: ${{ needs.select.result }}
-          RESULTS: >-
-            ${{ needs.build-mobile-android-signed.result }}
-            ${{ needs.build-mobile-ios-device.result }}
-            ${{ needs.build-mobile-windows.result }}
+      - env:
+          RESOLVE: ${{ needs.resolve.result }}
+          RESULTS: ${{ needs.deploy-play-internal.result }} ${{ needs.deploy-testflight.result }}
         run: |
           set -euo pipefail
-          if [ "${SELECT_RESULT}" != "success" ]; then
-            echo "::error::'Resolve platforms' was ${SELECT_RESULT}, so every build skipped. Nothing was built."
+          if [ "$RESOLVE" != "success" ]; then
+            echo "::error::'Resolve tag and platforms' was $RESOLVE — nothing was pushed."
             exit 1
           fi
-          case "${RESULTS}" in
-            *success*|*failure*) echo "Build results: ${RESULTS}" ;;
-            *)
-              echo "::error::No platform build ran (results: ${RESULTS}). Nothing was built."
-              exit 1
-              ;;
+          case "$RESULTS" in
+            *success*|*failure*) echo "Push results: $RESULTS" ;;
+            *) echo "::error::No store push ran (results: $RESULTS)."; exit 1 ;;
           esac

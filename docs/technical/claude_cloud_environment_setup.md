@@ -210,8 +210,9 @@ scripts/agent/test-all.sh    # unit + integration, Release, Testcontainers; name
 ```
 
 iOS cannot be linked on Linux, so "all builds" means the Android compile happens here and
-the iOS (device, signed) build happens by dispatching **Deploy Mobile → Dev** on the
-current branch and waiting for it — a branch dispatch builds and ships nothing. That needs
+the iOS (device, signed) build happens by dispatching **CI / Deploy Apps → Dev** on the
+current branch with only the mobile ticks on and waiting for it — a branch dispatch builds
+and ships nothing. That needs
 `GH_TOKEN` (above) and the branch pushed; without them the script reports the step as
 skipped rather than passed. `scripts/agent/services-up.sh` starts the Docker daemon and
 Postgres/Redis for the tests and for running the API locally.
@@ -240,24 +241,24 @@ session compiles `CardiTrack.Mobile` for Android. Without it the setup matches
 `CardiTrack.Server.slnf`: the `maui-android` workload and Android SDK add several GB and
 need `dl.google.com`, which some restricted network policies exclude.
 
-**Where Mobile actually gets built:** `.github/workflows/deploy-mobile-dev.yml`, a
-dispatch-only workflow that builds `CardiTrack.Mobile.csproj` directly for the
-platform you pick (`android`, `ios`, `both`, optional Windows), each on its own
-GitHub-hosted runner — not through this environment, not through `CardiTrack.sln`.
-The runner images ship an Android SDK, so it needs no `dl.google.com` access; it just
-runs `dotnet workload install maui-android` and builds. Those jobs are the
-authoritative check for Mobile — treat a local/cloud MAUI build as faster local
-feedback, never as a substitute for them. From a session with a `GH_TOKEN` that has
-the `workflow` scope:
+**Where Mobile actually gets built:** the mobile lanes of
+`.github/workflows/deploy-apps-dev.yml`, one tick per platform (`mobile_android`,
+`mobile_ios`, `mobile_windows`), each on its own GitHub-hosted runner — not through
+this environment, not through `CardiTrack.sln`. The runner images ship an Android SDK,
+so it needs no `dl.google.com` access; it just runs `dotnet workload install
+maui-android` and builds. Those jobs are the authoritative check for Mobile — treat a
+local/cloud MAUI build as faster local feedback, never as a substitute for them. From
+a session with a `GH_TOKEN` that has the `workflow` scope:
 
 ```bash
-gh workflow run deploy-mobile-dev.yml --ref <branch> -f platform=both
-gh run watch --exit-status "$(gh run list --workflow deploy-mobile-dev.yml --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh workflow run deploy-apps-dev.yml --ref <branch> -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true -f mobile_ios=true
+gh run watch --exit-status "$(gh run list --workflow deploy-apps-dev.yml --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
-A dispatch on a branch builds and ships nothing; on `main` the same dispatch also
-uploads to TestFlight / Play internal and tags. It is not path-filtered — the
-`platform` input decides what builds — so a change anywhere in the app's dependency
+A dispatch on a branch builds and ships nothing (every deploy, image push and archive
+job is guarded on `main`); on `main` the same ticks also archive the builds to GCS and
+tag, and `deploy-mobile-dev.yml` pushes that tag to the stores. On dispatch the ticks,
+not the paths filter, decide what builds, so a change anywhere in the app's dependency
 graph (`CardiTrack.Mobile`, `CardiTrack.Mobile.Core`, `CardiTrack.Domain`,
 `CardiTrack.Application`) is covered by dispatching it.
 

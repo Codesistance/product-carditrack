@@ -388,8 +388,8 @@ All GitHub Actions workflows authenticate to GCP with **Workload Identity Federa
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| `deploy-apps-dev.yml` | Push to `main` (gated by `ACTIONS_ON_PUSH`), manual | Builds/tests API, Web, Worker, migrator; security scans; pushes images to Artifact Registry; runs the migrator job; deploys to dev Cloud Run |
-| `deploy-mobile-dev.yml` | Manual only (`platform` = android / ios / both, optional Windows) | Signed Android AAB and/or iOS IPA, dependency scan; on `main` also TestFlight and Play internal uploads, the GCS builds archive and the patch tag. On any other ref it builds and ships nothing |
+| `deploy-apps-dev.yml` | Push to `main` (gated by `ACTIONS_ON_PUSH`), manual | Builds/tests API, Web, Worker, migrator; signed mobile builds per platform tick (`mobile_android` / `mobile_ios` / `mobile_windows`); security scans; pushes images to Artifact Registry; runs the migrator job; deploys to dev Cloud Run; archives mobile builds to GCS and tags |
+| `deploy-mobile-dev.yml` | Manual only, on `main` (`platform` = android / ios / both, `tag`) | Pushes the tag's signed builds from the GCS bucket to Play internal and/or TestFlight, with release notes. Builds nothing |
 | `deploy-apps-prod.yml` | Manual (`workflow_dispatch` with a semver tag) | Validates tag + images, runs prod migrations via the migrator job, deploys API/Web/Worker, uploads mobile builds to the stores |
 | `deploy-infra-dev.yml` / `deploy-infra-prod.yml` | Push to `main` on infra paths (dev), manual (prod) | `terraform fmt`/`validate`, state-bucket bootstrap, plan (pinned + latest Terraform compatibility matrix), apply |
 | `deploy-infra-common.yml` | Infra changes to `common/` | Same flow for the shared stack |

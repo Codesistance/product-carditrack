@@ -9,9 +9,10 @@
 #      Release with the trimmer, AOT and R8 off: the same compile-only recipe the old
 #      PR job used, because XamlC only reports on Release.
 #   3. The platforms this machine cannot build — iOS always, Android too when step 2
-#      was skipped — through CI: dispatch Deploy Mobile → Dev on the current branch
-#      and wait for it. A branch dispatch builds and ships nothing. Needs `gh` with a
-#      token carrying the `workflow` scope (GH_TOKEN), and the branch pushed.
+#      was skipped — through CI: dispatch CI / Deploy Apps → Dev on the current branch
+#      with only the mobile ticks on, and wait for it. A branch dispatch builds and
+#      ships nothing (every deploy, image push and archive job is main-only). Needs
+#      `gh` with a token carrying the `workflow` scope (GH_TOKEN), and the branch pushed.
 #
 # Usage:
 #   scripts/agent/build-all.sh                # all three
@@ -103,18 +104,27 @@ if [ "$CI" -eq 1 ]; then
   if [ -n "$REASON" ]; then
     record "mobile ($PLATFORM, CI)" "SKIPPED — $REASON"
   else
-    log "Dispatching Deploy Mobile → Dev on $BRANCH (platform=$PLATFORM)"
+    case "$PLATFORM" in
+      ios)  CI_ANDROID=false ;;
+      both) CI_ANDROID=true ;;
+      android) CI_ANDROID=true ;;
+      *) echo "unknown --platform $PLATFORM (android|ios|both)" >&2; exit 2 ;;
+    esac
+    CI_IOS=true; [ "$PLATFORM" = "android" ] && CI_IOS=false
+    log "Dispatching CI / Deploy Apps → Dev on $BRANCH (mobile only: android=$CI_ANDROID ios=$CI_IOS)"
     SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    if gh workflow run deploy-mobile-dev.yml --ref "$BRANCH" -f "platform=$PLATFORM" -f windows=false; then
+    if gh workflow run deploy-apps-dev.yml --ref "$BRANCH" \
+         -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false \
+         -f "mobile_android=$CI_ANDROID" -f "mobile_ios=$CI_IOS" -f mobile_windows=false; then
       RUN_ID=""
       for _ in $(seq 1 30); do
         sleep 4
-        RUN_ID=$(gh run list --workflow deploy-mobile-dev.yml --branch "$BRANCH" --limit 5 \
+        RUN_ID=$(gh run list --workflow deploy-apps-dev.yml --branch "$BRANCH" --event workflow_dispatch --limit 5 \
                    --json databaseId,createdAt --jq "map(select(.createdAt >= \"$SINCE\")) | .[0].databaseId // empty")
         [ -n "$RUN_ID" ] && break
       done
       if [ -z "$RUN_ID" ]; then
-        record "mobile ($PLATFORM, CI)" "DISPATCHED but the run did not appear in 2 minutes — check gh run list --workflow deploy-mobile-dev.yml"
+        record "mobile ($PLATFORM, CI)" "DISPATCHED but the run did not appear in 2 minutes — check gh run list --workflow deploy-apps-dev.yml"
         FAILED=1
       else
         log "Run $RUN_ID: $(gh run view "$RUN_ID" --json url --jq .url)"
@@ -127,7 +137,7 @@ if [ "$CI" -eq 1 ]; then
         fi
       fi
     else
-      record "mobile ($PLATFORM, CI)" "FAILED — dispatch rejected (is deploy-mobile-dev.yml on main, and does the token have the workflow scope?)"
+      record "mobile ($PLATFORM, CI)" "FAILED — dispatch rejected (does the token have the workflow scope?)"
       FAILED=1
     fi
   fi

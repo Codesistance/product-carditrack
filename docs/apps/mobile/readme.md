@@ -271,21 +271,26 @@ iOS release signing uses `CodesignKey=Apple Distribution` and `CodesignProvision
 
 ### CI/CD Pipeline
 
-Dev / internal-track mobile CI is its own dispatch-only workflow, `.github/workflows/deploy-mobile-dev.yml`, with the platform as an input — `android`, `ios` or `both`, plus an opt-in Windows (MSIX) checkbox. Nothing runs for a platform that was not asked for, which matters because the iOS device build is ~15 macOS minutes at ten times the Linux price. `deploy-apps-prod.yml` carries the production track.
+Mobile is **built** by `.github/workflows/deploy-apps-dev.yml`, one tick per platform (`mobile_android`, `mobile_ios`, `mobile_windows`), and **pushed** to the stores by `.github/workflows/deploy-mobile-dev.yml`, by release tag. The split matters because the iOS device build is ~13 macOS minutes at ten times the Linux price: tick iOS when you want a TestFlight candidate, not by default. `deploy-apps-prod.yml` carries the production track.
 
 ```bash
-gh workflow run deploy-mobile-dev.yml --ref main -f platform=android
-gh workflow run deploy-mobile-dev.yml --ref main -f platform=ios
-gh workflow run deploy-mobile-dev.yml --ref <branch> -f platform=both   # compile check; ships nothing
+# Build (any dispatched ref; only main's output is archived and tagged)
+gh workflow run deploy-apps-dev.yml --ref main -f mobile_android=true                      # Android only, no Mac
+gh workflow run deploy-apps-dev.yml --ref main -f mobile_android=true -f mobile_ios=true   # TestFlight candidate too
+gh workflow run deploy-apps-dev.yml --ref <branch> -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true -f mobile_ios=true   # compile check; ships nothing
+
+# Push (main only; builds nothing, takes the tag's binaries from the builds bucket)
+gh workflow run deploy-mobile-dev.yml --ref main -f platform=android                 # latest v* tag
+gh workflow run deploy-mobile-dev.yml --ref main -f platform=ios -f tag=v0.2.308
 ```
 
-- **Any ref** — the selected platforms build (signed, when the store secrets are populated). This is the only compile coverage a mobile change on a branch gets: the push/PR lane is gated off by `.github/ACTIONS_ON_PUSH` and never built mobile even when it was on (#1111).
-- **`main`** — in addition to the builds:
+- **Any dispatched ref** — the ticked platforms build (signed, when the store secrets are populated). This is the only compile coverage a mobile change on a branch gets: the push/PR lane is gated off by `.github/ACTIONS_ON_PUSH` and never built mobile even when it was on (#1111).
+- **`main`** — the builds are archived to the GCS builds bucket under the release tag and the tag is created. **Deploy Mobile → Dev** then pushes them:
   - **Android**: a signed AAB + APK is produced (`build-mobile-android-signed`) and the AAB is uploaded to the **Play Console internal testing track** (`deploy-play-internal`). Release builds run R8 (`AndroidLinkTool=r8` in the csproj), and the upload includes the R8 deobfuscation map (`mapping.txt`) plus a `native-debug-symbols.zip` built from the pre-strip native libraries (`obj/**/app_shared_libraries`), so Play crash reports show readable stack traces. Note: symbol coverage extends to the app's own native libs; Microsoft does not ship unstripped Mono runtime libraries, so frames inside e.g. `libmonosgen-2.0.so` remain unsymbolicated.
   - **iOS**: a signed device IPA is produced (`build-mobile-ios-device`) and uploaded to **TestFlight** (`deploy-testflight`) via the App Store Connect API. The same job zips the build's `.dSYM` and ships it as the `mobile-ios-symbols` artifact (90-day retention) and to `…/ios/symbols/` in the builds bucket, because the store binary is stripped and that bundle is the only thing that can name the frames in a crash report — AOT'd managed methods included. The step fails the build if no `.dSYM` is found: a build nobody can symbolicate is indistinguishable from a working one until the first crash arrives.
   - Signed artifacts are archived to GCS under the release tag (`upload-mobile-artifacts`).
 
-Store versioning is stamped by CI: `ApplicationDisplayVersion` comes from the computed semver tag and `ApplicationVersion` (iOS build number / Android versionCode) from the monotonic commit count — the values in the csproj are placeholders. The tag is the next patch after the latest `v*`, unless the dispatched commit already carries one (an apps deploy of the same sha will have created it), in which case that tag is reused and no new one is minted. Re-dispatching the same commit therefore produces the same build number, and the store rejects the duplicate.
+Store versioning is stamped by CI at build time: `ApplicationDisplayVersion` comes from the computed semver tag and `ApplicationVersion` (iOS build number / Android versionCode) from the monotonic commit count — the values in the csproj are placeholders. The push workflow reports the same pair, read back from the tag. Pushing a tag twice therefore sends the same build number, and the store rejects the duplicate. The bucket keeps a tag's builds for 10 days; an older tag has to be rebuilt before it can be pushed.
 
 Each store upload includes **What's new** text built by `.github/scripts/mobile-build-changelog.py` from the commits since the previous `v*` tag. It is written for the person reading the store listing, not for engineers: no commit hashes, PR numbers or `feat:`-style prefixes, and only commits that touch the app or its domain (`CardiTrack.Mobile`, `CardiTrack.Mobile.Core`, `CardiTrack.Domain`, `CardiTrack.Application`) become bullets. Everything else — API, workers, infrastructure, docs, tests, CI, review-round commits — folds into one closing line, "Plus stability and performance improvements behind the scenes."
 
