@@ -84,15 +84,25 @@ public static class AlertSettingsComposer
         };
     }
 
-    /// <summary>The "done" line for a confirmed change, in the words the proposal used.</summary>
+    /// <summary>The "done" line for a confirmed change — what happened, in the past tense the
+    /// proposal's <see cref="PendingAlertChange.Done"/> carries, with a tail that fits the kind.</summary>
     public static string AppliedReply(PendingAlertChange change)
     {
         ArgumentNullException.ThrowIfNull(change);
-        var tail = change.Kind == PendingAlertChangeKind.SetRule
-            ? " You can change it back any time here or from Alert settings."
-            : " It's in Alert settings if you want to fine-tune it.";
-        return $"Done — I've {LowerFirst(change.Summary)}.{tail}";
+        var what = change.Done ?? LowerFirst(change.Summary);
+        var tail = change.Kind switch
+        {
+            PendingAlertChangeKind.SetRule => "You can change it back any time here or from Alert settings.",
+            PendingAlertChangeKind.DeleteAlarm => "Alert settings shows what applies now.",
+            _ => "It's in Alert settings if you want to fine-tune it.",
+        };
+        return $"Done — I've {what}. {tail}";
     }
+
+    /// <summary>A yes or no that arrived after the proposal had already been taken — by an
+    /// earlier answer, or by the same answer sent twice.</summary>
+    public static string AlreadyHandledReply() =>
+        "I've already dealt with that one — tell me again what you'd like if there's more to do.";
 
     public static string CancelledReply() =>
         "Okay, I've left everything as it was.";
@@ -139,6 +149,7 @@ public static class AlertSettingsComposer
             RuleId = rule.Id,
             Enabled = enabled,
             Summary = summary,
+            Done = $"switched {OnOff(enabled)} “{rule.Title}” for {subject}",
             ProposedAtUtc = utcNow,
         });
     }
@@ -167,6 +178,7 @@ public static class AlertSettingsComposer
             Kind = PendingAlertChangeKind.CreateAlarm,
             Alarm = request,
             Summary = summary,
+            Done = $"added an alarm for {subject} called “{request.Name}”",
             ProposedAtUtc = utcNow,
         }, request.Severity);
     }
@@ -196,6 +208,9 @@ public static class AlertSettingsComposer
             AlarmId = entry.Row.Id,
             Alarm = request,
             Summary = summary,
+            Done = renamed && MetricAlarmNarrative.Condition(request) == entry.Row.Condition
+                ? $"renamed “{entry.Row.Name}” to “{request.Name}” for {subject}"
+                : $"changed “{entry.Row.Name}” for {subject} to: {LowerFirst(TrimStop(MetricAlarmNarrative.Condition(request)))}",
             ProposedAtUtc = utcNow,
         }, request.Severity);
     }
@@ -221,14 +236,17 @@ public static class AlertSettingsComposer
         }
 
         var summary = $"Switch {OnOff(enabled)} “{entry.Row.Name}” for {subject} — {LowerFirst(entry.Row.Condition)}";
+        // Switching a red alarm back on is agreeing to what red means, so the warning travels
+        // with the proposal exactly as it does for a new red alarm. Switching off needs none.
         return Proposal(TrimStop(summary), new PendingAlertChange
         {
             Kind = PendingAlertChangeKind.SaveAlarm,
             AlarmId = entry.Row.Id,
             Alarm = AlarmSuggestedDefaults.Switched(entry.Row, enabled),
             Summary = TrimStop(summary),
+            Done = $"switched {OnOff(enabled)} “{entry.Row.Name}” for {subject}",
             ProposedAtUtc = utcNow,
-        });
+        }, enabled ? entry.Row.Severity : null);
     }
 
     private static AlertSettingsReply ProposeDelete(
@@ -257,6 +275,7 @@ public static class AlertSettingsComposer
                 AlarmId = entry.Row.Id,
                 Alarm = AlarmSuggestedDefaults.Switched(entry.Row, enabled: false),
                 Summary = offSummary,
+                Done = $"switched off “{entry.Row.Name}” for {subject}",
                 ProposedAtUtc = utcNow,
             });
         }
@@ -269,6 +288,9 @@ public static class AlertSettingsComposer
             Kind = PendingAlertChangeKind.DeleteAlarm,
             AlarmId = entry.Row.Id,
             Summary = summary,
+            Done = entry.Row.Provenance is AlarmProvenance.Overridden
+                ? $"put the account's version of “{entry.Row.Name}” back for {subject}"
+                : $"removed the alarm “{entry.Row.Name}” for {subject}",
             ProposedAtUtc = utcNow,
         });
     }
@@ -303,16 +325,19 @@ public static class AlertSettingsComposer
         var rules = $"CardiTrack's own alerts for {subject} — on: {(on.Count > 0 ? Join(on) : "none")}"
             + (off.Count > 0 ? $"; off: {Join(off)}." : ".");
 
+        // Provenance is said per row: an account default reaches every member and was not
+        // necessarily set by this caregiver, and "you've set" would claim it was.
         string alarms;
         if (snapshot.Alarms.Count == 0)
         {
-            alarms = "No alarms of your own yet.";
+            alarms = "No alarms yet.";
         }
         else
         {
             var lines = snapshot.Alarms.Select(a =>
-                $"“{a.Row.Name}” — {LowerFirst(TrimStop(a.Row.Condition))} ({OnOff(a.Row.IsEnabled)})");
-            alarms = $"Alarms you've set: {string.Join("; ", lines)}.";
+                $"“{a.Row.Name}” — {LowerFirst(TrimStop(a.Row.Condition))} "
+                + $"({OnOff(a.Row.IsEnabled)}{ProvenanceNote(a.Row.Provenance, subject)})");
+            alarms = $"Alarms: {string.Join("; ", lines)}.";
         }
 
         var closing = canManage
@@ -359,6 +384,13 @@ public static class AlertSettingsComposer
         string.IsNullOrWhiteSpace(firstName) ? "their" : $"{firstName}'s";
 
     private static string OnOff(bool enabled) => enabled ? "on" : "off";
+
+    private static string ProvenanceNote(AlarmProvenance? provenance, string subject) => provenance switch
+    {
+        AlarmProvenance.Inherited => ", shared across the account",
+        AlarmProvenance.Overridden => $", tuned for {subject}",
+        _ => string.Empty,
+    };
 
     private static string Severity(AlertSeverity severity) => severity switch
     {

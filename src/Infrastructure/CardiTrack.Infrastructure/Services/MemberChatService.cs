@@ -541,10 +541,11 @@ public class MemberChatService : IMemberChatService
         // already knows what this message is, and a model reading "yes" as something else is
         // the one way a confirmed change could differ from the one that was shown. Anything that
         // is not a plain yes or no routes normally, and the proposal lapses unapplied.
-        if (history.PendingChange is { } pending
+        if (history.PendingChange is { } pending && history.PendingTurnId is { } pendingTurnId
             && MemberChatReplies.ReadConfirmation(flattened) is { } answer)
         {
-            return await ResolvePendingChangeAsync(pending, answer, userId, cardiMemberId, member, utcNow, ct);
+            return await ResolvePendingChangeAsync(
+                pending, pendingTurnId, answer, userId, cardiMemberId, member, utcNow, ct);
         }
 
         // History travels with every step that reads the caregiver's message, not just the
@@ -1002,7 +1003,10 @@ public class MemberChatService : IMemberChatService
     {
         var canManage = await CanManageAsync(userId, cardiMemberId, ct);
         var snapshot = await ReadAlertSettingsAsync(userId, cardiMemberId, member?.Name, ct);
-        var planned = await _alertPlanner.PlanAsync(flattened, history.QuestionsOnly, snapshot, ct);
+        // The question itself is redacted like the recalled history: a caregiver who writes
+        // "turn off Moses's sleep alert" has put the name in the one text this call carries.
+        var planned = await _alertPlanner.PlanAsync(
+            NamePlaceholder.Redact(flattened, member?.Name) ?? flattened, history.QuestionsOnly, snapshot, ct);
 
         var composed = AlertSettingsComposer.Compose(
             planned.Result, snapshot, canManage, NamePlaceholder.FirstName(member?.Name), utcNow);
@@ -1081,6 +1085,16 @@ public class MemberChatService : IMemberChatService
     /// changes nothing. No model runs on this turn, and the turn bills nothing.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The proposal is claimed before anything else — one conditional update that succeeds only
+    /// while it is still on the turn — so a "yes" the phone sent twice on a flaky connection, or
+    /// two of them racing, applies the change once: the second finds nothing to take and says
+    /// so. A no claims it too, so a later yes to the same proposal has nothing to apply. The
+    /// claim commits on its own, ahead of the unit of work; a claim that waited for the turn's
+    /// commit would leave the race open until then, and an apply that then fails costs the
+    /// caregiver a re-ask, which is the cheaper failure.
+    /// </para>
+    /// <para>
     /// The alert services commit their own unit of work, so a change is saved before the turn
     /// that records it; if persisting the turn then failed, the change would stand with no
     /// transcript of the yes. Accepted: the caregiver asked for it and can see it in Alert
@@ -1088,9 +1102,11 @@ public class MemberChatService : IMemberChatService
     /// the turn — is the worse failure. A refusal from the service is reported as such, never as
     /// a 404 on the send: the caregiver typed "yes", and the honest answer to that is what
     /// happened.
+    /// </para>
     /// </remarks>
     private async Task<MemberChatWorkflowResult> ResolvePendingChangeAsync(
         PendingAlertChange pending,
+        Guid pendingTurnId,
         ConfirmationAnswer answer,
         Guid userId,
         Guid cardiMemberId,
@@ -1101,7 +1117,11 @@ public class MemberChatService : IMemberChatService
         string reply;
         var changed = false;
 
-        if (!pending.IsCurrent(utcNow))
+        if (!await _unitOfWork.MemberChatTurns.TryClaimPendingChangeAsync(pendingTurnId, ct))
+        {
+            reply = AlertSettingsComposer.AlreadyHandledReply();
+        }
+        else if (!pending.IsCurrent(utcNow))
         {
             reply = AlertSettingsComposer.LapsedReply();
         }
@@ -1947,6 +1967,7 @@ public class MemberChatService : IMemberChatService
         var pendingChange = lastAssistant?.PendingChange is { } stored
             ? PendingAlertChange.FromJson(Reveal(stored))
             : null;
+        var pendingTurnId = pendingChange is null ? (Guid?)null : lastAssistant!.Id;
 
         string? Block(bool questionsOnly)
         {
@@ -1961,7 +1982,8 @@ public class MemberChatService : IMemberChatService
         }
 
         return new ChatHistory(
-            Block(questionsOnly: false), Block(questionsOnly: true), lastAssistantWasClarify, pendingChange);
+            Block(questionsOnly: false), Block(questionsOnly: true), lastAssistantWasClarify,
+            pendingChange, pendingTurnId);
     }
 
     /// <summary>
@@ -1998,11 +2020,13 @@ public class MemberChatService : IMemberChatService
     /// The alert-settings change the most recent assistant turn proposed, when it proposed one —
     /// what a yes on this turn applies. Null on every other turn.
     /// </param>
+    /// <param name="PendingTurnId">The turn that proposal sits on — what a yes claims.</param>
     private sealed record ChatHistory(
         string? Full,
         string? QuestionsOnly,
         bool LastAssistantWasClarify = false,
-        PendingAlertChange? PendingChange = null);
+        PendingAlertChange? PendingChange = null,
+        Guid? PendingTurnId = null);
 
     private static string BuildMaliciousCheckPrompt(string question, string? historyBlock) =>
         historyBlock is null

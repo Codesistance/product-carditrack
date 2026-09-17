@@ -317,7 +317,7 @@ public class AlertSettingsComposerTests
             plan, Snapshot([AlertRuleCatalogue.ActivityDecline], HeartRateAlarm(enabled: false)), canManage: true, "Moses", Now);
 
         Assert.Contains("off: Activity decline.", reply.Reply, StringComparison.Ordinal);
-        Assert.Contains("Alarms you've set: “High heart rate” — average heart rate is above 120 bpm", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("Alarms: “High heart rate” — average heart rate is above 120 bpm", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("(off)", reply.Reply, StringComparison.Ordinal);
         Assert.Contains("Ask me to switch any of these", reply.Reply, StringComparison.Ordinal);
         Assert.DoesNotContain("Late or missed bedtime", reply.Reply, StringComparison.Ordinal);
@@ -344,13 +344,123 @@ public class AlertSettingsComposerTests
             RuleId = AlertRuleCatalogue.ActivityDecline,
             Enabled = false,
             Summary = "Switch off “Activity decline” for Moses — yesterday's steps were well below their usual",
+            Done = "switched off “Activity decline” for Moses",
             ProposedAtUtc = Now,
         };
 
         Assert.Equal(
-            "Done — I've switch off “Activity decline” for Moses — yesterday's steps were well below their usual. "
+            "Done — I've switched off “Activity decline” for Moses. "
             + "You can change it back any time here or from Alert settings.",
             AlertSettingsComposer.AppliedReply(pending));
+    }
+
+    /// <summary>Every proposal carries its own past-tense line, so the done reply never reads
+    /// "I've switch off" and never sends a caregiver to Alert settings for an alarm just removed.</summary>
+    [Fact]
+    public void EveryProposal_CarriesItsPastTense_AndTheDoneLineFitsTheKind()
+    {
+        var row = HeartRateAlarm();
+        var snapshot = Snapshot(null, row);
+
+        var removed = AlertSettingsComposer.Compose(
+            new AlertChangePlan { Action = AlertChangeAction.DeleteAlarm, AlarmLabel = "alarm-1" }, snapshot, true, "Moses", Now).Pending!;
+        Assert.Equal("Done — I've removed the alarm “High heart rate” for Moses. Alert settings shows what applies now.",
+            AlertSettingsComposer.AppliedReply(removed));
+
+        var switched = AlertSettingsComposer.Compose(
+            new AlertChangePlan { Action = AlertChangeAction.DisableAlarm, AlarmLabel = "alarm-1" }, snapshot, true, "Moses", Now).Pending!;
+        Assert.StartsWith("Done — I've switched off “High heart rate” for Moses.", AlertSettingsComposer.AppliedReply(switched), StringComparison.Ordinal);
+
+        var added = AlertSettingsComposer.Compose(
+            new AlertChangePlan { Action = AlertChangeAction.CreateAlarm, Metric = AlarmMetric.SleepMinutes, Operator = AlarmOperator.LessThan, ThresholdValue = 300 },
+            snapshot, true, "Moses", Now).Pending!;
+        Assert.StartsWith("Done — I've added an alarm for Moses called “Sleep duration below 300 minutes”.", AlertSettingsComposer.AppliedReply(added), StringComparison.Ordinal);
+    }
+
+    /// <summary>Switching a red alarm back on is agreeing to what red means, so the warning
+    /// travels with that proposal as it does with a new red alarm; switching off needs none.</summary>
+    [Fact]
+    public void ReenablingARedAlarm_CarriesTheRedWarning()
+    {
+        var red = HeartRateAlarm(enabled: false);
+        red = new MetricAlarmResponse
+        {
+            Id = red.Id, Name = red.Name, Metric = red.Metric, Statistic = red.Statistic, Operator = red.Operator,
+            ThresholdKind = red.ThresholdKind, ThresholdValue = red.ThresholdValue, PeriodMinutes = red.PeriodMinutes,
+            EvaluationPeriods = red.EvaluationPeriods, DatapointsToAlarm = red.DatapointsToAlarm,
+            Severity = AlertSeverity.Red, ContextGate = red.ContextGate, IsEnabled = false,
+            Provenance = AlarmProvenance.MemberOnly, Condition = red.Condition,
+        };
+
+        var on = AlertSettingsComposer.Compose(
+            new AlertChangePlan { Action = AlertChangeAction.EnableAlarm, AlarmLabel = "alarm-1" }, Snapshot(null, red), true, "Moses", Now);
+        Assert.Contains(AlertSettingsComposer.RedSeverityWarning, on.Reply, StringComparison.Ordinal);
+        Assert.True(on.Pending!.Alarm!.ConfirmCriticalSeverity);
+
+        var redOn = new MetricAlarmResponse
+        {
+            Id = red.Id, Name = red.Name, Metric = red.Metric, Statistic = red.Statistic, Operator = red.Operator,
+            ThresholdKind = red.ThresholdKind, ThresholdValue = red.ThresholdValue, PeriodMinutes = red.PeriodMinutes,
+            EvaluationPeriods = red.EvaluationPeriods, DatapointsToAlarm = red.DatapointsToAlarm,
+            Severity = AlertSeverity.Red, ContextGate = red.ContextGate, IsEnabled = true,
+            Provenance = AlarmProvenance.MemberOnly, Condition = red.Condition,
+        };
+        var off = AlertSettingsComposer.Compose(
+            new AlertChangePlan { Action = AlertChangeAction.DisableAlarm, AlarmLabel = "alarm-1" }, Snapshot(null, redOn), true, "Moses", Now);
+        Assert.DoesNotContain(AlertSettingsComposer.RedSeverityWarning, off.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>A window the caregiver named is kept as named and refused by the builder's rule,
+    /// never swapped for the default behind their back.</summary>
+    [Fact]
+    public void AnUnsupportedWindow_IsRefused_NotSwappedForTheDefault()
+    {
+        var plan = new AlertChangePlan
+        {
+            Action = AlertChangeAction.CreateAlarm,
+            Metric = AlarmMetric.HeartRate,
+            Operator = AlarmOperator.GreaterThan,
+            ThresholdValue = 120,
+            PeriodMinutes = 7,
+        };
+
+        var reply = AlertSettingsComposer.Compose(plan, Snapshot(), canManage: true, "Moses", Now);
+
+        Assert.StartsWith("I can't set that one up as it stands: heart rate can only be watched over", reply.Reply, StringComparison.Ordinal);
+        Assert.Null(reply.Pending);
+    }
+
+    /// <summary>An overlong name is refused in the builder's words rather than saved shortened.</summary>
+    [Fact]
+    public void AnOverlongName_IsRefused_NotShortened()
+    {
+        var plan = new AlertChangePlan
+        {
+            Action = AlertChangeAction.CreateAlarm,
+            Metric = AlarmMetric.HeartRate,
+            Operator = AlarmOperator.GreaterThan,
+            ThresholdValue = 120,
+            Name = new string('x', MetricAlarmValidation.MaxNameLength + 1),
+        };
+
+        var reply = AlertSettingsComposer.Compose(plan, Snapshot(), canManage: true, "Moses", Now);
+
+        Assert.Contains($"keep the name to {MetricAlarmValidation.MaxNameLength} characters or fewer", reply.Reply, StringComparison.Ordinal);
+        Assert.Null(reply.Pending);
+    }
+
+    [Fact]
+    public void TheList_SaysWhereEachAlarmComesFrom()
+    {
+        var shared = HeartRateAlarm(provenance: AlarmProvenance.Inherited, name: "Shared one");
+        var tuned = HeartRateAlarm(provenance: AlarmProvenance.Overridden, name: "Tuned one");
+
+        var reply = AlertSettingsComposer.Compose(
+            new AlertChangePlan { Action = AlertChangeAction.List }, Snapshot(null, shared, tuned), true, "Moses", Now);
+
+        Assert.Contains("“Shared one” — average heart rate is above 120 bpm over 5 minutes, on 2 of the last 2, while they are still (on, shared across the account)", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("“Tuned one” — average heart rate is above 120 bpm over 5 minutes, on 2 of the last 2, while they are still (on, tuned for Moses)", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain("you've set", reply.Reply, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -97,6 +97,7 @@ public class MemberChatAlertSettingsRungTests
             RuleId = AlertRuleCatalogue.ActivityDecline,
             Enabled = false,
             Summary = "Switch off “Activity decline” for Moses — yesterday's steps were well below their usual",
+            Done = "switched off “Activity decline” for Moses",
             ProposedAtUtc = DateTime.UtcNow - age,
         };
         var session = new MemberChatSession
@@ -116,6 +117,7 @@ public class MemberChatAlertSettingsRungTests
         });
         session.Turns.Add(new MemberChatTurn
         {
+            Id = _pendingTurnId,
             SessionId = session.Id,
             Role = ChatTurnRole.Assistant,
             Workflow = MemberChatWorkflow.AlertSettings,
@@ -126,7 +128,11 @@ public class MemberChatAlertSettingsRungTests
         _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(session);
         _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        // The claim succeeds: this answer is the first to take the proposal.
+        _turns.TryClaimPendingChangeAsync(_pendingTurnId, Arg.Any<CancellationToken>()).Returns(true);
     }
+
+    private readonly Guid _pendingTurnId = Guid.NewGuid();
 
     private MemberChatService CreateSut() =>
         new(_medicalAi, _rewriteAi, _planner, _router, _alertPlanner, _alertPreferences, _metricAlarms,
@@ -202,8 +208,11 @@ public class MemberChatAlertSettingsRungTests
 
         await _alertPreferences.Received(1).SetRuleEnabledAsync(
             _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, Arg.Any<CancellationToken>());
-        Assert.StartsWith("Done — I've switch off “Activity decline” for Moses", reply.Reply, StringComparison.Ordinal);
+        Assert.StartsWith("Done — I've switched off “Activity decline” for Moses.", reply.Reply, StringComparison.Ordinal);
         Assert.True(reply.ChangedAlertSettings);
+
+        // The proposal was claimed before it was applied — the atomic step a retried yes fails.
+        await _turns.Received(1).TryClaimPendingChangeAsync(_pendingTurnId, Arg.Any<CancellationToken>());
 
         // Not the pre-check, not the router, not the planner: the app knew what "yes" was.
         await _rewriteAi.DidNotReceiveWithAnyArgs()
@@ -218,6 +227,36 @@ public class MemberChatAlertSettingsRungTests
         Assert.Null(assistant.PendingChange);
     }
 
+    /// <summary>A yes the phone sent twice, or two racing: the second finds the proposal
+    /// already taken and applies nothing — the idempotency the alarm service itself lacks.</summary>
+    [Fact]
+    public async Task AYesThatFindsTheProposalAlreadyClaimed_AppliesNothing()
+    {
+        AProposalIsPending(age: TimeSpan.FromMinutes(1));
+        _turns.TryClaimPendingChangeAsync(_pendingTurnId, Arg.Any<CancellationToken>()).Returns(false);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+
+        Assert.Equal(AlertSettingsComposer.AlreadyHandledReply(), reply.Reply);
+        Assert.False(reply.ChangedAlertSettings);
+        await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default);
+    }
+
+    /// <summary>The question itself is redacted like the recalled history before it reaches the
+    /// planner — the one text on this call a caregiver can put the member's name in.</summary>
+    [Fact]
+    public async Task ThePlanner_NeverSeesTheMembersName_InTheQuestion()
+    {
+        RouterAnswers(MemberChatWorkflow.AlertSettings);
+        PlannerAnswers(new AlertChangePlan { Action = AlertChangeAction.List });
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "which alerts are on for Moses?");
+
+        var question = (string)_alertPlanner.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.DoesNotContain("Moses", question, StringComparison.Ordinal);
+        Assert.Contains(NamePlaceholder.Token, question, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ANoAfterAProposal_ChangesNothing()
     {
@@ -229,6 +268,8 @@ public class MemberChatAlertSettingsRungTests
         Assert.False(reply.ChangedAlertSettings);
         await _alertPreferences.DidNotReceiveWithAnyArgs().SetRuleEnabledAsync(default, default, default!, default, default);
         await _router.DidNotReceiveWithAnyArgs().RouteAsync(default!, default, default);
+        // A no takes the proposal too, so a later yes has nothing to apply.
+        await _turns.Received(1).TryClaimPendingChangeAsync(_pendingTurnId, Arg.Any<CancellationToken>());
     }
 
     /// <summary>A caregiver who reopens an old thread and types "yes" must not switch off an

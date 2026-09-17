@@ -48,9 +48,10 @@ public static class AlarmSuggestedDefaults
             ThresholdKind = plan.ThresholdKind ?? AlarmThresholdKind.Absolute,
             ThresholdValue = plan.ThresholdValue.Value,
             Statistic = plan.Statistic ?? DefaultStatistic(definition),
-            PeriodMinutes = plan.PeriodMinutes is { } period && definition.PeriodMinutes.Contains(period)
-                ? period
-                : DefaultPeriod(definition),
+            // A window the caregiver named is kept as named, legal or not: validation refuses it
+            // in the builder's words, where a silent swap to the default would propose a
+            // different alarm from the one they asked for.
+            PeriodMinutes = plan.PeriodMinutes ?? DefaultPeriod(definition),
             EvaluationPeriods = plan.EvaluationPeriods ?? DefaultEvaluationPeriods(definition),
             DatapointsToAlarm = plan.DatapointsToAlarm ?? DefaultDatapoints(definition),
             ContextGate = plan.ContextGate ?? DefaultGate(definition),
@@ -160,16 +161,13 @@ public static class AlarmSuggestedDefaults
     private static AlarmContextGate DefaultGate(AlarmMetricDefinition definition) =>
         definition.Metric == AlarmMetric.HeartRate ? AlarmContextGate.Inactive : AlarmContextGate.None;
 
-    /// <summary>The caregiver's name for it, or one built from what it watches — "Heart rate above 120 bpm".</summary>
+    /// <summary>The caregiver's name for it, as given, or one built from what it watches — "Heart
+    /// rate above 120 bpm". A given name is never shortened here: an overlong one is refused by
+    /// validation in the builder's words rather than saved as something they did not say.</summary>
     private static string NameFor(string? given, SaveMetricAlarmRequest request, AlarmMetricDefinition definition)
     {
         if (!string.IsNullOrWhiteSpace(given))
-        {
-            var trimmed = given.Trim();
-            return trimmed.Length <= MetricAlarmValidation.MaxNameLength
-                ? trimmed
-                : trimmed[..MetricAlarmValidation.MaxNameLength];
-        }
+            return given.Trim();
 
         var direction = request.Operator is AlarmOperator.GreaterThan or AlarmOperator.GreaterThanOrEqualTo
             ? "above"

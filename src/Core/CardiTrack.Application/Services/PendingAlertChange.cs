@@ -65,9 +65,13 @@ public sealed record PendingAlertChange
     /// <summary>The full alarm to write, for the create and save kinds.</summary>
     public SaveMetricAlarmRequest? Alarm { get; init; }
 
-    /// <summary>The change as it was put to the caregiver, reused when it is confirmed so the
-    /// "done" line describes what they agreed to in the same words.</summary>
+    /// <summary>The change as it was put to the caregiver — imperative, "switch off …".</summary>
     public required string Summary { get; init; }
+
+    /// <summary>The same change once made — "switched off …" — so the done line reads as what
+    /// happened rather than as the proposal lowercased. Null on a proposal stored before this
+    /// existed; the done line then falls back to the summary.</summary>
+    public string? Done { get; init; }
 
     public required DateTime ProposedAtUtc { get; init; }
 
