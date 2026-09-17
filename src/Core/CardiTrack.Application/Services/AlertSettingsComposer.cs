@@ -65,11 +65,7 @@ public static class AlertSettingsComposer
         }
 
         if (!canManage)
-        {
-            return new AlertSettingsReply(
-                $"Only {Possessive(firstName)} primary caregiver can change what's watching them. "
-                + ListReply(snapshot, subject, canManage: false));
-        }
+            return new AlertSettingsReply(ReadOnlyReply(snapshot, firstName));
 
         return plan.Action switch
         {
@@ -82,6 +78,18 @@ public static class AlertSettingsComposer
             AlertChangeAction.DeleteAlarm => ProposeDelete(plan, snapshot, subject, utcNow),
             _ => new AlertSettingsReply(UnclearReply(subject)),
         };
+    }
+
+    /// <summary>
+    /// What a caregiver who may view but not manage the member is told, whatever they asked for:
+    /// who can change things, and the list. Served without a planning call — there is no change
+    /// to plan, and a viewer's request is not worth a model's look at the configuration.
+    /// </summary>
+    public static string ReadOnlyReply(AlertSettingsSnapshot snapshot, string? firstName)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return $"Only {Possessive(firstName)} primary caregiver can change what's watching them. "
+            + ListReply(snapshot, Subject(firstName), canManage: false);
     }
 
     /// <summary>The "done" line for a confirmed change — what happened, in the past tense the

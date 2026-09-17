@@ -501,6 +501,38 @@ public class MemberChatAlertSettingsRungTests
         Assert.StartsWith("Only Moses's primary caregiver can change what's watching them.", reply.Reply, StringComparison.Ordinal);
         var assistant = Assert.Single(_persisted, t => t.Role == ChatTurnRole.Assistant);
         Assert.Null(assistant.PendingChange);
+        // No planning call for a viewer: nothing to decide, and nothing about the member's
+        // alerts sent to the Rewrite slot on a request that could not change them.
+        await _alertPlanner.DidNotReceiveWithAnyArgs().PlanAsync(default!, default, default!, default);
+        await _usages.DidNotReceive().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.SettingsPlan));
+    }
+
+    /// <summary>A commit that lands between the service's read and its save is refused by the
+    /// row's version token, and answered the same way as a stale fingerprint.</summary>
+    [Fact]
+    public async Task AYesThatLosesTheRaceAtTheDatabase_AppliesNothing()
+    {
+        var alarmId = Guid.NewGuid();
+        var row = AnExistingAlarm(alarmId);
+        AProposalIsPending(TimeSpan.FromMinutes(1), new PendingAlertChange
+        {
+            Kind = PendingAlertChangeKind.SaveAlarm,
+            AlarmId = alarmId,
+            Alarm = AHeartRateRequest(enabled: false),
+            AlarmFingerprint = MetricAlarmFingerprint.Of(row),
+            Summary = "Switch off “Heart rate above 120 bpm” for Moses",
+            Done = "switched off “Heart rate above 120 bpm” for Moses",
+            ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+        _metricAlarms.SaveMemberOverrideAsync(
+                _userId, _memberId, alarmId, Arg.Any<SaveMetricAlarmRequest>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<MetricAlarmResponse>>(_ => throw new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("overtaken"));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+
+        Assert.Equal(AlertSettingsComposer.ChangedSinceProposedReply(), reply.Reply);
+        Assert.False(reply.ChangedAlertSettings);
     }
 
     /// <summary>The service re-checks authority at apply time; a refusal there is a reply, never a

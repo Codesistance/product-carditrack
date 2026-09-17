@@ -1004,6 +1004,21 @@ public class MemberChatService : IMemberChatService
     {
         var canManage = await CanManageAsync(userId, cardiMemberId, ct);
         var snapshot = await ReadAlertSettingsAsync(userId, cardiMemberId, member?.Name, ct);
+
+        // A viewer gets the same answer whatever they asked — who can change things, and the
+        // list — so there is nothing for the planner to decide and no reason to show it the
+        // configuration. One call fewer, and nothing about this member's alerts reaches the
+        // Rewrite slot on a request that could not have changed them.
+        if (!canManage)
+        {
+            return new MemberChatWorkflowResult
+            {
+                Workflow = MemberChatWorkflow.AlertSettings,
+                Reply = CapReply(AlertSettingsComposer.ReadOnlyReply(snapshot, NamePlaceholder.FirstName(member?.Name))),
+                Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
+            };
+        }
+
         // The question itself is redacted like the recalled history: a caregiver who writes
         // "turn off Moses's sleep alert" has put the name in the one text this call carries.
         var planned = await _alertPlanner.PlanAsync(
@@ -1162,11 +1177,12 @@ public class MemberChatService : IMemberChatService
             {
                 throw;
             }
-            catch (AlarmChangedException)
+            catch (Exception ex) when (ex is AlarmChangedException or Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
             {
                 // The alarm is not as the proposal saw it — retuned or removed by someone else
-                // inside the window. The service compared and refused in the same read it would
-                // have written from, so nothing of theirs was overwritten.
+                // inside the window. Either the service compared and refused before writing, or
+                // the row's version token refused the write itself because a commit landed
+                // between the service's read and its save. Nothing of theirs was overwritten.
                 reply = AlertSettingsComposer.ChangedSinceProposedReply();
             }
             catch (KeyNotFoundException)
