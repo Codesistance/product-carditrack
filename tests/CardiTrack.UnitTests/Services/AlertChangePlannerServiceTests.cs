@@ -138,10 +138,12 @@ public class AlertChangePlannerServiceTests
         Assert.Equal("alarm-1", plan.AlarmLabel);
     }
 
-    /// <summary>"999" satisfies TryParse and names nothing — the same trap the data planner's
-    /// parse records; an unknown action is unclear rather than a guess at one.</summary>
+    /// <summary>"999" satisfies TryParse and names nothing, and "1" satisfies it and names the
+    /// first member — neither is a label this prompt offered, so neither may become a reading;
+    /// an unknown action is unclear rather than a guess at one.</summary>
     [Theory]
     [InlineData("999", "banana", "sometimes")]
+    [InlineData("1", "1", "2")]
     [InlineData("", "", "")]
     [InlineData(null, null, null)]
     public void Parse_NeverCoerces(string? action, string? metric, string? severity)

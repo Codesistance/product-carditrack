@@ -142,8 +142,8 @@ public class AlertChangePlannerService : IAlertChangePlanner
     }
 
     /// <summary>
-    /// Unrecognised labels drop to null, never throw and never coerce — TryParse alongside
-    /// IsDefined for the enums, the catalogue for rule ids, the snapshot for alarm labels — the
+    /// Unrecognised labels drop to null, never throw and never coerce — the enum's own names for
+    /// the enums, the catalogue for rule ids, the snapshot for alarm labels — the
     /// same discipline <see cref="DataQueryPlannerService.Parse"/> applies.
     /// </summary>
     internal static AlertChangePlan Parse(AlertChangeAiResponse response, AlertSettingsSnapshot snapshot)
@@ -211,10 +211,20 @@ public class AlertChangePlannerService : IAlertChangePlanner
         };
     }
 
-    private static T? ParseEnum<T>(string? label) where T : struct, Enum =>
-        Enum.TryParse<T>(label?.Trim(), ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
-            ? parsed
-            : null;
+    /// <summary>
+    /// A label that is one of the enum's names, case-insensitively, or null. Matched against the
+    /// names rather than handed to <c>TryParse</c>, which accepts "1" as the first member — a
+    /// numeric string is not a label this prompt offered, and must not become a reading.
+    /// </summary>
+    private static T? ParseEnum<T>(string? label) where T : struct, Enum
+    {
+        var wanted = label?.Trim();
+        if (string.IsNullOrEmpty(wanted))
+            return null;
+
+        var name = Enum.GetNames<T>().FirstOrDefault(n => string.Equals(n, wanted, StringComparison.OrdinalIgnoreCase));
+        return name is null ? null : Enum.Parse<T>(name);
+    }
 
     private static string? Canonical(string? label) =>
         string.IsNullOrWhiteSpace(label)

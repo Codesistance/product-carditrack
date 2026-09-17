@@ -1167,9 +1167,13 @@ public class MemberChatService : IMemberChatService
                 reply = AlertSettingsComposer.CouldNotApplyReply(
                     "it's no longer there, or only the primary caregiver can change it");
             }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            catch (ArgumentException ex)
             {
-                // The builder's own refusals — a ceiling reached, a level outside the band.
+                // The builder's own refusal — a level outside the band, a name too long — whose
+                // message is written for a caregiver. The ceiling's InvalidOperationException is
+                // deliberately not caught by message: the proposal already checked capacity, and
+                // an InvalidOperationException here is as likely to be the framework's as the
+                // builder's, so it takes the generic line below rather than its text.
                 reply = AlertSettingsComposer.CouldNotApplyReply(ex.Message);
             }
             catch (Exception ex)

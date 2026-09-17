@@ -364,6 +364,29 @@ public class MemberChatAlertSettingsRungTests
         Assert.False(reply.ChangedAlertSettings);
     }
 
+    /// <summary>A refusal the builder wrote for a caregiver is repeated to them; any other
+    /// failure gets the generic line, never its message.</summary>
+    [Fact]
+    public async Task ABuildersRefusal_IsRepeated_ButAnUnexpectedFailureIsNot()
+    {
+        AProposalIsPending(age: TimeSpan.FromMinutes(1));
+        _alertPreferences.SetRuleEnabledAsync(
+                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, Arg.Any<CancellationToken>())
+            .Returns<Task<AlertRuleSettingResponse>>(_ => throw new ArgumentException("Unknown alert rule."));
+        var refused = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+        Assert.Equal("I couldn't make that change: Unknown alert rule. Nothing has been altered.", refused.Reply);
+
+        _persisted.Clear();
+        AProposalIsPending(age: TimeSpan.FromMinutes(1));
+        _alertPreferences.SetRuleEnabledAsync(
+                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, Arg.Any<CancellationToken>())
+            .Returns<Task<AlertRuleSettingResponse>>(_ => throw new InvalidOperationException("connection string 'Host=10.0.0.4' rejected"));
+        var failed = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+        Assert.Equal(AlertSettingsComposer.CouldNotApplyReply(null), failed.Reply);
+        Assert.DoesNotContain("10.0.0.4", failed.Reply, StringComparison.Ordinal);
+        Assert.False(failed.ChangedAlertSettings);
+    }
+
     /// <summary>Settings against a steer: a redirect never beats a request the app can serve.</summary>
     [Theory]
     [InlineData(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.AlertSettings)]
