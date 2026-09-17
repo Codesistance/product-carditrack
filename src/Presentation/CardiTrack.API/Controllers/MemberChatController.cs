@@ -64,6 +64,11 @@ public class MemberChatController : BaseApiController
             if (result.ChangedAlertSettings)
                 HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeAlertSettingsViaChat";
 
+            // Likewise a send that deleted or replaced a CardiJournal book: derived health data was
+            // written, and the trail must be able to tell that from a show or a list.
+            if (result.ChangedJournal)
+                HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeJournalViaChat";
+
             return Success(result);
         }
         catch (ArgumentException ex)

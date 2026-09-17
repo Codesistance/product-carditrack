@@ -501,10 +501,12 @@ public class MemberChatService : IMemberChatService
         // no-question guard and before any model: the vocabulary is closed and matched in code,
         // and "yes" alone carries no question for the guard to see. Anything else spends the
         // offer and is routed as itself.
-        // A confirmed journal change opens a unit-of-work transaction that has to close with the
-        // turns: the book and the record of who asked for it land together or not at all. Every
-        // other path opens none, and the commit and rollback are then no-ops — one shape for the
-        // whole turn rather than a second persistence path for the one rung that mutates.
+        // The journal rung opens a unit-of-work transaction on two of its turns — the one that
+        // puts a destructive offer on the session, and the one that carries a confirmed change out
+        // — and both have to close with the turns: the offer lands with the reply that shows it,
+        // the book with the record of who asked for it, or neither. Every other path opens none,
+        // and the commit and rollback are then no-ops — one shape for the whole turn rather than
+        // a second persistence path for the one rung that mutates.
         MemberChatWorkflowResult result;
         try
         {
@@ -538,6 +540,7 @@ public class MemberChatService : IMemberChatService
             Charts = result.Charts,
             GeneratedAt = DateTimeOffset.UtcNow,
             ChangedAlertSettings = result.ChangedAlertSettings,
+            ChangedJournal = result.ChangedJournal,
         };
     }
 

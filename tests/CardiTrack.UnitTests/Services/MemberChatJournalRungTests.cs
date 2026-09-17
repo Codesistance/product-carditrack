@@ -178,7 +178,38 @@ public class MemberChatJournalRungTests
 
         Assert.Contains("A settled day", result.Reply, StringComparison.Ordinal);
         Assert.Contains("slept a little longer than usual", result.Reply, StringComparison.Ordinal);
+        Assert.False(result.ChangedJournal);
         await _access.DidNotReceive().RequireManageAccessAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The member's name never reaches the Rewrite slot: the resolver sees the caregiver's words
+    /// with the name replaced by the placeholder, as every Rewrite-slot prompt does.
+    /// </summary>
+    [Fact]
+    public async Task The_resolver_never_sees_the_members_name()
+    {
+        Resolves("show", "day", Reviewed);
+        HasDaybook(Reviewed);
+
+        await Send("show me Moses's daybook from the other day");
+
+        await _rewriteAi.Received(1).GenerateStructuredWithUsageAsync<JournalChatActions.JournalResolveAiResponse>(
+            Arg.Is<string>(prompt => !prompt.Contains("Moses", StringComparison.Ordinal)), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>How far back a book can reach is the data's to answer, not a cutoff's: a day twenty
+    /// years back is looked up like any other and found missing.</summary>
+    [Fact]
+    public async Task A_day_long_ago_is_looked_up_not_refused()
+    {
+        var longAgo = Today.AddYears(-20);
+        Resolves("show", "day", longAgo);
+
+        var result = await Send("show me the daybook from twenty years ago");
+
+        Assert.Contains("There's no Daybook for", result.Reply, StringComparison.Ordinal);
+        await _digests.Received(1).GetLatestByDateAsync(_memberId, longAgo, DigestAudience.Daybook, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -295,8 +326,9 @@ public class MemberChatJournalRungTests
         Assert.Null(_session!.PendingAction);
     }
 
-    /// <summary>A date the model put centuries out is dropped before any arithmetic, so the turn
-    /// asks which period was meant rather than failing on a calendar-edge overflow.</summary>
+    /// <summary>A date at the calendar's very edge cannot be stepped to a week end without
+    /// overflowing; it is dropped before the arithmetic, and the turn asks which period was meant.
+    /// (A merely far-future date gets the ordinary unfinished-period reply instead.)</summary>
     [Fact]
     public async Task A_date_far_outside_the_journal_is_treated_as_no_date()
     {
@@ -433,6 +465,7 @@ public class MemberChatJournalRungTests
 
         Assert.Contains("here's the new Daybook", result.Reply, StringComparison.Ordinal);
         Assert.Contains("A quieter day than usual", result.Reply, StringComparison.Ordinal);
+        Assert.True(result.ChangedJournal);
         Assert.Null(_session!.PendingAction);
         await _books.Received(1).ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
         await _digests.Received(1).ReplaceBookAsync(Arg.Is<DigestEntry>(d => d == written), Arg.Any<CancellationToken>());
@@ -596,6 +629,7 @@ public class MemberChatJournalRungTests
         var result = await Send("yes please");
 
         Assert.Contains("has been deleted", result.Reply, StringComparison.Ordinal);
+        Assert.True(result.ChangedJournal);
         await _digests.Received(1).DeleteBookAsync(_memberId, Reviewed, DigestAudience.Daybook, Arg.Any<CancellationToken>());
     }
 

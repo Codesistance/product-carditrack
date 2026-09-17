@@ -16,4 +16,8 @@ public class MemberChatMessageResponse
     /// as before.
     /// </summary>
     public bool ChangedAlertSettings { get; init; }
+
+    /// <summary>True when this turn deleted or replaced a CardiJournal book. A client holding a
+    /// cached Journal tab can refresh it; the API uses it to name the audit action.</summary>
+    public bool ChangedJournal { get; init; }
 }

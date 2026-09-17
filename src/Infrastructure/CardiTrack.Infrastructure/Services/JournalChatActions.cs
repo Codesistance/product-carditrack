@@ -125,8 +125,15 @@ public sealed class JournalChatActions
         var (localToday, weekStartsOn) = await LocalCalendarAsync(cardiMemberId, member, utcNow);
         var firstName = NamePlaceholder.FirstName(member?.Name);
 
+        // The member's name comes out of the caregiver's words before they reach the Rewrite
+        // slot — "rewrite Moses's daybook" carries the one identifier this prompt could leak — the
+        // same redaction the settings planner applies. The history is already name-redacted by
+        // the service; the token, should the model echo it, has no use here and is never shown.
         var resolved = await _rewriteAi.GenerateStructuredWithUsageAsync<JournalResolveAiResponse>(
-            BuildResolvePrompt(flattened, questionsOnlyHistory, localToday, weekStartsOn), ct);
+            BuildResolvePrompt(
+                NamePlaceholder.Redact(flattened, member?.Name) ?? flattened,
+                questionsOnlyHistory, localToday, weekStartsOn),
+            ct);
 
         var calls = new List<AiCallRecord>
         {
@@ -138,10 +145,10 @@ public sealed class JournalChatActions
         var audience = JournalChatRequest.ParseCadence(resolved.Result.Cadence);
         var namedDay = JournalChatRequest.ParseDate(resolved.Result.PeriodDate);
 
-        // A date the model put centuries out is a garbled answer, not a period: it is dropped
-        // before any arithmetic, so a week "ending" at the calendar's edge cannot overflow into a
-        // failed turn. The unfinished-period check below still handles the near future.
-        if (namedDay is { } far && (far < localToday.AddYears(-10) || far > localToday.AddYears(1)))
+        // Only the calendar's edges are refused here — a day the week or month arithmetic below
+        // could not step past without overflowing. How far back a book can reach is the data's
+        // to answer, and a date in the far future gets the ordinary unfinished-period reply.
+        if (namedDay is { } edge && (edge > DateOnly.MaxValue.AddDays(-7) || edge < DateOnly.MinValue.AddDays(7)))
             namedDay = null;
 
         if (action is null)
@@ -346,7 +353,8 @@ public sealed class JournalChatActions
                 removed > 0
                     ? JournalChatReplies.Discarded(request, localToday)
                     : JournalChatReplies.NothingToDiscard(request, localToday),
-                []);
+                [],
+                changedJournal: removed > 0);
         }
 
         var result = composition ?? throw new InvalidOperationException("A rewrite reaches execution with its composition.");
@@ -374,7 +382,8 @@ public sealed class JournalChatActions
 
             return Result(
                 JournalChatReplies.Written(result with { Entry = stored, ReplacedAnEarlierBook = removed > 0 }, localToday),
-                calls);
+                calls,
+                changedJournal: true);
         }
 
         // Refused, or nothing to write from. The reply says what stands for the period *now*: a
@@ -413,11 +422,13 @@ public sealed class JournalChatActions
         return (localToday, JournalSchedule.EffectiveWeekStart(member?.JournalWeekStartsOn));
     }
 
-    private static MemberChatWorkflowResult Result(string reply, IReadOnlyList<AiCallRecord> calls) => new()
+    private static MemberChatWorkflowResult Result(
+        string reply, IReadOnlyList<AiCallRecord> calls, bool changedJournal = false) => new()
     {
         Workflow = MemberChatWorkflow.Journal,
         Reply = reply,
         Calls = calls,
+        ChangedJournal = changedJournal,
     };
 
     internal static string BuildResolvePrompt(
