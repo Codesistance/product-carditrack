@@ -108,9 +108,17 @@ jobs:
           set -euo pipefail
           git fetch --tags --quiet
           has_builds() {  # $1 = tag; prints the platforms missing for it
-            local missing=""
-            if [ "$ANDROID" = "true" ] && ! gcloud storage ls "$BUCKET/$1/android/**" 2>/dev/null | grep -q '\-Signed\.aab$'; then missing="$missing android"; fi
-            if [ "$IOS" = "true" ] && ! gcloud storage ls "$BUCKET/$1/ios/**" 2>/dev/null | grep -q '\.ipa$'; then missing="$missing ios"; fi
+            local missing="" listing
+            # Capture first, then grep: under pipefail a `grep -q` that exits early
+            # can SIGPIPE gcloud and turn a present build into a "missing" one.
+            if [ "$ANDROID" = "true" ]; then
+              listing=$(gcloud storage ls "$BUCKET/$1/android/**" 2>/dev/null || true)
+              printf '%s\n' "$listing" | grep -q '\-Signed\.aab$' || missing="$missing android"
+            fi
+            if [ "$IOS" = "true" ]; then
+              listing=$(gcloud storage ls "$BUCKET/$1/ios/**" 2>/dev/null || true)
+              printf '%s\n' "$listing" | grep -q '\.ipa$' || missing="$missing ios"
+            fi
             printf '%s' "$missing"
           }
           TAG="$(printf '%s' "$INPUT_TAG" | tr -d '[:space:]')"

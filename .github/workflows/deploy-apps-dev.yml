@@ -1199,7 +1199,9 @@ jobs:
   # `!cancelled()` rather than a plain needs chain: with one platform ticked the
   # other builds are skipped, and a skipped dependency would skip this job with
   # them. The explicit result checks restore what the plain chain used to give —
-  # no upload after a failed build or a failed scan.
+  # no upload after a failed build or a failed scan — and go one further: every
+  # ticked platform must have produced its artifact, so a tag never carries a
+  # partial set (Android archived, iOS silently gated off).
   upload-mobile-artifacts:
     name: Upload Mobile Artifacts to GCS
     needs:
@@ -1215,9 +1217,10 @@ jobs:
       needs.compute-version.result == 'success' &&
       needs.security-mobile.result == 'success' &&
       !contains(needs.*.result, 'failure') &&
-      (needs.build-mobile-android-signed.outputs.available == 'true' ||
-       needs.build-mobile-ios-device.outputs.available == 'true' ||
-       needs.build-mobile-windows.outputs.available == 'true')
+      (needs.changes.outputs.mobile_android == 'true' || needs.changes.outputs.mobile_ios == 'true' || needs.changes.outputs.mobile_windows == 'true') &&
+      (needs.changes.outputs.mobile_android != 'true' || needs.build-mobile-android-signed.outputs.available == 'true') &&
+      (needs.changes.outputs.mobile_ios     != 'true' || needs.build-mobile-ios-device.outputs.available == 'true') &&
+      (needs.changes.outputs.mobile_windows != 'true' || needs.build-mobile-windows.outputs.available == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -1627,16 +1630,19 @@ jobs:
   # ACTIONS_ON_PUSH gate above went unnoticed — the run was ✓ and had built and deployed nothing.
   # This makes that state red.
   #
-  # Dispatch-only on purpose. On push and pull_request a fully-skipped run is the *intended*
-  # outcome whenever the flag is off, so asserting there would fail on the normal case.
+  # The "did it resolve anything" assertion is dispatch-only on purpose: on push and
+  # pull_request a fully-skipped run is the *intended* outcome whenever the flag is off.
+  # The mobile-archive assertion below also runs on a push to main, where a gated-off
+  # signing secret would otherwise leave a green run with no tag and no build behind it.
   dispatch-sanity:
     name: Dispatch ran something
     needs: [changes, upload-mobile-artifacts]
-    if: always() && github.event_name == 'workflow_dispatch'
+    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-latest
     steps:
       - name: Assert the dispatch resolved its components
         env:
+          EVENT: ${{ github.event_name }}
           CHANGES_RESULT: ${{ needs.changes.result }}
           ARCHIVE_RESULT: ${{ needs.upload-mobile-artifacts.result }}
           ON_MAIN: ${{ github.ref == 'refs/heads/main' }}
@@ -1649,16 +1655,21 @@ jobs:
             ${{ needs.changes.outputs.webhook }}
         run: |
           set -euo pipefail
-          if [ "${CHANGES_RESULT}" != "success" ]; then
-            echo "::error::Manual dispatch resolved no components — 'Detect changes' was ${CHANGES_RESULT}, so every build and deploy job skipped. Nothing was built or deployed."
-            exit 1
+          if [ "${EVENT}" = "workflow_dispatch" ]; then
+            if [ "${CHANGES_RESULT}" != "success" ]; then
+              echo "::error::Manual dispatch resolved no components — 'Detect changes' was ${CHANGES_RESULT}, so every build and deploy job skipped. Nothing was built or deployed."
+              exit 1
+            fi
+            # Unticking every box is a legitimate no-op, but it is almost never intended; say so
+            # without failing, since the graph itself is healthy.
+            case "${SELECTED}" in
+              *true*) echo "Components selected: ${SELECTED}" ;;
+              *) echo "::warning::Dispatch ran with every component unticked — nothing to build or deploy." ;;
+            esac
+          elif [ "${CHANGES_RESULT}" != "success" ]; then
+            echo "Push with ACTIONS_ON_PUSH off — nothing to check."
+            exit 0
           fi
-          # Unticking every box is a legitimate no-op, but it is almost never intended; say so
-          # without failing, since the graph itself is healthy.
-          case "${SELECTED}" in
-            *true*) echo "Components selected: ${SELECTED}" ;;
-            *) echo "::warning::Dispatch ran with every component unticked — nothing to build or deploy." ;;
-          esac
           # A mobile tick on main promises an archive in the builds bucket. If the signed
           # build's secret gate closed or its upload was rejected, the archive job skips and
           # the run would otherwise go green with nothing behind the tick.

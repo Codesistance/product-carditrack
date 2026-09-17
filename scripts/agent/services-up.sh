@@ -35,11 +35,6 @@ if ! command -v docker >/dev/null 2>&1; then
     log "Docker is not installed — installing docker.io and fuse-overlayfs from the Ubuntu archive"
     if $ROOT env DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1 && \
        $ROOT env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends docker.io docker-compose-v2 fuse-overlayfs >/dev/null 2>&1; then
-      $ROOT mkdir -p /etc/docker
-      printf '%s\n' '{"storage-driver":"fuse-overlayfs","features":{"containerd-snapshotter":false}}' \
-        | $ROOT tee /etc/docker/daemon.json >/dev/null
-      $ROOT update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || true
-      $ROOT update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || true
       log "  Docker installed"
     else
       log "  Docker install failed (archive unreachable?) — Postgres/Redis not started. See AGENTS.md."
@@ -48,6 +43,20 @@ if ! command -v docker >/dev/null 2>&1; then
   else
     log "Docker is not installed and there is no way to install it from here — Postgres/Redis not started."
     exit 0
+  fi
+fi
+
+# ── Daemon configuration ─────────────────────────────────────────────────────
+# Applied whether Docker was just installed or came with the image, before the
+# daemon is started: without it dockerd will not come up on this kernel.
+if [ -n "$ROOT" ] || [ "$(id -u)" -eq 0 ]; then
+  if [ ! -f /etc/docker/daemon.json ] && ! docker info >/dev/null 2>&1; then
+    $ROOT mkdir -p /etc/docker
+    printf '%s\n' '{"storage-driver":"fuse-overlayfs","features":{"containerd-snapshotter":false}}' \
+      | $ROOT tee /etc/docker/daemon.json >/dev/null
+    $ROOT update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null 2>&1 || true
+    $ROOT update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy >/dev/null 2>&1 || true
+    log "Wrote /etc/docker/daemon.json (fuse-overlayfs, snapshotter off) and selected legacy iptables"
   fi
 fi
 

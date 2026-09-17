@@ -222,9 +222,10 @@ scripts/agent/test-all.sh    # unit + integration, Release, Testcontainers; name
 ```
 
 iOS cannot be linked on Linux, so "all builds" means the Android compile happens here and
-the iOS (device, signed) build happens by dispatching **CI / Deploy Apps → Dev** on the
-current branch with only the mobile ticks on and waiting for it — a branch dispatch builds
-and ships nothing. That needs
+the iOS compile happens by dispatching **CI / Deploy Apps → Dev** on the current branch with
+only the mobile ticks on and waiting for it. On a branch that is the unsigned Debug
+simulator compile gate (a few macOS minutes, no secrets); the signed device build only runs
+on `main`. A branch dispatch builds and ships nothing. That needs
 `GH_TOKEN` (above) and the branch pushed; without them the script reports the step as
 skipped rather than passed. `scripts/agent/services-up.sh` starts the Docker daemon and
 Postgres/Redis for the tests and for running the API locally.

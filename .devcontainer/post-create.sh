@@ -9,10 +9,27 @@ cd "$REPO_ROOT"
 
 log() { printf '\033[0;36m[post-create]\033[0m %s\n' "$*"; }
 
-# CardiTrack.Mobile needs the Android SDK, which is not in the default image —
-# the server filter covers everything else in the solution.
-log "Restoring packages"
-dotnet restore CardiTrack.Server.slnf --nologo
+# The Android SDK cannot be fetched during the image build (it needs the Mobile
+# project, and the workspace is not there yet), so an image built with
+# INSTALL_MAUI=1 carries the workload and finishes the SDK here.
+ANDROID_SDK="${ANDROID_HOME:-$HOME/Android/Sdk}"
+if dotnet workload list 2>/dev/null | grep -q '^maui-android' && [ ! -d "$ANDROID_SDK/platforms" ]; then
+  log "Installing the Android SDK into $ANDROID_SDK (maui-android workload present, SDK missing)"
+  dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -f net10.0-android \
+    -t:InstallAndroidDependencies -p:AndroidSdkDirectory="$ANDROID_SDK" \
+    -p:AcceptAndroidSDKLicenses=True --nologo 2>&1 | tail -3 \
+    || log "  Android SDK install failed (dl.google.com unreachable?) — CardiTrack.Mobile will restore but not build"
+fi
+
+if dotnet workload list 2>/dev/null | grep -q '^maui-android' && [ -d "$ANDROID_SDK/platforms" ]; then
+  log "Restoring packages (whole solution — mobile toolchain present)"
+  dotnet restore CardiTrack.sln --nologo
+else
+  # CardiTrack.Mobile needs the Android SDK, which is not in the default image —
+  # the server filter covers everything else in the solution.
+  log "Restoring packages"
+  dotnet restore CardiTrack.Server.slnf --nologo
+fi
 
 log "Trusting the ASP.NET Core HTTPS development certificate"
 dotnet dev-certs https --trust 2>/dev/null || \
