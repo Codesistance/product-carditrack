@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -400,7 +401,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     /// Takes <paramref name="instructions"/> as a parameter — rather than inlining
     /// <see cref="AssessmentInstructions"/> — so <c>tools/AiSplitEvaluator</c> can reuse this exact
     /// data-formatting code with its own clinical-only instructions block, without duplicating (and
-    /// risking drift in) the "--- Last hour of data ---" formatting. The production call site always
+    /// risking drift in) the hour JSON formatting. The production call site always
     /// passes <see cref="AssessmentInstructions"/>, so this is a widening, not a behaviour change.
     /// Internal for the same reason as <see cref="AssessmentInstructions"/>.
     /// </remarks>
@@ -409,31 +410,37 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         double noiseRms, double lastReading, int coveredMinutes, double? steps, double? spo2,
         double? heartRateVariability = null)
     {
-        var contextLines = new List<string>
+        var hour = new JsonObject
         {
-            $"Denoised heart rate trend, end of hour: {trendLast:F0} bpm",
-            $"Latest reading: {lastReading:F0} bpm",
-            $"Deviation score (typical jitters from trend): {deviationScore:F1}",
-            $"Typical jitter for this member: {noiseRms:F1} bpm",
-            $"Minutes with data this hour: {coveredMinutes} of {WindowMinutes}",
-            steps.HasValue ? $"Steps this hour: {steps:F0}" : "Steps this hour: not measured",
-            // Same key measured or not: the absent branch used to drop "Average", so the model was
-            // shown one name for the reading when it existed and another when it did not.
-            spo2.HasValue
-                ? $"Average SpO2 this hour: {spo2:F0}%"
-                : "Average SpO2 this hour: not measured",
-            heartRateVariability.HasValue
-                ? $"Average heart rate variability this hour: {heartRateVariability:F0} ms"
-                : "Average heart rate variability this hour: not measured",
+            ["denoised_heart_rate_trend_end_bpm"] = JsonValue.Create(
+                Math.Round(trendLast, 0, MidpointRounding.AwayFromZero)),
+            ["latest_reading_bpm"] = JsonValue.Create(
+                Math.Round(lastReading, 0, MidpointRounding.AwayFromZero)),
+            ["deviation_score"] = JsonValue.Create(
+                Math.Round(deviationScore, 1, MidpointRounding.AwayFromZero)),
+            ["typical_jitter_bpm"] = JsonValue.Create(
+                Math.Round(noiseRms, 1, MidpointRounding.AwayFromZero)),
+            ["minutes_with_data"] = JsonValue.Create(coveredMinutes),
+            ["window_minutes"] = JsonValue.Create(WindowMinutes),
+            ["steps_this_hour"] = steps.HasValue
+                ? JsonValue.Create(Math.Round(steps.Value, 0, MidpointRounding.AwayFromZero))
+                : null,
+            ["average_spo2_percent"] = spo2.HasValue
+                ? JsonValue.Create(Math.Round(spo2.Value, 0, MidpointRounding.AwayFromZero))
+                : null,
+            ["average_hrv_ms"] = heartRateVariability.HasValue
+                ? JsonValue.Create(Math.Round(heartRateVariability.Value, 0, MidpointRounding.AwayFromZero))
+                : null,
         };
 
         return $"""
             {instructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
-            --- Last hour of data ---
-            {string.Join("\n", contextLines)}
+            [INPUT DATA]
+            {MedicalPromptBlocks.JsonFence(hour.ToJsonString(new JsonSerializerOptions { WriteIndented = true }))}
             """;
     }
 

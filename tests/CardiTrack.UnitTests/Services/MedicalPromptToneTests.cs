@@ -48,13 +48,12 @@ public class MedicalPromptToneTests
     /// caregiver reads and is held to the full set.
     /// </summary>
     /// <remarks>
-    /// Classified by the opening block, plus Advise's MedGemma-native JSON brief which does not
-    /// open with <see cref="MedicalPromptBlocks.ClinicalRead"/> but is still a clinical read.
+    /// Classified by the opening block. Two-slot clinical briefs open with
+    /// <see cref="MedicalPromptBlocks.WearableClinicalRole"/>; anything else a caregiver reads
+    /// opens with the full tone.
     /// </remarks>
-    private const string AdviseClinicalPrompt = "AdviseGenerationService.ClinicalInstructions";
-
     private static bool IsClinicalRead(string name, string prompt) =>
-        name == AdviseClinicalPrompt
+        prompt.StartsWith(MedicalPromptBlocks.WearableClinicalRole, StringComparison.Ordinal)
         || prompt.StartsWith(MedicalPromptBlocks.ClinicalRead, StringComparison.Ordinal);
 
     /// <summary>
@@ -123,19 +122,10 @@ public class MedicalPromptToneTests
         // First, not merely present: these blocks are the cacheable fixed prefix the serving engine
         // reuses between calls, and a shared opening is what makes that prefix shared.
         //
-        // A clinical read opens with the one rule it owns; everything a caregiver reads opens with
-        // the full block. Both are shared openings — there are two of them, not one.
-        if (name == AdviseClinicalPrompt)
-        {
-            Assert.StartsWith(
-                "Extract clinical findings from the following wearable record as JSON:",
-                prompt,
-                StringComparison.Ordinal);
-            return;
-        }
-
+        // A clinical read opens with Google's wearable role; everything a caregiver reads opens
+        // with the full tone block. Both are shared openings — there are two of them, not one.
         var opening = IsClinicalRead(name, prompt)
-            ? MedicalPromptBlocks.ClinicalRead
+            ? MedicalPromptBlocks.WearableClinicalRole
             : MedicalPromptBlocks.ToneOpening;
 
         Assert.True(
@@ -633,7 +623,8 @@ public class MedicalPromptToneTests
     {
         var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusClinicalPrompt).Prompt;
 
-        Assert.StartsWith(MedicalPromptBlocks.ClinicalRead, status, StringComparison.Ordinal);
+        Assert.StartsWith(MedicalPromptBlocks.WearableClinicalRole, status, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.ClinicalRead.Trim(), status, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.ToneAudience, status, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.ToneNoDiagnosis, status, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), status, StringComparison.Ordinal);

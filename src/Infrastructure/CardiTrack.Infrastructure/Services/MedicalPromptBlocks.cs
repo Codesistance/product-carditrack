@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -221,6 +224,34 @@ internal static partial class MedicalPromptBlocks
     /// </para>
     /// </remarks>
     internal const string ClinicalRead = ToneNoDistortion + NL;
+
+    /// <summary>
+    /// Google's wearable clinical-reasoning role: MedGemma is a longitudinal reasoner over daily
+    /// readings, not a wellness copywriter. First line of every two-slot clinical brief.
+    /// </summary>
+    internal const string WearableClinicalRole =
+        "You are a clinical reasoning AI specializing in longitudinal wearable data analysis. Your role is to analyze a structured dataset of daily wearable readings to identify deviations from this person's established physiological baseline.";
+
+    /// <summary>
+    /// Google's three data constraints, one bullet per line. Adjunct, not diagnosis; physiology
+    /// versus behaviour; gaps stay gaps. <see cref="ClinicalRead"/> follows — distortion is the
+    /// one CardiTrack rule a rewrite cannot restore.
+    /// </summary>
+    internal const string WearableDataConstraints =
+        "- Analyze the data strictly as an adjunct assistant. Do not provide a formal diagnosis." + NL
+        + "- Differentiate physiological stressors (a change in resting heart rate) from behavioural changes (missed activity)." + NL
+        + "- If a data point is missing or null, note the gap rather than interpolating a value." + NL;
+
+    /// <summary>
+    /// Role, constraints and the undistorted-read rule — the fixed prefix every two-slot clinical
+    /// brief opens with, so MedGemma is asked to reason over a structured record rather than to
+    /// write caregiver copy.
+    /// </summary>
+    internal const string WearableClinicalOpening =
+        WearableClinicalRole + NL + NL
+        + "[DATA CONSTRAINTS]" + NL
+        + WearableDataConstraints
+        + ClinicalRead;
 
     /// <summary>
     /// How to refer to the member across more than one sentence. Follows <see cref="Tone"/> in the
@@ -850,6 +881,170 @@ internal static partial class MedicalPromptBlocks
 
         return lines.Count > 0 ? string.Join("\n", lines) : "No recent activity data.";
     }
+
+    /// <summary>
+    /// The same window <see cref="DailyLines"/> writes, as a JSON array of daily objects — Google's
+    /// wearable input shape. Missing figures are JSON <c>null</c>, never interpolated; today's row
+    /// is synthesised when the store has none, for the same last-night reason as the prose form.
+    /// </summary>
+    internal static string DailyReadingsJson(
+        IEnumerable<ActivityLog> logs, int take, DateOnly today, DigestDayProgress? progress = null)
+    {
+        var rows = logs.ToList();
+        var window = rows.TakeLast(take).ToList();
+        if (window.Count > 0 && window.TrueForAll(l => l.Date != today))
+            window.Add(new ActivityLog { Date = today });
+
+        return ReadingsJson(window, rows, today, progress, extras: false);
+    }
+
+    /// <summary>
+    /// Yesterday and today as JSON, with the extra vitals the family-digest clinical read already
+    /// named in prose. Same take-last-2 window and today-anchor as
+    /// <see cref="FamilyDigestDailyLines"/>.
+    /// </summary>
+    internal static string FamilyDigestDailyReadingsJson(
+        IEnumerable<ActivityLog> logs, DateOnly today, DigestDayProgress? progress = null)
+    {
+        var rows = logs.ToList();
+        var window = rows.TakeLast(2).ToList();
+        if (window.Count > 0 && window.TrueForAll(l => l.Date != today))
+            window.Add(new ActivityLog { Date = today });
+
+        return ReadingsJson(window, rows, today, progress, extras: true);
+    }
+
+    /// <summary>
+    /// Yesterday and today as JSON for the dashboard hero, using the same row pick as
+    /// <see cref="StatusWindowDailyLines"/> (latest row per local day, nothing older than
+    /// yesterday).
+    /// </summary>
+    internal static string StatusWindowDailyReadingsJson(
+        IEnumerable<ActivityLog> logs, DateOnly today, DigestDayProgress progress)
+    {
+        var yesterday = today.AddDays(-1);
+        var rows = logs
+            .Where(l => l.Date == today || l.Date == yesterday)
+            .GroupBy(l => l.Date)
+            .Select(g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First())
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        if (rows.Count > 0 && rows.TrueForAll(l => l.Date != today))
+            rows.Add(new ActivityLog { Date = today });
+
+        return ReadingsJson(rows, rows, today, progress, extras: true);
+    }
+
+    /// <summary>A fenced JSON block, the <c>[INPUT DATA]</c> shape MedGemma is shown.</summary>
+    internal static string JsonFence(string json) => "```json" + NL + json + NL + "```";
+
+    /// <summary>
+    /// The 30-day (or still-learning) yardstick, as one line. Shared so Advise and the insight
+    /// prompts cannot drift on how a baseline is named.
+    /// </summary>
+    internal static string BaselineSummary(PatternBaseline? baseline, bool provisional = false)
+    {
+        if (baseline is null)
+            return "No baseline established yet — this member is still being learned.";
+
+        var window = provisional
+            ? $"{baseline.PeriodDays}-day (provisional)"
+            : $"{baseline.PeriodDays}-day";
+
+        return $"{window} — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
+               $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
+               $"Sleep: {baseline.AvgSleepMinutes} min" +
+               (baseline.AvgHeartRateVariabilityMs is { } hrv
+                   ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
+                   : string.Empty);
+    }
+
+    private static readonly JsonSerializerOptions WearableJson = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private static string ReadingsJson(
+        IReadOnlyList<ActivityLog> window,
+        IReadOnlyList<ActivityLog> hrvSource,
+        DateOnly today,
+        DigestDayProgress? progress,
+        bool extras)
+    {
+        if (window.Count == 0)
+            return "[]";
+
+        var anyHrv = hrvSource.Any(l => l.HeartRateVariabilityMs is not null);
+        var anyOvernightBreathing = hrvSource.Any(l => l.OvernightBreathingRate is not null);
+        var array = new JsonArray();
+        foreach (var log in window)
+            array.Add(DailyReadingObject(log, today, progress, anyHrv, anyOvernightBreathing, extras));
+
+        return array.ToJsonString(WearableJson);
+    }
+
+    private static JsonObject DailyReadingObject(
+        ActivityLog log,
+        DateOnly today,
+        DigestDayProgress? progress,
+        bool anyHrv,
+        bool anyOvernightBreathing,
+        bool extras)
+    {
+        var obj = new JsonObject
+        {
+            ["date"] = log.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["day"] = DayLabel(
+                log.Date, today, sleepRecorded: log.SleepMinutes is not null, progress: progress),
+            ["complete"] = log.Date != today,
+            ["steps"] = AsNumber(log.Steps),
+            ["resting_heart_rate"] = AsNumber(log.RestingHeartRate),
+            ["sleep_duration_hours"] = HoursFromMinutes(log.SleepMinutes),
+            ["sleep_efficiency_score"] = AsNumber(log.SleepEfficiency),
+            ["active_zone_minutes"] = AsNumber(BaselineCalculator.ElevatedZoneMinutes(log)),
+        };
+
+        if (anyHrv)
+            obj["overnight_hrv_ms"] = Rounded(log.HeartRateVariabilityMs);
+        if (anyOvernightBreathing)
+            obj["overnight_breathing_rate"] = Rounded(log.OvernightBreathingRate);
+
+        if (extras)
+        {
+            obj["active_minutes"] = AsNumber(log.ActiveMinutes);
+            obj["avg_heart_rate"] = AsNumber(log.AvgHeartRate);
+            obj["max_heart_rate"] = AsNumber(log.MaxHeartRate);
+            obj["spo2_average"] = Rounded(log.SpO2Average);
+            obj["breathing_rate"] = Rounded(log.BreathingRate);
+            obj["longest_sedentary_stretch_minutes"] = AsNumber(log.LongestSedentaryStretchMinutes);
+
+            var stages = new JsonObject();
+            if (log.DeepSleepMinutes is { } deep)
+                stages["deep"] = deep;
+            if (log.LightSleepMinutes is { } light)
+                stages["light"] = light;
+            if (log.RemSleepMinutes is { } rem)
+                stages["rem"] = rem;
+            obj["sleep_stages_minutes"] = stages.Count > 0 ? stages : null;
+        }
+
+        return obj;
+    }
+
+    private static JsonNode? AsNumber(int? value) =>
+        value is { } measured ? JsonValue.Create(measured) : null;
+
+    private static JsonNode? HoursFromMinutes(int? minutes) =>
+        minutes is { } measured
+            ? JsonValue.Create(Math.Round(measured / 60.0, 1, MidpointRounding.AwayFromZero))
+            : null;
+
+    private static JsonNode? Rounded(decimal? value) =>
+        value is { } measured
+            ? JsonValue.Create(Math.Round((double)measured, 1, MidpointRounding.AwayFromZero))
+            : null;
 
     /// <summary>
     /// The days inside a readings window that no reading has arrived for, named — or null when the

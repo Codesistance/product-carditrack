@@ -196,13 +196,12 @@ public class MemberChatService : IMemberChatService
     /// <see cref="RewriteInstructions"/>, which is where a caregiver's reply is actually written.
     /// </summary>
     private const string ClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         A family caregiver asked a question about this member. Answer it from the data below only —
         this is an internal clinical read, not the final reply the caregiver sees, so write precisely
         rather than in caregiver language; a separate step turns this into caregiver-facing prose.
-        Say what the readings are consistent with, in clinical terms, naming a mechanism or a
-        condition where they support one. Nothing you write here reaches a family: the rewrite step
-        decides what is said to them and is bound by its own limits.
+        Say what the readings show against their baseline, in clinical terms. Nothing you write here
+        reaches a family: the rewrite step decides what is said to them and is bound by its own limits.
         If the data below does not answer the question, say so rather than guessing or inventing a
         reading the data does not contain. The activity data covers only the dates named in its
         heading; if the question asks about a longer stretch, answer for those dates and say so.
@@ -256,7 +255,7 @@ public class MemberChatService : IMemberChatService
     /// checks.
     /// </summary>
     private const string InferenceClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         A family caregiver asked for a verdict about this member — whether what the readings show
         is settled or worth attention. Answer from the data below only — this is an internal
         clinical read, not the final reply, so write precisely rather than in caregiver language.
@@ -271,10 +270,10 @@ public class MemberChatService : IMemberChatService
         Judge against both references where both exist: this member's own baseline says what is
         usual for them, and the published range says what is typical generally. When they
         disagree, the member's own baseline decides whether attention is worth raising, and the
-        published range is context to mention. Name the mechanism or condition the readings are
-        consistent with where they support one — this read is not shown to the family. Never
-        recommend an action: what to do about a finding is a different question this read must not
-        answer.
+        published range is context to mention. Name the mechanism the readings are consistent
+        with where they support one — this read is not shown to the family. Do not provide a
+        formal diagnosis. Never recommend an action: what to do about a finding is a different
+        question this read must not answer.
 
         When the question names no particular reading, it is asking for the same verdict across
         everything you were given. Lead
@@ -314,7 +313,7 @@ public class MemberChatService : IMemberChatService
     /// it is itself unusual against its own normal, not merely present.
     /// </summary>
     private const string InvestigationClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         A family caregiver asked why something in this member's readings changed. Answer from the
         data below only — this is an internal clinical read, not the final reply, so write
         precisely rather than in caregiver language.
@@ -327,8 +326,8 @@ public class MemberChatService : IMemberChatService
         as related — that is a complete and correct answer. Rank anything you do name by how
         strongly the data supports it, most supported first, and say what would help tell the
         candidates apart.         Possibility language only — never claim a cause: that is a
-        limit on what the data can carry, and it holds whatever the factor is. A mechanism or a
-        condition may be named under the same limit. Never recommend an action.
+        limit on what the data can carry, and it holds whatever the factor is. A mechanism may be
+        named under the same limit. Do not provide a formal diagnosis. Never recommend an action.
 
         Both data sections cover only the dates named in their headings; if the question asks
         about a change outside them, say which dates you can actually see.
@@ -1933,8 +1932,10 @@ public class MemberChatService : IMemberChatService
                 : null;
 
             sections.Add(
-                $"--- Recent readings ({heading}) ---\n"
-                + MedicalPromptBlocks.DailyLines(data.RecentActivity, data.RecentActivity.Count, today)
+                $"[INPUT DATA]\n--- Recent readings ({heading}) ---\n"
+                + MedicalPromptBlocks.JsonFence(
+                    MedicalPromptBlocks.DailyReadingsJson(
+                        data.RecentActivity, data.RecentActivity.Count, today))
                 + (missing is null ? string.Empty : $"\n{missing}"));
         }
 

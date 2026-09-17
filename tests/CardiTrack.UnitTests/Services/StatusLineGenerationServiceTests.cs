@@ -485,7 +485,8 @@ public class StatusLineGenerationServiceTests
         await CreateSut().RegenerateAsync(_memberId);
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
-        Assert.StartsWith(MedicalPromptBlocks.ClinicalRead.Trim(), prompt.Trim(), StringComparison.Ordinal);
+        Assert.StartsWith(MedicalPromptBlocks.WearableClinicalRole, prompt.Trim(), StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.ClinicalRead.Trim(), prompt, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.ToneAudience, prompt, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.ToneNoDiagnosis, prompt, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), prompt, StringComparison.Ordinal);
@@ -535,9 +536,10 @@ public class StatusLineGenerationServiceTests
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
 
-        Assert.True(prompt.Length < 2_000,
+        Assert.True(prompt.Length < 4_000,
             $"The status prompt renders to {prompt.Length} characters; the batch pays for every "
-            + "one on each digest regeneration.");
+            + "one on each digest regeneration. The Google wearable JSON shell is the cost of "
+            + "using MedGemma as a reasoner rather than a copywriter.");
     }
 
     /// <summary>
@@ -658,19 +660,14 @@ public class StatusLineGenerationServiceTests
 
         var prompt = await PromptAtAsync(LondonMorningUtc);
 
-        Assert.Contains("HRV=41.2ms", prompt);
-        Assert.Contains("breathingAsleep=14.1/min", prompt);
-        Assert.Contains("SpO2=96.4%", prompt);
+        Assert.Contains("\"overnight_hrv_ms\": 41.2", prompt);
+        Assert.Contains("\"overnight_breathing_rate\": 14.1", prompt);
+        Assert.Contains("\"spo2_average\": 96.4", prompt);
         Assert.DoesNotContain("steps=,", prompt);
         Assert.DoesNotContain("--- Recent readings", prompt);
-        Assert.Contains("--- Window readings (yesterday and today) ---", prompt);
-
-        var yesterdayLine = prompt.Split('\n').Single(l =>
-            l.Contains("Yesterday", StringComparison.Ordinal) && l.Contains("HRV=41.2ms", StringComparison.Ordinal));
-        Assert.True(
-            yesterdayLine.IndexOf("HRV=41.2ms", StringComparison.Ordinal)
-            < yesterdayLine.IndexOf("steps=6100", StringComparison.Ordinal),
-            "Completed overnight readings must precede the running step total.");
+        Assert.Contains("[INPUT DATA]", prompt);
+        Assert.Contains("yesterday and today", prompt);
+        Assert.Contains("\"steps\": 6100", prompt);
     }
 
     [Fact]
@@ -794,9 +791,9 @@ public class StatusLineGenerationServiceTests
 
         Assert.Contains("--- Computed observations ---", prompt);
         Assert.Contains("2,500 steps (usual 6,000)", prompt);
-        Assert.Contains("steps=2500", prompt);
+        Assert.Contains("\"steps\": 2500", prompt);
         Assert.DoesNotContain("6,100 steps", prompt);
-        Assert.DoesNotContain("steps=6100", prompt);
+        Assert.DoesNotContain("\"steps\": 6100", prompt);
     }
 
     [Fact]
@@ -814,7 +811,7 @@ public class StatusLineGenerationServiceTests
 
         Assert.DoesNotContain("--- Computed observations ---", prompt);
         Assert.DoesNotContain("--- Usual pattern ---", prompt);
-        Assert.Contains("steps=900", prompt);
+        Assert.Contains("\"steps\": 900", prompt);
     }
 
     [Fact]

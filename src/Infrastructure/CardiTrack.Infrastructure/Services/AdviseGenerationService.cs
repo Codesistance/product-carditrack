@@ -73,31 +73,35 @@ public class AdviseGenerationService
     /// copy whose pronoun the model chose for itself. Version 6 stops briefing MedGemma against a
     /// wellness checklist and a published-reference table: the clinical half is the data, and the
     /// model's own read of it. Version 7 follows MedGemma's own JSON-extraction pattern
-    /// (task, record, Include, JSON:) rather than a CardiTrack instruction essay.
+    /// (task, record, Include, JSON:) rather than a CardiTrack instruction essay. Version 8 is
+    /// Google's wearable clinical-reasoning shell: role, data constraints, patient context with
+    /// isolated baselines, a JSON array of daily readings, then the existing entries schema.
     /// </remarks>
-    internal const int CurrentPromptVersion = 7;
+    internal const int CurrentPromptVersion = 8;
 
     /// <summary>
-    /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — MedGemma's own read of the data, shaped
-    /// like the JSON-extraction examples on the MedGemma API cheat sheet: a one-line task, the
-    /// record, an Include list, then a JSON: cue. The family-facing limits belong on the rewrite
-    /// brief. <see cref="MedicalPromptBlocks.ClinicalRead"/> is the one CardiTrack rule that stays
-    /// — a rewrite cannot restore a finding the clinical model already softened.
+    /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — Google's wearable clinical-reasoning
+    /// shell around MedGemma's JSON-extraction cue. Role and constraints lead; the record is
+    /// inserted between them and the output schema at call time. The family-facing limits belong
+    /// on the rewrite brief. <see cref="MedicalPromptBlocks.ClinicalRead"/> stays inside the
+    /// opening — a rewrite cannot restore a finding the clinical model already softened.
     /// </summary>
-    private const string ClinicalTask =
-        "Extract clinical findings from the following wearable record as JSON:";
+    private const string ClinicalHead =
+        MedicalPromptBlocks.WearableClinicalOpening
+        + MedicalPromptBlocks.ContextGuardrail;
 
-    private const string ClinicalTail =
-        MedicalPromptBlocks.ContextGuardrail
-        + MedicalPromptBlocks.ClinicalRead + """
+    private const string ClinicalTail = """
 
-        Include: topic (Sleep, Activity, HeartRate, or General), finding, action, guidelineCited. At most one entry per topic.
+        [OUTPUT FORMAT]
+        Return a JSON object with this layout:
+        {"entries":[{"topic":"Sleep, Activity, HeartRate or General","finding":"the baseline-deviation trajectory","action":"what would address that shortfall","guidelineCited":"what the finding draws on"}]}
+        Include at most one entry per topic. Empty entries when the data give nothing to say. Each finding is a trajectory against baseline, not a diagnosis. Each action is what would address that shortfall, not a treatment.
 
         JSON:
         """;
 
     /// <summary>Fixed prefix plus closing cue, with the record inserted between them at call time.</summary>
-    private const string ClinicalInstructions = ClinicalTask + ClinicalTail;
+    private const string ClinicalInstructions = ClinicalHead + ClinicalTail;
 
     /// <summary>
     /// <c>CARDITRACK_ADVISE_PROMPT</c>, rewrite half — the caregiver voice and the addressing,
@@ -517,27 +521,16 @@ public class AdviseGenerationService
         IEnumerable<ActivityLog> recentLogs,
         DateOnly today)
     {
-        var baselineInfo = baseline is null
-            ? "No baseline established yet — this member is still being learned."
-            : $"{baseline.PeriodDays}-day — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
-              $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
-              $"Sleep: {baseline.AvgSleepMinutes} min" +
-              // Only where the member's device reports it: an "HRV: ± " with nothing either side
-              // is a yardstick the model would try to use.
-              (baseline.AvgHeartRateVariabilityMs is { } hrv
-                  ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
-                  : string.Empty);
-
         return $"""
-            {ClinicalTask}
+            {ClinicalHead}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
-            --- Baseline ---
-            {baselineInfo}
+            Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
 
-            --- Recent readings (the most recent days that carried any, oldest first) ---
-            {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
+            [INPUT DATA]
+            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 7, today))}
             {ClinicalTail}
             """;
     }

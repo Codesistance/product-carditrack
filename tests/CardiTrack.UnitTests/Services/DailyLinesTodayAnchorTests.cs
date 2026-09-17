@@ -203,4 +203,47 @@ public class DailyLinesTodayAnchorTests
     {
         Assert.Equal("No recent activity data.", MedicalPromptBlocks.FamilyDigestDailyLines([], Today));
     }
+
+    [Fact]
+    public void DailyReadingsJson_SynthesisesTodayWithNulls_WhenTheStoreHasNoRow()
+    {
+        var json = MedicalPromptBlocks.DailyReadingsJson(
+            [Log(Today.AddDays(-1), steps: 2800)], take: 7, Today);
+
+        Assert.Contains("\"date\": \"2026-08-22\"", json);
+        Assert.Contains("\"steps\": null", json);
+        Assert.Contains("\"resting_heart_rate\": null", json);
+        Assert.Contains("\"sleep_duration_hours\": null", json);
+        Assert.Contains($"Today so far ({Today}", json);
+        Assert.DoesNotContain("not measured", json);
+    }
+
+    [Fact]
+    public void DailyReadingsJson_WritesOvernightHrv_WhenTheDeviceReportsIt()
+    {
+        var json = MedicalPromptBlocks.DailyReadingsJson(
+            [Log(Today.AddDays(-1), steps: 2800, sleep: 375, hrv: 41.2m), Log(Today, sleep: 402, hrv: 28m)],
+            take: 7,
+            Today);
+
+        Assert.Contains("\"overnight_hrv_ms\": 41.2", json);
+        Assert.Contains("\"overnight_hrv_ms\": 28", json);
+    }
+
+    [Fact]
+    public void DailyReadingsJson_IsAnEmptyArray_WhenThereAreNoReadings()
+    {
+        Assert.Equal("[]", MedicalPromptBlocks.DailyReadingsJson([], take: 7, Today));
+    }
+
+    [Fact]
+    public void DailyReadingsJson_ConvertsSleepMinutesToHours()
+    {
+        var json = MedicalPromptBlocks.DailyReadingsJson(
+            [Log(Today, steps: 900, sleep: 372)], take: 7, Today);
+
+        Assert.Contains("\"sleep_duration_hours\": 6.2", json);
+        Assert.Contains("\"steps\": 900", json);
+        Assert.Contains("\"complete\": false", json);
+    }
 }

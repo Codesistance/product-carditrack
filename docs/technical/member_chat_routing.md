@@ -266,7 +266,7 @@ A window the readings do not fill is a fact about what has arrived, never a fact
 
 Two mechanisms, because naming the gap without bounding what may be said about it invites the next sentence — *"he probably left his watch off"* — which is the guess a family would act on:
 
-- **The dates are named.** `MedicalPromptBlocks.MissingDaysLine` appends the days in the window no reading arrived for, and says what that means, beneath the readings block. `DailyLines` omits a day it holds no row for, and a model does not infer an absence from a row that is simply not there — the same reason today's row is synthesised rather than omitted.
+- **The dates are named.** `MedicalPromptBlocks.MissingDaysLine` appends the days in the window no reading arrived for, and says what that means, beneath the readings block. `DailyReadingsJson` omits a day it holds no row for (JSON `null` on a present row is a missing *figure*, not a missing *day*), and a model does not infer an absence from a day that is simply not there — the same reason today's row is synthesised rather than omitted.
 - **The rule travels with every brief that gets readings.** `MedicalPromptBlocks.DataGapRule` is appended to each clinical read whose catalogue entry allows `RecentActivity`: say plainly that no reading arrived, never substitute another day's figure, and never say why it is missing. A device not worn, a phone that did not sync and a provider publishing late are indistinguishable from this data, and the difference between them is precisely what the caregiver wanted to know.
 
 Derived from the catalogue rather than listed, so a rung added later with daily readings in its datasets cannot reach a caregiver without the rule (`DataGapPromptTests`).

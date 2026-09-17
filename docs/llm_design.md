@@ -373,16 +373,20 @@ Each inference request covers a single user's 5-minute aggregated window.
 
 **Live prompt:** `CARDITRACK_REALTIME_ASSESSMENT_PROMPT` in `RealtimeAssessmentService` — Tone, Pronouns, and `CaregiverRegister`, then an hour of SSA yardsticks, then a caregiver-facing message plus a strict `critical` / `high` / `medium` / `low` severity token. The sketch that used to sit here (`[CARDITRACK_SYSTEM_PROMPT]`, "medical AI assistant", "flag for review", "clinical attention") is not sent. MedGemma copies sample phrases verbatim, so the live instructions name the SSA threshold (`scores under 3 are ordinary variation`) and tell the model to read activity and conditions in the data, without illustrating exercise, heat, or poor air.
 
-**User prompt** (per member, per hour — values are SSA-denoised):
-```
---- Last hour of data ---
-Denoised heart rate trend, end of hour: X bpm
-Latest reading: X bpm
-Deviation score (typical jitters from trend): X
-Typical jitter for this member: X bpm
-Minutes with data this hour: X of 60
-Steps this hour: X
-SpO2 this hour: not measured
+**User prompt** (per member, per hour — values are SSA-denoised, missing metrics are JSON null):
+
+```json
+{
+  "denoised_heart_rate_trend_end_bpm": X,
+  "latest_reading_bpm": X,
+  "deviation_score": X,
+  "typical_jitter_bpm": X,
+  "minutes_with_data": X,
+  "window_minutes": 60,
+  "steps_this_hour": X,
+  "average_spo2_percent": null,
+  "average_hrv_ms": null
+}
 ```
 
 ### Member context block (built today)
@@ -689,13 +693,17 @@ here because the first build collapsed them into one prompt and shipped the pred
 ("Perhaps try taking a short walk after dinner" — addressed to nobody, on a day the steps were
 already up):
 
-- **Clinical (AI:Private, MedGemma).** Prompt **v7** follows MedGemma's JSON-extraction pattern
-  (https://medgemma.pro/resources/api-cheat-sheet): a one-line task, the wearable record
-  (member context, 30-day baseline, recent daily readings), an Include list, then a `JSON:` cue.
-  No audience, no name, no `WellnessGuidelineReference` table. Guarded per entry only for a
+- **Clinical (AI:Private, MedGemma).** Prompt **v8** is Google's wearable clinical-reasoning
+  shell: a role line, `[DATA CONSTRAINTS]` (adjunct, physiology vs behaviour, gaps stay
+  nulls), `[PATIENT CONTEXT]` with the member context and isolated 30-day baselines,
+  `[INPUT DATA]` as a JSON array of daily readings (not `steps=` prose), `[OUTPUT FORMAT]`
+  the existing entries schema, then a `JSON:` cue. No audience, no name, no
+  `WellnessGuidelineReference` table. Guarded per entry only for a
   treatment proposal (`AdviseRegisterGuards.ProposesTreatment`); a citation naming no published
   source is stored as "the readings" rather than dropped. A condition name in the note is
-  allowed: the register boundary is held on the rewrite.
+  allowed: the register boundary is held on the rewrite. The same JSON daily shape is what
+  digest, status, member-chat, alert, baseline and assessment clinical briefs now send;
+  journals already group readings against usual and stay as tables.
 - **Rewrite (AI:Rewrite, Gemini).** Translation and addressing: the caregiver register, written
   to the family about the member, who is named only through the `CardiTrackCardiMember`
   placeholder — resolved to the real first name in code afterwards, so no model ever sees it.

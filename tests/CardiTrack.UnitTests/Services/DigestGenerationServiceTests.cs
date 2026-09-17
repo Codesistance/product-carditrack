@@ -736,8 +736,11 @@ public class DigestGenerationServiceTests
         Assert.Contains($"Today so far ({Today}, 10:30 local", prompt);
         Assert.Contains(
             "still in progress — activity totals are partial; "
-            + "last night's sleep belongs on this row and has not arrived): steps=5000",
+            + "last night's sleep belongs on this row and has not arrived",
             prompt);
+        Assert.Contains("\"steps\": 5000", prompt);
+        Assert.Contains("[INPUT DATA]", prompt);
+        Assert.Contains("```json", prompt);
         Assert.DoesNotContain("Margaret", prompt);  // minimisation, same as insights
     }
 
@@ -1321,20 +1324,23 @@ public class DigestGenerationServiceTests
         await CreateSut().GenerateDueDigestsAsync(UtcNow);
         Assert.NotNull(prompt);
 
-        Assert.Contains($"Yesterday ({Today.AddDays(-1)}, complete day): steps=3835", prompt);
+        Assert.Contains($"Yesterday ({Today.AddDays(-1)}, complete day)", prompt);
         // Today's label also carries the clock — see DigestDayProgress and the tests below for why
         // "partial" on its own was not enough. Asserted in two halves so those words are pinned
         // without this test also owning the wording of the clock phrase.
         Assert.Contains($"Today so far ({Today}, 10:30 local", prompt);
         Assert.Contains(
             "still in progress — activity totals are partial; "
-            + "last night's sleep belongs on this row and has not arrived): steps=3442",
+            + "last night's sleep belongs on this row and has not arrived",
             prompt);
+        Assert.Contains("\"steps\": 3835", prompt);
+        Assert.Contains("\"steps\": 3442", prompt);
+        Assert.Contains("\"date\":", prompt);
 
-        // The label leads the line. A note trailing the numbers arrives after the model has read
-        // them, which is how the wrong day's total got attributed in the first place.
-        foreach (var line in prompt.Split('\n').Where(l => l.Contains("steps=")))
-            Assert.Matches(@"^\s*(Today so far|Yesterday|\d+ days ago) \(", line);
+        // The day label lives on the object, ahead of the numbers it governs.
+        Assert.True(
+            prompt.IndexOf($"Yesterday ({Today.AddDays(-1)}, complete day)", StringComparison.Ordinal)
+            < prompt.IndexOf("\"steps\": 3835", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1607,9 +1613,11 @@ public class DigestGenerationServiceTests
 
         var prompt = await CapturePromptAsync();
 
-        Assert.Contains("SpO2=96.4%", prompt);
-        Assert.Contains("breathing=14.2/min", prompt);
-        Assert.Contains("sleepStages(min)=deep 60/light 200/rem 80", prompt);
+        Assert.Contains("\"spo2_average\": 96.4", prompt);
+        Assert.Contains("\"breathing_rate\": 14.2", prompt);
+        Assert.Contains("\"deep\": 60", prompt);
+        Assert.Contains("\"light\": 200", prompt);
+        Assert.Contains("\"rem\": 80", prompt);
         Assert.DoesNotContain("deep=60", prompt);
     }
 
@@ -1650,12 +1658,12 @@ public class DigestGenerationServiceTests
 
         var prompt = await CapturePromptAsync();
 
-        Assert.Contains("steps=4350", prompt);
-        Assert.Contains("activeMinutes=42", prompt);
-        Assert.Contains("HR=71", prompt);
-        Assert.Contains("HR_avg=84", prompt);
-        Assert.Contains("HR_max=108", prompt);
-        Assert.Contains("SpO2=96.4", prompt);
+        Assert.Contains("\"steps\": 4350", prompt);
+        Assert.Contains("\"active_minutes\": 42", prompt);
+        Assert.Contains("\"resting_heart_rate\": 71", prompt);
+        Assert.Contains("\"avg_heart_rate\": 84", prompt);
+        Assert.Contains("\"max_heart_rate\": 108", prompt);
+        Assert.Contains("\"spo2_average\": 96.4", prompt);
         Assert.DoesNotContain("sleep(night ending that morning)=min", prompt);
         Assert.DoesNotContain("steps=,", prompt);
         Assert.DoesNotContain("HR=,", prompt);

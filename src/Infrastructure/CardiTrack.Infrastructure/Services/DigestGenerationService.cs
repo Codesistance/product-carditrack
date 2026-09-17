@@ -54,12 +54,12 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// stage that writes what a family sees.
     /// </remarks>
     private const string FamilyDigestClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         Read this person's recent readings and say what they show. This is an internal clinical
         read: a separate step writes the family's summary from it, so write precisely and address
         no one.
-        Say what the readings are consistent with, in clinical terms, naming a mechanism or a
-        condition where they support one. Nothing you write here reaches a family.
+        Say what the readings show against the usual pattern, in clinical terms. Nothing you write
+        here reaches a family.
         Do not quote a figure that is not in the readings or computed observations below.
         Where a usual pattern is given, read each reading against it, and read the vitals against the steps walked that day, before concluding.
         Steps and active minutes accumulate as a day passes, so today's are a running total, not a day's worth: read them against how much of the waking day has gone, which today's label states, and never against a whole-day usual.
@@ -166,6 +166,9 @@ public partial class DigestGenerationService : IDigestGenerationService
     private static readonly string[] InstructionEchoes =
     [
         "family their summary of the day",
+        "clinical reasoning AI",
+        "do not provide a formal diagnosis",
+        "physiological stressors",
         "read this person's recent readings",
         "you are writing for a concerned family member",
         "never suggest the family has missed something",
@@ -333,6 +336,9 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// in the family rewrite brief, with the name and the pronouns both resolved in code. Rows
     /// written before the column existed read 0 and are stale by that alone, which is the
     /// intended reading of them — they were written by a brief that chose a sex for the member.
+    /// Version 2 puts the clinical half in Google's wearable shell (role, data constraints,
+    /// isolated baselines, JSON daily readings) so a better brief reaches every member on the
+    /// next pass rather than hiding behind the interval.
     /// </para>
     /// <para>
     /// One counter for the service rather than one per audience. It is stamped on the journals too
@@ -341,7 +347,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// <see cref="DigestEntry.PromptVersion"/>.
     /// </para>
     /// </remarks>
-    internal const int CurrentPromptVersion = 1;
+    internal const int CurrentPromptVersion = 2;
 
     /// <summary>
     /// The floor that replaces <see cref="MinimumRegenerationInterval"/> in the first
@@ -1531,11 +1537,13 @@ public partial class DigestGenerationService : IDigestGenerationService
         var prompt = $"""
             {FamilyDigestClinicalInstructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
             {UsualPatternSection(baseline, logs, describedDate)}
             {DigestInterpretationSignals.Section(baseline, today, yesterday, localNow)}
-            --- Recent activity (oldest first; the summary is about today) ---
-            {MedicalPromptBlocks.FamilyDigestDailyLines(logs, describedDate, progress)}
+            [INPUT DATA]
+            oldest first; the summary is about today
+            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.FamilyDigestDailyReadingsJson(logs, describedDate, progress))}
             """;
 
         DigestClinicalAiResponse clinical;
