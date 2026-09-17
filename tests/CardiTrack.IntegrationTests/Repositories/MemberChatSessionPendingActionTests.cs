@@ -229,6 +229,49 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
         Assert.Equal("Discard|Daybook|2026-09-10", (await ReadBackAsync(id)).PendingAction);
     }
 
+    /// <summary>The ordinary offer: a clear row takes it, and the turn's save has nothing to add.</summary>
+    [Fact]
+    public async Task AnOfferLandsOnAClearRow()
+    {
+        var id = await SeedSessionAsync(null, null);
+        var expires = DateTime.UtcNow.AddMinutes(10);
+
+        using var scope = _services.CreateScope();
+        var (repo, tracked, context) = await LoadAsync(scope, id);
+
+        Assert.True(await repo.TryOfferPendingActionAsync(tracked, "Discard|Daybook|2026-09-10", expires));
+        tracked.LastTurnAtUtc = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var stored = await ReadBackAsync(id);
+        Assert.Equal("Discard|Daybook|2026-09-10", stored.PendingAction);
+        Assert.NotNull(stored.PendingActionExpiresAtUtc);
+        Assert.Equal(expires, stored.PendingActionExpiresAtUtc.Value, TimeSpan.FromMilliseconds(1));
+    }
+
+    /// <summary>
+    /// Two turns that both loaded a clear session and both want to offer: the second is refused
+    /// and the first offer stands — including through the loser's own save.
+    /// </summary>
+    [Fact]
+    public async Task ASecondOfferAgainstARowAnotherTurnFilled_IsRefused_AndTheFirstStands()
+    {
+        var id = await SeedSessionAsync(null, null);
+
+        using var first = _services.CreateScope();
+        using var second = _services.CreateScope();
+        var (repoA, trackedA, _) = await LoadAsync(first, id);
+        var (repoB, trackedB, contextB) = await LoadAsync(second, id);
+
+        Assert.True(await repoA.TryOfferPendingActionAsync(trackedA, "Discard|Daybook|2026-09-10", DateTime.UtcNow.AddMinutes(10)));
+        Assert.False(await repoB.TryOfferPendingActionAsync(trackedB, "Rewrite|Weekbook|2026-09-13", DateTime.UtcNow.AddMinutes(10)));
+
+        trackedB.LastTurnAtUtc = DateTime.UtcNow;
+        await contextB.SaveChangesAsync();
+
+        Assert.Equal("Discard|Daybook|2026-09-10", (await ReadBackAsync(id)).PendingAction);
+    }
+
     [Fact]
     public async Task ASessionWithNoOffer_YieldsNothing_AndIsLeftAlone()
     {

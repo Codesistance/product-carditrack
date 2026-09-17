@@ -145,6 +145,49 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
         return row is null ? null : new PendingChatAction(row.Action, row.ExpiresAtUtc);
     }
 
+    public async Task<bool> TryOfferPendingActionAsync(
+        MemberChatSession session, string action, DateTime expiresAtUtc, CancellationToken ct = default)
+    {
+        var entry = _context.Entry(session);
+        if (entry.State is EntityState.Detached or EntityState.Added)
+        {
+            // No row yet: the insert carries the offer, and no other turn can have loaded it.
+            session.PendingAction = action;
+            session.PendingActionExpiresAtUtc = expiresAtUtc;
+            return true;
+        }
+
+        // Compare-and-set against what this turn read. Two turns that both loaded a clear session
+        // and both resolved a destructive ask race to here; the second finds the row no longer
+        // clear and is refused, so the offer on the row is the one whose reply the caregiver saw
+        // last — the first — and the second turn tells them to answer it. Without this the later
+        // SaveChanges would win, and a yes could carry out an offer the caregiver never read.
+        var observedAction = session.PendingAction;
+        var observedExpiry = session.PendingActionExpiresAtUtc;
+        var written = await _context.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "MemberChatSessions"
+            SET "PendingAction" = {action}, "PendingActionExpiresAtUtc" = {expiresAtUtc}
+            WHERE "Id" = {session.Id}
+              AND "PendingAction" IS NOT DISTINCT FROM {observedAction}
+              AND "PendingActionExpiresAtUtc" IS NOT DISTINCT FROM {observedExpiry}
+            """, ct);
+
+        if (written == 0)
+            return false;
+
+        // The entity follows the row, with matching original values, so the turn's own save has
+        // nothing further to write for these columns.
+        session.PendingAction = action;
+        session.PendingActionExpiresAtUtc = expiresAtUtc;
+        foreach (var column in new[] { entry.Property(x => x.PendingAction), (PropertyEntry)entry.Property(x => x.PendingActionExpiresAtUtc) })
+        {
+            column.OriginalValue = column.CurrentValue;
+            column.IsModified = false;
+        }
+
+        return true;
+    }
+
     private sealed class PendingActionRow
     {
         public string Action { get; set; } = string.Empty;

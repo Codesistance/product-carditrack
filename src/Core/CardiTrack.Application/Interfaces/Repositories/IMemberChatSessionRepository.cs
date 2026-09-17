@@ -46,6 +46,17 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
     /// own save neither rewrites the cleared columns nor overwrites an offer set later.
     /// </summary>
     Task<PendingChatAction?> TryConsumePendingActionAsync(MemberChatSession session, CancellationToken ct = default);
+
+    /// <summary>
+    /// Puts an offer on the session — if the row still holds the offer <paramref name="session"/>
+    /// was loaded with (usually none). Two turns that both loaded a clear session and both want to
+    /// offer cannot both succeed: the second is told so and leaves the first offer standing, so the
+    /// row always holds the offer the caregiver was last shown. Autocommitted, and the tracked
+    /// entity is brought into line so the turn's save neither repeats the write nor undoes a
+    /// competitor's. A session not yet inserted is simply set; nothing else can hold its row.
+    /// </summary>
+    Task<bool> TryOfferPendingActionAsync(
+        MemberChatSession session, string action, DateTime expiresAtUtc, CancellationToken ct = default);
 }
 
 /// <summary>What <see cref="IMemberChatSessionRepository.TryConsumePendingActionAsync"/> took off

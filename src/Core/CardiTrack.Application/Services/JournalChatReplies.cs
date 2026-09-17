@@ -159,6 +159,10 @@ public static class JournalChatReplies
 
     public static string LeftAsItIs() => "Okay — I've left the journal as it is.";
 
+    /// <summary>A second change asked for while another is still waiting on its yes or no.</summary>
+    public static string AnotherOfferWaiting() =>
+        "There's already a change waiting for your yes or no — answer that first, then ask me again.";
+
     /// <summary>A yes to an offer that is no longer there: already carried out by another request,
     /// or replaced by a newer one. Named both ways because the chat cannot tell which from a missed
     /// claim, and guessing wrong would tell a caregiver a book was rewritten when it was not.</summary>

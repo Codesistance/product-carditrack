@@ -111,6 +111,18 @@ public class MemberChatJournalRungTests
 
         // The store behind a confirmed rewrite: an earlier book removed, the new one landed.
         _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns((1, true));
+
+        // The compare-and-set offer, against the in-memory session: lands, as it does on a row
+        // nobody else has written to.
+        _sessions.TryOfferPendingActionAsync(
+                Arg.Any<MemberChatSession>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var s = call.Arg<MemberChatSession>();
+                s.PendingAction = call.ArgAt<string>(1);
+                s.PendingActionExpiresAtUtc = call.ArgAt<DateTime>(2);
+                return true;
+            });
     }
 
     private void Resolves(string? action, string? cadence, DateOnly? day) =>
@@ -259,6 +271,26 @@ public class MemberChatJournalRungTests
         Assert.Contains("There's no Daybook for", result.Reply, StringComparison.Ordinal);
         Assert.Contains("Shall I write one", result.Reply, StringComparison.Ordinal);
         Assert.StartsWith("Rewrite|Daybook|", _session!.PendingAction, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Two destructive asks racing from the same caregiver: the second finds the row already
+    /// holding an offer and is told to answer it, rather than overwriting it with an offer whose
+    /// reply arrived second.
+    /// </summary>
+    [Fact]
+    public async Task A_second_offer_that_loses_the_write_is_told_to_answer_the_first()
+    {
+        Resolves("discard", "day", Reviewed);
+        HasDaybook(Reviewed);
+        _sessions.TryOfferPendingActionAsync(
+                Arg.Any<MemberChatSession>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        var result = await Send("delete that daybook");
+
+        Assert.Contains("already a change waiting", result.Reply, StringComparison.Ordinal);
+        Assert.Null(_session!.PendingAction);
     }
 
     [Fact]

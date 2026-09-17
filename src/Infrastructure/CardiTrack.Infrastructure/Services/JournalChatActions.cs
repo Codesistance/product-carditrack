@@ -188,9 +188,15 @@ public sealed class JournalChatActions
         if (request.Action == JournalChatAction.Discard && existing is null)
             return Result(JournalChatReplies.NothingToDiscard(request, localToday), calls);
 
-        // Tracked entity: SaveChanges at the end of the turn writes this with the turns.
-        session.PendingAction = request.Serialize();
-        session.PendingActionExpiresAtUtc = utcNow + ConfirmationWindow;
+        // Written now, by compare-and-set against the offer this turn loaded the session with:
+        // two destructive asks racing from the same caregiver cannot both put an offer on the row,
+        // and the one that loses is told to answer the one that stands rather than overwriting it
+        // with an offer whose reply arrived second.
+        if (!await _unitOfWork.MemberChatSessions.TryOfferPendingActionAsync(
+                session, request.Serialize(), utcNow + ConfirmationWindow, ct))
+        {
+            return Result(JournalChatReplies.AnotherOfferWaiting(), calls);
+        }
 
         return Result(
             request.Action == JournalChatAction.Discard
@@ -416,11 +422,12 @@ public sealed class JournalChatActions
               """;
 
         // The history is framed as untrusted text whenever it is present, the way the message
-        // always is: an earlier message with instruction-like words must not resolve the ask.
+        // always is — and after the data, as the router does, so nothing the caregiver wrote is the
+        // last thing the model reads.
         var guardHistory = questionsOnlyHistory is null ? string.Empty : MedicalPromptBlocks.ChatHistoryGuardrail;
 
         return $"""
-            {ResolveInstructions}{guardHistory}
+            {ResolveInstructions}
 
             Today is {localToday.ToString("dddd yyyy-MM-dd", CultureInfo.InvariantCulture)}. The journal's
             weeks start on {weekStartsOn}.
@@ -428,7 +435,7 @@ public sealed class JournalChatActions
 
             --- {MedicalPromptBlocks.ChatQuestionLabel} ---
             {question}
-            """;
+            """ + guardHistory;
     }
 
     internal sealed record JournalResolveAiResponse
