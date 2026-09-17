@@ -9,10 +9,10 @@ using Newtonsoft.Json.Linq;
 namespace CardiTrack.Infrastructure.ExternalClients;
 
 /// <summary>
-/// Minimal Auth0 Management API v2 client. Requires the Web/API application to be
-/// authorized for the Management API with read:users + update:users (Auth0 runbook).
-/// The management token comes from the client-credentials grant and is cached until
-/// shortly before expiry.
+/// Minimal Auth0 Management API v2 client. Requires the application to be
+/// authorized for the Management API with read:users, update:users and
+/// delete:users (Auth0 runbook). The management token comes from the
+/// client-credentials grant and is cached until shortly before expiry.
 /// </summary>
 public class Auth0ManagementClient : IAuth0ManagementService
 {
@@ -68,6 +68,60 @@ public class Auth0ManagementClient : IAuth0ManagementService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Verification email resend failed");
+        }
+    }
+
+    public async Task TryDeleteUserAsync(string auth0UserId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(auth0UserId))
+            return;
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("Auth0Client");
+            var token = await GetManagementTokenAsync(client, ct);
+            if (token is null)
+                return;
+
+            var path = $"api/v2/users/{Uri.EscapeDataString(auth0UserId)}";
+            using var delete = new HttpRequestMessage(HttpMethod.Delete, path);
+            delete.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var deleted = await client.SendAsync(delete, ct);
+
+            if (deleted.IsSuccessStatusCode || deleted.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogInformation(
+                    "Auth0 user {Auth0UserId} deleted (or already gone) with {StatusCode}",
+                    auth0UserId, (int)deleted.StatusCode);
+                return;
+            }
+
+            if (deleted.StatusCode != System.Net.HttpStatusCode.Forbidden)
+            {
+                _logger.LogWarning(
+                    "Auth0 user {Auth0UserId} delete failed with {StatusCode}; left in place for an operator",
+                    auth0UserId, (int)deleted.StatusCode);
+                return;
+            }
+
+            // delete:users refused — block so the identity cannot sign in again.
+            using var block = new HttpRequestMessage(HttpMethod.Patch, path)
+            {
+                Content = JsonContent.Create(new { blocked = true }),
+            };
+            block.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var blocked = await client.SendAsync(block, ct);
+
+            if (blocked.IsSuccessStatusCode)
+                _logger.LogInformation("Auth0 user {Auth0UserId} blocked after delete was refused", auth0UserId);
+            else
+                _logger.LogWarning(
+                    "Auth0 user {Auth0UserId} block failed with {StatusCode} after delete was refused",
+                    auth0UserId, (int)blocked.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Auth0 user {Auth0UserId} delete/block failed", auth0UserId);
         }
     }
 

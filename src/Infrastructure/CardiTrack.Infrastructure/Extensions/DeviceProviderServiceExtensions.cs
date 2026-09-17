@@ -8,6 +8,7 @@ using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -120,6 +121,26 @@ public static class DeviceProviderServiceExtensions
                 }
             }
         });
+
+        // Production must be able to end the grant at the provider, not only forget it here.
+        // Development may leave RevocationUrl empty so a laptop compose file still boots.
+        services.AddOptions<List<DeviceProviderSettings>>()
+            .PostConfigure<IServiceProvider>((providers, sp) =>
+            {
+                var env = sp.GetService<IHostEnvironment>();
+                if (env is null || !env.IsProduction())
+                    return;
+
+                foreach (var provider in providers)
+                {
+                    if (string.IsNullOrWhiteSpace(provider.RevocationUrl))
+                    {
+                        throw new InvalidOperationException(
+                            $"DeviceProviders '{provider.Provider}': RevocationUrl must be set in Production " +
+                            "so a disconnect can end the grant at the provider, not only forget it here.");
+                    }
+                }
+            });
 
         services.AddHttpClient("GoogleHealthClient")
             .ConfigureHttpClient((sp, client) =>
