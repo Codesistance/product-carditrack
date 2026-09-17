@@ -384,22 +384,13 @@ public class HealthInsightService : IHealthInsightService
         PatternBaseline? baseline,
         DateOnly today)
     {
-        var baselineInfo = baseline is null
-            ? "No baseline established yet — this member is still being learned."
-            : $"{baseline.PeriodDays}-day — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
-              $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
-              $"Sleep: {baseline.AvgSleepMinutes} min" +
-              // Only where the member's device reports it: an "HRV: ± " with nothing either side
-              // is a yardstick the model would try to use.
-              (baseline.AvgHeartRateVariabilityMs is { } hrv
-                  ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
-                  : string.Empty);
-
-        var recentSummary = MedicalPromptBlocks.DailyLines(recentLogs, take: 3, today);
+        var recentSummary = MedicalPromptBlocks.JsonFence(
+            MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 3, today));
 
         return $"""
             {AlertInstructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
             --- Alert ---
@@ -410,10 +401,9 @@ public class HealthInsightService : IHealthInsightService
             Triggered: {alert.TriggeredDate:yyyy-MM-dd HH:mm} UTC
             Metric values: {AlertFieldOrNone(alert.MetricValues)}
 
-            --- Baseline ---
-            {baselineInfo}
+            Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
 
-            --- Recent readings (the most recent days that carried any, oldest first) ---
+            [INPUT DATA]
             {recentSummary}
             """;
     }
@@ -456,23 +446,19 @@ public class HealthInsightService : IHealthInsightService
         TimeZoneInfo? timeZone)
     {
         var baselineLines = baselines.Select(b =>
-            $"{b.PeriodDays}-day — Steps: {b.AvgSteps}±{b.StdDevSteps}, " +
-            $"Resting HR: {b.AvgRestingHeartRate}±{b.StdDevHeartRate}, Sleep: {b.AvgSleepMinutes} min" +
-            (b.AvgHeartRateVariabilityMs is { } hrv
-                ? $", HRV: {hrv}±{b.StdDevHeartRateVariability} ms overnight"
-                : string.Empty) +
-            SleepWindow(b, today, timeZone));
+            MedicalPromptBlocks.BaselineSummary(b) + SleepWindow(b, today, timeZone));
 
         return $"""
             {BaselineInstructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
             --- Baselines ---
             {string.Join("\n", baselineLines)}
 
-            --- Recent readings (the most recent days that carried any, oldest first) ---
-            {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
+            [INPUT DATA]
+            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 7, today))}
             """;
     }
 
@@ -486,13 +472,14 @@ public class HealthInsightService : IHealthInsightService
         return $"""
             {ProvisionalInstructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
             --- Provisional baseline ---
-            {baseline.PeriodDays}-day (provisional) — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, Sleep: {baseline.AvgSleepMinutes} min{SleepWindow(baseline, today, timeZone)}
+            {MedicalPromptBlocks.BaselineSummary(baseline, provisional: true)}{SleepWindow(baseline, today, timeZone)}
 
-            --- Recent readings (the most recent days that carried any, oldest first) ---
-            {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
+            [INPUT DATA]
+            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 7, today))}
             """;
     }
 
@@ -504,18 +491,19 @@ public class HealthInsightService : IHealthInsightService
         return $"""
             {LearningInstructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
             --- Observation so far ---
             Days with data in the last 14: {daysObserved}
             No baseline has been established yet.
 
-            --- Recent readings (the most recent days that carried any, oldest first) ---
-            {MedicalPromptBlocks.DailyLines(recentLogs, take: 14, today)}
+            [INPUT DATA]
+            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 14, today))}
             """;
     }
 
-    // Member context, note flattening, and daily-reading lines live in MedicalPromptBlocks,
+    // Member context, note flattening, and JSON daily readings live in MedicalPromptBlocks,
     // shared with the digest pipeline so the minimisation and injection-framing rules cannot
     // drift between the private model's callers.
 

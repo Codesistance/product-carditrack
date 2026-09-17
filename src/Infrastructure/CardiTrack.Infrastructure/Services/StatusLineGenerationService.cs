@@ -63,12 +63,12 @@ public class StatusLineGenerationService
     /// </para>
     /// </remarks>
     private const string ClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         Read this person's recent readings and say what they show. This is an internal clinical
         read: a separate step writes the family's status line from it, so write precisely and
         address no one.
-        Say what the readings are consistent with, in clinical terms, naming a mechanism or a
-        condition where they support one. Nothing you write here reaches a family.
+        Say what the readings show against the usual pattern, in clinical terms. Nothing you write
+        here reaches a family.
         Do not quote a figure that is not in the readings or computed observations below.
         Match the given tier's seriousness: green the least, then yellow, then orange, then red.
         Lead with a computed observation when one is present; do not recap every figure.
@@ -114,8 +114,9 @@ public class StatusLineGenerationService
     /// <summary>
     /// Ceiling on <see cref="ClinicalInstructions"/>, in characters — the MedGemma-paid half of
     /// the pair. Sitting exactly on the measured length is the point: with no slack, the next
-    /// addition of any size has to come here and say what it is buying. Reset to the measured
-    /// length of the clinical brief when the combined Tone-led prompt was split.
+    /// addition of any size has to come here and say what it is buying. Reset to 1,622 when
+    /// the Google wearable role and data constraints were added: MedGemma is briefed as a
+    /// longitudinal reasoner rather than a copywriter, which is what the extra characters buy.
     /// </summary>
     /// <remarks>
     /// The data sections sit after this budget; they are not paid from it. The rewrite brief is
@@ -130,7 +131,7 @@ public class StatusLineGenerationService
     /// constant exists to deny, so the measurement below normalizes instead.
     /// </para>
     /// </remarks>
-    internal const int StatusPromptBudget = 1_002;
+    internal const int StatusPromptBudget = 1_622;
 
     /// <summary>
     /// Exposed for the budget test — the instructions themselves stay private.
@@ -401,13 +402,15 @@ public class StatusLineGenerationService
         return $"""
             {ClinicalInstructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
             --- Current severity tier ---
             {severity}
             {DigestInterpretationSignals.Section(baseline, todayLog, yesterdayLog, localNow)}{RecentHourSection(latestAssessment, utcNow)}{UsualPatternLine(baseline)}
-            --- Window readings (yesterday and today) ---
-            {MedicalPromptBlocks.StatusWindowDailyLines(logs, today, progress)}
+            [INPUT DATA]
+            yesterday and today
+            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.StatusWindowDailyReadingsJson(logs, today, progress))}
 
             --- Unresolved alerts ---
             {alertContext}

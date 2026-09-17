@@ -42,19 +42,19 @@ public class MedicalPromptToneTests
     ];
 
     /// <summary>
-    /// Whether a brief writes for another model or for a person. A clinical read opens with
-    /// <see cref="MedicalPromptBlocks.ClinicalRead"/> and is held to one rule — do not distort —
-    /// because its output is consumed by a rewrite step that carries the voice, the blame rule and
-    /// the condition boundary itself. Everything else writes what a caregiver reads and is held to
-    /// the full set.
+    /// Whether a brief writes for another model or for a person. A clinical read is held to one
+    /// rule — do not distort — because its output is consumed by a rewrite step that carries the
+    /// voice, the blame rule and the condition boundary itself. Everything else writes what a
+    /// caregiver reads and is held to the full set.
     /// </summary>
     /// <remarks>
-    /// Classified by the opening block rather than by a list of names, so a clinical brief added
-    /// later is sorted correctly without anyone remembering this file — the same reasoning
-    /// <see cref="AllPrompts"/> uses to find the prompts in the first place.
+    /// Classified by the opening block. Two-slot clinical briefs open with
+    /// <see cref="MedicalPromptBlocks.WearableClinicalRole"/>; anything else a caregiver reads
+    /// opens with the full tone.
     /// </remarks>
-    private static bool IsClinicalRead(string prompt) =>
-        prompt.StartsWith(MedicalPromptBlocks.ClinicalRead, StringComparison.Ordinal);
+    private static bool IsClinicalRead(string name, string prompt) =>
+        prompt.StartsWith(MedicalPromptBlocks.WearableClinicalRole, StringComparison.Ordinal)
+        || prompt.StartsWith(MedicalPromptBlocks.ClinicalRead, StringComparison.Ordinal);
 
     /// <summary>
     /// The prompts that go to the private medical model and write something a person reads. The
@@ -122,10 +122,10 @@ public class MedicalPromptToneTests
         // First, not merely present: these blocks are the cacheable fixed prefix the serving engine
         // reuses between calls, and a shared opening is what makes that prefix shared.
         //
-        // A clinical read opens with the one rule it owns; everything a caregiver reads opens with
-        // the full block. Both are shared openings — there are two of them, not one.
-        var opening = IsClinicalRead(prompt)
-            ? MedicalPromptBlocks.ClinicalRead
+        // A clinical read opens with Google's wearable role; everything a caregiver reads opens
+        // with the full tone block. Both are shared openings — there are two of them, not one.
+        var opening = IsClinicalRead(name, prompt)
+            ? MedicalPromptBlocks.WearableClinicalRole
             : MedicalPromptBlocks.ToneOpening;
 
         Assert.True(
@@ -169,8 +169,8 @@ public class MedicalPromptToneTests
         var carries = prompt.Contains(MedicalPromptBlocks.ToneNoBlame, StringComparison.Ordinal);
 
         Assert.True(
-            carries != IsClinicalRead(prompt),
-            IsClinicalRead(prompt)
+            carries != IsClinicalRead(name, prompt),
+            IsClinicalRead(name, prompt)
                 ? $"{name} is a clinical read and states the blame rule. Its output is read by the "
                   + "rewrite model, which carries that rule itself."
                 : $"{name} writes what a caregiver reads and does not state the blame rule.");
@@ -201,7 +201,7 @@ public class MedicalPromptToneTests
         // A clinical read draws no line at all, which is the point of it: the model is medically
         // tuned and its note is read by the rewrite step, not by a family. The boundary is drawn
         // where the text becomes something a caregiver sees.
-        if (IsClinicalRead(prompt))
+        if (IsClinicalRead(name, prompt))
         {
             Assert.False(
                 permissive || strict,
@@ -348,7 +348,7 @@ public class MedicalPromptToneTests
         // A clinical read is given no name to use — the member context sends none — so all three
         // of the rule's clauses were about a decision it never faces. The rewrite step, which is
         // handed the placeholder and does face it, carries the rule.
-        if (IsClinicalRead(prompt))
+        if (IsClinicalRead(name, prompt))
         {
             Assert.DoesNotContain(MedicalPromptBlocks.Pronouns.Trim(), prompt, StringComparison.Ordinal);
             Assert.DoesNotContain(MedicalPromptBlocks.PronounsByToken.Trim(), prompt, StringComparison.Ordinal);
@@ -623,7 +623,8 @@ public class MedicalPromptToneTests
     {
         var status = AllPrompts().Single(p => $"{p.Service}.{p.Field}" == StatusClinicalPrompt).Prompt;
 
-        Assert.StartsWith(MedicalPromptBlocks.ClinicalRead, status, StringComparison.Ordinal);
+        Assert.StartsWith(MedicalPromptBlocks.WearableClinicalRole, status, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.ClinicalRead.Trim(), status, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.ToneAudience, status, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.ToneNoDiagnosis, status, StringComparison.Ordinal);
         Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), status, StringComparison.Ordinal);

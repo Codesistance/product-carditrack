@@ -427,11 +427,13 @@ public class HealthInsightServicePromptTests
         // them arrives after the model has already read them. Neither row here carries a sleep
         // figure, so today's label says last night has not arrived rather than announcing a
         // complete one — see DailyLinesTodayAnchorTests for both halves of that.
-        Assert.Contains(
-            $"Today so far ({today}, still in progress — activity totals are partial; "
-            + "last night's sleep belongs on this row and has not arrived): steps=900",
-            prompt);
-        Assert.Contains($"Yesterday ({today.AddDays(-1)}, complete day): steps=5100", prompt);
+        Assert.Contains($"Today so far ({today}, still in progress — activity totals are partial; "
+            + "last night's sleep belongs on this row and has not arrived)", prompt);
+        Assert.Contains("\"steps\": 900", prompt);
+        Assert.Contains($"Yesterday ({today.AddDays(-1)}, complete day)", prompt);
+        Assert.Contains("\"steps\": 5100", prompt);
+        Assert.Contains("[INPUT DATA]", prompt);
+        Assert.Contains("```json", prompt);
         Assert.DoesNotContain($"Today so far ({today.AddDays(-1)}", prompt);
     }
 

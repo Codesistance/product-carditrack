@@ -101,6 +101,8 @@ internal static class AdviseRegisterGuards
         "falls short of the reference",
         "an empty list",
         "clinical note",
+        "clinical reasoning",
+        "formal diagnosis",
         "everyday words",
     ];
 

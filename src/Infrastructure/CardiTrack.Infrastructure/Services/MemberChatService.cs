@@ -196,13 +196,12 @@ public class MemberChatService : IMemberChatService
     /// <see cref="RewriteInstructions"/>, which is where a caregiver's reply is actually written.
     /// </summary>
     private const string ClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         A family caregiver asked a question about this member. Answer it from the data below only —
         this is an internal clinical read, not the final reply the caregiver sees, so write precisely
         rather than in caregiver language; a separate step turns this into caregiver-facing prose.
-        Say what the readings are consistent with, in clinical terms, naming a mechanism or a
-        condition where they support one. Nothing you write here reaches a family: the rewrite step
-        decides what is said to them and is bound by its own limits.
+        Say what the readings show against their baseline, in clinical terms. Nothing you write here
+        reaches a family: the rewrite step decides what is said to them and is bound by its own limits.
         If the data below does not answer the question, say so rather than guessing or inventing a
         reading the data does not contain. The activity data covers only the dates named in its
         heading; if the question asks about a longer stretch, answer for those dates and say so.
@@ -256,7 +255,7 @@ public class MemberChatService : IMemberChatService
     /// checks.
     /// </summary>
     private const string InferenceClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         A family caregiver asked for a verdict about this member — whether what the readings show
         is settled or worth attention. Answer from the data below only — this is an internal
         clinical read, not the final reply, so write precisely rather than in caregiver language.
@@ -271,10 +270,10 @@ public class MemberChatService : IMemberChatService
         Judge against both references where both exist: this member's own baseline says what is
         usual for them, and the published range says what is typical generally. When they
         disagree, the member's own baseline decides whether attention is worth raising, and the
-        published range is context to mention. Name the mechanism or condition the readings are
-        consistent with where they support one — this read is not shown to the family. Never
-        recommend an action: what to do about a finding is a different question this read must not
-        answer.
+        published range is context to mention. Name the mechanism the readings are consistent
+        with where they support one — this read is not shown to the family. Do not provide a
+        formal diagnosis. Never recommend an action: what to do about a finding is a different
+        question this read must not answer.
 
         When the question names no particular reading, it is asking for the same verdict across
         everything you were given. Lead
@@ -314,7 +313,7 @@ public class MemberChatService : IMemberChatService
     /// it is itself unusual against its own normal, not merely present.
     /// </summary>
     private const string InvestigationClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
+        MedicalPromptBlocks.WearableClinicalOpening + """
         A family caregiver asked why something in this member's readings changed. Answer from the
         data below only — this is an internal clinical read, not the final reply, so write
         precisely rather than in caregiver language.
@@ -327,8 +326,8 @@ public class MemberChatService : IMemberChatService
         as related — that is a complete and correct answer. Rank anything you do name by how
         strongly the data supports it, most supported first, and say what would help tell the
         candidates apart.         Possibility language only — never claim a cause: that is a
-        limit on what the data can carry, and it holds whatever the factor is. A mechanism or a
-        condition may be named under the same limit. Never recommend an action.
+        limit on what the data can carry, and it holds whatever the factor is. A mechanism may be
+        named under the same limit. Do not provide a formal diagnosis. Never recommend an action.
 
         Both data sections cover only the dates named in their headings; if the question asks
         about a change outside them, say which dates you can actually see.
@@ -716,7 +715,7 @@ public class MemberChatService : IMemberChatService
         // and the only method that can unwrap it is the one building the Private-slot prompt. The
         // rewrite builder's signature takes DeidentifiedFindings and cannot take this.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(flattened, clinicalOnly, history.QuestionsOnly);
         var clinical = await _medicalAi.GenerateStructuredWithUsageAsync<MemberChatClinicalAiResponse>(clinicalPrompt, ct);
 
@@ -775,7 +774,7 @@ public class MemberChatService : IMemberChatService
         // The status line carries the member's resolved name, which is why it renders here — into
         // the Private-slot block — and never into the rewrite prompt.
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n{FormatFetchedData(fetched, today)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n{FormatFetchedData(fetched, today)}"
             + (dashboard is { } status ? $"\n\n{FormatDashboardStatus(status)}" : string.Empty)
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
@@ -867,7 +866,7 @@ public class MemberChatService : IMemberChatService
             new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.MemberChat), ct);
 
         var clinicalOnly = ClinicalOnlyData.Wrap(
-            $"{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today)}"
+            $"[PATIENT CONTEXT]\n{memberContext}\n\n--- Data about the change ---\n{FormatFetchedData(anchor, today)}"
             + $"\n\n--- What else was happening around the same time ---\n{FormatFetchedData(surroundings, today)}"
             + $"\n\n{ChatDataRegistry.BandsBlock}");
         var clinicalPrompt = BuildClinicalPrompt(
@@ -1450,15 +1449,11 @@ public class MemberChatService : IMemberChatService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Chat cannot generate this itself. <c>AdviseGenerationService</c>'s prompt is the only one on
-    /// this platform carrying <see cref="MedicalPromptBlocks.ToneWellness"/> — the sole permission
-    /// to suggest anything — and it earns that permission with machinery no per-question path can
-    /// reproduce inside a caregiver's wait: the suggestion is grounded in
-    /// <see cref="MedicalPromptBlocks.WellnessGuidelineReference"/> rather than the model's own
-    /// medical reasoning, and the model is made to name which reference it drew on so an ungrounded
-    /// reply is one the code can recognise and withhold. Both of chat's own generation steps carry
-    /// <c>ToneNoDiagnosis</c> instead, which is why an advice question used to reach the planner
-    /// and come back as a readback of the week: the pipeline had no vocabulary for what was asked.
+    /// Chat cannot generate this itself. <c>AdviseGenerationService</c> is the only writer of
+    /// suggestions on this platform; chat serves the stored row. Both of chat's own generation
+    /// steps carry <c>ToneNoDiagnosis</c> instead, which is why an advice question used to reach
+    /// the planner and come back as a readback of the week: the pipeline had no vocabulary for
+    /// what was asked.
     /// </para>
     /// <para>
     /// Assembled in code, like <see cref="MemberChatReplies.LiveStatusReply"/> and for a second reason on top of that
@@ -1937,8 +1932,10 @@ public class MemberChatService : IMemberChatService
                 : null;
 
             sections.Add(
-                $"--- Recent readings ({heading}) ---\n"
-                + MedicalPromptBlocks.DailyLines(data.RecentActivity, data.RecentActivity.Count, today)
+                $"[INPUT DATA]\n--- Recent readings ({heading}) ---\n"
+                + MedicalPromptBlocks.JsonFence(
+                    MedicalPromptBlocks.DailyReadingsJson(
+                        data.RecentActivity, data.RecentActivity.Count, today))
                 + (missing is null ? string.Empty : $"\n{missing}"));
         }
 

@@ -20,9 +20,9 @@ namespace CardiTrack.Infrastructure.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Two slots, the same split member chat runs. The clinical read is MedGemma's: which readings
-/// fall short of the reference or the member's own usual, and what everyday action would close
-/// that shortfall — data only, no audience, no name. The rewrite is the Rewrite slot's: the
+/// Two slots, the same split member chat runs. The clinical read is MedGemma's: the data, and
+/// what those readings are consistent with — no audience, no name, no published-reference
+/// checklist. The rewrite is the Rewrite slot's: the
 /// caregiver voice, and the addressing — the family reading about the member, who is named
 /// through <see cref="NamePlaceholder.Token"/> and resolved in code so no model ever sees the
 /// real name. It was one MedGemma prompt asked to do both, and the addressing half is the one a
@@ -70,53 +70,41 @@ public class AdviseGenerationService
     /// Version 4 aligns the sleep reference with the National Sleep Foundation 7–9 / 7–8-from-65
     /// band the rest of the product already cites. Version 5 moves the rewrite half's pronouns to
     /// <see cref="MedicalPromptBlocks.PronounsByToken"/>, so every stored row predating it holds
-    /// copy whose pronoun the model chose for itself.
+    /// copy whose pronoun the model chose for itself. Version 6 stops briefing MedGemma against a
+    /// wellness checklist and a published-reference table: the clinical half is the data, and the
+    /// model's own read of it. Version 7 follows MedGemma's own JSON-extraction pattern
+    /// (task, record, Include, JSON:) rather than a CardiTrack instruction essay. Version 8 is
+    /// Google's wearable clinical-reasoning shell: role, data constraints, patient context with
+    /// isolated baselines, a JSON array of daily readings, then the existing entries schema.
     /// </remarks>
-    internal const int CurrentPromptVersion = 5;
+    internal const int CurrentPromptVersion = 8;
 
     /// <summary>
-    /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — MedGemma's read of where the readings fall
-    /// short and what would close the gap. Opens with <see cref="MedicalPromptBlocks.ClinicalRead"/>
-    /// like member chat's clinical step, and for the same reason: its output is read by the
-    /// rewrite model, not by a caregiver, so the caregiver voice would be a request the brief
-    /// itself withdraws. Grounded in <see cref="MedicalPromptBlocks.WellnessGuidelineReference"/>
-    /// rather than the model's own unconstrained medical reasoning, and asks the model to name
-    /// which reference it drew from so an ungrounded reply is one the code can recognise and
-    /// withhold.
+    /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — Google's wearable clinical-reasoning
+    /// shell around MedGemma's JSON-extraction cue. Role and constraints lead; the record is
+    /// inserted between them and the output schema at call time. The family-facing limits belong
+    /// on the rewrite brief. <see cref="MedicalPromptBlocks.ClinicalRead"/> stays inside the
+    /// opening — a rewrite cannot restore a finding the clinical model already softened.
     /// </summary>
-    /// <remarks>
-    /// The shortfall direction is stated twice — find where readings fall short, and a met
-    /// reference is never a reason to suggest more of the same — because the single-brief version
-    /// proved the failure: readings showing steps well above usual still came back with "try a
-    /// short walk", the reference's targets completing to their default suggestion whatever the
-    /// data said.
-    /// </remarks>
-    private const string ClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
-        This is an internal clinical read. A separate step rewrites it for the family, so write
-        precisely and plainly, and address no one — say what the readings show, not what anyone
-        should do about their feelings.
-        Say what the readings are consistent with, in clinical terms, naming a mechanism or a
-        condition where they support one. Nothing you write here reaches a family: the rewrite
-        step decides what is said to them and is bound by its own limits.
-        From the readings and baseline below, find the areas of everyday wellbeing where this
-        person currently falls short of the reference below or of their own usual, and for each,
-        one everyday, non-clinical action that would close that specific shortfall.
-        A reading already meeting or beating its reference is a reason to return no entry for that
-        area — never a reason to suggest more of the same. An empty list is the correct answer
-        when nothing falls short.
+    private const string ClinicalHead =
+        MedicalPromptBlocks.WearableClinicalOpening
+        + MedicalPromptBlocks.ContextGuardrail;
 
-        Respond with entries — at most one each for Sleep, Activity and HeartRate, and General
-        only for an action that spans areas. Each entry:
-        - topic: Sleep, Activity, HeartRate or General, exactly as written.
-        - finding: which reading sits where against the reference or their usual — the shortfall
-          the action answers, stated precisely.
-        - action: one everyday thing that would close that shortfall —
-          never a diagnosis, a prescription, or a change to medication or treatment.
-        - guidelineCited: which reference below the action draws on, in a few words — or "the
-          member's own baseline" when the shortfall is against their own usual rather than a
-          published range, which is the only honest answer for a step count.
-        """ + MedicalPromptBlocks.ContextGuardrail;
+    private const string ClinicalTail = """
+
+        [OUTPUT FORMAT]
+        Return a JSON object with this layout:
+        {"entries":[{"topic":"Sleep","finding":"the trajectory against known baselines","action":"what would address that shortfall","guidelineCited":"what the finding draws on"}]}
+        topic is exactly one of Sleep, Activity, HeartRate or General. At most one entry per topic. Empty entries when the data give nothing to say. Each finding is a trajectory against known baselines when they are given, not a diagnosis. Each action is what would address that shortfall, not a treatment. When known baselines say none are established, return an empty entries list rather than inventing a usual.
+
+        JSON:
+        """;
+
+    /// <summary>Fixed prefix plus closing cue. <see cref="BuildClinicalPrompt"/> inserts the
+    /// record between the two halves; this concatenation is the brief
+    /// <c>MedicalPromptToneTests</c> reflects on, so the tone rules cannot drift from what is
+    /// actually sent.</summary>
+    private const string ClinicalInstructions = ClinicalHead + ClinicalTail;
 
     /// <summary>
     /// <c>CARDITRACK_ADVISE_PROMPT</c>, rewrite half — the caregiver voice and the addressing,
@@ -128,12 +116,10 @@ public class AdviseGenerationService
     /// </summary>
     /// <remarks>
     /// Opens with <see cref="MedicalPromptBlocks.Tone"/>, deliberately not
-    /// <see cref="MedicalPromptBlocks.ToneWellness"/>: the wellness boundary belongs to the
-    /// clinical brief, which is the slot that invents the action — this one is told to add no
-    /// action of its own. It also cannot afford the block's own wording: "worth mentioning to
-    /// their doctor" is fixed UI copy on the card and a phrase
-    /// <see cref="AdviseRegisterGuards.EchoesTheBrief"/> rejects, so a brief carrying it would be
-    /// instructing the model into its own guard.
+    /// <see cref="MedicalPromptBlocks.ToneWellness"/>: this slot is told to add no action of its
+    /// own, and it cannot afford the block's wording — "worth mentioning to their doctor" is
+    /// fixed UI copy on the card and a phrase <see cref="AdviseRegisterGuards.EchoesTheBrief"/>
+    /// rejects, so a brief carrying it would be instructing the model into its own guard.
     /// </remarks>
     private const string RewriteInstructions =
         MedicalPromptBlocks.Tone + MedicalPromptBlocks.PronounsByToken
@@ -195,13 +181,15 @@ public class AdviseGenerationService
     /// <remarks>
     /// Three kinds of bad reply are told apart, per topic. A blank clinical <c>finding</c> or
     /// <c>action</c> reads as a transient model hiccup — the previous suggestion beats none, so
-    /// the existing row is kept. A clinical entry that names a condition, proposes a treatment, or
-    /// cites no reference is deliberate and wrong, so it is withheld and its old row withdrawn
-    /// with it (<see cref="AdviseRegisterGuards"/> — a prompt is a request, not a guarantee). A
-    /// rewrite that fails its own guards — echoing the brief, quoting figures, leaving the name
-    /// token unresolved, or drifting clinical — is a copy failure over sound clinical content, so
-    /// it is treated as a hiccup: the old row stays, and the version gate retries the whole pair
-    /// next pass. A rewrite call that fails outright keeps every row and writes nothing.
+    /// the existing row is kept. A clinical entry that proposes a treatment is still withheld
+    /// (<see cref="AdviseRegisterGuards.ProposesTreatment"/>) — that is a scope line, not a
+    /// register one: Advise is not a prescription pad. A citation that names no source is not
+    /// withheld; the row is stored against "the readings" so the card can still serve the
+    /// inference. A rewrite that fails its own guards — echoing the brief, quoting figures,
+    /// leaving the name token unresolved, or drifting clinical — is a copy failure over sound
+    /// clinical content, so it is treated as a hiccup: the old row stays, and the version gate
+    /// retries the whole pair next pass. A rewrite call that fails outright keeps every row and
+    /// writes nothing.
     /// </remarks>
     public async Task RegenerateIfDueAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
@@ -232,8 +220,8 @@ public class AdviseGenerationService
 
         // One clinical survivor per topic, defensively parsed: an unrecognised topic name is
         // dropped like any other out-of-vocabulary model answer, a second entry for the same
-        // topic loses to the first, and the register guards apply per entry — an entry that names
-        // a condition, proposes a treatment, or cites no reference is withheld, not softened.
+        // topic loses to the first. Treatment proposals are withheld here; condition names and
+        // empty citations are not — those are register questions for the rewrite.
         var clinical = new Dictionary<AdviseTopic, (string Finding, string Action, string Guideline)>();
         // Topics whose entry failed transiently rather than deliberately — a blank clinical
         // field, or a rewrite that failed its copy guards: the previous suggestion beats none, so
@@ -251,27 +239,31 @@ public class AdviseGenerationService
                 continue;
             }
 
-            // Grounding and scope, not register. ReadsAsClinical used to run here in full, which
-            // discarded a clinical note for the word "disorder" before anything but the rewrite
-            // prompt could read it — a boundary about what a family may be told, applied to a
-            // computation no family sees. It still runs on the rewritten copy below, which is the
-            // text a caregiver actually reads.
+            // Scope, not register. ReadsAsClinical used to run here in full, which discarded a
+            // clinical note for the word "disorder" before anything but the rewrite prompt could
+            // read it — a boundary about what a family may be told, applied to a computation no
+            // family sees. It still runs on the rewritten copy below, which is the text a
+            // caregiver actually reads.
             //
-            // ProposesTreatment stays, because that half is not about register: Advise suggests an
-            // everyday action, and a note proposing a dose change is the wrong note whatever the
-            // rewrite does with it.
-            if (AdviseRegisterGuards.IsUngroundedCitation(entry.GuidelineCited)
-                || AdviseRegisterGuards.ProposesTreatment(entry.Finding)
+            // ProposesTreatment stays, because that half is not about register: a note proposing a
+            // dose change is the wrong note whatever the rewrite does with it. An empty or
+            // placeholder citation is not withheld — MedGemma was asked to infer from the data,
+            // and naming no published table is a valid answer to that brief.
+            if (AdviseRegisterGuards.ProposesTreatment(entry.Finding)
                 || AdviseRegisterGuards.ProposesTreatment(entry.Action))
             {
                 _logger.LogWarning(
                     "Advise clinical entry for CardiMember {CardiMemberId} topic {Topic} came back "
-                    + "ungrounded or proposing a treatment; withholding it.",
+                    + "proposing a treatment; withholding it.",
                     cardiMemberId, topic);
                 continue;
             }
 
-            clinical[topic] = (entry.Finding.Trim(), entry.Action.Trim(), entry.GuidelineCited!.Trim());
+            string cited = entry.GuidelineCited?.Trim() ?? "";
+            if (AdviseRegisterGuards.IsUngroundedCitation(cited))
+                cited = "the readings";
+
+            clinical[topic] = (entry.Finding.Trim(), entry.Action.Trim(), cited);
         }
 
         var incoming = await RewriteAsync(cardiMemberId, member, clinical, hiccups, ct);
@@ -532,30 +524,17 @@ public class AdviseGenerationService
         IEnumerable<ActivityLog> recentLogs,
         DateOnly today)
     {
-        var baselineInfo = baseline is null
-            ? "No baseline established yet — this member is still being learned."
-            : $"{baseline.PeriodDays}-day — Steps: {baseline.AvgSteps}±{baseline.StdDevSteps}, " +
-              $"Resting HR: {baseline.AvgRestingHeartRate}±{baseline.StdDevHeartRate}, " +
-              $"Sleep: {baseline.AvgSleepMinutes} min" +
-              // Only where the member's device reports it: an "HRV: ± " with nothing either side
-              // is a yardstick the model would try to use.
-              (baseline.AvgHeartRateVariabilityMs is { } hrv
-                  ? $", HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"
-                  : string.Empty);
-
         return $"""
-            {ClinicalInstructions}
+            {ClinicalHead}
 
+            [PATIENT CONTEXT]
             {memberContext}
 
-            --- General health reference ---
-            {MedicalPromptBlocks.WellnessGuidelineReference}
+            Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
 
-            --- Baseline ---
-            {baselineInfo}
-
-            --- Recent readings (the most recent days that carried any, oldest first) ---
-            {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
+            [INPUT DATA]
+            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 7, today))}
+            {ClinicalTail}
             """;
     }
 
@@ -563,11 +542,11 @@ public class AdviseGenerationService
     // exercised directly in tests.
     internal sealed record AdviseClinicalAiResponse
     {
-        /// <summary>At most one entry per <see cref="AdviseTopic"/>; empty when nothing in the
-        /// readings falls short anywhere — which the brief names as the correct answer, not a
-        /// failure. Required so "nothing falls short" has to be said as an empty list rather than
-        /// an omitted field — the same rationale as the planner's metrics, and what keeps the
-        /// schema free of the object-or-null branch the grammar tests forbid.</summary>
+        /// <summary>At most one entry per <see cref="AdviseTopic"/>; empty when the data give
+        /// nothing to say — which is a valid answer, not a failure. Required so silence has to be
+        /// said as an empty list rather than an omitted field — the same rationale as the planner's
+        /// metrics, and what keeps the schema free of the object-or-null branch the grammar tests
+        /// forbid.</summary>
         public required IReadOnlyList<AdviseClinicalEntryAiResponse> Entries { get; init; }
     }
 
@@ -576,15 +555,13 @@ public class AdviseGenerationService
         [Description("Sleep, Activity, HeartRate or General, exactly as written.")]
         public required string Topic { get; init; }
 
-        [Description("Which reading sits where against the reference or the person's own usual — "
-            + "the shortfall the action answers, stated precisely.")]
+        [Description("What the data show in this area, stated precisely.")]
         public required string Finding { get; init; }
 
-        [Description("One everyday, non-clinical action that would close that shortfall. Never a "
-            + "diagnosis, a prescription, or a change to medication or treatment.")]
+        [Description("What would address that finding.")]
         public required string Action { get; init; }
 
-        [Description("Which reference the action draws on, in a few words; empty when none fits.")]
+        [Description("What the finding draws on, in a few words.")]
         public string? GuidelineCited { get; init; }
     }
 
