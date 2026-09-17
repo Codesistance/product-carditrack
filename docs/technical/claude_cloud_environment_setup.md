@@ -190,22 +190,26 @@ matching `.devcontainer/install-toolchain.sh`'s own `INSTALL_MAUI=0` default. Th
 which most restricted network policies exclude, so the default keeps the setup fast
 and scoped to `CardiTrack.Server.slnf`.
 
-**Where Mobile actually gets built:** `.github/workflows/deploy-apps-dev.yml` builds
-`CardiTrack.Mobile.csproj` directly (Android/iOS/Windows, each on its own dedicated
-GitHub-hosted runner) — not through this environment, not through `CardiTrack.sln`.
-GitHub's `ubuntu-latest`/`macos`/`windows` runner images ship with an Android SDK
-preinstalled, so that job needs no `dl.google.com` access at all; it just runs
-`dotnet workload install maui-android` and builds. Those jobs are the authoritative
-check for Mobile — treat a local/cloud MAUI build as faster local feedback, never as
-a substitute for them.
+**Where Mobile actually gets built:** `.github/workflows/deploy-mobile-dev.yml`, a
+dispatch-only workflow that builds `CardiTrack.Mobile.csproj` directly for the
+platform you pick (`android`, `ios`, `both`, optional Windows), each on its own
+GitHub-hosted runner — not through this environment, not through `CardiTrack.sln`.
+The runner images ship an Android SDK, so it needs no `dl.google.com` access; it just
+runs `dotnet workload install maui-android` and builds. Those jobs are the
+authoritative check for Mobile — treat a local/cloud MAUI build as faster local
+feedback, never as a substitute for them. From a session with a `GH_TOKEN` that has
+the `workflow` scope:
 
-That CI coverage is path-filtered (`needs.changes.outputs.mobile`), gated on changes
-under `src/Presentation/CardiTrack.Mobile/**`, `src/Presentation/CardiTrack.Mobile.Core/**`,
-`src/Core/CardiTrack.Domain/**`, `src/Core/CardiTrack.Application/**`, or
-`CardiTrack.sln`. (An earlier version of this filter omitted `CardiTrack.Mobile.Core/**`
-despite `CardiTrack.Mobile.csproj` referencing it as a project — a PR touching only
-Mobile.Core silently skipped every mobile CI job. Fixed in PR #212; if that filter list
-looks stale again, check it against `CardiTrack.Mobile.csproj`'s `ProjectReference`s.)
+```bash
+gh workflow run deploy-mobile-dev.yml --ref <branch> -f platform=both
+gh run watch --exit-status "$(gh run list --workflow deploy-mobile-dev.yml --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
+
+A dispatch on a branch builds and ships nothing; on `main` the same dispatch also
+uploads to TestFlight / Play internal and tags. It is not path-filtered — the
+`platform` input decides what builds — so a change anywhere in the app's dependency
+graph (`CardiTrack.Mobile`, `CardiTrack.Mobile.Core`, `CardiTrack.Domain`,
+`CardiTrack.Application`) is covered by dispatching it.
 
 **To opt into local Mobile builds anyway** (e.g. debugging a Mobile-only change
 without waiting on CI):
