@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-17",
+      "slack_ts": null,
+      "item_count": 6,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,60 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-17",
+      "slug": "ollama-ssrf-cve-2026-85180-tensor-blob-redirect",
+      "title": "CVE-2026-85180: Ollama SSRF via cross-host tensor blob redirect (CVSS 7.5) \u2014 hits our unpinned ollama/ollama:latest MedGemma image, no confirmed patch status on our build",
+      "url": "https://www.vulncheck.com/advisories/ollama-0.30.0-through-0.33.2-ssrf-via-cross-host-tensor-blob-redirect",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-17-ollama-ssrf-cve-2026-85180-tensor-blob-redirect.md"
+    },
+    {
+      "date": "2026-09-17",
+      "slug": "implicity-cardiac-rpm-funding-round",
+      "title": "Implicity raises \u20ac35-40M to scale AI cardiac remote monitoring + heart-failure prediction into the US \u2014 120k+ patients/day, published outcomes data",
+      "url": "https://www.globenewswire.com/news-release/2026/09/09/3358622/0/en/implicity-secures-40m-growth-equity-funding-to-scale-its-ai-driven-cardiac-monitoring-platform-globally.html",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-17-implicity-cardiac-rpm-funding-round.md"
+    },
+    {
+      "date": "2026-09-17",
+      "slug": "mhra-ai-commission-final-recommendations",
+      "title": "MHRA National Commission on AI in Healthcare publishes final recommendations \u2014 proposes reclassifying AI health products to higher risk tiers, staged \"learner-phase\" authorisation",
+      "url": "https://www.gov.uk/government/news/independent-commission-led-by-nhs-doctors-sets-out-blueprint-to-accelerate-safe-ai-adoption-in-healthcare",
+      "severity": "HIGH",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-17-mhra-ai-commission-final-recommendations.md"
+    },
+    {
+      "date": "2026-09-17",
+      "slug": "google-health-pixel-watch-5-guardian-live",
+      "title": "UPDATE: Google Health Guardian trend features now actually shipping with Pixel Watch 5 launch (was: announced, not yet in Health API)",
+      "url": "https://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-17-google-health-pixel-watch-5-guardian-live.md"
+    },
+    {
+      "date": "2026-09-17",
+      "slug": "fcc-filing-unannounced-fitbit-device",
+      "title": "Unannounced Google wearable (FCC ID SZGG8BL6, Goertek-built) spotted in FCC/IMDA filings \u2014 likely Fitbit Charge 7 or new Pixel tracker, unconfirmed",
+      "url": "https://fccid.io/SZGG8BL6",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-17-fcc-filing-unannounced-fitbit-device.md"
+    },
+    {
+      "date": "2026-09-17",
+      "slug": "terraform-google-provider-8x-churn",
+      "title": "hashicorp/google Terraform provider 8.x now three minors deep (8.3.0) with breaking resource removals; our ~>7.23 pin unaffected today",
+      "url": "https://github.com/hashicorp/terraform-provider-google/releases",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-17-terraform-google-provider-8x-churn.md"
     }
   ]
 }
