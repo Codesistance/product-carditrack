@@ -58,7 +58,9 @@ index.docker.io
 | --- | --- | --- |
 | `releases.hashicorp.com`, `registry.terraform.io` | `infrastructure/` (Terraform) | `registry.terraform.io` is the one the dev container README already flags as commonly blocked |
 | `packages.cloud.google.com` | gcloud CLI | Only if `INSTALL_GCLOUD=1`; off by default on the cloud bootstrap path |
-| `dl.google.com` | Android SDK for `CardiTrack.Mobile` | Only if `INSTALL_MAUI=1` and building `CardiTrack.sln` instead of the server filter |
+| `dl.google.com` | Android SDK for `CardiTrack.Mobile` | With `INSTALL_MAUI=1` (recommended below), so Android compiles in the session |
+| `api.uk1.datadoghq.com` | Datadog REST API (logs, spans, monitors) | With `DD_API_KEY` / `DD_APP_KEY` set — see [Datadog](#datadog) |
+| `api.github.com` (already in Core) | `gh workflow run` / `gh run watch` | With `GH_TOKEN` set — see [Building and testing everything](#building-and-testing-everything) |
 | `generativelanguage.googleapis.com` | Live Gemini calls | Only if the placeholder `AI__Public__ApiKey` is swapped for a real key |
 | `registry.ollama.ai`, `huggingface.co`, `hf.co` | Pulling the MedGemma model into local Ollama | Only for AI-insight debugging (`docker compose --profile full up ollama medgemma-init`) |
 
@@ -83,7 +85,22 @@ AI__Private__Model=hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M
 AI__Private__TimeoutSeconds=120
 DOTNET_CLI_TELEMETRY_OPTOUT=1
 DOTNET_NOLOGO=1
+INSTALL_MAUI=1
+DD_SITE=uk1.datadoghq.com
 ```
+
+`INSTALL_MAUI=1` makes the `SessionStart` hook (`.devcontainer/bootstrap.sh`) install the
+`maui-android` workload, a JDK and the Android SDK, and restore `CardiTrack.sln` rather than
+the server filter, so `CardiTrack.Mobile` compiles for Android inside the session. It needs
+`dl.google.com` in network access. (Before 2026-09-17 the variable was documented but
+`install-toolchain.sh` never acted on it.)
+
+### Secrets (the environment's secrets store, not the variables box)
+
+| Secret | Purpose | Scope |
+| --- | --- | --- |
+| `GH_TOKEN` | `gh workflow run` / `gh run watch` — the iOS build, which only CI can do | Fine-grained PAT on `Codesistance/product-carditrack`: **Actions: read and write**, **Contents: read**, **Pull requests: read and write** (the latter for `gh pr` work) |
+| `DD_API_KEY`, `DD_APP_KEY` | Datadog REST API | A Datadog API key plus an application key scoped to logs, APM and monitors read |
 
 `AI__Public__ApiKey` stays a placeholder by design — chat/report calls get a 401,
 everything else (including MedGemma-backed insights against local Ollama) still runs.
@@ -182,13 +199,46 @@ exit 0
   insight debugging): `docker compose --profile full up ollama medgemma-init` once the
   repo is checked out.
 
+## Building and testing everything
+
+Two scripts are the agent's entry points, in a Claude Code cloud session and in a
+Cursor cloud agent alike (Cursor's `.cursor/environment.json` runs the same bootstrap):
+
+```bash
+scripts/agent/build-all.sh   # server filter → Android locally → iOS (and Android if skipped) via CI
+scripts/agent/test-all.sh    # unit + integration, Release, Testcontainers; names what has no tests
+```
+
+iOS cannot be linked on Linux, so "all builds" means the Android compile happens here and
+the iOS (device, signed) build happens by dispatching **Deploy Mobile → Dev** on the
+current branch and waiting for it — a branch dispatch builds and ships nothing. That needs
+`GH_TOKEN` (above) and the branch pushed; without them the script reports the step as
+skipped rather than passed. `scripts/agent/services-up.sh` starts the Docker daemon and
+Postgres/Redis for the tests and for running the API locally.
+
+## Datadog
+
+Two routes to the CardiTrack org, which is on **UK1**:
+
+- **MCP** — `.mcp.json` at the repo root registers Datadog's remote MCP server
+  (`https://mcp.uk1.datadoghq.com/v1/mcp`, project scope). It needs an interactive OAuth
+  sign-in the first time, so it is for the desktop app and the VS Code / Cursor extensions
+  (`.vscode/mcp.json` and `.cursor/mcp.json` carry the same entry), not for a headless
+  cloud session.
+- **REST** — `DD_API_KEY` + `DD_APP_KEY` from the secrets store and `DD_SITE` from the
+  variables (also set for every session by `.claude/settings.json`). The user-level
+  `datadog-pup` skill and the repo's `carditrack-trace-triage` skill query
+  `https://api.uk1.datadoghq.com` with them; `infrastructure/datadog/README.md` has the
+  curl shape. Add `api.uk1.datadoghq.com` to network access. The application key in use
+  cannot query metrics (403); logs, spans, monitors and CI visibility work.
+
 ## Mobile (MAUI) coverage
 
-This environment does **not** cover `CardiTrack.Mobile` by default, deliberately —
-matching `.devcontainer/install-toolchain.sh`'s own `INSTALL_MAUI=0` default. The
-`maui-android` workload and Android SDK add several GB and need `dl.google.com`,
-which most restricted network policies exclude, so the default keeps the setup fast
-and scoped to `CardiTrack.Server.slnf`.
+With `INSTALL_MAUI=1` in the environment variables (the recommended setting above), the
+session compiles `CardiTrack.Mobile` for Android. Without it the setup matches
+`.devcontainer/install-toolchain.sh`'s `INSTALL_MAUI=0` default and stays scoped to
+`CardiTrack.Server.slnf`: the `maui-android` workload and Android SDK add several GB and
+need `dl.google.com`, which some restricted network policies exclude.
 
 **Where Mobile actually gets built:** `.github/workflows/deploy-mobile-dev.yml`, a
 dispatch-only workflow that builds `CardiTrack.Mobile.csproj` directly for the
@@ -211,17 +261,16 @@ uploads to TestFlight / Play internal and tags. It is not path-filtered — the
 graph (`CardiTrack.Mobile`, `CardiTrack.Mobile.Core`, `CardiTrack.Domain`,
 `CardiTrack.Application`) is covered by dispatching it.
 
-**To opt into local Mobile builds anyway** (e.g. debugging a Mobile-only change
-without waiting on CI):
+**In a session that was bootstrapped without `INSTALL_MAUI=1`**, the same layer can be
+added afterwards:
 1. Add `dl.google.com` to the environment's network access (see the Optional table
    above).
-2. In the Setup script, once the repo exists (i.e. from a Claude Code session, not
-   the pre-checkout setup script itself), run:
+2. From the session (the pre-checkout setup script cannot, the repo is not there yet):
    ```bash
-   INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh
+   INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh && dotnet restore CardiTrack.sln
    ```
-3. Build with `dotnet build CardiTrack.sln` instead of the server filter, or target
-   the project directly: `dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -f net10.0-android`.
+3. Build with `scripts/agent/build-all.sh --no-ci`, or target the project directly:
+   `dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -f net10.0-android`.
 
 `install-toolchain.sh` degrades gracefully if `dl.google.com` is still blocked: the
 workload installs and C#/XAML compile far enough to surface language-level warnings,
