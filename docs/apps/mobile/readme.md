@@ -271,7 +271,7 @@ iOS release signing uses `CodesignKey=Apple Distribution` and `CodesignProvision
 
 ### CI/CD Pipeline
 
-Mobile is **built** by `.github/workflows/deploy-apps-dev.yml`, one tick per platform (`mobile_android`, `mobile_ios`, `mobile_windows`), and **pushed** to the stores by `.github/workflows/deploy-mobile-dev.yml`, by release tag. The split matters because the iOS device build is ~13 macOS minutes at ten times the Linux price: tick iOS when you want a TestFlight candidate, not by default. `deploy-apps-prod.yml` carries the production track.
+Mobile is **built** by `.github/workflows/deploy-apps-dev.yml`, one tick per platform (`mobile_android`, `mobile_ios`, and `mobile_windows` as a compile check that archives nothing), and **pushed** to the stores by `.github/workflows/deploy-mobile-dev.yml`, by release tag. The split matters because the iOS device build is ~13 macOS minutes at ten times the Linux price: tick iOS when you want a TestFlight candidate, not by default. `deploy-apps-prod.yml` carries the production track.
 
 ```bash
 # Build (main: signed + archived + tagged; any other ref: unsigned compile check)

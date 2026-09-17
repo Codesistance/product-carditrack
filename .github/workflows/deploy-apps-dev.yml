@@ -35,7 +35,7 @@ on:
         type: boolean
         default: false
       mobile_windows:
-        description: 'Mobile: Windows (MSIX)'
+        description: 'Mobile: Windows (compile check only; nothing is archived)'
         type: boolean
         default: false
       pipeline:
@@ -561,17 +561,19 @@ jobs:
             -p:ArchiveOnBuild=false \
             -p:CodesignEntitlements=
 
-  # Main only. Nothing ships from the Windows target — there is no store upload
-  # and deploy-apps-prod.yml never references it; the msix just lands in the GCS
-  # builds bucket. Its exclusive compile surface is one #if WINDOWS block in
+  # A compile check and nothing more. Nothing ships from the Windows target —
+  # there is no store upload and deploy-apps-prod.yml never references it — and
+  # the csproj sets WindowsPackageType=None, so the publish below is unpackaged
+  # and there has never been an MSIX to archive (the old upload step found no
+  # file on every run). Its exclusive compile surface is one #if WINDOWS block in
   # SecureTokenStore.cs (a fallback its own comment marks dev-only) plus the
   # Platforms/Windows boilerplate, so running it per-PR bought little and, once
   # the iOS and Android builds were cut to Debug, it *was* the PR critical path
   # at ~5 min. A break here is caught on the next merge and blocks no release.
   #
-  # Main only: it loads Auth0 config from Secret Manager, and only main's msix
-  # is collected by upload-mobile-artifacts. A branch dispatch gets the unsigned
-  # compile gates above instead.
+  # Main only, because it stamps Auth0 config from Secret Manager. Nothing
+  # downstream depends on it: the archive, the tag and deploy-mobile-dev.yml
+  # only know Android and iOS.
   build-mobile-windows:
     name: Build Mobile (Windows)
     needs: changes
@@ -580,12 +582,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    # upload-mobile-artifacts downloads mobile-windows, so it has to be told when
-    # there is nothing to download. `outcome` rather than the step succeeding:
-    # continue-on-error masks a rejected upload as a successful step, which would
-    # advertise an artifact that never landed.
-    outputs:
-      available: ${{ steps.upload.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -626,14 +622,6 @@ jobs:
             -p:Auth0Domain=${{ steps.auth0.outputs.domain }} `
             -p:Auth0ClientId=${{ steps.auth0.outputs.mobile_client_id }} `
             -p:Auth0Audience=${{ steps.auth0.outputs.audience }}
-      # Consumed by upload-mobile-artifacts → GCS (deploy-mobile-dev.yml never reads it).
-      - id: upload
-        uses: actions/upload-artifact@v7
-        continue-on-error: true
-        with:
-          name: mobile-windows
-          path: '**/*.msix'
-          retention-days: 1
 
   security-mobile:
     name: Security Scan (Mobile)
@@ -1200,8 +1188,9 @@ jobs:
   # other builds are skipped, and a skipped dependency would skip this job with
   # them. The explicit result checks restore what the plain chain used to give —
   # no upload after a failed build or a failed scan — and go one further: every
-  # ticked platform must have produced its artifact, so a tag never carries a
-  # partial set (Android archived, iOS silently gated off).
+  # ticked store platform must have produced its artifact, so a tag never carries
+  # a partial set (Android archived, iOS silently gated off). Windows is a
+  # compile check with no artifact and plays no part here.
   upload-mobile-artifacts:
     name: Upload Mobile Artifacts to GCS
     needs:
@@ -1209,7 +1198,6 @@ jobs:
       - compute-version
       - build-mobile-android-signed
       - build-mobile-ios-device
-      - build-mobile-windows
       - security-mobile
     if: |
       !cancelled() &&
@@ -1217,10 +1205,9 @@ jobs:
       needs.compute-version.result == 'success' &&
       needs.security-mobile.result == 'success' &&
       !contains(needs.*.result, 'failure') &&
-      (needs.changes.outputs.mobile_android == 'true' || needs.changes.outputs.mobile_ios == 'true' || needs.changes.outputs.mobile_windows == 'true') &&
+      (needs.changes.outputs.mobile_android == 'true' || needs.changes.outputs.mobile_ios == 'true') &&
       (needs.changes.outputs.mobile_android != 'true' || needs.build-mobile-android-signed.outputs.available == 'true') &&
-      (needs.changes.outputs.mobile_ios     != 'true' || needs.build-mobile-ios-device.outputs.available == 'true') &&
-      (needs.changes.outputs.mobile_windows != 'true' || needs.build-mobile-windows.outputs.available == 'true')
+      (needs.changes.outputs.mobile_ios     != 'true' || needs.build-mobile-ios-device.outputs.available == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -1245,21 +1232,14 @@ jobs:
         with:
           name: mobile-ios-symbols
           path: artifacts/ios-symbols
-      - uses: actions/download-artifact@v8
-        if: needs.build-mobile-windows.outputs.available == 'true'
-        with:
-          name: mobile-windows
-          path: artifacts/windows
       - name: Upload to GCS
         env:
           TAG: ${{ needs.compute-version.outputs.version }}
           BUCKET: gs://${{ needs.changes.outputs.gcs_builds_bucket }}
         run: |
-          # Any of the three can be absent: not ticked, signing secrets not
-          # populated, or its upload rejected.
+          # Either can be absent when it was not ticked.
           if [ -d artifacts/android ]; then gcloud storage cp -r artifacts/android/** $BUCKET/$TAG/android/; fi
           if [ -d artifacts/ios ];     then gcloud storage cp -r artifacts/ios/**     $BUCKET/$TAG/ios/; fi
-          if [ -d artifacts/windows ]; then gcloud storage cp -r artifacts/windows/** $BUCKET/$TAG/windows/; fi
           # The bucket's 10-day lifecycle rule deletes these along with the binaries;
           # the 90-day Actions artifact is the copy that outlives a late crash report.
           if [ -d artifacts/ios-symbols ]; then gcloud storage cp -r artifacts/ios-symbols/** $BUCKET/$TAG/ios/symbols/; fi
@@ -1604,7 +1584,7 @@ jobs:
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.compute-version.result == 'success' &&
-      ((needs.changes.outputs.mobile_android != 'true' && needs.changes.outputs.mobile_ios != 'true' && needs.changes.outputs.mobile_windows != 'true') ||
+      ((needs.changes.outputs.mobile_android != 'true' && needs.changes.outputs.mobile_ios != 'true') ||
        needs.upload-mobile-artifacts.result == 'success')
     runs-on: ubuntu-latest
     steps:
@@ -1646,7 +1626,8 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           ARCHIVE_RESULT: ${{ needs.upload-mobile-artifacts.result }}
           ON_MAIN: ${{ github.ref == 'refs/heads/main' }}
-          MOBILE_SELECTED: ${{ needs.changes.outputs.mobile_android == 'true' || needs.changes.outputs.mobile_ios == 'true' || needs.changes.outputs.mobile_windows == 'true' }}
+          # Android and iOS promise an archive; Windows is a compile check with none.
+          MOBILE_SELECTED: ${{ needs.changes.outputs.mobile_android == 'true' || needs.changes.outputs.mobile_ios == 'true' }}
           SELECTED: >-
             ${{ needs.changes.outputs.api }} ${{ needs.changes.outputs.web }}
             ${{ needs.changes.outputs.worker }} ${{ needs.changes.outputs.mobile_android }}

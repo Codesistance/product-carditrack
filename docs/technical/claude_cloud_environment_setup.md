@@ -236,9 +236,9 @@ Two routes to the CardiTrack org, which is on **UK1**:
 
 - **MCP** — `.mcp.json` at the repo root registers Datadog's remote MCP server
   (`https://mcp.uk1.datadoghq.com/v1/mcp`, project scope). It needs an interactive OAuth
-  sign-in the first time, so it is for the desktop app and the VS Code / Cursor extensions
-  (`.vscode/mcp.json` and `.cursor/mcp.json` carry the same entry), not for a headless
-  cloud session.
+  sign-in the first time, so it is for the desktop app and the Cursor extension
+  (`.cursor/mcp.json` carries the same entry; `.vscode/` is git-ignored, so a VS Code user
+  adds the same server to their own `mcp.json`), not for a headless cloud session.
 - **REST** — `DD_API_KEY` + `DD_APP_KEY` from the secrets store and `DD_SITE` from the
   variables (also set for every session by `.claude/settings.json`). The user-level
   `datadog-pup` skill and the repo's `carditrack-trace-triage` skill query
@@ -264,8 +264,17 @@ local/cloud MAUI build as faster local feedback, never as a substitute for them.
 a session with a `GH_TOKEN` that has the `workflow` scope:
 
 ```bash
+scripts/agent/build-all.sh          # does the dispatch below, waits for the *new* run, reports per job
+```
+
+or by hand — dispatch is asynchronous, so wait for a run created after the dispatch rather
+than trusting `gh run list --limit 1`, which can still return the previous run:
+
+```bash
+SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 gh workflow run deploy-apps-dev.yml --ref <branch> -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true -f mobile_ios=true
-gh run watch --exit-status "$(gh run list --workflow deploy-apps-dev.yml --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId')"
+until RUN_ID=$(gh run list --workflow deploy-apps-dev.yml --branch <branch> --event workflow_dispatch --limit 5 --json databaseId,createdAt --jq "map(select(.createdAt >= \"$SINCE\")) | .[0].databaseId // empty") && [ -n "$RUN_ID" ]; do sleep 5; done
+gh run watch --exit-status "$RUN_ID"
 ```
 
 A dispatch on a branch runs the unsigned compile gates (Release Android, Debug iOS

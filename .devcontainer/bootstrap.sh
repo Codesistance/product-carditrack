@@ -77,10 +77,13 @@ fi
 # toolchain step above installed those, so restore CardiTrack.sln instead —
 # under its own marker, so a container first bootstrapped without mobile
 # restores again when the variable is later switched on.
-if [ "${INSTALL_MAUI:-0}" = "1" ]; then
+# The toolchain step degrades gracefully when dl.google.com is blocked (workload
+# present, SDK absent); restoring Mobile then fails, so fall back to the filter.
+if [ "${INSTALL_MAUI:-0}" = "1" ] && [ -d "${ANDROID_SDK_ROOT_DIR:-$HOME/Android/Sdk}/platforms" ]; then
   SOLUTION="${REPO_ROOT}/CardiTrack.sln"
   MARKER="${MARKER}-sln"
 else
+  [ "${INSTALL_MAUI:-0}" = "1" ] && log "Android SDK not present — restoring the server filter; CardiTrack.Mobile will not build until INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh succeeds"
   SOLUTION="${REPO_ROOT}/CardiTrack.Server.slnf"
 fi
 if [ -f "$MARKER" ]; then
