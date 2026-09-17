@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "docs/technical/member_chat_routing.md §11 — extracted, not retyped; c36-c50 transcribed from an observed caregiver session, 2026-09-04",
-  "caveat": "c01-c35: one author, phrasings of failures already on record. c36-c50: real caregiver messages from one observed session, labelled by one author afterwards. Still NOT the blind two-person eval set step 1 requires — but c36-c50 are at least real phrasings, which the seed is explicit about lacking.",
+  "caveat": "c01-c35: one author, phrasings of failures already on record. c36-c50: real caregiver messages from one observed session, labelled by one author afterwards. c52-c59: one author's phrasings for the settings rung (2026-09-17), not observed traffic. Still NOT the blind two-person eval set step 1 requires — but c36-c50 are at least real phrasings, which the seed is explicit about lacking.",
   "cases": [
     {
       "id": "c01",
@@ -572,6 +572,94 @@
       "note": "Observed 2026-09-07 — status reprinted the daily caption plus every reading because 'moved' was not on the steps word list",
       "guards": "Movement is steps. A follow-up after a day question must not reprint the caption dump.",
       "namedMetric": "steps"
+    },
+    {
+      "id": "c52",
+      "question": "Turn off the activity decline alert",
+      "context": null,
+      "accepted": [
+        "settings"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "A request about the alert itself, not about activity. Must not route analysis and answer with a week of steps."
+    },
+    {
+      "id": "c53",
+      "question": "Alert me if his heart rate goes over 120",
+      "context": null,
+      "accepted": [
+        "settings"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "Building an alarm on a reading. Names a reading, a direction and a level, so it must not read as a status or analysis question about heart rate."
+    },
+    {
+      "id": "c54",
+      "question": "Which alerts are on for him?",
+      "context": null,
+      "accepted": [
+        "settings"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "The list. Not inference: nothing here asks whether anything is worth attention."
+    },
+    {
+      "id": "c55",
+      "question": "Is his heart alert on?",
+      "context": null,
+      "accepted": [
+        "settings"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "One word away from 'is his heart okay' — the boundary the settings purpose line is written for. Inference as a runner-up is acceptable (it clarifies); inference as the primary is a miss."
+    },
+    {
+      "id": "c56",
+      "question": "Is his heart okay?",
+      "context": null,
+      "accepted": [
+        "inference"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "The other side of c55: a verdict on the reading, not a question about the alert."
+    },
+    {
+      "id": "c57",
+      "question": "Stop alerting me at night",
+      "context": null,
+      "accepted": [
+        "settings"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "Quiet hours — resolved inside the settings rung to a redirect, since those live on the caregiver's account. Must not route steer.offtopic."
+    },
+    {
+      "id": "c58",
+      "question": "Delete the sleep alarm I set",
+      "context": null,
+      "accepted": [
+        "settings"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "Removing a caregiver-set alarm. 'Sleep' must not pull it toward the reading rungs."
+    },
+    {
+      "id": "c59",
+      "question": "turn that one off",
+      "context": "Is his sleep alert on?",
+      "accepted": [
+        "settings"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the settings rung — one author's phrasings, not observed traffic",
+      "guards": "A terse follow-up carrying its subject from the prior question; the router sees questions only and must still place it."
     }
   ]
 }

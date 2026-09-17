@@ -53,4 +53,12 @@ public sealed record MemberChatWorkflowResult
     /// the cheap paths look free.
     /// </remarks>
     public required IReadOnlyList<AiCallRecord> Calls { get; init; }
+
+    /// <summary>The alert-settings change this reply proposed and is waiting on a yes for, or
+    /// null — persisted on the assistant turn so the yes applies exactly what was shown.</summary>
+    public Services.PendingAlertChange? PendingChange { get; init; }
+
+    /// <summary>True when this turn applied a change to what is watching the member, so the
+    /// response can say so and the audit entry can name it.</summary>
+    public bool ChangedAlertSettings { get; init; }
 }

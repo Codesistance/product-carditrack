@@ -20,6 +20,14 @@ public sealed class AuditHealthDataAccessAttribute : Attribute
     /// </summary>
     public const string CardiMemberIdItemKey = "CardiTrack.Audit.CardiMemberId";
 
+    /// <summary>
+    /// <c>HttpContext.Items</c> key an action sets to name what the request did when the
+    /// controller's fixed action cannot — a chat send that applied an alert-settings change is a
+    /// write to what is watching the member, and must not be filed as one more "MemberChat"
+    /// read. The middleware reads this before the attribute's action.
+    /// </summary>
+    public const string ActionItemKey = "CardiTrack.Audit.Action";
+
     /// <param name="action">
     /// Short verb recorded in <c>AuditLog.Action</c>, e.g. "ViewDashboard". Defaults to the
     /// HTTP method plus route when omitted.

@@ -51,5 +51,20 @@ public class MemberChatTurn : BaseEntity
     /// </remarks>
     public MemberChatWorkflow? Workflow { get; set; }
 
+    /// <summary>
+    /// The alert-settings change this assistant turn proposed and is waiting on a yes for, as
+    /// JSON, encrypted at rest exactly like <see cref="Content"/>. Null on every other turn.
+    /// </summary>
+    /// <remarks>
+    /// Persisted rather than held in memory because the yes arrives as a separate request that
+    /// may land on a different API instance, and the proposal has to be exactly what was shown:
+    /// re-deriving it from the caregiver's words would let the second parse differ from the one
+    /// they agreed to. Read only from the most recent assistant turn, and only within
+    /// <c>PendingAlertChange.Validity</c> of when it was proposed; it is never cleared, because a
+    /// later turn is what supersedes it. Named settings and thresholds about a person's
+    /// monitoring are health data wherever they are written, hence the encryption.
+    /// </remarks>
+    public string? PendingChange { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
 }
