@@ -238,7 +238,7 @@ public class MobileDiagnosticsEndpointTests
         Assert.StartsWith("2026-09-14 22:19:20.001", Scalar(crash, "MobileRecentLog"));
         Assert.Equal("System.InvalidOperationException", Scalar(crash, "error.kind"));
         Assert.Equal("Sequence contains no elements", Scalar(crash, "error.message"));
-        Assert.Equal(exception, Scalar(crash, "error.stack"));
+        Assert.Equal(exception.Replace('\n', ' '), Scalar(crash, "error.stack"));
         Assert.Contains("Unhandled exception (terminating: True)", crash.RenderMessage());
 
         // Frames are structured, not flattened: two frames, each with its fields.

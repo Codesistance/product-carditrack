@@ -394,6 +394,10 @@ public class MemberChatRoutedDispatchTests
     }
 
     /// <summary>And the pronoun the brief actually asks for, resolved from the record.</summary>
+    /// <remarks>
+    /// The clinical read names the same reading the rewrite does — otherwise
+    /// <c>NamesAReadingTheReadDidNot</c> withholds the reply before pronouns are resolved.
+    /// </remarks>
     [Fact]
     public async Task ARewriteWritingThePronounTokens_IsResolvedForTheCaregiver()
     {
@@ -407,6 +411,16 @@ public class MemberChatRoutedDispatchTests
         });
         RouterAnswers(MemberChatWorkflow.Analysis);
         PipelineAnswers();
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
+                new MemberChatService.MemberChatClinicalAiResponse
+                {
+                    Analysis = "heart rate steady all week",
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
+                },
+                new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<string>(
                 $"{PronounPlaceholder.Possessive} heart rate has been steady all week.", new AiUsage()));

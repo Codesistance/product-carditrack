@@ -1016,6 +1016,10 @@ public class MemberChatService : IMemberChatService
             MemberChatWorkflow.AlertSettings =>
                 await _alerts.HandleAsync(
                     flattened, history.QuestionsOnly, userId, cardiMemberId, member, session, triageUsage, utcNow, ct),
+            // Named so a catalogue entry cannot hide behind the default. Unparsed, unimplemented
+            // and failed-clarify still land here via `_`.
+            MemberChatWorkflow.Analysis =>
+                await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
             _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
         };
     }
