@@ -1,7 +1,9 @@
+using System.Diagnostics.Metrics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Shared.Telemetry;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -254,6 +256,23 @@ public class QuestionnaireServiceTests
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task Answering_RecordsTheAnsweredCounter_WithScopeAndOrigin()
+    {
+        using var capture = new QuestionnaireMetricCapture();
+        var stored = Questionnaire(scope: QuestionnaireScope.Permanent);
+        stored.Origin = QuestionnaireOrigin.Digest;
+        _questionnaires.GetByIdAsync(_questionnaireId).Returns(stored);
+
+        await CreateSut().AnswerAsync(_userId, _questionnaireId, "She moved bedrooms.");
+
+        Assert.Contains(capture.Longs, m =>
+            m.Instrument == "questionnaire.answered"
+            && m.Value == 1
+            && m.Tags.GetValueOrDefault("questionnaire.scope") as string == "permanent"
+            && m.Tags.GetValueOrDefault("questionnaire.origin") as string == "digest");
+    }
+
     /// <summary>
     /// Editing is the same act as answering. What a caregiver wants beside an answer is when it was
     /// last true, so the timestamp moves with the edit.
@@ -447,5 +466,107 @@ public class QuestionnaireServiceTests
             () => CreateSut().DismissAsync(requestingUserId, _questionnaireId));
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().ExpireAsync(requestingUserId, _questionnaireId));
+    }
+
+    [Fact]
+    public async Task Listing_CarriesTheOrigin_AsItsLowercaseWireValue()
+    {
+        var volunteered = Questionnaire(
+            QuestionnaireStatus.Answered, "Pacemaker since 2020.", QuestionnaireScope.Permanent);
+        volunteered.Origin = QuestionnaireOrigin.Family;
+        _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>())
+            .Returns([volunteered]);
+
+        var result = await CreateSut().GetForMemberAsync(_userId, _memberId, search: null, page: 1, pageSize: 20);
+
+        var only = Assert.Single(result.Answered.Items);
+        Assert.Equal("family", only.Origin);
+        Assert.Equal("permanent", only.Scope);
+    }
+
+    [Fact]
+    public async Task OfferingAStandingFact_StoresAnEncryptedPermanentFamilyRow_AlreadyAnswered()
+    {
+        MemberQuestionnaire? stored = null;
+        _questionnaires.When(r => r.AddAsync(Arg.Any<MemberQuestionnaire>()))
+            .Do(call => stored = call.Arg<MemberQuestionnaire>());
+
+        var result = await CreateSut().OfferStandingFactAsync(
+            _userId, _memberId, "  Pacemaker since 2020.  ");
+
+        Assert.NotNull(stored);
+        Assert.Equal(_memberId, stored.CardiMemberId);
+        Assert.Equal(QuestionnaireStatus.Answered, stored.Status);
+        Assert.Equal(QuestionnaireScope.Permanent, stored.Scope);
+        Assert.Equal(QuestionnaireOrigin.Family, stored.Origin);
+        Assert.Equal(_userId, stored.AnsweredByUserId);
+        Assert.NotNull(stored.AnsweredAtUtc);
+        Assert.Equal(
+            "What should we know about them?",
+            PromptContextFactory.Encryption.Decrypt(stored.QuestionText));
+        Assert.Equal(
+            "Pacemaker since 2020.",
+            PromptContextFactory.Encryption.Decrypt(stored.AnswerText!));
+        Assert.Equal("family", result.Origin);
+        Assert.Equal("permanent", result.Scope);
+        Assert.Equal("answered", result.Status);
+        Assert.Equal("Pacemaker since 2020.", result.AnswerText);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// A volunteered fact is not an ask. It must not occupy the pending slot the digest job
+    /// and the member's card treat as "one question waiting".
+    /// </summary>
+    [Fact]
+    public async Task OfferingAStandingFact_DoesNotLeaveAPendingQuestion()
+    {
+        MemberQuestionnaire? stored = null;
+        _questionnaires.When(r => r.AddAsync(Arg.Any<MemberQuestionnaire>()))
+            .Do(call => stored = call.Arg<MemberQuestionnaire>());
+
+        await CreateSut().OfferStandingFactAsync(_userId, _memberId, "Pacemaker since 2020.");
+
+        Assert.NotEqual(QuestionnaireStatus.Pending, stored!.Status);
+        Assert.Null(stored.AskableUntilUtc);
+        Assert.Null(stored.ExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task OfferingAStandingFact_IsRefusedToSomeoneWhoIsNotTheirCaregiver()
+    {
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().OfferStandingFactAsync(_outsiderId, _memberId, "anything"));
+        await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
+    }
+
+    /// <summary>Captures questionnaire-meter counts so a missed Record* call fails a test.</summary>
+    private sealed class QuestionnaireMetricCapture : IDisposable
+    {
+        private readonly MeterListener _listener = new();
+
+        public List<(string Instrument, long Value, Dictionary<string, object?> Tags)> Longs { get; } = [];
+
+        public QuestionnaireMetricCapture()
+        {
+            _listener.InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Meter.Name == TelemetryNames.QuestionnaireSource)
+                    listener.EnableMeasurementEvents(instrument);
+            };
+            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+            {
+                lock (Longs)
+                {
+                    var dictionary = new Dictionary<string, object?>();
+                    foreach (var tag in tags)
+                        dictionary[tag.Key] = tag.Value;
+                    Longs.Add((instrument.Name, value, dictionary));
+                }
+            });
+            _listener.Start();
+        }
+
+        public void Dispose() => _listener.Dispose();
     }
 }

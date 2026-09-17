@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Exceptions;
+using CardiTrack.Application.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
@@ -1509,6 +1510,33 @@ public partial class DigestGenerationService : IDigestGenerationService
         var memberContext = await _memberContext.ComposeAsync(
             new MemberContextRequest(member, memberId, describedDate, utcNow, PromptPurpose.Digest), ct);
 
+        // Recap and informed have to judge this generation against what the model was shown.
+        // ComposeAsync already isolated a source failure by omitting the section; this second
+        // read is bookkeeping and must not discard a prompt that was already built. A throw here
+        // is treated as "no facts to recap against", the same shape as an omitted section.
+        IReadOnlyList<QuestionnaireAnswersContextSource.FamilyFact> familyFacts = [];
+        try
+        {
+            familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
+                await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
+                _encryption, utcNow, member?.Name);
+
+            if (familyFacts.Count > 0
+                && !memberContext.Contains(
+                    $"--- {QuestionnaireAnswersContextSource.SectionLabel} ---",
+                    StringComparison.Ordinal))
+            {
+                familyFacts = [];
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Could not reload family answers for CardiMember {CardiMemberId} after composing the "
+                + "prompt; recap and informed counters skip this pass.",
+                memberId);
+        }
+
         var prompt = $"""
             {FamilyDigestClinicalInstructions}
 
@@ -1588,19 +1616,16 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
-        // Same "written but rejected" stance as the instruction-echo check: a summary that is the
-        // family's own answers read back is worse than the previous card, and the prompt asking
-        // the model not to retell them is a request, not a guarantee. Same questionnaire rows and
-        // truncation as the prompt section (a standalone answer may omit the question in the
-        // prompt; the recap check still sees both halves).
-        var familyFacts = QuestionnaireAnswersContextSource.VisibleFacts(
-            await _unitOfWork.MemberQuestionnaires.GetByCardiMemberAsync(memberId, ct),
-            _encryption, utcNow, member?.Name);
+        // The prompt asking the model not to retell family answers is a request, not a
+        // guarantee. Same questionnaire rows and truncation as the prompt section (a standalone
+        // answer may omit the question in the prompt; the recap check still sees both halves).
         if (RestatesFamilyAnswers(text, familyFacts) is { } recap)
         {
             _logger.LogWarning(
                 "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: {Reason}.",
                 memberId, describedDate, recap);
+            if (familyFacts.Count > 0)
+                QuestionnaireTelemetry.RecordDigestRecited();
             return false;
         }
 
@@ -1654,7 +1679,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
-        await _unitOfWork.Digests.AddAsync(new DigestEntry
+        var stored = await _unitOfWork.Digests.AddAsync(new DigestEntry
         {
             CardiMemberId = memberId,
             LocalDate = describedDate,
@@ -1672,6 +1697,15 @@ public partial class DigestGenerationService : IDigestGenerationService
             GeneratedAtUtc = utcNow,
             PromptVersion = CurrentPromptVersion,
         }, ct);
+
+        // AddAsync is INSERT ON CONFLICT DO NOTHING: a colliding run still reaches here, but
+        // nothing was stored. Informed, the question, the status line and Advise are side-effects
+        // of a digest the family will actually read — not of a generation that lost the insert.
+        if (!stored)
+            return false;
+
+        if (familyFacts.Count > 0)
+            QuestionnaireTelemetry.RecordDigestInformed();
 
         // Strictly after the summary is stored, and only then: a question is a by-product of a
         // generation that was good enough to keep. Every discard path above has already returned,
@@ -1931,6 +1965,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // above — without this the question would be dropped when the scope ended.
         await _unitOfWork.SaveChangesAsync();
 
+        QuestionnaireTelemetry.RecordAsked(scope);
         _logger.LogInformation(
             "Asked the family a new question about CardiMember {CardiMemberId} (scope: {Scope}).",
             memberId, scope);
@@ -2078,6 +2113,11 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         foreach (var existing in previous)
         {
+            // A volunteered standing fact was never asked. Its canned heading would otherwise
+            // gag a later digest proposal that happens to use the same wording.
+            if (existing.Origin == QuestionnaireOrigin.Family)
+                continue;
+
             var text = EncryptedFieldReader.Reveal(_encryption, existing.QuestionText);
             if (text is null || NormalizeQuestion(text) != needle)
                 continue;

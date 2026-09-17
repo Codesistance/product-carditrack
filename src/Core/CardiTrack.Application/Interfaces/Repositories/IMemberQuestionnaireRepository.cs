@@ -35,7 +35,8 @@ public interface IMemberQuestionnaireRepository : IRepository<MemberQuestionnair
     /// <summary>
     /// When this member's family was last asked anything at all — answered, dismissed or still
     /// waiting. The second noise gate: a minimum interval measured from the asking, so declining to
-    /// answer does not invite another question the next day.
+    /// answer does not invite another question the next day. Standing facts the family volunteered
+    /// are not asks and do not move this clock.
     /// </summary>
     Task<DateTime?> GetLatestGeneratedAtAsync(Guid cardiMemberId, CancellationToken ct = default);
 
@@ -48,6 +49,15 @@ public interface IMemberQuestionnaireRepository : IRepository<MemberQuestionnair
     /// one long outage's backlog from turning into a single unbounded write transaction.
     /// </param>
     Task<IReadOnlyList<MemberQuestionnaire>> GetLapsedPendingAsync(
+        DateTime utcNow, int limit, CancellationToken ct = default);
+
+    /// <summary>
+    /// Retires questions that have outlived the moment they asked about, and only those still
+    /// waiting. A conditional update — the same discipline as <see cref="TryClaimAlertAsync"/> —
+    /// so a concurrent answer or another expiry path cannot be overwritten, and the return is
+    /// the number of rows that actually moved to <c>Expired</c>.
+    /// </summary>
+    Task<int> ExpireLapsedPendingAsync(
         DateTime utcNow, int limit, CancellationToken ct = default);
 
     /// <summary>

@@ -238,6 +238,9 @@ public static class ApmExtensions
                     // GenAI client metrics (gen_ai.client.operation.duration,
                     // gen_ai.client.token.usage) from AiTelemetry.
                     .AddMeter(TelemetryNames.AiSource)
+                    // Family-questionnaire funnel (asked / answered / skipped / expired /
+                    // volunteered, and whether the next digest kept or recited those facts).
+                    .AddMeter(TelemetryNames.QuestionnaireSource)
                     // Push delivery spine counters/histograms (notification.* — enqueued, sent,
                     // delivered, failed, escalated, undelivered_critical, time_to_ack) from
                     // PushTelemetry. time_to_ack is the SLO metric (§6.1).

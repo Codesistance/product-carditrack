@@ -100,7 +100,7 @@ Full specs in [Shipped Screens Without Figma M1 Frames](#shipped-screens-without
 **Exit:** → M1-13 CardiMember Detail
 
 - **QuestionCard** — `ElevatedCard` anatomy with no severity rail (the rail is the grammar for "something is wrong"; this is an invitation): 💬 glyph + heading, the question, a rationale sentence in `SelectedOptionBackground` (the model's everyday reason, not an "Asked because …" prefix), a scope footnote ("Just for the moment" on time-scoped questions; "We'll keep this here" on standing ones), an optional-by-design softener, and an "Answer" gradient button that expands an `AuthEntryBorder` editor in place (200 ms, the pause-drop-down animation) with Save/Cancel. A "✕" skips a pending question after a soft confirm. An answered card keeps the same chrome and puts a trash control in that header slot (the same 28px tinted action as alert-list delete) plus an "Answered …" caption inside the card; tapping trash asks for a warning confirm before the answer is removed.
-- **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): the pending question at the top, then standing answers and still-current momentary ones, newest first. Expired momentary answers are omitted. Empty state when nothing lasting is on the list. **As built:** debounced search, lazy page size 20, delete-on-card with a warning confirm.
+- **QuestionnairesPage** — standard full-bleed scaffold (HeaderBand, RefreshView, skeleton/error/content panels, BottomNavBar): a "Something we should know" composer (standing fact the family volunteers — born answered, never pending), then the pending question, then standing answers and still-current momentary ones, newest first. Volunteered facts title the card "You told us". Expired momentary answers are omitted. Empty state when nothing lasting is on the list. **As built:** debounced search, lazy page size 20, delete-on-card with a warning confirm.
 - **Both surfaces check the question is still worth asking before drawing it** (`IQuestionValidityService`). A momentary question is about the day it was generated in, so it stops making sense once that day ends — and a card held on screen across midnight, or a page served from the seven-day offline read cache after a night with no signal, will otherwise ask "did he feel tired at all today?" on a different today. The app hides such a card and tells the server to retire it; the same check runs again on save, so an answer typed after the day ended is never filed against the wrong one (the caregiver is told the question has passed rather than seeing the save fail). The server refuses to serve a lapsed question regardless, so this is how the app is prompt, not how the rule is enforced.
 
 ## User Flows
@@ -513,8 +513,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 
 **Required Fields:**
 - "Full Name *" — text input
-- "Date of Birth *" — date picker (format: MM/DD/YYYY)
-  - As built, **DOB silently defaults to today** if not changed — not validated (known limitation)
+- "Date of Birth *" — date picker (format: MM/DD/YYYY). Unset until they pick a day (`DateField.Date` is nullable); Continue stays off until a date is chosen, and submit refuses a missing or out-of-range date (`DateOfBirth.Validate`) rather than standing in today.
 - "Sex *" — picker (Male / Female), helper text: "Helps us read heart rate and sleep against the right range."
   - **Deliberate divergence from the Figma M1-04/M1-13 comps** — the field is not in the design file but ships because DOB + sex set the reference range the summaries are read against; do not drop it on a pixel-match pass
 
@@ -535,7 +534,7 @@ A single user can sign up, add a CardiMember, connect devices, manage CardiMembe
 - **Not built** — the shipped screen has no privacy-notice card (product follow-up, relevant to the consent-first principle)
 
 **CTA:**
-- Primary button: "Continue" — enabled by **name ≥ 2 characters + sex selected** only
+- Primary button: "Continue" — enabled by **name ≥ 2 characters + sex selected + a date of birth they actually chose**
 - Text link: "Skip for now"
 
 **Draft persistence:** a half-typed member (and its photo) survives app backgrounding — the form saves to `CardiMemberDraftStore` on background/stop and restores on return; the draft is cleared on successful submit.
@@ -1022,7 +1021,7 @@ This is the most safety-critical screen in the app. Design for urgency and immed
 **Action Buttons (as built):**
 - "View Alerts" → M1-10
 - "Manage Device" → M1-15
-- "Questions & Answers" row → QuestionnairesPage
+- "Questions & Answers" row → QuestionnairesPage (always shown once questionnaires have loaded, so a caregiver can volunteer a standing fact before the digest has asked)
 
 **As-built additions beyond the comp:** an AI summary card with suggestions, an inline `QuestionCard` when a question is waiting, a paused-monitoring banner, a looping **Key Metric Trends** carousel (`MetricTrendCard` + 7/14/30-day `TrendWindowSelector`), and a looping Emergency Contact / Phone carousel. The profile's connection-status dot is as-built (the Figma frame has no freshness indicator).
 

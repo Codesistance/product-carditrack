@@ -477,6 +477,15 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task DeleteQuestionnaireAsync(Guid questionnaireId, CancellationToken ct = default) =>
         SendNoDataAsync(HttpMethod.Delete, $"api/v1/questionnaires/{questionnaireId}", ct);
 
+    public async Task<QuestionnaireResponse> OfferStandingFactAsync(
+        Guid cardiMemberId, OfferStandingFactRequest request, CancellationToken ct = default)
+    {
+        var offered = await SendAsync<OfferStandingFactRequest, QuestionnaireResponse>(
+            HttpMethod.Post, $"api/v1/cardimembers/{cardiMemberId}/questionnaires", request, ct);
+        await EvictAsync(QuestionnaireKeys(offered));
+        return offered;
+    }
+
     public Task<AlertListResponse> GetAlertsAsync(
         string? severity = null,
         string? status = null,

@@ -37,7 +37,8 @@ public class QuestionnaireEndpointTests
             _userContext,
             Substitute.For<ILogger<QuestionnairesController>>(),
             _questionnaires,
-            new AnswerQuestionnaireValidator());
+            new AnswerQuestionnaireValidator(),
+            new OfferStandingFactValidator());
     }
 
     private static AnswerQuestionnaireRequest Request(string answer) => new() { AnswerText = answer };
@@ -205,5 +206,72 @@ public class QuestionnaireEndpointTests
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
         await _questionnaires.DidNotReceive().ExpireAsync(
             Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    // ---- A standing fact the family volunteered ----
+
+    private static OfferStandingFactRequest Offer(string fact) => new() { FactText = fact };
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\t\n")]
+    public async Task OfferStandingFact_RejectsABlankFact_WithoutReachingTheService(string fact)
+    {
+        var result = await CreateSut().OfferStandingFact(_memberId, Offer(fact), CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        await _questionnaires.DidNotReceive().OfferStandingFactAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OfferStandingFact_RejectsAFactPastTheStorageCap_WithoutReachingTheService()
+    {
+        var result = await CreateSut().OfferStandingFact(
+            _memberId, Offer(new string('a', 2_001)), CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
+        await _questionnaires.DidNotReceive().OfferStandingFactAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OfferStandingFact_PassesAnOrdinaryFactThrough_AsCreated()
+    {
+        _questionnaires.OfferStandingFactAsync(
+                _userId, _memberId, "She moved bedrooms.", Arg.Any<CancellationToken>())
+            .Returns(new QuestionnaireResponse
+            {
+                Id = Guid.NewGuid(),
+                CardiMemberId = _memberId,
+                QuestionText = "What should we know about them?",
+                AnswerText = "She moved bedrooms.",
+                Status = "answered",
+                Scope = "permanent",
+                Origin = "family",
+            });
+
+        var result = await CreateSut().OfferStandingFact(
+            _memberId, Offer("She moved bedrooms."), CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, objectResult.StatusCode);
+        await _questionnaires.Received(1).OfferStandingFactAsync(
+            _userId, _memberId, "She moved bedrooms.", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OfferStandingFact_RefusesASignedOutCaller()
+    {
+        var result = await CreateSut(authenticated: false)
+            .OfferStandingFact(_memberId, Offer("She moved bedrooms."), CancellationToken.None);
+
+        var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+        await _questionnaires.DidNotReceive().OfferStandingFactAsync(
+            Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 }

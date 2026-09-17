@@ -215,6 +215,13 @@ public interface ICardiTrackApiClient
     Task DeleteQuestionnaireAsync(Guid questionnaireId, CancellationToken ct = default);
 
     /// <summary>
+    /// A standing fact the family volunteered. Stored as an already-answered permanent row —
+    /// not an ask, so it does not occupy the pending slot.
+    /// </summary>
+    Task<QuestionnaireResponse> OfferStandingFactAsync(
+        Guid cardiMemberId, OfferStandingFactRequest request, CancellationToken ct = default);
+
+    /// <summary>
     /// One page of alerts for the Alerts List (M1-10), newest first, across every CardiMember
     /// the signed-in user may read — or one of them, with <paramref name="cardiMemberId"/>.
     /// </summary>

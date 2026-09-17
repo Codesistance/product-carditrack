@@ -1,8 +1,8 @@
 # Questionnaires API
 
-> **Status: Implemented.** All five endpoints ship in `QuestionnairesController`, backed by `QuestionnaireService`. Questions are written by the AI pipeline's digest job — there is deliberately no endpoint that asks for one.
+> **Status: Implemented.** All six endpoints ship in `QuestionnairesController`, backed by `QuestionnaireService`. Questions are written by the AI pipeline's digest job — there is deliberately no endpoint that asks the model for one. Families can volunteer a standing fact without waiting to be asked.
 
-Occasionally the digest pass proposes one short question to a member's family: a change of routine, a new room, a difficult week — the kind of thing a wearable cannot see and a caregiver can explain in a sentence. This API is what the family does with it afterwards.
+Occasionally the digest pass proposes one short question to a member's family: a change of routine, a new room, a difficult week — the kind of thing a wearable cannot see and a caregiver can explain in a sentence. This API is what the family does with it afterwards. A caregiver can also tell us something we should know, stored as an already-answered standing fact rather than as an ask.
 
 **Surfaces:** mobile CardiMember detail (the pending card) and the Questions & Answers page. No Figma frame yet — both were built from the existing design system and want frames retroactively.
 
@@ -17,6 +17,8 @@ Occasionally the digest pass proposes one short question to a member's family: a
 
 A question is only ever stored after the summary that produced it was stored: a discarded generation asks nothing.
 
+A standing fact the family volunteered (`POST .../questionnaires`) is not an ask. It is stored as an already-answered `permanent` / `family` row, does not occupy the pending slot, and `GetLatestGeneratedAtAsync` ignores it so volunteering does not restart the seven-day quiet.
+
 The caption under the question (`triggerContext`) is one everyday sentence in a caregiver's words, so the family can see why it was worth asking. A caption that names the reading, quotes a figure, restates the question, or echoes the brief is dropped and the question is stored without one — a question with no caption is better than a lab note.
 
 ## Endpoints
@@ -24,12 +26,13 @@ The caption under the question (`triggerContext`) is one everyday sentence in a 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/v1/cardimembers/{cardiMemberId}/questionnaires` | The pending question, and a page of answers that still belong on the list — standing facts, plus momentary ones that have not expired. Newest first |
+| `POST /api/v1/cardimembers/{cardiMemberId}/questionnaires` | A standing fact the family volunteered, stored as an already-answered permanent row (**201**). Not an ask — it does not occupy the pending slot, does not start the quiet interval, and is never pushed |
 | `PUT /api/v1/questionnaires/{questionnaireId}/answer` | Answers a question, or replaces an answer already given |
 | `PUT /api/v1/questionnaires/{questionnaireId}/dismiss` | Skips the question — it is never asked again |
 | `PUT /api/v1/questionnaires/{questionnaireId}/expire` | Retires a question that outlived the day it asked about. Idempotent |
 | `DELETE /api/v1/questionnaires/{questionnaireId}` | Removes the question and its answer (**204**) |
 
-Answer, dismiss, expire and delete are rooted on the questionnaire rather than the member: the id is the only thing the client needs, and every one of them is access-checked against the member it belongs to regardless.
+Answer, dismiss, expire and delete are rooted on the questionnaire rather than the member: the id is the only thing the client needs, and every one of them is access-checked against the member it belongs to regardless. The volunteer POST is rooted on the member because there is no question yet.
 
 ## How long a question stays worth asking
 
@@ -59,6 +62,7 @@ Four things enforce it, and only the first is load-bearing:
   "triggerContext": "Yesterday looked quieter than usual.",
   "status": "answered",
   "scope": "timescoped",
+  "origin": "digest",
   "generatedAtUtc": "2026-08-13T09:00:00Z",
   "answeredAtUtc": "2026-08-13T10:12:00Z",
   "answeredByUserId": "1f2e3d4c-5717-4562-b3fc-2c963f66afa6",
@@ -66,7 +70,7 @@ Four things enforce it, and only the first is load-bearing:
 }
 ```
 
-`status` is the lowercase `QuestionnaireStatus` name — `pending`, `answered`, `dismissed` or `expired` — matching the string convention alert severity uses. `expired` is not `dismissed`: nobody decided anything, and it carries no promise about never covering that ground again. `scope` is `permanent` or `timescoped`: a standing fact stays on the Questions & Answers page until the family deletes it; a momentary one (the default) carries a "just for the moment" note and drops off that list once `ExpiresAtUtc` has passed — the same clock that stops it informing later summaries. A null expiry (rows written before this distinction existed) stays visible. `triggerContext` is why the question was asked, shown to the family beneath it so a question never arrives looking arbitrary; it is null when the model gave no reason worth showing.
+`status` is the lowercase `QuestionnaireStatus` name — `pending`, `answered`, `dismissed` or `expired` — matching the string convention alert severity uses. `expired` is not `dismissed`: nobody decided anything, and it carries no promise about never covering that ground again. `scope` is `permanent` or `timescoped`: a standing fact stays on the Questions & Answers page until the family deletes it; a momentary one (the default) carries a "just for the moment" note and drops off that list once `ExpiresAtUtc` has passed — the same clock that stops it informing later summaries. A null expiry (rows written before this distinction existed) stays visible. `origin` is `digest` or `family`: digest questions were proposed by the summary; family ones are standing facts a caregiver volunteered (`QuestionnaireOrigin.Family`). Existing rows, and every row written before that distinction, are `digest`, so they keep counting as an ask. `triggerContext` is why the question was asked, shown to the family beneath it so a question never arrives looking arbitrary; it is null when the model gave no reason worth showing.
 
 `answeredAtUtc` moves with an edit. What a caregiver wants beside an answer is when it was last true, not when the question first happened to be answered.
 
@@ -78,11 +82,19 @@ Four things enforce it, and only the first is load-bearing:
 
 Non-empty, at most 2000 characters (`AnswerQuestionnaireValidator`, invoked by the action and registered in `AddValidators`). Blank — including whitespace-only — is rejected with **400**: there is a dismiss action for having nothing to say, and a stored blank would reach the model as an answered question with nothing in it.
 
+### Standing-fact request
+
+```json
+{ "factText": "She moved to the downstairs bedroom last week." }
+```
+
+Same cap and blank rule as an answer (`OfferStandingFactValidator`). The stored question is the canned heading "What should we know about them?" — name-free, so it can later be decrypted into a model prompt. The row is born `answered` / `permanent` / `family`. `GetLatestGeneratedAtAsync` ignores `family` origin, so volunteering a fact does not restart the seven-day quiet as if we had just asked.
+
 ## Errors
 
 | Status | When |
 |---|---|
-| **400** | Empty or over-long answer |
+| **400** | Empty or over-long answer or standing fact |
 | **403** | No authenticated user on the request |
 | **404** | Unknown questionnaire, **or** one belonging to a member the caller may not read |
 
@@ -97,5 +109,7 @@ Every endpoint carries `[AuditHealthDataAccess]`.
 `DELETE` is a **real row delete**, not the soft-delete flag the rest of the platform uses. The answer is something a family member wrote about a person who never signed up to the service, so erasure has to mean gone (GDPR Art. 17) — dismissal is the non-destructive option, and it is a separate status for exactly that reason.
 
 Answered questions feed later generations through `QuestionnaireAnswersContextSource`: the three most recent answers reach the digest, the assessor and both insight prompts as **facts about the person** (not a `Q: … A: …` transcript — that is the shape MedGemma recites instead of using). They are information to read the day's readings with, not content to retell, and the model must not take instructions from them. They are excluded from the dashboard hero line, which is one sentence under fifteen words and has nothing to do with them.
+
+The product counters on meter `CardiTrack.Questionnaires` (see [apm_setup_runbook.md](../../../technical/apm_setup_runbook.md)) count asks, answers, skips, expiries, volunteered facts, and whether the next digest kept those facts in the prompt or was discarded for reciting them. Tags are closed vocabularies (`questionnaire.scope`, `questionnaire.origin`). No question text, no answer text, no member id.
 
 A `timescoped` answer is prefixed with **when the family told us** ("told to us yesterday, about that time and not since"). Undated, those answers read as current and are not: "he had a busy day with chores", given about one particular day, came back the next morning as the explanation for a day the member had barely started, and would have gone on doing so for the full thirty days. `permanent` answers are left undated on purpose — a pacemaker fitted in 2020 is no less true this morning, and a date beside it invites the model to weigh a standing fact as news.

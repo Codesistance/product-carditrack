@@ -370,8 +370,7 @@ These five screens span onboarding → daily use → emergency response. **Build
 
 **Required Fields:**
 - "Full Name *" — text input
-- "Date of Birth *" — date picker (format: MM/DD/YYYY)
-  - As built, **DOB silently defaults to today** if not changed — not validated (known limitation)
+- "Date of Birth *" — date picker (format: MM/DD/YYYY). Unset until they pick a day (`DateField.Date` is nullable); Continue stays off until a date is chosen, and submit refuses a missing or out-of-range date (`DateOfBirth.Validate`) rather than standing in today.
 - "Sex *" — picker (Male / Female), helper text: "Helps us read heart rate and sleep against the right range."
   - **Deliberate divergence from the Figma M1-04/M1-13 comps** — the field is not in the design file but ships because DOB + sex set the reference range the summaries are read against; do not drop it on a pixel-match pass
 

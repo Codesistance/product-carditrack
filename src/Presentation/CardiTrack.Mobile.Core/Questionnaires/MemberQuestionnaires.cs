@@ -40,4 +40,11 @@ public static class MemberQuestionnaires
             : isAnswered
                 ? "We'll keep this here. You can change or remove it whenever you like."
                 : "We'll keep this here. Answering is optional.";
+
+    /// <summary>
+    /// A standing fact the family volunteered, rather than an answer to a question the service
+    /// asked. The Q&amp;A card titles those "You told us" so they do not read as a quiz.
+    /// </summary>
+    public static bool IsFamilyOffered(string? origin) =>
+        string.Equals(origin, "family", StringComparison.OrdinalIgnoreCase);
 }

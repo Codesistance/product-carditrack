@@ -184,6 +184,63 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
     }
 
     /// <summary>
+    /// The expiry sweep's write, not just its probe: only rows still Pending move, so a
+    /// concurrent answer is left alone, and the return is how many rows actually expired.
+    /// </summary>
+    [Fact]
+    public async Task ExpireLapsedPendingAsync_ExpiresOnlyWaitingQuestionsPastTheirDay()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+
+        var lapsedPending = Questionnaire(Guid.NewGuid(), now.AddDays(-1), askableUntilUtc: now.AddHours(-5));
+        var stillAskable = Questionnaire(Guid.NewGuid(), now.AddHours(-2), askableUntilUtc: now.AddHours(5));
+        var answered = Questionnaire(Guid.NewGuid(), now.AddDays(-9), QuestionnaireStatus.Answered,
+            answer: "Yes.", askableUntilUtc: now.AddDays(-8));
+
+        var repo = await SaveAsync(scope, lapsedPending, stillAskable, answered);
+        var context = scope.ServiceProvider
+            .GetRequiredService<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>();
+
+        var expired = await repo.ExpireLapsedPendingAsync(now, limit: 1_000);
+
+        Assert.True(expired >= 1);
+        var storedLapsed = await context.MemberQuestionnaires.AsNoTracking()
+            .SingleAsync(q => q.Id == lapsedPending.Id);
+        Assert.Equal(QuestionnaireStatus.Expired, storedLapsed.Status);
+        Assert.NotNull(storedLapsed.UpdatedDate);
+        Assert.Equal(QuestionnaireStatus.Pending,
+            (await context.MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == stillAskable.Id)).Status);
+        Assert.Equal(QuestionnaireStatus.Answered,
+            (await context.MemberQuestionnaires.AsNoTracking().SingleAsync(q => q.Id == answered.Id)).Status);
+    }
+
+    [Fact]
+    public async Task ExpireLapsedPendingAsync_TakesTheOldestUpToTheLimit()
+    {
+        using var scope = fixture.CreateScope();
+        var now = DateTime.UtcNow;
+
+        // Uniquely old so this test's rows win OrderBy against leftovers in the shared container.
+        var rows = Enumerable.Range(1, 5)
+            .Select(i => Questionnaire(
+                Guid.NewGuid(), now.AddDays(-i), askableUntilUtc: now.AddYears(-50).AddHours(-i)))
+            .ToArray();
+        var repo = await SaveAsync(scope, rows);
+        var context = scope.ServiceProvider
+            .GetRequiredService<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>();
+
+        var expired = await repo.ExpireLapsedPendingAsync(now, limit: 2);
+        var ours = await context.MemberQuestionnaires.AsNoTracking()
+            .Where(q => rows.Select(r => r.Id).Contains(q.Id))
+            .ToListAsync();
+
+        Assert.Equal(2, expired);
+        Assert.Equal(2, ours.Count(q => q.Status == QuestionnaireStatus.Expired));
+        Assert.Equal(3, ours.Count(q => q.Status == QuestionnaireStatus.Pending));
+    }
+
+    /// <summary>
     /// Measured across every status: declining to answer must not read as an invitation to ask
     /// again tomorrow.
     /// </summary>
@@ -203,6 +260,49 @@ public class MemberQuestionnaireRepositoryTests(TestDatabaseFixture fixture)
         Assert.NotNull(latest);
         Assert.Equal(newest, latest.Value, TimeSpan.FromSeconds(1));
         Assert.Null(await repo.GetLatestGeneratedAtAsync(Guid.NewGuid()));
+    }
+
+    /// <summary>
+    /// A standing fact the family volunteered is not an ask. Counting it here would start the
+    /// seven-day quiet as if we had just nagged them.
+    /// </summary>
+    [Fact]
+    public async Task GetLatestGeneratedAtAsync_IgnoresAStandingFactTheFamilyVolunteered()
+    {
+        using var scope = fixture.CreateScope();
+        var memberId = Guid.NewGuid();
+        var digestAsked = DateTime.UtcNow.AddDays(-3);
+        var volunteered = DateTime.UtcNow.AddHours(-1);
+
+        var familyNote = Questionnaire(
+            memberId, volunteered, QuestionnaireStatus.Answered, answer: "Yes.");
+        familyNote.Origin = QuestionnaireOrigin.Family;
+        familyNote.Scope = QuestionnaireScope.Permanent;
+
+        var repo = await SaveAsync(scope,
+            Questionnaire(memberId, digestAsked, QuestionnaireStatus.Dismissed),
+            familyNote);
+
+        var latest = await repo.GetLatestGeneratedAtAsync(memberId);
+
+        Assert.NotNull(latest);
+        Assert.Equal(digestAsked, latest.Value, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task GetLatestGeneratedAtAsync_IsNullWhenTheFamilyHasOnlyVolunteeredFacts()
+    {
+        using var scope = fixture.CreateScope();
+        var memberId = Guid.NewGuid();
+
+        var familyNote = Questionnaire(
+            memberId, DateTime.UtcNow, QuestionnaireStatus.Answered, answer: "Yes.");
+        familyNote.Origin = QuestionnaireOrigin.Family;
+        familyNote.Scope = QuestionnaireScope.Permanent;
+
+        var repo = await SaveAsync(scope, familyNote);
+
+        Assert.Null(await repo.GetLatestGeneratedAtAsync(memberId));
     }
 
     [Fact]

@@ -675,6 +675,11 @@ public partial class CardiMemberDetailPage : ContentPage
         ApplyTrends(member.Metrics);
         ApplyContacts(member);
 
+        // Standing way in: a caregiver can volunteer a fact before the service has asked
+        // anything. Independent of LoadQuestionnairesAsync, which a cadence skip can return
+        // from without painting when there is nothing cached.
+        QuestionsRow.IsVisible = true;
+
         // Only a primary caregiver may edit, pause or remove — the API enforces this and
         // would answer 404, so showing the controls would just be a trap.
         EditButton.IsVisible = member.IsPrimaryCaregiver;
@@ -850,7 +855,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     /// <summary>
     /// Loads the questions asked about this member: the one still waiting goes on the page, and the
-    /// row through to the rest appears once there is anything behind it.
+    /// Q&amp;A row is the standing way in to volunteer a fact or read earlier answers.
     /// </summary>
     /// <remarks>
     /// Best-effort in the same way as the summary — a question is an extra, and a failed call
@@ -889,12 +894,16 @@ public partial class CardiMemberDetailPage : ContentPage
                 return;
             }
 
-            // The saved page first when no card is up yet — a question the device already holds
-            // is on screen at once — and the live page on top of it. The validity check below
-            // runs on both, which is what stops a saved question about a day that has ended
-            // being asked again.
-            var nothingUp = !PendingQuestionCard.IsVisible && !QuestionsRow.IsVisible;
-            var saved = nothingUp ? await _api.PeekQuestionnairesAsync(memberId) : null;
+            // The saved page first when no pending card is up yet — a question the device already
+            // holds is on screen at once — and the live page on top of it. The Q&A row is a
+            // standing way in (volunteer a fact before anything has been asked), not a signal that
+            // questionnaire data has been applied, so it is not part of this check. Same shape as
+            // Advise peeking while its card is down. The validity check below runs on both the
+            // saved and live pages, which is what stops a saved question about a day that has
+            // ended being asked again.
+            var saved = PendingQuestionCard.IsVisible
+                ? null
+                : await _api.PeekQuestionnairesAsync(memberId);
             if (saved is not null && memberId == _route.Id && !PendingQuestionCard.IsEditing)
                 ApplyQuestionnaires(saved);
 
@@ -918,7 +927,7 @@ public partial class CardiMemberDetailPage : ContentPage
 
     private void ApplyQuestionnaires(QuestionnairesPageResponse result)
     {
-        QuestionsRow.IsVisible = result.HasAny;
+        QuestionsRow.IsVisible = true;
 
         // Checked before it is drawn, not trusted because the API sent it. A card held on
         // screen across midnight, or a page served from the offline cache after a night with no

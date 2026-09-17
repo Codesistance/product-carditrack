@@ -20,7 +20,7 @@ public class DigestRepository : IDigestRepository
         _context = context;
     }
 
-    public async Task AddAsync(DigestEntry entry, CancellationToken ct = default)
+    public async Task<bool> AddAsync(DigestEntry entry, CancellationToken ct = default)
     {
         // DO NOTHING rather than DO UPDATE: two overlapping pipeline executions can generate for
         // the same member at the same instant, and the second has nothing to add — but an ordinary
@@ -41,7 +41,7 @@ public class DigestRepository : IDigestRepository
         // Urgency.ToString() would be wrong here: Nullable<T>.ToString() returns "" (not null)
         // when unset, which would insert an empty string a later read could not parse back as
         // the enum HasConversion<string>() expects. The null-conditional keeps it a real NULL.
-        await _context.Database.ExecuteSqlInterpolatedAsync($"""
+        var inserted = await _context.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "DigestEntries"
                 ("CardiMemberId", "LocalDate", "Audience", "Headline", "Text", "Suggestion", "Urgency", "GeneratedAtUtc", "PromptVersion")
             VALUES ({entry.CardiMemberId}, {entry.LocalDate}, {entry.Audience.ToString()},
@@ -49,6 +49,7 @@ public class DigestRepository : IDigestRepository
                     {entry.PromptVersion})
             ON CONFLICT DO NOTHING
             """, ct);
+        return inserted > 0;
     }
 
     public async Task<DigestEntry?> GetLatestByDateAsync(
