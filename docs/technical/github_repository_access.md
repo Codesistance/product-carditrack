@@ -66,12 +66,15 @@ its quarter-hourly sweep bought nothing that `gh pr merge` does not).
 | Workflow | When it runs |
 |---|---|
 | CI / Deploy Apps → Dev | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
+| Deploy Mobile → Dev | **workflow_dispatch only** (`platform` = android / ios / both); ships only from `main` |
 | Deploy Infrastructure → Dev / Common | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
 | Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
 | Request Copilot review | `pull_request` opened / synchronize / reopened / ready_for_review |
 
-With the flag at `0`, Dev Cloud Run / TestFlight / Play do not start on merge.
-Dispatch **CI / Deploy Apps → Dev** on `main`, or set the flag to `1`.
+With the flag at `0`, Dev Cloud Run does not start on merge; TestFlight / Play never
+do, whatever the flag says. Dispatch **CI / Deploy Apps → Dev** on `main` (or set the
+flag to `1`) for the services, and **Deploy Mobile → Dev** with a platform for the
+stores.
 
 ## Operator steps (console)
 
