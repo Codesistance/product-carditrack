@@ -488,21 +488,35 @@ public class MemberChatService : IMemberChatService
         // no-question guard and before any model: the vocabulary is closed and matched in code,
         // and "yes" alone carries no question for the guard to see. Anything else spends the
         // offer and is routed as itself.
-        var result = await _journal.TryResumeAsync(flattened, userId, cardiMemberId, member, session, utcNow, ct)
-            ?? (MemberChatReplies.CarriesNoQuestion(flattened)
-                ? NotAQuestionResult(member?.Name)
-                : await RouteAndAnswerAsync(userId, flattened, session, cardiMemberId, member, utcNow, ct));
+        // A confirmed journal change opens a unit-of-work transaction that has to close with the
+        // turns: the book and the record of who asked for it land together or not at all. Every
+        // other path opens none, and the commit and rollback are then no-ops — one shape for the
+        // whole turn rather than a second persistence path for the one rung that mutates.
+        MemberChatWorkflowResult result;
+        try
+        {
+            result = await _journal.TryResumeAsync(flattened, userId, cardiMemberId, member, session, utcNow, ct)
+                ?? (MemberChatReplies.CarriesNoQuestion(flattened)
+                    ? NotAQuestionResult(member?.Name)
+                    : await RouteAndAnswerAsync(userId, flattened, session, cardiMemberId, member, utcNow, ct));
 
-        // The turn cap, applied once where every rung's result passes rather than inside each
-        // handler: a journal reply reads a whole stored book back, and a book plus its label can
-        // run past what one bubble is allowed to hold.
-        result = result with { Reply = CapReply(result.Reply) };
+            // The turn cap, applied once where every rung's result passes rather than inside each
+            // handler: a journal reply reads a whole stored book back, and a book plus its label
+            // can run past what one bubble is allowed to hold.
+            result = result with { Reply = CapReply(result.Reply) };
 
-        var (_, assistantTurn) = await PersistTurnsAsync(
-            session, flattened, result, utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
+            var (_, assistantTurn) = await PersistTurnsAsync(
+                session, flattened, result, utcNow, ct);
+            await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
 
-        await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
 
         return new MemberChatMessageResponse
         {

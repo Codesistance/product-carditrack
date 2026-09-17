@@ -76,14 +76,15 @@ public class MemberChatJournalRungTests
 
         // The claim-and-clear statement, against the in-memory session: hands the offer back
         // once, then nothing — the same contract the real one holds against the row.
-        _sessions.TryConsumePendingActionAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
-            .Returns(_ =>
+        _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
             {
-                if (_session?.PendingAction is not { } action)
+                var s = call.Arg<MemberChatSession>();
+                if (s.PendingAction is not { } action)
                     return null;
-                var consumed = new PendingChatAction(action, _session.PendingActionExpiresAtUtc);
-                _session.PendingAction = null;
-                _session.PendingActionExpiresAtUtc = null;
+                var consumed = new PendingChatAction(action, s.PendingActionExpiresAtUtc);
+                s.PendingAction = null;
+                s.PendingActionExpiresAtUtc = null;
                 return consumed;
             });
 
@@ -387,6 +388,68 @@ public class MemberChatJournalRungTests
         await _usages.Received(1).AddAsync(Arg.Is<MemberChatTurnUsage>(u =>
             u.Step == AiCallStep.JournalWrite && u.ProviderSlot == AiProviderSlot.Private));
         await _router.DidNotReceive().RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The book and the turn that asked for it land together: the yes opens a transaction before
+    /// the claim, and the service commits it only after the turns are written and saved.
+    /// </summary>
+    [Fact]
+    public async Task A_yes_runs_the_claim_the_write_and_the_turn_in_one_transaction()
+    {
+        Resolves("rewrite", "day", Reviewed);
+        HasDaybook(Reviewed);
+        _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), true));
+        await Send("rewrite that day's daybook");
+        _unitOfWork.ClearReceivedCalls();
+
+        await Send("yes");
+
+        Received.InOrder(() =>
+        {
+            _unitOfWork.BeginTransactionAsync();
+            _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>());
+            _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+            _unitOfWork.SaveChangesAsync();
+            _unitOfWork.CommitTransactionAsync();
+        });
+    }
+
+    /// <summary>
+    /// A failure after the write rolls the whole turn back rather than leaving a changed book with
+    /// no record of who asked — the offer survives with it, so the same yes can be sent again.
+    /// </summary>
+    [Fact]
+    public async Task A_failure_after_the_write_rolls_the_turn_back()
+    {
+        Resolves("rewrite", "day", Reviewed);
+        HasDaybook(Reviewed);
+        _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), true));
+        await Send("rewrite that day's daybook");
+        _unitOfWork.ClearReceivedCalls();
+        _unitOfWork.SaveChangesAsync().Returns<int>(_ => throw new InvalidOperationException("the save failed"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Send("yes"));
+
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+    }
+
+    /// <summary>A no, or an ordinary message, spends the offer without a transaction: nothing is
+    /// written that a failure could separate from its confirmation.</summary>
+    [Fact]
+    public async Task A_no_opens_no_transaction()
+    {
+        Resolves("discard", "day", Reviewed);
+        HasDaybook(Reviewed);
+        await Send("delete that daybook");
+        _unitOfWork.ClearReceivedCalls();
+
+        await Send("no");
+
+        await _unitOfWork.DidNotReceive().BeginTransactionAsync();
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace CardiTrack.Infrastructure.Repositories;
 
@@ -78,15 +79,22 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
             .ToListAsync(ct);
     }
 
-    public async Task<PendingChatAction?> TryConsumePendingActionAsync(Guid sessionId, CancellationToken ct = default)
+    public async Task<PendingChatAction?> TryConsumePendingActionAsync(
+        MemberChatSession session, CancellationToken ct = default)
     {
-        // Claim and clear in one statement, outside the unit of work's save: the row is the
-        // lock. Two requests racing on the same offer both send this; one gets the row back and
-        // the other gets nothing, which is what makes "an offer is honoured once" true rather
-        // than hoped for. The offer is read through the FOR UPDATE subselect, not through the
-        // updated row: RETURNING on an UPDATE yields the row *after* the update — the nulls just
-        // written — while a FROM-list table's columns keep their pre-update values. Written as a
-        // CTE so the query stays legal if EF wraps it in a subquery.
+        // The offer this caller read is part of the predicate: a claim for "whatever is pending"
+        // would let a yes sent to one offer carry out a newer one that replaced it in between.
+        if (session.PendingAction is not { } expected)
+            return null;
+
+        // Claim and clear in one statement — the row is the lock. Two requests racing on the same
+        // offer both send this; one gets the row back and the other gets nothing, which is what
+        // makes "an offer is honoured once" true rather than hoped for. SKIP LOCKED because the
+        // winning claim may sit inside a transaction that lasts a MedGemma call: the loser is told
+        // now, not after that call. The offer is read through the FOR UPDATE subselect, not through
+        // the updated row: RETURNING on an UPDATE yields the row *after* the update — the nulls
+        // just written — while a FROM-list table's columns keep their pre-update values. Written as
+        // a CTE so the query stays legal if EF wraps it in a subquery.
         var rows = await _context.Database.SqlQuery<PendingActionRow>($"""
             WITH claimed AS (
                 UPDATE "MemberChatSessions" AS s
@@ -94,13 +102,34 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
                 FROM (
                     SELECT "Id", "PendingAction", "PendingActionExpiresAtUtc"
                     FROM "MemberChatSessions"
-                    WHERE "Id" = {sessionId} AND "PendingAction" IS NOT NULL
-                    FOR UPDATE) AS before
+                    WHERE "Id" = {session.Id} AND "PendingAction" = {expected}
+                    FOR UPDATE SKIP LOCKED) AS before
                 WHERE s."Id" = before."Id"
                 RETURNING before."PendingAction" AS "Action", before."PendingActionExpiresAtUtc" AS "ExpiresAtUtc")
             SELECT "Action", "ExpiresAtUtc"
             FROM claimed
             """).ToListAsync(ct);
+
+        // The entity follows the row: cleared, and with cleared *original* values, so the turn's
+        // save sees nothing to write for these columns — unless a handler sets a new offer later
+        // in the same turn, which then differs from the original and is written as it should be.
+        // Done whether or not the claim succeeded: on a miss the row holds a newer offer this
+        // entity never saw, and the one thing the save must not do is overwrite it with nulls.
+        session.PendingAction = null;
+        session.PendingActionExpiresAtUtc = null;
+        var entry = _context.Entry(session);
+        if (entry.State is not (EntityState.Detached or EntityState.Added))
+        {
+            // Both halves, deliberately: the original value so the next change detection has
+            // nothing to compare against, and the modified flag because setting the current value
+            // above already raised it — and a raised flag writes the column whatever the snapshot
+            // says (the integration test for a replaced offer is what caught that).
+            foreach (var column in new[] { entry.Property(x => x.PendingAction), (PropertyEntry)entry.Property(x => x.PendingActionExpiresAtUtc) })
+            {
+                column.OriginalValue = null;
+                column.IsModified = false;
+            }
+        }
 
         var row = rows.SingleOrDefault();
         return row is null ? null : new PendingChatAction(row.Action, row.ExpiresAtUtc);

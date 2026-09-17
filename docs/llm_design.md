@@ -668,8 +668,8 @@ could see readings for and no book to read — and the schedule only ever writes
 - **Delete is a set-based delete of one book** (`IDigestRepository.DeleteBookAsync`): one member, one
   local date, one journal audience. The family series is history and cannot be deleted this way.
 - **Confirmed on the next turn.** A delete or rewrite is offered and held on the chat session for ten
-  minutes; a plain yes takes it off the row in one claim-and-clear statement and carries it out, a no
-  or anything else drops it. Manage access — the primary
+  minutes; a plain yes takes it off the row in one claim-and-clear statement and carries it out inside
+  one transaction with the turn that records it, a no or anything else drops it. Manage access — the primary
   caregiver — is required at the offer and again at the yes. Reading back needs view access only.
 - **Runs in the API**, on the private slot, inline with the chat turn — the one place outside the
   pipeline host that writes a book. A cold MedGemma start makes it a slow turn, which the waiting

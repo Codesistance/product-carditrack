@@ -82,7 +82,7 @@ public sealed class JournalChatActions
           most recent one before today; "last week" is any day of the week before the current
           one; a month's name is any day of the most recent such month that has already ended.
           Omit when the message names no period at all.
-        """ + MedicalPromptBlocks.ChatMessageGuardrail;
+        """ + MedicalPromptBlocks.ChatMessageWithHistoryGuardrail;
 
     private readonly IRewriteAiService _rewriteAi;
     private readonly IUnitOfWork _unitOfWork;
@@ -202,6 +202,15 @@ public sealed class JournalChatActions
     /// holds no live offer or the message is neither a yes nor a no — the caller then routes the
     /// message as itself. Whatever the answer, the offer is spent: an offer is honoured once.
     /// </summary>
+    /// <remarks>
+    /// On a yes, everything from the claim to the end of the turn runs in one database transaction
+    /// that <see cref="MemberChatService.SendMessageAsync"/> commits after the turns are written.
+    /// A failure anywhere — the book write, the turn's encryption, the save — rolls the whole turn
+    /// back: the offer is still there, the book is as it was, and the same yes can be sent again.
+    /// The book and its confirmation cannot be separated. On a no, or on any other message, the
+    /// claim is autocommitted on its own, so a turn that fails afterwards still leaves the offer
+    /// spent — a later yes to something else must never find it.
+    /// </remarks>
     public async Task<MemberChatWorkflowResult?> TryResumeAsync(
         string flattened,
         Guid userId,
@@ -214,13 +223,21 @@ public sealed class JournalChatActions
         if (session.PendingAction is null)
             return null;
 
-        // The database is the lock: one statement takes the offer and clears it, so two requests
-        // racing on the same yes cannot both carry it out, and the clear holds even if this turn
-        // fails before its save. The tracked entity follows, so the turn's own save agrees.
-        var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session.Id, ct);
-        session.PendingAction = null;
-        session.PendingActionExpiresAtUtc = null;
+        var affirmative = JournalChatRequest.IsAffirmative(flattened);
+        if (affirmative)
+        {
+            // Committed, or rolled back, by SendMessageAsync once the turns are written — see the
+            // remarks above. The claim below takes a row lock the transaction holds for the length
+            // of the write; a second yes arriving meanwhile skips the locked row and is routed as
+            // an ordinary message rather than waiting on a MedGemma call it cannot use.
+            await _unitOfWork.BeginTransactionAsync();
+        }
 
+        // The database is the lock, and the claim is for the offer *this* request read: one
+        // statement takes that offer off the row and clears it, so two requests racing on the same
+        // yes cannot both carry it out, and a yes that arrives after a newer offer replaced the one
+        // it was answering gets nothing rather than the newer action.
+        var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
         if (consumed is null)
             return null;
 
@@ -232,7 +249,7 @@ public sealed class JournalChatActions
         if (JournalChatRequest.IsNegative(flattened))
             return Result(JournalChatReplies.LeftAsItIs(), []);
 
-        if (!JournalChatRequest.IsAffirmative(flattened))
+        if (!affirmative)
             return null;
 
         var (localToday, _) = await LocalCalendarAsync(cardiMemberId, member, utcNow);

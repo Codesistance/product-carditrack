@@ -38,12 +38,14 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
         DateTime activeSinceUtc, int limit, CancellationToken ct = default);
 
     /// <summary>
-    /// Takes the session's pending action, if it has one, clearing it in the same statement. Of
-    /// two requests that both saw the offer, exactly one gets it back; the other gets null and
-    /// treats its message as an ordinary one. Autocommitted, so the clear holds even when the
-    /// rest of the turn fails before its save.
+    /// Takes the pending action <paramref name="session"/> was loaded with off the row, clearing it
+    /// in the same statement, and returns it — or null when the row no longer holds that offer:
+    /// another request took it first, a newer offer has replaced it, or the row is locked by a
+    /// claim in flight. Runs in the ambient transaction when one is open and autocommits
+    /// otherwise. The tracked entity is brought into line with the row afterwards, so the turn's
+    /// own save neither rewrites the cleared columns nor overwrites an offer set later.
     /// </summary>
-    Task<PendingChatAction?> TryConsumePendingActionAsync(Guid sessionId, CancellationToken ct = default);
+    Task<PendingChatAction?> TryConsumePendingActionAsync(MemberChatSession session, CancellationToken ct = default);
 }
 
 /// <summary>What <see cref="IMemberChatSessionRepository.TryConsumePendingActionAsync"/> took off
