@@ -84,7 +84,7 @@ public sealed class JournalChatActions
           most recent one before today; "last week" is any day of the week before the current
           one; a month's name is any day of the most recent such month that has already ended.
           Omit when the message names no period at all.
-        """ + MedicalPromptBlocks.ChatMessageWithHistoryGuardrail;
+        """ + MedicalPromptBlocks.ChatMessageGuardrail;
 
     private readonly IRewriteAiService _rewriteAi;
     private readonly IUnitOfWork _unitOfWork;
@@ -276,18 +276,32 @@ public sealed class JournalChatActions
             ? await _books.ComposeBookAsync(cardiMemberId, pending.Audience, pending.PeriodEnd!.Value, utcNow, ct)
             : null;
 
+        // The generation the yes paid for, whatever happens to the claim below: a book composed
+        // and then not stored is still a model call this turn made, and the ledger says so.
+        var generation = composition?.Usage is { } paid
+            ? new List<AiCallRecord> { new(AiCallStep.JournalWrite, AiProviderSlot.Private, paid) }
+            : [];
+
         await _unitOfWork.BeginTransactionAsync();
         var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
         if (consumed is null)
         {
             // Another request took this offer, or a newer one replaced it, while the book was
-            // being composed. Nothing to carry out: the transaction goes before the router runs,
-            // and the message is routed as itself.
+            // being composed. Nothing to carry out, and nothing to route either — the message was
+            // a yes to something that is no longer on offer, so it is told that, with the
+            // generation it spent billed to it. The transaction goes first.
             await _unitOfWork.RollbackTransactionAsync();
-            return null;
+            return Result(JournalChatReplies.OfferGone(), generation);
         }
 
-        return await ExecuteAsync(pending, composition, cardiMemberId, firstName, localToday, ct);
+        // Checked again here, inside the transaction and after a compose that can take minutes:
+        // the offer and the yes are two requests, and the caregiver may have stopped being the
+        // primary one between them. The early check spares an unauthorised generation; this one
+        // spares an unauthorised change.
+        if (!await CanManageAsync(userId, cardiMemberId, ct))
+            return Result(JournalChatReplies.OnlyPrimaryCaregiver(firstName), generation);
+
+        return await ExecuteAsync(pending, composition, generation, cardiMemberId, firstName, localToday, ct);
     }
 
     /// <summary>
@@ -298,6 +312,7 @@ public sealed class JournalChatActions
     private async Task<MemberChatWorkflowResult> ExecuteAsync(
         JournalChatRequest request,
         JournalRewriteResult? composition,
+        IReadOnlyList<AiCallRecord> generation,
         Guid cardiMemberId,
         string? firstName,
         DateOnly localToday,
@@ -319,9 +334,7 @@ public sealed class JournalChatActions
         }
 
         var result = composition ?? throw new InvalidOperationException("A rewrite reaches execution with its composition.");
-        var calls = result.Usage is { } usage
-            ? new List<AiCallRecord> { new(AiCallStep.JournalWrite, AiProviderSlot.Private, usage) }
-            : [];
+        var calls = generation;
 
         if (result.Outcome == JournalRewriteOutcome.Written)
         {
@@ -402,8 +415,12 @@ public sealed class JournalChatActions
               {questionsOnlyHistory}
               """;
 
+        // The history is framed as untrusted text whenever it is present, the way the message
+        // always is: an earlier message with instruction-like words must not resolve the ask.
+        var guardHistory = questionsOnlyHistory is null ? string.Empty : MedicalPromptBlocks.ChatHistoryGuardrail;
+
         return $"""
-            {ResolveInstructions}
+            {ResolveInstructions}{guardHistory}
 
             Today is {localToday.ToString("dddd yyyy-MM-dd", CultureInfo.InvariantCulture)}. The journal's
             weeks start on {weekStartsOn}.

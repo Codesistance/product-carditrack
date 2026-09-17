@@ -425,29 +425,57 @@ public class MemberChatJournalRungTests
 
     /// <summary>
     /// A yes that loses the claim — another request took the offer while the book was composing —
-    /// carries nothing out, closes the transaction it opened before anything else runs, and is
-    /// routed as an ordinary message.
+    /// carries nothing out, closes the transaction it opened, tells the caregiver the offer is
+    /// gone, and still bills the generation it spent: the ledger records every model call a turn
+    /// made, including one whose text was discarded.
     /// </summary>
     [Fact]
-    public async Task A_yes_that_loses_the_claim_rolls_back_and_is_routed_as_itself()
+    public async Task A_yes_that_loses_the_claim_rolls_back_is_told_and_is_billed()
     {
         Resolves("rewrite", "day", Reviewed);
         HasDaybook(Reviewed);
         _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
-            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), false));
+            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage { ModelName = "medgemma" }, false));
         await Send("rewrite that day's daybook");
         _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>())
             .Returns((PendingChatAction?)null);
         _router.ClearReceivedCalls();
+        _usages.ClearReceivedCalls();
 
-        await Send("yes");
+        var result = await Send("yes");
 
+        Assert.Contains("already been answered or replaced", result.Reply, StringComparison.Ordinal);
         Received.InOrder(() =>
         {
             _unitOfWork.BeginTransactionAsync();
             _unitOfWork.RollbackTransactionAsync();
-            _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         });
+        await _router.DidNotReceive().RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+        await _digests.DidNotReceive().ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+        await _usages.Received(1).AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.JournalWrite));
+    }
+
+    /// <summary>
+    /// Demoted while the book was composing: the early check spared nothing here, and the second
+    /// check inside the transaction is what keeps the change from landing.
+    /// </summary>
+    [Fact]
+    public async Task Access_lost_during_the_compose_stops_the_change()
+    {
+        Resolves("rewrite", "day", Reviewed);
+        HasDaybook(Reviewed);
+        _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                // The demotion lands while the model is composing.
+                ViewOnlyCaregiver();
+                return new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), false);
+            });
+        await Send("rewrite that day's daybook");
+
+        var result = await Send("yes");
+
+        Assert.Contains("primary caregiver", result.Reply, StringComparison.Ordinal);
         await _digests.DidNotReceive().ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 

@@ -159,6 +159,12 @@ public static class JournalChatReplies
 
     public static string LeftAsItIs() => "Okay — I've left the journal as it is.";
 
+    /// <summary>A yes to an offer that is no longer there: already carried out by another request,
+    /// or replaced by a newer one. Named both ways because the chat cannot tell which from a missed
+    /// claim, and guessing wrong would tell a caregiver a book was rewritten when it was not.</summary>
+    public static string OfferGone() =>
+        "That offer has already been answered or replaced, so I haven't changed anything. Ask again if you still want it.";
+
     public static string Discarded(JournalChatRequest request, DateOnly today) =>
         $"Done — the {BookName(request.Audience)} for {PeriodLabel(request.PeriodEnd!.Value, request.Audience, today)} has been deleted.";
 

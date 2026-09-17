@@ -117,6 +117,38 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The race the statement exists for, with both transactions open at once: the first claim
+    /// holds the row inside its still-uncommitted transaction, and the second — instead of waiting
+    /// on that commit — skips the locked row and gets nothing. Only after the first commits does
+    /// the row read as cleared.
+    /// </summary>
+    [Fact]
+    public async Task AClaimSkipsARowAnotherOpenTransactionHolds()
+    {
+        var id = await SeedSessionAsync("Rewrite|Daybook|2026-09-10", DateTime.UtcNow.AddMinutes(10));
+
+        using var first = _services.CreateScope();
+        using var second = _services.CreateScope();
+        var (repoA, trackedA, contextA) = await LoadAsync(first, id);
+        var (repoB, trackedB, _) = await LoadAsync(second, id);
+
+        await using var winning = await contextA.Database.BeginTransactionAsync();
+        var claimedA = await repoA.TryConsumePendingActionAsync(trackedA);
+        Assert.NotNull(claimedA);
+
+        // While A's transaction is still open, B must return at once with nothing — not block.
+        var loser = repoB.TryConsumePendingActionAsync(trackedB);
+        var finished = await Task.WhenAny(loser, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Same(loser, finished);
+        Assert.Null(await loser);
+
+        await winning.CommitAsync();
+
+        var stored = await ReadBackAsync(id);
+        Assert.Null(stored.PendingAction);
+    }
+
+    /// <summary>
     /// A yes answers the offer it was reading. When a newer offer has replaced it in between, the
     /// claim misses, the newer offer stays on the row, and this request's later save must not
     /// overwrite it with the nulls it holds in memory.

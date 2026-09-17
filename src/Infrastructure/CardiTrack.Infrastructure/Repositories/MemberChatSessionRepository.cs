@@ -94,8 +94,12 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
         // Claim and clear in one statement — the row is the lock. Two requests racing on the same
         // offer both send this; one gets the row back and the other gets nothing, which is what
         // makes "an offer is honoured once" true rather than hoped for. SKIP LOCKED because the
-        // winning claim may sit inside a transaction that lasts a MedGemma call: the loser is told
-        // now, not after that call. The offer is read through the FOR UPDATE subselect, not through
+        // winning claim sits inside the confirming turn's short transaction (the claim, the store,
+        // the turns, the save): the loser is told now rather than waiting on that commit, and told
+        // "nothing" rather than reading a row the winner is about to clear. No model call ever
+        // runs inside that transaction — the book is composed before it opens — so the wait
+        // avoided is short; it is the answer, not the time, that matters. The offer is read
+        // through the FOR UPDATE subselect, not through
         // the updated row: RETURNING on an UPDATE yields the row *after* the update — the nulls
         // just written — while a FROM-list table's columns keep their pre-update values. Written as
         // a CTE so the query stays legal if EF wraps it in a subquery.
