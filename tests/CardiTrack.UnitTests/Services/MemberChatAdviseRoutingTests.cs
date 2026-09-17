@@ -106,6 +106,7 @@ public class MemberChatAdviseRoutingTests
             Substitute.For<IAlertChangePlanner>(), Substitute.For<IAlertPreferenceService>(),
             Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
+            PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
             NullLogger<MemberChatService>.Instance);
 
     [Fact]

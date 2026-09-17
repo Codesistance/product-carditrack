@@ -36,7 +36,43 @@ public interface IMemberChatSessionRepository : IRepository<MemberChatSession>
     /// </summary>
     Task<IReadOnlyList<MemberChatSession>> ListUnthemedCompletedAsync(
         DateTime activeSinceUtc, int limit, CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes the pending action <paramref name="session"/> was loaded with off the row, clearing it
+    /// in the same statement, and returns it — or null when the row no longer holds that offer:
+    /// another request took it first, or a newer offer has replaced it. Runs in the ambient
+    /// transaction when one is open and autocommits otherwise. The tracked entity is brought into
+    /// line with the row afterwards, so the turn's own save neither rewrites the cleared columns
+    /// nor overwrites an offer set later.
+    /// </summary>
+    /// <param name="session">The session as this turn loaded it — the offer it read is the predicate.</param>
+    /// <param name="confirming">
+    /// True for a yes: a row another request holds is skipped, and null means "someone else is
+    /// carrying this out". False for a no or any other message that merely spends the offer: the
+    /// claim waits for a competing turn's short save to finish, because skipping there would leave
+    /// the offer standing for a later yes the intervening message was meant to cancel.
+    /// </param>
+    /// <param name="ct">Cancels the claim.</param>
+    Task<PendingChatAction?> TryConsumePendingActionAsync(
+        MemberChatSession session, bool confirming, CancellationToken ct = default);
+
+    /// <summary>
+    /// Puts an offer on the session — if the row still holds the offer <paramref name="session"/>
+    /// was loaded with (usually none). Two turns that both loaded a clear session and both want to
+    /// offer cannot both succeed: the second is told so and leaves the first offer standing, so the
+    /// row always holds the offer the caregiver was last shown. Runs in the ambient transaction
+    /// when one is open — the chat opens the turn's transaction first, so the offer lands with the
+    /// reply that shows it or is rolled back with it — and the tracked entity is brought into line
+    /// so the turn's save neither repeats the write nor undoes a competitor's. A session not yet
+    /// inserted is simply set; nothing else can hold its row.
+    /// </summary>
+    Task<bool> TryOfferPendingActionAsync(
+        MemberChatSession session, string action, DateTime expiresAtUtc, CancellationToken ct = default);
 }
+
+/// <summary>What <see cref="IMemberChatSessionRepository.TryConsumePendingActionAsync"/> took off
+/// the session: the stored line and when it stopped being honoured.</summary>
+public sealed record PendingChatAction(string Action, DateTime? ExpiresAtUtc);
 
 /// <summary>One row of <see cref="IMemberChatSessionRepository.ListCompletedForMemberAsync"/>.</summary>
 public sealed record MemberChatSessionListing

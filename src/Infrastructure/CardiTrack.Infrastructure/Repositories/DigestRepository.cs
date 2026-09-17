@@ -120,6 +120,56 @@ public class DigestRepository : IDigestRepository
             .ToListAsync(ct);
     }
 
+    /// <inheritdoc />
+    public async Task<int> DeleteBookAsync(
+        Guid cardiMemberId, DateOnly localDate, DigestAudience audience, CancellationToken ct = default)
+    {
+        if (audience is not (DigestAudience.Daybook or DigestAudience.Weekbook or DigestAudience.Monthbook))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(audience), audience, "Only a CardiJournal book can be deleted; the family series is history.");
+        }
+
+        // A set-based delete rather than load-then-remove: the entity is composite-keyed on a
+        // partitioned table and nothing here needs it tracked. The partition key is in the
+        // predicate, so PostgreSQL prunes to one month's partition.
+        return await _context.DigestEntries
+            .Where(d =>
+                d.CardiMemberId == cardiMemberId
+                && d.LocalDate == localDate
+                && d.Audience == audience)
+            .ExecuteDeleteAsync(ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<(int Removed, bool Inserted)> ReplaceBookAsync(DigestEntry entry, CancellationToken ct = default)
+    {
+        // One transaction, so a failure between the delete and the insert — a transient database
+        // error, a cancelled request — rolls the delete back and the caregiver keeps the book they
+        // had. Joins the unit of work's transaction when one is already open rather than nesting.
+        var owns = _context.Database.CurrentTransaction is null;
+        var transaction = owns ? await _context.Database.BeginTransactionAsync(ct) : null;
+        try
+        {
+            var removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, ct);
+            var inserted = await AddAsync(entry, ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            return (removed, inserted);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
+    }
+
     /// <summary>
     /// Escapes LIKE's wildcards in a caregiver's own search text, so "100%" searches for the
     /// string "100%" rather than for "100" followed by anything.

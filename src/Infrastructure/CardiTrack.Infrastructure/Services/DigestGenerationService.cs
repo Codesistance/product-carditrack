@@ -768,142 +768,11 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (existing is not null)
             return false;
 
-        var days = (await _unitOfWork.ActivityLogs
-                .GetByCardiMemberAndDateRangeAsync(memberId, monthStart, monthEnd))
-            .Where(l => l.Date >= monthStart && l.Date <= monthEnd)
-            .OrderBy(l => l.Date)
-            .ToList();
-
-        if (days.Count < MonthbookMinimumDaysWithData)
-        {
-            _logger.LogInformation(
-                "No Monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: only "
-                + "{DaysWithData} days carried readings, below the {Minimum}-day minimum.",
-                memberId, monthEnd, days.Count, MonthbookMinimumDaysWithData);
+        var composed = await ComposeMonthbookAsync(member, timeZone, monthStart, monthEnd, utcNow, ct);
+        if (composed.Entry is null)
             return false;
-        }
 
-        var baseline = await _unitOfWork.PatternBaselines
-            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
-
-        var monthStartLocal = monthStart.ToDateTime(TimeOnly.MinValue);
-        var monthEndLocal = monthEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var monthStartUtc = new DateTimeOffset(monthStartLocal, timeZone.GetUtcOffset(monthStartLocal)).UtcDateTime;
-        var monthEndUtc = new DateTimeOffset(monthEndLocal, timeZone.GetUtcOffset(monthEndLocal)).UtcDateTime;
-
-        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
-            memberId, monthStartUtc, monthEndUtc, ct);
-
-        var monthAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
-            .Where(a =>
-            {
-                var about = AlertDetailComposer.AboutDate(
-                    AlertDetailComposer.ReadRule(a.MetricValues),
-                    a.MetricValues,
-                    DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)));
-                return about >= monthStart && about <= monthEnd;
-            })
-            .ToList();
-
-        var memberContext = await _memberContext.ComposeAsync(
-            new MemberContextRequest(member, memberId, monthEnd, utcNow, PromptPurpose.Monthbook), ct);
-
-        var prompt = $"""
-            {MonthbookPrompt.Instructions}
-
-            {memberContext}
-            {MonthbookPrompt.CoverageLine(days, monthStart, monthEnd)}
-            {MonthbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(monthEnd))}
-            {MonthbookPrompt.MonitoringSection(monthAlerts, assessments)}
-            """;
-
-        var aiResponse = await _medicalAi.GenerateStructuredAsync<MonthbookAiResponse>(prompt, ct);
-        var text = aiResponse.Summary.Trim();
-
-        if (text.Length == 0 || MonthbookPrompt.ReadsLikeTheInstructions(text))
-        {
-            _logger.LogWarning(
-                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "the model returned empty text or restated its own instructions.",
-                memberId, monthEnd);
-            return false;
-        }
-
-        if (MonthbookPrompt.NamesACondition(text) is { } condition)
-        {
-            _logger.LogWarning(
-                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "it names a condition or a treatment ({Marker}).",
-                memberId, monthEnd, condition);
-            return false;
-        }
-
-        if (JournalRegisterGuards.SentenceCount(text) < JournalRegisterGuards.MinimumSentences)
-        {
-            _logger.LogWarning(
-                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "its sentence count ({Sentences}) is below the minimum for an account of a month.",
-                memberId, monthEnd, JournalRegisterGuards.SentenceCount(text));
-            return false;
-        }
-
-        // A bare term is explained in code rather than costing the month — see
-        // JournalRegisterGuards.Gloss for why the discard did more harm than the term.
-        var (glossedText, glossed) = MonthbookPrompt.Gloss(text);
-        if (glossed.Count > 0)
-        {
-            _logger.LogInformation(
-                "Glossed {Terms} in the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}.",
-                string.Join(", ", glossed), memberId, monthEnd);
-            text = glossedText;
-        }
-
-        if (MonthbookPrompt.UnglossedTerm(text) is { } term)
-        {
-            _logger.LogWarning(
-                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "it uses '{Term}' without explaining it where it is first used.",
-                memberId, monthEnd, term);
-            return false;
-        }
-
-        var name = NamePlaceholder.FirstName(member.Name);
-        if (name is null && NamePlaceholder.IsPresentIn(text))
-        {
-            _logger.LogWarning(
-                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "it names the member through the placeholder, but no name is on file to resolve it to.",
-                memberId, monthEnd);
-            return false;
-        }
-
-        // The cap is checked on the text as it will be stored — after the gloss and the name,
-        // the two steps that lengthen a reply the model had finished — and refused here rather
-        // than by the database on the insert.
-        var storedText = NamePlaceholder.Resolve(text, name)!;
-        if (storedText.Length > DigestEntry.MaxTextLength)
-        {
-            _logger.LogWarning(
-                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
-                + "{Length} characters is over the {Max} the table holds.",
-                memberId, monthEnd, storedText.Length, DigestEntry.MaxTextLength);
-            return false;
-        }
-
-        await _unitOfWork.Digests.AddAsync(new DigestEntry
-        {
-            CardiMemberId = memberId,
-            LocalDate = monthEnd,
-            Audience = DigestAudience.Monthbook,
-            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, monthEnd), name),
-            Text = storedText,
-            Suggestion = NamePlaceholder.Resolve(
-                CleanSuggestion(aiResponse.Suggestion, memberId, monthEnd), name),
-            Urgency = ParseUrgency(aiResponse.Urgency, memberId, monthEnd),
-            GeneratedAtUtc = utcNow,
-            PromptVersion = CurrentPromptVersion,
-        }, ct);
-
+        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
         return true;
     }
 
@@ -990,198 +859,98 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (existing is not null)
             return false;
 
-        var days = (await _unitOfWork.ActivityLogs
-                .GetByCardiMemberAndDateRangeAsync(memberId, weekStart, weekEnd))
-            .Where(l => l.Date >= weekStart && l.Date <= weekEnd)
-            .OrderBy(l => l.Date)
-            .ToList();
-
-        if (days.Count < WeekbookMinimumDaysWithData)
-        {
-            _logger.LogInformation(
-                "No Weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: only "
-                + "{DaysWithData} of 7 days carried readings, below the {Minimum}-day minimum.",
-                memberId, weekEnd, days.Count, WeekbookMinimumDaysWithData);
+        var composed = await ComposeWeekbookAsync(member, timeZone, weekStart, weekEnd, utcNow, ct);
+        if (composed.Entry is null)
             return false;
-        }
 
-        var baseline = await _unitOfWork.PatternBaselines
-            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
-
-        var weekStartLocal = weekStart.ToDateTime(TimeOnly.MinValue);
-        var weekEndLocal = weekEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
-        var weekStartUtc = new DateTimeOffset(weekStartLocal, timeZone.GetUtcOffset(weekStartLocal)).UtcDateTime;
-        var weekEndUtc = new DateTimeOffset(weekEndLocal, timeZone.GetUtcOffset(weekEndLocal)).UtcDateTime;
-
-        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
-            memberId, weekStartUtc, weekEndUtc, ct);
-
-        // Alerts about any day of the week, by the same attribution the alerts list groups by.
-        var weekAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
-            .Where(a =>
-            {
-                var about = AlertDetailComposer.AboutDate(
-                    AlertDetailComposer.ReadRule(a.MetricValues),
-                    a.MetricValues,
-                    DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)));
-                return about >= weekStart && about <= weekEnd;
-            })
-            .ToList();
-
-        var memberContext = await _memberContext.ComposeAsync(
-            new MemberContextRequest(member, memberId, weekEnd, utcNow, PromptPurpose.Weekbook), ct);
-
-        var prompt = $"""
-            {WeekbookPrompt.Instructions}
-
-            {memberContext}
-            {WeekbookPrompt.CoverageLine(days, weekStart, weekEnd)}
-            {WeekbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(weekEnd))}
-            {WeekbookPrompt.MonitoringSection(weekAlerts, assessments)}
-            """;
-
-        var aiResponse = await _medicalAi.GenerateStructuredAsync<WeekbookAiResponse>(prompt, ct);
-        var text = aiResponse.Summary.Trim();
-
-        // Nothing rather than something wrong, and with the same weight behind it as the Daybook:
-        // a Weekbook is written once, so a bad one is not replaced next pass — it is what that
-        // week says until the member's data is regenerated by hand.
-        if (text.Length == 0 || WeekbookPrompt.ReadsLikeTheInstructions(text))
-        {
-            _logger.LogWarning(
-                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "the model returned empty text or restated its own instructions.",
-                memberId, weekEnd);
-            return false;
-        }
-
-        if (WeekbookPrompt.NamesACondition(text) is { } condition)
-        {
-            _logger.LogWarning(
-                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "it names a condition or a treatment ({Marker}).",
-                memberId, weekEnd, condition);
-            return false;
-        }
-
-        if (JournalRegisterGuards.SentenceCount(text) < JournalRegisterGuards.MinimumSentences)
-        {
-            _logger.LogWarning(
-                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "its sentence count ({Sentences}) is below the minimum for an account of a week.",
-                memberId, weekEnd, JournalRegisterGuards.SentenceCount(text));
-            return false;
-        }
-
-        // A bare term is explained in code rather than costing the week — see
-        // JournalRegisterGuards.Gloss for why the discard did more harm than the term.
-        var (glossedText, glossed) = WeekbookPrompt.Gloss(text);
-        if (glossed.Count > 0)
-        {
-            _logger.LogInformation(
-                "Glossed {Terms} in the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}.",
-                string.Join(", ", glossed), memberId, weekEnd);
-            text = glossedText;
-        }
-
-        if (WeekbookPrompt.UnglossedTerm(text) is { } term)
-        {
-            _logger.LogWarning(
-                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "it uses '{Term}' without explaining it where it is first used.",
-                memberId, weekEnd, term);
-            return false;
-        }
-
-        var name = NamePlaceholder.FirstName(member.Name);
-        if (name is null && NamePlaceholder.IsPresentIn(text))
-        {
-            _logger.LogWarning(
-                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "it names the member through the placeholder, but no name is on file to resolve it to.",
-                memberId, weekEnd);
-            return false;
-        }
-
-        // The cap is checked on the text as it will be stored — after the gloss and the name,
-        // the two steps that lengthen a reply the model had finished — and refused here rather
-        // than by the database on the insert.
-        var storedText = NamePlaceholder.Resolve(text, name)!;
-        if (storedText.Length > DigestEntry.MaxTextLength)
-        {
-            _logger.LogWarning(
-                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
-                + "{Length} characters is over the {Max} the table holds.",
-                memberId, weekEnd, storedText.Length, DigestEntry.MaxTextLength);
-            return false;
-        }
-
-        await _unitOfWork.Digests.AddAsync(new DigestEntry
-        {
-            CardiMemberId = memberId,
-            LocalDate = weekEnd,
-            Audience = DigestAudience.Weekbook,
-            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, weekEnd), name),
-            Text = storedText,
-            Suggestion = NamePlaceholder.Resolve(
-                CleanSuggestion(aiResponse.Suggestion, memberId, weekEnd), name),
-            Urgency = ParseUrgency(aiResponse.Urgency, memberId, weekEnd),
-            GeneratedAtUtc = utcNow,
-            PromptVersion = CurrentPromptVersion,
-        }, ct);
-
+        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
         return true;
     }
 
-    /// <summary>
-    /// One member's review of yesterday, or false when it is not due, not possible, or the reply
-    /// did not survive its guards.
-    /// </summary>
+
+    /// <inheritdoc />
     /// <remarks>
-    /// <para>
-    /// Written once per day, never recomputed — the opposite of the family summary above, and for
-    /// the reason that separates them: that one describes a day still happening and is rewritten as
-    /// it does, this one describes a day that cannot change any more. So the existence of a review
-    /// for the date is the whole due-check, and it is what keeps a pass every half hour from
-    /// costing a member more than one inference a day.
-    /// </para>
-    /// <para>
-    /// A member whose monitoring is paused now gets no review of yesterday, even if yesterday was
-    /// monitored. That is the same stance the summary takes and the conservative one of the two:
-    /// pausing is the wearer withdrawing from being watched, and reaching back a day to write about
-    /// them anyway is the reading of that they would least expect.
-    /// </para>
+    /// Compose and guard, nothing more: the caller stores the result through
+    /// <see cref="IDigestRepository.ReplaceBookAsync"/> in a transaction of its own choosing, which
+    /// is what keeps a MedGemma call from ever running inside one. A refused reply therefore
+    /// changes nothing here or anywhere — the caregiver keeps the book they had — and a period
+    /// whose readings have since been dropped simply reports that.
     /// </remarks>
-    private async Task<bool> GenerateDaybookForMemberAsync(
-        Guid memberId, DateTime utcNow, CancellationToken ct)
+    public async Task<JournalRewriteResult> ComposeBookAsync(
+        Guid cardiMemberId,
+        DigestAudience audience,
+        DateOnly periodEnd,
+        DateTime utcNow,
+        CancellationToken ct = default)
     {
-        var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
+        if (audience is not (DigestAudience.Daybook or DigestAudience.Weekbook or DigestAudience.Monthbook))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(audience), audience, "Only a CardiJournal book can be rewritten.");
+        }
+
+        // The same members the due pass writes nothing for, for the same reasons — including a
+        // paused member's past: pausing is withdrawing from being watched, and a caregiver asking
+        // does not change what the wearer withdrew from.
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
-            return false;
+            return new JournalRewriteResult(JournalRewriteOutcome.MemberUnavailable, null, null, false);
 
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
-        var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
+        if (periodEnd >= localToday)
+            return new JournalRewriteResult(JournalRewriteOutcome.PeriodNotFinished, null, null, false);
 
-        // The caregiver's chosen hour for this member, or 02:00. Read off the member already
-        // loaded above, so honouring the setting costs no extra query on a pass that runs every
-        // half hour. A time chosen after this pass has already written today's entry does not
-        // rewrite it — the existence check below is still the whole due-contract.
-        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.DaybookLocalTime))
-            return false;
+        var composed = audience switch
+        {
+            DigestAudience.Daybook => await ComposeDaybookAsync(member, timeZone, periodEnd, utcNow, ct),
+            DigestAudience.Weekbook => await ComposeWeekbookAsync(
+                member, timeZone, periodEnd.AddDays(-6), periodEnd, utcNow, ct),
+            _ => await ComposeMonthbookAsync(
+                member, timeZone, new DateOnly(periodEnd.Year, periodEnd.Month, 1), periodEnd, utcNow, ct),
+        };
 
-        var reviewedDate = DateOnly.FromDateTime(localNow).AddDays(-1);
+        if (composed.Entry is null)
+        {
+            return new JournalRewriteResult(
+                composed.Outcome, null, composed.Usage, false, composed.DaysWithData, composed.DaysNeeded);
+        }
 
-        // The cheapest gate first, and the one that runs on nearly every pass: a member reviewed
-        // at 02:00 is asked about again 45 times before the day rolls over, and each of those has
-        // to cost one indexed read and nothing else. It is a fast path, not the contract — two
-        // overlapping executions can both pass this probe before either writes. The partial
-        // unique index (one daybook entry per member per day, EnforceOneDaybookPerDay) is what
-        // holds the written-once promise; the second writer's insert lands on ON CONFLICT DO
-        // NOTHING and the run moves on.
-        var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
-            memberId, reviewedDate, DigestAudience.Daybook, ct);
-        if (existing is not null)
-            return false;
+        _logger.LogInformation(
+            "Composed the {Audience} for CardiMember {CardiMemberId} dated {PeriodEnd} at a caregiver's request.",
+            audience, cardiMemberId, periodEnd);
+
+        return new JournalRewriteResult(JournalRewriteOutcome.Written, composed.Entry, composed.Usage, false);
+    }
+
+    /// <summary>
+    /// What composing one book produced: the entry to store, or the reason there is none, plus the
+    /// model call it cost so a caller acting for a chat turn can bill it.
+    /// </summary>
+    private sealed record JournalComposition(
+        JournalRewriteOutcome Outcome, DigestEntry? Entry, AiUsage? Usage, int DaysWithData = 0, int DaysNeeded = 0)
+    {
+        public static JournalComposition NoReadings(int daysWithData, int daysNeeded) =>
+            new(JournalRewriteOutcome.NoReadings, null, null, daysWithData, daysNeeded);
+
+        public static JournalComposition Discarded(AiUsage usage) =>
+            new(JournalRewriteOutcome.Discarded, null, usage);
+
+        public static JournalComposition Written(DigestEntry entry, AiUsage usage) =>
+            new(JournalRewriteOutcome.Written, entry, usage);
+    }
+
+    /// <summary>
+    /// The Daybook for one finished day — read, prompted, generated and guarded, but not stored.
+    /// Shared by the due pass and a caregiver's rewrite, so the two cannot drift: a rewrite is the
+    /// same account the schedule would have written, under the same refusals.
+    /// </summary>
+    /// <returns>The entry to store, or why there is none — a day without readings, or a reply the
+    /// guards refused.</returns>
+    private async Task<JournalComposition> ComposeDaybookAsync(
+        CardiMember member, TimeZoneInfo timeZone, DateOnly reviewedDate, DateTime utcNow, CancellationToken ct)
+    {
+        var memberId = member.Id;
 
         var log = (await _unitOfWork.ActivityLogs
                 .GetByCardiMemberAndDateRangeAsync(memberId, reviewedDate, reviewedDate))
@@ -1191,7 +960,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // nothing to review. The apps show their own "no review" copy, which says that honestly
         // where a generated account of an empty day would have to invent the day.
         if (log is null)
-            return false;
+            return JournalComposition.NoReadings(0, 1);
 
         // Same 30-day baseline the alert engine and the summary judge by, so all three agree about
         // what this member's usual is. Absent while they are still being learned, which renders the
@@ -1258,7 +1027,8 @@ public partial class DigestGenerationService : IDigestGenerationService
             {DaybookPrompt.ConditionsSection(conditions, timeZone)}
             """;
 
-        var aiResponse = await _medicalAi.GenerateStructuredAsync<DaybookAiResponse>(prompt, ct);
+        var generated = await _medicalAi.GenerateStructuredWithUsageAsync<DaybookAiResponse>(prompt, ct);
+        var aiResponse = generated.Result;
         var text = aiResponse.Summary.Trim();
 
         // Nothing is written rather than something wrong — the same stance as the family summary,
@@ -1271,7 +1041,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: the model "
                 + "returned empty text or restated its own instructions.",
                 memberId, reviewedDate);
-            return false;
+            return JournalComposition.Discarded(generated.Usage);
         }
 
         // The regulatory guard, and the reason the register can allow precise words at all: naming
@@ -1284,7 +1054,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it names a "
                 + "condition or a treatment ({Marker}).",
                 memberId, reviewedDate, condition);
-            return false;
+            return JournalComposition.Discarded(generated.Usage);
         }
 
         // The readability half of the same allowance. A precise term earns its place by explaining
@@ -1306,7 +1076,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it uses "
                 + "'{Term}' without explaining it where it is first used.",
                 memberId, reviewedDate, term);
-            return false;
+            return JournalComposition.Discarded(generated.Usage);
         }
 
         var name = NamePlaceholder.FirstName(member.Name);
@@ -1316,7 +1086,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: it names the "
                 + "member through the placeholder, but no name is on file to resolve it to.",
                 memberId, reviewedDate);
-            return false;
+            return JournalComposition.Discarded(generated.Usage);
         }
 
         // The cap is checked on the text as it will be stored — after the gloss and the name,
@@ -1329,10 +1099,10 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the daybook entry for CardiMember {CardiMemberId} on {LocalDate}: "
                 + "{Length} characters is over the {Max} the table holds.",
                 memberId, reviewedDate, storedText.Length, DigestEntry.MaxTextLength);
-            return false;
+            return JournalComposition.Discarded(generated.Usage);
         }
 
-        await _unitOfWork.Digests.AddAsync(new DigestEntry
+        return JournalComposition.Written(new DigestEntry
         {
             CardiMemberId = memberId,
             LocalDate = reviewedDate,
@@ -1344,7 +1114,362 @@ public partial class DigestGenerationService : IDigestGenerationService
             Urgency = ParseUrgency(aiResponse.Urgency, memberId, reviewedDate),
             GeneratedAtUtc = utcNow,
             PromptVersion = CurrentPromptVersion,
-        }, ct);
+        }, generated.Usage);
+    }
+
+    /// <summary>
+    /// The Weekbook for the seven days ending <paramref name="weekEnd"/> — composed and guarded,
+    /// not stored. Shared by the due pass and a caregiver's rewrite.
+    /// </summary>
+    private async Task<JournalComposition> ComposeWeekbookAsync(
+        CardiMember member, TimeZoneInfo timeZone, DateOnly weekStart, DateOnly weekEnd, DateTime utcNow, CancellationToken ct)
+    {
+        var memberId = member.Id;
+
+        var days = (await _unitOfWork.ActivityLogs
+                .GetByCardiMemberAndDateRangeAsync(memberId, weekStart, weekEnd))
+            .Where(l => l.Date >= weekStart && l.Date <= weekEnd)
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        if (days.Count < WeekbookMinimumDaysWithData)
+        {
+            _logger.LogInformation(
+                "No Weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: only "
+                + "{DaysWithData} of 7 days carried readings, below the {Minimum}-day minimum.",
+                memberId, weekEnd, days.Count, WeekbookMinimumDaysWithData);
+            return JournalComposition.NoReadings(days.Count, WeekbookMinimumDaysWithData);
+        }
+
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+
+        var weekStartLocal = weekStart.ToDateTime(TimeOnly.MinValue);
+        var weekEndLocal = weekEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var weekStartUtc = new DateTimeOffset(weekStartLocal, timeZone.GetUtcOffset(weekStartLocal)).UtcDateTime;
+        var weekEndUtc = new DateTimeOffset(weekEndLocal, timeZone.GetUtcOffset(weekEndLocal)).UtcDateTime;
+
+        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
+            memberId, weekStartUtc, weekEndUtc, ct);
+
+        // Alerts about any day of the week, by the same attribution the alerts list groups by.
+        var weekAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
+            .Where(a =>
+            {
+                var about = AlertDetailComposer.AboutDate(
+                    AlertDetailComposer.ReadRule(a.MetricValues),
+                    a.MetricValues,
+                    DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)));
+                return about >= weekStart && about <= weekEnd;
+            })
+            .ToList();
+
+        var memberContext = await _memberContext.ComposeAsync(
+            new MemberContextRequest(member, memberId, weekEnd, utcNow, PromptPurpose.Weekbook), ct);
+
+        var prompt = $"""
+            {WeekbookPrompt.Instructions}
+
+            {memberContext}
+            {WeekbookPrompt.CoverageLine(days, weekStart, weekEnd)}
+            {WeekbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(weekEnd))}
+            {WeekbookPrompt.MonitoringSection(weekAlerts, assessments)}
+            """;
+
+        var generated = await _medicalAi.GenerateStructuredWithUsageAsync<WeekbookAiResponse>(prompt, ct);
+        var aiResponse = generated.Result;
+        var text = aiResponse.Summary.Trim();
+
+        // Nothing rather than something wrong, and with the same weight behind it as the Daybook:
+        // a Weekbook is written once, so a bad one is not replaced next pass — it is what that
+        // week says until the member's data is regenerated by hand.
+        if (text.Length == 0 || WeekbookPrompt.ReadsLikeTheInstructions(text))
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "the model returned empty text or restated its own instructions.",
+                memberId, weekEnd);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        if (WeekbookPrompt.NamesACondition(text) is { } condition)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "it names a condition or a treatment ({Marker}).",
+                memberId, weekEnd, condition);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        if (JournalRegisterGuards.SentenceCount(text) < JournalRegisterGuards.MinimumSentences)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "its sentence count ({Sentences}) is below the minimum for an account of a week.",
+                memberId, weekEnd, JournalRegisterGuards.SentenceCount(text));
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        // A bare term is explained in code rather than costing the week — see
+        // JournalRegisterGuards.Gloss for why the discard did more harm than the term.
+        var (glossedText, glossed) = WeekbookPrompt.Gloss(text);
+        if (glossed.Count > 0)
+        {
+            _logger.LogInformation(
+                "Glossed {Terms} in the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}.",
+                string.Join(", ", glossed), memberId, weekEnd);
+            text = glossedText;
+        }
+
+        if (WeekbookPrompt.UnglossedTerm(text) is { } term)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "it uses '{Term}' without explaining it where it is first used.",
+                memberId, weekEnd, term);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        var name = NamePlaceholder.FirstName(member.Name);
+        if (name is null && NamePlaceholder.IsPresentIn(text))
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "it names the member through the placeholder, but no name is on file to resolve it to.",
+                memberId, weekEnd);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        // The cap is checked on the text as it will be stored — after the gloss and the name,
+        // the two steps that lengthen a reply the model had finished — and refused here rather
+        // than by the database on the insert.
+        var storedText = NamePlaceholder.Resolve(text, name)!;
+        if (storedText.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the weekbook for CardiMember {CardiMemberId} for the week ending {WeekEnd}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, weekEnd, storedText.Length, DigestEntry.MaxTextLength);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        return JournalComposition.Written(new DigestEntry
+        {
+            CardiMemberId = memberId,
+            LocalDate = weekEnd,
+            Audience = DigestAudience.Weekbook,
+            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, weekEnd), name),
+            Text = storedText,
+            Suggestion = NamePlaceholder.Resolve(
+                CleanSuggestion(aiResponse.Suggestion, memberId, weekEnd), name),
+            Urgency = ParseUrgency(aiResponse.Urgency, memberId, weekEnd),
+            GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
+        }, generated.Usage);
+    }
+
+    /// <summary>
+    /// The Monthbook for the calendar month <paramref name="monthStart"/>–<paramref name="monthEnd"/>
+    /// — composed and guarded, not stored. Shared by the due pass and a caregiver's rewrite.
+    /// </summary>
+    private async Task<JournalComposition> ComposeMonthbookAsync(
+        CardiMember member, TimeZoneInfo timeZone, DateOnly monthStart, DateOnly monthEnd, DateTime utcNow, CancellationToken ct)
+    {
+        var memberId = member.Id;
+
+        var days = (await _unitOfWork.ActivityLogs
+                .GetByCardiMemberAndDateRangeAsync(memberId, monthStart, monthEnd))
+            .Where(l => l.Date >= monthStart && l.Date <= monthEnd)
+            .OrderBy(l => l.Date)
+            .ToList();
+
+        if (days.Count < MonthbookMinimumDaysWithData)
+        {
+            _logger.LogInformation(
+                "No Monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: only "
+                + "{DaysWithData} days carried readings, below the {Minimum}-day minimum.",
+                memberId, monthEnd, days.Count, MonthbookMinimumDaysWithData);
+            return JournalComposition.NoReadings(days.Count, MonthbookMinimumDaysWithData);
+        }
+
+        var baseline = await _unitOfWork.PatternBaselines
+            .GetLatestByCardiMemberAsync(memberId, periodDays: 30);
+
+        var monthStartLocal = monthStart.ToDateTime(TimeOnly.MinValue);
+        var monthEndLocal = monthEnd.AddDays(1).ToDateTime(TimeOnly.MinValue);
+        var monthStartUtc = new DateTimeOffset(monthStartLocal, timeZone.GetUtcOffset(monthStartLocal)).UtcDateTime;
+        var monthEndUtc = new DateTimeOffset(monthEndLocal, timeZone.GetUtcOffset(monthEndLocal)).UtcDateTime;
+
+        var assessments = await _unitOfWork.RealtimeAssessments.GetBetweenAsync(
+            memberId, monthStartUtc, monthEndUtc, ct);
+
+        var monthAlerts = (await _unitOfWork.Alerts.GetByCardiMemberAsync(memberId, activeOnly: false))
+            .Where(a =>
+            {
+                var about = AlertDetailComposer.AboutDate(
+                    AlertDetailComposer.ReadRule(a.MetricValues),
+                    a.MetricValues,
+                    DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(a.TriggeredDate, timeZone)));
+                return about >= monthStart && about <= monthEnd;
+            })
+            .ToList();
+
+        var memberContext = await _memberContext.ComposeAsync(
+            new MemberContextRequest(member, memberId, monthEnd, utcNow, PromptPurpose.Monthbook), ct);
+
+        var prompt = $"""
+            {MonthbookPrompt.Instructions}
+
+            {memberContext}
+            {MonthbookPrompt.CoverageLine(days, monthStart, monthEnd)}
+            {MonthbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(monthEnd))}
+            {MonthbookPrompt.MonitoringSection(monthAlerts, assessments)}
+            """;
+
+        var generated = await _medicalAi.GenerateStructuredWithUsageAsync<MonthbookAiResponse>(prompt, ct);
+        var aiResponse = generated.Result;
+        var text = aiResponse.Summary.Trim();
+
+        if (text.Length == 0 || MonthbookPrompt.ReadsLikeTheInstructions(text))
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "the model returned empty text or restated its own instructions.",
+                memberId, monthEnd);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        if (MonthbookPrompt.NamesACondition(text) is { } condition)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "it names a condition or a treatment ({Marker}).",
+                memberId, monthEnd, condition);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        if (JournalRegisterGuards.SentenceCount(text) < JournalRegisterGuards.MinimumSentences)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "its sentence count ({Sentences}) is below the minimum for an account of a month.",
+                memberId, monthEnd, JournalRegisterGuards.SentenceCount(text));
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        // A bare term is explained in code rather than costing the month — see
+        // JournalRegisterGuards.Gloss for why the discard did more harm than the term.
+        var (glossedText, glossed) = MonthbookPrompt.Gloss(text);
+        if (glossed.Count > 0)
+        {
+            _logger.LogInformation(
+                "Glossed {Terms} in the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}.",
+                string.Join(", ", glossed), memberId, monthEnd);
+            text = glossedText;
+        }
+
+        if (MonthbookPrompt.UnglossedTerm(text) is { } term)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "it uses '{Term}' without explaining it where it is first used.",
+                memberId, monthEnd, term);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        var name = NamePlaceholder.FirstName(member.Name);
+        if (name is null && NamePlaceholder.IsPresentIn(text))
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "it names the member through the placeholder, but no name is on file to resolve it to.",
+                memberId, monthEnd);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        // The cap is checked on the text as it will be stored — after the gloss and the name,
+        // the two steps that lengthen a reply the model had finished — and refused here rather
+        // than by the database on the insert.
+        var storedText = NamePlaceholder.Resolve(text, name)!;
+        if (storedText.Length > DigestEntry.MaxTextLength)
+        {
+            _logger.LogWarning(
+                "Discarded the monthbook for CardiMember {CardiMemberId} for the month ending {MonthEnd}: "
+                + "{Length} characters is over the {Max} the table holds.",
+                memberId, monthEnd, storedText.Length, DigestEntry.MaxTextLength);
+            return JournalComposition.Discarded(generated.Usage);
+        }
+
+        return JournalComposition.Written(new DigestEntry
+        {
+            CardiMemberId = memberId,
+            LocalDate = monthEnd,
+            Audience = DigestAudience.Monthbook,
+            Headline = NamePlaceholder.Resolve(CleanHeadline(aiResponse.Headline, memberId, monthEnd), name),
+            Text = storedText,
+            Suggestion = NamePlaceholder.Resolve(
+                CleanSuggestion(aiResponse.Suggestion, memberId, monthEnd), name),
+            Urgency = ParseUrgency(aiResponse.Urgency, memberId, monthEnd),
+            GeneratedAtUtc = utcNow,
+            PromptVersion = CurrentPromptVersion,
+        }, generated.Usage);
+    }
+
+    /// <summary>
+    /// One member's review of yesterday, or false when it is not due, not possible, or the reply
+    /// did not survive its guards.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written once per day, never recomputed — the opposite of the family summary above, and for
+    /// the reason that separates them: that one describes a day still happening and is rewritten as
+    /// it does, this one describes a day that cannot change any more. So the existence of a review
+    /// for the date is the whole due-check, and it is what keeps a pass every half hour from
+    /// costing a member more than one inference a day.
+    /// </para>
+    /// <para>
+    /// A member whose monitoring is paused now gets no review of yesterday, even if yesterday was
+    /// monitored. That is the same stance the summary takes and the conservative one of the two:
+    /// pausing is the wearer withdrawing from being watched, and reaching back a day to write about
+    /// them anyway is the reading of that they would least expect.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> GenerateDaybookForMemberAsync(
+        Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return false;
+
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
+
+        // The caregiver's chosen hour for this member, or 02:00. Read off the member already
+        // loaded above, so honouring the setting costs no extra query on a pass that runs every
+        // half hour. A time chosen after this pass has already written today's entry does not
+        // rewrite it — the existence check below is still the whole due-contract.
+        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.DaybookLocalTime))
+            return false;
+
+        var reviewedDate = DateOnly.FromDateTime(localNow).AddDays(-1);
+
+        // The cheapest gate first, and the one that runs on nearly every pass: a member reviewed
+        // at 02:00 is asked about again 45 times before the day rolls over, and each of those has
+        // to cost one indexed read and nothing else. It is a fast path, not the contract — two
+        // overlapping executions can both pass this probe before either writes. The partial
+        // unique index (one daybook entry per member per day, EnforceOneDaybookPerDay) is what
+        // holds the written-once promise; the second writer's insert lands on ON CONFLICT DO
+        // NOTHING and the run moves on.
+        var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
+            memberId, reviewedDate, DigestAudience.Daybook, ct);
+        if (existing is not null)
+            return false;
+
+        var composed = await ComposeDaybookAsync(member, timeZone, reviewedDate, utcNow, ct);
+        if (composed.Entry is null)
+            return false;
+
+        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
 
         // No question is asked off a daybook entry. Questions exist to explain readings while they
         // still matter, and the answer would arrive a day after the day it was about — the same

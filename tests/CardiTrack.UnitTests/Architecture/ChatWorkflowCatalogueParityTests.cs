@@ -89,20 +89,32 @@ public class ChatWorkflowCatalogueParityTests
     /// readings. Advise serves a stored row; the steers and clarify touch no data at all.
     /// </summary>
     [Fact]
+    public void OnlyTheJournal_MayAct()
+    {
+        var acting = ChatWorkflowCatalogue.All
+            .Where(w => w.ClaimClass == ChatClaimClass.Action)
+            .Select(w => w.Id)
+            .ToList();
+
+        Assert.Equal([MemberChatWorkflow.Journal], acting);
+    }
+
+    [Fact]
     public void EntriesThatDoNotCompare_FetchNothing()
     {
         var offenders = ChatWorkflowCatalogue.All
-            .Where(w => w.ClaimClass is ChatClaimClass.Suggestion or ChatClaimClass.None)
+            .Where(w => w.ClaimClass is ChatClaimClass.Suggestion or ChatClaimClass.None or ChatClaimClass.Action)
             .Where(w => w.AllowedDatasets.Count > 0)
             .Select(w => $"{w.Id} ({w.ClaimClass})")
             .ToList();
 
         Assert.True(offenders.Count == 0,
-            $"Entr(y/ies) claiming {nameof(ChatClaimClass.Suggestion)} or {nameof(ChatClaimClass.None)} " +
-            $"while declaring datasets: {string.Join(", ", offenders)}. Advise serves a stored, " +
-            "already-grounded row and the steers answer nothing about the member — a fetch here is " +
-            "either dead weight or the beginning of a per-question suggestion, which is the one " +
-            "thing the batch-generation split exists to prevent.");
+            $"Entr(y/ies) claiming {nameof(ChatClaimClass.Suggestion)}, {nameof(ChatClaimClass.None)} or " +
+            $"{nameof(ChatClaimClass.Action)} while declaring datasets: {string.Join(", ", offenders)}. Advise " +
+            "serves a stored, already-grounded row, the steers answer nothing about the member, and the " +
+            "journal rung reads back a book another prompt wrote — a fetch here is either dead weight or " +
+            "the beginning of a per-question suggestion, which is the one thing the batch-generation " +
+            "split exists to prevent.");
     }
 
     /// <summary>

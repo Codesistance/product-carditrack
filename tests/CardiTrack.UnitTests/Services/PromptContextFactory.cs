@@ -1,8 +1,11 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
+using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -32,6 +35,16 @@ internal static class PromptContextFactory
     /// <summary>The full production source set, wired over this test's substitutes.</summary>
     internal static MemberContextComposer Composer(IUnitOfWork unitOfWork) =>
         Composer(unitOfWork, Encryption);
+
+    /// <summary>
+    /// The chat's journal collaborator with an inert book writer — for suites that drive other
+    /// rungs and only need the constructor satisfied. A suite about the journal rung builds its
+    /// own with a real substitute it can set expectations on.
+    /// </summary>
+    internal static JournalChatActions JournalActions(
+        IRewriteAiService rewriteAi, IUnitOfWork unitOfWork, ICardiMemberAccessService access) =>
+        new(rewriteAi, unitOfWork, access, Substitute.For<IDigestGenerationService>(),
+            NullLogger<JournalChatActions>.Instance);
 
     internal static MemberContextComposer Composer(IUnitOfWork unitOfWork, IEncryptionService encryption) =>
         new(

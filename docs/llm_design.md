@@ -499,6 +499,11 @@ raw reassessment of its own period, written from that period's measurements — 
 digest of seven Daybooks, so no imprecision propagates upward and a book still gets written for a
 period whose lower books were skipped or discarded.
 
+Every book is **written once by the schedule and never recomputed by it**. The one way a book changes
+afterwards is a caregiver asking for it in chat — see *Managing the books from chat* below — and
+that path runs the same prompt under the same guards, replacing the old book only once the new one
+has passed them.
+
 `CARDITRACK_DAYBOOK_PROMPT` — the account of one **finished** day, written once and never
 recomputed. Everything else on this platform describes a day still in progress and is rewritten as
 it moves; the Daybook is the opposite, and the difference drives every design choice below. It is
@@ -645,6 +650,35 @@ the first of the next one.
   one, when all of it is still inside every retention window. A month composed later could not say
   the same — and `DigestRetentionMonths` was raised 3 → 7 so the entries themselves survive the
   180-day history the top plan is sold on (see the DPIA, open item OI-14).
+
+### The CardiJournal — managing the books from chat (built today)
+
+The chat's `journal` entry ([member_chat_routing.md §5](./technical/member_chat_routing.md)) lets a
+caregiver look after the journal in conversation: *show* or *list* a Daybook, Weekbook or Monthbook,
+*delete* one, or *rewrite* one from its period's readings. It exists because the register fixes of
+2026-09-14 shipped with a migration that emptied the three journal series, leaving days a caregiver
+could see readings for and no book to read — and the schedule only ever writes yesterday.
+
+- **Rewrite is the scheduled write, asked for.** `DigestGenerationService.ComposeBookAsync` composes
+  the book through the same `Compose{Daybook,Weekbook,Monthbook}Async` the half-hourly pass uses —
+  same prompt, same coverage minimums, same register guards, same private slot — and stores nothing;
+  the chat then replaces the earlier book with the new one, delete and insert in one transaction
+  (`IDigestRepository.ReplaceBookAsync`), so no model call ever runs inside a transaction. A reply the guards refuse leaves the existing
+  book in place and the caregiver told so. The same members are refused for the same reasons: an
+  inactive or paused member, and a period that has not ended in the member's own local time.
+- **Delete is a set-based delete of one book** (`IDigestRepository.DeleteBookAsync`): one member, one
+  local date, one journal audience. The family series is history and cannot be deleted this way.
+- **Confirmed on the next turn.** A delete or rewrite is offered and held on the chat session for ten
+  minutes; a plain yes composes the book, then takes the offer off the row in one claim-and-clear
+  statement and stores the book inside one short transaction with the turn that records it; a no or
+  anything else drops it. Manage access — the primary
+  caregiver — is required at the offer and again at the yes. Reading back needs view access only.
+- **Runs in the API**, on the private slot, inline with the chat turn — the one place outside the
+  pipeline host that writes a book. A cold MedGemma start makes it a slow turn, which the waiting
+  sentences already cover, and the alternative (queueing for the next half-hourly pass) would leave
+  the caregiver who asked with nothing to read for up to thirty minutes and no push to say it landed.
+- **No app change.** The reply is plain text; the Journal tab is cache-first and refreshes on
+  appearing, so a rewritten or deleted book shows on the next visit.
 
 ### Advise — "Something to try" (built today)
 

@@ -135,4 +135,80 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         Assert.True(await repo.AddAsync(entry));
         Assert.False(await repo.AddAsync(entry));
     }
+
+    private static DigestEntry Daybook(Guid memberId, string headline, string text = "A quiet day, close to their usual.") => new()
+    {
+        CardiMemberId = memberId,
+        LocalDate = DateOnly.FromDateTime(DateTime.UtcNow),
+        Audience = DigestAudience.Daybook,
+        Headline = headline,
+        Text = text,
+        GeneratedAtUtc = DateTime.UtcNow,
+        PromptVersion = 1,
+    };
+
+    /// <summary>
+    /// The replacement behind a caregiver's rewrite: the earlier book goes and the new one takes
+    /// its date, in one call — against the partitioned table, the partial unique index and the
+    /// hand-written insert, none of which a substitute can vouch for.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceBookAsync_SwapsTheBookForThePeriod()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
+        var memberId = Guid.NewGuid();
+        Assert.True(await repo.AddAsync(Daybook(memberId, "The first account")));
+
+        var (removed, inserted) = await repo.ReplaceBookAsync(Daybook(memberId, "The second account"));
+
+        Assert.Equal(1, removed);
+        Assert.True(inserted);
+        var stored = await repo.GetLatestByDateAsync(memberId, DateOnly.FromDateTime(DateTime.UtcNow), DigestAudience.Daybook);
+        Assert.NotNull(stored);
+        Assert.Equal("The second account", stored.Headline);
+    }
+
+    /// <summary>
+    /// The guarantee the transaction exists for: when the insert fails after the delete has run,
+    /// the delete is rolled back and the caregiver still has the book they had. A null text trips
+    /// the column's NOT NULL, which is the cheapest failure that happens strictly after the delete.
+    /// </summary>
+    [Fact]
+    public async Task ReplaceBookAsync_KeepsTheOldBook_WhenTheNewOneCannotBeStored()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
+        var memberId = Guid.NewGuid();
+        Assert.True(await repo.AddAsync(Daybook(memberId, "The account that must survive")));
+
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            repo.ReplaceBookAsync(Daybook(memberId, "Never stored", text: null!)));
+
+        var stored = await repo.GetLatestByDateAsync(memberId, DateOnly.FromDateTime(DateTime.UtcNow), DigestAudience.Daybook);
+        Assert.NotNull(stored);
+        Assert.Equal("The account that must survive", stored.Headline);
+    }
+
+    [Fact]
+    public async Task DeleteBookAsync_RemovesOneJournalBook_AndRefusesTheFamilySeries()
+    {
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
+        var memberId = Guid.NewGuid();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        Assert.True(await repo.AddAsync(Daybook(memberId, "To be deleted")));
+        Assert.True(await repo.AddAsync(Entry(memberId, suggestion: null)));
+
+        var removed = await repo.DeleteBookAsync(memberId, today, DigestAudience.Daybook);
+
+        Assert.Equal(1, removed);
+        Assert.Null(await repo.GetLatestByDateAsync(memberId, today, DigestAudience.Daybook));
+        Assert.NotNull(await repo.GetLatestByDateAsync(memberId, today, DigestAudience.Family));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            repo.DeleteBookAsync(memberId, today, DigestAudience.Family));
+    }
 }

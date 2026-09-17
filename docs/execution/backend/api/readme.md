@@ -138,7 +138,7 @@ The full implemented surface is 68 endpoints across 13 controllers:
 | `GET /api/v1/oauth/redirect/{provider}` | Anonymous OAuth bounce (200 HTML hand-off) | [devices.md](devices.md) |
 | `POST /api/v1/oauth/callback/{provider}` | Complete OAuth, store connection (201) | [devices.md](devices.md) |
 | `POST /api/v1/chat` | Retired (410 Gone) — use member chat | — |
-| `POST /api/v1/member-chat/members/{cardiMemberId}/messages` | Caregiver conversation about one CardiMember | — |
+| `POST /api/v1/member-chat/members/{cardiMemberId}/messages` | Caregiver conversation about one CardiMember; also manages the CardiJournal — show, list, delete or rewrite a book, the last two confirmed on the next turn (primary caregiver only) | — |
 | `GET /api/v1/insights/alerts/{alertId}` | MedGemma analysis of an alert | [alerts.md](alerts.md) |
 | `GET /api/v1/insights/members/{id}/baseline` | MedGemma narrative baseline analysis | [health-data.md](health-data.md) |
 | `GET /api/v1/insights/members/{id}/status` | Short AI status line for the dashboard hero card | [health-data.md](health-data.md) |

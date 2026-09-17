@@ -44,6 +44,22 @@ public class MemberChatSession : BaseEntity
     /// </summary>
     public string? Theme { get; set; }
 
+    /// <summary>
+    /// An action the assistant offered and is waiting on a yes for — a journal book to discard
+    /// or write again — as <c>JournalChatRequest</c> serialises it. Null when nothing is pending.
+    /// Held on the session rather than read back out of the last turn: the turn is encrypted
+    /// prose written for a person, and a confirmation that depended on parsing the offer's
+    /// wording would break whenever the wording improved.
+    /// </summary>
+    public string? PendingAction { get; set; }
+
+    /// <summary>
+    /// When <see cref="PendingAction"/> stops being honoured. A "yes" after this routes as an
+    /// ordinary message, because a yes ten minutes after the offer is more likely to be about
+    /// something else than about the offer.
+    /// </summary>
+    public DateTime? PendingActionExpiresAtUtc { get; set; }
+
     /// <summary>Loaded only by <c>IMemberChatSessionRepository.GetByIdWithTurnsAsync</c> — every
     /// other read goes through <see cref="MemberChatTurn"/> directly.</summary>
     public ICollection<MemberChatTurn> Turns { get; set; } = new List<MemberChatTurn>();

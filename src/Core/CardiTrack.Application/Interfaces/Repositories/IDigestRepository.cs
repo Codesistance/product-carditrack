@@ -55,4 +55,23 @@ public interface IDigestRepository
         DateOnly? to = null,
         DigestUrgency? urgency = null,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Removes one CardiJournal book — one member, one local day, one journal audience — and
+    /// returns how many rows went. The written-once indexes make that at most one for the three
+    /// journal audiences. The family series is a history and is never deleted through this: a
+    /// caller naming it gets an <see cref="ArgumentOutOfRangeException"/>.
+    /// </summary>
+    Task<int> DeleteBookAsync(
+        Guid cardiMemberId, DateOnly localDate, DigestAudience audience, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces one CardiJournal book with <paramref name="entry"/> — the delete of any earlier
+    /// book for the same member, day and audience, and the insert of the new one, in one
+    /// transaction. A failure between the two rolls the delete back, so the book a caregiver had
+    /// is never lost to a replacement that could not be stored.
+    /// </summary>
+    /// <returns>How many earlier rows went, and whether the new one landed (false only when a
+    /// concurrent write took the period first — see <see cref="AddAsync"/>).</returns>
+    Task<(int Removed, bool Inserted)> ReplaceBookAsync(DigestEntry entry, CancellationToken ct = default);
 }

@@ -95,7 +95,10 @@ public class ChatRouterService : IChatRouter
             - asksForSpecifics: true when advise is answering which, how much, how often, or
               whether something is safe — a standing suggestion cannot answer those. Omit or
               false otherwise.
-            """ + MedicalPromptBlocks.ChatMessageGuardrail;
+            """ + MedicalPromptBlocks.ChatMessageGuardrail
+            // The history is untrusted text like the message, and is framed as such whenever it
+            // is present — a prior message with instruction-like text must not choose the route.
+            + (questionsOnlyHistory is null ? string.Empty : MedicalPromptBlocks.ChatHistoryGuardrail);
     }
 
     internal sealed record ChatRouteAiResponse

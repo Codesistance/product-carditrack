@@ -63,6 +63,14 @@ public enum MemberChatWorkflow
     /// Never returned by the router — see the catalogue's routable flag.</summary>
     Clarify = 9,
 
+    /// <summary>
+    /// Looking after the CardiJournal itself rather than reading the member: show or list its
+    /// books, discard one, or write one again from its period's readings. The only entry with a
+    /// side effect, and the only one whose reply is assembled in code from a book another prompt
+    /// wrote — see <c>JournalChatActions</c>. Destructive asks are confirmed on the next turn.
+    /// </summary>
+    Journal = 10,
+
     /// <summary>A request about the alerts themselves — switching one of CardiTrack's own rules on
     /// or off, adding or changing an alarm the caregiver set, or asking which are on. Off the
     /// ladder like the steers: it says nothing about the member. Proposes in one turn and applies

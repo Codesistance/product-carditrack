@@ -24,6 +24,13 @@ public class MemberChatSessionConfiguration : IEntityTypeConfiguration<MemberCha
 
         builder.Property(s => s.EndedAtUtc);
 
+        // Short: an action label, an audience name and a date. Bounded so a bug in the
+        // serialiser can never turn the column into a dumping ground.
+        builder.Property(s => s.PendingAction)
+            .HasMaxLength(64);
+
+        builder.Property(s => s.PendingActionExpiresAtUtc);
+
         builder.Property(s => s.CreatedDate)
             .HasDefaultValueSql("NOW()");
 

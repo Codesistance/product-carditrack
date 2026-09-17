@@ -370,6 +370,7 @@ public class MemberChatService : IMemberChatService
             [MemberChatWorkflow.Investigation] = InvestigationClinicalInstructions,
             [MemberChatWorkflow.SteerCasual] = CasualSteerInstructions,
             [MemberChatWorkflow.SteerOffTopic] = OffTopicSteerInstructions,
+            [MemberChatWorkflow.Journal] = JournalChatActions.ResolveInstructions,
             // The settings rung's one brief is the planner's: it reads the request into a closed
             // plan and claims nothing about the member, which is why it carries no tone block.
             [MemberChatWorkflow.AlertSettings] = AlertChangePlannerService.Instructions,
@@ -444,6 +445,7 @@ public class MemberChatService : IMemberChatService
     private readonly ICardiMemberAccessService _access;
     private readonly MemberContextComposer _memberContext;
     private readonly IEncryptionService _encryption;
+    private readonly JournalChatActions _journal;
     private readonly ILogger<MemberChatService> _logger;
 
     public MemberChatService(
@@ -458,8 +460,10 @@ public class MemberChatService : IMemberChatService
         ICardiMemberAccessService access,
         MemberContextComposer memberContext,
         IEncryptionService encryption,
+        JournalChatActions journal,
         ILogger<MemberChatService> logger)
     {
+        _journal = journal;
         _medicalAi = medicalAi;
         _rewriteAi = rewriteAi;
         _planner = planner;
@@ -493,15 +497,39 @@ public class MemberChatService : IMemberChatService
         // question in it never reaches one, so there is nothing for the pre-check to protect and
         // nothing for the router to misplace. Everything else — triage, route, dispatch — is one
         // step, so that this branch and that one meet the same persistence below.
-        var result = MemberChatReplies.CarriesNoQuestion(flattened)
-            ? NotAQuestionResult(member?.Name)
-            : await RouteAndAnswerAsync(flattened, session, userId, cardiMemberId, member, utcNow, ct);
+        // A yes or a no to an offer the journal rung made last turn is answered before the
+        // no-question guard and before any model: the vocabulary is closed and matched in code,
+        // and "yes" alone carries no question for the guard to see. Anything else spends the
+        // offer and is routed as itself.
+        // A confirmed journal change opens a unit-of-work transaction that has to close with the
+        // turns: the book and the record of who asked for it land together or not at all. Every
+        // other path opens none, and the commit and rollback are then no-ops — one shape for the
+        // whole turn rather than a second persistence path for the one rung that mutates.
+        MemberChatWorkflowResult result;
+        try
+        {
+            result = await _journal.TryResumeAsync(flattened, userId, cardiMemberId, member, session, utcNow, ct)
+                ?? (MemberChatReplies.CarriesNoQuestion(flattened)
+                    ? NotAQuestionResult(member?.Name)
+                    : await RouteAndAnswerAsync(flattened, session, userId, cardiMemberId, member, utcNow, ct));
 
-        var (_, assistantTurn) = await PersistTurnsAsync(
-            session, flattened, result, utcNow, ct);
-        await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
+            // The turn cap, applied once where every rung's result passes rather than inside each
+            // handler: a journal reply reads a whole stored book back, and a book plus its label
+            // can run past what one bubble is allowed to hold.
+            result = result with { Reply = CapReply(result.Reply) };
 
-        await _unitOfWork.SaveChangesAsync();
+            var (_, assistantTurn) = await PersistTurnsAsync(
+                session, flattened, result, utcNow, ct);
+            await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
 
         return new MemberChatMessageResponse
         {
@@ -595,7 +623,7 @@ public class MemberChatService : IMemberChatService
         var result = route is not null
             ? await DispatchRoutedAsync(
                 route, flattened, triage.Usage, triage.Result.IsAboutThisMoment,
-                userId, cardiMemberId, member, history, utcNow, ct)
+                userId, cardiMemberId, member, session, history, utcNow, ct)
             : triage.Result switch
             {
                 { IsAboutThisMoment: true } =>
@@ -871,6 +899,7 @@ public class MemberChatService : IMemberChatService
         Guid userId,
         Guid cardiMemberId,
         CardiMember? member,
+        MemberChatSession session,
         ChatHistory history,
         DateTime utcNow,
         CancellationToken ct)
@@ -964,6 +993,12 @@ public class MemberChatService : IMemberChatService
                 await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
             MemberChatWorkflow.Investigation =>
                 await InvestigateAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+            // The one rung that changes what the app holds. Its handler resolves the ask on the
+            // Rewrite slot, reads or offers, and holds a destructive offer on the session for the
+            // next turn — see JournalChatActions.
+            MemberChatWorkflow.Journal =>
+                await _journal.HandleAsync(
+                    flattened, history.QuestionsOnly, userId, cardiMemberId, member, session, triageUsage, utcNow, ct),
             MemberChatWorkflow.AlertSettings =>
                 await ConfigureAlertsAsync(flattened, triageUsage, userId, cardiMemberId, member, history, utcNow, ct),
             _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
@@ -1332,6 +1367,7 @@ public class MemberChatService : IMemberChatService
         MemberChatWorkflow.Advise => "a suggestion for what could help",
         MemberChatWorkflow.AlertSettings => "changing or checking which alerts are on",
         MemberChatWorkflow.SteerCasual => "just saying hi",
+        MemberChatWorkflow.Journal => $"something in {subject}'s journal",
         _ => "something outside their health data",
     };
 

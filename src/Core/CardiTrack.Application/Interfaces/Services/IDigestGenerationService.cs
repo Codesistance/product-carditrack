@@ -1,4 +1,7 @@
-﻿namespace CardiTrack.Application.Interfaces.Services;
+﻿using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Domain.Enums;
+
+namespace CardiTrack.Application.Interfaces.Services;
 
 /// <summary>
 /// Generates the family summaries that are due at this moment — "due" meaning a member's data has
@@ -69,4 +72,41 @@ public interface IDigestGenerationService
     /// </para>
     /// </remarks>
     Task<int> GenerateDueMonthbooksAsync(DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>
+    /// Composes one CardiJournal book again, at a caregiver's request rather than on the schedule:
+    /// the book for <paramref name="audience"/> whose period ends on <paramref name="periodEnd"/>
+    /// (the day itself for a Daybook, the week's last day for a Weekbook, the month's last day
+    /// for a Monthbook), from that period's own readings, exactly as the due pass would have.
+    /// <b>Stores nothing.</b> A <see cref="JournalRewriteOutcome.Written"/> result carries the
+    /// entry that passed every guard, for the caller to store through
+    /// <see cref="Repositories.IDigestRepository.ReplaceBookAsync"/> inside whatever transaction
+    /// the caller's own record of the request needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one exception to "written once and never recomputed", and a narrow one: the book is
+    /// replaced only when a person asks, and only after the new text has survived every guard
+    /// the scheduled write applies. A reply the guards refuse leaves the existing book where it
+    /// was — the caregiver asked for a better account, not for none.
+    /// </para>
+    /// <para>
+    /// Composing is split from storing because composing is a model call that can take minutes
+    /// and storing is two statements: a caller that needs the store to land with its own writes
+    /// can open a transaction around the store alone, rather than holding a connection and a row
+    /// lock across the generation.
+    /// </para>
+    /// <para>
+    /// Same stances as the due pass on who is written about: an inactive or paused member gets
+    /// <see cref="JournalRewriteOutcome.MemberUnavailable"/>, and a period that has not ended in
+    /// the member's own local time is refused rather than written short.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="audience"/> is not a journal book.</exception>
+    Task<JournalRewriteResult> ComposeBookAsync(
+        Guid cardiMemberId,
+        DigestAudience audience,
+        DateOnly periodEnd,
+        DateTime utcNow,
+        CancellationToken ct = default);
 }

@@ -141,6 +141,7 @@ public class MemberChatAlertSettingsRungTests
     private MemberChatService CreateSut() =>
         new(_medicalAi, _rewriteAi, _planner, _router, _alertPlanner, _alertPreferences, _metricAlarms,
             _unitOfWork, _access, PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
+            PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
             NullLogger<MemberChatService>.Instance);
 
     [Fact]
