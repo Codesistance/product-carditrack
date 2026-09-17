@@ -109,21 +109,9 @@ public class MetricAlarmsController : BaseApiController
     [HttpDelete("alarms/{alarmId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> DeleteAccountAlarm(Guid alarmId, CancellationToken ct)
-    {
-        if (NotSignedIn(out var error))
-            return error;
-
-        try
-        {
-            await _alarms.DeleteAccountAlarmAsync(UserContext.UserId, alarmId, ct);
-            return NoContent();
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return Error(ex.Message, StatusCodes.Status404NotFound);
-        }
-    }
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<ActionResult> DeleteAccountAlarm(Guid alarmId, CancellationToken ct) =>
+        GuardedDelete(() => _alarms.DeleteAccountAlarmAsync(UserContext.UserId, alarmId, ct));
 
     /// <summary>
     /// The alarms that actually apply to one CardiMember — account defaults folded together with
@@ -184,21 +172,10 @@ public class MetricAlarmsController : BaseApiController
     [HttpDelete("cardimembers/{cardiMemberId:guid}/alarms/{alarmId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> DeleteMemberAlarm(Guid cardiMemberId, Guid alarmId, CancellationToken ct)
-    {
-        if (NotSignedIn(out var error))
-            return error;
-
-        try
-        {
-            await _alarms.DeleteMemberAlarmAsync(UserContext.UserId, cardiMemberId, alarmId, expectedFingerprint: null, ct);
-            return NoContent();
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return Error(ex.Message, StatusCodes.Status404NotFound);
-        }
-    }
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+    public Task<ActionResult> DeleteMemberAlarm(Guid cardiMemberId, Guid alarmId, CancellationToken ct) =>
+        GuardedDelete(() => _alarms.DeleteMemberAlarmAsync(
+            UserContext.UserId, cardiMemberId, alarmId, expectedFingerprint: null, ct));
 
     // ── plumbing ─────────────────────────────────────────────────────────────────────────
 
@@ -247,6 +224,31 @@ public class MetricAlarmsController : BaseApiController
         catch (InvalidOperationException ex)
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
+        }
+        catch (DbUpdateException)
+        {
+            return Error(ConcurrentSaveMessage, StatusCodes.Status409Conflict);
+        }
+    }
+
+    /// <summary>
+    /// The delete shape of <see cref="Guarded{T}"/>: a soft delete is an UPDATE predicated on the
+    /// row's version, so a row another writer changed after this request read it is a 409 like
+    /// any other overtaken save, not a 500.
+    /// </summary>
+    private async Task<ActionResult> GuardedDelete(Func<Task> work)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        try
+        {
+            await work();
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
         }
         catch (DbUpdateException)
         {
