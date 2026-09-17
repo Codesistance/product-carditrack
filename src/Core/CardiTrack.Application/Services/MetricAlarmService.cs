@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -165,7 +166,7 @@ public class MetricAlarmService : IMetricAlarmService
 
     public async Task<MetricAlarmResponse> SaveMemberOverrideAsync(
         Guid requestingUserId, Guid cardiMemberId, Guid alarmId, SaveMetricAlarmRequest request,
-        CancellationToken ct = default)
+        string? expectedFingerprint = null, CancellationToken ct = default)
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var member = await RequireMemberAsync(cardiMemberId);
@@ -174,6 +175,7 @@ public class MetricAlarmService : IMetricAlarmService
         var rows = await _unitOfWork.MetricAlarms.GetForMemberAsync(member.OrganizationId, cardiMemberId, ct);
         var target = rows.FirstOrDefault(a => a.Id == alarmId)
             ?? throw new KeyNotFoundException(DeniedMessage);
+        RequireUnchanged(rows, cardiMemberId, alarmId, expectedFingerprint);
 
         // The row this save lands on: the member's own when the id names one (an override or an
         // alarm of their own), otherwise their existing override of the account default it names.
@@ -243,12 +245,14 @@ public class MetricAlarmService : IMetricAlarmService
     }
 
     public async Task DeleteMemberAlarmAsync(
-        Guid requestingUserId, Guid cardiMemberId, Guid alarmId, CancellationToken ct = default)
+        Guid requestingUserId, Guid cardiMemberId, Guid alarmId, string? expectedFingerprint = null,
+        CancellationToken ct = default)
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
         var member = await RequireMemberAsync(cardiMemberId);
 
         var rows = await _unitOfWork.MetricAlarms.GetForMemberAsync(member.OrganizationId, cardiMemberId, ct);
+        RequireUnchanged(rows, cardiMemberId, alarmId, expectedFingerprint);
 
         // Accept either the member row's own id or the account default's — the client's list shows
         // one row per alarm and should not have to know which of the two identities it is holding.
@@ -263,6 +267,24 @@ public class MetricAlarmService : IMetricAlarmService
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Refuses the write when the caller's picture of the effective row is stale. Compared on
+    /// the rows this call has just read and is about to write, so nothing can change between
+    /// the comparison and the write except in a concurrent commit — and the first-override
+    /// unique index turns that into the 409 the API already maps.
+    /// </summary>
+    private static void RequireUnchanged(
+        IReadOnlyList<MetricAlarm> rows, Guid cardiMemberId, Guid alarmId, string? expectedFingerprint)
+    {
+        if (expectedFingerprint is null)
+            return;
+
+        var effective = MetricAlarmResolution.Resolve(rows, cardiMemberId)
+            .FirstOrDefault(e => e.Alarm.Id == alarmId);
+        if (effective is null || MetricAlarmFingerprint.Of(Map(effective.Alarm, effective.Provenance, state: null)) != expectedFingerprint)
+            throw new AlertSettingsChangedException();
+    }
 
     private static void Validate(SaveMetricAlarmRequest request)
     {

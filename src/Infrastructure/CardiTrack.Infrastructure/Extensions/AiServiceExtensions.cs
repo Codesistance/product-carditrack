@@ -128,6 +128,7 @@ public static class AiServiceExtensions
         services.AddScoped<IReportGenerationService, ReportGenerationService>();
         services.AddScoped<IDataQueryPlanner, DataQueryPlannerService>();
         services.AddScoped<IChatRouter, ChatRouterService>();
+        services.AddScoped<IAlertChangePlanner, AlertChangePlannerService>();
         services.AddScoped<IMemberChatService, MemberChatService>();
 
         // The chat's journal rung writes a book the way the pipeline pass does — same service,

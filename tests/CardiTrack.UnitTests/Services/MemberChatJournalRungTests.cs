@@ -156,7 +156,9 @@ public class MemberChatJournalRungTests
             .ThrowsAsync(new KeyNotFoundException("denied"));
 
     private MemberChatService CreateSut() =>
-        new(_medicalAi, _rewriteAi, _planner, _router, _unitOfWork, _access,
+        new(_medicalAi, _rewriteAi, _planner, _router,
+            Substitute.For<IAlertChangePlanner>(), Substitute.For<IAlertPreferenceService>(),
+            Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             new JournalChatActions(_rewriteAi, _unitOfWork, _access, _books, NullLogger<JournalChatActions>.Instance),
             NullLogger<MemberChatService>.Instance);

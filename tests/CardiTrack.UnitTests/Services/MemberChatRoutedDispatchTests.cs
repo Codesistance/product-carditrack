@@ -95,7 +95,9 @@ public class MemberChatRoutedDispatchTests
     }
 
     private MemberChatService CreateSut() =>
-        new(_medicalAi, _rewriteAi, _planner, _router, _unitOfWork, _access,
+        new(_medicalAi, _rewriteAi, _planner, _router,
+            Substitute.For<IAlertChangePlanner>(), Substitute.For<IAlertPreferenceService>(),
+            Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
             NullLogger<MemberChatService>.Instance);

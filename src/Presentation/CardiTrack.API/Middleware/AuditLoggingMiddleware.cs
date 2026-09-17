@@ -78,7 +78,9 @@ public class AuditLoggingMiddleware
             return;
 
         var action = Truncate(
-            descriptor.Action ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
+            ResolveActionOverride(httpContext)
+            ?? descriptor.Action
+            ?? $"{httpContext.Request.Method} {httpContext.Request.Path}",
             MaxActionLength);
         var entityType = Truncate(descriptor.EntityType, MaxEntityTypeLength);
         var cardiMemberId = ResolveCardiMemberId(httpContext);
@@ -216,6 +218,17 @@ public class AuditLoggingMiddleware
 
         return null;
     }
+
+    /// <summary>
+    /// An action the endpoint named for this request in <see cref="HttpContext.Items"/>, which
+    /// wins over the attribute's fixed one — for an endpoint whose verb depends on what the
+    /// request turned out to do.
+    /// </summary>
+    private static string? ResolveActionOverride(HttpContext httpContext) =>
+        httpContext.Items.TryGetValue(AuditHealthDataAccessAttribute.ActionItemKey, out var handed)
+        && handed is string named && !string.IsNullOrWhiteSpace(named)
+            ? named
+            : null;
 
     /// <summary>Columns are bounded; a long User-Agent must not fail the write.</summary>
     private static string Truncate(string value, int maxLength) =>

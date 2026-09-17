@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -26,7 +27,8 @@ public class AlertPreferenceService : IAlertPreferenceService
     }
 
     public async Task<AlertRuleSettingResponse> SetRuleEnabledAsync(
-        Guid requestingUserId, Guid cardiMemberId, string ruleId, bool enabled, CancellationToken ct = default)
+        Guid requestingUserId, Guid cardiMemberId, string ruleId, bool enabled,
+        string? expectedDisabledRules = null, CancellationToken ct = default)
     {
         await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
         await RequireActiveMemberAsync(cardiMemberId);
@@ -39,6 +41,12 @@ public class AlertPreferenceService : IAlertPreferenceService
 
         var existing = await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(cardiMemberId, ct);
         var current = AlertRuleOverrides.FromJson(existing?.DisabledRules);
+
+        // Compared on the row this call has just read and is about to write, in its normalised
+        // form; the row's version token refuses a commit that lands between here and the save.
+        if (expectedDisabledRules is not null && current.ToJson() != expectedDisabledRules)
+            throw new AlertSettingsChangedException();
+
         var next = current.WithEnabled(ruleId, enabled);
 
         if (existing is null)

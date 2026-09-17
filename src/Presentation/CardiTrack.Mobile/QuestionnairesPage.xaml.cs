@@ -3,6 +3,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Questionnaires;
 using CardiTrack.Mobile.Services;
@@ -39,7 +40,7 @@ public partial class QuestionnairesPage : ContentPage
     private readonly IQuestionValidityService _questionValidity;
     private readonly ObservableCollection<AnsweredQuestionnaireItem> _answeredItems = [];
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private string? _memberName;
     private string? _searchTerm;
     private int _currentPage;
@@ -81,11 +82,18 @@ public partial class QuestionnairesPage : ContentPage
         PendingCard.DismissRequested += OnPendingDismissed;
     }
 
+    /// <summary>
+    /// Whose questionnaires these are. Shell may set this after the page has already appeared
+    /// and tried to load, so an arrival that leaves a load owed runs it — see
+    /// <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                this.WhenRouteHasLanded(() => _ = LoadAsync(showSkeleton: true));
+        }
     }
 
     /// <summary>
@@ -114,7 +122,7 @@ public partial class QuestionnairesPage : ContentPage
     private void OnRetryClicked(object? sender, EventArgs e) => _ = LoadAsync(showSkeleton: true);
 
     private async void OnBackTapped(object? sender, EventArgs e) =>
-        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 
     private void OnSearchTextChanged(object? sender, TextChangedEventArgs e)
     {
@@ -160,7 +168,19 @@ public partial class QuestionnairesPage : ContentPage
     /// shorter one.</param>
     private async Task LoadAsync(bool showSkeleton, bool resetScroll = false)
     {
-        ChatBot.MemberId = _memberId;
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ErrorDetailLabel.Text = MemberRoute.MissingMessage;
+            SetState(error: true);
+            return;
+        }
+
+        ChatBot.MemberId = _route.Id;
         ChatBot.MemberFirstName = NameFormatting.FirstName(_memberName);
         var ticket = _gate.Begin();
         _ticket = ticket;
@@ -172,7 +192,7 @@ public partial class QuestionnairesPage : ContentPage
         if (showSkeleton)
             SetState(loading: true);
         _currentPage = Page;
-        var (memberId, search) = (_memberId, _searchTerm);
+        var (memberId, search) = (_route.Id, _searchTerm);
 
         try
         {
@@ -233,7 +253,7 @@ public partial class QuestionnairesPage : ContentPage
             // answers unusable — it stops it. Dropping the result on arrival was already correct;
             // this stops paying for it on a caregiver's data while they wait for what they asked.
             var result = await _api.GetQuestionnairesAsync(
-                _memberId, _searchTerm, nextPage, PageSize, paging);
+                _route.Id, _searchTerm, nextPage, PageSize, paging);
 
             if (!_gate.IsCurrent(ticket))
                 return; // a new search or reload started while this page was in flight; drop it —
@@ -280,7 +300,7 @@ public partial class QuestionnairesPage : ContentPage
         try
         {
             await _api.OfferStandingFactAsync(
-                _memberId, new OfferStandingFactRequest { FactText = fact! });
+                _route.Id, new OfferStandingFactRequest { FactText = fact! });
 
             // A second fact typed while this save was in flight must not be wiped by clearing
             // the box. Only the text we actually posted is ours to remove.

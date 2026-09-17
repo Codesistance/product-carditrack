@@ -81,6 +81,14 @@ public class ChatRouteDecisionTests
     [InlineData(MemberChatWorkflow.Analysis, MemberChatWorkflow.Advise, true)]
     [InlineData(MemberChatWorkflow.Inference, MemberChatWorkflow.Advise, true)]
     [InlineData(MemberChatWorkflow.SteerCasual, MemberChatWorkflow.Advise, true)]
+    // Settings sits off the ladder with the steers: adjacent to them (the dispatch then prefers
+    // settings), and a genuinely different ask from any reading rung or from advise — "is his
+    // heart alert on" against "is his heart okay".
+    [InlineData(MemberChatWorkflow.AlertSettings, MemberChatWorkflow.SteerOffTopic, false)]
+    [InlineData(MemberChatWorkflow.AlertSettings, MemberChatWorkflow.SteerCasual, false)]
+    [InlineData(MemberChatWorkflow.AlertSettings, MemberChatWorkflow.Status, true)]
+    [InlineData(MemberChatWorkflow.AlertSettings, MemberChatWorkflow.Inference, true)]
+    [InlineData(MemberChatWorkflow.AlertSettings, MemberChatWorkflow.Advise, true)]
     public void Clarify_FiresOnlyWhenTheTwoCandidatesAreDifferentAsks(
         MemberChatWorkflow primary, MemberChatWorkflow runnerUp, bool expectClarify)
     {
@@ -112,6 +120,21 @@ public class ChatRouteDecisionTests
         Assert.Equal(expected, decision.PitsAdviseAgainstASteer);
         if (expected)
             Assert.True(decision.NeedsClarify, "the pair is still a different ask until the dispatch finds a row.");
+    }
+
+    [Theory]
+    [InlineData(MemberChatWorkflow.SteerOffTopic, MemberChatWorkflow.AlertSettings, true)]
+    [InlineData(MemberChatWorkflow.AlertSettings, MemberChatWorkflow.SteerCasual, true)]
+    [InlineData(MemberChatWorkflow.AlertSettings, MemberChatWorkflow.Analysis, false)]
+    [InlineData(MemberChatWorkflow.Advise, MemberChatWorkflow.SteerCasual, false)]
+    public void SettingsAgainstASteer_IsNamedAsSuch(
+        MemberChatWorkflow primary, MemberChatWorkflow runnerUp, bool expected)
+    {
+        var decision = new ChatRouteDecision { Primary = primary, RunnerUp = runnerUp };
+
+        Assert.Equal(expected, decision.PitsSettingsAgainstASteer);
+        if (expected)
+            Assert.False(decision.NeedsClarify, "off-ladder pairs are adjacent; the dispatch resolves this one to settings.");
     }
 
     [Fact]

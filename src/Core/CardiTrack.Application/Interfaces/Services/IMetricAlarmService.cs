@@ -40,14 +40,23 @@ public interface IMetricAlarmService
     /// writes (or updates) the member's override of it; given a member alarm's own id it edits that
     /// row. Saving with <c>IsEnabled</c> false is how a member opts out of an inherited alarm.
     /// </summary>
+    /// <param name="expectedFingerprint">
+    /// <see cref="Services.MetricAlarmFingerprint"/> of the effective row the request was written
+    /// against, or null to write unconditionally. When given, the save is refused with
+    /// <see cref="Exceptions.AlertSettingsChangedException"/> if the row no longer matches — the check
+    /// and the write share one read, so a change landing between a caller's earlier look and
+    /// this call is caught rather than overwritten.
+    /// </param>
     Task<MetricAlarmResponse> SaveMemberOverrideAsync(
         Guid requestingUserId, Guid cardiMemberId, Guid alarmId, SaveMetricAlarmRequest request,
-        CancellationToken ct = default);
+        string? expectedFingerprint = null, CancellationToken ct = default);
 
     /// <summary>
     /// Removes what this member has of their own for an alarm. On an override that means reverting
     /// to the account default; on a member-only alarm it means deleting it.
     /// </summary>
+    /// <param name="expectedFingerprint">As on <see cref="SaveMemberOverrideAsync"/>.</param>
     Task DeleteMemberAlarmAsync(
-        Guid requestingUserId, Guid cardiMemberId, Guid alarmId, CancellationToken ct = default);
+        Guid requestingUserId, Guid cardiMemberId, Guid alarmId, string? expectedFingerprint = null,
+        CancellationToken ct = default);
 }

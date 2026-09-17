@@ -70,4 +70,12 @@ public enum MemberChatWorkflow
     /// wrote — see <c>JournalChatActions</c>. Destructive asks are confirmed on the next turn.
     /// </summary>
     Journal = 10,
+
+    /// <summary>A request about the alerts themselves — switching one of CardiTrack's own rules on
+    /// or off, adding or changing an alarm the caregiver set, or asking which are on. Off the
+    /// ladder like the steers: it says nothing about the member. Proposes in one turn and applies
+    /// on the caregiver's yes in the next; the apply turn is stamped with this too. Numbered
+    /// clear of the journal rung's 10, which was in flight on another branch when this shipped:
+    /// two members sharing a value would compile, and then ToString would pick one of them.</summary>
+    AlertSettings = 12,
 }

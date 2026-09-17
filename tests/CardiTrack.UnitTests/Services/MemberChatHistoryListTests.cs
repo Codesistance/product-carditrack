@@ -35,7 +35,9 @@ public class MemberChatHistoryListTests
     }
 
     private MemberChatService CreateSut() =>
-        new(_medicalAi, _rewriteAi, _planner, Substitute.For<IChatRouter>(), _unitOfWork, _access,
+        new(_medicalAi, _rewriteAi, _planner, Substitute.For<IChatRouter>(),
+            Substitute.For<IAlertChangePlanner>(), Substitute.For<IAlertPreferenceService>(),
+            Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
             NullLogger<MemberChatService>.Instance);

@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Devices;
+using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -26,7 +27,7 @@ public partial class DeviceManagementPage : ContentPage
     /// </summary>
     private readonly HashSet<Guid> _expandedSharing = [];
 
-    private Guid _memberId;
+    private readonly MemberRoute _route = new();
     private bool _isBusy;
     private bool _wizardActive;
     private DateTime _lastLoadedUtc = DateTime.MinValue;
@@ -50,11 +51,18 @@ public partial class DeviceManagementPage : ContentPage
         this.RefreshWhenAppResumes(RefreshOnResumeAsync);
     }
 
+    /// <summary>
+    /// Whose devices these are. Shell may set this after the page has already appeared and
+    /// tried to load, so an arrival that leaves a load owed runs it — see
+    /// <see cref="MemberRoute"/>.
+    /// </summary>
     public string MemberId
     {
-        set => _memberId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
-            ? id
-            : Guid.Empty;
+        set
+        {
+            if (_route.Accept(value))
+                this.WhenRouteHasLanded(() => _ = LoadAsync(force: true));
+        }
     }
 
     protected override void OnAppearing()
@@ -93,8 +101,20 @@ public partial class DeviceManagementPage : ContentPage
     {
         if (_gate.IsLoading && !force)
             return;
+        // Nothing to ask about yet. The empty id is not a member the API can refuse politely —
+        // every CardiMember endpoint answers it with "CardiMember not found", which reads as
+        // this member being gone — so the request is not made at all, and the arrival that
+        // brings the id runs this again.
+        if (_route.IsMissing)
+        {
+            _route.LoadedWithoutId();
+            ErrorDetailLabel.Text = MemberRoute.MissingMessage;
+            SetState(error: true);
+            return;
+        }
+
         var ticket = _gate.Begin();
-        var memberId = _memberId;
+        var memberId = _route.Id;
 
         if (_last is null)
             SetState(loading: true);
@@ -217,7 +237,7 @@ public partial class DeviceManagementPage : ContentPage
     // a Member Detail page the caregiver was never on. Member Detail stays the floor: it is where
     // this screen belongs when it was opened with nothing behind it.
     private async void OnBackClicked(object? sender, EventArgs e) =>
-        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_memberId}");
+        await this.GoBackAsync($"{AppShell.DashboardRoute}/{CardiMemberDetailPage.Route}?memberId={_route.Id}");
 
     private async void OnAddDeviceClicked(object? sender, EventArgs e)
     {
@@ -228,7 +248,7 @@ public partial class DeviceManagementPage : ContentPage
         {
             // The connect wizard wants the list shape, not the detail shape.
             var members = await _api.GetCardiMembersAsync();
-            var member = members.FirstOrDefault(m => m.Id == _memberId);
+            var member = members.FirstOrDefault(m => m.Id == _route.Id);
             if (member is null)
                 return;
 
@@ -264,7 +284,7 @@ public partial class DeviceManagementPage : ContentPage
     private async void OnRefreshRequested(object? sender, Guid deviceId) =>
         await RunDeviceActionAsync(deviceId, async () =>
         {
-            await _api.RefreshDeviceConnectionAsync(_memberId, deviceId);
+            await _api.RefreshDeviceConnectionAsync(_route.Id, deviceId);
         }, "Couldn't refresh this connection");
 
     /// <summary>
@@ -294,14 +314,14 @@ public partial class DeviceManagementPage : ContentPage
 
         await RunDeviceActionAsync(deviceId, async () =>
         {
-            await _api.RequestHistoryRepullAsync(_memberId, deviceId, days);
+            await _api.RequestHistoryRepullAsync(_route.Id, deviceId, days);
         }, "Couldn't start the re-pull");
     }
 
     private async void OnSetPrimaryRequested(object? sender, Guid deviceId) =>
         await RunDeviceActionAsync(deviceId, async () =>
         {
-            await _api.SetPrimaryDeviceAsync(_memberId, deviceId);
+            await _api.SetPrimaryDeviceAsync(_route.Id, deviceId);
         }, "Couldn't set the primary device");
 
     private async void OnRemoveRequested(object? sender, Guid deviceId)
@@ -320,7 +340,7 @@ public partial class DeviceManagementPage : ContentPage
 
         await RunDeviceActionAsync(deviceId, async () =>
         {
-            await _api.DisconnectDeviceAsync(_memberId, deviceId);
+            await _api.DisconnectDeviceAsync(_route.Id, deviceId);
         }, "Couldn't remove this device");
     }
 

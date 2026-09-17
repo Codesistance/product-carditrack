@@ -13,6 +13,13 @@ namespace CardiTrack.Application.Services;
 /// policy with no I/O, testable without a host. <c>MemberChatService</c> fetches the rows and
 /// resolves the first name; everything after that is a pure function of what it passes in.
 /// </summary>
+/// <summary>A caregiver's answer to a proposed change, when the message is one.</summary>
+public enum ConfirmationAnswer
+{
+    Yes = 1,
+    No = 2,
+}
+
 public static partial class MemberChatReplies
 {
     /// <summary>
@@ -501,6 +508,50 @@ public static partial class MemberChatReplies
         var whose = string.IsNullOrWhiteSpace(firstName) ? "their" : $"{firstName}'s";
         return $"I didn't catch a question there — ask me about {whose} sleep, activity, heart rate or alerts.";
     }
+
+    /// <summary>
+    /// Whether a message is a yes or a no to the change the previous turn proposed — judged in
+    /// code, ahead of every model, so confirming a change costs no call and no model can read
+    /// "yes" as anything else.
+    /// </summary>
+    /// <remarks>
+    /// Exact matches against a closed list after punctuation and case are stripped, not a
+    /// contains-check: "yes but only at night" is a new instruction, and "no idea, is he ok?" is
+    /// a question. Both must route rather than resolve the proposal. Digits are kept for the same
+    /// reason — "yes 130" is a new level, not a yes — and only punctuation is dropped. Erring
+    /// narrow is the safe direction: a yes that slips through routes normally and the proposal
+    /// lapses unapplied.
+    /// </remarks>
+    public static ConfirmationAnswer? ReadConfirmation(string message)
+    {
+        var kept = new string(message.Trim().ToLowerInvariant()
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '\'')
+            .ToArray());
+        var normalised = string.Join(' ', kept.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+        if (normalised.Length == 0)
+            return null;
+        if (YesPhrases.Contains(normalised))
+            return ConfirmationAnswer.Yes;
+        if (NoPhrases.Contains(normalised))
+            return ConfirmationAnswer.No;
+        return null;
+    }
+
+    private static readonly HashSet<string> YesPhrases = new(StringComparer.Ordinal)
+    {
+        "yes", "y", "yep", "yeah", "yup", "yes please", "please", "ok", "okay", "sure", "go ahead",
+        "go on", "do it", "please do", "confirm", "confirmed", "yes do it", "do that", "fine",
+        "sounds good", "that's right", "thats right", "correct", "proceed", "make it so", "yes thanks",
+        "yes thank you", "ok do it", "okay do it", "ok go ahead", "okay go ahead", "go for it",
+    };
+
+    private static readonly HashSet<string> NoPhrases = new(StringComparer.Ordinal)
+    {
+        "no", "n", "nope", "nah", "no thanks", "no thank you", "cancel", "don't", "dont", "do not",
+        "leave it", "never mind", "nevermind", "stop", "not now", "no leave it", "forget it",
+        "leave things as they are", "leave it as it is", "no don't", "no dont",
+    };
 
     /// <summary>Oxford-less list joining — "a, b and c".</summary>
     private static string Join(IReadOnlyList<string> parts) => parts.Count switch

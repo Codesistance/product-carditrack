@@ -38,4 +38,10 @@ public enum AiCallStep
     /// generation the half-hourly pipeline pass makes, billed to the chat turn that asked for
     /// it rather than left off the ledger.</summary>
     JournalWrite = 8,
+
+    /// <summary>Reading an alert-settings request into a closed change plan — which rule or alarm,
+    /// and what to do with it — on the Rewrite slot. The settings rung's one call after the route;
+    /// the reply and the change itself are assembled and applied in code. Numbered clear of the
+    /// journal steps (7 and 8) in flight on another branch when this shipped.</summary>
+    SettingsPlan = 9,
 }

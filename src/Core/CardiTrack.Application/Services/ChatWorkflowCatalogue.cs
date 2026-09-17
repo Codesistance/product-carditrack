@@ -200,6 +200,23 @@ public static class ChatWorkflowCatalogue
                 ChatClaimClass.Action,
                 []),
 
+            // Off the ladder with the steers: it says nothing about the member. The purpose line
+            // draws its boundary against the reading rungs in the caregiver's own words, because
+            // "is his heart alert on" and "is his heart okay" share every word but one, and the
+            // router has nothing else to tell them apart by. Quiet hours and muting are named
+            // here too, so that ask resolves inside the rung — to a redirect, since those
+            // settings belong to the caregiver's account rather than the member — instead of
+            // reading as off-topic.
+            new(MemberChatWorkflow.AlertSettings,
+                "settings",
+                "A request about the alerts themselves rather than about the readings: switching "
+                + "one of this app's own alerts on or off, adding, changing, switching or removing "
+                + "an alarm the caregiver set on a reading, asking which alerts are on, or asking "
+                + "about quiet hours and notifications. \"Is his heart alert on\" is this; \"is his "
+                + "heart okay\" is not.",
+                ChatClaimClass.None,
+                []),
+
             // Triggered by the shape of the routing answer — a runner-up that is a different ask,
             // or a result that cannot be run — never returned by the model. Adjacent ambiguity is
             // what the ladder's tie-break is for, and two reading rungs at any distance are one ask
