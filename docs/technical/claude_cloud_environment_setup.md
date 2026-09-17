@@ -136,7 +136,8 @@ if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
   if [ "$(id -u)" -eq 0 ]; then
     nohup dockerd >/var/log/dockerd.log 2>&1 &
   else
-    sudo -n true 2>/dev/null && sudo -b nohup dockerd >/var/log/dockerd.log 2>&1
+    # Redirect inside the privileged shell; an unprivileged one cannot open the log.
+    sudo -n sh -c 'nohup dockerd >/var/log/dockerd.log 2>&1 &'
   fi
   for i in $(seq 1 15); do docker info >/dev/null 2>&1 && break; sleep 1; done
 fi
@@ -255,9 +256,10 @@ gh workflow run deploy-apps-dev.yml --ref <branch> -f api=false -f web=false -f 
 gh run watch --exit-status "$(gh run list --workflow deploy-apps-dev.yml --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
-A dispatch on a branch builds and ships nothing (every deploy, image push and archive
-job is guarded on `main`); on `main` the same ticks also archive the builds to GCS and
-tag, and `deploy-mobile-dev.yml` pushes that tag to the stores. On dispatch the ticks,
+A dispatch on a branch runs the unsigned compile gates (Release Android, Debug iOS
+simulator — no secrets, a few minutes) and ships nothing; the signed builds, the GCS
+archive and the tag are `main`-only, and `deploy-mobile-dev.yml` pushes that tag to the
+stores. On dispatch the ticks,
 not the paths filter, decide what builds, so a change anywhere in the app's dependency
 graph (`CardiTrack.Mobile`, `CardiTrack.Mobile.Core`, `CardiTrack.Domain`,
 `CardiTrack.Application`) is covered by dispatching it.

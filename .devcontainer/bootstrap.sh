@@ -42,7 +42,9 @@ if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
   if [ "$(id -u)" -eq 0 ]; then
     nohup dockerd >/var/log/dockerd.log 2>&1 &
   else
-    sudo -n true 2>/dev/null && sudo -b nohup dockerd >/var/log/dockerd.log 2>&1 || true
+    # The redirection has to happen inside the privileged shell: an unprivileged
+    # one cannot open /var/log/dockerd.log, so the daemon would never start.
+    sudo -n sh -c 'nohup dockerd >/var/log/dockerd.log 2>&1 &' 2>/dev/null || true
   fi
   for _ in $(seq 1 15); do
     docker info >/dev/null 2>&1 && break

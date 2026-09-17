@@ -455,7 +455,9 @@ jobs:
           fi
 
   # ── Mobile ───────────────────────────────────────────────────────────────────
-  # PR-only compile gate. It used to run on main too, publishing a full Release
+  # Compile gate for pull requests and for a dispatch on any branch (the
+  # compile check a mobile change gets before merge, #1111 — no secrets, no
+  # signing, a few minutes). It used to run on main too, publishing a full Release
   # APK and uploading it as `mobile-android` — but nothing ever downloaded that
   # artifact (build-mobile-android-signed produces the one Play Console and GCS
   # consume), so main was paying a second full Android build, and ~120MB of
@@ -465,7 +467,7 @@ jobs:
   build-mobile-android:
     name: Build Mobile (Android)
     needs: changes
-    if: needs.changes.outputs.mobile_android == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.mobile_android == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -501,8 +503,8 @@ jobs:
             -p:PublishTrimmed=false \
             -p:AndroidLinkTool=
 
-  # PR-only, and the most expensive job in the workflow to get wrong: macOS bills
-  # at 10x. It used to run on main as well, where it did a full Release simulator
+  # Pull requests and branch dispatches, like the Android gate above, and the
+  # most expensive job in the workflow to get wrong: macOS bills at 10x. It used to run on main as well, where it did a full Release simulator
   # build — measured at 542-604s, i.e. ~110 billed minutes per push — whose output
   # no step uploads and no job `needs`. build-mobile-ios-device compiles the same
   # code on the same push under stricter settings (ios-arm64, AOT, real signing)
@@ -512,7 +514,7 @@ jobs:
   build-mobile-ios:
     name: Build Mobile (iOS)
     needs: changes
-    if: needs.changes.outputs.mobile_ios == 'true' && github.event_name == 'pull_request'
+    if: needs.changes.outputs.mobile_ios == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'))
     runs-on: macos-26
     permissions:
       contents: read
@@ -565,13 +567,13 @@ jobs:
   # the iOS and Android builds were cut to Debug, it *was* the PR critical path
   # at ~5 min. A break here is caught on the next merge and blocks no release.
   #
-  # Builds on any dispatched ref (a branch dispatch is the compile check a
-  # mobile change gets, #1111) and on push to main; only main's msix is
-  # collected by upload-mobile-artifacts.
+  # Main only: it loads Auth0 config from Secret Manager, and only main's msix
+  # is collected by upload-mobile-artifacts. A branch dispatch gets the unsigned
+  # compile gates above instead.
   build-mobile-windows:
     name: Build Mobile (Windows)
     needs: changes
-    if: (github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')) && needs.changes.outputs.mobile_windows == 'true'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile_windows == 'true'
     runs-on: windows-latest
     permissions:
       id-token: write
@@ -657,8 +659,10 @@ jobs:
 
   # ── Store-grade signed builds ───────────────────────────────────────────────
   # Signed device builds for TestFlight / Play Console, one per platform tick.
-  # They run on any dispatched ref and on push to main; only main's output is
-  # archived to GCS, and deploy-mobile-dev.yml pushes it to the stores by tag.
+  # Main only: they load the signing keys and other secrets, so code from an
+  # arbitrary branch must not run inside them — a branch dispatch gets the
+  # unsigned compile gates above. main's output is archived to GCS, and
+  # deploy-mobile-dev.yml pushes it to the stores by tag.
   # Each job gates on its signing secrets being populated (not the REPLACE_ME
   # placeholder) and skips with a warning until the operator completes the
   # one-time store setup.
@@ -673,7 +677,7 @@ jobs:
     needs:
       - changes
       - compute-version
-    if: (github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')) && needs.changes.outputs.mobile_android == 'true'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile_android == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -801,7 +805,7 @@ jobs:
     needs:
       - changes
       - compute-version
-    if: (github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')) && needs.changes.outputs.mobile_ios == 'true'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile_ios == 'true'
     runs-on: macos-26
     timeout-minutes: 40
     permissions:
@@ -1587,12 +1591,16 @@ jobs:
     # Nothing was mis-deployed when that happened: every build and deploy job had skipped for the
     # same reason compute-version did, so the tag was the only casualty. But it fails the whole
     # run, so an infra merge looks broken.
+    # And when a mobile platform was ticked, its archive must actually have landed:
+    # a tag with no builds behind it is one deploy-mobile-dev.yml can never push.
     if: |
       always() &&
       github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
-      needs.compute-version.result == 'success'
+      needs.compute-version.result == 'success' &&
+      ((needs.changes.outputs.mobile_android != 'true' && needs.changes.outputs.mobile_ios != 'true' && needs.changes.outputs.mobile_windows != 'true') ||
+       needs.upload-mobile-artifacts.result == 'success')
     runs-on: ubuntu-latest
     steps:
       # Tag via the REST API, not `git push`: receive-pack rejects any ref

@@ -274,7 +274,7 @@ iOS release signing uses `CodesignKey=Apple Distribution` and `CodesignProvision
 Mobile is **built** by `.github/workflows/deploy-apps-dev.yml`, one tick per platform (`mobile_android`, `mobile_ios`, `mobile_windows`), and **pushed** to the stores by `.github/workflows/deploy-mobile-dev.yml`, by release tag. The split matters because the iOS device build is ~13 macOS minutes at ten times the Linux price: tick iOS when you want a TestFlight candidate, not by default. `deploy-apps-prod.yml` carries the production track.
 
 ```bash
-# Build (any dispatched ref; only main's output is archived and tagged)
+# Build (main: signed + archived + tagged; any other ref: unsigned compile check)
 gh workflow run deploy-apps-dev.yml --ref main -f mobile_android=true                      # Android only, no Mac
 gh workflow run deploy-apps-dev.yml --ref main -f mobile_android=true -f mobile_ios=true   # TestFlight candidate too
 gh workflow run deploy-apps-dev.yml --ref <branch> -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true -f mobile_ios=true   # compile check; ships nothing
@@ -284,8 +284,8 @@ gh workflow run deploy-mobile-dev.yml --ref main -f platform=android            
 gh workflow run deploy-mobile-dev.yml --ref main -f platform=ios -f tag=v0.2.308
 ```
 
-- **Any dispatched ref** — the ticked platforms build (signed, when the store secrets are populated). This is the only compile coverage a mobile change on a branch gets: the push/PR lane is gated off by `.github/ACTIONS_ON_PUSH` and never built mobile even when it was on (#1111).
-- **`main`** — the builds are archived to the GCS builds bucket under the release tag and the tag is created. **Deploy Mobile → Dev** then pushes them:
+- **Any other dispatched ref** — the ticked platforms run the unsigned compile gates (Release Android, Debug iOS simulator; no secrets, a few minutes). This is the only compile coverage a mobile change on a branch gets: the push/PR lane is gated off by `.github/ACTIONS_ON_PUSH` and never built mobile even when it was on (#1111).
+- **`main`** — the ticked platforms are built signed, archived to the GCS builds bucket under the release tag, and the tag is created only once that archive has landed. **Deploy Mobile → Dev** then pushes them:
   - **Android**: a signed AAB + APK is produced (`build-mobile-android-signed`) and the AAB is uploaded to the **Play Console internal testing track** (`deploy-play-internal`). Release builds run R8 (`AndroidLinkTool=r8` in the csproj), and the upload includes the R8 deobfuscation map (`mapping.txt`) plus a `native-debug-symbols.zip` built from the pre-strip native libraries (`obj/**/app_shared_libraries`), so Play crash reports show readable stack traces. Note: symbol coverage extends to the app's own native libs; Microsoft does not ship unstripped Mono runtime libraries, so frames inside e.g. `libmonosgen-2.0.so` remain unsymbolicated.
   - **iOS**: a signed device IPA is produced (`build-mobile-ios-device`) and uploaded to **TestFlight** (`deploy-testflight`) via the App Store Connect API. The same job zips the build's `.dSYM` and ships it as the `mobile-ios-symbols` artifact (90-day retention) and to `…/ios/symbols/` in the builds bucket, because the store binary is stripped and that bundle is the only thing that can name the frames in a crash report — AOT'd managed methods included. The step fails the build if no `.dSYM` is found: a build nobody can symbolicate is indistinguishable from a working one until the first crash arrives.
   - Signed artifacts are archived to GCS under the release tag (`upload-mobile-artifacts`).

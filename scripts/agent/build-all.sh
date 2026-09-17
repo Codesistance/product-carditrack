@@ -10,8 +10,9 @@
 #      PR job used, because XamlC only reports on Release.
 #   3. The platforms this machine cannot build — iOS always, Android too when step 2
 #      was skipped — through CI: dispatch CI / Deploy Apps → Dev on the current branch
-#      with only the mobile ticks on, and wait for it. A branch dispatch builds and
-#      ships nothing (every deploy, image push and archive job is main-only). Needs
+#      with only the mobile ticks on, and wait for it. A branch dispatch runs the
+#      unsigned compile gates (Release Android, Debug iOS simulator) and ships
+#      nothing; signed builds, the archive and the tag are main-only. Needs
 #      `gh` with a token carrying the `workflow` scope (GH_TOKEN), and the branch pushed.
 #
 # Usage:

@@ -26,10 +26,10 @@ below is the non-obvious part the scripted setup does **not** cover.
 Server filter (Release, warning-free), then `CardiTrack.Mobile` for Android locally, then the
 platforms this VM cannot build — iOS needs macOS — by dispatching **CI / Deploy Apps → Dev**
 (`deploy-apps-dev.yml`) on the current branch with only the mobile ticks on, and waiting for
-it. A branch dispatch builds and ships nothing. The branch must be pushed. `--no-ci` keeps it
-local; `--platform both` sends Android to CI as well (a signed, R8/AOT build, unlike the local
-compile). Store pushes are a separate, deliberate step: `deploy-mobile-dev.yml`, by tag, on
-`main`.
+it. A branch dispatch runs the unsigned compile gates (Release Android, Debug iOS simulator)
+and ships nothing; signed builds are `main`-only. The branch must be pushed. `--no-ci` keeps it
+local; `--platform both` sends Android to CI as well. Store pushes are a separate, deliberate
+step: `deploy-mobile-dev.yml`, by tag, on `main`.
 
 ### Test everything: `scripts/agent/test-all.sh`
 Builds the server filter once (Release) and runs the unit and integration suites with
@@ -62,7 +62,10 @@ Docker 29 must use `fuse-overlayfs` with the containerd snapshotter disabled and
 `/etc/docker/daemon.json` as `{"storage-driver":"fuse-overlayfs","features":{"containerd-snapshotter":false}}`,
 `update-alternatives --set iptables /usr/sbin/iptables-legacy` (and `ip6tables`), start
 `dockerd`, then `docker compose up -d db redis`. To use the socket without sudo:
-`sudo chmod 666 /var/run/docker.sock`. Run tests with `TESTCONTAINERS_RYUK_DISABLED=true` (matches CI).
+`sudo usermod -aG docker "$USER"` and open a new terminal (never `chmod 666` the socket — that
+hands every process on the VM root through Docker). `scripts/agent/services-up.sh` does the
+install, the daemon configuration and the group membership when Docker is absent. Run tests
+with `TESTCONTAINERS_RYUK_DISABLED=true` (matches CI).
 
 Apply EF migrations once the db is up (command in README). MedGemma/Ollama and the AI
 pipeline are optional (`docker compose --profile full ...`) and not needed for the core stack.
