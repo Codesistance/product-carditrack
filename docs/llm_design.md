@@ -701,9 +701,10 @@ already up):
   `WellnessGuidelineReference` table. Guarded per entry only for a
   treatment proposal (`AdviseRegisterGuards.ProposesTreatment`); a citation naming no published
   source is stored as "the readings" rather than dropped. A condition name in the note is
-  allowed: the register boundary is held on the rewrite. The same JSON daily shape is what
-  digest, status, member-chat, alert, baseline and assessment clinical briefs now send;
-  journals already group readings against usual and stay as tables.
+  allowed: the register boundary is held on the rewrite. Digest, status, member-chat, alert and
+  baseline clinical briefs send the same JSON daily array; the real-time assessment hour is a
+  JSON object of SSA yardsticks, not a daily array. Journals already group readings against
+  usual and stay as tables.
 - **Rewrite (AI:Rewrite, Gemini).** Translation and addressing: the caregiver register, written
   to the family about the member, who is named only through the `CardiTrackCardiMember`
   placeholder — resolved to the real first name in code afterwards, so no model ever sees it.

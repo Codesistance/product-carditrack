@@ -951,13 +951,19 @@ internal static partial class MedicalPromptBlocks
 
         var parts = new List<string>();
         if (baseline.AvgSteps is { } steps)
-            parts.Add($"Steps: {steps}±{baseline.StdDevSteps}");
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"Steps: {steps}±{baseline.StdDevSteps}"));
         if (baseline.AvgRestingHeartRate is { } resting)
-            parts.Add($"Resting HR: {resting}±{baseline.StdDevHeartRate}");
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"Resting HR: {resting}±{baseline.StdDevHeartRate}"));
         if (baseline.AvgSleepMinutes is { } sleep)
-            parts.Add($"Sleep: {sleep} min");
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"Sleep: {sleep} min"));
+        if (baseline.AvgSleepEfficiency is { } efficiency)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"Sleep efficiency: {efficiency}"));
+        if (baseline.AvgElevatedZoneMinutes is { } azm)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"Active zone minutes: {azm}"));
         if (baseline.AvgHeartRateVariabilityMs is { } hrv)
-            parts.Add($"HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight");
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"HRV: {hrv}±{baseline.StdDevHeartRateVariability} ms overnight"));
+        if (baseline.AvgOvernightBreathingRate is { } breathing)
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"Breathing asleep: {breathing:0.#}±{baseline.StdDevOvernightBreathingRate:0.#}/min"));
 
         if (parts.Count == 0)
             return "No baseline metrics have settled yet — this member is still being learned.";

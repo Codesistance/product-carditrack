@@ -263,5 +263,15 @@ public class DailyLinesTodayAnchorTests
         Assert.Contains("Resting HR: 62±3", settled);
         Assert.DoesNotContain("Sleep:", settled);
         Assert.DoesNotContain("Steps: ±", MedicalPromptBlocks.BaselineSummary(new PatternBaseline { PeriodDays = 30 }));
+
+        var withZones = MedicalPromptBlocks.BaselineSummary(new PatternBaseline
+        {
+            PeriodDays = 30,
+            AvgElevatedZoneMinutes = 32,
+            AvgOvernightBreathingRate = 14.1m,
+            StdDevOvernightBreathingRate = 0.4m,
+        });
+        Assert.Contains("Active zone minutes: 32", withZones);
+        Assert.Contains("Breathing asleep: 14.1±0.4/min", withZones);
     }
 }

@@ -100,7 +100,10 @@ public class AdviseGenerationService
         JSON:
         """;
 
-    /// <summary>Fixed prefix plus closing cue, with the record inserted between them at call time.</summary>
+    /// <summary>Fixed prefix plus closing cue. <see cref="BuildClinicalPrompt"/> inserts the
+    /// record between the two halves; this concatenation is the brief
+    /// <c>MedicalPromptToneTests</c> reflects on, so the tone rules cannot drift from what is
+    /// actually sent.</summary>
     private const string ClinicalInstructions = ClinicalHead + ClinicalTail;
 
     /// <summary>
