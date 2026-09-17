@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
@@ -88,10 +89,11 @@ public class MemberChatAlertSettingsRungTests
                 Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<AlertSettingsSnapshot>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<AlertChangePlan>(plan, new AiUsage { ModelName = "test-planner" }));
 
-    /// <summary>A session whose most recent reply proposed switching off activity decline.</summary>
-    private void AProposalIsPending(TimeSpan age)
+    /// <summary>A session whose most recent reply proposed a change — switching off activity
+    /// decline unless another proposal is given.</summary>
+    private void AProposalIsPending(TimeSpan age, PendingAlertChange? proposal = null)
     {
-        var pending = new PendingAlertChange
+        var pending = proposal ?? new PendingAlertChange
         {
             Kind = PendingAlertChangeKind.SetRule,
             RuleId = AlertRuleCatalogue.ActivityDecline,
@@ -225,6 +227,163 @@ public class MemberChatAlertSettingsRungTests
         var assistant = Assert.Single(_persisted, t => t.Role == ChatTurnRole.Assistant);
         Assert.Equal(MemberChatWorkflow.AlertSettings, assistant.Workflow);
         Assert.Null(assistant.PendingChange);
+    }
+
+    private static SaveMetricAlarmRequest AHeartRateRequest(bool enabled = true) => new()
+    {
+        Name = "Heart rate above 120 bpm",
+        Metric = AlarmMetric.HeartRate,
+        Statistic = AlarmStatistic.Average,
+        Operator = AlarmOperator.GreaterThan,
+        ThresholdKind = AlarmThresholdKind.Absolute,
+        ThresholdValue = 120,
+        PeriodMinutes = 5,
+        EvaluationPeriods = 2,
+        DatapointsToAlarm = 2,
+        Severity = AlertSeverity.Yellow,
+        ContextGate = AlarmContextGate.Inactive,
+        IsEnabled = enabled,
+    };
+
+    /// <summary>A yes to a new alarm creates exactly that request for exactly this member.</summary>
+    [Fact]
+    public async Task AYesToANewAlarm_CreatesIt_AsProposed()
+    {
+        var request = AHeartRateRequest();
+        AProposalIsPending(TimeSpan.FromMinutes(1), new PendingAlertChange
+        {
+            Kind = PendingAlertChangeKind.CreateAlarm,
+            Alarm = request,
+            Summary = "Add an alarm for Moses called “Heart rate above 120 bpm”",
+            Done = "added an alarm for Moses called “Heart rate above 120 bpm”",
+            ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+
+        await _metricAlarms.Received(1).CreateMemberAlarmAsync(
+            _userId, _memberId,
+            Arg.Is<SaveMetricAlarmRequest>(r =>
+                r.Name == request.Name && r.Metric == AlarmMetric.HeartRate && r.ThresholdValue == 120
+                && r.PeriodMinutes == 5 && r.ContextGate == AlarmContextGate.Inactive),
+            Arg.Any<CancellationToken>());
+        Assert.StartsWith("Done — I've added an alarm for Moses called “Heart rate above 120 bpm”.", reply.Reply, StringComparison.Ordinal);
+        Assert.True(reply.ChangedAlertSettings);
+    }
+
+    /// <summary>The effective list carries this alarm as the proposal saw it.</summary>
+    private MetricAlarmResponse AnExistingAlarm(Guid alarmId, bool enabled = true)
+    {
+        var row = new MetricAlarmResponse
+        {
+            Id = alarmId,
+            Name = "Heart rate above 120 bpm",
+            Metric = AlarmMetric.HeartRate,
+            Statistic = AlarmStatistic.Average,
+            Operator = AlarmOperator.GreaterThan,
+            ThresholdKind = AlarmThresholdKind.Absolute,
+            ThresholdValue = 120,
+            PeriodMinutes = 5,
+            EvaluationPeriods = 2,
+            DatapointsToAlarm = 2,
+            Severity = AlertSeverity.Yellow,
+            ContextGate = AlarmContextGate.Inactive,
+            IsEnabled = enabled,
+            Provenance = AlarmProvenance.MemberOnly,
+            Condition = "Average heart rate is above 120 bpm over 5 minutes, on 2 of the last 2, while they are still.",
+        };
+        _metricAlarms.GetMemberAlarmsAsync(_userId, _memberId, Arg.Any<CancellationToken>())
+            .Returns((IReadOnlyList<MetricAlarmResponse>)[row]);
+        return row;
+    }
+
+    /// <summary>A yes to a switch or retune saves the member's version of that alarm — by the id
+    /// the effective list carried, which the alarm service accepts for a default or a member row.</summary>
+    [Fact]
+    public async Task AYesToASwitch_SavesTheMembersVersion_OfThatAlarm()
+    {
+        var alarmId = Guid.NewGuid();
+        var row = AnExistingAlarm(alarmId);
+        var request = AHeartRateRequest(enabled: false);
+        AProposalIsPending(TimeSpan.FromMinutes(1), new PendingAlertChange
+        {
+            Kind = PendingAlertChangeKind.SaveAlarm,
+            AlarmId = alarmId,
+            Alarm = request,
+            AlarmFingerprint = PendingAlertChange.Fingerprint(row),
+            Summary = "Switch off “Heart rate above 120 bpm” for Moses",
+            Done = "switched off “Heart rate above 120 bpm” for Moses",
+            ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "ok");
+
+        await _metricAlarms.Received(1).SaveMemberOverrideAsync(
+            _userId, _memberId, alarmId,
+            Arg.Is<SaveMetricAlarmRequest>(r => !r.IsEnabled && r.ThresholdValue == 120),
+            Arg.Any<CancellationToken>());
+        await _metricAlarms.DidNotReceiveWithAnyArgs().CreateMemberAlarmAsync(default, default, default!, default);
+        Assert.StartsWith("Done — I've switched off “Heart rate above 120 bpm” for Moses.", reply.Reply, StringComparison.Ordinal);
+        Assert.True(reply.ChangedAlertSettings);
+    }
+
+    /// <summary>Another caregiver retuned the alarm inside the window: the yes writes nothing
+    /// over their change, and says why.</summary>
+    [Fact]
+    public async Task AYesToASwitch_AfterSomeoneElseChangedTheAlarm_AppliesNothing()
+    {
+        var alarmId = Guid.NewGuid();
+        var row = AnExistingAlarm(alarmId);
+        AProposalIsPending(TimeSpan.FromMinutes(1), new PendingAlertChange
+        {
+            Kind = PendingAlertChangeKind.SaveAlarm,
+            AlarmId = alarmId,
+            Alarm = AHeartRateRequest(enabled: false),
+            AlarmFingerprint = PendingAlertChange.Fingerprint(row),
+            Summary = "Switch off “Heart rate above 120 bpm” for Moses",
+            Done = "switched off “Heart rate above 120 bpm” for Moses",
+            ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+        // Retuned to 130 by someone else after the proposal was written.
+        AnExistingAlarm(alarmId);
+        _metricAlarms.GetMemberAlarmsAsync(_userId, _memberId, Arg.Any<CancellationToken>())
+            .Returns((IReadOnlyList<MetricAlarmResponse>)[new MetricAlarmResponse
+            {
+                Id = alarmId, Name = row.Name, Metric = row.Metric, Statistic = row.Statistic, Operator = row.Operator,
+                ThresholdKind = row.ThresholdKind, ThresholdValue = 130, PeriodMinutes = row.PeriodMinutes,
+                EvaluationPeriods = row.EvaluationPeriods, DatapointsToAlarm = row.DatapointsToAlarm,
+                Severity = row.Severity, ContextGate = row.ContextGate, IsEnabled = true,
+                Provenance = row.Provenance, Condition = row.Condition,
+            }]);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+
+        Assert.Equal(AlertSettingsComposer.ChangedSinceProposedReply(), reply.Reply);
+        Assert.False(reply.ChangedAlertSettings);
+        await _metricAlarms.DidNotReceiveWithAnyArgs().SaveMemberOverrideAsync(default, default, default, default!, default);
+    }
+
+    [Fact]
+    public async Task AYesToARemoval_DeletesThatAlarm_ForThisMember()
+    {
+        var alarmId = Guid.NewGuid();
+        var row = AnExistingAlarm(alarmId);
+        AProposalIsPending(TimeSpan.FromMinutes(1), new PendingAlertChange
+        {
+            Kind = PendingAlertChangeKind.DeleteAlarm,
+            AlarmId = alarmId,
+            AlarmFingerprint = PendingAlertChange.Fingerprint(row),
+            Summary = "Remove the alarm “Heart rate above 120 bpm” for Moses",
+            Done = "removed the alarm “Heart rate above 120 bpm” for Moses",
+            ProposedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes please");
+
+        await _metricAlarms.Received(1).DeleteMemberAlarmAsync(_userId, _memberId, alarmId, Arg.Any<CancellationToken>());
+        await _metricAlarms.DidNotReceiveWithAnyArgs().SaveMemberOverrideAsync(default, default, default, default!, default);
+        Assert.Equal("Done — I've removed the alarm “Heart rate above 120 bpm” for Moses. Alert settings shows what applies now.", reply.Reply);
+        Assert.True(reply.ChangedAlertSettings);
     }
 
     /// <summary>A yes the phone sent twice, or two racing: the second finds the proposal

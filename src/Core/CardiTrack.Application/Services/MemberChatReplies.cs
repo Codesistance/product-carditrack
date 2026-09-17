@@ -517,13 +517,15 @@ public static partial class MemberChatReplies
     /// <remarks>
     /// Exact matches against a closed list after punctuation and case are stripped, not a
     /// contains-check: "yes but only at night" is a new instruction, and "no idea, is he ok?" is
-    /// a question. Both must route rather than resolve the proposal. Erring narrow is the safe
-    /// direction — a yes that slips through routes normally and the proposal lapses unapplied.
+    /// a question. Both must route rather than resolve the proposal. Digits are kept for the same
+    /// reason — "yes 130" is a new level, not a yes — and only punctuation is dropped. Erring
+    /// narrow is the safe direction: a yes that slips through routes normally and the proposal
+    /// lapses unapplied.
     /// </remarks>
     public static ConfirmationAnswer? ReadConfirmation(string message)
     {
         var kept = new string(message.Trim().ToLowerInvariant()
-            .Where(c => char.IsLetter(c) || c == ' ' || c == '\'')
+            .Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '\'')
             .ToArray());
         var normalised = string.Join(' ', kept.Split(' ', StringSplitOptions.RemoveEmptyEntries));
 

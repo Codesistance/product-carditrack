@@ -1145,6 +1145,9 @@ public class MemberChatService : IMemberChatService
         {
             try
             {
+                if (await AlarmChangedSinceProposedAsync(pending, userId, cardiMemberId, ct))
+                    throw new StaleProposalException();
+
                 await ApplyAsync(pending, userId, cardiMemberId, ct);
                 // Written at the apply boundary, not after the turn persists: the alert
                 // services have committed by now, and the audit row the controller files for
@@ -1160,6 +1163,10 @@ public class MemberChatService : IMemberChatService
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
+            }
+            catch (StaleProposalException)
+            {
+                reply = AlertSettingsComposer.ChangedSinceProposedReply();
             }
             catch (KeyNotFoundException)
             {
@@ -1193,6 +1200,29 @@ public class MemberChatService : IMemberChatService
             ChangedAlertSettings = changed,
         };
     }
+
+    /// <summary>
+    /// Whether the alarm a save or delete was proposed against is no longer as it was. The
+    /// proposal carries the whole request, so a yes would write every field; another caregiver
+    /// retuning the same alarm inside the window must not have their change overwritten by the
+    /// first caregiver's stale one. Re-read through the same effective list the proposal read.
+    /// </summary>
+    private async Task<bool> AlarmChangedSinceProposedAsync(
+        PendingAlertChange pending, Guid userId, Guid cardiMemberId, CancellationToken ct)
+    {
+        if (pending.Kind is not (PendingAlertChangeKind.SaveAlarm or PendingAlertChangeKind.DeleteAlarm)
+            || pending.AlarmFingerprint is null)
+        {
+            return false;
+        }
+
+        var rows = await _metricAlarms.GetMemberAlarmsAsync(userId, cardiMemberId, ct);
+        var row = rows.FirstOrDefault(a => a.Id == pending.AlarmId);
+        return row is null || PendingAlertChange.Fingerprint(row) != pending.AlarmFingerprint;
+    }
+
+    /// <summary>The alarm a proposal was about is not as it was — see <see cref="AlarmChangedSinceProposedAsync"/>.</summary>
+    private sealed class StaleProposalException : Exception;
 
     private Task ApplyAsync(PendingAlertChange pending, Guid userId, Guid cardiMemberId, CancellationToken ct) =>
         pending.Kind switch

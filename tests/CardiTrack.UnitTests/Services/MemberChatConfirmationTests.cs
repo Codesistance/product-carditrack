@@ -37,6 +37,9 @@ public class MemberChatConfirmationTests
     [InlineData("no idea, is he ok?")]
     [InlineData("how did he sleep?")]
     [InlineData("yes and turn off the sleep one too")]
+    [InlineData("yes 130")]
+    [InlineData("yes1")]
+    [InlineData("no 2")]
     [InlineData("")]
     [InlineData("???")]
     public void AnythingElse_IsNotAnAnswer(string message) =>

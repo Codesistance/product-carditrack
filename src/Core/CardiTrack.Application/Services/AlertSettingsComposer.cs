@@ -99,6 +99,12 @@ public static class AlertSettingsComposer
         return $"Done — I've {what}. {tail}";
     }
 
+    /// <summary>The alarm the proposal was about is not as it was — retuned or removed by
+    /// someone else inside the window — so the yes applies nothing.</summary>
+    public static string ChangedSinceProposedReply() =>
+        "That alarm has been changed since I suggested this, so I've left it alone — ask me again "
+        + "and I'll look at it as it is now.";
+
     /// <summary>A yes or no that arrived after the proposal had already been taken — by an
     /// earlier answer, or by the same answer sent twice.</summary>
     public static string AlreadyHandledReply() =>
@@ -207,6 +213,7 @@ public static class AlertSettingsComposer
             Kind = PendingAlertChangeKind.SaveAlarm,
             AlarmId = entry.Row.Id,
             Alarm = request,
+            AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
             Summary = summary,
             Done = renamed && MetricAlarmNarrative.Condition(request) == entry.Row.Condition
                 ? $"renamed “{entry.Row.Name}” to “{request.Name}” for {subject}"
@@ -243,6 +250,7 @@ public static class AlertSettingsComposer
             Kind = PendingAlertChangeKind.SaveAlarm,
             AlarmId = entry.Row.Id,
             Alarm = AlarmSuggestedDefaults.Switched(entry.Row, enabled),
+            AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
             Summary = TrimStop(summary),
             Done = $"switched {OnOff(enabled)} “{entry.Row.Name}” for {subject}",
             ProposedAtUtc = utcNow,
@@ -274,6 +282,7 @@ public static class AlertSettingsComposer
                 Kind = PendingAlertChangeKind.SaveAlarm,
                 AlarmId = entry.Row.Id,
                 Alarm = AlarmSuggestedDefaults.Switched(entry.Row, enabled: false),
+                AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
                 Summary = offSummary,
                 Done = $"switched off “{entry.Row.Name}” for {subject}",
                 ProposedAtUtc = utcNow,
@@ -287,6 +296,7 @@ public static class AlertSettingsComposer
         {
             Kind = PendingAlertChangeKind.DeleteAlarm,
             AlarmId = entry.Row.Id,
+            AlarmFingerprint = PendingAlertChange.Fingerprint(entry.Row),
             Summary = summary,
             Done = entry.Row.Provenance is AlarmProvenance.Overridden
                 ? $"put the account's version of “{entry.Row.Name}” back for {subject}"
