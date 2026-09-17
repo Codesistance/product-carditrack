@@ -1,6 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
-using CardiTrack.Infrastructure.Security;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Observability;
 using CardiTrack.Shared.Http;
 using FluentValidation;
@@ -29,7 +29,7 @@ namespace CardiTrack.API.Controllers;
 /// shared key in <see cref="MobileDiagnosticsContract.KeyHeader"/> is the whole of the
 /// authorization, backed by the per-IP rate limit on this route (appsettings.json). The key
 /// is compiled into store builds, so it is a limiter rather than a secret
-/// (<see cref="MobileDiagnosticsKey"/> says why that is enough here), and nothing accepted is
+/// (<see cref="T:CardiTrack.Infrastructure.Security.MobileDiagnosticsKey"/> says why that is enough here), and nothing accepted is
 /// trusted beyond being logged: no identity is inferred, no record is written, no other service
 /// is called.
 /// </para>
@@ -49,12 +49,12 @@ namespace CardiTrack.API.Controllers;
 [Produces("application/json")]
 public class MobileDiagnosticsController : ControllerBase
 {
-    private readonly MobileDiagnosticsKey _key;
+    private readonly IMobileDiagnosticsKey _key;
     private readonly IValidator<MobileDiagnosticsLogRequest> _validator;
     private readonly ILogger<MobileDiagnosticsController> _logger;
 
     public MobileDiagnosticsController(
-        MobileDiagnosticsKey key,
+        IMobileDiagnosticsKey key,
         IValidator<MobileDiagnosticsLogRequest> validator,
         ILogger<MobileDiagnosticsController> logger)
     {
@@ -178,7 +178,7 @@ public class MobileDiagnosticsController : ControllerBase
             _logger.Log(
                 level,
                 "Mobile {MobileLevel} relayed from {MobileSourceContext}: {MobileMessage}",
-                entry.Level, entry.Source ?? "app", entry.Message);
+                entry.Level, Sanitize(entry.Source) ?? "app", Sanitize(entry.Message));
         }
         finally
         {
@@ -197,8 +197,28 @@ public class MobileDiagnosticsController : ControllerBase
 
     private static void Push(List<IDisposable> scopes, string name, string? value)
     {
-        if (!string.IsNullOrWhiteSpace(value))
-            scopes.Add(LogContext.PushProperty(name, value));
+        var clean = Sanitize(value);
+        if (!string.IsNullOrWhiteSpace(clean))
+            scopes.Add(LogContext.PushProperty(name, clean));
+    }
+
+    /// <summary>
+    /// Newlines and other controls in a relayed field would split a log event or inject
+    /// attributes. Spaces keep the text searchable without giving the payload a second line.
+    /// </summary>
+    private static string? Sanitize(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+
+        var chars = value.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            if (char.IsControl(chars[i]))
+                chars[i] = ' ';
+        }
+
+        return new string(chars);
     }
 
     private static void PushValue<T>(List<IDisposable> scopes, string name, T? value) where T : struct

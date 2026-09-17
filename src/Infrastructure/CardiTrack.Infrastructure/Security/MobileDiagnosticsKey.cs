@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CardiTrack.Application.Interfaces.Security;
 
 namespace CardiTrack.Infrastructure.Security;
 
@@ -23,7 +24,7 @@ namespace CardiTrack.Infrastructure.Security;
 /// input when <see cref="IsConfigured"/> is false, and the controller answers 404 first.
 /// </para>
 /// </remarks>
-public sealed class MobileDiagnosticsKey
+public sealed class MobileDiagnosticsKey : IMobileDiagnosticsKey
 {
     /// <summary>
     /// A shorter value is treated as unset. Terraform issues 32 random bytes as base64 (44

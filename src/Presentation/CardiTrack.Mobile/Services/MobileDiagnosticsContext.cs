@@ -263,9 +263,23 @@ internal static class MobileDiagnosticsContext
         stream.Seek(-bytes, SeekOrigin.End);
         using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
         var text = reader.ReadToEnd();
-        return text.Length <= MobileDiagnosticsContract.MaxRecentLogLength
-            ? text
-            : text[^MobileDiagnosticsContract.MaxRecentLogLength..];
+        if (text.Length > MobileDiagnosticsContract.MaxRecentLogLength)
+            text = text[^MobileDiagnosticsContract.MaxRecentLogLength..];
+
+        // Warning lines can name a member or an API body. A9's claim is diagnostic state
+        // only, so the tail that rides a crash is Error/Fatal from the file template
+        // ("[ERR]", "[FTL]"), not the Warning+ file as a whole.
+        var kept = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.Contains("[ERR]", StringComparison.Ordinal)
+                           || line.Contains("[FTL]", StringComparison.Ordinal))
+            .ToList();
+        if (kept.Count == 0)
+            return null;
+
+        var filtered = string.Join('\n', kept);
+        return filtered.Length <= MobileDiagnosticsContract.MaxRecentLogLength
+            ? filtered
+            : filtered[^MobileDiagnosticsContract.MaxRecentLogLength..];
     }
 
     private static void Guard(Action collect)

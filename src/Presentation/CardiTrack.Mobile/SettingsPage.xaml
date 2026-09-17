@@ -213,9 +213,9 @@
                             <VerticalStackLayout Spacing="0">
                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Padding="0,8" MinimumHeightRequest="48">
                                     <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
-                                        <Label Text="Send diagnostics"
+                                        <Label Text="Send session telemetry"
                                                Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
-                                        <Label Text="How the app behaves — never health data."
+                                        <Label Text="How the app behaves in a session you opted into — never health data. Crash reports from before sign-in still go through so a freeze on the login screen can be fixed."
                                                Style="{StaticResource Body2}" FontSize="13"
                                                LineBreakMode="WordWrap"/>
                                     </VerticalStackLayout>
@@ -224,8 +224,8 @@
                                             OnColor="{StaticResource Primary}"
                                             VerticalOptions="Center"
                                             Toggled="OnDiagnosticsToggled"
-                                            SemanticProperties.Description="Send diagnostics"
-                                            SemanticProperties.Hint="Off sends nothing about how you use the app"/>
+                                            SemanticProperties.Description="Send session telemetry"
+                                            SemanticProperties.Hint="Off stops session telemetry. Crash reports from the sign-in screen may still be sent."
                                 </Grid>
 
                                 <BoxView Style="{StaticResource DividerLine}"/>
@@ -244,7 +244,7 @@
                                     <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
                                         <Label Text="Share app logs"
                                                Style="{StaticResource Body1SemiBoldDark}" FontSize="15"/>
-                                        <Label Text="Send the error records kept on this phone to support"
+                                        <Label Text="Send the error records kept on this phone wherever you choose. This does not use the switch above."
                                                Style="{StaticResource Body2}" FontSize="13"
                                                LineBreakMode="WordWrap"/>
                                     </VerticalStackLayout>

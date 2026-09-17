@@ -14,11 +14,11 @@ public interface IUserCardiMemberRepository : IRepository<UserCardiMember>
     /// <remarks>
     /// <para>
     /// The predicate behind "asking to delete your account stops monitoring for anyone it leaves
-    /// without a caregiver". <c>DeviceConnectionRepository</c> spells the negation of this inline
-    /// at its four sync-scheduling sites; this is the reusable form, for the paths that reach the
-    /// sync service without going through the scheduler, and it has to agree with them exactly —
-    /// a member that routine sync still collects for, but that no other path will look at, is a
-    /// member whose family is told nothing while the readings pile up.
+    /// without a caregiver". <c>DeviceConnectionRepository.WhereMemberAllowsCollection</c> is the
+    /// negation of this, applied at its four sync-scheduling sites; this is the reusable form, for
+    /// the paths that reach the sync service without going through the scheduler, and it has to
+    /// agree with them exactly — a member that routine sync still collects for, but that no other
+    /// path will look at, is a member whose family is told nothing while the readings pile up.
     /// </para>
     /// <para>
     /// <strong>False for a member with no active link at all</strong>, which is not an oversight
