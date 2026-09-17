@@ -112,8 +112,12 @@ public sealed record PendingAlertChange
         {
             PendingAlertChangeKind.SetRule when string.IsNullOrWhiteSpace(parsed.RuleId) => null,
             PendingAlertChangeKind.CreateAlarm when parsed.Alarm is null => null,
-            PendingAlertChangeKind.SaveAlarm when parsed.Alarm is null || parsed.AlarmId is null => null,
-            PendingAlertChangeKind.DeleteAlarm when parsed.AlarmId is null => null,
+            // A save or delete without the fingerprint of the row it was written against would
+            // apply unconditionally, which is the stale-write this record exists to refuse.
+            PendingAlertChangeKind.SaveAlarm
+                when parsed.Alarm is null || parsed.AlarmId is null || string.IsNullOrWhiteSpace(parsed.AlarmFingerprint) => null,
+            PendingAlertChangeKind.DeleteAlarm
+                when parsed.AlarmId is null || string.IsNullOrWhiteSpace(parsed.AlarmFingerprint) => null,
             _ => parsed,
         };
     }

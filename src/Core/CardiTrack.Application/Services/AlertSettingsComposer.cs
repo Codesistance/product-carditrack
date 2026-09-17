@@ -107,11 +107,11 @@ public static class AlertSettingsComposer
         return $"Done — I've {what}. {tail}";
     }
 
-    /// <summary>The alarm the proposal was about is not as it was — retuned or removed by
+    /// <summary>What the proposal was about is not as it was — retuned, switched or removed by
     /// someone else inside the window — so the yes applies nothing.</summary>
     public static string ChangedSinceProposedReply() =>
-        "That alarm has been changed since I suggested this, so I've left it alone — ask me again "
-        + "and I'll look at it as it is now.";
+        "That's been changed since I suggested this, so I've left it alone — ask me again and "
+        + "I'll look at it as it is now.";
 
     /// <summary>A yes or no that arrived after the proposal had already been taken — by an
     /// earlier answer, or by the same answer sent twice.</summary>

@@ -511,6 +511,8 @@ public class AlertSettingsComposerTests
     [InlineData("not json")]
     [InlineData("{\"kind\":\"SetRule\",\"summary\":\"x\",\"proposedAtUtc\":\"2026-09-17T10:00:00Z\"}")]
     [InlineData("{\"kind\":\"Nonsense\",\"summary\":\"x\",\"proposedAtUtc\":\"2026-09-17T10:00:00Z\"}")]
+    // A delete without the fingerprint of the row it was written against.
+    [InlineData("{\"kind\":\"DeleteAlarm\",\"alarmId\":\"6e2c7f4a-3b1d-4c8e-9f0a-1b2c3d4e5f60\",\"summary\":\"x\",\"proposedAtUtc\":\"2026-09-17T10:00:00Z\"}")]
     public void AnUnreadableOrIncompleteProposal_IsNoProposal(string? stored) =>
         Assert.Null(PendingAlertChange.FromJson(stored));
 

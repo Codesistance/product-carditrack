@@ -246,6 +246,14 @@ public class CardiMembersController : BaseApiController
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // The preference row's version token, or its one-row-per-member index: another
+            // device or a chat-confirmed change wrote it between this request's read and save.
+            return Error(
+                "These settings were just changed from another device. Refresh and try again.",
+                StatusCodes.Status409Conflict);
+        }
     }
 
     /// <summary>
