@@ -169,32 +169,10 @@ public sealed record JournalChatRequest(JournalChatAction Action, DigestAudience
 
     // ── The confirmation vocabulary ────────────────────────────────────────
 
-    private static readonly HashSet<string> Affirmatives = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "yes", "y", "yes please", "yep", "yeah", "yup", "ok", "okay", "sure", "go ahead", "yes go ahead",
-        "do it", "yes do it", "please do", "please", "confirm", "confirmed", "go on", "proceed",
-        "yes proceed", "that's right", "thats right", "correct", "fine", "alright", "all right",
-    };
-
-    private static readonly HashSet<string> Negatives = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "no", "n", "nope", "no thanks", "no thank you", "don't", "dont", "cancel", "stop", "leave it",
-        "no leave it", "never mind", "nevermind", "not now", "forget it", "no don't", "no dont",
-    };
-
     /// <summary>The message is a yes to whatever was offered, and nothing else.</summary>
-    public static bool IsAffirmative(string message) => Affirmatives.Contains(Normalise(message));
+    public static bool IsAffirmative(string message) => ConfirmationVocabulary.IsAffirmative(message);
 
-    /// <summary>The message is a no to whatever was offered, and nothing else.</summary>
-    public static bool IsNegative(string message) => Negatives.Contains(Normalise(message));
-
-    /// <summary>Lower-cased, trimmed of whitespace and trailing punctuation, inner runs of
-    /// whitespace collapsed — so "Yes, please!" and "yes please" are the same answer.</summary>
-    private static string Normalise(string message)
-    {
-        var trimmed = message.Trim().TrimEnd('.', '!', '?', ',', ';', ':').Trim();
-        return string.Join(' ', trimmed.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Replace(",", string.Empty);
-    }
+    public static bool IsNegative(string message) => ConfirmationVocabulary.IsNegative(message);
 
     private static string? Canonical(string? label) =>
         string.IsNullOrWhiteSpace(label) ? null : label.Trim().ToLowerInvariant();

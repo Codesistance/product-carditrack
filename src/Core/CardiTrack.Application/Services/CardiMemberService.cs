@@ -166,23 +166,45 @@ public class CardiMemberService : ICardiMemberService
             // member and the link or not at all. That is what lets a retry read the key and know
             // — rather than guess — whether the attempt it is retrying actually landed.
             //
-            // Two requests carrying one key can both pass the pre-read above and both reach here;
-            // the unique index then fails the loser's save and the caregiver sees an error. That
-            // is left as it is on purpose. Recovering the winner's member would mean recognising a
-            // unique-violation, which is a DbUpdateException — an EF Core type this layer cannot
-            // name, because Domain and Application carry zero packages (CLAUDE.md). The cost is
-            // one error message on a path the client does not take: Continue is disabled while the
-            // call is in flight, so the realistic race is a sequential retry, and that retry finds
-            // the winner's key in the pre-read and is answered correctly.
+            // Two requests carrying one key can both pass the pre-read above and both reach here.
+            // The unique index then fails the loser's save. Application cannot name a
+            // DbUpdateException, so the repository reports the collision and this method rolls
+            // the aborted transaction back, discards the loser's photo, and answers with the
+            // winner's member — the same answer a sequential retry would have got from the
+            // pre-read.
             if (!string.IsNullOrWhiteSpace(idempotencyKey))
             {
-                await _unitOfWork.CardiMemberCreationKeys.AddAsync(new CardiMemberCreationKey
+                var inserted = await _unitOfWork.CardiMemberCreationKeys.TryAddAsync(
+                    new CardiMemberCreationKey
+                    {
+                        UserId = userId,
+                        Key = idempotencyKey,
+                        CardiMemberId = cardiMember.Id,
+                    });
+                if (!inserted)
                 {
-                    UserId = userId,
-                    Key = idempotencyKey,
-                    CardiMemberId = cardiMember.Id,
-                });
-                await _unitOfWork.SaveChangesAsync();
+                    try
+                    {
+                        await _unitOfWork.RollbackTransactionAsync();
+                    }
+                    catch
+                    {
+                        // The original unique-violation already aborted the transaction.
+                    }
+                    finally
+                    {
+                        _unitOfWork.ClearTracking();
+                    }
+
+                    await DiscardUploadedPhotoAsync(cardiMember);
+
+                    var winner = await _unitOfWork.CardiMemberCreationKeys.FindAsync(userId, idempotencyKey);
+                    if (winner is not null && await ReusableMemberAsync(userId, winner.CardiMemberId) is { } theirs)
+                        return theirs;
+
+                    throw new InvalidOperationException(
+                        "Another request is creating this member; please try again.");
+                }
             }
 
             commitAttempted = true;

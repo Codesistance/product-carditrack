@@ -116,6 +116,16 @@ builder.Services.AddScoped<IChatRetentionService, ChatRetentionService>();
 // External clients
 builder.Services.AddScoped<IOAuthTokenRefreshService, OAuthTokenRefreshService>();
 builder.Services.AddScoped<CardiTrack.Application.Interfaces.Clients.IOAuthGrantRevoker, OAuthGrantRevoker>();
+builder.Services.AddScoped<IAuth0ManagementService, Auth0ManagementClient>();
+builder.Services.AddHttpClient("Auth0Client", client =>
+{
+    // Domain is optional here so a local Worker still boots without Auth0 config.
+    // TryDeleteUserAsync is best-effort: a missing domain logs and is swallowed.
+    var auth0Domain = configLoader.Get(ConfigurationKeys.Auth0.Domain);
+    if (!string.IsNullOrWhiteSpace(auth0Domain))
+        client.BaseAddress = new Uri($"https://{auth0Domain}/");
+    client.DefaultRequestHeaders.Add("Accept", "application/json");
+});
 
 // Fitbit provider (keyed IDeviceApiClient + keyed IDeviceSyncService)
 builder.Services.AddGoogleHealthProvider();

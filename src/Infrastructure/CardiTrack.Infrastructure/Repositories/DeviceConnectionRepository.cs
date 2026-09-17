@@ -144,21 +144,12 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     public async Task<IEnumerable<DeviceConnection>> GetDueForSyncAsync()
     {
         var now = DateTime.UtcNow;
-        return await _dbSet
-            .Where(dc => dc.IsActive
-                         && SyncableStatuses.Contains(dc.ConnectionStatus)
-                         && (dc.LastSyncDate == null
-                             || dc.LastSyncDate.Value.AddMinutes(dc.SyncFrequencyMinutes) <= now))
-            .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
-            .Where(x => x.cm.IsActive
-                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)
-                        && (!_context.UserCardiMembers.Any(l => l.CardiMemberId == x.cm.Id && l.IsActive)
-                            || _context.UserCardiMembers.Any(l =>
-                                l.CardiMemberId == x.cm.Id
-                                && l.IsActive
-                                && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
-            .Select(x => x.dc)
-            .ToListAsync();
+        return await WhereMemberAllowsCollection(
+            _dbSet.Where(dc => dc.IsActive
+                               && SyncableStatuses.Contains(dc.ConnectionStatus)
+                               && (dc.LastSyncDate == null
+                                   || dc.LastSyncDate.Value.AddMinutes(dc.SyncFrequencyMinutes) <= now)),
+            now).ToListAsync();
     }
 
     /// <summary>
@@ -192,17 +183,9 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
             return [];
 
         var now = DateTime.UtcNow;
-        return await _dbSet
-            .Where(dc => dc.IsActive && dc.ConnectionStatus == ConnectionStatus.Connected)
-            .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
-            .Where(x => x.cm.IsActive
-                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)
-                        && (!_context.UserCardiMembers.Any(l => l.CardiMemberId == x.cm.Id && l.IsActive)
-                            || _context.UserCardiMembers.Any(l =>
-                                l.CardiMemberId == x.cm.Id
-                                && l.IsActive
-                                && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
-            .Select(x => x.dc)
+        return await WhereMemberAllowsCollection(
+                _dbSet.Where(dc => dc.IsActive && dc.ConnectionStatus == ConnectionStatus.Connected),
+                now)
             .OrderBy(_ => EF.Functions.Random())
             .Take(count)
             .ToListAsync();
@@ -244,21 +227,12 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     /// <inheritdoc/>
     public async Task<IEnumerable<DeviceConnection>> GetDueForAuthRecoveryAsync(DateTime utcNow)
     {
-        return await _dbSet
-            .Where(dc => dc.IsActive
-                         && RecoverableStatuses.Contains(dc.ConnectionStatus)
-                         && dc.RefreshToken != null
-                         && (dc.NextAuthRecoveryAt == null || dc.NextAuthRecoveryAt <= utcNow))
-            .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
-            .Where(x => x.cm.IsActive
-                        && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= utcNow)
-                        && (!_context.UserCardiMembers.Any(l => l.CardiMemberId == x.cm.Id && l.IsActive)
-                            || _context.UserCardiMembers.Any(l =>
-                                l.CardiMemberId == x.cm.Id
-                                && l.IsActive
-                                && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
-            .Select(x => x.dc)
-            .ToListAsync();
+        return await WhereMemberAllowsCollection(
+            _dbSet.Where(dc => dc.IsActive
+                               && RecoverableStatuses.Contains(dc.ConnectionStatus)
+                               && dc.RefreshToken != null
+                               && (dc.NextAuthRecoveryAt == null || dc.NextAuthRecoveryAt <= utcNow)),
+            utcNow).ToListAsync();
     }
 
     /// <inheritdoc/>
@@ -329,10 +303,22 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
     public async Task<IEnumerable<DeviceConnection>> GetSyncableByHealthUserIdAsync(string healthUserId)
     {
         var now = DateTime.UtcNow;
-        return await _dbSet
-            .Where(dc => dc.HealthUserId == healthUserId
-                         && dc.IsActive
-                         && SyncableStatuses.Contains(dc.ConnectionStatus))
+        return await WhereMemberAllowsCollection(
+            _dbSet.Where(dc => dc.HealthUserId == healthUserId
+                               && dc.IsActive
+                               && SyncableStatuses.Contains(dc.ConnectionStatus)),
+            now).ToListAsync();
+    }
+
+    /// <summary>
+    /// Members who are removed, paused, or left without a caregiver who is staying, are excluded
+    /// here rather than in each caller, so every collection path inherits the same rule. The
+    /// watcher clause is the negation of
+    /// <c>IUserCardiMemberRepository.IsLeftUnwatchedByPendingDeletionAsync</c>.
+    /// </summary>
+    private IQueryable<DeviceConnection> WhereMemberAllowsCollection(
+        IQueryable<DeviceConnection> connections, DateTime now) =>
+        connections
             .Join(_context.CardiMembers, dc => dc.CardiMemberId, cm => cm.Id, (dc, cm) => new { dc, cm })
             .Where(x => x.cm.IsActive
                         && (x.cm.MonitoringPausedUntil == null || x.cm.MonitoringPausedUntil <= now)
@@ -341,7 +327,5 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
                                 l.CardiMemberId == x.cm.Id
                                 && l.IsActive
                                 && !_context.Users.Any(u => u.Id == l.UserId && u.DeletionRequestedAtUtc != null))))
-            .Select(x => x.dc)
-            .ToListAsync();
-    }
+            .Select(x => x.dc);
 }

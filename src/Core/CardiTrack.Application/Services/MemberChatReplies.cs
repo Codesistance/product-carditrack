@@ -522,36 +522,8 @@ public static partial class MemberChatReplies
     /// narrow is the safe direction: a yes that slips through routes normally and the proposal
     /// lapses unapplied.
     /// </remarks>
-    public static ConfirmationAnswer? ReadConfirmation(string message)
-    {
-        var kept = new string(message.Trim().ToLowerInvariant()
-            .Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '\'')
-            .ToArray());
-        var normalised = string.Join(' ', kept.Split(' ', StringSplitOptions.RemoveEmptyEntries));
-
-        if (normalised.Length == 0)
-            return null;
-        if (YesPhrases.Contains(normalised))
-            return ConfirmationAnswer.Yes;
-        if (NoPhrases.Contains(normalised))
-            return ConfirmationAnswer.No;
-        return null;
-    }
-
-    private static readonly HashSet<string> YesPhrases = new(StringComparer.Ordinal)
-    {
-        "yes", "y", "yep", "yeah", "yup", "yes please", "please", "ok", "okay", "sure", "go ahead",
-        "go on", "do it", "please do", "confirm", "confirmed", "yes do it", "do that", "fine",
-        "sounds good", "that's right", "thats right", "correct", "proceed", "make it so", "yes thanks",
-        "yes thank you", "ok do it", "okay do it", "ok go ahead", "okay go ahead", "go for it",
-    };
-
-    private static readonly HashSet<string> NoPhrases = new(StringComparer.Ordinal)
-    {
-        "no", "n", "nope", "nah", "no thanks", "no thank you", "cancel", "don't", "dont", "do not",
-        "leave it", "never mind", "nevermind", "stop", "not now", "no leave it", "forget it",
-        "leave things as they are", "leave it as it is", "no don't", "no dont",
-    };
+    public static ConfirmationAnswer? ReadConfirmation(string message) =>
+        ConfirmationVocabulary.Read(message);
 
     /// <summary>Oxford-less list joining — "a, b and c".</summary>
     private static string Join(IReadOnlyList<string> parts) => parts.Count switch

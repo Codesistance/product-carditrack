@@ -14,7 +14,7 @@ public interface IExportConsentService
         Guid requestingUserId, RecordExportConsentRequest request, CancellationToken ct = default);
 
     /// <summary>
-    /// Mints a two-minute token from an in-force standing grant for this
+    /// Mints a five-minute token from an in-force standing grant for this
     /// snapshot. Throws <see cref="KeyNotFoundException"/> when
     /// <paramref name="standingConsentId"/> is not an in-force grant the
     /// caller owns, or the caller may not view a named CardiMember.

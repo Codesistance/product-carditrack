@@ -198,7 +198,8 @@ public class ExportConsentServiceTests
         Assert.Equal(ExportConsentPolicy.Sha256Hex, row.PolicySha256);
         Assert.Equal(ExportConsentPolicy.Fingerprint(GenerateRequest()), row.RequestFingerprint);
         Assert.Equal(row.Id.ToString("N"), recorded.ConsentToken);
-        Assert.True(row.ExpiresAt > DateTime.UtcNow);
+        Assert.True(row.ExpiresAt > DateTime.UtcNow.AddMinutes(4));
+        Assert.True(row.ExpiresAt <= DateTime.UtcNow.AddMinutes(6));
         Assert.Null(row.ConsumedAt);
     }
 
@@ -383,6 +384,50 @@ public class ExportConsentServiceTests
         Assert.NotNull(grant.RevokedAt);
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSut().ReuseAsync(_userId, grant.Id, GenerateRequest()));
+    }
+
+    [Fact]
+    public async Task ReuseAsync_RefusesWhenTheExportNamesSomeoneTheGrantDidNot()
+    {
+        await CreateSut().RecordAsync(_userId, RecordRequest(rememberFor: ExportConsentRememberFor.OneWeek));
+        var grant = Assert.Single(_rows);
+        var extra = Guid.NewGuid();
+
+        var expanded = await Assert.ThrowsAsync<ExportConsentException>(() =>
+            CreateSut().ReuseAsync(_userId, grant.Id, new GenerateReportRequest
+            {
+                CardiMemberIds = [_memberId, extra],
+                DateRangeFrom = new DateOnly(2026, 2, 7),
+                DateRangeTo = new DateOnly(2026, 3, 9),
+                Format = ReportFormat.Pdf,
+                ConsentToken = "unused"
+            }));
+
+        Assert.Contains("does not cover everyone", expanded.Message);
+        Assert.Single(_rows);
+    }
+
+    [Fact]
+    public async Task ReuseAsync_AllowsASubsetOfTheGrantedMembers()
+    {
+        var other = Guid.NewGuid();
+        await CreateSut().RecordAsync(_userId, new RecordExportConsentRequest
+        {
+            CardiMemberIds = [_memberId, other],
+            DateRangeFrom = new DateOnly(2026, 2, 7),
+            DateRangeTo = new DateOnly(2026, 3, 9),
+            Format = ReportFormat.Pdf,
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true,
+            RememberFor = ExportConsentRememberFor.OneWeek
+        });
+        var grant = Assert.Single(_rows);
+
+        var reused = await CreateSut().ReuseAsync(_userId, grant.Id, GenerateRequest());
+
+        Assert.True(reused.Reused);
+        Assert.Equal(2, _rows.Count);
+        Assert.Equal([_memberId], _rows[1].CardiMemberIds);
     }
 
     [Fact]

@@ -72,7 +72,7 @@ public class ExportConsent : BaseEntity
 
     /// <summary>
     /// When a standing grant may last be reused. Null means this row only
-    /// authorizes the matching generate (the two-minute <see cref="ExpiresAt"/>).
+    /// authorizes the matching generate (the five-minute <see cref="ExpiresAt"/>).
     /// </summary>
     public DateTime? RememberUntil { get; set; }
 

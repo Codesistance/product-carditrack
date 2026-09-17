@@ -29,11 +29,11 @@ public static class ExportConsentPolicy
     public const string ConfirmPrompt = "I accept responsibility for this copy";
 
     /// <summary>How long a minted token may sit unused before generate must mint a new one.</summary>
-    public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// How long a standing grant may authorize later exports. Null means this
-    /// export only — the two-minute <see cref="Lifetime"/> token.
+    /// export only — the five-minute <see cref="Lifetime"/> token.
     /// </summary>
     public static TimeSpan? RememberDuration(ExportConsentRememberFor rememberFor) => rememberFor switch
     {

@@ -192,7 +192,7 @@ public sealed class JournalChatActions
         if (periodEnd is null)
             return Result(JournalChatReplies.WhichPeriod(action.Value, audience.Value), calls);
 
-        if (!await CanManageAsync(userId, cardiMemberId, ct))
+        if (!await MemberChatAccess.CanManageAsync(_access, userId, cardiMemberId, ct))
             return Result(JournalChatReplies.OnlyPrimaryCaregiver(firstName), calls);
 
         var request = new JournalChatRequest(action.Value, audience.Value, periodEnd);
@@ -260,7 +260,16 @@ public sealed class JournalChatActions
         if (session.PendingAction is null)
             return null;
 
-        if (!JournalChatRequest.IsAffirmative(flattened))
+        // A newer alert-settings offer on the last assistant turn is what "yes" answers.
+        // Honouring the older journal offer first would apply the wrong mutation.
+        var withTurns = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(session.Id, ct);
+        var lastAssistant = withTurns?.Turns
+            .OrderBy(t => t.CreatedAtUtc)
+            .LastOrDefault(t => t.Role == ChatTurnRole.Assistant);
+        if (!string.IsNullOrEmpty(lastAssistant?.PendingChange))
+            return null;
+
+        if (!ConfirmationVocabulary.IsAffirmative(flattened))
         {
             // A no, or anything else: spend the offer on its own, then answer the no or hand the
             // message on. The claim is for the offer this request read, so a yes sent to a newer
@@ -269,7 +278,7 @@ public sealed class JournalChatActions
             var wasLive = spent is not null
                 && JournalChatRequest.TryDeserialize(spent.Action) is not null
                 && spent.ExpiresAtUtc is { } until && until > utcNow;
-            return wasLive && JournalChatRequest.IsNegative(flattened)
+            return wasLive && ConfirmationVocabulary.IsNegative(flattened)
                 ? Result(JournalChatReplies.LeftAsItIs(), [])
                 : null;
         }
@@ -288,7 +297,7 @@ public sealed class JournalChatActions
         var (localToday, _) = await LocalCalendarAsync(cardiMemberId, member, utcNow);
         var firstName = NamePlaceholder.FirstName(member?.Name);
 
-        if (!await CanManageAsync(userId, cardiMemberId, ct))
+        if (!await MemberChatAccess.CanManageAsync(_access, userId, cardiMemberId, ct))
         {
             await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, confirming: false, ct);
             return Result(JournalChatReplies.OnlyPrimaryCaregiver(firstName), []);
@@ -321,7 +330,7 @@ public sealed class JournalChatActions
         // the offer and the yes are two requests, and the caregiver may have stopped being the
         // primary one between them. The early check spares an unauthorised generation; this one
         // spares an unauthorised change.
-        if (!await CanManageAsync(userId, cardiMemberId, ct))
+        if (!await MemberChatAccess.CanManageAsync(_access, userId, cardiMemberId, ct))
             return Result(JournalChatReplies.OnlyPrimaryCaregiver(firstName), generation);
 
         return await ExecuteAsync(pending, composition, generation, cardiMemberId, firstName, localToday, ct);
@@ -395,21 +404,6 @@ public sealed class JournalChatActions
             request.Audience, cardiMemberId, periodEnd, result.Outcome);
 
         return Result(JournalChatReplies.NotWritten(result, request, hasABook, firstName, localToday), calls);
-    }
-
-    private async Task<bool> CanManageAsync(Guid userId, Guid cardiMemberId, CancellationToken ct)
-    {
-        try
-        {
-            await _access.RequireManageAccessAsync(userId, cardiMemberId, ct);
-            return true;
-        }
-        catch (KeyNotFoundException)
-        {
-            // The access service's non-disclosure answer. Inside a conversation the member's
-            // existence is already known to the caller, so a kind sentence replaces the 404.
-            return false;
-        }
     }
 
     /// <summary>Today in the member's own timezone, and the weekday their journal week starts —

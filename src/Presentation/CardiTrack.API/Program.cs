@@ -100,7 +100,7 @@ try
     // endpoint answers 404 and the app's relay drops its queue rather than retrying forever.
     var mobileDiagnosticsKey = MobileDiagnosticsKey.FromConfiguration(
         configLoader.Get(ConfigurationKeys.MobileDiagnostics.Key));
-    builder.Services.AddSingleton(mobileDiagnosticsKey);
+    builder.Services.AddSingleton<IMobileDiagnosticsKey>(mobileDiagnosticsKey);
     if (!mobileDiagnosticsKey.IsConfigured)
     {
         Log.Warning(

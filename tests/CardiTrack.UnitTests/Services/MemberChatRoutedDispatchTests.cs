@@ -122,6 +122,29 @@ public class MemberChatRoutedDispatchTests
         await _usages.Received().AddAsync(Arg.Is<MemberChatTurnUsage>(u => u.Step == AiCallStep.Route));
     }
 
+    [Fact]
+    public async Task RoutingAndTheMaliciousCheck_SeeTheRedactedName_NotTheStoredOne()
+    {
+        RouterAnswers(MemberChatWorkflow.SteerCasual);
+        _rewriteAi.GenerateStructuredWithUsageAsync<MemberChatService.SteerAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.SteerAiResponse>(
+                new MemberChatService.SteerAiResponse { Reply = "Hi there! Ask me about CardiTrackCardiMember." },
+                new AiUsage()));
+
+        await CreateSut().SendMessageAsync(_userId, _memberId, "how is Moses today?");
+
+        await _router.Received(1).RouteAsync(
+            Arg.Is<string>(q => q.Contains("CardiTrackCardiMember", StringComparison.Ordinal)
+                                && !q.Contains("Moses", StringComparison.Ordinal)),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
+        await _rewriteAi.Received().GenerateStructuredWithUsageAsync<MemberChatService.MaliciousCheckAiResponse>(
+            Arg.Is<string>(p => p.Contains("CardiTrackCardiMember", StringComparison.Ordinal)
+                                && !p.Contains("Moses", StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
     /// <summary>
     /// The steer is a Rewrite-slot reply too, and it holds the name token — so a model given a
     /// name reaches for a pronoun to go with it. This member's sex is not on file, so the canned
@@ -371,6 +394,10 @@ public class MemberChatRoutedDispatchTests
     }
 
     /// <summary>And the pronoun the brief actually asks for, resolved from the record.</summary>
+    /// <remarks>
+    /// The clinical read names the same reading the rewrite does — otherwise
+    /// <c>NamesAReadingTheReadDidNot</c> withholds the reply before pronouns are resolved.
+    /// </remarks>
     [Fact]
     public async Task ARewriteWritingThePronounTokens_IsResolvedForTheCaregiver()
     {
@@ -384,6 +411,16 @@ public class MemberChatRoutedDispatchTests
         });
         RouterAnswers(MemberChatWorkflow.Analysis);
         PipelineAnswers();
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.MemberChatClinicalAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.MemberChatClinicalAiResponse>(
+                new MemberChatService.MemberChatClinicalAiResponse
+                {
+                    Analysis = "heart rate steady all week",
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
+                },
+                new AiUsage()));
         _rewriteAi.GenerateWithUsageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<string>(
                 $"{PronounPlaceholder.Possessive} heart rate has been steady all week.", new AiUsage()));

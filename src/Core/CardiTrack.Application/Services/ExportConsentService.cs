@@ -125,6 +125,12 @@ public class ExportConsentService : IExportConsentService
                     "You don't have a confirmation we can reuse — please confirm again.");
             }
 
+            if (!IsSubsetOfGrant(request.CardiMemberIds, grant.CardiMemberIds))
+            {
+                throw new ExportConsentException(
+                    "That confirmation does not cover everyone in this export. Please confirm again.");
+            }
+
             var child = new ExportConsent
             {
                 OwnerUserId = requestingUserId,
@@ -232,6 +238,18 @@ public class ExportConsentService : IExportConsentService
         && grant.RevokedAt is null
         && grant.RememberUntil is { } until
         && until > utcNow;
+
+    /// <summary>
+    /// A later export may name the same members, or a subset. Naming anyone the original
+    /// confirmation did not cover needs a fresh confirmation — the standing grant is not a
+    /// household-wide licence.
+    /// </summary>
+    private static bool IsSubsetOfGrant(
+        IReadOnlyCollection<Guid> requested, IReadOnlyCollection<Guid> granted)
+    {
+        var allowed = granted.ToHashSet();
+        return requested.All(allowed.Contains);
+    }
 
     private static ExportConsentResponse ToRecordedResponse(ExportConsent consent) => new()
     {

@@ -11,8 +11,7 @@ public sealed class DeviceBiometric : IDeviceBiometric
 {
 #if ANDROID
     private const Android.Hardware.Biometrics.BiometricManagerAuthenticators Allowed =
-        Android.Hardware.Biometrics.BiometricManagerAuthenticators.BiometricStrong
-        | Android.Hardware.Biometrics.BiometricManagerAuthenticators.BiometricWeak;
+        Android.Hardware.Biometrics.BiometricManagerAuthenticators.BiometricStrong;
 
     public bool IsAvailable => AuthenticateResult()
         == Android.Hardware.Biometrics.BiometricCode.Success;

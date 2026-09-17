@@ -349,6 +349,57 @@ public class AccountErasureCascadeTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// After the first member's cascade has committed, the rest of the run is uninterruptible:
+    /// a cancelled caller token must not strand the remaining members or the account row.
+    /// </summary>
+    [Fact]
+    public async Task AfterTheFirstMemberIsErased_ACancelledTokenStillFinishesTheRest()
+    {
+        var seed = await SeedAsync();
+        using var cts = new CancellationTokenSource();
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var inner = new MemberErasureService(
+            db, _photos, _reportStorage, _grantRevoker,
+            NullLogger<MemberErasureService>.Instance);
+        var wrapping = new CancelAfterFirst(inner, cts);
+        var sut = new AccountErasureService(
+            db, wrapping, _reportStorage, Substitute.For<IAuth0ManagementService>(),
+            NullLogger<AccountErasureService>.Instance);
+
+        var report = await sut.EraseAsync(seed.UserId, cts.Token);
+
+        Assert.Contains(seed.SoleMemberId, report.MembersErased);
+        Assert.Contains(seed.RemovedMemberId, report.MembersErased);
+        Assert.Equal(0, await db.Users.CountAsync(u => u.Id == seed.UserId));
+    }
+
+    /// <summary>
+    /// Postgres is not the only copy of who this person was: after the account row is gone the
+    /// cascade asks Auth0 to delete (or block) the identity, with the caller's token stripped.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_AsksAuth0ToDeleteTheIdentityAfterTheCommit()
+    {
+        var seed = await SeedAsync();
+        var auth0 = Substitute.For<IAuth0ManagementService>();
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        var members = new MemberErasureService(
+            db, _photos, _reportStorage, _grantRevoker,
+            NullLogger<MemberErasureService>.Instance);
+        var sut = new AccountErasureService(
+            db, members, _reportStorage, auth0, NullLogger<AccountErasureService>.Instance);
+
+        await sut.EraseAsync(seed.UserId);
+
+        await auth0.Received(1).TryDeleteUserAsync(
+            "auth0|leaving-seed", Arg.Is<CancellationToken>(t => t == CancellationToken.None));
+    }
+
+    /// <summary>
     /// Re-running the cascade over an account that is already gone is how a failed run recovers,
     /// so it has to be a no-op rather than a throw.
     /// </summary>
@@ -375,9 +426,32 @@ public class AccountErasureCascadeTests : IAsyncLifetime
             db, _photos, _reportStorage, _grantRevoker,
             NullLogger<MemberErasureService>.Instance);
         var sut = new AccountErasureService(
-            db, members, _reportStorage, NullLogger<AccountErasureService>.Instance);
+            db, members, _reportStorage, Substitute.For<IAuth0ManagementService>(),
+            NullLogger<AccountErasureService>.Instance);
 
         return await sut.EraseAsync(userId, ct);
+    }
+
+    /// <summary>Cancels the caller's token after the first member cascade commits.</summary>
+    private sealed class CancelAfterFirst : IMemberErasureService
+    {
+        private readonly IMemberErasureService _inner;
+        private readonly CancellationTokenSource _cts;
+        private int _count;
+
+        public CancelAfterFirst(IMemberErasureService inner, CancellationTokenSource cts)
+        {
+            _inner = inner;
+            _cts = cts;
+        }
+
+        public async Task<MemberErasureReport> EraseAsync(Guid cardiMemberId, CancellationToken ct = default)
+        {
+            var report = await _inner.EraseAsync(cardiMemberId, ct);
+            if (Interlocked.Increment(ref _count) == 1)
+                await _cts.CancelAsync();
+            return report;
+        }
     }
 
     private sealed record Seed(
@@ -407,6 +481,7 @@ public class AccountErasureCascadeTests : IAsyncLifetime
             OrganizationId = organization.Id,
             Email = $"leaving-{Guid.NewGuid():N}@example.com",
             Name = "Jane Doe",
+            Auth0UserId = "auth0|leaving-seed",
         };
         // A second household, because the caregiver who stays is an invited relative rather than
         // a second seat on this account — which is what makes the departing caregiver the last

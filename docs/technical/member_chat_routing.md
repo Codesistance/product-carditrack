@@ -91,19 +91,19 @@ Entry fields: `id`, `purpose`, `allowedDatasets`, `claimClass`, `isImplemented`.
 
 ### Draft purpose lines
 
-These lines *are* the routing prompt — the rendered ones, at least; `clarify` never renders. Everything else in this document is scaffolding around them, and they will be rewritten against the eval set more than once.
+These lines *are* the routing prompt — the rendered ones, at least; `clarify` never renders. They live as `ChatWorkflowCatalogue` purpose fields and are what `ChatRouterService.BuildPrompt` interpolates. This document does **not** restate them: a second copy here drifted from the catalogue twice in a week. Change a purpose line in the catalogue; the eval fixture and this section stay pointing at that source.
 
-| id | claim | purpose line (draft) |
+| id | claim | where the purpose line lives |
 |---|---|---|
-| `status` | observation | One reading, or one moment — what a value currently is, or when something last happened. No comparison with what is usual for this person and no judgement about whether it is good. Also covers device, sync and monitoring state: "is his watch connected", "why is there no data since Tuesday". A question spanning several days is not this. |
-| `analysis` | comparison | What the readings say over a period, set against what is usual for this member and against the published typical range where one exists. Choose this when answering needs arithmetic over a window. |
-| `inference` | judgement | Whether what the readings show is settled or worth attention. Choose this when the question asks for a verdict rather than for figures — "should I be concerned", "is that a real change". It returns the figures as well. |
-| `investigation` | judgement | Why something changed, and what co-occurred with it. Choose this only when the question asks to explain a change and answering would mean looking at things the question did not name. |
-| `advise` | suggestion | What could be done about the member's wellbeing — including what kind, how much or how often of something would suit them: exercise, walking, sleep habits. Choose this when answering would mean recommending an action. |
-| `steer.casual` | none | Not a question at all — a greeting, thanks, small talk, or a question about the assistant itself. |
-| `settings` | none | A request about the alerts themselves rather than about the readings: switching one of this app's own alerts on or off, adding, changing, switching or removing an alarm the caregiver set on a reading, asking which alerts are on, or asking about quiet hours and notifications. "Is his heart alert on" is this; "is his heart okay" is not. |
-| `steer.offtopic` | none | A genuine request this app holds no readings for. Either it is unrelated to this person's health or care, or it is about an aspect of their health that comes from nowhere in this app: what they eat or drink, medication, weight, mood or feelings, appointments, or anything a carer would have to be told rather than a watch recording it. This service sees only what the member's wearable records — steps, heart rate, sleep, breathing and heart rate variability — plus the alerts and baselines computed from those. A health question about anything else belongs here, however reasonable it is to ask. Not this when it asks what could be done about their activity, sleep or heart rate — that is advise. |
-| `journal` | action | Looking after the journal itself rather than asking about the person: showing or listing what a Daybook, Weekbook or Monthbook said, deleting one, or writing one again. Choose this when the message names the journal or one of its books and asks to see, list, remove, redo, rewrite or regenerate it. Asking how the person was on a day or in a week is not this — that is a reading question. |
+| `status` | observation | `ChatWorkflowCatalogue` entry `status` |
+| `analysis` | comparison | `ChatWorkflowCatalogue` entry `analysis` |
+| `inference` | judgement | `ChatWorkflowCatalogue` entry `inference` |
+| `investigation` | judgement | `ChatWorkflowCatalogue` entry `investigation` |
+| `advise` | suggestion | `ChatWorkflowCatalogue` entry `advise` |
+| `steer.casual` | none | `ChatWorkflowCatalogue` entry `steer.casual` |
+| `settings` | none | `ChatWorkflowCatalogue` entry `settings` |
+| `steer.offtopic` | none | `ChatWorkflowCatalogue` entry `steer.offtopic` |
+| `journal` | action | `ChatWorkflowCatalogue` entry `journal` |
 
 The `advise` and `steer.offtopic` lines were rewritten together (2026-09-07). "What kind of exercises can he do" routed `steer.offtopic` with `advise` behind it: the advise line said only "recommending an action", and a question asking *which* action — or how much or how often of one — did not read as that, while the off-topic line beside it, widened on 2026-09-04 to list everything the wearable does not record, read as the closer fit. The advise line now names those shapes, and the off-topic line hands "what could be done" questions about the three things the app does hold back across the boundary. See §5, `clarify`, for the dispatch rule that backs this up when the router still pairs them.
 

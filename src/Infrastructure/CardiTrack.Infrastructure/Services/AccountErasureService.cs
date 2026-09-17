@@ -28,9 +28,13 @@ namespace CardiTrack.Infrastructure.Services;
 /// account up again and re-runs the cascade over rows that are mostly already gone.
 /// </para>
 /// <para>
-/// <strong>Revoking upstream OAuth is not done here</strong> (issue #148 item 4). Member erasure
-/// deletes the <c>DeviceConnections</c> row, which stops collection, but the token stays live at
-/// Google until it expires. The runbook's "revoke before deleting" step is still a manual duty.
+/// <strong>Revoking upstream OAuth is done by <see cref="MemberErasureService"/> before
+/// each member's <c>DeviceConnections</c> row is deleted</strong> (issue #148 item 4), and
+/// this cascade inherits that because it delegates member-scoped rows there. A provider
+/// that will not answer cannot stop an erasure; failures are reported as
+/// <c>UnrevokedGrants</c> rather than thrown. After the account row is gone this service
+/// also asks Auth0 to delete (or, failing that, block) the identity — Postgres is not
+/// the only copy of who this person was.
 /// </para>
 /// <para>
 /// <strong>Ingestion cannot write rows behind the cascade</strong>, though nothing here enforces
@@ -67,17 +71,20 @@ public class AccountErasureService : IAccountErasureService
     private readonly CardiTrackDbContext _db;
     private readonly IMemberErasureService _members;
     private readonly IReportStorage _reports;
+    private readonly IAuth0ManagementService _auth0;
     private readonly ILogger<AccountErasureService> _logger;
 
     public AccountErasureService(
         CardiTrackDbContext db,
         IMemberErasureService members,
         IReportStorage reports,
+        IAuth0ManagementService auth0,
         ILogger<AccountErasureService> logger)
     {
         _db = db;
         _members = members;
         _reports = reports;
+        _auth0 = auth0;
         _logger = logger;
     }
 
@@ -94,6 +101,8 @@ public class AccountErasureService : IAccountErasureService
                 userId);
             return new AccountErasureReport(userId, [], [], [], [], []);
         }
+
+        var auth0UserId = user.Auth0UserId;
 
         var (toErase, toRelease) = await PartitionMembersAsync(userId, ct);
 
@@ -255,6 +264,11 @@ public class AccountErasureService : IAccountErasureService
         // shutdown.
         foreach (var objectName in reportObjects)
             await RemoveReportObjectAsync(objectName, orphaned, userId, CancellationToken.None);
+
+        // After Postgres has committed: the identity at Auth0 is a second copy of who this
+        // person was. Best-effort, never rolls the cascade back — see TryDeleteUserAsync.
+        if (!string.IsNullOrWhiteSpace(auth0UserId))
+            await _auth0.TryDeleteUserAsync(auth0UserId, CancellationToken.None);
 
         _logger.LogInformation(
             "Account erasure for {UserId} complete. Members erased: {Erased}, released: " +

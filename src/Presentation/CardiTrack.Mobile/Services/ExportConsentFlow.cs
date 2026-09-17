@@ -102,6 +102,13 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         if (!keep)
             return await RecordFreshAsync(snapshot, ct);
 
+        var preference = _biometric.IsAvailable
+            ? ProofPreference.Biometric
+            : ProofPreference.Password;
+        var method = await ProveAsync(preference, ct);
+        if (method is null || ct.IsCancellationRequested)
+            return null;
+
         try
         {
             var recorded = await _api.ReuseExportConsentAsync(grant.Id, snapshot, ct);

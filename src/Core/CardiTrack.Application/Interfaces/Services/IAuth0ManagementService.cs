@@ -8,4 +8,11 @@ public interface IAuth0ManagementService
     /// and swallowed so the anonymous endpoint can always answer success.
     /// </summary>
     Task TrySendVerificationEmailAsync(string email, CancellationToken ct = default);
+
+    /// <summary>
+    /// Best-effort delete (or, if delete is refused, block) of the Auth0 user that this
+    /// account was. Never throws — a provider outage must not roll back a Postgres erasure
+    /// that has already committed. Failures are logged so an operator can finish the job.
+    /// </summary>
+    Task TryDeleteUserAsync(string auth0UserId, CancellationToken ct = default);
 }

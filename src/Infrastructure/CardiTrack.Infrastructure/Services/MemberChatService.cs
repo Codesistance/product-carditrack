@@ -438,14 +438,12 @@ public class MemberChatService : IMemberChatService
     private readonly IRewriteAiService _rewriteAi;
     private readonly IDataQueryPlanner _planner;
     private readonly IChatRouter _router;
-    private readonly IAlertChangePlanner _alertPlanner;
-    private readonly IAlertPreferenceService _alertPreferences;
-    private readonly IMetricAlarmService _metricAlarms;
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly MemberContextComposer _memberContext;
     private readonly IEncryptionService _encryption;
     private readonly JournalChatActions _journal;
+    private readonly AlertSettingsChatActions _alerts;
     private readonly ILogger<MemberChatService> _logger;
 
     public MemberChatService(
@@ -464,13 +462,12 @@ public class MemberChatService : IMemberChatService
         ILogger<MemberChatService> logger)
     {
         _journal = journal;
+        _alerts = new AlertSettingsChatActions(
+            alertPlanner, alertPreferences, metricAlarms, unitOfWork, access, logger);
         _medicalAi = medicalAi;
         _rewriteAi = rewriteAi;
         _planner = planner;
         _router = router;
-        _alertPlanner = alertPlanner;
-        _alertPreferences = alertPreferences;
-        _metricAlarms = metricAlarms;
         _unitOfWork = unitOfWork;
         _access = access;
         _memberContext = memberContext;
@@ -574,18 +571,32 @@ public class MemberChatService : IMemberChatService
         // the one way a confirmed change could differ from the one that was shown. Anything that
         // is not a plain yes or no routes normally, and the proposal lapses unapplied.
         if (history.PendingChange is { } pending && history.PendingTurnId is { } pendingTurnId
-            && MemberChatReplies.ReadConfirmation(flattened) is { } answer)
+            && ConfirmationVocabulary.Read(flattened) is { } answer)
         {
-            return await ResolvePendingChangeAsync(
+            // A leftover journal offer is not what this yes answers.
+            if (session.PendingAction is not null)
+            {
+                await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(
+                    session, confirming: false, ct);
+            }
+
+            return await _alerts.ResolvePendingChangeAsync(
                 pending, pendingTurnId, answer, userId, cardiMemberId, member, utcNow, ct);
         }
+
+        // DPIA A20: nothing that reaches Vertex (malicious-check, route, planner, rewrite,
+        // steer) may carry the member's name. History is already redacted; the live message
+        // was not, so a caregiver who writes "how is Moses" leaked the identifier on every
+        // Rewrite-slot call except the journal resolver. Clinical (in-estate) uses the same
+        // copy so the two prompts cannot disagree about who was named.
+        var forModel = NamePlaceholder.Redact(flattened, member?.Name) ?? flattened;
 
         // History travels with every step that reads the caregiver's message, not just the
         // clinical one — a follow-up like "why?" is only judgeable, and only plannable, in the
         // context of the turns it follows. Without this the guard flagged terse follow-ups as
         // off-topic and the planner fetched the defaults instead of what the caregiver meant.
         var triage = await _rewriteAi.GenerateStructuredWithUsageAsync<MaliciousCheckAiResponse>(
-            BuildMaliciousCheckPrompt(flattened, history.Full), ct);
+            BuildMaliciousCheckPrompt(forModel, history.Full), ct);
         if (triage.Result.IsMalicious)
         {
             // The one outcome that stays a hard stop: manipulation attempts get no reply, no
@@ -601,7 +612,7 @@ public class MemberChatService : IMemberChatService
         AiCallRecord? routeCall = null;
         try
         {
-            var routed = await _router.RouteAsync(flattened, history.QuestionsOnly, ct);
+            var routed = await _router.RouteAsync(forModel, history.QuestionsOnly, ct);
             route = routed.Result;
             routeCall = new AiCallRecord(AiCallStep.Route, AiProviderSlot.Rewrite, routed.Usage);
         }
@@ -625,7 +636,7 @@ public class MemberChatService : IMemberChatService
         // deciding the turn the one time the router could not.
         var result = route is not null
             ? await DispatchRoutedAsync(
-                route, flattened, triage.Usage, triage.Result.IsAboutThisMoment,
+                route, forModel, triage.Usage, triage.Result.IsAboutThisMoment,
                 userId, cardiMemberId, member, session, history, utcNow, ct)
             : triage.Result switch
             {
@@ -634,8 +645,8 @@ public class MemberChatService : IMemberChatService
                 { IsAskingForAdvice: true } =>
                     await AnswerAdviseAsync(triage.Usage, cardiMemberId, member, utcNow),
                 { IsCasualOrSocial: true } or { IsOffTopic: true } =>
-                    await SteerAsync(flattened, triage.Usage, triage.Result.IsCasualOrSocial, MemberVoice.For(member), ct),
-                _ => await AnalyseAsync(flattened, triage.Usage, cardiMemberId, member, history, utcNow, ct),
+                    await SteerAsync(forModel, triage.Usage, triage.Result.IsCasualOrSocial, MemberVoice.For(member), ct),
+                _ => await AnalyseAsync(forModel, triage.Usage, cardiMemberId, member, history, utcNow, ct),
             };
 
         if (routeCall is { } billedRoute)
@@ -714,7 +725,7 @@ public class MemberChatService : IMemberChatService
 
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
-            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
@@ -776,7 +787,7 @@ public class MemberChatService : IMemberChatService
 
         var voice = MemberVoice.For(member);
         var reply = ComposeReply(
-            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
         // The brief above told the clinical read not to be calmer than the hero. This is the
@@ -870,7 +881,7 @@ public class MemberChatService : IMemberChatService
         // Exactly one of the two fetches carries activity: the second plans over what the first
         // did not ask for, so RecentActivity lands in one or the other and never in both.
         var reply = ComposeReply(
-            rewrite.Result, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
+            rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             anchor.RecentActivityWindow ?? surroundings.RecentActivityWindow, today);
 
         return new MemberChatWorkflowResult
@@ -1003,282 +1014,15 @@ public class MemberChatService : IMemberChatService
                 await _journal.HandleAsync(
                     flattened, history.QuestionsOnly, userId, cardiMemberId, member, session, triageUsage, utcNow, ct),
             MemberChatWorkflow.AlertSettings =>
-                await ConfigureAlertsAsync(flattened, triageUsage, userId, cardiMemberId, member, history, utcNow, ct),
+                await _alerts.HandleAsync(
+                    flattened, history.QuestionsOnly, userId, cardiMemberId, member, session, triageUsage, utcNow, ct),
+            // Named so a catalogue entry cannot hide behind the default. Unparsed, unimplemented
+            // and failed-clarify still land here via `_`.
+            MemberChatWorkflow.Analysis =>
+                await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
             _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
         };
     }
-
-    /// <summary>
-    /// The settings rung: read the request into a closed plan, and propose — never apply — the one
-    /// change it names. The apply happens on the caregiver's yes, in
-    /// <see cref="ResolvePendingChangeAsync"/>, through the same services and the same
-    /// primary-caregiver check the settings pages go through.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Two calls after the route: the planner's, and nothing for the reply — every sentence is
-    /// <see cref="AlertSettingsComposer"/>'s, written from the plan that parsed and the row it
-    /// resolved to, so a model that mis-hears "sleep" as "steps" costs a caregiver one "no" and
-    /// never a silenced rule. The planner sees the rule catalogue, the alarm catalogue and this
-    /// member's alarms under positional labels; it never sees an id, a reading value or the
-    /// member's name, and an alarm's caregiver-given name is redacted on the way out like every
-    /// other free text that reaches the Rewrite slot.
-    /// </para>
-    /// <para>
-    /// Whether this caregiver may change anything is read up front rather than discovered at
-    /// apply time: a relative invited to watch is told so and given the list, not a proposal
-    /// they cannot confirm.
-    /// </para>
-    /// </remarks>
-    private async Task<MemberChatWorkflowResult> ConfigureAlertsAsync(
-        string flattened,
-        AiUsage triageUsage,
-        Guid userId,
-        Guid cardiMemberId,
-        CardiMember? member,
-        ChatHistory history,
-        DateTime utcNow,
-        CancellationToken ct)
-    {
-        var canManage = await CanManageAsync(userId, cardiMemberId, ct);
-        var snapshot = await ReadAlertSettingsAsync(userId, cardiMemberId, member?.Name, ct);
-
-        // A viewer gets the same answer whatever they asked — who can change things, and the
-        // list — so there is nothing for the planner to decide and no reason to show it the
-        // configuration. One call fewer, and nothing about this member's alerts reaches the
-        // Rewrite slot on a request that could not have changed them.
-        if (!canManage)
-        {
-            return new MemberChatWorkflowResult
-            {
-                Workflow = MemberChatWorkflow.AlertSettings,
-                Reply = CapReply(AlertSettingsComposer.ReadOnlyReply(snapshot, NamePlaceholder.FirstName(member?.Name))),
-                Calls = [new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage)],
-            };
-        }
-
-        // The question itself is redacted like the recalled history: a caregiver who writes
-        // "turn off Moses's sleep alert" has put the name in the one text this call carries.
-        var planned = await _alertPlanner.PlanAsync(
-            NamePlaceholder.Redact(flattened, member?.Name) ?? flattened, history.QuestionsOnly, snapshot, ct);
-
-        // The one field the model may echo the caregiver's words into is an alarm's name, and a
-        // caregiver who names an alarm after the member has just had that name redacted on the
-        // way out — so the token comes back and is put back here, as the first name a family
-        // says aloud, before it can be saved or shown. A token nothing resolves is dropped
-        // rather than stored, and the alarm takes its built name instead.
-        var plan = planned.Result;
-        if (plan.Name is { } givenName)
-        {
-            var resolvedName = NamePlaceholder.Resolve(givenName, NamePlaceholder.FirstName(member?.Name));
-            plan = plan with { Name = NamePlaceholder.IsPresentIn(resolvedName) ? null : resolvedName };
-        }
-
-        var composed = AlertSettingsComposer.Compose(
-            plan, snapshot, canManage, NamePlaceholder.FirstName(member?.Name), utcNow);
-
-        return new MemberChatWorkflowResult
-        {
-            Workflow = MemberChatWorkflow.AlertSettings,
-            Reply = CapReply(composed.Reply),
-            PendingChange = composed.Pending,
-            Calls =
-            [
-                new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
-                new AiCallRecord(AiCallStep.SettingsPlan, AiProviderSlot.Rewrite, planned.Usage),
-            ],
-        };
-    }
-
-    /// <summary>Whether the caller holds manage authority over this member — the settings
-    /// pages' own bar, read as a fact here rather than let escape as a 404 mid-send.</summary>
-    private async Task<bool> CanManageAsync(Guid userId, Guid cardiMemberId, CancellationToken ct)
-    {
-        try
-        {
-            await _access.RequireManageAccessAsync(userId, cardiMemberId, ct);
-            return true;
-        }
-        catch (KeyNotFoundException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// What is currently watching this member, read through the same services the settings pages
-    /// read so chat cannot describe a different state: the catalogue's rules with their effective
-    /// switch, and the effective alarms — inherited, overridden and the member's own — under the
-    /// positional labels the planning prompt offers for them.
-    /// </summary>
-    private async Task<AlertSettingsSnapshot> ReadAlertSettingsAsync(
-        Guid userId, Guid cardiMemberId, string? memberName, CancellationToken ct)
-    {
-        var overrides = await _alertPreferences.GetOverridesAsync(cardiMemberId, ct);
-        var rules = AlertRuleCatalogue.Clusters
-            .SelectMany(c => c.Rules)
-            .Select(r => new AlertRuleSettingResponse
-            {
-                Id = r.Id,
-                Title = r.Title,
-                Description = r.Description,
-                Enabled = overrides.IsEnabled(r.Id),
-                IsImplemented = r.IsImplemented,
-            })
-            .ToList();
-
-        var alarms = await _metricAlarms.GetMemberAlarmsAsync(userId, cardiMemberId, ct);
-
-        return new AlertSettingsSnapshot
-        {
-            Rules = rules,
-            RulesFingerprint = overrides.ToJson(),
-            // The name is the caregiver's own free text and may well be "Dad's heart alarm" —
-            // redacted like every other text that reaches the Rewrite slot. The row keeps the
-            // real name for the reply, which no model writes.
-            Alarms = alarms
-                .Select((a, i) => new AlarmSnapshotEntry(
-                    AlertSettingsSnapshot.LabelFor(i),
-                    NamePlaceholder.Redact(a.Name, memberName) ?? a.Name,
-                    a))
-                .ToList(),
-        };
-    }
-
-    /// <summary>
-    /// The caregiver's yes or no to the change the previous turn proposed. A yes applies exactly
-    /// the stored proposal through the alert services — which re-check primary-caregiver
-    /// authority and the builder's rules themselves — and a no, or a proposal past its validity,
-    /// changes nothing. No model runs on this turn, and the turn bills nothing.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The proposal is claimed before anything else — one conditional update that succeeds only
-    /// while it is still on the turn — so a "yes" the phone sent twice on a flaky connection, or
-    /// two of them racing, applies the change once: the second finds nothing to take and says
-    /// so. A no claims it too, so a later yes to the same proposal has nothing to apply. The
-    /// claim commits on its own, ahead of the unit of work; a claim that waited for the turn's
-    /// commit would leave the race open until then, and an apply that then fails costs the
-    /// caregiver a re-ask, which is the cheaper failure.
-    /// </para>
-    /// <para>
-    /// The alert services commit their own unit of work, so a change is saved before the turn
-    /// that records it; if persisting the turn then failed, the change would stand with no
-    /// transcript of the yes. Accepted: the caregiver asked for it and can see it in Alert
-    /// settings, and the alternative — a change that reads as applied but was rolled back with
-    /// the turn — is the worse failure. A refusal from the service is reported as such, never as
-    /// a 404 on the send: the caregiver typed "yes", and the honest answer to that is what
-    /// happened.
-    /// </para>
-    /// </remarks>
-    private async Task<MemberChatWorkflowResult> ResolvePendingChangeAsync(
-        PendingAlertChange pending,
-        Guid pendingTurnId,
-        ConfirmationAnswer answer,
-        Guid userId,
-        Guid cardiMemberId,
-        CardiMember? member,
-        DateTime utcNow,
-        CancellationToken ct)
-    {
-        string reply;
-        var changed = false;
-
-        if (!await _unitOfWork.MemberChatTurns.TryClaimPendingChangeAsync(pendingTurnId, ct))
-        {
-            reply = AlertSettingsComposer.AlreadyHandledReply();
-        }
-        else if (!pending.IsCurrent(utcNow))
-        {
-            reply = AlertSettingsComposer.LapsedReply();
-        }
-        else if (answer == ConfirmationAnswer.No)
-        {
-            reply = AlertSettingsComposer.CancelledReply();
-        }
-        else
-        {
-            try
-            {
-                await ApplyAsync(pending, userId, cardiMemberId, ct);
-                // Written at the apply boundary, not after the turn persists: the alert
-                // services have committed by now, and the audit row the controller files for
-                // this send is written only once the send completes. Should the turn's own
-                // persistence fail after this, the log line is the record that the change
-                // stood — no member data in it, only what kind of change and for whom.
-                _logger.LogInformation(
-                    "Alert settings changed via chat: {ChangeKind} for CardiMember {CardiMemberId} by user {UserId}",
-                    pending.Kind, cardiMemberId, userId);
-                reply = AlertSettingsComposer.AppliedReply(pending);
-                changed = true;
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex) when (ex is AlertSettingsChangedException or Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-            {
-                // The alarm is not as the proposal saw it — retuned or removed by someone else
-                // inside the window. Either the service compared and refused before writing, or
-                // the row's version token refused the write itself because a commit landed
-                // between the service's read and its save. Nothing of theirs was overwritten.
-                reply = AlertSettingsComposer.ChangedSinceProposedReply();
-            }
-            catch (KeyNotFoundException)
-            {
-                // The manage check, or a row that went away between proposing and confirming.
-                reply = AlertSettingsComposer.CouldNotApplyReply(
-                    "it's no longer there, or only the primary caregiver can change it");
-            }
-            catch (ArgumentException ex)
-            {
-                // The builder's own refusal — a level outside the band, a name too long — whose
-                // message is written for a caregiver. The ceiling's InvalidOperationException is
-                // deliberately not caught by message: the proposal already checked capacity, and
-                // an InvalidOperationException here is as likely to be the framework's as the
-                // builder's, so it takes the generic line below rather than its text.
-                reply = AlertSettingsComposer.CouldNotApplyReply(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "Applying a confirmed alert-settings change failed for CardiMember {CardiMemberId}",
-                    cardiMemberId);
-                reply = AlertSettingsComposer.CouldNotApplyReply(null);
-            }
-        }
-
-        return new MemberChatWorkflowResult
-        {
-            Workflow = MemberChatWorkflow.AlertSettings,
-            Reply = CapReply(reply),
-            Calls = [],
-            ChangedAlertSettings = changed,
-        };
-    }
-
-    /// <summary>
-    /// The one call each kind of proposal turns into. A save or delete hands the service the
-    /// fingerprint of the row the proposal was written against, so the compare and the write
-    /// share one read inside the service and a stale proposal is refused rather than applied
-    /// over another caregiver's change.
-    /// </summary>
-    private Task ApplyAsync(PendingAlertChange pending, Guid userId, Guid cardiMemberId, CancellationToken ct) =>
-        pending.Kind switch
-        {
-            PendingAlertChangeKind.SetRule =>
-                _alertPreferences.SetRuleEnabledAsync(
-                    userId, cardiMemberId, pending.RuleId!, pending.Enabled, pending.RulesFingerprint, ct),
-            PendingAlertChangeKind.CreateAlarm =>
-                _metricAlarms.CreateMemberAlarmAsync(userId, cardiMemberId, pending.Alarm!, ct),
-            PendingAlertChangeKind.SaveAlarm =>
-                _metricAlarms.SaveMemberOverrideAsync(
-                    userId, cardiMemberId, pending.AlarmId!.Value, pending.Alarm!, pending.AlarmFingerprint, ct),
-            PendingAlertChangeKind.DeleteAlarm =>
-                _metricAlarms.DeleteMemberAlarmAsync(
-                    userId, cardiMemberId, pending.AlarmId!.Value, pending.AlarmFingerprint, ct),
-            _ => throw new InvalidOperationException("That change is no longer recognised."),
-        };
 
     /// <summary>
     /// Which of a clarify's two candidates actually has something behind it.
@@ -2522,12 +2266,16 @@ public class MemberChatService : IMemberChatService
     /// </remarks>
     private static string ComposeReply(
         string rewritten,
+        string clinicalRead,
         MemberVoice voice,
         string? readingsFrom,
         string? readingsTo,
         (DateOnly From, DateOnly To)? fetchedWindow,
         DateOnly today)
     {
+        if (RewriteCopyGuards.NamesAReadingTheReadDidNot(rewritten, clinicalRead) is not null)
+            return CouldNotAnswerReply;
+
         var resolved = ResolvedOrFallback(rewritten, voice);
         if (resolved == CouldNotAnswerReply)
             return resolved;

@@ -232,6 +232,65 @@ public class MemberChatAlertSettingsRungTests
         Assert.Null(assistant.PendingChange);
     }
 
+    [Fact]
+    public async Task AYesWhenBothOffersAreLive_AppliesTheAlert_AndSpendsTheJournalOffer()
+    {
+        AProposalIsPending(age: TimeSpan.FromMinutes(1));
+        var session = await _sessions.GetActiveAsync(_userId, _memberId, DateTime.UtcNow, default);
+        Assert.NotNull(session);
+        session.PendingAction = new JournalChatRequest(
+            JournalChatAction.Discard, DigestAudience.Daybook, DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-2))
+            .Serialize();
+        session.PendingActionExpiresAtUtc = DateTime.UtcNow.AddMinutes(10);
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "yes");
+
+        Assert.True(reply.ChangedAlertSettings);
+        Assert.False(reply.ChangedJournal);
+        await _alertPreferences.Received(1).SetRuleEnabledAsync(
+            _userId, _memberId, AlertRuleCatalogue.ActivityDecline, false, "[]", Arg.Any<CancellationToken>());
+        await _sessions.Received().TryConsumePendingActionAsync(
+            session, confirming: false, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task OfferingAnAlertChange_SpendsALiveJournalOffer()
+    {
+        var session = new MemberChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = _userId,
+            CardiMemberId = _memberId,
+            StartedAtUtc = DateTime.UtcNow.AddMinutes(-5),
+            LastTurnAtUtc = DateTime.UtcNow.AddMinutes(-1),
+            PendingAction = new JournalChatRequest(
+                JournalChatAction.Discard, DigestAudience.Daybook, DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-2))
+                .Serialize(),
+            PendingActionExpiresAtUtc = DateTime.UtcNow.AddMinutes(10),
+        };
+        _sessions.GetActiveAsync(_userId, _memberId, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(session);
+        _sessions.GetByIdWithTurnsAsync(session.Id, Arg.Any<CancellationToken>()).Returns(session);
+        _sessions.TryConsumePendingActionAsync(session, Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                var consumed = new PendingChatAction(session.PendingAction!, session.PendingActionExpiresAtUtc);
+                session.PendingAction = null;
+                session.PendingActionExpiresAtUtc = null;
+                return consumed;
+            });
+        RouterAnswers(MemberChatWorkflow.AlertSettings);
+        PlannerAnswers(new AlertChangePlan { Action = AlertChangeAction.DisableRule, RuleId = AlertRuleCatalogue.ActivityDecline });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "turn off the activity decline alert");
+
+        Assert.False(reply.ChangedAlertSettings);
+        Assert.StartsWith("Here's what I'd do:", reply.Reply, StringComparison.Ordinal);
+        await _sessions.Received().TryConsumePendingActionAsync(
+            session, confirming: false, Arg.Any<CancellationToken>());
+        Assert.Null(session.PendingAction);
+    }
+
     private static SaveMetricAlarmRequest AHeartRateRequest(bool enabled = true) => new()
     {
         Name = "Heart rate above 120 bpm",

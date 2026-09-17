@@ -97,7 +97,7 @@ public class ReportsController : BaseApiController
     }
 
     /// <summary>
-    /// Mints a two-minute token from the named in-force standing grant for this
+    /// Mints a five-minute token from the named in-force standing grant for this
     /// snapshot. The client must tell the caregiver the confirmation is being reused.
     /// </summary>
     [HttpPost("consents/{consentId:guid}/reuse")]
