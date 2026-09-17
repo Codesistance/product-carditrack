@@ -264,13 +264,11 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
-    /// Unlike a blank field, an entry citing nothing is the model declining to ground the
-    /// suggestion, and an empty entries list is it saying nothing anywhere falls short — both
-    /// deliberate. The honest response is withdrawal, not serving a suggestion that may no longer
-    /// apply.
+    /// A citation naming no source is not a refusal to infer. The finding still stands, and the
+    /// row is stored against "the readings" rather than withdrawn.
     /// </summary>
     [Fact]
-    public async Task NothingToCite_RemovesTheExistingTopicRowRatherThanKeepingIt()
+    public async Task NothingToCite_KeepsTheInferenceAgainstTheReadings()
     {
         var existing = ExistingRow(_memberId);
         _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
@@ -278,7 +276,8 @@ public class AdviseGenerationServiceTests
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
-        _advises.Received(1).Remove(existing);
+        _advises.DidNotReceive().Remove(Arg.Any<MemberAdvise>());
+        Assert.Equal("the readings", existing.GuidelineCited);
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
