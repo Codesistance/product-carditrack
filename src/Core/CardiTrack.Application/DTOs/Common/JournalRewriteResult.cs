@@ -8,7 +8,11 @@ namespace CardiTrack.Application.DTOs.Common;
 /// </summary>
 public enum JournalRewriteOutcome
 {
-    /// <summary>The new book is stored; any earlier book for the period is gone.</summary>
+    /// <summary>
+    /// The book passed every guard. From <c>IDigestGenerationService.ComposeBookAsync</c> it is
+    /// composed and ready to store; from the chat's reply it has been stored, and any earlier
+    /// book for the period is gone.
+    /// </summary>
     Written = 1,
 
     /// <summary>The member is inactive or their monitoring is paused — the same members the
@@ -29,12 +33,13 @@ public enum JournalRewriteOutcome
 }
 
 /// <summary>
-/// The result of <c>IDigestGenerationService.RewriteBookAsync</c>.
+/// The result of <c>IDigestGenerationService.ComposeBookAsync</c>, and — with
+/// <see cref="ReplacedAnEarlierBook"/> filled in once the entry is stored — of the chat's rewrite.
 /// </summary>
 /// <param name="Outcome">What happened.</param>
-/// <param name="Entry">The stored book when <paramref name="Outcome"/> is <see cref="JournalRewriteOutcome.Written"/>; otherwise null.</param>
+/// <param name="Entry">The composed (then stored) book when <paramref name="Outcome"/> is <see cref="JournalRewriteOutcome.Written"/>; otherwise null.</param>
 /// <param name="Usage">The model call the attempt made, when one was made — for the caller to bill.</param>
-/// <param name="ReplacedAnEarlierBook">True when a book for the period existed and was removed for this one.</param>
+/// <param name="ReplacedAnEarlierBook">True when a book for the period existed and was removed for this one. Always false from a composition, which stores nothing.</param>
 /// <param name="DaysWithData">For <see cref="JournalRewriteOutcome.NoReadings"/> on a Weekbook or Monthbook: how many days carried readings.</param>
 /// <param name="DaysNeeded">For the same case: how many the book needs.</param>
 public sealed record JournalRewriteResult(

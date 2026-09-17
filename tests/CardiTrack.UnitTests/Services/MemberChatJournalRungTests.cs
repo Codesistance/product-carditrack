@@ -108,6 +108,9 @@ public class MemberChatJournalRungTests
 
         _digests.GetLatestByDateAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DigestAudience>(), Arg.Any<CancellationToken>())
             .Returns((DigestEntry?)null);
+
+        // The store behind a confirmed rewrite: an earlier book removed, the new one landed.
+        _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns((1, true));
     }
 
     private void Resolves(string? action, string? cadence, DateOnly? day) =>
@@ -238,7 +241,7 @@ public class MemberChatJournalRungTests
         Assert.Contains("Shall I go ahead?", result.Reply, StringComparison.Ordinal);
         Assert.Equal($"Rewrite|Daybook|{Reviewed:yyyy-MM-dd}", _session!.PendingAction);
         Assert.NotNull(_session.PendingActionExpiresAtUtc);
-        await _books.DidNotReceiveWithAnyArgs().RewriteBookAsync(default, default, default, default, default);
+        await _books.DidNotReceiveWithAnyArgs().ComposeBookAsync(default, default, default, default, default);
     }
 
     /// <summary>
@@ -374,8 +377,8 @@ public class MemberChatJournalRungTests
         Resolves("rewrite", "day", Reviewed);
         HasDaybook(Reviewed);
         var written = StoredDaybook(Reviewed, "A quieter day than usual");
-        _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
-            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, written, new AiUsage { ModelName = "medgemma" }, true));
+        _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, written, new AiUsage { ModelName = "medgemma" }, false));
         await Send("rewrite that day's daybook");
         _router.ClearReceivedCalls();
 
@@ -384,36 +387,68 @@ public class MemberChatJournalRungTests
         Assert.Contains("here's the new Daybook", result.Reply, StringComparison.Ordinal);
         Assert.Contains("A quieter day than usual", result.Reply, StringComparison.Ordinal);
         Assert.Null(_session!.PendingAction);
-        await _books.Received(1).RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _books.Received(1).ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+        await _digests.Received(1).ReplaceBookAsync(Arg.Is<DigestEntry>(d => d == written), Arg.Any<CancellationToken>());
         await _usages.Received(1).AddAsync(Arg.Is<MemberChatTurnUsage>(u =>
             u.Step == AiCallStep.JournalWrite && u.ProviderSlot == AiProviderSlot.Private));
         await _router.DidNotReceive().RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
-    /// The book and the turn that asked for it land together: the yes opens a transaction before
-    /// the claim, and the service commits it only after the turns are written and saved.
+    /// The model call runs before any transaction; the claim, the store, the turns and the save
+    /// then run inside one short transaction the service commits last. The book and the turn that
+    /// asked for it land together, and no connection is held across a MedGemma call.
     /// </summary>
     [Fact]
-    public async Task A_yes_runs_the_claim_the_write_and_the_turn_in_one_transaction()
+    public async Task A_yes_composes_first_then_claims_stores_and_saves_in_one_transaction()
     {
         Resolves("rewrite", "day", Reviewed);
         HasDaybook(Reviewed);
-        _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
-            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), true));
+        _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), false));
         await Send("rewrite that day's daybook");
         _unitOfWork.ClearReceivedCalls();
+        _sessions.ClearReceivedCalls();
+
+        await Send("yes");
+
+        Received.InOrder(() =>
+        {
+            _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+            _unitOfWork.BeginTransactionAsync();
+            _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>());
+            _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
+            _unitOfWork.SaveChangesAsync();
+            _unitOfWork.CommitTransactionAsync();
+        });
+    }
+
+    /// <summary>
+    /// A yes that loses the claim — another request took the offer while the book was composing —
+    /// carries nothing out, closes the transaction it opened before anything else runs, and is
+    /// routed as an ordinary message.
+    /// </summary>
+    [Fact]
+    public async Task A_yes_that_loses_the_claim_rolls_back_and_is_routed_as_itself()
+    {
+        Resolves("rewrite", "day", Reviewed);
+        HasDaybook(Reviewed);
+        _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), false));
+        await Send("rewrite that day's daybook");
+        _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>())
+            .Returns((PendingChatAction?)null);
+        _router.ClearReceivedCalls();
 
         await Send("yes");
 
         Received.InOrder(() =>
         {
             _unitOfWork.BeginTransactionAsync();
-            _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>());
-            _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
-            _unitOfWork.SaveChangesAsync();
-            _unitOfWork.CommitTransactionAsync();
+            _unitOfWork.RollbackTransactionAsync();
+            _router.RouteAsync(Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
         });
+        await _digests.DidNotReceive().ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -425,7 +460,7 @@ public class MemberChatJournalRungTests
     {
         Resolves("rewrite", "day", Reviewed);
         HasDaybook(Reviewed);
-        _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage(), true));
         await Send("rewrite that day's daybook");
         _unitOfWork.ClearReceivedCalls();
@@ -471,7 +506,7 @@ public class MemberChatJournalRungTests
     {
         Resolves("rewrite", "day", Reviewed);
         HasDaybook(Reviewed);
-        _books.RewriteBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+        _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(new JournalRewriteResult(JournalRewriteOutcome.Discarded, null, new AiUsage(), false));
         await Send("rewrite that day's daybook");
 

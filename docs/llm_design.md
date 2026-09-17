@@ -659,17 +659,19 @@ caregiver look after the journal in conversation: *show* or *list* a Daybook, We
 2026-09-14 shipped with a migration that emptied the three journal series, leaving days a caregiver
 could see readings for and no book to read — and the schedule only ever writes yesterday.
 
-- **Rewrite is the scheduled write, asked for.** `DigestGenerationService.RewriteBookAsync` composes
+- **Rewrite is the scheduled write, asked for.** `DigestGenerationService.ComposeBookAsync` composes
   the book through the same `Compose{Daybook,Weekbook,Monthbook}Async` the half-hourly pass uses —
-  same prompt, same coverage minimums, same register guards, same private slot — and only then
-  replaces the earlier book with the new one, delete and insert in one transaction. A reply the guards refuse leaves the existing
+  same prompt, same coverage minimums, same register guards, same private slot — and stores nothing;
+  the chat then replaces the earlier book with the new one, delete and insert in one transaction
+  (`IDigestRepository.ReplaceBookAsync`), so no model call ever runs inside a transaction. A reply the guards refuse leaves the existing
   book in place and the caregiver told so. The same members are refused for the same reasons: an
   inactive or paused member, and a period that has not ended in the member's own local time.
 - **Delete is a set-based delete of one book** (`IDigestRepository.DeleteBookAsync`): one member, one
   local date, one journal audience. The family series is history and cannot be deleted this way.
 - **Confirmed on the next turn.** A delete or rewrite is offered and held on the chat session for ten
-  minutes; a plain yes takes it off the row in one claim-and-clear statement and carries it out inside
-  one transaction with the turn that records it, a no or anything else drops it. Manage access — the primary
+  minutes; a plain yes composes the book, then takes the offer off the row in one claim-and-clear
+  statement and stores the book inside one short transaction with the turn that records it; a no or
+  anything else drops it. Manage access — the primary
   caregiver — is required at the offer and again at the yes. Reading back needs view access only.
 - **Runs in the API**, on the private slot, inline with the chat turn — the one place outside the
   pipeline host that writes a book. A cold MedGemma start makes it a slow turn, which the waiting

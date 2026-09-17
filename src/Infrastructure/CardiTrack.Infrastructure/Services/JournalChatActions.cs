@@ -22,7 +22,9 @@ namespace CardiTrack.Infrastructure.Services;
 /// <b>Two turns for anything destructive.</b> A discard or a rewrite is offered, held on the
 /// session as a short <see cref="JournalChatRequest"/> line with a ten-minute life, and carried
 /// out only when the next message is a plain yes, and after one statement has taken the offer off
-/// the row, so a yes sent twice at once carries it out once. The yes and the no are a closed vocabulary
+/// the row, so a yes sent twice at once carries it out once. The book is composed before that
+/// statement and stored after it, so no model call ever runs inside a transaction — see
+/// <see cref="TryResumeAsync"/>. The yes and the no are a closed vocabulary
 /// matched in code (<see cref="JournalChatRequest.IsAffirmative"/>), so the confirming turn costs
 /// no model call and cannot be talked into a different action than the one offered. Any other
 /// message clears the offer and routes as itself.
@@ -41,7 +43,7 @@ namespace CardiTrack.Infrastructure.Services;
 /// start, and returns an action, a book and one day inside the period meant. The date arithmetic
 /// — which week that day falls in for this member, which month's last day — is
 /// <see cref="JournalChatRequest"/>'s, in code. The book itself, when one is written, is
-/// <see cref="IDigestGenerationService.RewriteBookAsync"/>'s: the same prompt, the same guards and
+/// <see cref="IDigestGenerationService.ComposeBookAsync"/>'s: the same prompt, the same guards and
 /// the same private slot as the scheduled pass, billed to this turn as
 /// <see cref="AiCallStep.JournalWrite"/>.
 /// </para>
@@ -203,13 +205,25 @@ public sealed class JournalChatActions
     /// message as itself. Whatever the answer, the offer is spent: an offer is honoured once.
     /// </summary>
     /// <remarks>
-    /// On a yes, everything from the claim to the end of the turn runs in one database transaction
-    /// that <see cref="MemberChatService.SendMessageAsync"/> commits after the turns are written.
-    /// A failure anywhere — the book write, the turn's encryption, the save — rolls the whole turn
-    /// back: the offer is still there, the book is as it was, and the same yes can be sent again.
-    /// The book and its confirmation cannot be separated. On a no, or on any other message, the
-    /// claim is autocommitted on its own, so a turn that fails afterwards still leaves the offer
-    /// spent — a later yes to something else must never find it.
+    /// <para>
+    /// On a yes, the book is composed first with no transaction open — a MedGemma call can take
+    /// minutes, and a connection or the session row held that long would queue every other turn
+    /// on the session behind it. Then one short transaction: the claim, the change, and — after
+    /// this returns — the turns and the save, committed together by
+    /// <see cref="MemberChatService.SendMessageAsync"/>. A failure anywhere in it rolls the whole
+    /// turn back: the offer is still there, the book is as it was, and the same yes can be sent
+    /// again. The book and its confirmation cannot be separated.
+    /// </para>
+    /// <para>
+    /// The price of composing before claiming is that two yeses sent at once both generate, and
+    /// the one that loses the claim discards its text. That is one wasted generation on a
+    /// double-send, against a row lock across every generation otherwise — the cheaper side.
+    /// </para>
+    /// <para>
+    /// On a no, or on any other message, the claim is autocommitted on its own, so a turn that
+    /// fails afterwards still leaves the offer spent — a later yes to something else must never
+    /// find it.
+    /// </para>
     /// </remarks>
     public async Task<MemberChatWorkflowResult?> TryResumeAsync(
         string flattened,
@@ -223,50 +237,70 @@ public sealed class JournalChatActions
         if (session.PendingAction is null)
             return null;
 
-        var affirmative = JournalChatRequest.IsAffirmative(flattened);
-        if (affirmative)
+        if (!JournalChatRequest.IsAffirmative(flattened))
         {
-            // Committed, or rolled back, by SendMessageAsync once the turns are written — see the
-            // remarks above. The claim below takes a row lock the transaction holds for the length
-            // of the write; a second yes arriving meanwhile skips the locked row and is routed as
-            // an ordinary message rather than waiting on a MedGemma call it cannot use.
-            await _unitOfWork.BeginTransactionAsync();
+            // A no, or anything else: spend the offer on its own, then answer the no or hand the
+            // message on. The claim is for the offer this request read, so a yes sent to a newer
+            // offer by the same caregiver is not spent by this message's arrival.
+            var spent = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
+            var wasLive = spent is not null
+                && JournalChatRequest.TryDeserialize(spent.Action) is not null
+                && spent.ExpiresAtUtc is { } until && until > utcNow;
+            return wasLive && JournalChatRequest.IsNegative(flattened)
+                ? Result(JournalChatReplies.LeftAsItIs(), [])
+                : null;
         }
 
-        // The database is the lock, and the claim is for the offer *this* request read: one
-        // statement takes that offer off the row and clears it, so two requests racing on the same
-        // yes cannot both carry it out, and a yes that arrives after a newer offer replaced the one
-        // it was answering gets nothing rather than the newer action.
-        var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
-        if (consumed is null)
-            return null;
-
-        var pending = JournalChatRequest.TryDeserialize(consumed.Action);
-        var live = pending is not null && consumed.ExpiresAtUtc is { } until && until > utcNow;
+        // A yes. What it answers is the offer the session was loaded with; the claim inside the
+        // transaction below confirms nothing replaced it while the book was being composed.
+        var pending = JournalChatRequest.TryDeserialize(session.PendingAction);
+        var live = pending is not null && session.PendingActionExpiresAtUtc is { } expiry && expiry > utcNow;
         if (!live)
+        {
+            // Stale, or a line this build cannot read: spent, and the message routed as itself.
+            await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
             return null;
-
-        if (JournalChatRequest.IsNegative(flattened))
-            return Result(JournalChatReplies.LeftAsItIs(), []);
-
-        if (!affirmative)
-            return null;
+        }
 
         var (localToday, _) = await LocalCalendarAsync(cardiMemberId, member, utcNow);
         var firstName = NamePlaceholder.FirstName(member?.Name);
 
         if (!await CanManageAsync(userId, cardiMemberId, ct))
+        {
+            await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
             return Result(JournalChatReplies.OnlyPrimaryCaregiver(firstName), []);
+        }
 
-        return await ExecuteAsync(pending!, cardiMemberId, firstName, localToday, utcNow, ct);
+        // The model call, before any transaction — see the remarks.
+        var composition = pending!.Action == JournalChatAction.Rewrite
+            ? await _books.ComposeBookAsync(cardiMemberId, pending.Audience, pending.PeriodEnd!.Value, utcNow, ct)
+            : null;
+
+        await _unitOfWork.BeginTransactionAsync();
+        var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
+        if (consumed is null)
+        {
+            // Another request took this offer, or a newer one replaced it, while the book was
+            // being composed. Nothing to carry out: the transaction goes before the router runs,
+            // and the message is routed as itself.
+            await _unitOfWork.RollbackTransactionAsync();
+            return null;
+        }
+
+        return await ExecuteAsync(pending, composition, cardiMemberId, firstName, localToday, ct);
     }
 
+    /// <summary>
+    /// The change itself, inside the transaction <see cref="TryResumeAsync"/> opened: a discard is
+    /// one delete; a rewrite stores the composition made before the transaction, or explains why
+    /// there is none.
+    /// </summary>
     private async Task<MemberChatWorkflowResult> ExecuteAsync(
         JournalChatRequest request,
+        JournalRewriteResult? composition,
         Guid cardiMemberId,
         string? firstName,
         DateOnly localToday,
-        DateTime utcNow,
         CancellationToken ct)
     {
         var periodEnd = request.PeriodEnd!.Value;
@@ -284,26 +318,45 @@ public sealed class JournalChatActions
                 []);
         }
 
-        var result = await _books.RewriteBookAsync(cardiMemberId, request.Audience, periodEnd, utcNow, ct);
-
-        // Read after the attempt, not before it: a rewrite can take a minute, and the reply for a
-        // refused one says what stands for the period *now* — not what stood when the yes arrived.
-        var hasABook = result.Outcome != JournalRewriteOutcome.Written
-            && await _unitOfWork.Digests.GetLatestByDateAsync(cardiMemberId, periodEnd, request.Audience, ct) is not null;
-
+        var result = composition ?? throw new InvalidOperationException("A rewrite reaches execution with its composition.");
         var calls = result.Usage is { } usage
             ? new List<AiCallRecord> { new(AiCallStep.JournalWrite, AiProviderSlot.Private, usage) }
             : [];
+
+        if (result.Outcome == JournalRewriteOutcome.Written)
+        {
+            var (removed, inserted) = await _unitOfWork.Digests.ReplaceBookAsync(result.Entry!, ct);
+            var stored = result.Entry!;
+            if (!inserted)
+            {
+                // The due pass landed a book for the same period between the delete and the
+                // insert. Its account is as good as ours and already stored; report that one.
+                _logger.LogInformation(
+                    "The rewrite of the {Audience} for CardiMember {CardiMemberId} dated {PeriodEnd} lost the insert "
+                    + "to a concurrent write; serving the stored book.",
+                    request.Audience, cardiMemberId, periodEnd);
+                stored = await _unitOfWork.Digests.GetLatestByDateAsync(cardiMemberId, periodEnd, request.Audience, ct) ?? stored;
+            }
+
+            _logger.LogInformation(
+                "Rewrote the {Audience} for CardiMember {CardiMemberId} dated {PeriodEnd} at a caregiver's request "
+                + "({Removed} earlier row(s) removed).",
+                request.Audience, cardiMemberId, periodEnd, removed);
+
+            return Result(
+                JournalChatReplies.Written(result with { Entry = stored, ReplacedAnEarlierBook = removed > 0 }, localToday),
+                calls);
+        }
+
+        // Refused, or nothing to write from. The reply says what stands for the period *now*: a
+        // composition can take a minute, and the state when the yes arrived is not the state now.
+        var hasABook = await _unitOfWork.Digests.GetLatestByDateAsync(cardiMemberId, periodEnd, request.Audience, ct) is not null;
 
         _logger.LogInformation(
             "Rewrite of the {Audience} for CardiMember {CardiMemberId} dated {PeriodEnd} at a caregiver's request: {Outcome}.",
             request.Audience, cardiMemberId, periodEnd, result.Outcome);
 
-        return Result(
-            result.Outcome == JournalRewriteOutcome.Written
-                ? JournalChatReplies.Written(result, localToday)
-                : JournalChatReplies.NotWritten(result, request, hasABook, firstName, localToday),
-            calls);
+        return Result(JournalChatReplies.NotWritten(result, request, hasABook, firstName, localToday), calls);
     }
 
     private async Task<bool> CanManageAsync(Guid userId, Guid cardiMemberId, CancellationToken ct)

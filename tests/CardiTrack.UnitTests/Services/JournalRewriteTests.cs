@@ -10,9 +10,10 @@ using NSubstitute;
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// Pins <see cref="DigestGenerationService.RewriteBookAsync"/> — the one way a CardiJournal book
-/// changes after it is written. Driven through the Weekbook: compose first, remove second, and
-/// every refusal the scheduled pass makes, made here too.
+/// Pins <see cref="DigestGenerationService.ComposeBookAsync"/> — the composition behind the one way
+/// a CardiJournal book changes after it is written. Driven mostly through the Weekbook: the book
+/// is composed and guarded but never stored here, and every refusal the scheduled pass makes is
+/// made here too.
 /// </summary>
 public class JournalRewriteTests
 {
@@ -79,9 +80,6 @@ public class JournalRewriteTests
             .Returns([]);
         _questionnaires.GetByCardiMemberAsync(_memberId, Arg.Any<CancellationToken>()).Returns([]);
 
-        // A book already stands for the week: the replacement reports removing it and landing.
-        _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns((1, true));
-
         SetupModelReply(
             "A steadier week for sleep",
             "Ada slept a little more than usual this week. Her resting heart rate held at her usual. "
@@ -134,8 +132,8 @@ public class JournalRewriteTests
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
             InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance);
 
-    private Task<JournalRewriteResult> Rewrite(DateOnly periodEnd, DigestAudience audience = DigestAudience.Weekbook) =>
-        CreateSut().RewriteBookAsync(_memberId, audience, periodEnd, UtcNow);
+    private Task<JournalRewriteResult> Compose(DateOnly periodEnd, DigestAudience audience = DigestAudience.Weekbook) =>
+        CreateSut().ComposeBookAsync(_memberId, audience, periodEnd, UtcNow);
 
     private async Task AssertNothingChanged()
     {
@@ -147,51 +145,32 @@ public class JournalRewriteTests
     // ── The write ───────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Rewrites_the_book_for_the_named_week_on_any_day()
+    public async Task Composes_the_book_for_the_named_week_on_any_day()
     {
-        var result = await Rewrite(WeekEnd);
+        var result = await Compose(WeekEnd);
 
         Assert.Equal(JournalRewriteOutcome.Written, result.Outcome);
-        Assert.True(result.ReplacedAnEarlierBook);
         Assert.Equal("test-medical", result.Usage?.ModelName);
         Assert.NotNull(result.Entry);
+        Assert.Equal(_memberId, result.Entry.CardiMemberId);
+        Assert.Equal(DigestAudience.Weekbook, result.Entry.Audience);
         Assert.Equal(WeekEnd, result.Entry.LocalDate);
+        Assert.Equal(UtcNow, result.Entry.GeneratedAtUtc);
         Assert.Equal("A steadier week for sleep", result.Entry.Headline);
-        await _digests.Received(1).ReplaceBookAsync(
-            Arg.Is<DigestEntry>(d =>
-                d.CardiMemberId == _memberId
-                && d.Audience == DigestAudience.Weekbook
-                && d.LocalDate == WeekEnd
-                && d.GeneratedAtUtc == UtcNow),
-            Arg.Any<CancellationToken>());
-        // Through the one atomic replacement, never as a separate delete and insert.
-        await _digests.DidNotReceiveWithAnyArgs().DeleteBookAsync(default, default, default, default);
-        await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>The old book goes only once the new one exists to take its place.</summary>
+    /// <summary>
+    /// Composing stores nothing: the caller stores, inside whatever transaction its own record of
+    /// the request needs, and a model call therefore never runs inside one.
+    /// </summary>
     [Fact]
-    public async Task The_earlier_book_is_replaced_after_the_new_one_has_passed_its_guards()
+    public async Task A_composition_stores_nothing_itself()
     {
-        await Rewrite(WeekEnd);
-
-        Received.InOrder(() =>
-        {
-            _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>());
-            _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
-        });
-    }
-
-    [Fact]
-    public async Task A_week_with_no_earlier_book_is_simply_written()
-    {
-        _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>()).Returns((0, true));
-
-        var result = await Rewrite(WeekEnd);
+        var result = await Compose(WeekEnd);
 
         Assert.Equal(JournalRewriteOutcome.Written, result.Outcome);
         Assert.False(result.ReplacedAnEarlierBook);
+        await AssertNothingChanged();
     }
 
     // ── The refusals ────────────────────────────────────────────────────────
@@ -205,7 +184,7 @@ public class JournalRewriteTests
     {
         SetupModelReply("A concerning week", "Her readings this week were a sign of atrial fibrillation.");
 
-        var result = await Rewrite(WeekEnd);
+        var result = await Compose(WeekEnd);
 
         Assert.Equal(JournalRewriteOutcome.Discarded, result.Outcome);
         Assert.NotNull(result.Usage);
@@ -215,7 +194,7 @@ public class JournalRewriteTests
     [Fact]
     public async Task A_week_still_in_progress_is_refused_before_any_model_call()
     {
-        var result = await Rewrite(new DateOnly(2026, 8, 16));
+        var result = await Compose(new DateOnly(2026, 8, 16));
 
         Assert.Equal(JournalRewriteOutcome.PeriodNotFinished, result.Outcome);
         await _medicalAi.DidNotReceiveWithAnyArgs()
@@ -227,7 +206,7 @@ public class JournalRewriteTests
     [Fact]
     public async Task A_week_ending_today_is_not_finished()
     {
-        var result = await Rewrite(new DateOnly(2026, 8, 12));
+        var result = await Compose(new DateOnly(2026, 8, 12));
 
         Assert.Equal(JournalRewriteOutcome.PeriodNotFinished, result.Outcome);
     }
@@ -239,7 +218,7 @@ public class JournalRewriteTests
         member.MonitoringPausedUntil = UtcNow.AddDays(1);
         _members.GetByIdAsync(_memberId).Returns(member);
 
-        var result = await Rewrite(WeekEnd);
+        var result = await Compose(WeekEnd);
 
         Assert.Equal(JournalRewriteOutcome.MemberUnavailable, result.Outcome);
         await AssertNothingChanged();
@@ -250,7 +229,7 @@ public class JournalRewriteTests
     {
         SetupWeek(daysWithData: 2);
 
-        var result = await Rewrite(WeekEnd);
+        var result = await Compose(WeekEnd);
 
         Assert.Equal(JournalRewriteOutcome.NoReadings, result.Outcome);
         Assert.Equal(2, result.DaysWithData);
@@ -260,10 +239,10 @@ public class JournalRewriteTests
 
     /// <summary>
     /// The first book, at the service level: a finished day composed from its own daily row and
-    /// intraday reads, through the same replacement — not only the scheduled path's due check.
+    /// intraday reads — not only the scheduled path's due check.
     /// </summary>
     [Fact]
-    public async Task Rewrites_a_daybook_for_a_finished_day()
+    public async Task Composes_a_daybook_for_a_finished_day()
     {
         _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.DaybookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -277,23 +256,21 @@ public class JournalRewriteTests
                 },
                 new AiUsage { ModelName = "test-medical" }));
 
-        var result = await Rewrite(WeekEnd, DigestAudience.Daybook);
+        var result = await Compose(WeekEnd, DigestAudience.Daybook);
 
         Assert.Equal(JournalRewriteOutcome.Written, result.Outcome);
         Assert.NotNull(result.Entry);
         Assert.Equal(WeekEnd, result.Entry.LocalDate);
         Assert.Equal(DigestAudience.Daybook, result.Entry.Audience);
         Assert.Equal("A settled Sunday", result.Entry.Headline);
-        await _digests.Received(1).ReplaceBookAsync(
-            Arg.Is<DigestEntry>(d => d.Audience == DigestAudience.Daybook && d.LocalDate == WeekEnd),
-            Arg.Any<CancellationToken>());
+        await AssertNothingChanged();
     }
 
     /// <summary>A day with no daily row is unmeasured, not quiet: nothing to write from, nothing touched.</summary>
     [Fact]
     public async Task A_day_without_readings_has_nothing_to_write_from()
     {
-        var result = await Rewrite(new DateOnly(2026, 8, 11), DigestAudience.Daybook);
+        var result = await Compose(new DateOnly(2026, 8, 11), DigestAudience.Daybook);
 
         Assert.Equal(JournalRewriteOutcome.NoReadings, result.Outcome);
         await _medicalAi.DidNotReceiveWithAnyArgs()
@@ -302,11 +279,11 @@ public class JournalRewriteTests
     }
 
     /// <summary>
-    /// The third book goes through the same replacement: a finished month, dated by its last day,
+    /// The third book goes through the same composition: a finished month, dated by its last day,
     /// composed from the month's own days.
     /// </summary>
     [Fact]
-    public async Task Rewrites_a_monthbook_for_a_finished_month()
+    public async Task Composes_a_monthbook_for_a_finished_month()
     {
         var monthStart = new DateOnly(2026, 7, 1);
         var monthEnd = new DateOnly(2026, 7, 31);
@@ -323,7 +300,7 @@ public class JournalRewriteTests
                 },
                 new AiUsage { ModelName = "test-medical" }));
 
-        var result = await Rewrite(monthEnd, DigestAudience.Monthbook);
+        var result = await Compose(monthEnd, DigestAudience.Monthbook);
 
         Assert.Equal(JournalRewriteOutcome.Written, result.Outcome);
         Assert.NotNull(result.Entry);
@@ -337,7 +314,7 @@ public class JournalRewriteTests
     {
         SetupDays(new DateOnly(2026, 7, 1), daysWithData: 10);
 
-        var result = await Rewrite(new DateOnly(2026, 7, 31), DigestAudience.Monthbook);
+        var result = await Compose(new DateOnly(2026, 7, 31), DigestAudience.Monthbook);
 
         Assert.Equal(JournalRewriteOutcome.NoReadings, result.Outcome);
         Assert.Equal(10, result.DaysWithData);
@@ -348,12 +325,12 @@ public class JournalRewriteTests
     [Fact]
     public async Task The_family_series_cannot_be_rewritten()
     {
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => Rewrite(WeekEnd, DigestAudience.Family));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => Compose(WeekEnd, DigestAudience.Family));
     }
 
     /// <summary>
     /// The due pass lost nothing in the split: a Monday-start member at 10:30 on Monday still gets
-    /// the week just gone, stored by the same call the rewrite uses.
+    /// the week just gone, stored by the due pass itself from the same composition.
     /// </summary>
     [Fact]
     public async Task The_scheduled_pass_still_writes_through_the_same_composition()
