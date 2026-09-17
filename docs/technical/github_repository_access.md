@@ -58,7 +58,9 @@ success having done nothing (2026-08-15, run 31904971393). Do not re-add a
 gated workflows also carries a dispatch-only `dispatch-sanity` job that fails
 the run if the chain collapses that way again.
 
-Copilot review runs on non-draft, same-repo PRs (short ubuntu job). Merging is
+Copilot review is requested on non-draft, same-repo PRs when they open, reopen or
+leave draft (short ubuntu job) — not on every push, since each review bills about
+five Actions minutes; re-requests are deliberate, one per triage round. Merging is
 manual: there is no auto-merge workflow (removed 2026-08-21 — with a single
 maintainer who reads every review anyway, its label-plus-gates machinery and
 its quarter-hourly sweep bought nothing that `gh pr merge` does not).
@@ -69,7 +71,7 @@ its quarter-hourly sweep bought nothing that `gh pr merge` does not).
 | Deploy Mobile → Dev | **workflow_dispatch only** (`platform` = android / ios / both); ships only from `main` |
 | Deploy Infrastructure → Dev / Common | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
 | Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
-| Request Copilot review | `pull_request` opened / synchronize / reopened / ready_for_review |
+| Request Copilot review | `pull_request` opened / reopened / ready_for_review (not synchronize) |
 
 With the flag at `0`, Dev Cloud Run does not start on merge; TestFlight / Play never
 do, whatever the flag says. Dispatch **CI / Deploy Apps → Dev** on `main` (or set the
