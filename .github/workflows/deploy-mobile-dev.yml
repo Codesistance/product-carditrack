@@ -123,6 +123,8 @@ jobs:
           }
           TAG="$(printf '%s' "$INPUT_TAG" | tr -d '[:space:]')"
           if [ -n "$TAG" ]; then
+            # Same release-tag contract as deploy-apps-prod.yml: only vMAJOR.MINOR.PATCH.
+            printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::Tag '$TAG' is not a release tag (expected vMAJOR.MINOR.PATCH)."; exit 1; }
             git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "::error::Tag '$TAG' does not exist."; exit 1; }
             MISSING=$(has_builds "$TAG")
             if [ -n "$MISSING" ]; then
@@ -130,11 +132,16 @@ jobs:
               exit 1
             fi
           else
-            # The bucket's lifecycle is 10 days, so only recent tags can qualify; 30 is plenty.
-            for CANDIDATE in $(git tag --sort=-version:refname | grep '^v[0-9]' | head -30); do
+            # Candidates come from the bucket itself — only tags that still have a
+            # folder there can qualify (10-day lifecycle) — newest release first.
+            # Captured before filtering so no pipeline status can abort the step.
+            FOLDERS=$(gcloud storage ls "$BUCKET/" 2>/dev/null || true)
+            CANDIDATES=$(printf '%s\n' "$FOLDERS" | sed -n 's|^.*/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)/$|\1|p' | sort -rV || true)
+            for CANDIDATE in $CANDIDATES; do
+              git rev-parse -q --verify "refs/tags/$CANDIDATE" >/dev/null || continue
               if [ -z "$(has_builds "$CANDIDATE")" ]; then TAG="$CANDIDATE"; break; fi
             done
-            [ -n "$TAG" ] || { echo "::error::No recent v* tag has signed builds for the requested platform(s) in $BUCKET. Dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks first."; exit 1; }
+            [ -n "$TAG" ] || { echo "::error::No release tag in $BUCKET has signed builds for the requested platform(s). Dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks first (the bucket keeps builds for 10 days)."; exit 1; }
             echo "Newest tag with the requested builds: $TAG"
           fi
           # The build number CI stamped into the binaries: the commit count at the tag.

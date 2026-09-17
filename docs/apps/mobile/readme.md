@@ -275,8 +275,9 @@ Mobile is **built** by `.github/workflows/deploy-apps-dev.yml`, one tick per pla
 
 ```bash
 # Build (main: signed + archived + tagged; any other ref: unsigned compile check)
-gh workflow run deploy-apps-dev.yml --ref main -f mobile_android=true                      # Android only, no Mac
-gh workflow run deploy-apps-dev.yml --ref main -f mobile_android=true -f mobile_ios=true   # TestFlight candidate too
+# The service lanes default to on; switch them off for a mobile-only run.
+gh workflow run deploy-apps-dev.yml --ref main -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true                      # Android only, no Mac
+gh workflow run deploy-apps-dev.yml --ref main -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true -f mobile_ios=true   # TestFlight candidate too
 gh workflow run deploy-apps-dev.yml --ref <branch> -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true -f mobile_ios=true   # compile check; ships nothing
 
 # Push (main only; builds nothing, takes the tag's binaries from the builds bucket)

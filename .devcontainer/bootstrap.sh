@@ -33,11 +33,17 @@ done
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 
-# ── Docker daemon ────────────────────────────────────────────────────────────
+# ── Docker, Postgres, Redis ──────────────────────────────────────────────────
 # The integration tests and parts of the unit suite start PostgreSQL through
-# Testcontainers, which needs a daemon. Cloud containers ship the binaries but
-# no init system to run them, so start it here when it is not already up.
-if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+# Testcontainers, which needs a daemon; the API and Worker need Postgres and
+# Redis. scripts/agent/services-up.sh is the one place that installs Docker
+# when the image has none, configures and starts the daemon, sorts out socket
+# access for a non-root session and brings the two services up — the same path
+# Cursor's environment `start` takes. Linux only: on the Windows dev box Docker
+# Desktop is already running and nothing here applies.
+if [ "$(uname -s)" = "Linux" ] && [ -x "${REPO_ROOT}/scripts/agent/services-up.sh" ]; then
+  "${REPO_ROOT}/scripts/agent/services-up.sh"
+elif command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
   log "Starting the Docker daemon (Testcontainers needs it)"
   if [ "$(id -u)" -eq 0 ]; then
     nohup dockerd >/var/log/dockerd.log 2>&1 &

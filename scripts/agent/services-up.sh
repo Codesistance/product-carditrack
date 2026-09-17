@@ -46,11 +46,20 @@ if ! command -v docker >/dev/null 2>&1; then
   fi
 fi
 
+# Is a daemon already running? Checked through sudo as well: after bootstrap.sh
+# a root-owned daemon can be up while this shell has not yet picked up its
+# docker-group membership, and starting a second dockerd against the same
+# socket would only produce a competing daemon and confusing failures.
+daemon_up() {
+  docker info >/dev/null 2>&1 && return 0
+  [ -n "$ROOT" ] && $ROOT docker info >/dev/null 2>&1
+}
+
 # ── Daemon configuration ─────────────────────────────────────────────────────
 # Applied whether Docker was just installed or came with the image, before the
 # daemon is started: without it dockerd will not come up on this kernel.
 if [ -n "$ROOT" ] || [ "$(id -u)" -eq 0 ]; then
-  if [ ! -f /etc/docker/daemon.json ] && ! docker info >/dev/null 2>&1; then
+  if [ ! -f /etc/docker/daemon.json ] && ! daemon_up; then
     $ROOT mkdir -p /etc/docker
     printf '%s\n' '{"storage-driver":"fuse-overlayfs","features":{"containerd-snapshotter":false}}' \
       | $ROOT tee /etc/docker/daemon.json >/dev/null
@@ -61,7 +70,7 @@ if [ -n "$ROOT" ] || [ "$(id -u)" -eq 0 ]; then
 fi
 
 # ── Daemon ───────────────────────────────────────────────────────────────────
-if ! docker info >/dev/null 2>&1; then
+if ! daemon_up; then
   log "Starting the Docker daemon"
   # The redirection has to happen inside the privileged shell: an unprivileged
   # one cannot open /var/log/dockerd.log, and the daemon would never start.
