@@ -213,6 +213,7 @@ public class CardiMembersController : BaseApiController
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ApiResponse<AlertRuleSettingResponse>>> SetAlertRuleEnabled(
         Guid cardiMemberId,
         string ruleId,
@@ -231,7 +232,7 @@ public class CardiMembersController : BaseApiController
         try
         {
             var updated = await _alertPreferences.SetRuleEnabledAsync(
-                UserContext.UserId, cardiMemberId, ruleId, enabled, ct);
+                UserContext.UserId, cardiMemberId, ruleId, enabled, expectedDisabledRules: null, ct);
             return Success(updated, updated.Enabled ? "Alert rule is on." : "Alert rule is off.");
         }
         catch (KeyNotFoundException ex)
@@ -245,6 +246,14 @@ public class CardiMembersController : BaseApiController
         catch (InvalidOperationException ex)
         {
             return Error(ex.Message, StatusCodes.Status400BadRequest);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            // The preference row's version token, or its one-row-per-member index: another
+            // device or a chat-confirmed change wrote it between this request's read and save.
+            return Error(
+                "These settings were just changed from another device. Refresh and try again.",
+                StatusCodes.Status409Conflict);
         }
     }
 

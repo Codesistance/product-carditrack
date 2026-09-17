@@ -12,6 +12,13 @@ public class MetricAlarmConfiguration : IEntityTypeConfiguration<MetricAlarm>
 
         builder.HasKey(a => a.Id);
 
+        // Postgres's own row version as the concurrency token, so an UPDATE is predicated on the
+        // row being the one that was read. Two caregivers retuning one alarm — or a chat "yes"
+        // written from a proposal someone else has since overtaken — get a
+        // DbUpdateConcurrencyException on the second commit rather than the last write winning.
+        // The API already maps DbUpdateException to 409; the chat answers it with its own line.
+        builder.Property<uint>("xmin").IsRowVersion();
+
         builder.Property(a => a.OrganizationId).IsRequired();
 
         // Nullable by design: null is the account-level default every member inherits. It is the

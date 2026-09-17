@@ -78,6 +78,17 @@ public sealed record ChatRouteDecision
         Primary is { } p && RunnerUp is { } r
         && ((p == MemberChatWorkflow.Advise && IsSteer(r)) || (r == MemberChatWorkflow.Advise && IsSteer(p)));
 
+    /// <summary>
+    /// True when the two candidates are <c>settings</c> and one of the steers — a pair the ladder
+    /// calls adjacent (both off it), which the dispatch resolves to settings rather than taking
+    /// whichever the router put first. A steer is a redirect; a request to change what is
+    /// watching the member is something the app can do, and turning it away because the router
+    /// also saw a redirect in it is the advise-against-a-steer mistake in a new coat.
+    /// </summary>
+    public bool PitsSettingsAgainstASteer =>
+        Primary is { } p && RunnerUp is { } r
+        && ((p == MemberChatWorkflow.AlertSettings && IsSteer(r)) || (r == MemberChatWorkflow.AlertSettings && IsSteer(p)));
+
     private static bool IsSteer(MemberChatWorkflow workflow) => workflow
         is MemberChatWorkflow.SteerCasual
         or MemberChatWorkflow.SteerOffTopic;
@@ -105,7 +116,8 @@ public sealed record ChatRouteDecision
         if (ra is { } x && rb is { } y)
             return Math.Abs(x - y) == 1;
 
-        // Off-ladder entries: adjacent only to each other.
+        // Off-ladder entries — the steers and settings — are adjacent only to each other. A
+        // settings request against a reading rung is a genuinely different ask, and clarifies.
         return ra is null && rb is null;
     }
 

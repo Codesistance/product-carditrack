@@ -58,6 +58,12 @@ public class MemberChatController : BaseApiController
         try
         {
             var result = await _chat.SendMessageAsync(UserContext.UserId, cardiMemberId, request.Message, ct);
+
+            // A send that applied an alert-settings change is a write to what is watching the
+            // member, and the audit trail files it as that rather than as one more chat read.
+            if (result.ChangedAlertSettings)
+                HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeAlertSettingsViaChat";
+
             return Success(result);
         }
         catch (ArgumentException ex)

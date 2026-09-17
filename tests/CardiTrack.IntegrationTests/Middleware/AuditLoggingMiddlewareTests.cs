@@ -134,6 +134,43 @@ public class AuditLoggingMiddlewareTests
         Assert.Equal(handedMember, entry!.CardiMemberId);
     }
 
+    /// <summary>
+    /// A chat send that applied an alert-settings change is a write to what is watching the
+    /// member. The controller names it in Items, and that name must be what is recorded — not
+    /// the attribute's "MemberChat", which would file a silenced rule as one more read.
+    /// </summary>
+    [Fact]
+    public async Task PrefersTheHandedOverAction_OverTheAttributesFixedOne()
+    {
+        var httpContext = BuildContext(new AuditHealthDataAccessAttribute("MemberChat"));
+        httpContext.Request.Method = "POST";
+        httpContext.Request.Path = "/api/v1/member-chat/members/x/messages";
+
+        var entry = await InvokeAndCaptureAsync(httpContext, next: ctx =>
+        {
+            ctx.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ChangeAlertSettingsViaChat";
+            return Task.CompletedTask;
+        });
+
+        Assert.NotNull(entry);
+        Assert.Equal("ChangeAlertSettingsViaChat", entry!.Action);
+    }
+
+    /// <summary>An empty or non-string override is ignored, not recorded as a blank action.</summary>
+    [Fact]
+    public async Task IgnoresABlankHandedOverAction()
+    {
+        var httpContext = BuildContext(new AuditHealthDataAccessAttribute("MemberChat"));
+
+        var entry = await InvokeAndCaptureAsync(httpContext, next: ctx =>
+        {
+            ctx.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "   ";
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal("MemberChat", entry!.Action);
+    }
+
     [Fact]
     public void OnboardingMemberCreation_IsAudited()
     {

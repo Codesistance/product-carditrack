@@ -124,6 +124,32 @@ public class AlertPreferenceServiceTests
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
+    /// <summary>A caller writing from a picture of the list — the chat's proposal — hands over
+    /// that picture, and the write is refused when the list has moved since.</summary>
+    [Fact]
+    public async Task SetRuleEnabled_WithAStalePicture_IsRefused_AndACurrentOneProceeds()
+    {
+        var existing = new AlertPreference
+        {
+            CardiMemberId = _memberId,
+            DisabledRules = """["irregular_sleep"]""",
+        };
+        _prefs.GetByCardiMemberIdAsync(_memberId).Returns(existing);
+
+        // Proposed when nothing was off; someone switched irregular_sleep off in between.
+        await Assert.ThrowsAsync<CardiTrack.Application.Exceptions.AlertSettingsChangedException>(() =>
+            CreateSut().SetRuleEnabledAsync(
+                _userId, _memberId, AlertRuleCatalogue.ActivityDecline, enabled: false, expectedDisabledRules: "[]"));
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+
+        var updated = await CreateSut().SetRuleEnabledAsync(
+            _userId, _memberId, AlertRuleCatalogue.ActivityDecline, enabled: false,
+            expectedDisabledRules: """["irregular_sleep"]""");
+        Assert.False(updated.Enabled);
+        Assert.Contains("activity_decline", existing.DisabledRules);
+        Assert.Contains("irregular_sleep", existing.DisabledRules);
+    }
+
     [Fact]
     public async Task SetRuleEnabled_UnknownOrUnimplemented_Rejected()
     {

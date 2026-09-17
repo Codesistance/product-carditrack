@@ -22,6 +22,10 @@ public class MemberChatTurnConfiguration : IEntityTypeConfiguration<MemberChatTu
         // turn had no charts to keep.
         builder.Property(t => t.Charts);
 
+        // Same again: the alert-settings change a reply proposed and is waiting on a yes for,
+        // encrypted JSON, null on every turn that proposed nothing.
+        builder.Property(t => t.PendingChange);
+
         // A name survives an incident and an enum renumbering — same reasoning as
         // MemberQuestionnaireConfiguration.Status.
         builder.Property(t => t.Role)
