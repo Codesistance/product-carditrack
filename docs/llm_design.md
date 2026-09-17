@@ -689,10 +689,10 @@ here because the first build collapsed them into one prompt and shipped the pred
 ("Perhaps try taking a short walk after dinner" — addressed to nobody, on a day the steps were
 already up):
 
-- **Clinical (AI:Private, MedGemma).** The data, and MedGemma's own read of it (prompt **v6**):
-  member context, 30-day baseline, recent daily readings. No audience, no name, no
-  `WellnessGuidelineReference` table, no "everyday non-clinical" checklist — those were asking a
-  medically-tuned model to stay inside a wellness worksheet. Guarded per entry only for a
+- **Clinical (AI:Private, MedGemma).** Prompt **v7** follows MedGemma's JSON-extraction pattern
+  (https://medgemma.pro/resources/api-cheat-sheet): a one-line task, the wearable record
+  (member context, 30-day baseline, recent daily readings), an Include list, then a `JSON:` cue.
+  No audience, no name, no `WellnessGuidelineReference` table. Guarded per entry only for a
   treatment proposal (`AdviseRegisterGuards.ProposesTreatment`); a citation naming no published
   source is stored as "the readings" rather than dropped. A condition name in the note is
   allowed: the register boundary is held on the rewrite.

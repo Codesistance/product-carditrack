@@ -670,7 +670,11 @@ public class AdviseGenerationServiceTests
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
         Assert.Contains("--- Baseline ---", prompt);
         Assert.Contains("--- Recent readings", prompt);
-        Assert.Contains("Read the data below and infer", prompt);
+        Assert.StartsWith(
+            "Extract clinical findings from the following wearable record as JSON:",
+            prompt.TrimStart(),
+            StringComparison.Ordinal);
+        Assert.Contains("JSON:", prompt);
         Assert.DoesNotContain("--- General health reference ---", prompt);
         Assert.DoesNotContain("WHO, 2020", prompt);
         Assert.DoesNotContain("never a diagnosis, a prescription, or a change to medication or treatment", prompt);

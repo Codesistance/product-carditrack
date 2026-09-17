@@ -72,33 +72,32 @@ public class AdviseGenerationService
     /// <see cref="MedicalPromptBlocks.PronounsByToken"/>, so every stored row predating it holds
     /// copy whose pronoun the model chose for itself. Version 6 stops briefing MedGemma against a
     /// wellness checklist and a published-reference table: the clinical half is the data, and the
-    /// model's own read of it.
+    /// model's own read of it. Version 7 follows MedGemma's own JSON-extraction pattern
+    /// (task, record, Include, JSON:) rather than a CardiTrack instruction essay.
     /// </remarks>
-    internal const int CurrentPromptVersion = 6;
+    internal const int CurrentPromptVersion = 7;
 
     /// <summary>
-    /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — MedGemma's own read of the data. Opens with
-    /// <see cref="MedicalPromptBlocks.ClinicalRead"/> like member chat's clinical step, and for the
-    /// same reason: its output is read by the rewrite model, not by a caregiver, so the caregiver
-    /// voice would be a request the brief itself withdraws. The family-facing limits — no condition
-    /// names, no clinic-speak, the addressing — belong on the rewrite brief, which is the slot
-    /// that writes what a caregiver reads.
+    /// <c>CARDITRACK_ADVISE_PROMPT</c>, clinical half — MedGemma's own read of the data, shaped
+    /// like the JSON-extraction examples on the MedGemma API cheat sheet: a one-line task, the
+    /// record, an Include list, then a JSON: cue. The family-facing limits belong on the rewrite
+    /// brief. <see cref="MedicalPromptBlocks.ClinicalRead"/> is the one CardiTrack rule that stays
+    /// — a rewrite cannot restore a finding the clinical model already softened.
     /// </summary>
-    private const string ClinicalInstructions =
-        MedicalPromptBlocks.ClinicalRead + """
-        This is an internal clinical read. A separate step rewrites it for the family, so write
-        precisely and plainly, and address no one.
-        Read the data below and infer. Say what the readings are consistent with, in clinical
-        terms, naming a mechanism or a condition where they support one. Nothing you write here
-        reaches a family: the rewrite step decides what is said to them.
+    private const string ClinicalTask =
+        "Extract clinical findings from the following wearable record as JSON:";
 
-        Respond with entries — at most one each for Sleep, Activity and HeartRate, and General
-        only when the finding spans areas. Each entry:
-        - topic: Sleep, Activity, HeartRate or General, exactly as written.
-        - finding: what the data show in this area, stated precisely.
-        - action: what would address that finding.
-        - guidelineCited: what the finding draws on, in a few words.
-        """ + MedicalPromptBlocks.ContextGuardrail;
+    private const string ClinicalTail =
+        MedicalPromptBlocks.ContextGuardrail
+        + MedicalPromptBlocks.ClinicalRead + """
+
+        Include: topic (Sleep, Activity, HeartRate, or General), finding, action, guidelineCited. At most one entry per topic.
+
+        JSON:
+        """;
+
+    /// <summary>Fixed prefix plus closing cue, with the record inserted between them at call time.</summary>
+    private const string ClinicalInstructions = ClinicalTask + ClinicalTail;
 
     /// <summary>
     /// <c>CARDITRACK_ADVISE_PROMPT</c>, rewrite half — the caregiver voice and the addressing,
@@ -530,7 +529,7 @@ public class AdviseGenerationService
                   : string.Empty);
 
         return $"""
-            {ClinicalInstructions}
+            {ClinicalTask}
 
             {memberContext}
 
@@ -539,6 +538,7 @@ public class AdviseGenerationService
 
             --- Recent readings (the most recent days that carried any, oldest first) ---
             {MedicalPromptBlocks.DailyLines(recentLogs, take: 7, today)}
+            {ClinicalTail}
             """;
     }
 
