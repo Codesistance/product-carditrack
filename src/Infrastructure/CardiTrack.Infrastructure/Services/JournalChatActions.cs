@@ -188,10 +188,14 @@ public sealed class JournalChatActions
         if (request.Action == JournalChatAction.Discard && existing is null)
             return Result(JournalChatReplies.NothingToDiscard(request, localToday), calls);
 
-        // Written now, by compare-and-set against the offer this turn loaded the session with:
-        // two destructive asks racing from the same caregiver cannot both put an offer on the row,
-        // and the one that loses is told to answer the one that stands rather than overwriting it
-        // with an offer whose reply arrived second.
+        // Written by compare-and-set against the offer this turn loaded the session with: two
+        // destructive asks racing from the same caregiver cannot both put an offer on the row, and
+        // the one that loses is told to answer the one that stands rather than overwriting it with
+        // an offer whose reply arrived second. Inside the turn's transaction — no model call is
+        // left at this point — so the offer lands with the reply that shows it, or not at all:
+        // SendMessageAsync commits both after the turns are saved, and a failure rolls the offer
+        // back rather than leaving one on the row that no reply ever showed.
+        await _unitOfWork.BeginTransactionAsync();
         if (!await _unitOfWork.MemberChatSessions.TryOfferPendingActionAsync(
                 session, request.Serialize(), utcNow + ConfirmationWindow, ct))
         {

@@ -473,6 +473,7 @@ public class MemberChatJournalRungTests
             .Returns((PendingChatAction?)null);
         _router.ClearReceivedCalls();
         _usages.ClearReceivedCalls();
+        _unitOfWork.ClearReceivedCalls();
 
         var result = await Send("yes");
 
@@ -530,6 +531,28 @@ public class MemberChatJournalRungTests
 
         await _unitOfWork.Received(1).RollbackTransactionAsync();
         await _unitOfWork.DidNotReceive().CommitTransactionAsync();
+    }
+
+    /// <summary>
+    /// The offer lands with the reply that shows it: the compare-and-set runs inside the turn's
+    /// transaction, and the service commits it after the turns are saved.
+    /// </summary>
+    [Fact]
+    public async Task An_offer_is_written_in_the_same_transaction_as_its_reply()
+    {
+        Resolves("discard", "day", Reviewed);
+        HasDaybook(Reviewed);
+
+        await Send("delete that daybook");
+
+        Received.InOrder(() =>
+        {
+            _unitOfWork.BeginTransactionAsync();
+            _sessions.TryOfferPendingActionAsync(
+                Arg.Any<MemberChatSession>(), Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
+            _unitOfWork.SaveChangesAsync();
+            _unitOfWork.CommitTransactionAsync();
+        });
     }
 
     /// <summary>A no, or an ordinary message, spends the offer without a transaction: nothing is
