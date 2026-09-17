@@ -213,6 +213,9 @@ public class JournalChatRequestTests
     [InlineData("Rewrite|Family|2026-09-13")]
     [InlineData("Rewrite|Weekbook|tomorrow")]
     [InlineData("99|Weekbook|2026-09-13")]
+    [InlineData("3|1|2026-09-13")]
+    [InlineData("Rewrite|4|2026-09-13")]
+    [InlineData("rewrite|Weekbook|2026-09-13")]
     public void A_malformed_line_is_nothing_pending(string? stored)
     {
         Assert.Null(JournalChatRequest.TryDeserialize(stored));

@@ -28,6 +28,8 @@ public class JournalRewriteTests
         Substitute.For<IRealtimeAssessmentRepository>();
     private readonly IMemberQuestionnaireRepository _questionnaires =
         Substitute.For<IMemberQuestionnaireRepository>();
+    private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
+    private readonly IDeviceActivityLogRepository _deviceLogs = Substitute.For<IDeviceActivityLogRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
@@ -52,6 +54,14 @@ public class JournalRewriteTests
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.RealtimeAssessments.Returns(_realtimeAssessments);
         _unitOfWork.MemberQuestionnaires.Returns(_questionnaires);
+        _unitOfWork.GranularMetrics.Returns(_granular);
+        _unitOfWork.DeviceActivityLogs.Returns(_deviceLogs);
+
+        // The Daybook's intraday reads: nothing granular and no device log, so the day is written
+        // from its daily rollup alone — the shape a member without granular ingestion has.
+        _granular.GetRollupsAsync(_memberId, Arg.Any<DateTime>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        _deviceLogs.GetByCardiMemberAndDateAsync(_memberId, Arg.Any<DateOnly>()).Returns([]);
 
         _members.GetByIdAsync(_memberId).Returns(Member());
         _links.GetByCardiMemberIdAsync(_memberId).Returns(
@@ -245,6 +255,49 @@ public class JournalRewriteTests
         Assert.Equal(JournalRewriteOutcome.NoReadings, result.Outcome);
         Assert.Equal(2, result.DaysWithData);
         Assert.Equal(4, result.DaysNeeded);
+        await AssertNothingChanged();
+    }
+
+    /// <summary>
+    /// The first book, at the service level: a finished day composed from its own daily row and
+    /// intraday reads, through the same replacement — not only the scheduled path's due check.
+    /// </summary>
+    [Fact]
+    public async Task Rewrites_a_daybook_for_a_finished_day()
+    {
+        _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.DaybookAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<DigestGenerationService.DaybookAiResponse>(
+                new DigestGenerationService.DaybookAiResponse
+                {
+                    Headline = "A settled Sunday",
+                    Summary = "Ada slept close to her usual and was up and about by mid-morning. Her resting "
+                        + "heart rate held steady through the day.",
+                    Urgency = "watch",
+                },
+                new AiUsage { ModelName = "test-medical" }));
+
+        var result = await Rewrite(WeekEnd, DigestAudience.Daybook);
+
+        Assert.Equal(JournalRewriteOutcome.Written, result.Outcome);
+        Assert.NotNull(result.Entry);
+        Assert.Equal(WeekEnd, result.Entry.LocalDate);
+        Assert.Equal(DigestAudience.Daybook, result.Entry.Audience);
+        Assert.Equal("A settled Sunday", result.Entry.Headline);
+        await _digests.Received(1).ReplaceBookAsync(
+            Arg.Is<DigestEntry>(d => d.Audience == DigestAudience.Daybook && d.LocalDate == WeekEnd),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A day with no daily row is unmeasured, not quiet: nothing to write from, nothing touched.</summary>
+    [Fact]
+    public async Task A_day_without_readings_has_nothing_to_write_from()
+    {
+        var result = await Rewrite(new DateOnly(2026, 8, 11), DigestAudience.Daybook);
+
+        Assert.Equal(JournalRewriteOutcome.NoReadings, result.Outcome);
+        await _medicalAi.DidNotReceiveWithAnyArgs()
+            .GenerateStructuredWithUsageAsync<DigestGenerationService.DaybookAiResponse>(default!, default);
         await AssertNothingChanged();
     }
 

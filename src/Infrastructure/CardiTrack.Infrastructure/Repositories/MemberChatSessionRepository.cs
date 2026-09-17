@@ -82,10 +82,14 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
     public async Task<PendingChatAction?> TryConsumePendingActionAsync(
         MemberChatSession session, CancellationToken ct = default)
     {
-        // The offer this caller read is part of the predicate: a claim for "whatever is pending"
-        // would let a yes sent to one offer carry out a newer one that replaced it in between.
+        // The offer this caller read is the predicate — the line *and* the moment it was made. A
+        // claim for "whatever is pending" would let a yes sent to one offer carry out a newer one
+        // that replaced it in between, and a claim on the line alone would still match the same
+        // request offered again a minute later; the expiry is set from the clock at the offer, so
+        // it tells two offers of the same thing apart.
         if (session.PendingAction is not { } expected)
             return null;
+        var expectedExpiry = session.PendingActionExpiresAtUtc;
 
         // Claim and clear in one statement — the row is the lock. Two requests racing on the same
         // offer both send this; one gets the row back and the other gets nothing, which is what
@@ -102,7 +106,9 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
                 FROM (
                     SELECT "Id", "PendingAction", "PendingActionExpiresAtUtc"
                     FROM "MemberChatSessions"
-                    WHERE "Id" = {session.Id} AND "PendingAction" = {expected}
+                    WHERE "Id" = {session.Id}
+                      AND "PendingAction" = {expected}
+                      AND "PendingActionExpiresAtUtc" IS NOT DISTINCT FROM {expectedExpiry}
                     FOR UPDATE SKIP LOCKED) AS before
                 WHERE s."Id" = before."Id"
                 RETURNING before."PendingAction" AS "Action", before."PendingActionExpiresAtUtc" AS "ExpiresAtUtc")

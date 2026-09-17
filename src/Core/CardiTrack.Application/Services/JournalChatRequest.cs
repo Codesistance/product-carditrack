@@ -141,18 +141,30 @@ public sealed record JournalChatRequest(JournalChatAction Action, DigestAudience
         if (string.IsNullOrWhiteSpace(stored))
             return null;
 
+        // Exact names, matched by hand: Enum.TryParse also accepts a number, so a corrupted
+        // "3|1|…" would read as a Daybook rewrite. Only the two destructive actions and the three
+        // books can ever have been written, so only those five names are read back.
         var parts = stored.Split('|');
-        if (parts.Length != 3
-            || !Enum.TryParse<JournalChatAction>(parts[0], ignoreCase: false, out var action) || !Enum.IsDefined(action)
-            || !Enum.TryParse<DigestAudience>(parts[1], ignoreCase: false, out var audience)
-            || audience is not (DigestAudience.Daybook or DigestAudience.Weekbook or DigestAudience.Monthbook)
-            || ParseDate(parts[2]) is not { } periodEnd)
-        {
+        if (parts.Length != 3)
             return null;
-        }
 
-        var request = new JournalChatRequest(action, audience, periodEnd);
-        return request.IsDestructive ? request : null;
+        JournalChatAction? action = parts[0] switch
+        {
+            nameof(JournalChatAction.Discard) => JournalChatAction.Discard,
+            nameof(JournalChatAction.Rewrite) => JournalChatAction.Rewrite,
+            _ => null,
+        };
+        DigestAudience? audience = parts[1] switch
+        {
+            nameof(DigestAudience.Daybook) => DigestAudience.Daybook,
+            nameof(DigestAudience.Weekbook) => DigestAudience.Weekbook,
+            nameof(DigestAudience.Monthbook) => DigestAudience.Monthbook,
+            _ => null,
+        };
+
+        return action is { } a && audience is { } b && ParseDate(parts[2]) is { } periodEnd
+            ? new JournalChatRequest(a, b, periodEnd)
+            : null;
     }
 
     // ── The confirmation vocabulary ────────────────────────────────────────

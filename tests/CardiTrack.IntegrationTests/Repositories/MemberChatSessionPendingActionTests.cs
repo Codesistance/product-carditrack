@@ -150,6 +150,34 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The same request offered again is a new offer: the line matches, the moment does not, and
+    /// the stale yes must not take it.
+    /// </summary>
+    [Fact]
+    public async Task AClaimForTheSameOfferReissued_GetsNothing()
+    {
+        var id = await SeedSessionAsync("Discard|Daybook|2026-09-10", DateTime.UtcNow.AddMinutes(10));
+
+        using var stale = _services.CreateScope();
+        var (repo, tracked, _) = await LoadAsync(stale, id);
+
+        var reissuedAt = DateTime.UtcNow.AddMinutes(12);
+        using (var other = _services.CreateScope())
+        {
+            var (_, otherTracked, otherContext) = await LoadAsync(other, id);
+            otherTracked.PendingActionExpiresAtUtc = reissuedAt;
+            await otherContext.SaveChangesAsync();
+        }
+
+        Assert.Null(await repo.TryConsumePendingActionAsync(tracked));
+
+        var stored = await ReadBackAsync(id);
+        Assert.Equal("Discard|Daybook|2026-09-10", stored.PendingAction);
+        Assert.NotNull(stored.PendingActionExpiresAtUtc);
+        Assert.Equal(reissuedAt, stored.PendingActionExpiresAtUtc.Value, TimeSpan.FromMilliseconds(1));
+    }
+
+    /// <summary>
     /// After a claim, an offer the same turn sets afresh is written — the cleared original values
     /// must not swallow it.
     /// </summary>
