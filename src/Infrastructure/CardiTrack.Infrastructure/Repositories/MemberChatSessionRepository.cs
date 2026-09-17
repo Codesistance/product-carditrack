@@ -80,7 +80,7 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
     }
 
     public async Task<PendingChatAction?> TryConsumePendingActionAsync(
-        MemberChatSession session, CancellationToken ct = default)
+        MemberChatSession session, bool confirming, CancellationToken ct = default)
     {
         // The offer this caller read is the predicate — the line *and* the moment it was made. A
         // claim for "whatever is pending" would let a yes sent to one offer carry out a newer one
@@ -93,32 +93,53 @@ public class MemberChatSessionRepository : Repository<MemberChatSession>, IMembe
 
         // Claim and clear in one statement — the row is the lock. Two requests racing on the same
         // offer both send this; one gets the row back and the other gets nothing, which is what
-        // makes "an offer is honoured once" true rather than hoped for. SKIP LOCKED because the
-        // winning claim sits inside the confirming turn's short transaction (the claim, the store,
-        // the turns, the save): the loser is told now rather than waiting on that commit, and told
-        // "nothing" rather than reading a row the winner is about to clear. No model call ever
-        // runs inside that transaction — the book is composed before it opens — so the wait
-        // avoided is short; it is the answer, not the time, that matters. The offer is read
-        // through the FOR UPDATE subselect, not through
+        // makes "an offer is honoured once" true rather than hoped for. A yes skips a locked row:
+        // the winning claim sits inside the confirming turn's short transaction (the claim, the
+        // store, the turns, the save), and the loser is better told "nothing" now than left to
+        // wait on that commit and then read a row the winner is about to clear. A no, or any other
+        // message that merely spends the offer, waits instead: the row it finds locked is most
+        // likely an ordinary turn saving its LastTurnAtUtc, and skipping it would leave the offer
+        // standing for a later yes this message was meant to cancel. No model call ever runs
+        // inside either transaction. The offer is read through the FOR UPDATE subselect, not through
         // the updated row: RETURNING on an UPDATE yields the row *after* the update — the nulls
         // just written — while a FROM-list table's columns keep their pre-update values. Written as
         // a CTE so the query stays legal if EF wraps it in a subquery.
-        var rows = await _context.Database.SqlQuery<PendingActionRow>($"""
-            WITH claimed AS (
-                UPDATE "MemberChatSessions" AS s
-                SET "PendingAction" = NULL, "PendingActionExpiresAtUtc" = NULL
-                FROM (
-                    SELECT "Id", "PendingAction", "PendingActionExpiresAtUtc"
-                    FROM "MemberChatSessions"
-                    WHERE "Id" = {session.Id}
-                      AND "PendingAction" = {expected}
-                      AND "PendingActionExpiresAtUtc" IS NOT DISTINCT FROM {expectedExpiry}
-                    FOR UPDATE SKIP LOCKED) AS before
-                WHERE s."Id" = before."Id"
-                RETURNING before."PendingAction" AS "Action", before."PendingActionExpiresAtUtc" AS "ExpiresAtUtc")
-            SELECT "Action", "ExpiresAtUtc"
-            FROM claimed
-            """).ToListAsync(ct);
+        // Two statements rather than one with a switch: the lock clause is a keyword, not a value,
+        // and cannot be a parameter.
+        FormattableString claim = confirming
+            ? (FormattableString)$"""
+                WITH claimed AS (
+                    UPDATE "MemberChatSessions" AS s
+                    SET "PendingAction" = NULL, "PendingActionExpiresAtUtc" = NULL
+                    FROM (
+                        SELECT "Id", "PendingAction", "PendingActionExpiresAtUtc"
+                        FROM "MemberChatSessions"
+                        WHERE "Id" = {session.Id}
+                          AND "PendingAction" = {expected}
+                          AND "PendingActionExpiresAtUtc" IS NOT DISTINCT FROM {expectedExpiry}
+                        FOR UPDATE SKIP LOCKED) AS before
+                    WHERE s."Id" = before."Id"
+                    RETURNING before."PendingAction" AS "Action", before."PendingActionExpiresAtUtc" AS "ExpiresAtUtc")
+                SELECT "Action", "ExpiresAtUtc"
+                FROM claimed
+                """
+            : (FormattableString)$"""
+                WITH claimed AS (
+                    UPDATE "MemberChatSessions" AS s
+                    SET "PendingAction" = NULL, "PendingActionExpiresAtUtc" = NULL
+                    FROM (
+                        SELECT "Id", "PendingAction", "PendingActionExpiresAtUtc"
+                        FROM "MemberChatSessions"
+                        WHERE "Id" = {session.Id}
+                          AND "PendingAction" = {expected}
+                          AND "PendingActionExpiresAtUtc" IS NOT DISTINCT FROM {expectedExpiry}
+                        FOR UPDATE) AS before
+                    WHERE s."Id" = before."Id"
+                    RETURNING before."PendingAction" AS "Action", before."PendingActionExpiresAtUtc" AS "ExpiresAtUtc")
+                SELECT "Action", "ExpiresAtUtc"
+                FROM claimed
+                """;
+        var rows = await _context.Database.SqlQuery<PendingActionRow>(claim).ToListAsync(ct);
 
         // The entity follows the row: cleared, and with cleared *original* values, so the turn's
         // save sees nothing to write for these columns — unless a handler sets a new offer later

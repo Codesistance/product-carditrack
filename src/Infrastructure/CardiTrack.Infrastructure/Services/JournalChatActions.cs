@@ -138,6 +138,12 @@ public sealed class JournalChatActions
         var audience = JournalChatRequest.ParseCadence(resolved.Result.Cadence);
         var namedDay = JournalChatRequest.ParseDate(resolved.Result.PeriodDate);
 
+        // A date the model put centuries out is a garbled answer, not a period: it is dropped
+        // before any arithmetic, so a week "ending" at the calendar's edge cannot overflow into a
+        // failed turn. The unfinished-period check below still handles the near future.
+        if (namedDay is { } far && (far < localToday.AddYears(-10) || far > localToday.AddYears(1)))
+            namedDay = null;
+
         if (action is null)
             return Result(JournalChatReplies.WhatToDo(firstName), calls);
 
@@ -252,7 +258,7 @@ public sealed class JournalChatActions
             // A no, or anything else: spend the offer on its own, then answer the no or hand the
             // message on. The claim is for the offer this request read, so a yes sent to a newer
             // offer by the same caregiver is not spent by this message's arrival.
-            var spent = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
+            var spent = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, confirming: false, ct);
             var wasLive = spent is not null
                 && JournalChatRequest.TryDeserialize(spent.Action) is not null
                 && spent.ExpiresAtUtc is { } until && until > utcNow;
@@ -268,7 +274,7 @@ public sealed class JournalChatActions
         if (!live)
         {
             // Stale, or a line this build cannot read: spent, and the message routed as itself.
-            await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
+            await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, confirming: false, ct);
             return null;
         }
 
@@ -277,7 +283,7 @@ public sealed class JournalChatActions
 
         if (!await CanManageAsync(userId, cardiMemberId, ct))
         {
-            await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
+            await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, confirming: false, ct);
             return Result(JournalChatReplies.OnlyPrimaryCaregiver(firstName), []);
         }
 
@@ -293,7 +299,7 @@ public sealed class JournalChatActions
             : [];
 
         await _unitOfWork.BeginTransactionAsync();
-        var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, ct);
+        var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, confirming: true, ct);
         if (consumed is null)
         {
             // Another request took this offer, or a newer one replaced it, while the book was

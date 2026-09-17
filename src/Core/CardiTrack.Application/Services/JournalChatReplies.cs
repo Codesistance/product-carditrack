@@ -142,8 +142,13 @@ public static class JournalChatReplies
     {
         var book = BookName(request.Audience);
         var headline = string.IsNullOrWhiteSpace(existing.Headline) ? string.Empty : $" (\"{existing.Headline}\")";
+        // Honest about the schedule: the due pass writes a book for a period with none, so a
+        // deleted book for a period still inside its writing window comes back on the next pass.
+        // Older periods stay deleted until someone asks.
+        var noun = PeriodNoun(request.Audience);
         return $"This will delete the {book} for {PeriodLabel(request.PeriodEnd!.Value, request.Audience, today)}{headline}. "
-            + "It won't come back on its own, though you can ask me to write one again afterwards. Shall I go ahead?";
+            + $"You can ask me to write one again afterwards — and if that {noun} is still within the journal's "
+            + "writing window, the schedule may write it again itself. Shall I go ahead?";
     }
 
     public static string ConfirmRewrite(JournalChatRequest request, DigestEntry? existing, DateOnly today)

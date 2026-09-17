@@ -85,7 +85,7 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
         using var scope = _services.CreateScope();
         var (repo, tracked, _) = await LoadAsync(scope, id);
 
-        var claimed = await repo.TryConsumePendingActionAsync(tracked);
+        var claimed = await repo.TryConsumePendingActionAsync(tracked, confirming: false);
 
         Assert.NotNull(claimed);
         Assert.Equal("Rewrite|Daybook|2026-09-13", claimed.Action);
@@ -112,8 +112,8 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
         var (repoA, trackedA, _) = await LoadAsync(first, id);
         var (repoB, trackedB, _) = await LoadAsync(second, id);
 
-        Assert.NotNull(await repoA.TryConsumePendingActionAsync(trackedA));
-        Assert.Null(await repoB.TryConsumePendingActionAsync(trackedB));
+        Assert.NotNull(await repoA.TryConsumePendingActionAsync(trackedA, confirming: true));
+        Assert.Null(await repoB.TryConsumePendingActionAsync(trackedB, confirming: true));
     }
 
     /// <summary>
@@ -133,11 +133,12 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
         var (repoB, trackedB, _) = await LoadAsync(second, id);
 
         await using var winning = await contextA.Database.BeginTransactionAsync();
-        var claimedA = await repoA.TryConsumePendingActionAsync(trackedA);
+        var claimedA = await repoA.TryConsumePendingActionAsync(trackedA, confirming: true);
         Assert.NotNull(claimedA);
 
-        // While A's transaction is still open, B must return at once with nothing — not block.
-        var loser = repoB.TryConsumePendingActionAsync(trackedB);
+        // While A's transaction is still open, a confirming B must return at once with nothing —
+        // not block. (A spending claim would wait for A's commit instead; see the contract.)
+        var loser = repoB.TryConsumePendingActionAsync(trackedB, confirming: true);
         var finished = await Task.WhenAny(loser, Task.Delay(TimeSpan.FromSeconds(5)));
         Assert.Same(loser, finished);
         Assert.Null(await loser);
@@ -171,7 +172,7 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
             _ = otherRepo;
         }
 
-        Assert.Null(await repo.TryConsumePendingActionAsync(tracked));
+        Assert.Null(await repo.TryConsumePendingActionAsync(tracked, confirming: false));
 
         // The stale turn saves as every turn does; the newer offer must survive it.
         tracked.LastTurnAtUtc = DateTime.UtcNow;
@@ -201,7 +202,7 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
             await otherContext.SaveChangesAsync();
         }
 
-        Assert.Null(await repo.TryConsumePendingActionAsync(tracked));
+        Assert.Null(await repo.TryConsumePendingActionAsync(tracked, confirming: false));
 
         var stored = await ReadBackAsync(id);
         Assert.Equal("Discard|Daybook|2026-09-10", stored.PendingAction);
@@ -220,7 +221,7 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
 
         using var scope = _services.CreateScope();
         var (repo, tracked, context) = await LoadAsync(scope, id);
-        Assert.NotNull(await repo.TryConsumePendingActionAsync(tracked));
+        Assert.NotNull(await repo.TryConsumePendingActionAsync(tracked, confirming: false));
 
         tracked.PendingAction = "Discard|Daybook|2026-09-10";
         tracked.PendingActionExpiresAtUtc = DateTime.UtcNow.AddMinutes(10);
@@ -280,7 +281,7 @@ public class MemberChatSessionPendingActionTests : IAsyncLifetime
         using var scope = _services.CreateScope();
         var (repo, tracked, _) = await LoadAsync(scope, id);
 
-        Assert.Null(await repo.TryConsumePendingActionAsync(tracked));
+        Assert.Null(await repo.TryConsumePendingActionAsync(tracked, confirming: false));
         Assert.Null((await ReadBackAsync(id)).PendingAction);
     }
 }

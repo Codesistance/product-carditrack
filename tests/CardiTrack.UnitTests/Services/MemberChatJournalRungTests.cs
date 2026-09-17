@@ -76,7 +76,7 @@ public class MemberChatJournalRungTests
 
         // The claim-and-clear statement, against the in-memory session: hands the offer back
         // once, then nothing — the same contract the real one holds against the row.
-        _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>())
+        _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 var s = call.Arg<MemberChatSession>();
@@ -293,6 +293,19 @@ public class MemberChatJournalRungTests
         Assert.Null(_session!.PendingAction);
     }
 
+    /// <summary>A date the model put centuries out is dropped before any arithmetic, so the turn
+    /// asks which period was meant rather than failing on a calendar-edge overflow.</summary>
+    [Fact]
+    public async Task A_date_far_outside_the_journal_is_treated_as_no_date()
+    {
+        Resolves("rewrite", "week", new DateOnly(9999, 12, 30));
+
+        var result = await Send("rewrite the weekbook");
+
+        Assert.Contains("Which Weekbook should I write again", result.Reply, StringComparison.Ordinal);
+        Assert.Null(_session!.PendingAction);
+    }
+
     [Fact]
     public async Task A_discard_of_a_missing_book_has_nothing_to_offer()
     {
@@ -322,11 +335,6 @@ public class MemberChatJournalRungTests
         Assert.Equal($"Rewrite|Weekbook|{sunday:yyyy-MM-dd}", _session!.PendingAction);
     }
 
-    /// <summary>
-    /// Tomorrow rather than today: the service reads its own clock, and a test that crossed UTC
-    /// midnight between the fixture's read and the service's would find "today" already finished.
-    /// A day in the future is unfinished on either side of midnight.
-    /// </summary>
     /// <summary>
     /// The third book: any day of a finished month resolves to the month's last day, which is the
     /// date the stored Monthbook carries — February's 28th, not the 30th a week-style count would give.
@@ -367,6 +375,11 @@ public class MemberChatJournalRungTests
         Assert.Contains("all four weeks", result.Reply, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Tomorrow rather than today: the service reads its own clock, and a test that crossed UTC
+    /// midnight between the fixture's read and the service's would find "today" already finished.
+    /// A day in the future is unfinished on either side of midnight.
+    /// </summary>
     [Fact]
     public async Task A_period_that_has_not_finished_is_refused_before_any_offer()
     {
@@ -448,7 +461,7 @@ public class MemberChatJournalRungTests
         {
             _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>());
             _unitOfWork.BeginTransactionAsync();
-            _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>());
+            _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             _digests.ReplaceBookAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
             _unitOfWork.SaveChangesAsync();
             _unitOfWork.CommitTransactionAsync();
@@ -469,7 +482,7 @@ public class MemberChatJournalRungTests
         _books.ComposeBookAsync(_memberId, DigestAudience.Daybook, Reviewed, Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(new JournalRewriteResult(JournalRewriteOutcome.Written, StoredDaybook(Reviewed), new AiUsage { ModelName = "medgemma" }, false));
         await Send("rewrite that day's daybook");
-        _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<CancellationToken>())
+        _sessions.TryConsumePendingActionAsync(Arg.Any<MemberChatSession>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
             .Returns((PendingChatAction?)null);
         _router.ClearReceivedCalls();
         _usages.ClearReceivedCalls();
