@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Text;
+using System.Text.Json.Nodes;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 
@@ -41,18 +41,22 @@ internal static class MonthbookPrompt
         Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
         """ + MedicalPromptBlocks.JournalRegister + """
+
+        [DATA CONSTRAINTS]
+        """ + MedicalPromptBlocks.WearableDataConstraints + """
         Past tense throughout: this month has finished and nothing in it is still accumulating.
-        Do not quote a figure that is not in the readings below, and do not round one that is.
+        Do not quote a figure that is not in the JSON below, and do not round one that is.
         Write about the month as a whole: neither a list of its days nor a list of its weeks is an account of a month.
         Say what held across the whole month, and what changed within it — and where one week differed from the others, name that week and say how.
-        Where the month is given as sitting above or below their own usual, say so, and say by the amount given.
+        vs_usual is already computed: say it as given and never work a comparison out yourself.
         Where a published band is given, say where the month sat against it, and name who publishes it.
         Where a reading was measured on only some days, say how many; never let days without a reading read as days that were fine.
         Read the month as a whole: sleep, heart, oxygen, breathing and movement in one person explain each other more often than one at a time.
         If "The month's monitoring" is present, account for what the monitoring made of the month in your own words; when it is absent, never mention monitoring, alerts or observations at all.
         When family answers are present, use them to make sense of the readings; never retell them.
 
-        Respond with:
+        [OUTPUT FORMAT]
+        Return a JSON object with:
         - summary: 8-14 sentences to the family, an account of the month as a whole, naming the
           person as CardiTrackCardiMember — never a relationship stand-in. An unremarkable month is allowed to
           be a short account, but it still says what was measured and how much of the month it
@@ -100,6 +104,7 @@ internal static class MonthbookPrompt
         "neither a list of its days nor a list of its weeks",
         "say what held across the whole month",
         "never let days without a reading read as days that were fine",
+        "never work a comparison out yourself",
         "name who publishes it",
         "explain each other more often than one at a time",
         "never retell them",
@@ -140,75 +145,70 @@ internal static class MonthbookPrompt
     internal static string ReadingsSection(
         IReadOnlyList<ActivityLog> days, PatternBaseline? baseline, int ageYears)
     {
-        var sb = new StringBuilder();
-        sb.Append("--- ").Append(ReadingsLabel).AppendLine(" ---");
-        var written = 0;
-
+        var metrics = new List<JsonObject>();
         var sleepBand = HealthReferenceRanges.Sleep(ageYears);
 
-        written += Metric(sb, days, "Sleep", l => l.SleepMinutes,
+        Add(metrics, days, "Sleep", l => l.SleepMinutes,
             v => JournalPeriodSections.Hours((int)Math.Round(v)),
             baseline?.AvgSleepMinutes,
             JournalPeriodSections.Band(sleepBand.Low, sleepBand.High, "hours", sleepBand.Source));
 
-        written += Metric(sb, days, "Sleep efficiency", l => l.SleepEfficiency,
+        Add(metrics, days, "Sleep efficiency", l => l.SleepEfficiency,
             v => $"{Math.Round(v)}%",
             baseline?.AvgSleepEfficiency,
             null);
 
         var restingBand = HealthReferenceRanges.RestingHeartRate;
-        written += Metric(sb, days, "Resting heart rate", l => l.RestingHeartRate,
+        Add(metrics, days, "Resting heart rate", l => l.RestingHeartRate,
             v => $"{Math.Round(v)} bpm",
             baseline?.AvgRestingHeartRate,
             JournalPeriodSections.Band(restingBand.Low, restingBand.High, "bpm", restingBand.Source));
 
         var spo2Band = HealthReferenceRanges.SpO2;
-        written += Metric(sb, days, "Blood oxygen", l => l.SpO2Average,
+        Add(metrics, days, "Blood oxygen", l => l.SpO2Average,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)}%",
             null,
             JournalPeriodSections.Band(spo2Band.Low, spo2Band.High, "%", spo2Band.Source));
 
         var breathingBand = HealthReferenceRanges.BreathingRate;
-        written += Metric(sb, days, "Breathing rate", l => l.BreathingRate,
+        Add(metrics, days, "Breathing rate", l => l.BreathingRate,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} breaths a minute",
             null,
             JournalPeriodSections.Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
 
         // No band for HRV: nobody publishes an adult one (see HealthReferenceRanges), so the
         // member's own baseline is the only comparison offered.
-        written += Metric(sb, days, "Heart rate variability", l => l.HeartRateVariabilityMs,
+        Add(metrics, days, "Heart rate variability", l => l.HeartRateVariabilityMs,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} ms overnight",
             baseline?.AvgHeartRateVariabilityMs,
             null);
 
-        written += Metric(sb, days, "Breathing while asleep", l => l.OvernightBreathingRate,
+        Add(metrics, days, "Breathing while asleep", l => l.OvernightBreathingRate,
             v => $"{Math.Round(v, 1).ToString(CultureInfo.InvariantCulture)} breaths a minute",
             baseline?.AvgOvernightBreathingRate,
             JournalPeriodSections.Band(breathingBand.Low, breathingBand.High, "breaths a minute", breathingBand.Source));
 
-        written += Metric(sb, days, "Minutes with heart rate raised", l => BaselineCalculator.ElevatedZoneMinutes(l),
+        Add(metrics, days, "Minutes with heart rate raised", l => BaselineCalculator.ElevatedZoneMinutes(l),
             v => $"{Math.Round(v)} minutes",
             baseline?.AvgElevatedZoneMinutes,
             null);
 
-        written += Metric(sb, days, "Longest unbroken still stretch", l => l.LongestSedentaryStretchMinutes,
+        Add(metrics, days, "Longest unbroken still stretch", l => l.LongestSedentaryStretchMinutes,
             v => JournalPeriodSections.Hours((int)Math.Round(v)),
             baseline?.AvgLongestSedentaryStretchMinutes,
             null);
 
-        written += Metric(sb, days, "Steps", l => l.Steps,
+        Add(metrics, days, "Steps", l => l.Steps,
             v => $"{Math.Round(v):N0} steps",
             baseline?.AvgSteps,
             null);
 
-        written += Metric(sb, days, "Active minutes", l => l.ActiveMinutes,
+        Add(metrics, days, "Active minutes", l => l.ActiveMinutes,
             v => $"{Math.Round(v)} minutes",
             baseline?.AvgActiveMinutes,
             null);
 
-        // Counted, not inferred from whether the built text still ends in the heading's own
-        // dashes — which a rendered line ending in a dash would also have satisfied.
-        return written == 0 ? string.Empty : sb.ToString().TrimEnd();
+        return JournalPeriodSections.ReadingsJson(ReadingsLabel, metrics);
     }
 
     /// <summary>
@@ -218,20 +218,23 @@ internal static class MonthbookPrompt
     internal const string ReadingsLabel = "The month's readings";
 
     /// <summary>
-    /// One metric's month, rendered by <see cref="JournalPeriodSections.AppendMetric"/> with this
+    /// One metric's month, rendered by <see cref="JournalPeriodSections.MetricJson"/> with this
     /// book's period noun and its own idea of a standout.
     /// </summary>
-    private static int Metric<T>(
-        StringBuilder sb,
+    private static void Add<T>(
+        List<JsonObject> metrics,
         IReadOnlyList<ActivityLog> days,
         string label,
         Func<ActivityLog, T?> select,
         Func<decimal, string> format,
         decimal? usual,
         string? band)
-        where T : struct, IConvertible =>
-        JournalPeriodSections.AppendMetric(
-            sb, days, label, select, format, usual, band, "month", StandoutClause);
+        where T : struct, IConvertible
+    {
+        if (JournalPeriodSections.MetricJson(
+                days, label, select, format, usual, band, "month", StandoutClause) is { } metric)
+            metrics.Add(metric);
+    }
 
     /// <summary>
     /// The standout week, worded, or null when the month has none — with the number of measured

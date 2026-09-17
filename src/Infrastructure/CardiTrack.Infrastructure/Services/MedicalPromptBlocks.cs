@@ -941,6 +941,13 @@ internal static partial class MedicalPromptBlocks
     internal static string JsonFence(string json) => "```json" + NL + json + NL + "```";
 
     /// <summary>
+    /// Serialises wearable JSON the same way <see cref="DailyReadingsJson"/> does — indented,
+    /// culture-invariant numbers, unescaped punctuation in strings — so every MedGemma caller
+    /// that builds its own object still matches the daily-array shape.
+    /// </summary>
+    internal static string WearableJsonString(JsonNode node) => node.ToJsonString(WearableJson);
+
+    /// <summary>
     /// The 30-day (or still-learning) yardstick, as one line. Shared so Advise and the insight
     /// prompts cannot drift on how a baseline is named.
     /// </summary>

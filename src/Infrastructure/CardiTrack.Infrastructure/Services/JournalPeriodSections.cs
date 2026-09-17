@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json.Nodes;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
@@ -36,10 +37,9 @@ internal static class JournalPeriodSections
     internal const decimal NegligibleShare = 0.02m;
 
     /// <summary>
-    /// One metric's period: the average over the days that carried it, how many those were, where
-    /// that sat against the member's own usual and by how much, the published band, and the
-    /// standout the calling book computes. Returns 1 when a line was written, 0 when the metric was
-    /// never measured.
+    /// One metric's period as a JSON object: the average over the days that carried it, how many
+    /// those were, where that sat against the member's own usual and by how much, the published
+    /// band, and the standout the calling book computes. Null when the metric was never measured.
     /// </summary>
     /// <param name="periodNoun">"week" or "month" — the period this book is an account of.</param>
     /// <param name="standoutClause">
@@ -55,8 +55,7 @@ internal static class JournalPeriodSections
     /// subtraction, and a wrong one is undetectable by reading, since nothing else on the page
     /// contradicts it.
     /// </remarks>
-    internal static int AppendMetric<T>(
-        StringBuilder sb,
+    internal static JsonObject? MetricJson<T>(
         IReadOnlyList<ActivityLog> days,
         string label,
         Func<ActivityLog, T?> select,
@@ -76,21 +75,20 @@ internal static class JournalPeriodSections
             .ToList();
 
         if (measured.Count == 0)
-            return 0;
+            return null;
 
         var average = measured.Average(m => m.Value);
-
-        sb.Append(label)
-          .Append(": ")
-          .Append(format(average))
-          .Append(" on average, measured on ")
-          .Append(measured.Count)
-          .Append(measured.Count == 1 ? " day of the " : " days of the ")
-          .Append(periodNoun);
+        var obj = new JsonObject
+        {
+            ["label"] = label,
+            ["average"] = format(average),
+            ["measured_days"] = measured.Count,
+            ["period"] = periodNoun,
+        };
 
         if (usual is { } usualValue)
         {
-            sb.Append(". Their usual is ").Append(format(usualValue));
+            obj["usual"] = format(usualValue);
 
             // A difference too small to mean anything is said as "about level" rather than by
             // the amount: the brief tells the model to quote the amount given, and given "24
@@ -100,23 +98,40 @@ internal static class JournalPeriodSections
             // rate, and under a hundred steps of a day's walking.
             var difference = average - usualValue;
             var negligible = Math.Abs(usualValue) * NegligibleShare;
-            sb.Append(difference switch
+            obj["vs_usual"] = difference switch
             {
-                0 => $", and the {periodNoun} sat level with it",
-                _ when Math.Abs(difference) <= negligible => $", and the {periodNoun} sat about level with it",
-                > 0 => $", and the {periodNoun} sat {format(difference)} above it",
-                _ => $", and the {periodNoun} sat {format(-difference)} below it",
-            });
+                0 => $"the {periodNoun} sat level with it",
+                _ when Math.Abs(difference) <= negligible => $"the {periodNoun} sat about level with it",
+                > 0 => $"the {periodNoun} sat {format(difference)} above it",
+                _ => $"the {periodNoun} sat {format(-difference)} below it",
+            };
         }
 
         if (band is not null)
-            sb.Append(". ").Append(band);
+            obj["published_band"] = band;
 
         if (standoutClause(measured, average, format) is { } standout)
-            sb.Append(". ").Append(standout);
+            obj["standout"] = standout;
 
-        sb.AppendLine(".");
-        return 1;
+        return obj;
+    }
+
+    /// <summary>
+    /// The period's readings as a fenced JSON array of metric objects, under the same
+    /// <c>--- label ---</c> heading the rest of the prompt uses. Empty when nothing was measured.
+    /// </summary>
+    internal static string ReadingsJson(string heading, IReadOnlyList<JsonObject> metrics)
+    {
+        if (metrics.Count == 0)
+            return string.Empty;
+
+        var array = new JsonArray();
+        foreach (var metric in metrics)
+            array.Add(metric);
+
+        var root = new JsonObject { ["metrics"] = array };
+        return "--- " + heading + " ---\n"
+            + MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.WearableJsonString(root));
     }
 
     /// <summary>

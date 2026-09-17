@@ -30,8 +30,8 @@ public class MonthbookPromptTests
 
         var section = MonthbookPrompt.ReadingsSection(days, baseline: null, ageYears: 70);
 
-        Assert.Contains("4,000 steps on average", section);
-        Assert.Contains("measured on 10 days of the month", section);
+        Assert.Contains("\"average\": \"4,000 steps\"", section);
+        Assert.Contains("\"measured_days\": 10", section);
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class MonthbookPromptTests
         var days = Month(_ => 5000);
         var baseline = new PatternBaseline { AvgSteps = 4000 };
 
-        Assert.Contains("Their usual is 4,000 steps",
+        Assert.Contains("\"usual\": \"4,000 steps\"",
             MonthbookPrompt.ReadingsSection(days, baseline, ageYears: 70));
     }
 
@@ -74,7 +74,7 @@ public class MonthbookPromptTests
         var baseline = new PatternBaseline { AvgSteps = 4000 };
 
         Assert.Contains(
-            "Their usual is 4,000 steps, and the month sat 1,000 steps above it",
+            "the month sat 1,000 steps above it",
             MonthbookPrompt.ReadingsSection(days, baseline, ageYears: 70));
     }
 

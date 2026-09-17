@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using System.Numerics;
 using System.Text;
+using System.Text.Json.Nodes;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
@@ -49,12 +50,15 @@ internal static class DaybookPrompt
         Write CardiTrackCardiMember exactly as it appears wherever you would name the person; it stands in
         for their real name, which you are not given.
         """ + MedicalPromptBlocks.JournalRegister + """
+
+        [DATA CONSTRAINTS]
+        """ + MedicalPromptBlocks.WearableDataConstraints + """
         Past tense throughout: this day has finished and nothing in it is still accumulating.
-        Do not quote a figure that is not in the readings below, and do not round one that is.
+        Do not quote a figure that is not in the JSON below, and do not round one that is.
         Cover the day's sleep, heart, oxygen and breathing, movement, and body — in that order, and only where each was measured.
-        The hour-by-hour readings are the day's own record: use them to say when in the day things happened, and quote only figures that appear in them.
-        Where a reading was not measured, say so plainly and move on; never let a missing reading read as a reassuring one.
-        Where their own usual is given, the direction and distance from it are worked out beside the reading: say them as they are given and never work a comparison out yourself. Where a published band is given, where the reading sat against it is worked out beside it too — say that as given, and name who publishes the band.
+        The hour-by-hour JSON is the day's own record: use them to say when in the day things happened, and quote only figures that appear in them.
+        A null field is a gap, not a zero; never let a missing reading read as a reassuring one.
+        vs_usual and published_band fields are already computed: say them as they are given and never work a comparison out yourself. Where a published band is given, name who publishes it.
         Clock times are already on the member's own local clock: read them as the household's evening and morning, and never convert or relabel them.
         Where a time is given as far off their usual with no direction, say that it was far off and do not decide for yourself whether it was earlier or later.
         Read the day as a whole before concluding: the readings are one person's day and are explained by each other more often than one at a time.
@@ -62,7 +66,8 @@ internal static class DaybookPrompt
         If "Conditions during the day" is present, weigh the temperature, humidity and air of those hours against the readings around them; when it is absent, never mention weather at all.
         When family answers are present, use them to make sense of the readings; never retell them.
 
-        Respond with:
+        [OUTPUT FORMAT]
+        Return a JSON object with:
         - summary: 6-12 sentences to the family, an account of the whole day, naming the person as
           CardiTrackCardiMember — never a relationship stand-in. Group the readings the way they are grouped
           below rather than listing them one by one. An unremarkable day is allowed to be a short
@@ -114,6 +119,7 @@ internal static class DaybookPrompt
         "never name, suggest or guess at a medical condition",
         "past tense throughout",
         "nothing in it is still accumulating",
+        "a null field is a gap",
         "never let a missing reading read as a reassuring one",
         "use them to say when in the day things happened",
         "never mention weather at all",
@@ -148,6 +154,10 @@ internal static class DaybookPrompt
     /// How far a reading has to sit from the member's own usual before this block names a
     /// direction for it — the member's own settings, defaulted. See <see cref="JournalComparison"/>.
     /// </param>
+    /// <summary>
+    /// The day's readings as a JSON object — Google's wearable input shape — with every
+    /// comparison already computed. The model phrases them; it never subtracts.
+    /// </summary>
     internal static string ReadingsSection(
         ActivityLog log,
         PatternBaseline? baseline,
@@ -156,313 +166,260 @@ internal static class DaybookPrompt
         JournalComparisonTolerances? tolerances = null)
     {
         var bands = tolerances ?? JournalComparison.Defaults;
+        var day = new JsonObject
+        {
+            ["date"] = log.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ["complete"] = true,
+            ["clock_times_are_member_local"] = true,
+        };
+
+        AddSleep(day, log, baseline, ageYears, timeZone, bands);
+        AddHeart(day, log, baseline, bands);
+        AddOxygenAndBreathing(day, log, baseline, bands);
+        AddMovement(day, log, baseline, bands);
+        AddBody(day, log);
 
         var sb = new StringBuilder();
         sb.Append("--- The day in full: ")
           .Append(log.Date.ToString("dddd d MMMM yyyy", CultureInfo.InvariantCulture))
           .AppendLine(" ---");
-        sb.AppendLine(
-            "This day is over. Every figure below is a whole-day total or a whole-night reading; "
-            + "none of it is still accumulating. Clock times are the member's own local time.");
-
-        AppendSleep(sb, log, baseline, ageYears, timeZone, bands);
-        AppendHeart(sb, log, baseline, bands);
-        AppendOxygenAndBreathing(sb, log, baseline, bands);
-        AppendMovement(sb, log, baseline, bands);
-        AppendBody(sb, log);
-
+        sb.Append(MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.WearableJsonString(day)));
         return sb.ToString().TrimEnd();
     }
 
-    private static void AppendSleep(
-        StringBuilder sb,
+    private static void AddSleep(
+        JsonObject day,
         ActivityLog log,
         PatternBaseline? baseline,
         int ageYears,
         TimeZoneInfo? timeZone,
         JournalComparisonTolerances tolerances)
     {
-        sb.AppendLine("Sleep (the night that ended that morning):");
-
         if (log.SleepMinutes is not { } sleep)
         {
-            sb.AppendLine("  total=not measured");
+            day["sleep_duration_hours"] = null;
             return;
         }
 
         var band = HealthReferenceRanges.Sleep(ageYears);
-        sb.Append("  total=").Append(Hours(sleep))
-          .Append(Usual(sleep, baseline?.AvgSleepMinutes, Hours, tolerances))
-          .Append(Band(sleep / 60m, band.Low, band.High, "h", band.Source))
-          .AppendLine();
+        day["sleep_duration_hours"] = HoursNumber(sleep);
+        SetUsual(day, "sleep_usual_hours", "sleep_vs_usual",
+            sleep, baseline?.AvgSleepMinutes, Hours, tolerances);
+        day["sleep_published_band"] = Band(sleep / 60m, band.Low, band.High, "h", band.Source);
 
         if (log.SleepEfficiency is { } efficiency)
         {
-            sb.Append("  efficiency=").Append(efficiency).Append('%')
-              .Append(Usual(efficiency, baseline?.AvgSleepEfficiency, v => v + "%", tolerances))
-              .AppendLine();
+            day["sleep_efficiency_score"] = efficiency;
+            SetUsual(day, "sleep_efficiency_usual", "sleep_efficiency_vs_usual",
+                efficiency, baseline?.AvgSleepEfficiency, v => v + "%", tolerances);
         }
 
-        var stages = new List<string>();
+        var stages = new JsonObject();
         if (log.DeepSleepMinutes is { } deep)
-            stages.Add($"deep={deep}min");
+            stages["deep"] = deep;
         if (log.LightSleepMinutes is { } light)
-            stages.Add($"light={light}min");
+            stages["light"] = light;
         if (log.RemSleepMinutes is { } rem)
-            stages.Add($"rem={rem}min");
+            stages["rem"] = rem;
         if (log.AwakeMinutes is { } awake)
-            stages.Add($"awake={awake}min");
+            stages["awake"] = awake;
         if (stages.Count > 0)
-            sb.Append("  stages: ").AppendLine(string.Join(", ", stages));
+            day["sleep_stages_minutes"] = stages;
 
         if (log.SleepStartTime is { } startedAt && log.SleepEndTime is { } endedAt
             && BaselineClock.Local(startedAt, timeZone) is { } start
             && BaselineClock.Local(endedAt, timeZone) is { } end)
         {
-            // The night's own times and the learned ones are both put on the member's wall clock
-            // before either is printed or compared. Read on the same clock they are compared on:
-            // a bedtime stated in one frame beside a usual stated in another is a comparison of
-            // two different questions, and the difference only shows up for members far enough
-            // from Greenwich that nobody testing near it would see it.
-            //
-            // Each usual is anchored to the UTC date of the instant it is being compared against,
-            // not to the log's own date. The log's date is the member's local civil day, and
-            // BaselineClock pins the stored face to a UTC one — passing the local day is off by up
-            // to a day, which is nothing except across a daylight-saving change, where it picks the
-            // wrong side of the shift and moves the usual bedtime an hour. Anchoring each to its
-            // own instant also keeps a night that straddles the change honest: the bedtime is read
-            // on the evening's offset and the wake on the morning's.
             var bedtime = BaselineClock.Local(
                 baseline?.TypicalBedtime, DateOnly.FromDateTime(startedAt), timeZone);
             var wake = BaselineClock.Local(
                 baseline?.TypicalWakeTime, DateOnly.FromDateTime(endedAt), timeZone);
 
-            sb.Append("  asleep=").Append(start.ToString("HH:mm", CultureInfo.InvariantCulture))
-              .Append(" to ").Append(end.ToString("HH:mm", CultureInfo.InvariantCulture))
-              .Append(UsualTime(
-                  "usual bedtime", bedtime, start, "went to bed",
-                  tolerances.BedtimeToleranceMinutes, tolerances.DirectionBoundMinutes))
-              .Append(UsualTime(
-                  "usual wake", wake, end, "woke",
-                  tolerances.WakeToleranceMinutes, tolerances.DirectionBoundMinutes))
-              .AppendLine();
+            day["asleep_from"] = start.ToString("HH:mm", CultureInfo.InvariantCulture);
+            day["asleep_to"] = end.ToString("HH:mm", CultureInfo.InvariantCulture);
+            if (UsualTime(
+                    "usual bedtime", bedtime, start, "went to bed",
+                    tolerances.BedtimeToleranceMinutes, tolerances.DirectionBoundMinutes) is { } vsBed)
+                day["vs_usual_bedtime"] = vsBed;
+            if (UsualTime(
+                    "usual wake", wake, end, "woke",
+                    tolerances.WakeToleranceMinutes, tolerances.DirectionBoundMinutes) is { } vsWake)
+                day["vs_usual_wake"] = vsWake;
         }
     }
 
-    private static void AppendHeart(
-        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+    private static void AddHeart(
+        JsonObject day, ActivityLog log, PatternBaseline? baseline,
         JournalComparisonTolerances tolerances)
     {
-        sb.AppendLine("Heart:");
-
         if (log.RestingHeartRate is { } resting)
         {
             var band = HealthReferenceRanges.RestingHeartRate;
-            sb.Append("  resting=").Append(resting).Append("bpm")
-              .Append(Usual(resting, baseline?.AvgRestingHeartRate, v => v + "bpm", tolerances))
-              .Append(Band(resting, band.Low, band.High, "bpm", band.Source))
-              .AppendLine();
+            day["resting_heart_rate"] = resting;
+            SetUsual(day, "resting_heart_rate_usual", "resting_heart_rate_vs_usual",
+                resting, baseline?.AvgRestingHeartRate, v => v + "bpm", tolerances);
+            day["resting_heart_rate_published_band"] =
+                Band(resting, band.Low, band.High, "bpm", band.Source);
         }
         else
         {
-            sb.AppendLine("  resting=not measured");
+            day["resting_heart_rate"] = null;
         }
 
-        var span = new List<string>();
         if (log.AvgHeartRate is { } avg)
-            span.Add($"average={avg}bpm");
+            day["avg_heart_rate"] = avg;
         if (log.MinHeartRate is { } min)
-            span.Add($"lowest={min}bpm");
+            day["lowest_heart_rate"] = min;
         if (log.MaxHeartRate is { } max)
-            span.Add($"highest={max}bpm");
-        if (span.Count > 0)
-            sb.Append("  across the day: ").AppendLine(string.Join(", ", span));
+            day["highest_heart_rate"] = max;
 
         if (log.HeartRateVariabilityMs is { } hrv)
         {
-            // No published band, so no Band() clause — their own usual is the only yardstick HRV
-            // has (see HealthReferenceRanges.NoHeartRateVariabilityBand).
-            sb.Append("  overnightVariability=")
-              .Append(Decimal1(hrv)).Append("ms")
-              .Append(UsualDecimal(hrv, baseline?.AvgHeartRateVariabilityMs, v => Decimal1(v) + "ms", tolerances))
-              .AppendLine();
+            day["overnight_hrv_ms"] = Decimal1Number(hrv);
+            SetUsualDecimal(day, "overnight_hrv_usual_ms", "overnight_hrv_vs_usual",
+                hrv, baseline?.AvgHeartRateVariabilityMs, v => Decimal1(v) + "ms", tolerances);
         }
 
-        AppendEffortZones(sb, log, baseline, tolerances);
+        AddEffortZones(day, log, baseline, tolerances);
     }
 
-    /// <summary>
-    /// How much of the day the heart spent working, in the wearer's own zones.
-    /// </summary>
-    /// <remarks>
-    /// Stated as minutes above the light zone rather than zone by zone: four numbers invite a
-    /// paragraph about training load, which is not what this reading is for in a member of this
-    /// cohort. What it is for is the pairing with movement — the model is told the threshold in
-    /// bpm where their own watch puts the start of effort, so it can say "their heart worked" in
-    /// terms that mean something for this person rather than in a general one.
-    /// </remarks>
-    private static void AppendEffortZones(
-        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+    private static void AddEffortZones(
+        JsonObject day, ActivityLog log, PatternBaseline? baseline,
         JournalComparisonTolerances tolerances)
     {
         if (BaselineCalculator.ElevatedZoneMinutes(log) is not { } elevated)
             return;
 
-        sb.Append("  minutesWithHeartRateRaised=").Append(elevated)
-          .Append(Usual(elevated, baseline?.AvgElevatedZoneMinutes, v => v + "min", tolerances));
+        day["active_zone_minutes"] = elevated;
+        SetUsual(day, "active_zone_minutes_usual", "active_zone_minutes_vs_usual",
+            elevated, baseline?.AvgElevatedZoneMinutes, v => v + "min", tolerances);
 
         if (log.ModerateZoneFloorBpm is { } floor)
-            sb.Append(" [their watch puts the start of real effort at ").Append(floor).Append("bpm]");
-
-        sb.AppendLine();
+            day["watch_effort_floor_bpm"] = floor;
     }
 
-    private static void AppendOxygenAndBreathing(
-        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+    private static void AddOxygenAndBreathing(
+        JsonObject day, ActivityLog log, PatternBaseline? baseline,
         JournalComparisonTolerances tolerances)
     {
         if (log.SpO2Average is null && log.BreathingRate is null && log.OvernightBreathingRate is null)
             return;
 
-        sb.AppendLine("Oxygen and breathing:");
-
         if (log.SpO2Average is { } spo2)
         {
             var band = HealthReferenceRanges.SpO2;
-            sb.Append("  bloodOxygen=").Append(Decimal1(spo2)).Append('%');
+            day["spo2_average"] = Decimal1Number(spo2);
             if (log.SpO2Min is { } low && log.SpO2Max is { } high)
-                sb.Append(" (ranged ").Append(Decimal1(low)).Append('-').Append(Decimal1(high)).Append("%)");
-            sb.Append(Band(spo2, band.Low, band.High, "%", band.Source)).AppendLine();
+            {
+                day["spo2_min"] = Decimal1Number(low);
+                day["spo2_max"] = Decimal1Number(high);
+            }
+            day["spo2_published_band"] = Band(spo2, band.Low, band.High, "%", band.Source);
         }
 
         if (log.BreathingRate is { } breathing)
         {
             var band = HealthReferenceRanges.BreathingRate;
-            sb.Append("  breathingRate=").Append(Decimal1(breathing)).Append("/min")
-              .Append(Band(breathing, band.Low, band.High, "/min", band.Source))
-              .AppendLine();
+            day["breathing_rate"] = Decimal1Number(breathing);
+            day["breathing_rate_published_band"] =
+                Band(breathing, band.Low, band.High, "/min", band.Source);
         }
 
-        // The overnight figure carries its own label rather than replacing the daily one: they are
-        // different measurements — a whole day including stairs and naps, against hours of
-        // stillness — and a reader who saw one number labelled "breathing" could not tell which.
         if (log.OvernightBreathingRate is { } overnight)
         {
             var band = HealthReferenceRanges.BreathingRate;
-            sb.Append("  breathingRateWhileAsleep=").Append(Decimal1(overnight)).Append("/min")
-              .Append(UsualDecimal(overnight, baseline?.AvgOvernightBreathingRate, v => Decimal1(v) + "/min", tolerances))
-              .Append(Band(overnight, band.Low, band.High, "/min", band.Source))
-              .AppendLine();
+            day["overnight_breathing_rate"] = Decimal1Number(overnight);
+            SetUsualDecimal(day, "overnight_breathing_usual", "overnight_breathing_vs_usual",
+                overnight, baseline?.AvgOvernightBreathingRate, v => Decimal1(v) + "/min", tolerances);
+            day["overnight_breathing_published_band"] =
+                Band(overnight, band.Low, band.High, "/min", band.Source);
         }
     }
 
-    private static void AppendMovement(
-        StringBuilder sb, ActivityLog log, PatternBaseline? baseline,
+    private static void AddMovement(
+        JsonObject day, ActivityLog log, PatternBaseline? baseline,
         JournalComparisonTolerances tolerances)
     {
-        sb.AppendLine("Movement:");
-
-        sb.Append("  steps=")
-          .Append(log.Steps is { } steps ? steps.ToString(CultureInfo.InvariantCulture) : "not measured")
-          .Append(log.Steps is { } measured
-              ? Usual(measured, baseline?.AvgSteps, v => v.ToString(CultureInfo.InvariantCulture), tolerances)
-              : string.Empty)
-          .AppendLine();
+        if (log.Steps is { } steps)
+        {
+            day["steps"] = steps;
+            SetUsual(day, "steps_usual", "steps_vs_usual",
+                steps, baseline?.AvgSteps, v => v.ToString(CultureInfo.InvariantCulture), tolerances);
+        }
+        else
+        {
+            day["steps"] = null;
+        }
 
         if (log.ActiveMinutes is { } active)
         {
-            sb.Append("  activeMinutes=").Append(active)
-              .Append(Usual(active, baseline?.AvgActiveMinutes, v => v + "min", tolerances))
-              .AppendLine();
+            day["active_minutes"] = active;
+            SetUsual(day, "active_minutes_usual", "active_minutes_vs_usual",
+                active, baseline?.AvgActiveMinutes, v => v + "min", tolerances);
         }
 
-        var rest = new List<string>();
         if (log.SedentaryMinutes is { } sedentary)
-            rest.Add($"stillMinutes={sedentary}");
-        // The shape of the stillness, beside its total: the same six hours broken into half-hours
-        // and taken in one stretch are different days, and only the line below can tell them apart.
+            day["still_minutes"] = sedentary;
         if (log.LongestSedentaryStretchMinutes is { } stretch)
-            rest.Add($"longestUnbrokenStillStretch={stretch}min");
+            day["longest_unbroken_still_stretch_minutes"] = stretch;
         if (log.Distance is { } distance)
-            rest.Add(string.Create(CultureInfo.InvariantCulture, $"distance={distance:0.#}km"));
+            day["distance_km"] = JsonValue.Create(
+                Math.Round((double)distance, 1, MidpointRounding.AwayFromZero));
         if (log.Floors is { } floors)
-            rest.Add($"floors={floors}");
+            day["floors"] = floors;
         if (log.CaloriesBurned is { } calories)
-            rest.Add($"calories={calories}");
-        if (rest.Count > 0)
-            sb.Append("  also: ").AppendLine(string.Join(", ", rest));
+            day["calories"] = calories;
     }
 
-    /// <summary>
-    /// The readings that describe the body's state rather than what it did. Skin temperature is
-    /// given as its deviation from the wearer's own nightly baseline, never as an absolute: the
-    /// absolute figure is a wrist measurement and reads as a fever to anyone who takes it for a
-    /// core temperature, which is the single most misreadable number the watch produces.
-    /// </summary>
-    private static void AppendBody(StringBuilder sb, ActivityLog log)
+    private static void AddBody(JsonObject day, ActivityLog log)
     {
-        var parts = new List<string>();
-
         if (log.Temperature is { } temperature && log.TemperatureBaseline is { } tempBaseline)
         {
             var delta = temperature - tempBaseline;
-            parts.Add(string.Create(
+            day["skin_temperature_vs_own_nightly_usual_c"] = string.Create(
                 CultureInfo.InvariantCulture,
-                $"skinTemperatureVsTheirOwnNightlyUsual={delta:+0.0#;-0.0#;0}C"));
+                $"{delta:+0.0#;-0.0#;0}C");
         }
 
         if (log.StressScore is { } stress)
-            parts.Add($"stressScore={stress} (0-100, from the device's own model)");
+            day["stress_score"] = stress;
         if (log.VO2Max is { } vo2)
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"vo2Max={vo2:0.#}"));
-
-        if (parts.Count == 0)
-            return;
-
-        sb.AppendLine("Body:");
-        foreach (var part in parts)
-            sb.Append("  ").AppendLine(part);
+            day["vo2_max"] = JsonValue.Create(
+                Math.Round((double)vo2, 1, MidpointRounding.AwayFromZero));
     }
 
     private static string Hours(int minutes) =>
         string.Create(CultureInfo.InvariantCulture, $"{minutes / 60m:0.#}h");
 
+    private static JsonNode HoursNumber(int minutes) =>
+        JsonValue.Create(Math.Round(minutes / 60.0, 1, MidpointRounding.AwayFromZero))!;
+
     private static string Decimal1(decimal value) =>
         string.Create(CultureInfo.InvariantCulture, $"{value:0.#}");
 
-    /// <summary>
-    /// The "their usual" clause, or nothing at all when the baseline does not hold that average.
-    /// Nothing rather than a blank: a member whose device never reported sleep should get no sleep
-    /// yardstick, not an empty one the model will try to fill.
-    /// </summary>
-    /// <remarks>
-    /// The clause names which side of the usual the reading landed on and by how far, rather than
-    /// printing two figures and leaving the subtraction to the model. That is the correction
-    /// <see cref="JournalPeriodSections.AppendMetric"/> already carries for the Weekbook and the
-    /// Monthbook, made here for the same reason it was made there: a model given two close figures
-    /// will sometimes compare them the wrong way round, and a day's account that called 7.1h of
-    /// sleep "less than their usual 6.3h" is undetectable by reading, because every figure in the
-    /// sentence is correct and nothing else on the page contradicts the direction.
-    /// </remarks>
-    private static string Usual(
-        int reading, int? average, Func<int, string> format, JournalComparisonTolerances tolerances) =>
-        average is { } value
-            ? $" (their usual {format(value)}, {Distance(reading - value, value, format, tolerances)})"
-            : string.Empty;
+    private static JsonNode Decimal1Number(decimal value) =>
+        JsonValue.Create(Math.Round((double)value, 1, MidpointRounding.AwayFromZero))!;
 
-    /// <summary>
-    /// The decimal counterpart of <see cref="Usual(int, int?, Func{int, string})"/>, for the
-    /// baseline stored to two places — HRV in milliseconds, which is read as differences of a unit
-    /// or less.
-    /// </summary>
-    private static string UsualDecimal(
-        decimal reading,
-        decimal? average,
-        Func<decimal, string> format,
-        JournalComparisonTolerances tolerances) =>
-        average is { } value
-            ? $" (their usual {format(value)}, {Distance(reading - value, value, format, tolerances)})"
-            : string.Empty;
+    private static void SetUsual(
+        JsonObject day, string usualKey, string vsKey,
+        int reading, int? average, Func<int, string> format, JournalComparisonTolerances tolerances)
+    {
+        if (average is not { } value)
+            return;
+        day[usualKey] = format(value);
+        day[vsKey] = Distance(reading - value, value, format, tolerances);
+    }
+
+    private static void SetUsualDecimal(
+        JsonObject day, string usualKey, string vsKey,
+        decimal reading, decimal? average, Func<decimal, string> format,
+        JournalComparisonTolerances tolerances)
+    {
+        if (average is not { } value)
+            return;
+        day[usualKey] = format(value);
+        day[vsKey] = Distance(reading - value, value, format, tolerances);
+    }
 
     /// <summary>
     /// Which side of a yardstick the reading landed on and how far, written in the yardstick's own
@@ -541,7 +498,7 @@ internal static class DaybookPrompt
     /// </para>
     /// </remarks>
     /// <param name="verb">How the sentence says the act — "went to bed", "woke".</param>
-    private static string UsualTime(
+    private static string? UsualTime(
         string label,
         TimeOnly? usual,
         TimeOnly actual,
@@ -550,19 +507,19 @@ internal static class DaybookPrompt
         int directionBoundMinutes)
     {
         if (usual is not { } value)
-            return string.Empty;
+            return null;
 
         var face = value.ToString("HH:mm", CultureInfo.InvariantCulture);
         var minutes = BaselineClock.MinutesFrom(actual, value);
         var size = Math.Abs(minutes);
 
         if (size <= toleranceMinutes)
-            return $" ({label} {face}, about their usual time)";
+            return $"{label} {face}, about their usual time";
 
         if (size >= directionBoundMinutes)
-            return $" ({label} {face}, far off their usual — too far round the clock to call it earlier or later)";
+            return $"{label} {face}, far off their usual — too far round the clock to call it earlier or later";
 
-        return $" ({label} {face}, {verb} {ClockGap(size)} {(minutes > 0 ? "later" : "earlier")} than usual)";
+        return $"{label} {face}, {verb} {ClockGap(size)} {(minutes > 0 ? "later" : "earlier")} than usual";
     }
 
     /// <summary>
@@ -638,42 +595,67 @@ internal static class DaybookPrompt
         var sb = new StringBuilder();
         sb.AppendLine("--- Hour by hour (their local time) ---");
 
-        AppendMetricHours(sb, rollups, GranularMetric.HeartRate, "Heart rate",
-            r => string.Create(CultureInfo.InvariantCulture, $"avg {r.Avg:0} ({r.Min:0}-{r.Max:0})"), timeZone);
-        AppendMetricHours(sb, rollups, GranularMetric.Steps, "Steps",
-            r => string.Create(CultureInfo.InvariantCulture, $"{r.Sum:0}"), timeZone);
-        AppendMetricHours(sb, rollups, GranularMetric.SpO2, "Blood oxygen",
-            r => string.Create(CultureInfo.InvariantCulture, $"avg {r.Avg:0.#} ({r.Min:0.#}-{r.Max:0.#})"), timeZone);
-        AppendMetricHours(sb, rollups, GranularMetric.ActiveZoneMinutes, "Active zone minutes",
-            r => string.Create(CultureInfo.InvariantCulture, $"{r.Sum:0}"), timeZone);
+        var root = new JsonObject();
+        AddMetricHours(root, rollups, GranularMetric.HeartRate, "heart_rate",
+            r => new JsonObject
+            {
+                ["hour"] = LocalHour(r.HourStartUtc, timeZone),
+                ["avg"] = JsonValue.Create(Math.Round(r.Avg, 0, MidpointRounding.AwayFromZero)),
+                ["min"] = JsonValue.Create(Math.Round(r.Min, 0, MidpointRounding.AwayFromZero)),
+                ["max"] = JsonValue.Create(Math.Round(r.Max, 0, MidpointRounding.AwayFromZero)),
+            });
+        AddMetricHours(root, rollups, GranularMetric.Steps, "steps",
+            r => new JsonObject
+            {
+                ["hour"] = LocalHour(r.HourStartUtc, timeZone),
+                ["sum"] = JsonValue.Create(Math.Round(r.Sum, 0, MidpointRounding.AwayFromZero)),
+            });
+        AddMetricHours(root, rollups, GranularMetric.SpO2, "blood_oxygen",
+            r => new JsonObject
+            {
+                ["hour"] = LocalHour(r.HourStartUtc, timeZone),
+                ["avg"] = JsonValue.Create(Math.Round(r.Avg, 1, MidpointRounding.AwayFromZero)),
+                ["min"] = JsonValue.Create(Math.Round(r.Min, 1, MidpointRounding.AwayFromZero)),
+                ["max"] = JsonValue.Create(Math.Round(r.Max, 1, MidpointRounding.AwayFromZero)),
+            });
+        AddMetricHours(root, rollups, GranularMetric.ActiveZoneMinutes, "active_zone_minutes",
+            r => new JsonObject
+            {
+                ["hour"] = LocalHour(r.HourStartUtc, timeZone),
+                ["sum"] = JsonValue.Create(Math.Round(r.Sum, 0, MidpointRounding.AwayFromZero)),
+            });
 
+        var gaps = new JsonArray();
         foreach (var gap in UncoveredRanges(rollups, fromUtc, toUtc))
         {
-            sb.Append("No readings at all between ")
-              .Append(LocalHour(gap.StartUtc, timeZone))
-              .Append(" and ")
-              .Append(LocalHour(gap.EndUtc, timeZone))
-              .AppendLine(".");
+            gaps.Add(new JsonObject
+            {
+                ["from"] = LocalHour(gap.StartUtc, timeZone),
+                ["to"] = LocalHour(gap.EndUtc, timeZone),
+            });
         }
+        if (gaps.Count > 0)
+            root["gaps"] = gaps;
 
+        sb.Append(MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.WearableJsonString(root)));
         return sb.ToString().TrimEnd();
     }
 
-    private static void AppendMetricHours(
-        StringBuilder sb,
+    private static void AddMetricHours(
+        JsonObject root,
         IReadOnlyList<MetricRollupHourly> rollups,
         GranularMetric metric,
         string name,
-        Func<MetricRollupHourly, string> format,
-        TimeZoneInfo timeZone)
+        Func<MetricRollupHourly, JsonObject> format)
     {
         var rows = rollups.Where(r => r.Metric == metric).OrderBy(r => r.HourStartUtc).ToList();
         if (rows.Count == 0)
             return;
 
-        sb.Append(name).Append(": ");
-        sb.AppendLine(string.Join("; ",
-            rows.Select(r => $"{LocalHour(r.HourStartUtc, timeZone)} {format(r)}")));
+        var array = new JsonArray();
+        foreach (var row in rows)
+            array.Add(format(row));
+        root[name] = array;
     }
 
     /// <summary>

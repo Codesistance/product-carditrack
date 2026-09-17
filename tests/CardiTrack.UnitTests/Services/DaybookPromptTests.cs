@@ -91,14 +91,14 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(sleepMinutes: 372, restingHr: 64, spo2: 95.4m), Baseline(), AdultAge);
 
-        Assert.Contains(
-            "total=6.2h (their usual 4.1h, 2.1h above it) [NSF recommend 7-9h; the reading sat below that]",
-            section);
-        Assert.Contains(
-            "resting=64bpm (their usual 58bpm, 6bpm above it) [AHA recommend 60-100bpm; the reading sat inside that]",
-            section);
-        Assert.Contains(
-            "bloodOxygen=95.4% [WHO recommend 94-100%; the reading sat inside that]", section);
+        Assert.Contains("\"sleep_duration_hours\": 6.2", section);
+        Assert.Contains("\"sleep_usual_hours\": \"4.1h\"", section);
+        Assert.Contains("2.1h above it", section);
+        Assert.Contains("[NSF recommend 7-9h; the reading sat below that]", section);
+        Assert.Contains("\"resting_heart_rate\": 64", section);
+        Assert.Contains("6bpm above it", section);
+        Assert.Contains("[AHA recommend 60-100bpm; the reading sat inside that]", section);
+        Assert.Contains("[WHO recommend 94-100%; the reading sat inside that]", section);
     }
 
     /// <summary>
@@ -119,8 +119,10 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(sleepMinutes: 426, restingHr: 74), baseline, AdultAge);
 
-        Assert.Contains("total=7.1h (their usual 6.3h, 0.8h above it)", section);
-        Assert.Contains("resting=74bpm (their usual 73bpm, 1bpm above it)", section);
+        Assert.Contains("\"sleep_duration_hours\": 7.1", section);
+        Assert.Contains("0.8h above it", section);
+        Assert.Contains("\"resting_heart_rate\": 74", section);
+        Assert.Contains("1bpm above it", section);
     }
 
     /// <summary>The other direction, on the same two readings.</summary>
@@ -134,8 +136,10 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(sleepMinutes: 378, restingHr: 73), baseline, AdultAge);
 
-        Assert.Contains("total=6.3h (their usual 7.1h, 0.8h below it)", section);
-        Assert.Contains("resting=73bpm (their usual 74bpm, 1bpm below it)", section);
+        Assert.Contains("\"sleep_duration_hours\": 6.3", section);
+        Assert.Contains("0.8h below it", section);
+        Assert.Contains("\"resting_heart_rate\": 73", section);
+        Assert.Contains("1bpm below it", section);
     }
 
     /// <summary>
@@ -151,7 +155,8 @@ public class DaybookPromptTests
 
         var section = DaybookPrompt.ReadingsSection(Log(sleepMinutes: 426), baseline, AdultAge);
 
-        Assert.Contains("total=7.1h (their usual 7.1h, level with it)", section);
+        Assert.Contains("\"sleep_duration_hours\": 7.1", section);
+        Assert.Contains("level with it", section);
     }
 
     /// <summary>
@@ -168,7 +173,7 @@ public class DaybookPromptTests
     {
         var section = DaybookPrompt.ReadingsSection(Log(sleepMinutes: sleepMinutes), Baseline(), AdultAge);
 
-        Assert.Contains($"total={printed} ", section);
+        Assert.Contains($"\"sleep_duration_hours\": {printed.TrimEnd('h')}", section);
         Assert.Contains($"[NSF recommend 7-9h; the reading sat {side}]", section);
     }
 
@@ -312,9 +317,10 @@ public class DaybookPromptTests
 
         // 02:40 UTC is 22:40 the evening before in New York; the usual 02:10 is 22:10 there. Both
         // faces move, so the 30-minute gap between them survives the conversion.
-        Assert.Contains("asleep=22:40 to 07:00", section);
+        Assert.Contains("\"asleep_from\": \"22:40\"", section);
+        Assert.Contains("\"asleep_to\": \"07:00\"", section);
         Assert.Contains("usual bedtime 22:10, went to bed 30m later than usual", section);
-        Assert.Contains("Clock times are the member's own local time.", section);
+        Assert.Contains("\"clock_times_are_member_local\": true", section);
     }
 
     /// <summary>
@@ -348,7 +354,8 @@ public class DaybookPromptTests
         // Each usual lands on the same face as the reading it is measured against, because both
         // are read on the offset in force at that instant. Anchored to the log's local date, the
         // evening's usual would have been read on the morning's offset and come back an hour out.
-        Assert.Contains("asleep=23:00 to 06:00", section);
+        Assert.Contains("\"asleep_from\": \"23:00\"", section);
+        Assert.Contains("\"asleep_to\": \"06:00\"", section);
         Assert.Contains("usual bedtime 23:00, about their usual time", section);
         Assert.Contains("usual wake 06:00, about their usual time", section);
     }
@@ -360,7 +367,8 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Night(23, 14, 7, 2), baseline: null, AdultAge);
 
-        Assert.Contains("asleep=23:14 to 07:02", section);
+        Assert.Contains("\"asleep_from\": \"23:14\"", section);
+        Assert.Contains("\"asleep_to\": \"07:02\"", section);
         Assert.DoesNotContain("usual bedtime", section);
     }
 
@@ -381,7 +389,9 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(restingHr: 74), baseline, AdultAge, timeZone: null, tolerances);
 
-        Assert.Contains("resting=74bpm (their usual 73bpm, level with it)", section);
+        Assert.Contains("\"resting_heart_rate\": 74", section);
+        Assert.Contains("\"resting_heart_rate_usual\": \"73bpm\"", section);
+        Assert.Contains("level with it", section);
     }
 
     /// <summary>Zero — the default — leaves each format's own resolution as the whole test.</summary>
@@ -393,7 +403,8 @@ public class DaybookPromptTests
 
         var section = DaybookPrompt.ReadingsSection(Log(restingHr: 74), baseline, AdultAge);
 
-        Assert.Contains("resting=74bpm (their usual 73bpm, 1bpm above it)", section);
+        Assert.Contains("\"resting_heart_rate\": 74", section);
+        Assert.Contains("1bpm above it", section);
     }
 
     /// <summary>
@@ -411,7 +422,8 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(sleepMinutes: 426), baseline, AdultAge, timeZone: null, tolerances);
 
-        Assert.Contains("total=7.1h (their usual 7.1h, level with it)", section);
+        Assert.Contains("\"sleep_duration_hours\": 7.1", section);
+        Assert.Contains("level with it", section);
     }
 
     /// <summary>
@@ -424,8 +436,8 @@ public class DaybookPromptTests
     {
         var section = DaybookPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
 
-        Assert.Contains("total=not measured", section);
-        Assert.Contains("resting=not measured", section);
+        Assert.Contains("\"sleep_duration_hours\": null", section);
+        Assert.Contains("\"resting_heart_rate\": null", section);
     }
 
     /// <summary>
@@ -439,7 +451,7 @@ public class DaybookPromptTests
             Log(sleepMinutes: 372, restingHr: 64), baseline: null, AdultAge);
 
         Assert.DoesNotContain("their usual", section);
-        Assert.Contains("total=6.2h", section);
+        Assert.Contains("\"sleep_duration_hours\": 6.2", section);
         Assert.Contains("[NSF recommend 7-9h; the reading sat below that]", section);
     }
 
@@ -454,7 +466,7 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(temperature: 34.9m, temperatureBaseline: 34.4m), Baseline(), AdultAge);
 
-        Assert.Contains("skinTemperatureVsTheirOwnNightlyUsual=+0.5C", section);
+        Assert.Contains("\"skin_temperature_vs_own_nightly_usual_c\": \"+0.5C\"", section);
         Assert.DoesNotContain("34.9", section);
     }
 
@@ -465,8 +477,8 @@ public class DaybookPromptTests
     {
         var section = DaybookPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
 
-        Assert.Contains("This day is over.", section);
-        Assert.Contains("none of it is still accumulating", section);
+        Assert.Contains("\"complete\": true", section);
+        Assert.Contains("\"clock_times_are_member_local\": true", section);
     }
 
     // ── The whole day: hour tables, monitoring, conditions ───────────────────
@@ -505,7 +517,10 @@ public class DaybookPromptTests
         var section = DaybookPrompt.IntradaySection(rollups, DayStartUtc, DayEndUtc, PlusOne);
 
         // The row is DayStart(23:00Z)+7h = 06:00Z, which is 07:00 on the member's +1 clock.
-        Assert.Contains("Heart rate: 07:00 avg 64 (58-71)", section);
+        Assert.Contains("\"hour\": \"07:00\"", section);
+        Assert.Contains("\"avg\": 64", section);
+        Assert.Contains("\"min\": 58", section);
+        Assert.Contains("\"max\": 71", section);
     }
 
     [Fact]
@@ -519,8 +534,10 @@ public class DaybookPromptTests
 
         var section = DaybookPrompt.IntradaySection(rollups, DayStartUtc, DayEndUtc, PlusOne);
 
-        Assert.Contains("Steps: 08:00 1204", section);
-        Assert.Contains("Blood oxygen: 03:00 avg 95.4 (94-96.4)", section);
+        Assert.Contains("\"hour\": \"08:00\"", section);
+        Assert.Contains("\"sum\": 1204", section);
+        Assert.Contains("\"hour\": \"03:00\"", section);
+        Assert.Contains("\"avg\": 95.4", section);
     }
 
     /// <summary>
@@ -539,7 +556,8 @@ public class DaybookPromptTests
         var section = DaybookPrompt.IntradaySection(rollups, DayStartUtc, DayEndUtc, PlusOne);
 
         // Offsets 13-15 from the 23:00Z day start are 12:00Z-14:00Z → local 13:00 to 16:00.
-        Assert.Contains("No readings at all between 13:00 and 16:00.", section);
+        Assert.Contains("\"from\": \"13:00\"", section);
+        Assert.Contains("\"to\": \"16:00\"", section);
     }
 
     /// <summary>An empty rollup store is absent plumbing, not a day of gaps.</summary>
@@ -607,10 +625,10 @@ public class DaybookPromptTests
         var section = DaybookPrompt.IntradaySection(rollups, dayStartUtc, dayEndUtc, PlusFiveThirty);
 
         // The two covered hours are 11:30 and 14:30 local, so the silence between them is real.
-        Assert.Contains("Heart rate: 11:30 avg 65 (60-70); 14:30 avg 64 (61-69)", section);
-        Assert.Contains("No readings at all between 12:30 and 14:30.", section);
-        // And the whole-day gap that used to sit underneath that same table is gone.
-        Assert.DoesNotContain("No readings at all between 00:00 and 00:00.", section);
+        Assert.Contains("\"hour\": \"11:30\"", section);
+        Assert.Contains("\"hour\": \"14:30\"", section);
+        Assert.Contains("\"from\": \"12:30\"", section);
+        Assert.Contains("\"to\": \"14:30\"", section);
     }
 
     /// <summary>
@@ -635,8 +653,9 @@ public class DaybookPromptTests
             rollups, dayStartUtc, dayStartUtc.AddDays(1), PlusFiveThirty);
 
         // 18:00Z is the hour the day starts in, but the day starts at 18:30Z — local 00:00.
-        Assert.Contains("No readings at all between 00:00 and 02:30.", section);
-        Assert.DoesNotContain("between 23:30 and", section);
+        Assert.Contains("\"from\": \"00:00\"", section);
+        Assert.Contains("\"to\": \"02:30\"", section);
+        Assert.DoesNotContain("23:30", section);
     }
 
     [Fact]
@@ -949,8 +968,9 @@ public class DaybookPromptTests
     {
         var section = DaybookPrompt.ReadingsSection(Log(hrv: 26.4m), Baseline(), AdultAge);
 
-        Assert.Contains("overnightVariability=26.4ms (their usual 38.5ms, 12.1ms below it)", section);
-        Assert.DoesNotContain("recommend", section.Split("overnightVariability")[1].Split('\n')[0]);
+        Assert.Contains("\"overnight_hrv_ms\": 26.4", section);
+        Assert.Contains("12.1ms below it", section);
+        Assert.DoesNotContain("recommend", section);
     }
 
     // ── Overnight breathing, effort and unbroken rest ────────────────────────────
@@ -966,12 +986,10 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(breathing: 17.1m, overnightBreathing: 15.4m), Baseline(), AdultAge);
 
-        Assert.Contains(
-            "breathingRate=17.1/min [WHO recommend 12-20/min; the reading sat inside that]", section);
-        Assert.Contains(
-            "breathingRateWhileAsleep=15.4/min (their usual 14.2/min, 1.2/min above it) "
-            + "[WHO recommend 12-20/min; the reading sat inside that]",
-            section);
+        Assert.Contains("\"breathing_rate\": 17.1", section);
+        Assert.Contains("[WHO recommend 12-20/min; the reading sat inside that]", section);
+        Assert.Contains("\"overnight_breathing_rate\": 15.4", section);
+        Assert.Contains("1.2/min above it", section);
     }
 
     /// <summary>
@@ -987,8 +1005,9 @@ public class DaybookPromptTests
             Baseline(),
             AdultAge);
 
-        Assert.Contains("minutesWithHeartRateRaised=30 (their usual 18min, 12min above it)", section);
-        Assert.Contains("start of real effort at 96bpm", section);
+        Assert.Contains("\"active_zone_minutes\": 30", section);
+        Assert.Contains("12min above it", section);
+        Assert.Contains("\"watch_effort_floor_bpm\": 96", section);
     }
 
     /// <summary>
@@ -1001,7 +1020,7 @@ public class DaybookPromptTests
         var section = DaybookPrompt.ReadingsSection(
             Log(steps: 3100, longestSedentaryStretch: 245), Baseline(), AdultAge);
 
-        Assert.Contains("longestUnbrokenStillStretch=245min", section);
+        Assert.Contains("\"longest_unbroken_still_stretch_minutes\": 245", section);
     }
 
     // A day the device reported no zones for is not a day of zero effort.
@@ -1010,6 +1029,6 @@ public class DaybookPromptTests
     {
         var section = DaybookPrompt.ReadingsSection(Log(steps: 4200), Baseline(), AdultAge);
 
-        Assert.DoesNotContain("minutesWithHeartRateRaised", section);
+        Assert.DoesNotContain("active_zone_minutes", section);
     }
 }
