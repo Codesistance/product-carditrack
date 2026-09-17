@@ -1450,15 +1450,11 @@ public class MemberChatService : IMemberChatService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Chat cannot generate this itself. <c>AdviseGenerationService</c>'s prompt is the only one on
-    /// this platform carrying <see cref="MedicalPromptBlocks.ToneWellness"/> — the sole permission
-    /// to suggest anything — and it earns that permission with machinery no per-question path can
-    /// reproduce inside a caregiver's wait: the suggestion is grounded in
-    /// <see cref="MedicalPromptBlocks.WellnessGuidelineReference"/> rather than the model's own
-    /// medical reasoning, and the model is made to name which reference it drew on so an ungrounded
-    /// reply is one the code can recognise and withhold. Both of chat's own generation steps carry
-    /// <c>ToneNoDiagnosis</c> instead, which is why an advice question used to reach the planner
-    /// and come back as a readback of the week: the pipeline had no vocabulary for what was asked.
+    /// Chat cannot generate this itself. <c>AdviseGenerationService</c> is the only writer of
+    /// suggestions on this platform; chat serves the stored row. Both of chat's own generation
+    /// steps carry <c>ToneNoDiagnosis</c> instead, which is why an advice question used to reach
+    /// the planner and come back as a readback of the week: the pipeline had no vocabulary for
+    /// what was asked.
     /// </para>
     /// <para>
     /// Assembled in code, like <see cref="MemberChatReplies.LiveStatusReply"/> and for a second reason on top of that

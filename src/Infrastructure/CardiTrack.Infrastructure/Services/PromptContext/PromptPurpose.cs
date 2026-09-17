@@ -59,12 +59,10 @@ public enum PromptPurpose
     MemberChat = 256,
 
     /// <summary>
-    /// The on-demand wellness suggestion: one action grounded in the member's own readings and a
-    /// fixed set of public-health wellness references (activity, sleep, resting heart rate — see
-    /// <c>MedicalPromptBlocks.WellnessGuidelineReference</c>), phrased as something worth
-    /// mentioning to a clinician rather than a diagnosis or a treatment change. CardiTrack is not
-    /// a medical device (docs/solution_manifest.md), so this purpose is deliberately grounded in
-    /// general wellness guidance rather than clinical/diagnostic guidelines.
+    /// The batch wellness suggestion: MedGemma's clinical read of the member's data, rewritten
+    /// for the family. CardiTrack is not a medical device (docs/solution_manifest.md) — that
+    /// boundary is held on the rewrite and the treatment-scope guard, not by briefing the
+    /// clinical model against a published-reference table.
     /// </summary>
     Advise = 512,
 

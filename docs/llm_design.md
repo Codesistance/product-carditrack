@@ -689,13 +689,13 @@ here because the first build collapsed them into one prompt and shipped the pred
 ("Perhaps try taking a short walk after dinner" — addressed to nobody, on a day the steps were
 already up):
 
-- **Clinical (AI:Private, MedGemma).** Data only: where the readings fall short of the
-  public-health reference (`WellnessGuidelineReference` — WHO activity, National Sleep Foundation
-  sleep, AHA heart-rate, the wearable caveat) or the member's own 30-day baseline, and one everyday action
-  that would close that specific shortfall. Direction is part of the brief: a met or beaten
-  reference is a reason for **no entry**, never for "more of the same". No audience, no name —
-  MedGemma is not aware of who; just data. Guarded per entry: a condition or treatment, or a
-  citation naming no reference, is withheld (`AdviseRegisterGuards`).
+- **Clinical (AI:Private, MedGemma).** The data, and MedGemma's own read of it (prompt **v6**):
+  member context, 30-day baseline, recent daily readings. No audience, no name, no
+  `WellnessGuidelineReference` table, no "everyday non-clinical" checklist — those were asking a
+  medically-tuned model to stay inside a wellness worksheet. Guarded per entry only for a
+  treatment proposal (`AdviseRegisterGuards.ProposesTreatment`); a citation naming no published
+  source is stored as "the readings" rather than dropped. A condition name in the note is
+  allowed: the register boundary is held on the rewrite.
 - **Rewrite (AI:Rewrite, Gemini).** Translation and addressing: the caregiver register, written
   to the family about the member, who is named only through the `CardiTrackCardiMember`
   placeholder — resolved to the real first name in code afterwards, so no model ever sees it.

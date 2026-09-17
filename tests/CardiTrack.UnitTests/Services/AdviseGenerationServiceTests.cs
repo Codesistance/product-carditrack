@@ -11,10 +11,11 @@ namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
 /// <see cref="AdviseGenerationService"/> — the two-slot batch writer behind the CardiMember
-/// Details "Something to try" card: MedGemma's clinical read of where the readings fall short,
-/// rewritten for the family by the Rewrite slot, one row per <see cref="AdviseTopic"/>. Pins the
-/// due-check (age and <see cref="MemberAdvise.PromptVersion"/> alike), the grounding contract (an
-/// entry with nothing to cite is withheld rather than persisted ungrounded), the per-topic
+/// Details "Something to try" card: MedGemma's clinical read of the data, rewritten for the
+/// family by the Rewrite slot, one row per <see cref="AdviseTopic"/>. Pins the
+/// due-check (age and <see cref="MemberAdvise.PromptVersion"/> alike), the treatment-scope
+/// contract (a dose-change note is withheld; a citation naming no published table is stored
+/// against the readings rather than dropped), the per-topic
 /// reconciliation (silence removes, a hiccup keeps — and a failed rewrite is a hiccup), the copy
 /// guards on the rewritten text, and the same not-generated-for guards
 /// <see cref="StatusLineGenerationServiceTests"/> pins for its own writer.
@@ -658,20 +659,23 @@ public class AdviseGenerationServiceTests
     // ---- The two briefs ----
 
     /// <summary>
-    /// The clinical brief is data only: it grounds in the health reference and carries the
-    /// treatment ban, and it does not carry the caregiver voice — that is the rewrite's, per the
-    /// two-slot contract member chat set.
+    /// The clinical brief is the data: member context, baseline, readings. It does not carry a
+    /// published-reference table, a treatment ban, or the caregiver voice — those last two are
+    /// the rewrite's (voice) and a code guard (treatment), per the two-slot contract.
     /// </summary>
     [Fact]
-    public async Task TheClinicalPrompt_GroundsInTheHealthReference_AndCarriesNoCaregiverVoice()
+    public async Task TheClinicalPrompt_IsTheData_AndCarriesNoCaregiverVoice()
     {
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
         var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
-        Assert.Contains("--- General health reference ---", prompt);
-        Assert.Contains("WHO, 2020", prompt);
-        Assert.Contains("never a diagnosis, a prescription, or a change to medication or treatment", prompt);
-        Assert.Contains("never a reason to suggest more of the same", prompt);
+        Assert.Contains("--- Baseline ---", prompt);
+        Assert.Contains("--- Recent readings", prompt);
+        Assert.Contains("Read the data below and infer", prompt);
+        Assert.DoesNotContain("--- General health reference ---", prompt);
+        Assert.DoesNotContain("WHO, 2020", prompt);
+        Assert.DoesNotContain("never a diagnosis, a prescription, or a change to medication or treatment", prompt);
+        Assert.DoesNotContain("never a reason to suggest more of the same", prompt);
         Assert.DoesNotContain("Write as a caregiver would", prompt);
         Assert.DoesNotContain("medical AI assistant", prompt, StringComparison.OrdinalIgnoreCase);
     }
@@ -780,9 +784,8 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
-    /// The traceability check the field exists for is that a reference was named, not that the
-    /// field was filled — "N/A" passed a nonblank check and made an ungrounded suggestion look
-    /// grounded to every reader of the row.
+    /// A citation that names no source is not a reason to throw the inference away. The row is
+    /// stored against "the readings" so the card can still serve it.
     /// </summary>
     [Theory]
     [InlineData("N/A")]
@@ -792,13 +795,13 @@ public class AdviseGenerationServiceTests
     [InlineData("Not applicable")]
     [InlineData("unknown")]
     [InlineData("-")]
-    public async Task ACitationNamingNoReference_WithholdsTheEntry(string cited)
+    public async Task ACitationNamingNoReference_IsStoredAgainstTheReadings(string cited)
     {
         ClinicalAnswers(ActivityFinding(cited: cited));
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
-        await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
+        await _advises.Received(1).AddAsync(Arg.Is<MemberAdvise>(a => a.GuidelineCited == "the readings"));
     }
 
     /// <summary>
