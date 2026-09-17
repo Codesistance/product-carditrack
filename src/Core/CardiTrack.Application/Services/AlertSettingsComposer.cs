@@ -297,7 +297,9 @@ public static class AlertSettingsComposer
 
     private static AlertSettingsReply Proposal(string summary, PendingAlertChange pending, AlertSeverity? severity = null)
     {
-        var text = $"Here's what I'd do: {LowerFirst(summary)}.";
+        // One stop, whatever the summary ended on: the alarm summaries close on the severity
+        // gloss, which carries its own.
+        var text = $"Here's what I'd do: {LowerFirst(TrimStop(summary))}.";
         if (severity == AlertSeverity.Red)
             text += $" {RedSeverityWarning}";
         return new AlertSettingsReply($"{text} {ConfirmPrompt}", pending);

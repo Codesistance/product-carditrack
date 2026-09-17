@@ -257,6 +257,31 @@ public class MemberChatAlertSettingsRungTests
         Assert.Contains(NamePlaceholder.Token, question, StringComparison.Ordinal);
     }
 
+    /// <summary>The name the model hands back may carry the placeholder it was shown — "turn
+    /// on an alarm called Moses's heart" reaches it redacted — and that token must be the first
+    /// name again before it is saved or shown, never the placeholder itself.</summary>
+    [Fact]
+    public async Task AnAlarmNameTheModelEchoes_HasThePlaceholderResolved_BeforeItIsProposed()
+    {
+        RouterAnswers(MemberChatWorkflow.AlertSettings);
+        PlannerAnswers(new AlertChangePlan
+        {
+            Action = AlertChangeAction.CreateAlarm,
+            Metric = AlarmMetric.HeartRate,
+            Operator = AlarmOperator.GreaterThan,
+            ThresholdValue = 120,
+            Name = $"{NamePlaceholder.Token}'s racing heart",
+        });
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "alert me if Moses's heart goes over 120, call it Moses's racing heart");
+
+        Assert.Contains("“Moses's racing heart”", reply.Reply, StringComparison.Ordinal);
+        Assert.DoesNotContain(NamePlaceholder.Token, reply.Reply, StringComparison.Ordinal);
+        var assistant = Assert.Single(_persisted, t => t.Role == ChatTurnRole.Assistant);
+        var stored = PendingAlertChange.FromJson(PromptContextFactory.Encryption.Decrypt(assistant.PendingChange!));
+        Assert.Equal("Moses's racing heart", stored!.Alarm!.Name);
+    }
+
     [Fact]
     public async Task ANoAfterAProposal_ChangesNothing()
     {

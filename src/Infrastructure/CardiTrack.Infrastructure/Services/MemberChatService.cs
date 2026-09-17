@@ -1008,8 +1008,20 @@ public class MemberChatService : IMemberChatService
         var planned = await _alertPlanner.PlanAsync(
             NamePlaceholder.Redact(flattened, member?.Name) ?? flattened, history.QuestionsOnly, snapshot, ct);
 
+        // The one field the model may echo the caregiver's words into is an alarm's name, and a
+        // caregiver who names an alarm after the member has just had that name redacted on the
+        // way out — so the token comes back and is put back here, as the first name a family
+        // says aloud, before it can be saved or shown. A token nothing resolves is dropped
+        // rather than stored, and the alarm takes its built name instead.
+        var plan = planned.Result;
+        if (plan.Name is { } givenName)
+        {
+            var resolvedName = NamePlaceholder.Resolve(givenName, NamePlaceholder.FirstName(member?.Name));
+            plan = plan with { Name = NamePlaceholder.IsPresentIn(resolvedName) ? null : resolvedName };
+        }
+
         var composed = AlertSettingsComposer.Compose(
-            planned.Result, snapshot, canManage, NamePlaceholder.FirstName(member?.Name), utcNow);
+            plan, snapshot, canManage, NamePlaceholder.FirstName(member?.Name), utcNow);
 
         return new MemberChatWorkflowResult
         {
@@ -1134,6 +1146,14 @@ public class MemberChatService : IMemberChatService
             try
             {
                 await ApplyAsync(pending, userId, cardiMemberId, ct);
+                // Written at the apply boundary, not after the turn persists: the alert
+                // services have committed by now, and the audit row the controller files for
+                // this send is written only once the send completes. Should the turn's own
+                // persistence fail after this, the log line is the record that the change
+                // stood — no member data in it, only what kind of change and for whom.
+                _logger.LogInformation(
+                    "Alert settings changed via chat: {ChangeKind} for CardiMember {CardiMemberId} by user {UserId}",
+                    pending.Kind, cardiMemberId, userId);
                 reply = AlertSettingsComposer.AppliedReply(pending);
                 changed = true;
             }

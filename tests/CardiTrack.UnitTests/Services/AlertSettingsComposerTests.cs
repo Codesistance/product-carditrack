@@ -139,6 +139,9 @@ public class AlertSettingsComposerTests
             reply.Reply.ToLowerInvariant(), StringComparison.Ordinal);
         Assert.Contains("yellow", reply.Reply, StringComparison.Ordinal);
         Assert.DoesNotContain(AlertSettingsComposer.RedSeverityWarning, reply.Reply, StringComparison.Ordinal);
+        // The severity gloss closes on a stop of its own; the proposal must not add a second.
+        Assert.DoesNotContain("..", reply.Reply, StringComparison.Ordinal);
+        Assert.Contains("not an emergency. " + AlertSettingsComposer.ConfirmPrompt, reply.Reply, StringComparison.Ordinal);
     }
 
     /// <summary>A red alarm's proposal carries the wake-the-family warning, and the yes it asks
