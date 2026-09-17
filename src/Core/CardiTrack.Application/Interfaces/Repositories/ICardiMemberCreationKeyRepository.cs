@@ -16,6 +16,17 @@ public interface ICardiMemberCreationKeyRepository : IRepository<CardiMemberCrea
     Task<CardiMemberCreationKey?> FindAsync(Guid userId, string key, CancellationToken ct = default);
 
     /// <summary>
+    /// Inserts the key, or reports that another request already holds it. False means the
+    /// unique index refused this insert: the ambient transaction is aborted (Postgres unique
+    /// violation) and the caller must roll it back, then <see cref="FindAsync"/> the winner.
+    /// </summary>
+    /// <remarks>
+    /// Application cannot name <c>DbUpdateException</c> (zero packages), so the recovery
+    /// lives here rather than around the caller's <c>SaveChanges</c>.
+    /// </remarks>
+    Task<bool> TryAddAsync(CardiMemberCreationKey key, CancellationToken ct = default);
+
+    /// <summary>
     /// Drops this caregiver's keys older than the cut-off.
     /// </summary>
     /// <remarks>
