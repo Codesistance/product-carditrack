@@ -62,8 +62,19 @@ fi
 
 # ── 2. Android, locally ──────────────────────────────────────────────────────
 ANDROID_LOCAL=0
-if dotnet workload list 2>/dev/null | grep -q '^maui-android' && \
-   { [ -d "${ANDROID_HOME:-/nonexistent}/platforms" ] || [ -d "${ANDROID_SDK_ROOT:-/nonexistent}/platforms" ] || [ -d "$HOME/Android/Sdk/platforms" ]; }; then
+# Where an Android SDK may live: the env vars, the Linux default the toolchain
+# script installs to, and the two usual Windows locations (the dev box).
+android_sdk_present() {
+  local d
+  for d in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" \
+           "${LOCALAPPDATA:-}/Android/Sdk" "/c/Program Files (x86)/Android/android-sdk"; do
+    [ -n "$d" ] && [ -d "$d/platforms" ] && return 0
+  done
+  return 1
+}
+# maui-android on Linux; on Windows the Visual Studio install lists the bundle as
+# maui-windows (or plain maui), and both carry the Android target.
+if dotnet workload list 2>/dev/null | grep -Eq '^maui(-android|-windows)?[[:space:]]' && android_sdk_present; then
   log "Building CardiTrack.Mobile for Android (Release, compile-only)"
   if dotnet build "$MOBILE" -f net10.0-android -c Release --nologo \
        -p:RunAOTCompilation=false -p:AndroidLinkMode=None -p:PublishTrimmed=false -p:AndroidLinkTool= 2>&1 | tail -15; then
