@@ -130,6 +130,12 @@ public static class AiServiceExtensions
         services.AddScoped<IChatRouter, ChatRouterService>();
         services.AddScoped<IMemberChatService, MemberChatService>();
 
+        // The chat's journal rung writes a book the way the pipeline pass does — same service,
+        // same prompt, same guards — so the API carries the generator too. Alongside the pipeline
+        // host's own registration, not instead of it: the schedule stays where CLAUDE.md puts it.
+        services.AddScoped<IDigestGenerationService, DigestGenerationService>();
+        services.AddScoped<JournalChatActions>();
+
         return services;
     }
 

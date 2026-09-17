@@ -29,4 +29,13 @@ public enum AiCallStep
     /// every message and is billed to the turn whenever it ran; the one turn with no Route row is
     /// one where the routing call itself failed and the triage fallback answered.</summary>
     Route = 6,
+
+    /// <summary>The journal rung's resolution — which book, which action, which period — read
+    /// off the caregiver's words on the Rewrite slot. No member data reaches it.</summary>
+    JournalResolve = 7,
+
+    /// <summary>MedGemma writing a CardiJournal book again at a caregiver's request: the same
+    /// generation the half-hourly pipeline pass makes, billed to the chat turn that asked for
+    /// it rather than left off the ledger.</summary>
+    JournalWrite = 8,
 }

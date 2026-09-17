@@ -572,6 +572,83 @@
       "note": "Observed 2026-09-07 — status reprinted the daily caption plus every reading because 'moved' was not on the steps word list",
       "guards": "Movement is steps. A follow-up after a day question must not reprint the caption dump.",
       "namedMetric": "steps"
+    },
+    {
+      "id": "c52",
+      "question": "show me Tuesday's daybook",
+      "context": null,
+      "accepted": [
+        "journal"
+      ],
+      "special": null,
+      "note": "Added 2026-09-17 with the journal entry",
+      "guards": "Names a book and asks to see it. Must not read the readings for Tuesday again."
+    },
+    {
+      "id": "c53",
+      "question": "delete last week's weekbook",
+      "context": null,
+      "accepted": [
+        "journal"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Destructive ask: offered, held on the session, done only on a plain yes."
+    },
+    {
+      "id": "c54",
+      "question": "rewrite the daybook for the 12th",
+      "context": null,
+      "accepted": [
+        "journal"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Redo/rewrite/regenerate all mean the same book written again from its readings."
+    },
+    {
+      "id": "c55",
+      "question": "which weekbooks do you have?",
+      "context": null,
+      "accepted": [
+        "journal"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "A list, not a reading question about the weeks."
+    },
+    {
+      "id": "c56",
+      "question": "how was he on Tuesday?",
+      "context": null,
+      "accepted": [
+        "analysis"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "The same day as c52 asked as a reading question. The journal line hands this back explicitly."
+    },
+    {
+      "id": "c57",
+      "question": "can you redo August's monthbook",
+      "context": null,
+      "accepted": [
+        "journal"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "A month's name is a Monthbook period; the code dates it by the month's last day."
+    },
+    {
+      "id": "c58",
+      "question": "what did the journal say about his sleep last week",
+      "context": null,
+      "accepted": [
+        "journal"
+      ],
+      "special": null,
+      "note": null,
+      "guards": "Asks what the written book said, not what the readings say — show the Weekbook, do not analyse."
     }
   ]
 }

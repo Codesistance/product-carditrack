@@ -124,6 +124,26 @@ public class DigestRepository : IDigestRepository
     /// Escapes LIKE's wildcards in a caregiver's own search text, so "100%" searches for the
     /// string "100%" rather than for "100" followed by anything.
     /// </summary>
+    public async Task<int> DeleteBookAsync(
+        Guid cardiMemberId, DateOnly localDate, DigestAudience audience, CancellationToken ct = default)
+    {
+        if (audience is not (DigestAudience.Daybook or DigestAudience.Weekbook or DigestAudience.Monthbook))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(audience), audience, "Only a CardiJournal book can be deleted; the family series is history.");
+        }
+
+        // A set-based delete rather than load-then-remove: the entity is composite-keyed on a
+        // partitioned table and nothing here needs it tracked. The partition key is in the
+        // predicate, so PostgreSQL prunes to one month's partition.
+        return await _context.DigestEntries
+            .Where(d =>
+                d.CardiMemberId == cardiMemberId
+                && d.LocalDate == localDate
+                && d.Audience == audience)
+            .ExecuteDeleteAsync(ct);
+    }
+
     private static string EscapeLikePattern(string value) =>
         value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 }

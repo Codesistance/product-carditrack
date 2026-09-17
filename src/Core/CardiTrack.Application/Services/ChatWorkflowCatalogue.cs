@@ -27,6 +27,13 @@ public enum ChatClaimClass
 
     /// <summary>Says nothing about the member at all.</summary>
     None = 5,
+
+    /// <summary>
+    /// Changes something the app holds rather than saying anything about the member — today only
+    /// the CardiJournal's books. Fetches nothing and reads nothing clinically: the book it writes
+    /// is another prompt's, under that prompt's own guards, and the reply is that book read back.
+    /// </summary>
+    Action = 6,
 }
 
 /// <summary>One entry as the router sees it, plus the limits the handler is held to.</summary>
@@ -177,6 +184,20 @@ public static class ChatWorkflowCatalogue
                 + "belongs here, however reasonable it is to ask. Not this when it asks what could "
                 + "be done about their activity, sleep or heart rate — that is advise.",
                 ChatClaimClass.None,
+                []),
+
+            // Off the ladder like the steers, and the one entry that changes what the app holds.
+            // The purpose line has to separate "show me Tuesday's Daybook" from "how was he on
+            // Tuesday" — the same day, one asking for a written book and one for a reading — so
+            // it names the books and the verbs and hands the reading question back explicitly.
+            new(MemberChatWorkflow.Journal,
+                "journal",
+                "Looking after the journal itself rather than asking about the person: showing or "
+                + "listing what a Daybook, Weekbook or Monthbook said, deleting one, or writing one "
+                + "again. Choose this when the message names the journal or one of its books and "
+                + "asks to see, list, remove, redo, rewrite or regenerate it. Asking how the person "
+                + "was on a day or in a week is not this — that is a reading question.",
+                ChatClaimClass.Action,
                 []),
 
             // Triggered by the shape of the routing answer — a runner-up that is a different ask,

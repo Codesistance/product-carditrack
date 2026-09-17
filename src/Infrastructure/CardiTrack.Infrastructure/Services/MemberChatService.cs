@@ -369,6 +369,7 @@ public class MemberChatService : IMemberChatService
             [MemberChatWorkflow.Investigation] = InvestigationClinicalInstructions,
             [MemberChatWorkflow.SteerCasual] = CasualSteerInstructions,
             [MemberChatWorkflow.SteerOffTopic] = OffTopicSteerInstructions,
+            [MemberChatWorkflow.Journal] = JournalChatActions.ResolveInstructions,
         };
 
     /// <summary>The rungs that reach no model beyond the triage and route that selected them.</summary>
@@ -437,6 +438,7 @@ public class MemberChatService : IMemberChatService
     private readonly ICardiMemberAccessService _access;
     private readonly MemberContextComposer _memberContext;
     private readonly IEncryptionService _encryption;
+    private readonly JournalChatActions _journal;
     private readonly ILogger<MemberChatService> _logger;
 
     public MemberChatService(
@@ -448,8 +450,10 @@ public class MemberChatService : IMemberChatService
         ICardiMemberAccessService access,
         MemberContextComposer memberContext,
         IEncryptionService encryption,
+        JournalChatActions journal,
         ILogger<MemberChatService> logger)
     {
+        _journal = journal;
         _medicalAi = medicalAi;
         _rewriteAi = rewriteAi;
         _planner = planner;
@@ -480,9 +484,14 @@ public class MemberChatService : IMemberChatService
         // question in it never reaches one, so there is nothing for the pre-check to protect and
         // nothing for the router to misplace. Everything else — triage, route, dispatch — is one
         // step, so that this branch and that one meet the same persistence below.
-        var result = MemberChatReplies.CarriesNoQuestion(flattened)
-            ? NotAQuestionResult(member?.Name)
-            : await RouteAndAnswerAsync(flattened, session, cardiMemberId, member, utcNow, ct);
+        // A yes or a no to an offer the journal rung made last turn is answered before the
+        // no-question guard and before any model: the vocabulary is closed and matched in code,
+        // and "yes" alone carries no question for the guard to see. Anything else spends the
+        // offer and is routed as itself.
+        var result = await _journal.TryResumeAsync(flattened, userId, cardiMemberId, member, session, utcNow, ct)
+            ?? (MemberChatReplies.CarriesNoQuestion(flattened)
+                ? NotAQuestionResult(member?.Name)
+                : await RouteAndAnswerAsync(userId, flattened, session, cardiMemberId, member, utcNow, ct));
 
         var (_, assistantTurn) = await PersistTurnsAsync(
             session, flattened, result, utcNow, ct);
@@ -513,6 +522,7 @@ public class MemberChatService : IMemberChatService
     /// (docs/technical/member_chat_routing.md §7) exists to remove.
     /// </remarks>
     private async Task<MemberChatWorkflowResult> RouteAndAnswerAsync(
+        Guid userId,
         string flattened,
         MemberChatSession session,
         Guid cardiMemberId,
@@ -568,7 +578,7 @@ public class MemberChatService : IMemberChatService
         var result = route is not null
             ? await DispatchRoutedAsync(
                 route, flattened, triage.Usage, triage.Result.IsAboutThisMoment,
-                cardiMemberId, member, history, utcNow, ct)
+                userId, cardiMemberId, member, session, history, utcNow, ct)
             : triage.Result switch
             {
                 { IsAboutThisMoment: true } =>
@@ -841,8 +851,10 @@ public class MemberChatService : IMemberChatService
         string flattened,
         AiUsage triageUsage,
         bool aboutThisMoment,
+        Guid userId,
         Guid cardiMemberId,
         CardiMember? member,
+        MemberChatSession session,
         ChatHistory history,
         DateTime utcNow,
         CancellationToken ct)
@@ -928,6 +940,12 @@ public class MemberChatService : IMemberChatService
                 await InferAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
             MemberChatWorkflow.Investigation =>
                 await InvestigateAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
+            // The one rung that changes what the app holds. Its handler resolves the ask on the
+            // Rewrite slot, reads or offers, and holds a destructive offer on the session for the
+            // next turn — see JournalChatActions.
+            MemberChatWorkflow.Journal =>
+                await _journal.HandleAsync(
+                    flattened, history.QuestionsOnly, userId, cardiMemberId, member, session, triageUsage, utcNow, ct),
             _ => await AnalyseAsync(flattened, triageUsage, cardiMemberId, member, history, utcNow, ct),
         };
     }
@@ -1021,6 +1039,7 @@ public class MemberChatService : IMemberChatService
         MemberChatWorkflow.Investigation => "what might be behind the change",
         MemberChatWorkflow.Advise => "a suggestion for what could help",
         MemberChatWorkflow.SteerCasual => "just saying hi",
+        MemberChatWorkflow.Journal => $"something in {subject}'s journal",
         _ => "something outside their health data",
     };
 

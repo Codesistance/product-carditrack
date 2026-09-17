@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Common;
@@ -107,14 +108,16 @@ public class WeekbookGenerationTests
     }
 
     private void SetupModelReply(string headline, string summary) =>
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.WeekbookAiResponse>(
+        _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new DigestGenerationService.WeekbookAiResponse
-            {
-                Headline = headline,
-                Summary = summary,
-                Urgency = "watch",
-            });
+            .Returns(new AiGenerationResult<DigestGenerationService.WeekbookAiResponse>(
+                new DigestGenerationService.WeekbookAiResponse
+                {
+                    Headline = headline,
+                    Summary = summary,
+                    Urgency = "watch",
+                },
+                new AiUsage { ModelName = "test-medical" }));
 
     private DigestGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, Substitute.For<IRewriteAiService>(),
@@ -156,7 +159,7 @@ public class WeekbookGenerationTests
         _members.GetByIdAsync(_memberId).Returns(member);
 
         await AssertNothingWritten();
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.WeekbookAiResponse>(
+        await _medicalAi.DidNotReceive().GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -199,7 +202,7 @@ public class WeekbookGenerationTests
             .Returns(new DigestEntry { CardiMemberId = _memberId, LocalDate = WeekEnd, Text = "already" });
 
         await AssertNothingWritten();
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.WeekbookAiResponse>(
+        await _medicalAi.DidNotReceive().GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -225,7 +228,7 @@ public class WeekbookGenerationTests
         SetupWeek(daysWithData);
 
         await AssertNothingWritten();
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.WeekbookAiResponse>(
+        await _medicalAi.DidNotReceive().GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 

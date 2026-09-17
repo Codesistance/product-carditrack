@@ -37,6 +37,7 @@ public class MemberChatHistoryListTests
     private MemberChatService CreateSut() =>
         new(_medicalAi, _rewriteAi, _planner, Substitute.For<IChatRouter>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
+            PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
             NullLogger<MemberChatService>.Instance);
 
     private static string Stored(string plain) => PromptContextFactory.Encryption.Encrypt(plain);

@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Common;
@@ -107,14 +108,16 @@ public class MonthbookGenerationTests
     }
 
     private void SetupModelReply(string headline, string summary) =>
-        _medicalAi.GenerateStructuredAsync<DigestGenerationService.MonthbookAiResponse>(
+        _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.MonthbookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new DigestGenerationService.MonthbookAiResponse
-            {
-                Headline = headline,
-                Summary = summary,
-                Urgency = "watch",
-            });
+            .Returns(new AiGenerationResult<DigestGenerationService.MonthbookAiResponse>(
+                new DigestGenerationService.MonthbookAiResponse
+                {
+                    Headline = headline,
+                    Summary = summary,
+                    Urgency = "watch",
+                },
+                new AiUsage { ModelName = "test-medical" }));
 
     private DigestGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, Substitute.For<IRewriteAiService>(),
@@ -153,7 +156,7 @@ public class MonthbookGenerationTests
 
         Assert.Equal(0, await CreateSut().GenerateDueMonthbooksAsync(midMonth));
         await _digests.DidNotReceive().AddAsync(Arg.Any<DigestEntry>(), Arg.Any<CancellationToken>());
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.MonthbookAiResponse>(
+        await _medicalAi.DidNotReceive().GenerateStructuredWithUsageAsync<DigestGenerationService.MonthbookAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -230,7 +233,7 @@ public class MonthbookGenerationTests
             .Returns(new DigestEntry { CardiMemberId = _memberId, LocalDate = MonthEnd, Text = "already" });
 
         await AssertNothingWritten();
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.MonthbookAiResponse>(
+        await _medicalAi.DidNotReceive().GenerateStructuredWithUsageAsync<DigestGenerationService.MonthbookAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -255,7 +258,7 @@ public class MonthbookGenerationTests
         SetupMonth(daysWithData);
 
         await AssertNothingWritten();
-        await _medicalAi.DidNotReceive().GenerateStructuredAsync<DigestGenerationService.MonthbookAiResponse>(
+        await _medicalAi.DidNotReceive().GenerateStructuredWithUsageAsync<DigestGenerationService.MonthbookAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 

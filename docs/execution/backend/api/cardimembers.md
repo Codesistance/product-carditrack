@@ -524,7 +524,7 @@ A **full replacement of all four**: a `null` field restores that book's default.
 
 **Validation** — a time must be between `01:00` and `12:00` and land on the hour or the half hour. Rejected rather than rounded: the digest job runs every 30 minutes, so a stored `02:17` would in fact be written at `02:30`, and saving a time the caregiver did not choose then showing it back to them is worse than refusing it.
 
-The window is not arbitrary. Earlier than `01:00` and the tail of the period is still syncing — and a book is written once and never rewritten, so what it misses it misses for good. Later than `12:00` and an account of yesterday has stopped being something anyone can act on.
+The window is not arbitrary. Earlier than `01:00` and the tail of the period is still syncing — and a book is written once and never rewritten on its own — what it misses it misses unless a caregiver asks the chat to write it again. Later than `12:00` and an account of yesterday has stopped being something anyone can act on.
 
 | Status | When |
 |--------|------|

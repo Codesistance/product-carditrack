@@ -62,4 +62,12 @@ public enum MemberChatWorkflow
     /// <summary>The router could not place the question, so the app asked which rung was meant.
     /// Never returned by the router — see the catalogue's routable flag.</summary>
     Clarify = 9,
+
+    /// <summary>
+    /// Looking after the CardiJournal itself rather than reading the member: show or list its
+    /// books, discard one, or write one again from its period's readings. The only entry with a
+    /// side effect, and the only one whose reply is assembled in code from a book another prompt
+    /// wrote — see <c>JournalChatActions</c>. Destructive asks are confirmed on the next turn.
+    /// </summary>
+    Journal = 10,
 }
