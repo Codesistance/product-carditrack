@@ -307,7 +307,8 @@
                              same control — this screen used to carry its own pair of full-width
                              Call/Message buttons, worded differently and with their own
                              availability rules. -->
-                        <controls:QuickActionRow x:Name="QuickActions" Margin="0,2,0,0"/>
+                        <!-- 2 points of separation, less the control's own shadow gutter. -->
+                        <controls:QuickActionRow x:Name="QuickActions" Margin="0,-8,0,-13"/>
 
                         <Label Text="More Options"
                                Style="{StaticResource DashboardSectionTitle}"

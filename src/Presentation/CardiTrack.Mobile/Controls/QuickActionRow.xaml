@@ -16,13 +16,16 @@
          a thumb lands and where the eye starts. The others are reachable in the seconds that
          emergency is not.
 
-         Inset from the container's content box by the shadow's own radius. The Dashboard's card
-         Border clips its content, and the row was flush with that edge — so the outer tiles'
-         shadows were sliced off vertically on the left of SOS and the right of Details, which read
-         as a rendering fault rather than as depth. The tiles lose five points of width each and
-         the row keeps its shadow whole. -->
+         Inset from this view's own bounds by the shadow's reach. Android clips a ContentView's
+         children to its bounds and the grid fills it exactly, so whatever the tiles cast outside
+         the grid is sliced off and reads as a rendering fault rather than as depth. The first fix
+         gave the row a horizontal gutter only, which left the same hard cut along the top and
+         bottom of all four tiles. The gutter is now the shadow's own geometry (QuickActionTile:
+         radius 10, offset 0,3) — 10 on three sides, 13 below to carry the offset — and the call
+         sites pull the extra height back out with a negative margin so the row sits where it
+         always did. -->
 
-    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,0">
+    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,10,10,13">
         <Border x:Name="EmergencyCallAction"
                 Grid.Column="0"
                 Style="{StaticResource QuickActionTile}"
