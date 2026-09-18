@@ -100,27 +100,60 @@ public class DeviceTokenService : IDeviceTokenService
                 userId, deviceId, platform, appVersion, rawToken, fingerprint,
                 osAuthorizationStatus, safetyChannelEnabled, ct);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Two installs registering the same token at once both read no holder, and the unique
-            // index fails the loser's insert. The winner has committed by the time we are here,
-            // so the second pass finds the row and takes it the ordinary way. Tracking is dropped
-            // first: the failed entries would otherwise fail every later save on this scope.
+            // Tracking is dropped first: the failed entries would otherwise fail every later save
+            // on this scope.
             _unitOfWork.ClearTracking();
+
+            // Only a lost race earns a second pass. Two installs registering the same token at
+            // once both read no holder, both insert, and the unique index fails the loser — by
+            // the time we are here the winner has committed, so somebody now holds the
+            // fingerprint and the retry is the ordinary claim path. Nothing else is: a dead
+            // database, an encryption fault or a cancelled request would only fail again, more
+            // slowly, and a fault that should surface immediately would be hidden behind a
+            // second transaction's worth of latency. This layer cannot name the provider's
+            // 23505 by type — it references no database library, deliberately — so the evidence
+            // of the race is read from the data, the same shape OnboardingService uses for the
+            // unique index on Auth0UserId.
+            if (!await AnotherInstallHoldsTokenAsync(fingerprint, ct))
+                throw;
+
             registration = await ClaimAsync(
                 userId, deviceId, platform, appVersion, rawToken, fingerprint,
                 osAuthorizationStatus, safetyChannelEnabled, ct);
         }
 
-        await ReconcileReachabilityAsync(userId, ct);
-
         // The displaced caregiver's picture changed as much as the caller's did — they just lost
-        // a device. Re-evaluating theirs too is what arms PUSH_UNREACHABLE for them; without it
-        // they go quiet with nothing anywhere saying so.
+        // a device. Re-evaluating theirs is what arms PUSH_UNREACHABLE for them; without it they
+        // go quiet with nothing anywhere saying so. Theirs runs first deliberately: both of these
+        // are after the commit and neither is durable, and the caller has a client that retries a
+        // failed registration, where the displaced user has nothing that would notice. (If it
+        // does fail, their own next inbox read resolves it — NotificationService resolves gaps
+        // for the user reading them.)
         if (registration.DisplacedUserId is { } displacedUserId && displacedUserId != userId)
             await ReconcileReachabilityAsync(displacedUserId, ct);
 
+        await ReconcileReachabilityAsync(userId, ct);
+
         return registration;
+    }
+
+    /// <summary>
+    /// Whether the fingerprint is held by a row now — the evidence that a failed save was a lost
+    /// race rather than a fault. A probe that itself fails answers "no", so the original failure
+    /// is the one that surfaces rather than being masked by this one.
+    /// </summary>
+    private async Task<bool> AnotherInstallHoldsTokenAsync(string fingerprint, CancellationToken ct)
+    {
+        try
+        {
+            return await _unitOfWork.PushDeviceTokens.GetByFingerprintAsync(fingerprint, ct) is not null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task<PushDeviceRegistration> ClaimAsync(

@@ -177,10 +177,11 @@ public class DeviceTokenServiceTests
     }
 
     [Fact]
-    public async Task RegisterAsync_WhenTheRetryAlsoFails_Throws()
+    public async Task RegisterAsync_WhenTheFailureIsNotALostRace_SurfacesItWithoutASecondAttempt()
     {
-        // A fault that is not a lost race — the database being down — must still surface. Retrying
-        // forever would turn a dead dependency into a hang on a health service's registration path.
+        // A dead database is not a race. Nobody holds the fingerprint afterwards, so there is
+        // nothing a second pass could find — repeating the transaction would only add latency to
+        // a failure that should reach the caller now.
         var user = Guid.NewGuid();
 
         _tokens.GetByUserAndDeviceAsync(user, "device-a", Arg.Any<CancellationToken>())
@@ -190,7 +191,27 @@ public class DeviceTokenServiceTests
         _unitOfWork.SaveChangesAsync().ThrowsAsync(new InvalidOperationException("database is down"));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => RegisterAsync(user, "device-a"));
-        await _unitOfWork.Received(2).RollbackTransactionAsync();
+
+        await _unitOfWork.Received(1).RollbackTransactionAsync();
+        await _unitOfWork.Received(1).BeginTransactionAsync();
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenTheRequestIsCancelled_DoesNotRetry()
+    {
+        // A cancelled request is the caller having gone; opening a second transaction for it
+        // would spend the database on work nobody is waiting for.
+        var user = Guid.NewGuid();
+
+        _tokens.GetByUserAndDeviceAsync(user, "device-a", Arg.Any<CancellationToken>())
+            .Returns((PushDeviceToken?)null);
+        _tokens.GetByFingerprintAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(HolderRow(Guid.NewGuid(), "device-of-somebody-else"));
+        _unitOfWork.SaveChangesAsync().ThrowsAsync(new OperationCanceledException());
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => RegisterAsync(user, "device-a"));
+
+        await _unitOfWork.Received(1).BeginTransactionAsync();
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider

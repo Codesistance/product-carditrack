@@ -258,7 +258,13 @@ public partial class SettingsPage : ContentPage
         // one step throwing must not stop the rest, or a token or a cached reading survives on a
         // phone whose owner has just asked for all of it to go. An ordinary sign-out can afford to
         // surface the failure; this one cannot afford to stop.
-        await TryAsync(ReleasePushRegistrationAsync, "push registration");
+        // No push release here, unlike the ordinary sign-out above. By this point the server has
+        // accepted the deletion, and PendingDeletionGateMiddleware refuses everything but
+        // /api/v1/users/me/deletion — the unregister would take a 403 and be swallowed, which
+        // would read like a release that happened. It is not needed either: the same request
+        // stops this account being a recipient at all (UserCardiMemberRepository excludes a
+        // caregiver awaiting deletion), and AccountErasureService deletes the token row outright
+        // when the 30 days are up.
         await TryAsync(() => _authService.SignOutAsync(), "sign-out");
         Try(() => Preferences.Default.Remove("PrimaryCardiMemberId"), "primary member");
         Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");

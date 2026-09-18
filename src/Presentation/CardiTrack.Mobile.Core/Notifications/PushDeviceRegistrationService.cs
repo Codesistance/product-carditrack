@@ -31,31 +31,63 @@ public class PushDeviceRegistrationService : IPushDeviceRegistrationService
 {
     private readonly ICardiTrackApiClient _api;
 
+    /// <summary>
+    /// Registration is fire-and-forget from the shell and from the first device connection, and
+    /// unregistration runs at sign-out. Left unserialized, a registration still in flight when a
+    /// caregiver signs out lands *after* the unregister and puts the departing caregiver's row
+    /// back — reachable on a handset they have just handed over. The gate makes the sign-out's
+    /// call the last one of the pair to reach the server, whichever started first.
+    ///
+    /// One instance, one gate: this service is registered as a singleton, and the API client it
+    /// wraps is the only thing either call touches.
+    /// </summary>
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
     public PushDeviceRegistrationService(ICardiTrackApiClient api)
     {
         _api = api;
     }
 
-    public Task<PushDeviceTokenResponse> RegisterAsync(
+    public async Task<PushDeviceTokenResponse> RegisterAsync(
         string deviceId,
         DevicePlatform platform,
         string appVersion,
         string token,
         OsAuthorizationStatus osAuthorizationStatus,
         bool safetyChannelEnabled,
-        CancellationToken ct = default) =>
-        _api.RegisterPushDeviceAsync(new RegisterPushDeviceRequest
+        CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
         {
-            DeviceId = deviceId,
-            Platform = platform,
-            AppVersion = appVersion,
-            Token = token,
-            OsAuthorizationStatus = osAuthorizationStatus,
-            SafetyChannelEnabled = safetyChannelEnabled
-        }, ct);
+            return await _api.RegisterPushDeviceAsync(new RegisterPushDeviceRequest
+            {
+                DeviceId = deviceId,
+                Platform = platform,
+                AppVersion = appVersion,
+                Token = token,
+                OsAuthorizationStatus = osAuthorizationStatus,
+                SafetyChannelEnabled = safetyChannelEnabled
+            }, ct);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
-    public Task UnregisterAsync(string deviceId, CancellationToken ct = default) =>
-        _api.UnregisterPushDeviceAsync(deviceId, ct);
+    public async Task UnregisterAsync(string deviceId, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct);
+        try
+        {
+            await _api.UnregisterPushDeviceAsync(deviceId, ct);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     public Task AckDeliveredAsync(Guid deliveryId, string ackToken, CancellationToken ct = default) =>
         _api.AckDeliveredAsync(deliveryId, ackToken, ct);
