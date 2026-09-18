@@ -388,7 +388,7 @@ All GitHub Actions workflows authenticate to GCP with **Workload Identity Federa
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| `deploy-apps-dev.yml` | Push to `main` (gated by `ACTIONS_ON_PUSH`), manual | Builds/tests API, Web, Worker, migrator; signed Android and iOS builds per platform tick (`mobile_android` / `mobile_ios`), archived to GCS under the tag; `mobile_windows` is a compile check only; security scans; pushes images to Artifact Registry; runs the migrator job; deploys to dev Cloud Run; tags |
+| `deploy-apps-dev.yml` | Manual (`workflow_dispatch`) only | Builds/tests API, Web, Worker, migrator; signed Android and iOS builds per platform tick (`mobile_android` / `mobile_ios`), archived to GCS under the tag; `mobile_windows` is a compile check only; security scans; pushes images to Artifact Registry; runs the migrator job; deploys to dev Cloud Run; tags |
 | `deploy-mobile-dev.yml` | Manual only, on `main` (`platform` = android / ios / both, `tag`) | Pushes the tag's signed builds from the GCS bucket to Play internal and/or TestFlight, with release notes. Builds nothing |
 | `deploy-apps-prod.yml` | Manual (`workflow_dispatch` with a semver tag) | Validates tag + images, runs prod migrations via the migrator job, deploys API/Web/Worker, uploads mobile builds to the stores |
 | `deploy-infra-dev.yml` / `deploy-infra-prod.yml` | Push to `main` on infra paths (dev), manual (prod) | `terraform fmt`/`validate`, state-bucket bootstrap, plan (pinned + latest Terraform compatibility matrix), apply |

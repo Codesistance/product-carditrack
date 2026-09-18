@@ -133,7 +133,7 @@ Detailed summary of all domain entities, their properties, and relationships.
 **Production setup runbook** — the manual ops ledger: every console grant, API registration, and credential-provisioning step performed outside Terraform/CI, in the order production needs them, with dev status as evidence.
 
 #### [github_repository_access.md](./technical/github_repository_access.md)
-**GitHub repository access** — stays public so Actions minutes are free (private Free-plan quota is exhausted); write is limited to one human (`@marigbede`). Apps-dev/infra on push and PR are gated by `.github/ACTIONS_ON_PUSH` (`0`/`1`).
+**GitHub repository access** — stays public so Actions minutes are free (private Free-plan quota is exhausted); write is limited to one human (`@marigbede`). Every deploy workflow is dispatch-only — nothing builds or deploys on a push or a PR.
 
 #### [data_protection_architecture.md](./technical/data_protection_architecture.md)
 HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe Harbor de-identification pipeline, retention & erasure jobs, audit/consent models, and the subprocessor register.

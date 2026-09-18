@@ -39,24 +39,25 @@ can write. Fork PRs from other accounts do not run Copilot review.
 
 ## CI triggers
 
-`.github/ACTIONS_ON_PUSH` is the flag (`0` / `false` / `1` / `true`).
-Repo variable `ACTIONS_ON_PUSH` overrides the file when set.
+**Every deploy workflow is `workflow_dispatch` only.** Nothing builds, tests or
+deploys on a push to `main` or on a pull request. Cloud agents already build each
+change as it is written, so an automatic run on top of that was paying twice for
+the same answer.
 
-| Value | Push to `main` and pull_request | workflow_dispatch |
-|---|---|---|
-| `0` or `false` (current) | Skip expensive jobs (flag reader only) | Runs |
-| `1` or `true` | Full apps-dev / infra CI | Runs |
+This used to be a flag — `.github/ACTIONS_ON_PUSH`, with `push` and
+`pull_request` triggers behind it — held at `0` for long enough that the triggers
+and their reader job were only ever adding a skipped job to every run. All three
+are gone. The triggers themselves are the switch now, so re-enabling push CI
+means adding a trigger back, not flipping a value.
 
-The flag-reader job (`actions-on-push`) runs on **every** trigger, including
-`workflow_dispatch` where its answer is ignored. That is deliberate: a skipped
-job skips everything beneath it in the graph, past any `always()` in between.
-While the job was skipped on dispatch, `env` survived via `always()` and
+One rule outlives the flag: **never give the root job of a chain an `if:`.** A
+skipped job skips everything beneath it, past any `always()` in between. When the
+old flag-reader skipped on a dispatch, `env` survived via `always()` and
 succeeded, but the job after it — which has no `if:` of its own — was skipped
-anyway, taking every build, deploy and Terraform job with it. The runs reported
-success having done nothing (2026-08-15, run 31904971393). Do not re-add a
-`github.event_name != 'workflow_dispatch'` term to that job. Each of the three
-gated workflows also carries a dispatch-only `dispatch-sanity` job that fails
-the run if the chain collapses that way again.
+anyway, taking every build, deploy and Terraform job with it. Those runs reported
+success having done nothing (2026-08-15, run 31904971393). `env` is the root now
+and carries no condition. Each of the three workflows also keeps a
+`dispatch-sanity` job that fails the run if the chain collapses that way again.
 
 Copilot review is requested on non-draft, same-repo PRs when they open, reopen or
 leave draft (short ubuntu job) — not on every push, since each review bills about
@@ -67,17 +68,16 @@ its quarter-hourly sweep bought nothing that `gh pr merge` does not).
 
 | Workflow | When it runs |
 |---|---|
-| CI / Deploy Apps → Dev | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
+| CI / Deploy Apps → Dev | **workflow_dispatch only** |
 | Deploy Mobile → Dev | **workflow_dispatch only**, on `main` (`platform` = android / ios / both, `tag`); pushes a tag's existing builds, builds nothing |
-| Deploy Infrastructure → Dev / Common | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
+| Deploy Infrastructure → Dev / Common | **workflow_dispatch only** |
 | Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
 | Request Copilot review | `pull_request` opened / reopened / ready_for_review (not synchronize) |
 
-With the flag at `0`, Dev Cloud Run does not start on merge; TestFlight / Play never
-do, whatever the flag says. Dispatch **CI / Deploy Apps → Dev** on `main` with the
-lanes you want — the mobile ones are per platform, and iOS is off by default because
-it is the expensive one — or set the flag to `1`. Then push the tag it created to the
-stores with **Deploy Mobile → Dev**.
+Merging deploys nothing — not Dev Cloud Run, and never TestFlight / Play. Dispatch
+**CI / Deploy Apps → Dev** on `main` with the lanes you want; the mobile ones are per
+platform, and iOS is off by default because it is the expensive one. Then push the tag
+it created to the stores with **Deploy Mobile → Dev**.
 
 ## Operator steps (console)
 
@@ -98,7 +98,7 @@ stores with **Deploy Mobile → Dev**.
 | Control | Where |
 |---|---|
 | Default code owner is `@marigbede` | [`.github/CODEOWNERS`](../../.github/CODEOWNERS) |
-| Push/PR CI gated by `0`/`1` flag | [`.github/ACTIONS_ON_PUSH`](../../.github/ACTIONS_ON_PUSH) |
+| Deploy workflows carry no `push` / `pull_request` trigger | [`.github/workflows/`](../../.github/workflows/) |
 | Fork PRs do not get Copilot review requested | [`.github/workflows/request-copilot-review.yml`](../../.github/workflows/request-copilot-review.yml) |
 
 ## Machine identities that must keep access

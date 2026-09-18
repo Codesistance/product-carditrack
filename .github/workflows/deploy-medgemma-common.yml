@@ -31,15 +31,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  actions-on-push:
-    uses: ./.github/workflows/_actions-on-push.yml
-
   # No `with:` and no `secrets:` — _env.yml declares outputs and takes no inputs. Passing either
   # is rejected when the workflow is loaded, which surfaces as a run that fails before any job
   # starts and leaves no log at all to read.
   env:
     name: Resolve config
-    needs: actions-on-push
     uses: ./.github/workflows/_env.yml
 
   build-and-deploy:
