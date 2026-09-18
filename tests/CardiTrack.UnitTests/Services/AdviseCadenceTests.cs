@@ -142,14 +142,25 @@ public class AdviseCadenceTests
     }
 
     [Fact]
-    public void SpringForward_DoesNotThrowWhenQuietHoursEndIsSkipped()
+    public void SpringForwardDay_DoesNotAdmitASixthWrite()
     {
         var zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
-        var quietStart = new TimeOnly(22, 0);
-        var quietEnd = new TimeOnly(2, 30);
-        // 2026-03-08 02:00–03:00 never occurs; 07:00 EDT is 11:00 UTC, last was yesterday.
-        var now = new DateTime(2026, 3, 8, 11, 0, 0, DateTimeKind.Utc);
-        var last = new DateTime(2026, 3, 7, 23, 0, 0, DateTimeKind.Utc);
+        // 20:00 EDT on 2026-03-08; UTC elapsed from midnight is 19h, wall-clock is 20h.
+        var last = new DateTime(2026, 3, 9, 0, 0, 0, DateTimeKind.Utc);
+        var now = new DateTime(2026, 3, 9, 3, 48, 0, DateTimeKind.Utc);
+        Assert.False(AdviseCadence.IsDue(now, last, Version, Version, null, null, zone));
+    }
+
+    [Fact]
+    public void SpringForward_NormalizesACandidateThatLandsInTheSkippedHour()
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        // Overnight 08:00–00:30: waking is 00:30–08:00, slot 1h30. Last at 00:30, next
+        // candidate is 02:00 — which 2026-03-08 never has. Must not throw.
+        var quietStart = new TimeOnly(8, 0);
+        var quietEnd = new TimeOnly(0, 30);
+        var last = new DateTime(2026, 3, 8, 5, 30, 0, DateTimeKind.Utc);
+        var now = new DateTime(2026, 3, 8, 8, 0, 0, DateTimeKind.Utc);
         Assert.True(AdviseCadence.IsDue(now, last, Version, Version, quietStart, quietEnd, zone));
     }
 

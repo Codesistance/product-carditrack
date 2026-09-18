@@ -74,9 +74,10 @@ public static class AdviseCadence
     }
 
     /// <summary>
-    /// Waking time from local midnight to <paramref name="lastLocal"/>, as UTC elapsed minus
-    /// quiet hours already passed. UTC elapsed keeps the repeated hour on a fall-back day
-    /// instead of counting <c>TimeOfDay</c> twice as the same clock face.
+    /// Waking time from local midnight to the last write: the longer of UTC elapsed and
+    /// wall-clock <c>TimeOfDay</c>, minus quiet hours already passed. UTC keeps the
+    /// repeated fall-back hour; wall-clock keeps the spring-forward skipped hour from
+    /// lowering the slot count.
     /// </summary>
     private static TimeSpan WakingElapsedSinceMidnight(
         DateTime lastUtc,
@@ -87,9 +88,14 @@ public static class AdviseCadence
         TimeOnly? quietEnd)
     {
         var originUtc = LocalToUtc(today.ToDateTime(TimeOnly.MinValue), timeZone);
-        var elapsed = lastUtc - originUtc;
-        if (elapsed < TimeSpan.Zero)
-            elapsed = TimeSpan.Zero;
+        var utcElapsed = lastUtc - originUtc;
+        if (utcElapsed < TimeSpan.Zero)
+            utcElapsed = TimeSpan.Zero;
+        var wallElapsed = lastLocal.TimeOfDay;
+        // Fall-back: UTC is the longer span (repeated hour). Spring-forward: the
+        // wall clock is the longer span (the skipped hour). The cap uses the
+        // larger so neither a 23-hour nor a 25-hour local day admits a sixth write.
+        var elapsed = utcElapsed > wallElapsed ? utcElapsed : wallElapsed;
 
         if (quietStart is not { } start || quietEnd is not { } end)
             return elapsed;
