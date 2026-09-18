@@ -161,6 +161,32 @@
                                 Margin="0,28,0,0"
                                 Clicked="OnAuthorizeClicked"/>
 
+                        <!-- The wearer does not have to be in the room. These two hand the consent
+                             to their own device instead; the button above stays for when they are
+                             standing right here. -->
+                        <Label x:Name="HandoverPrompt"
+                               Text="Not with you right now?"
+                               Style="{StaticResource Body2}"
+                               HorizontalTextAlignment="Center"
+                               Margin="0,22,0,0"/>
+
+                        <Grid x:Name="HandoverActions"
+                              ColumnDefinitions="*,*"
+                              ColumnSpacing="12"
+                              Margin="0,10,0,0">
+                            <Button x:Name="SendLinkBtn"
+                                    Text="Send a link"
+                                    Style="{StaticResource SecondaryOutlineButton}"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnSendLinkClicked"/>
+                            <Button x:Name="ShowQrBtn"
+                                    Grid.Column="1"
+                                    Text="Show a QR code"
+                                    Style="{StaticResource SecondaryOutlineButton}"
+                                    HorizontalOptions="Fill"
+                                    Clicked="OnShowQrClicked"/>
+                        </Grid>
+
                         <Label Text="Cancel"
                                Style="{StaticResource PrimaryLink}"
                                TextDecorations="None"

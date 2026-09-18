@@ -1,0 +1,336 @@
+using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Devices;
+using CardiTrack.Mobile.Services;
+using Microsoft.Extensions.Logging;
+
+namespace CardiTrack.Mobile.Onboarding;
+
+/// <summary>
+/// The caregiver's side of a wearer invitation: the QR code or the sent-link confirmation, what the
+/// wearer has done so far, and how long is left.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The screen exists because the wearer is somewhere else. Everything on it is the caregiver
+/// watching somebody else's progress, so it says what has happened rather than asking them to do
+/// anything — until it cannot finish, at which point it offers another go.
+/// </para>
+/// <para>
+/// <see cref="DeviceInviteWatch"/> holds the decisions: which state a status string means, when to
+/// poll again, when a deadline has passed. This class renders that and nothing more, which is why
+/// the rules are unit-tested without a device in the loop.
+/// </para>
+/// </remarks>
+public partial class InviteWaitPage : ContentPage
+{
+    private readonly ICardiTrackApiClient _api;
+    private readonly IPopupService _popups;
+    private readonly ILogger<InviteWaitPage> _logger;
+    private readonly WizardContext _ctx;
+    private readonly CardiMemberResponse _member;
+    private readonly ConnectableDevice _device;
+    private readonly bool _isQr;
+
+    private DeviceInviteResponse _invite;
+    private DeviceInviteWatch _watch;
+    private CancellationTokenSource? _polling;
+
+    public InviteWaitPage(
+        WizardContext ctx, ConnectableDevice device, DeviceInviteResponse invite, bool isQr)
+    {
+        InitializeComponent();
+        _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
+        _popups = ServiceHelper.GetRequiredService<IPopupService>();
+        _logger = ServiceHelper.GetRequiredService<ILogger<InviteWaitPage>>();
+        _ctx = ctx;
+        _member = ctx.RequireMember();
+        _device = device;
+        _invite = invite;
+        _isQr = isQr;
+        _watch = new DeviceInviteWatch(invite.ExpiresAt);
+
+        Header.Title = $"{device.DisplayName} Connection";
+        Present();
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        StartPolling();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        StopPolling();
+    }
+
+    /// <summary>
+    /// Renders whatever the watch currently says. Called on every change rather than patching
+    /// individual controls, so a state can never be half-applied.
+    /// </summary>
+    private void Present()
+    {
+        var name = NameFormatting.FirstName(_member.Name);
+
+        QrPlate.IsVisible = _isQr && !_watch.IsFinished;
+        SentPlate.IsVisible = !_isQr && !_watch.IsFinished;
+
+        if (_isQr && QrImage.Source is null && InviteQrCode.Render(_invite.Url) is { } png)
+            QrImage.Source = ImageSource.FromStream(() => new MemoryStream(png));
+
+        TitleHeading.Text = _watch.State switch
+        {
+            DeviceInviteWatchState.Connected => "All set",
+            DeviceInviteWatchState.Declined => $"{name} said it wasn't them",
+            DeviceInviteWatchState.Expired => "That link has expired",
+            DeviceInviteWatchState.Cancelled => "Cancelled",
+            _ => _isQr ? "Ask them to scan this" : $"Sent to {name}",
+        };
+
+        SubHeading.Text = _watch.State switch
+        {
+            DeviceInviteWatchState.Connected =>
+                $"{name}'s {_device.DisplayName} is connected.",
+            DeviceInviteWatchState.Declined =>
+                "Nothing was shared. Check you sent it to the right person.",
+            DeviceInviteWatchState.Expired =>
+                "Nobody finished in time, so it stopped working.",
+            DeviceInviteWatchState.Cancelled =>
+                "That link won't work any more.",
+            _ => _isQr
+                ? "Hold your phone up so they can scan it with their camera."
+                : "They can open it on any device. This screen updates when they do.",
+        };
+
+        StatusPlate.IsVisible = !_watch.IsFinished;
+        StatusSpinner.IsRunning = !_watch.IsFinished;
+
+        StatusLabel.Text = _watch.State == DeviceInviteWatchState.Opened
+            ? "They've opened it"
+            : "Waiting for them to open it";
+
+        CountdownLabel.Text = Countdown();
+
+        // Only an expiry is worth another go from here. A decline is an answer, and a cancel was
+        // the caregiver's own doing — offering "send again" on either would read as the app
+        // second-guessing a decision somebody just made.
+        ResendBtn.IsVisible = _watch.State == DeviceInviteWatchState.Expired;
+        CancelLink.Text = _watch.IsFinished ? "Done" : "Cancel";
+    }
+
+    /// <summary>
+    /// How long is left, in the coarsest unit that is still honest. Minutes while there are minutes,
+    /// because a per-second countdown on a screen somebody is holding up for another person to scan
+    /// is pressure with no purpose.
+    /// </summary>
+    private string Countdown()
+    {
+        var left = _watch.Remaining;
+        if (left <= TimeSpan.Zero)
+            return string.Empty;
+
+        if (left >= TimeSpan.FromHours(1))
+            return $"Works for another {(int)left.TotalHours} hour{Plural((int)left.TotalHours)}";
+
+        if (left >= TimeSpan.FromMinutes(1))
+            return $"Works for another {(int)left.TotalMinutes} minute{Plural((int)left.TotalMinutes)}";
+
+        return "Expires in under a minute";
+    }
+
+    private static string Plural(int n) => n == 1 ? string.Empty : "s";
+
+    private void StartPolling()
+    {
+        if (_watch.IsFinished || _polling is not null)
+            return;
+
+        _polling = new CancellationTokenSource();
+        _ = PollAsync(_polling.Token);
+    }
+
+    private void StopPolling()
+    {
+        _polling?.Cancel();
+        _polling?.Dispose();
+        _polling = null;
+    }
+
+    /// <summary>
+    /// Asks the server for the invitation's state until it is finished or the screen goes away.
+    /// </summary>
+    /// <remarks>
+    /// A failed poll is not reported. The caregiver is watching somebody else's progress and can do
+    /// nothing about our connectivity, so a banner appearing and vanishing as the signal comes and
+    /// goes would be noise about a problem that is not theirs. The loop keeps trying, and the
+    /// deadline is still honoured locally if the server never answers again.
+    /// </remarks>
+    private async Task PollAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested && !_watch.IsFinished)
+        {
+            var delay = _watch.NextPollDelay ?? DeviceInviteWatch.IdlePollInterval;
+
+            try
+            {
+                await Task.Delay(delay, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (ct.IsCancellationRequested)
+                return;
+
+            var changed = false;
+            try
+            {
+                var latest = await _api.GetDeviceInviteAsync(_member.Id, _invite.InviteId, ct);
+                _invite = latest;
+                changed = _watch.Apply(latest.Status, latest.DeviceId);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogInformation(ex, "Device invite poll failed; will retry.");
+                // The server could not be reached, so the deadline is ours to enforce.
+                changed = _watch.ExpireIfElapsed();
+            }
+
+            // The countdown moves whether or not the state did, so this redraws either way; the
+            // flag decides only whether a terminal state needs acting on.
+            await MainThread.InvokeOnMainThreadAsync(Present);
+
+            if (changed && _watch.State == DeviceInviteWatchState.Connected)
+            {
+                await MainThread.InvokeOnMainThreadAsync(OnConnectedAsync);
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The wearer finished. Hands over to the same confirmation the in-app flow uses, so a
+    /// connection made this way lands the caregiver exactly where the other one would have.
+    /// </summary>
+    private async Task OnConnectedAsync()
+    {
+        StopPolling();
+        _ctx.DeviceConnected = true;
+        Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
+
+        DeviceResponse? device = null;
+        try
+        {
+            var devices = await _api.GetDevicesAsync(_member.Id);
+            device = devices.Devices.FirstOrDefault(d => d.DeviceId == _watch.DeviceId)
+                     ?? devices.Devices.FirstOrDefault(d => d.Provider == _device.WireName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogInformation(ex, "Could not read the device list after a wearer connection.");
+        }
+
+        // The grant landed either way; a device list we could not read is no reason to tell the
+        // caregiver otherwise, so the confirmation falls back to what we already know.
+        device ??= new DeviceResponse
+        {
+            DeviceId = _watch.DeviceId ?? Guid.Empty,
+            Provider = _device.WireName,
+            DisplayName = _device.DisplayName,
+            Status = "active",
+        };
+
+        await Navigation.PushAsync(new ConnectionSuccessPage(_ctx, device));
+        Navigation.RemovePage(this);
+    }
+
+    private async void OnResendClicked(object? sender, EventArgs e)
+    {
+        ResendBtn.IsEnabled = false;
+        WaitError.IsVisible = false;
+
+        try
+        {
+            _invite = await _api.CreateDeviceInviteAsync(_member.Id, new CreateDeviceInviteRequest
+            {
+                Provider = _device.WireName,
+                Channel = _isQr ? "qr" : "link",
+            });
+
+            _watch = new DeviceInviteWatch(_invite.ExpiresAt);
+            QrImage.Source = null;
+            Present();
+
+            if (!_isQr)
+                await ShareLinkAsync(_invite, _member, _device);
+
+            StartPolling();
+        }
+        catch (ApiException ex)
+        {
+            WaitError.Text = ex.Message;
+            WaitError.IsVisible = true;
+        }
+        finally
+        {
+            ResendBtn.IsEnabled = true;
+        }
+    }
+
+    private async void OnCancelTapped(object? sender, EventArgs e)
+    {
+        StopPolling();
+
+        // Only a live invitation needs withdrawing. Cancelling one that already finished would be a
+        // pointless round trip, and on a completed one the server rightly refuses to undo it.
+        if (!_watch.IsFinished)
+        {
+            _watch.Cancel();
+            try
+            {
+                await _api.RevokeDeviceInviteAsync(_member.Id, _invite.InviteId);
+            }
+            catch (Exception ex)
+            {
+                // The link outliving this screen by its remaining minutes is a smaller problem than
+                // trapping the caregiver here, and it expires on its own.
+                _logger.LogInformation(ex, "Could not revoke the device invite on cancel.");
+            }
+        }
+
+        if (Navigation.NavigationStack.Count > 1)
+            await Navigation.PopAsync();
+        else
+            await _ctx.CancelAsync(this);
+    }
+
+    /// <summary>
+    /// Hands the invitation to the caregiver's own share sheet.
+    /// </summary>
+    /// <remarks>
+    /// Their sheet, their choice of app, their contact list. CardiTrack sends nothing and never
+    /// learns who it went to — which is why there is no recipient field anywhere in this flow.
+    /// </remarks>
+    public static Task ShareLinkAsync(
+        DeviceInviteResponse invite, CardiMemberResponse member, ConnectableDevice device)
+    {
+        var name = NameFormatting.FirstName(member.Name);
+
+        return Share.Default.RequestAsync(new ShareTextRequest
+        {
+            Title = $"Connect {name}'s {device.DisplayName}",
+            Subject = $"Connect your {device.DisplayName} to CardiTrack",
+            Text =
+                $"Hi {name} — open this to connect your {device.DisplayName} so I can keep an eye " +
+                $"on how you're doing. It only works for a day.{Environment.NewLine}{invite.Url}",
+        });
+    }
+}

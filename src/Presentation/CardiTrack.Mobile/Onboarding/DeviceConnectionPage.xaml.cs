@@ -43,6 +43,15 @@ public partial class DeviceConnectionPage : ContentPage
         AuthorizeBtn.Text = $"Authorize {device.DisplayName}";
         NeedsLabel.Text = $"To look after {_member.Name}, CardiTrack needs:";
         AuthorizingLabel.Text = $"Connecting to {_member.Name}'s {device.DisplayName}...";
+
+        // The same-phone flow needs the system browser, which only iOS and Android have. On the
+        // Windows build it would fail at the tap with "not supported here", so the handover is not
+        // an alternative there — it is the whole feature.
+        var canAuthorizeHere = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
+        AuthorizeBtn.IsVisible = canAuthorizeHere;
+        HandoverPrompt.Text = canAuthorizeHere
+            ? $"Is {NameFormatting.FirstName(_member.Name)} not with you?"
+            : $"Send this to {NameFormatting.FirstName(_member.Name)}";
     }
 
     private async void OnAuthorizeClicked(object? sender, EventArgs e)
@@ -131,6 +140,52 @@ public partial class DeviceConnectionPage : ContentPage
         {
             AuthorizingOverlay.IsVisible = false;
             AuthorizeBtn.IsEnabled = true;
+        }
+    }
+
+    private async void OnSendLinkClicked(object? sender, EventArgs e) =>
+        await HandOverAsync(isQr: false);
+
+    private async void OnShowQrClicked(object? sender, EventArgs e) =>
+        await HandOverAsync(isQr: true);
+
+    /// <summary>
+    /// Mints an invitation and moves to the waiting screen — the link goes out through the
+    /// caregiver's own share sheet, the QR code is drawn on the next page.
+    /// </summary>
+    /// <remarks>
+    /// The share sheet is opened from the waiting screen rather than here, and only after the
+    /// navigation: a caregiver who dismisses the sheet without sending should still land somewhere
+    /// that shows them a live invitation and lets them try again, not back on this page with an
+    /// invitation they cannot see.
+    /// </remarks>
+    private async Task HandOverAsync(bool isQr)
+    {
+        ConnectError.IsVisible = false;
+        SendLinkBtn.IsEnabled = false;
+        ShowQrBtn.IsEnabled = false;
+
+        try
+        {
+            var invite = await _api.CreateDeviceInviteAsync(_member.Id, new CreateDeviceInviteRequest
+            {
+                Provider = _device.WireName,
+                Channel = isQr ? "qr" : "link",
+            });
+
+            await Navigation.PushAsync(new InviteWaitPage(_ctx, _device, invite, isQr));
+
+            if (!isQr)
+                await InviteWaitPage.ShareLinkAsync(invite, _member, _device);
+        }
+        catch (ApiException ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            SendLinkBtn.IsEnabled = true;
+            ShowQrBtn.IsEnabled = true;
         }
     }
 
