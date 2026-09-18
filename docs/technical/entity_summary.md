@@ -239,9 +239,9 @@ The 33 domain enums:
 - **NotificationPriority**: Critical, High, Medium, Low
 - **NotificationState**: Open, Snoozed, Resolved, Superseded
 - **NotificationResolutionReason**: GapClosed, Dismissed, MonitoringPaused, ScopeRemoved
-- **DeliveryCategory**: Safety, Health, Nudge (delivery policy class for outbound pushes)
+- **DeliveryCategory**: Safety, Health, Nudge, Questionnaire, Reassurance, Advise
 - **DeliveryChannel**: Push, InApp
-- **DeliverySourceType**: Alert, Notification
+- **DeliverySourceType**: Alert, Notification, Questionnaire, Reassurance, Advise
 - **DeliveryState**: Pending, Sent, Delivered, Suppressed, Failed, DeadLettered, Undelivered
 - **EscalationStage**: Initial, Repushed, FannedOut, UndeliveredCritical
 - **OsAuthorizationStatus**: NotDetermined, Denied, Granted, Provisional, Ephemeral (OS-level push permission)

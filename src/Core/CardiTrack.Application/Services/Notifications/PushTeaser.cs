@@ -25,6 +25,10 @@ public static class PushTeaser
             // wrong would make the good news cost the same as the bad. The invitation stays, but
             // as an offer rather than an instruction.
             DeliveryCategory.Reassurance => ("All quiet", "Nothing has come up this week. Open CardiTrack for the details."),
+            // Names the card, never the suggestion: no topic, no finding, no name. The lock
+            // screen is how a caregiver learns there is something to try; opening the app is how
+            // they read it.
+            DeliveryCategory.Advise => (AppName, "Something to try — open CardiTrack"),
             _ => (AppName, "Something needs your attention — open CardiTrack"),
         };
 

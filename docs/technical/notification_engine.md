@@ -164,21 +164,24 @@ channel it lands in, whether it escalates, and whether the user may silence it.
 | Silenceable | No — snooze ≤72h with logged acknowledgement | Sensitivity tuning (R2) | Yes — snooze, mute forever |
 | OS channel | `carditrack.safety.v2` (sound + vibration) | `carditrack.health.v4` (HIGH, sound, no vibration) | `carditrack.nudges.v2` (ding, no vibration) |
 
-Two categories have been added since this table was written, both of which push and both of which
-defer to quiet hours in full rather than overriding them, and neither of which escalates:
-**Questionnaire** (`MemberQuestionnaire`, pushed by `QuestionnaireAlertWorker`) and
+Further categories have been added since this table was written, all of which push and all of which
+defer to quiet hours in full rather than overriding them, and none of which escalates:
+**Questionnaire** (`MemberQuestionnaire`, pushed by `QuestionnaireAlertWorker`),
 **Reassurance** — the all-clear `QuietReassuranceWorker` sends when nothing has been raised about a
-member for seven days or more with the whole pipeline demonstrably running (`QuietStretch`). They
-share the Nudge OS channel and its ding: neither is an anomaly, and neither has earned the pager.
-Reassurance is the one delivery with a longer TTL than its siblings (6h, not 5min) — "nothing has
-come up" is still true hours later, and the phone worth reaching is the one that was off overnight.
-It is also the only category that carries no severity at all, because it exists to say there is
-nothing to grade.
+member for seven days or more with the whole pipeline demonstrably running (`QuietStretch`) — and
+**Advise** — a new "Something to try" written by the digest job. They
+share the Nudge OS channel and its ding: none of them is an anomaly, and none has earned the pager.
+Reassurance and Advise are the deliveries with a longer TTL than their siblings (6h, not 5min) —
+a suggestion is still worth opening hours later, and the phone worth reaching is the one that was
+off for a meeting. Advise's collapse key is per member so five writes a day replace each other on
+the lock screen rather than stacking.
+Reassurance and Advise carry no severity at all — there is nothing to grade.
 
 Health alerts keep their own `Alert` table and lifecycle (New → Acknowledged → Resolved). Nudges get
 the `Notification` table. Reassurance has no table of its own — nothing writes down that nothing
 happened, so its `NotificationDelivery` row *is* the record that a family was told, and its
-`SourceId` carries the CardiMember rather than an event. **Both produce `NotificationDelivery` rows** — that shared outbox is what
+`SourceId` carries the CardiMember rather than an event. Advise's `SourceId` is also the member:
+one push per regeneration pass, not per topic. **All of them produce `NotificationDelivery` rows** — that shared outbox is what
 makes the reliability work in §6 apply uniformly, without merging two domain models that disagree
 about almost everything else.
 
@@ -866,7 +869,8 @@ integer enums, `ICardiMemberAccessService` scoping (unreadable member → **404*
 | `POST /api/v1/notifications/{id}/seen` · `/snooze` · `/dismiss` | Funnel + the three affordances. Dismiss requires `acknowledgedConsequence` for Safety, else **400** |
 | `GET` / `PUT /api/v1/notifications/preferences` | Quiet hours, muted categories, lock-screen detail |
 | `GET /api/v1/notifications/mutes` · `DELETE /mutes/{id}` · `POST /mutes/reset` | The silence surface |
-| `POST /api/v1/internal/notifications/enqueue` | **Service-to-service only.** Google OIDC ID token validated on issuer, audience **and the calling service account's verified `email`** — audience-pinning alone admits any GCP principal (§7.2 C4). Behind Cloud Run IAM `roles/run.invoker`; unreachable with a user JWT |
+| `POST /api/v1/internal/notifications/enqueue` | **Service-to-service only.** Google OIDC ID token validated on issuer, audience **and the calling service account's verified `email`** — audience-pinning alone admits any GCP principal (§7.2 C4). Behind Cloud Run IAM `roles/run.invoker`; unreachable with a user JWT. Body is the alert id; recipients are resolved server-side |
+| `POST /api/v1/internal/notifications/enqueue-advise` | **Same gate.** Digest job, after a successful `MemberAdvise` write. Body is the CardiMember id; one teaser per pass, collapsed per member |
 
 All actions idempotent; 404 (never 403) on another user's row, matching the alerts convention.
 

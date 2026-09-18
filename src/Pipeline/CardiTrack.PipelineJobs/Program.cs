@@ -143,10 +143,12 @@ if (jobName == "enrich")
     builder.Services.AddEnvironmentalContextServices(configuration);
 }
 
-// Assessor-only: orange/red alerts POST to the API's internal enqueue endpoint. Digest and
-// aggregator never raise those alerts, so they must not require Api:BaseUrl / Pipeline:Audience
-// at startup. The send stack itself stays in the API (AddPushServices is still not called).
-if (jobName == "assess")
+// Assessor and digest: both POST to the API's internal enqueue endpoints (orange/red alerts
+// from assess; a new "Something to try" from digest — assess also runs the digest writer
+// after a concerning window). Aggregator / enrich / theme never raise those, so they must
+// not require Api:BaseUrl / Pipeline:Audience at startup. The send stack itself stays in
+// the API (AddPushServices is still not called).
+if (jobName is "assess" or "digest")
 {
     builder.Services.AddInternalNotificationEnqueue(configuration);
 }

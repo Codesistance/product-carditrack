@@ -10,13 +10,13 @@ namespace CardiTrack.Domain.Enums;
 /// Deliberately distinct from <see cref="NotificationCategory"/>, which sub-categorises
 /// <see cref="Entities.Notification"/> rows only (Safety/Blocking/Unlock/Account, for nudge
 /// silencing rules) and has no meaning for an <see cref="Entities.Alert"/>. A
-/// <see cref="Entities.NotificationDelivery"/> row is polymorphic over three sources, so its
+/// <see cref="Entities.NotificationDelivery"/> row is polymorphic over several sources, so its
 /// category has to mean something for each: a Safety-class <see cref="NotificationCategory"/>
 /// notification maps to <see cref="Safety"/>; every <see cref="Entities.Alert"/> maps to
 /// <see cref="Health"/> regardless of <see cref="AlertSeverity"/> (severity drives push-vs-in-app
 /// and quiet-hours override within Health, not the category itself); nudge-shaped notifications map
 /// to <see cref="Nudge"/>; every <see cref="Entities.MemberQuestionnaire"/> maps to
-/// <see cref="Questionnaire"/>.
+/// <see cref="Questionnaire"/>; a persisted "Something to try" maps to <see cref="Advise"/>.
 /// </remarks>
 public enum DeliveryCategory
 {
@@ -46,5 +46,14 @@ public enum DeliveryCategory
     /// pushes, defers to quiet hours in full, and never escalates.
     /// </summary>
     [Display(Name = "Reassurance")]
-    Reassurance = 5
+    Reassurance = 5,
+
+    /// <summary>
+    /// A new "Something to try" suggestion was written for a member. Not an anomaly and not a
+    /// medical-alert chime: it pushes on the Nudge channel, defers to quiet hours in full, and
+    /// never escalates. One delivery per regeneration pass (not per topic); the collapse key is
+    /// per member so later writes that day replace the previous teaser rather than stacking.
+    /// </summary>
+    [Display(Name = "Advise")]
+    Advise = 6
 }

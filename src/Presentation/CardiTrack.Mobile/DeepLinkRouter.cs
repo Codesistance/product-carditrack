@@ -33,6 +33,9 @@ public static class DeepLinkRouter
             NudgeDestinationKind.MemberQuestions when destination.CardiMemberId is { } q
                 => $"{QuestionnairesPage.Route}?memberId={q}",
 
+            NudgeDestinationKind.MemberAdvise when destination.CardiMemberId is { } advise
+                => $"{CardiMemberDetailPage.Route}?memberId={advise}&focus={CardiMemberDetailPage.AdviseFocus}",
+
             NudgeDestinationKind.MemberEdit when destination.CardiMemberId is { } e
                 => $"{EditCardiMemberPage.Route}?memberId={e}",
 

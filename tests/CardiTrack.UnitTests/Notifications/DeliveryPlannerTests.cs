@@ -210,4 +210,64 @@ public class DeliveryPlannerTests
         // from enqueue time would expire before it was ever due.
         Assert.Equal(quietHoursEnd.AddHours(6), plan.ExpiresAt);
     }
+
+    // ── Advise ──────────────────────────────────────────────────────────────────
+    //
+    // A new "Something to try" is worth leaving the app for, but it is not an anomaly. It must
+    // not borrow Health's escalation, Safety's override, or the critical flag, and five writes
+    // a day must not stack on the lock screen (collapse is DispatchService's job; this only
+    // plans one row).
+
+    [Fact]
+    public void Advise_PushesImmediatelyOutsideQuietHours()
+    {
+        var plan = DeliveryPlanner.Plan(Context(DeliveryCategory.Advise, withinQuietHours: false));
+
+        Assert.Equal(DeliveryChannel.Push, plan.Channel);
+        Assert.Null(plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void Advise_DefersUntilQuietHoursEnd_NeverOverridesThem()
+    {
+        var quietHoursEnd = UtcNow.AddHours(7);
+
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Advise, withinQuietHours: true, quietHoursEnd: quietHoursEnd));
+
+        Assert.Equal(DeliveryChannel.Push, plan.Channel);
+        Assert.Equal(quietHoursEnd, plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void Advise_NeverEscalatesAndIsNeverCritical()
+    {
+        var plan = DeliveryPlanner.Plan(Context(DeliveryCategory.Advise));
+
+        Assert.False(plan.Escalates);
+        Assert.False(plan.AllowCritical);
+        Assert.False(DeliveryPlanner.AllowsCritical(DeliveryCategory.Advise, severity: null));
+        Assert.False(DeliveryPlanner.AllowsCritical(DeliveryCategory.Advise, AlertSeverity.Red));
+    }
+
+    [Fact]
+    public void Advise_OutlivesAnAnomalyTeaser_SoAPhoneOffForTheMeetingStillGetsIt()
+    {
+        var advise = DeliveryPlanner.Plan(Context(DeliveryCategory.Advise));
+        var orangeHealth = DeliveryPlanner.Plan(Context(DeliveryCategory.Health, AlertSeverity.Orange));
+
+        Assert.Equal(UtcNow.AddHours(6), advise.ExpiresAt);
+        Assert.True(advise.ExpiresAt > orangeHealth.ExpiresAt);
+    }
+
+    [Fact]
+    public void Advise_DeferredByQuietHours_StillGetsItsFullLifetimeFromWhenItIsSent()
+    {
+        var quietHoursEnd = UtcNow.AddHours(7);
+
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Advise, withinQuietHours: true, quietHoursEnd: quietHoursEnd));
+
+        Assert.Equal(quietHoursEnd.AddHours(6), plan.ExpiresAt);
+    }
 }

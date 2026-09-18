@@ -6,10 +6,10 @@ namespace CardiTrack.Domain.Enums;
 /// Which table a <see cref="Entities.NotificationDelivery"/> row actually carries content for.
 /// </summary>
 /// <remarks>
-/// <see cref="Entities.NotificationDelivery"/> is polymorphic over this rather than FK'd to one
-/// table, because an <see cref="Entities.Alert"/> and a <see cref="Entities.Notification"/> have
-/// nothing else in common — the outbox is the shared reliability substrate, not a shared domain
-/// model.
+    /// <see cref="Entities.NotificationDelivery"/> is polymorphic over this rather than FK'd to one
+    /// table, because an <see cref="Entities.Alert"/>, a <see cref="Entities.Notification"/> and the
+    /// row-less sources have nothing else in common — the outbox is the shared reliability
+    /// substrate, not a shared domain model.
 /// </remarks>
 public enum DeliverySourceType
 {
@@ -29,5 +29,14 @@ public enum DeliverySourceType
     /// the delivery row itself is the only record that the family was told.
     /// </summary>
     [Display(Name = "Reassurance")]
-    Reassurance = 4
+    Reassurance = 4,
+
+    /// <summary>
+    /// A regeneration pass just wrote (or overwrote) <see cref="Entities.MemberAdvise"/> rows.
+    /// There is one push per pass, not per topic, so <see cref="Entities.NotificationDelivery.SourceId"/>
+    /// carries the CardiMember — the FCM deep link needs the member to open "Something to try",
+    /// not a topic id.
+    /// </summary>
+    [Display(Name = "Advise")]
+    Advise = 5
 }

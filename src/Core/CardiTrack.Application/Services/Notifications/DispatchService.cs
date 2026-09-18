@@ -72,6 +72,24 @@ public interface IDispatchService
         Guid cardiMemberId, int weeklyOccurrence, CancellationToken ct = default);
 
     /// <summary>
+    /// Enqueues one "Something to try" teaser per caregiver with <c>ReceiveAlerts</c> — the same
+    /// fan-out <see cref="EnqueueForAlertAsync"/> does, after the digest pass has persisted new
+    /// <see cref="Domain.Entities.MemberAdvise"/> rows. One delivery per pass, not per topic:
+    /// the card is a single surface, and five writes a day must replace each other on the lock
+    /// screen rather than stack.
+    /// </summary>
+    /// <remarks>
+    /// Re-checks that the member is still active and that at least one Advise row exists — a
+    /// silence pass that withdrew every topic must not page the family about a card that is no
+    /// longer there. Recipients and quiet hours are resolved here, never trusted from the
+    /// pipeline caller. The <see cref="EnqueueRequest.DedupKey"/> includes the latest
+    /// <c>GeneratedAtUtc</c> so a retry of the same write is a no-op and the next slot is a new
+    /// event; the collapse key does not, so the OS keeps only the newest teaser per member.
+    /// </remarks>
+    Task<IReadOnlyList<NotificationDelivery>> EnqueueForAdviseAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// Re-attempts a row <c>NotificationDispatchWorker</c> claimed off the outbox. If the row
     /// already targets a specific device (a prior attempt fanned out to it), only that device is
     /// retried. If it never got that far — the original enqueue found zero live tokens — this
@@ -297,6 +315,43 @@ public class DispatchService : IDispatchService
                 // replace last week's on the device rather than stack a pile of identical good
                 // news in the shade.
                 CollapseKey: $"reassurance-{cardiMemberId}");
+
+            results.Add(await EnqueueAsync(request, ct));
+        }
+
+        return results;
+    }
+
+    public async Task<IReadOnlyList<NotificationDelivery>> EnqueueForAdviseAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        if (member is null || !member.IsActive)
+            return [];
+
+        var advises = await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId);
+        if (advises.Count == 0)
+            return [];
+
+        // One key per pass: every topic written together shares GeneratedAtUtc, and a hiccup
+        // that kept an older row must not mint a second notification for that older stamp.
+        var generatedAt = advises.Max(a => a.GeneratedAtUtc);
+
+        var links = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId);
+        var recipients = links.Where(l => l.IsActive && l.ReceiveAlerts).Select(l => l.UserId).Distinct().ToList();
+
+        var results = new List<NotificationDelivery>(recipients.Count);
+        foreach (var userId in recipients)
+        {
+            var request = new EnqueueRequest(
+                SourceType: DeliverySourceType.Advise,
+                SourceId: cardiMemberId,
+                UserId: userId,
+                CardiMemberId: cardiMemberId,
+                Category: DeliveryCategory.Advise,
+                Severity: null,
+                DedupKey: $"advise:{cardiMemberId}:{userId}:{generatedAt.Ticks}",
+                CollapseKey: $"advise-{cardiMemberId}");
 
             results.Add(await EnqueueAsync(request, ct));
         }

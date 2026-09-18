@@ -9,12 +9,13 @@ using Microsoft.AspNetCore.Mvc;
 namespace CardiTrack.API.Controllers.Internal;
 
 /// <summary>
-/// Service-to-service only — the AI pipeline's <c>SeverityRouter</c> calls this once it has
-/// written an <see cref="CardiTrack.Domain.Entities.Alert"/> row (notification_engine.md §12).
+/// Service-to-service only — the AI pipeline calls this once it has written an
+/// <see cref="CardiTrack.Domain.Entities.Alert"/> row or a new
+/// <see cref="CardiTrack.Domain.Entities.MemberAdvise"/> set (notification_engine.md §12).
 /// Deliberately not under <c>api/v1/notifications</c> and not on the default Auth0 scheme: this
 /// is the pipeline's transport into the same rules engine every other producer uses, not a copy
 /// of it (§2) — recipient resolution, quiet hours, dedup and escalation all happen inside
-/// <see cref="IDispatchService.EnqueueForAlertAsync"/>, identically to a Worker-raised alert.
+/// <see cref="IDispatchService"/>, identically to a Worker-raised alert.
 /// </summary>
 [ApiController]
 [Authorize(AuthenticationSchemes = GoogleOidcExtensions.SchemeName)]
@@ -56,6 +57,33 @@ public class InternalNotificationsController : ControllerBase
             _logger.LogWarning(
                 "Internal enqueue for Alert {AlertId} produced no deliveries — missing alert or no recipients.",
                 request.AlertId);
+        }
+
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = $"Enqueued {results.Count} deliver{(results.Count == 1 ? "y" : "ies")}.",
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
+    /// Digest-job transport for a new "Something to try". Same OIDC + Cloud Run IAM gate as
+    /// <see cref="Enqueue"/>; recipients, quiet hours and collapse live in
+    /// <see cref="IDispatchService.EnqueueForAdviseAsync"/>.
+    /// </summary>
+    [HttpPost("enqueue-advise")]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApiResponse<object>>> EnqueueAdvise(
+        [FromBody] EnqueueAdviseRequest request, CancellationToken ct)
+    {
+        var results = await _dispatch.EnqueueForAdviseAsync(request.CardiMemberId, ct);
+
+        if (results.Count == 0)
+        {
+            _logger.LogWarning(
+                "Internal enqueue for Advise on CardiMember {CardiMemberId} produced no deliveries — missing member, no rows, or no recipients.",
+                request.CardiMemberId);
         }
 
         return Ok(new ApiResponse<object>

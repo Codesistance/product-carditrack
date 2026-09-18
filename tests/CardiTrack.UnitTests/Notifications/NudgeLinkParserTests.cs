@@ -26,6 +26,8 @@ public class NudgeLinkParserTests
         NudgeDestinationKind.MemberBaseline)]
     [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222",
         NudgeDestinationKind.MemberDetail)]
+    [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/advise",
+        NudgeDestinationKind.MemberAdvise)]
     public void MemberScopedLinksCarryTheirMemberThrough(string link, NudgeDestinationKind expected)
     {
         var destination = NudgeLinkParser.Parse(link);

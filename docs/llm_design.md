@@ -731,7 +731,11 @@ already up):
   `PromptVersion` is due on the next waking pass, so a deployed brief change does not hide
   behind the interval or fire at 03:00. Rows serve for at most 3 days (`AdviseStaleness.MaxAge`);
   the card shows its own "Updated N ago" so a day-old suggestion cannot masquerade as an
-  answer to today.
+  answer to today. A successful write also POSTs `enqueue-advise` on the API's internal
+  notification endpoint (the same transport the assessor uses for orange/red alerts): one
+  PHI-free "Something to try" teaser per pass, not per topic, collapsed per member, deferred
+  by each caregiver's quiet hours, never escalated, on the Nudge channel. Clinical silence
+  that withdraws every topic does not notify. A failed POST does not roll back the write.
 - **Failure posture.** A blank clinical field, a failed rewrite call, or rejected copy keeps the
   previous row (a hiccup); clinical silence on a topic removes its row (deliberate); a guard-
   tripped clinical entry is withheld and its row withdrawn.

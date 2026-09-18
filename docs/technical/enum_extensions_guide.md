@@ -352,8 +352,8 @@ Display names below are the exact `[Display(Name = "...")]` values from `src/Cor
 - **NotificationState** — Open, Snoozed, Resolved, Superseded
 - **NotificationResolutionReason** — Gap Closed, Dismissed, Monitoring Paused, Scope Removed
 - **DeliveryChannel** — Push, In-app
-- **DeliveryCategory** — Safety, Health, Nudge
-- **DeliverySourceType** — Alert, Notification
+- **DeliveryCategory** — Safety, Health, Nudge, Questionnaire, Reassurance, Advise
+- **DeliverySourceType** — Alert, Notification, Questionnaire, Reassurance, Advise
 - **DeliveryState** — Pending, Sent, Delivered, Suppressed, Failed, DeadLettered, Undelivered
 - **EscalationStage** — Initial, Re-pushed, Fanned out, Undelivered — critical
 - **OsAuthorizationStatus** — Not determined, Denied, Granted, Provisional, Ephemeral
