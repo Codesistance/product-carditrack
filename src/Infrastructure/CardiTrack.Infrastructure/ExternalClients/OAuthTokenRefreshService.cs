@@ -73,12 +73,20 @@ public class OAuthTokenRefreshService : IOAuthTokenRefreshService
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync();
+            var message =
+                $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id}: {errorBody}";
 
             if (IsGrantRejection(response.StatusCode, errorBody))
+            {
                 await _deviceConnections.UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
 
-            throw new InvalidOperationException(
-                $"Token refresh returned {(int)response.StatusCode} for DeviceConnection {connection.Id}: {errorBody}");
+                // Typed apart from the throw below so callers can tell the two outcomes apart
+                // without reading the message: this one is settled and needs a person, the other
+                // is worth retrying. See DeviceGrantRejectedException for why that matters.
+                throw new DeviceGrantRejectedException(connection.Id, response.StatusCode, message);
+            }
+
+            throw new InvalidOperationException(message);
         }
 
         var tokenBody = await response.Content.ReadAsStringAsync();

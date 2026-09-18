@@ -1,6 +1,7 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.Extensions;
+using CardiTrack.Infrastructure.ExternalClients;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Worker.Workers;
@@ -33,6 +34,7 @@ public class WearableSyncWorker : CronBackgroundService
 
         var successCount = 0;
         var failureCount = 0;
+        var awaitingReconnectCount = 0;
 
         foreach (var connection in connections)
         {
@@ -57,6 +59,21 @@ public class WearableSyncWorker : CronBackgroundService
                     "Synced DeviceConnection {Id} (DeviceType={DeviceType}) for CardiMember {CardiMemberId}.",
                     connection.Id, connection.DeviceType, connection.CardiMemberId);
             }
+            catch (DeviceGrantRejectedException ex)
+            {
+                // Nothing here failed. The provider has refused the refresh token, the connection
+                // is already retired to TokenExpired, and DeviceAuthRecoveryWorker keeps probing it
+                // on a widening backoff while the DEVICE_AUTH_BROKEN nudge asks the caregiver to
+                // reconnect — the one thing that can fix it. Logged at Warning and without the
+                // stack, and counted apart from the failures, because a wearer withdrawing consent
+                // is not this worker breaking: at Error it raised the service's error rate every
+                // quarter hour for as long as the device stayed unreconnected.
+                awaitingReconnectCount++;
+                _logger.LogWarning(
+                    "DeviceConnection {Id} (DeviceType={DeviceType}) for CardiMember {CardiMemberId} is "
+                    + "awaiting reconnection: the provider refused the refresh token ({StatusCode}).",
+                    connection.Id, connection.DeviceType, connection.CardiMemberId, (int)ex.StatusCode);
+            }
             catch (Exception ex)
             {
                 failureCount++;
@@ -67,7 +84,7 @@ public class WearableSyncWorker : CronBackgroundService
         }
 
         _logger.LogInformation(
-            "WearableSync complete. Success: {Success}, Failed: {Failed}.",
-            successCount, failureCount);
+            "WearableSync complete. Success: {Success}, Failed: {Failed}, Awaiting reconnect: {AwaitingReconnect}.",
+            successCount, failureCount, awaitingReconnectCount);
     }
 }

@@ -640,7 +640,7 @@ Apm__Data                            = carditrack-<env>-apm-data
 
 Plaintext env vars: `ASPNETCORE_ENVIRONMENT`, `GCP_PROJECT_ID`, `Apm__Engine`, `Apm__MetricsEnabled`, `Apm__TracesSampleRatio`, `Serilog__MinimumLevel__Default`, plus the per-device-type pull parameters below. The last two come from the per-service `traces_sample_ratio` / `log_minimum_level` tfvars (`worker` attribute) — traces `1.0` everywhere; the worker's log level is **`Warning` in prod and `Information` in dev** (dev sets it deliberately).
 
-> **Consequence of the prod `Warning` baseline:** in prod the per-run `LogInformation` lines below (`triggered`, `complete. Success: n, Failed: n`) are **not emitted** — a healthy run leaves no trace, and only per-member failures (`LogWarning`/`LogError`) surface. Cron is internal to the service (`CronBackgroundService`), so there is no per-run request log to fall back on. **Dev already runs the worker at `Information`**, so the run summaries are emitted there; to get them in prod, set `log_minimum_level = { worker = "Information" }` in its tfvars.
+> **Consequence of the prod `Warning` baseline:** in prod the per-run `LogInformation` lines below (`triggered`, `complete. Success: n, Failed: n, Awaiting reconnect: n`) are **not emitted** — a healthy run leaves no trace, and only per-member failures (`LogWarning`/`LogError`) surface. Cron is internal to the service (`CronBackgroundService`), so there is no per-run request log to fall back on. **Dev already runs the worker at `Information`**, so the run summaries are emitted there; to get them in prod, set `log_minimum_level = { worker = "Information" }` in its tfvars.
 
 > **Provider note:** the `GoogleHealth` provider block authenticates against **Google OAuth** and pulls data from the **Google Health API** (`health.googleapis.com`) for every device type it serves (Fitbit, Google Pixel Watch) — the legacy Fitbit Web API is decommissioned September 2026. Google access tokens are short-lived (~1 hour), hence `TokenLifetimeHours: 1`. `GoogleHealthApiClient` reads each data type by the method that type supports: `dataPoints:dailyRollUp` for the Interval and Sample metrics (including `sedentary-period`, whose `durationSum` is a protobuf `Duration` — seconds with a literal `s` suffix, `"28800s"` — converted to minutes), and `dataPoints` list for sleep sessions, for the Daily records `daily-resting-heart-rate`, `daily-vo2-max`, `daily-respiratory-rate` and `daily-sleep-temperature-derivations` (which have no rollup), and for the `oxygen-saturation` sample series. SpO2 is listed rather than rolled up because the rollup union carries no `oxygenSaturation` member at all: average, minimum and maximum are derived from the samples so all three describe one series, and the `daily-oxygen-saturation` summary is used only as a fallback for the average — its `lowerBoundPercentage`/`upperBoundPercentage` describe the day's distribution, not the lowest and highest readings, so they are never stored as min/max. Response field names, wire formats and enum members are checked against the v4 discovery document; whether each is actually populated for a given wearer's device is still pending live-sandbox verification. Note that a metric absent from a day's response is stored as **null, not 0** — an unworn or unsynced device is not a still one, and the merge and baseline both read a 0 as a real measurement.
 >
@@ -659,7 +659,7 @@ dotnet run
 The worker starts an HTTP listener (default port 8080, or `PORT` if set) for `/healthz`. Run logging is `Information`, which the local appsettings `Warning` baseline suppresses — set `Serilog__MinimumLevel__Default=Information` (and `Logging__LogLevel__Default=Information`, already the appsettings value) to see each run, as deployed dev already does (prod stays at `Warning` and suppresses these):
 ```
 [06:00:00 INF] WearableSync triggered at 2026-03-12T06:00:00.000Z
-[06:00:04 INF] WearableSync complete. Success: 12, Failed: 0.
+[06:00:04 INF] WearableSync complete. Success: 12, Failed: 0, Awaiting reconnect: 0.
 ```
 
 ## Deployment
@@ -711,8 +711,9 @@ Logging mirrors the API: **Serilog console sink** always, plus `AddApmShipping` 
 | `WearableSync triggered at {Time}` | Info | Sync job started |
 | `Synced DeviceConnection {Id}` | Info | One device synced OK |
 | `No sync service registered for DeviceType {DeviceType}` | Warning | Provider not registered |
-| `Failed to sync DeviceConnection {Id}` | Error | API/network failure |
-| `WearableSync complete. Success: {S}, Failed: {F}` | Info | Sync run summary |
+| `Failed to sync DeviceConnection {Id}` | Error | API/network failure — **not** a provider refusing the grant, which has its own line below |
+| `DeviceConnection {Id} ... is awaiting reconnection` | Warning | The provider refused the refresh token (`DeviceGrantRejectedException`). The connection is already `TokenExpired`, `DeviceAuthRecoveryWorker` is retrying it on a backoff, and the `DEVICE_AUTH_BROKEN` nudge is asking the caregiver to reconnect — so this recurs every tick until somebody does, and is deliberately not an error |
+| `WearableSync complete. Success: {S}, Failed: {F}, Awaiting reconnect: {R}` | Info | Sync run summary. `{R}` is counted apart from `{F}`: a device waiting on its owner is not a failed sync |
 | `OrphanedOrganizationCleanup triggered at {Time}` | Info | Cleanup job started |
 | `OrphanedOrganizationCleanup removed {Count} organizations older than {MinAge} ...` | Warning | Orphans found and deleted — a client bypassed the atomic setup endpoint; investigate |
 | `OrphanedOrganizationCleanup complete. Nothing to remove.` | Info | Cleanup no-op run |
