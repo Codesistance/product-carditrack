@@ -13,7 +13,7 @@ The 19 workers registered today (crons from `appsettings.json`):
 | `OrphanedOrganizationCleanupWorker` | `0 0 3 * * *` (daily 03:00) | Deletes organizations stranded by a failed onboarding |
 | `OrphanedPhotoCleanupWorker` | `0 30 3 * * *` (daily 03:30) | Deletes member-photo blobs no active member references (24 h grace) and clears photos left on soft-deleted members — the enforcement backstop behind the API's best-effort deletes |
 | `ExpiredReportCleanupWorker` | `0 0 4 * * *` (daily 04:00) | Deletes health-data export objects and rows past their download window, and fails out generations abandoned by a restart |
-| `RetentionWorker` | `0 0 5 * * *` (daily 05:00) | The two published retention promises: erases an account once its 30-day cancellation window has elapsed, and deletes member chat conversations 90 days after their last turn |
+| `RetentionWorker` | `0 0 5 * * *` (daily 05:00) | The two published retention promises — erases an account once its 30-day cancellation window has elapsed, and deletes member chat conversations 90 days after their last turn — plus a third pass that clears wearer device invitations 30 days after they finish or expire |
 | `BaselineCalculationWorker` | `0 30 2 * * *` (daily 02:30) | Recalculates each member's `PatternBaseline` rows — 7/14-day provisional and 30/60/90-day windows |
 | `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly; `RunOnStartup: true`) | Pre-creates partitions for the partitioned time-series tables and drops the ones past retention — granular 90 d, hourly rollups 13 mo, **digests 7 mo, real-time assessments 90 d, environmental readings 90 d** |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
@@ -61,7 +61,7 @@ src/Worker/CardiTrack.Worker/
 │   ├── NotificationDispatchWorker.cs        # Push outbox pump: claim, retry, escalate, expire
 │   ├── PushCanaryWorker.cs                  # End-to-end push liveness canary (incl. PushCanaryOptions)
 │   ├── OrphanedPhotoCleanupWorker.cs        # Reaps orphaned member-photo blobs (enforcement backstop)
-│   └── RetentionWorker.cs                   # Account erasure at 30 days; member chat at 90 (M6)
+│   └── RetentionWorker.cs                   # Account erasure at 30 days; member chat at 90 (M6); device invites at 30
 ├── CronBackgroundService.cs       # Abstract base — parses cron, loops on schedule (+ RunOnStartup)
 ├── WorkerOptions.cs               # { CronExpression, RunOnStartup } options record
 ├── DeviceSyncAuditOptions.cs      # { SampleSize } for the audit worker
@@ -70,6 +70,7 @@ src/Worker/CardiTrack.Worker/
 ├── PartitionMaintenanceOptions.cs # DaysAhead + the five per-table retention values
 ├── OrphanedPhotoCleanupOptions.cs # DryRun switch for the photo-blob backstop sweep
 ├── RetentionWorkerOptions.cs      # DryRun + ChatRetentionDays + BatchSize for the retention sweep
+│                                  (the invite figure is DeviceInvites:RetentionDays, shared with the API)
 ├── WorkerServiceExtensions.cs     # Generic AddWorker<T> registration helper
 ├── Program.cs                     # Host setup, DI registration, /healthz endpoint
 ├── Dockerfile                     # Chiseled aspnet runtime image

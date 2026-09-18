@@ -86,6 +86,7 @@ builder.Services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreatio
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
 builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
+builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -192,6 +193,11 @@ builder.Services.Configure<ExpiredReportCleanupOptions>(
 builder.Services.AddWorker<RetentionWorker>(configuration, nameof(RetentionWorker));
 builder.Services.Configure<RetentionWorkerOptions>(
     configuration.GetSection($"Workers:{nameof(RetentionWorker)}"));
+// The invite sweep's own figure lives with the rest of the invite settings rather than in the
+// worker's section, so how long an invitation lives and how long its record is kept are configured
+// in one place and cannot drift apart.
+builder.Services.Configure<CardiTrack.Infrastructure.Settings.DeviceInviteOptions>(
+    configuration.GetSection(CardiTrack.Infrastructure.Settings.DeviceInviteOptions.SectionName));
 
 // Push delivery spine (notification_engine.md Phase 3)
 builder.Services.AddWorker<NotificationDispatchWorker>(configuration, nameof(NotificationDispatchWorker));

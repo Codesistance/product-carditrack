@@ -204,6 +204,14 @@ module "deployments" {
     # provider. Without a custom domain the appsettings localhost default stays in effect.
     var.api_custom_domain != "" ? {
       "DeviceProviders__0__RedirectUri" = "https://${var.api_custom_domain}/api/v1/oauth/redirect/fitbit"
+      # The origin wearer-invitation links point at. Configured rather than derived from the
+      # request, because Host is client-supplied: an attacker who could set it would get CardiTrack
+      # to mint an invitation aimed at their own host, and the caregiver would forward it in good
+      # faith. Cannot use the service's own .uri here — that is a self-reference inside the
+      # resource — so a domainless environment falls back to the request origin, which is the
+      # localhost case this is written for. Prod has no custom domain today (see
+      # docs/infrastructure.md); set one before wearer invitations are used there.
+      "DeviceInvites__PublicBaseUrl" = "https://${var.api_custom_domain}"
     } : {}
   )
   api_secret_env_vars = merge(

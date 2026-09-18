@@ -19,6 +19,7 @@ namespace CardiTrack.API.Controllers;
 public class DevicesController : BaseApiController
 {
     private readonly IDeviceConnectionService _deviceConnections;
+    private readonly IDeviceConnectionInviteService _invites;
     private readonly IManualDeviceSyncService _manualSync;
     private readonly IDeviceHistoryRepullService _historyRepull;
     private readonly IValidator<ConnectDeviceRequest> _connectValidator;
@@ -29,6 +30,7 @@ public class DevicesController : BaseApiController
         IUserContext userContext,
         ILogger<DevicesController> logger,
         IDeviceConnectionService deviceConnections,
+        IDeviceConnectionInviteService invites,
         IManualDeviceSyncService manualSync,
         IDeviceHistoryRepullService historyRepull,
         IValidator<ConnectDeviceRequest> connectValidator,
@@ -37,6 +39,7 @@ public class DevicesController : BaseApiController
         : base(userContext, logger)
     {
         _deviceConnections = deviceConnections;
+        _invites = invites;
         _manualSync = manualSync;
         _historyRepull = historyRepull;
         _connectValidator = connectValidator;
@@ -283,13 +286,19 @@ public class DevicesController : BaseApiController
 
     /// <summary>
     /// Provider-facing https redirect target (Google web clients cannot redirect to a custom
-    /// scheme). Hands the browser back into the mobile app's deep link; the app then completes
-    /// the flow via the authenticated callback endpoint below.
+    /// scheme), serving both connection flows.
     ///
-    /// Every outcome the provider can produce — including a denied consent — has to reach the
-    /// app, because the deep link is the only thing that dismisses the in-app browser. Ending
-    /// the response here instead would leave the user on the consent page with the app still
-    /// waiting behind it.
+    /// For the in-app flow it hands the browser back into the mobile app's deep link, and the app
+    /// completes the exchange via the authenticated callback endpoint below. Every outcome the
+    /// provider can produce — including a denied consent — has to reach the app, because the deep
+    /// link is the only thing that dismisses the in-app browser. Ending the response here instead
+    /// would leave the user on the consent page with the app still waiting behind it.
+    ///
+    /// For the wearer flow there is no app to return to: the wearer is in their own browser, on
+    /// their own device, and this endpoint finishes the exchange itself and renders the result.
+    /// Which flow a callback belongs to is carried by its state token and nothing else — the
+    /// provider sends back exactly what we sent it, so the state is the only part of the request we
+    /// minted.
     /// </summary>
     [AllowAnonymous]
     [HttpGet("oauth/redirect/{provider}")]
@@ -304,21 +313,36 @@ public class DevicesController : BaseApiController
         [FromQuery(Name = "error_description")] string? errorDescription,
         CancellationToken ct)
     {
-        // The state token is what ties this callback to an app deep link, so it is resolved
-        // before anything else — without it there is nowhere to send the browser.
+        // The state token is what ties this callback to a flow, so it is resolved before anything
+        // else — without it there is nothing to say where the browser should go.
         if (string.IsNullOrEmpty(state))
         {
             return OAuthHandoffPage.Failed(Response,
                 "That connection link looks incomplete.");
         }
 
-        var appRedirectUri = await _deviceConnections.GetAppRedirectUriAsync(provider, state, ct);
-        if (appRedirectUri is null)
+        var target = await _deviceConnections.ResolveCallbackTargetAsync(provider, state, ct);
+        if (target is null)
         {
             return OAuthHandoffPage.Failed(Response,
                 "That connection link has expired or has already been used.");
         }
 
+        if (target.IsWearerFlow)
+        {
+            var outcome = await _invites.CompleteFromCallbackAsync(provider, state, code, error, ct);
+
+            return outcome.Result switch
+            {
+                WearerConnectionResult.Completed =>
+                    WearerConnectPage.Connected(Response, outcome.DeviceDisplayName),
+                // No token to offer a retry with: the wearer arrived here from the provider, not
+                // from our page, so the only thing we hold is a state that has now been spent.
+                _ => WearerConnectPage.NotGranted(Response, token: null),
+            };
+        }
+
+        var appRedirectUri = target.AppRedirectUri!;
         var query = new StringBuilder();
         query.Append(appRedirectUri.Contains('?') ? '&' : '?');
         query.Append("state=").Append(Uri.EscapeDataString(state));

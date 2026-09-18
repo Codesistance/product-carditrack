@@ -2,6 +2,7 @@ using CardiTrack.API.Controllers;
 using CardiTrack.API.Infrastructure.OAuth;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
@@ -21,16 +22,37 @@ public class DeviceOAuthBounceTests
     private const string DeepLink = "carditrack://oauth/callback";
 
     private readonly IDeviceConnectionService _connections = Substitute.For<IDeviceConnectionService>();
+    private readonly IDeviceConnectionInviteService _invites = Substitute.For<IDeviceConnectionInviteService>();
 
     private DevicesController CreateSut(string? appRedirectUri = DeepLink)
     {
-        _connections.GetAppRedirectUriAsync("fitbit", Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(appRedirectUri);
+        _connections.ResolveCallbackTargetAsync("fitbit", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(appRedirectUri is null
+                ? (DeviceOAuthCallbackTarget?)null
+                : new DeviceOAuthCallbackTarget(IsWearerFlow: false, AppRedirectUri: appRedirectUri));
 
-        return new DevicesController(
+        return NewController();
+    }
+
+    /// <summary>A bounce whose state was minted for a wearer's own browser, not for the app.</summary>
+    private DevicesController CreateWearerSut(WearerConnectionOutcome outcome)
+    {
+        _connections.ResolveCallbackTargetAsync("fitbit", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DeviceOAuthCallbackTarget(IsWearerFlow: true, AppRedirectUri: null));
+
+        _invites.CompleteFromCallbackAsync(
+                "fitbit", Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(outcome);
+
+        return NewController();
+    }
+
+    private DevicesController NewController() =>
+        new(
             Substitute.For<IUserContext>(),
             Substitute.For<ILogger<DevicesController>>(),
             _connections,
+            _invites,
             Substitute.For<IManualDeviceSyncService>(),
             Substitute.For<IDeviceHistoryRepullService>(),
             Substitute.For<IValidator<ConnectDeviceRequest>>(),
@@ -39,7 +61,6 @@ public class DeviceOAuthBounceTests
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
-    }
 
     private static ContentResult Bounce(IActionResult result)
     {
@@ -133,4 +154,69 @@ public class DeviceOAuthBounceTests
     [InlineData("not-a-uri", "not-a-uri")]
     public void AndroidIntentUri_NamesTheAppPackage(string appUri, string expected) =>
         Assert.Equal(expected, OAuthHandoffPage.ToAndroidIntentUri(appUri));
+
+    // The wearer flow shares this endpoint because the provider's registered redirect URI is one
+    // fixed route. What separates the two is the state token and nothing else, so these tests are
+    // about the bounce dispatching on it — and, above all, never handing a wearer's browser a deep
+    // link into an app they do not have.
+
+    [Fact]
+    public async Task WearerFlow_FinishesInTheBrowser_AndNeverMentionsTheApp()
+    {
+        var sut = CreateWearerSut(
+            new WearerConnectionOutcome(WearerConnectionResult.Completed, "Fitbit", CanRetry: false));
+
+        var page = Bounce(await sut.RedirectToApp("fitbit", "auth_code", "state_1", null, null, default));
+
+        Assert.Equal(StatusCodes.Status200OK, page.StatusCode);
+        Assert.Contains("Fitbit", page.Content!);
+        // The wearer is in their own browser with no app installed: a deep link would be a dead
+        // tap, and the intent URI would offer to install something they never asked for.
+        Assert.DoesNotContain("carditrack://", page.Content);
+        Assert.DoesNotContain("intent://", page.Content);
+        Assert.DoesNotContain("auth_code", page.Content);
+    }
+
+    [Theory]
+    [InlineData(WearerConnectionResult.Denied)]
+    [InlineData(WearerConnectionResult.Failed)]
+    public async Task WearerFlow_SaysNothingWasShared_WhenTheGrantDidNotLand(WearerConnectionResult result)
+    {
+        var sut = CreateWearerSut(new WearerConnectionOutcome(result, null, CanRetry: true));
+
+        var page = Bounce(await sut.RedirectToApp(
+            "fitbit", null, "state_1", "access_denied", "The user denied the request", default));
+
+        Assert.Equal(StatusCodes.Status200OK, page.StatusCode);
+        Assert.Contains("Nothing was shared", page.Content!);
+        Assert.DoesNotContain("carditrack://", page.Content);
+        // The wearer arrived from the provider, not from our page, so there is no token left to
+        // build a retry form around — and one must not be invented from the query string.
+        Assert.DoesNotContain("<form", page.Content);
+    }
+
+    [Fact]
+    public async Task WearerFlow_PassesTheProviderRefusal_ToTheInviteService()
+    {
+        var sut = CreateWearerSut(
+            new WearerConnectionOutcome(WearerConnectionResult.Denied, null, CanRetry: true));
+
+        await sut.RedirectToApp("fitbit", null, "state_1", "access_denied", null, default);
+
+        // The refusal has to reach the service intact: it is what tells a denial from a failure,
+        // and a denial leaves the invitation live so the wearer can change their mind.
+        await _invites.Received(1).CompleteFromCallbackAsync(
+            "fitbit", "state_1", null, "access_denied", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AppFlow_NeverReachesTheInviteService()
+    {
+        var sut = CreateSut();
+
+        await sut.RedirectToApp("fitbit", "auth_code", "state_1", null, null, default);
+
+        await _invites.DidNotReceiveWithAnyArgs().CompleteFromCallbackAsync(
+            default!, default!, default, default, default);
+    }
 }

@@ -19,6 +19,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<DeviceConnection> DeviceConnections => Set<DeviceConnection>();
     // Caregiver-requested history re-pulls: the work order the Worker drains, and its record
     public DbSet<DeviceHistoryRepull> DeviceHistoryRepulls => Set<DeviceHistoryRepull>();
+    public DbSet<DeviceConnectionInvite> DeviceConnectionInvites => Set<DeviceConnectionInvite>();
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
     public DbSet<DeviceActivityLog> DeviceActivityLogs => Set<DeviceActivityLog>();
     public DbSet<Alert> Alerts => Set<Alert>();

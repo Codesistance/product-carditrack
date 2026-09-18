@@ -50,14 +50,14 @@ public class DeviceConnectionServiceTests
     /// A caregiver who may view but not manage — the case the M1-15 mutating actions must
     /// refuse. Primary caregivers get the full set.
     /// </summary>
-    private void SetupCaregiverLink(bool isPrimaryCaregiver) =>
+    private void SetupCaregiverLink(bool isPrimaryCaregiver, bool isActive = true) =>
         _unitOfWork.UserCardiMembers.GetByUserIdAsync(_userId).Returns(
         [
             new UserCardiMember
             {
                 UserId = _userId,
                 CardiMemberId = _memberId,
-                IsActive = true,
+                IsActive = isActive,
                 CanViewHealthData = true,
                 IsPrimaryCaregiver = isPrimaryCaregiver,
             }
@@ -298,7 +298,7 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public async Task GetAppRedirectUri_AllowsTheBounce_ThroughASiblingBrandOnTheSameApi()
+    public async Task ResolveCallbackTarget_AllowsTheBounce_ThroughASiblingBrandOnTheSameApi()
     {
         var sut = CreateSut();
         var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, new ConnectDeviceRequest
@@ -307,12 +307,15 @@ public class DeviceConnectionServiceTests
             RedirectUri = "carditrack://oauth/callback"
         });
 
-        Assert.Equal("carditrack://oauth/callback",
-            await sut.GetAppRedirectUriAsync("fitbit", initiation.State));
+        var target = await sut.ResolveCallbackTargetAsync("fitbit", initiation.State);
+
+        Assert.NotNull(target);
+        Assert.False(target.IsWearerFlow);
+        Assert.Equal("carditrack://oauth/callback", target.AppRedirectUri);
     }
 
     [Fact]
-    public async Task GetAppRedirectUri_RejectsABrandOnADifferentApi()
+    public async Task ResolveCallbackTarget_RejectsABrandOnADifferentApi()
     {
         var sut = CreateSut();
         var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, new ConnectDeviceRequest
@@ -323,7 +326,7 @@ public class DeviceConnectionServiceTests
 
         // garmin resolves to a DeviceType no configured block claims, so it shares an API with
         // nothing — the state must not be released to its route.
-        Assert.Null(await sut.GetAppRedirectUriAsync("garmin", initiation.State));
+        Assert.Null(await sut.ResolveCallbackTargetAsync("garmin", initiation.State));
     }
 
     [Fact]
@@ -501,7 +504,7 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public async Task GetAppRedirectUri_ReturnsDeepLink_WithoutConsumingState()
+    public async Task ResolveCallbackTarget_ReturnsDeepLink_WithoutConsumingState()
     {
         _codeExchange.ExchangeCodeAsync(Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
             .Returns(new OAuthTokenResult("access", "refresh", 3600, null, null));
@@ -509,9 +512,11 @@ public class DeviceConnectionServiceTests
         var sut = CreateSut();
         var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
 
-        var deepLink = await sut.GetAppRedirectUriAsync("fitbit", initiation.State);
+        var target = await sut.ResolveCallbackTargetAsync("fitbit", initiation.State);
 
-        Assert.Equal("carditrack://oauth/callback", deepLink);
+        Assert.NotNull(target);
+        Assert.False(target.IsWearerFlow);
+        Assert.Equal("carditrack://oauth/callback", target.AppRedirectUri);
 
         // The peek must not consume the state — the app still completes the flow afterwards.
         await sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
@@ -523,7 +528,7 @@ public class DeviceConnectionServiceTests
     }
 
     [Fact]
-    public async Task GetAppRedirectUri_RejectsNonAppSchemeRedirect()
+    public async Task ResolveCallbackTarget_RejectsNonAppSchemeRedirect()
     {
         // An https redirect cached at initiation must not turn the anonymous bounce
         // endpoint into an open redirect leaking code+state.
@@ -534,11 +539,11 @@ public class DeviceConnectionServiceTests
             RedirectUri = "https://attacker.example.com/collect",
         });
 
-        Assert.Null(await sut.GetAppRedirectUriAsync("fitbit", initiation.State));
+        Assert.Null(await sut.ResolveCallbackTargetAsync("fitbit", initiation.State));
     }
 
     [Fact]
-    public async Task GetAppRedirectUri_RejectsRedirectCarryingAFragment()
+    public async Task ResolveCallbackTarget_RejectsRedirectCarryingAFragment()
     {
         // The bounce appends the callback parameters to whatever comes back, so a '#' would
         // swallow them and the app would receive no state, code or error at all.
@@ -549,19 +554,166 @@ public class DeviceConnectionServiceTests
             RedirectUri = "carditrack://oauth/callback#done",
         });
 
-        Assert.Null(await sut.GetAppRedirectUriAsync("fitbit", initiation.State));
+        Assert.Null(await sut.ResolveCallbackTargetAsync("fitbit", initiation.State));
     }
 
     [Fact]
-    public async Task GetAppRedirectUri_ReturnsNull_ForUnknownStateOrProviderMismatch()
+    public async Task ResolveCallbackTarget_ReturnsNull_ForUnknownStateOrProviderMismatch()
     {
         var sut = CreateSut();
         var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
 
-        Assert.Null(await sut.GetAppRedirectUriAsync("fitbit", "not-a-real-state"));
-        Assert.Null(await sut.GetAppRedirectUriAsync("garmin", initiation.State));
-        Assert.Null(await sut.GetAppRedirectUriAsync("not_a_provider", initiation.State));
+        Assert.Null(await sut.ResolveCallbackTargetAsync("fitbit", "not-a-real-state"));
+        Assert.Null(await sut.ResolveCallbackTargetAsync("garmin", initiation.State));
+        Assert.Null(await sut.ResolveCallbackTargetAsync("not_a_provider", initiation.State));
     }
+
+    // The wearer flow: the same consent, on the wearer's own device instead of the caregiver's
+    // phone. What these assert is the boundary between the two — a state minted for one must not be
+    // completable through the other's door.
+
+    private static void WithBounceRedirect(DeviceProviderSettings settings) =>
+        settings.RedirectUri = "https://api.example.com/api/v1/oauth/redirect/fitbit";
+
+    [Fact]
+    public async Task InitiateWearerConnection_KeepsTheVerifierOffTheWire()
+    {
+        var sut = CreateSut(WithBounceRedirect);
+        var inviteId = Guid.NewGuid();
+
+        var url = await sut.InitiateWearerConnectionAsync(
+            inviteId, _userId, _memberId, DeviceType.Fitbit);
+
+        Assert.Contains("code_challenge=", url);
+        Assert.Contains("code_challenge_method=S256", url);
+        // The browser carrying the code has no account and no authenticated request to post a
+        // verifier back on, so the verifier stays server-side. Handing it to the page would put it
+        // in a response whose return we cannot authenticate, which is what PKCE exists to prevent.
+        Assert.DoesNotContain("code_verifier", url);
+        Assert.Contains("redirect_uri=" + Uri.EscapeDataString(
+            "https://api.example.com/api/v1/oauth/redirect/fitbit"), url);
+    }
+
+    [Fact]
+    public async Task InitiateWearerConnection_RefusesAProviderWithNoBounceRedirect()
+    {
+        // No configured https redirect means there is nowhere for the wearer's consent to land:
+        // the app flow can fall back to a deep link, and this one has no app to fall back to.
+        var sut = CreateSut();
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(
+            () => sut.InitiateWearerConnectionAsync(
+                Guid.NewGuid(), _userId, _memberId, DeviceType.Fitbit));
+
+        Assert.Equal(DeviceConnectionException.UnsupportedProvider, ex.Code);
+    }
+
+    [Fact]
+    public async Task ResolveCallbackTarget_ReportsAWearerState_WithNoDeepLink()
+    {
+        var sut = CreateSut(WithBounceRedirect);
+        var url = await sut.InitiateWearerConnectionAsync(
+            Guid.NewGuid(), _userId, _memberId, DeviceType.Fitbit);
+
+        var target = await sut.ResolveCallbackTargetAsync("fitbit", StateFrom(url));
+
+        Assert.NotNull(target);
+        Assert.True(target.IsWearerFlow);
+        // Nothing for the bounce to redirect a browser into — this flow finishes server-side.
+        Assert.Null(target.AppRedirectUri);
+    }
+
+    [Fact]
+    public async Task CompleteWearerConnection_StoresTheConnection_AndNamesItsInvite()
+    {
+        _codeExchange.ExchangeCodeAsync(
+                Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(new OAuthTokenResult("access", "refresh", 3600, null, null));
+
+        var inviteId = Guid.NewGuid();
+        var sut = CreateSut(WithBounceRedirect);
+        var url = await sut.InitiateWearerConnectionAsync(
+            inviteId, _userId, _memberId, DeviceType.Fitbit);
+
+        var completion = await sut.CompleteWearerConnectionAsync("fitbit", StateFrom(url), "auth_code");
+
+        Assert.Equal(inviteId, completion.InviteId);
+        Assert.Equal("active", completion.Device.Status);
+        await _unitOfWork.Received().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CompleteWearerConnection_RejectsAReplayedState()
+    {
+        _codeExchange.ExchangeCodeAsync(
+                Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(new OAuthTokenResult("access", "refresh", 3600, null, null));
+
+        var sut = CreateSut(WithBounceRedirect);
+        var url = await sut.InitiateWearerConnectionAsync(
+            Guid.NewGuid(), _userId, _memberId, DeviceType.Fitbit);
+        var state = StateFrom(url);
+
+        await sut.CompleteWearerConnectionAsync("fitbit", state, "auth_code");
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(
+            () => sut.CompleteWearerConnectionAsync("fitbit", state, "auth_code"));
+
+        Assert.Equal(DeviceConnectionException.InvalidStateToken, ex.Code);
+    }
+
+    [Fact]
+    public async Task CompleteWearerConnection_RefusesAnAppState()
+    {
+        var sut = CreateSut(WithBounceRedirect);
+        var initiation = await sut.InitiateConnectionAsync(_userId, _memberId, FitbitRequest());
+
+        // The app flow's whole authorization is the caller's access token, and this door has none
+        // to check. A state minted there must not be completable here.
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(
+            () => sut.CompleteWearerConnectionAsync("fitbit", initiation.State, "auth_code"));
+
+        Assert.Equal(DeviceConnectionException.InvalidStateToken, ex.Code);
+    }
+
+    [Fact]
+    public async Task CompleteConnection_RefusesAWearerState()
+    {
+        var sut = CreateSut(WithBounceRedirect);
+        var url = await sut.InitiateWearerConnectionAsync(
+            Guid.NewGuid(), _userId, _memberId, DeviceType.Fitbit);
+
+        // And the other direction: the app must not be able to spend an invitation's state, which
+        // would let a caregiver complete a grant the wearer never finished giving.
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(
+            () => sut.CompleteConnectionAsync(_userId, "fitbit", new OAuthCallbackRequest
+            {
+                Code = "auth_code",
+                State = StateFrom(url),
+                CodeVerifier = "whatever",
+            }));
+
+        Assert.Equal(DeviceConnectionException.InvalidStateToken, ex.Code);
+    }
+
+    [Fact]
+    public async Task CompleteWearerConnection_RefusesOnceTheCaregiverLostAccess()
+    {
+        var sut = CreateSut(WithBounceRedirect);
+        var url = await sut.InitiateWearerConnectionAsync(
+            Guid.NewGuid(), _userId, _memberId, DeviceType.Fitbit);
+
+        // The link is withdrawn between the invitation and the wearer finishing. This is the moment
+        // health data would start flowing to somebody already cut off.
+        SetupCaregiverLink(isPrimaryCaregiver: false, isActive: false);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => sut.CompleteWearerConnectionAsync("fitbit", StateFrom(url), "auth_code"));
+    }
+
+    /// <summary>The state token out of an authorization URL the service just built.</summary>
+    private static string StateFrom(string authorizationUrl) =>
+        System.Web.HttpUtility.ParseQueryString(new Uri(authorizationUrl).Query)["state"]!;
 
     [Fact]
     public void AddGoogleHealthProvider_FailsFast_WhenGoogleHealthIsNotFirstProvider()
