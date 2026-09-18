@@ -82,7 +82,11 @@
                 <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
             </Border.GestureRecognizers>
             <VerticalStackLayout Spacing="10">
-                <Image Source="icon_action_details.svg"
+                <!-- A member card, not the bar chart: that glyph belongs to Key Metrics, which
+                     sits four rows below this tile on the same card, and two controls wearing
+                     the same icon on one screen is two controls that look like one. Details
+                     opens the person; Key Metrics opens their numbers. -->
+                <Image Source="icon_action_profile.svg"
                        WidthRequest="22" HeightRequest="22"
                        HorizontalOptions="Center"/>
                 <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>

@@ -307,9 +307,15 @@
                      banner the dashboard shows for a back-swipe, the second inside the window
                      signs out. A dialog asked the same question with more ceremony and a button
                      to find. -->
+                <!-- In the red of the banner it raises, carrying that banner's power glyph. It
+                     used to wear the neutral outline every "Try again" in the app wears, one
+                     card above the deletion box: the only part of leaving that did not look
+                     like leaving. -->
                 <Button x:Name="SignOutBtn"
                         Text="Sign out"
-                        Style="{StaticResource SecondaryOutlineButton}"
+                        Style="{StaticResource DangerOutlineButton}"
+                        ImageSource="icon_power_red.svg"
+                        ContentLayout="Left,10"
                         HorizontalOptions="Fill"
                         Margin="0,12,0,0"
                         Clicked="OnSignOutClicked"/>

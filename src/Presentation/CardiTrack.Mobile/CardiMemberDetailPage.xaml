@@ -150,12 +150,24 @@
                                       VerticalOptions="Fill">
                                     <Label x:Name="NameLabel" Grid.Row="0" Style="{StaticResource Heading2}" FontSize="24"/>
                                     <Label x:Name="AgeRelationshipLabel" Grid.Row="1" Style="{StaticResource Body2}" FontSize="15"/>
-                                    <Label x:Name="SensitivityLabel"
-                                           Grid.Row="2"
-                                           Style="{StaticResource Body2}"
-                                           FontSize="14"
-                                           VerticalOptions="End"
-                                           LineBreakMode="TailTruncation"/>
+                                    <!-- The pill carries the level in its own weight: a quiet
+                                         wash at Low, a firmer one at Medium, the full colour at
+                                         High. Three words that differ by one adjective are hard
+                                         to tell apart at a glance; three weights are not. -->
+                                    <Border x:Name="SensitivityPill"
+                                            Grid.Row="2"
+                                            StrokeThickness="0"
+                                            Padding="10,4"
+                                            HorizontalOptions="Start"
+                                            VerticalOptions="End">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10"/>
+                                        </Border.StrokeShape>
+                                        <Label x:Name="SensitivityLabel"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="14"
+                                               LineBreakMode="TailTruncation"/>
+                                    </Border>
                                 </Grid>
 
                                 <Grid Grid.Column="2" RowDefinitions="Auto,*">

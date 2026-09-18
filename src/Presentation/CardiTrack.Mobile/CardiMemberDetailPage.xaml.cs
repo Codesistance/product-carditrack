@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
@@ -648,7 +649,18 @@ public partial class CardiMemberDetailPage : ContentPage
 
         // How closely this member is watched (M1-14). Recorded preference only for now — see
         // AlertSensitivity — so it says what the family asked for, not what the pipeline does.
+        // The pill's weight climbs with the level, so the setting reads before the word does.
         SensitivityLabel.Text = $"{member.AlertSensitivity.GetDisplayName()} alert sensitivity";
+        var sensitivityAccent =
+            (Color)Microsoft.Maui.Controls.Application.Current!.Resources["Primary"];
+        (SensitivityPill.BackgroundColor, SensitivityLabel.TextColor) = member.AlertSensitivity switch
+        {
+            AlertSensitivity.High => (sensitivityAccent, (Color)Microsoft.Maui.Controls.Application.Current!.Resources["White"]),
+            AlertSensitivity.Low => (sensitivityAccent.WithAlpha(0.10f),
+                (Color)Microsoft.Maui.Controls.Application.Current!.Resources["BodyText"]),
+            _ => (sensitivityAccent.WithAlpha(0.18f),
+                (Color)Microsoft.Maui.Controls.Application.Current!.Resources["PrimaryDark"]),
+        };
 
         // Same four-tier pipeline freshness as the dashboard (red / amber / blue / green). Hidden
         // while paused: collection is deliberately stopped, so a coloured dot would misreport a

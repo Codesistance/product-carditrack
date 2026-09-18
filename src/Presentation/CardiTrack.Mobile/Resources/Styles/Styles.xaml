@@ -323,6 +323,16 @@
         <Setter Property="Padding" Value="24,0"/>
     </Style>
 
+    <!-- The secondary button for an action that stops something: leaving, disconnecting,
+         ending. Same shape and weight as SecondaryOutlineButton — it is still the quieter of
+         two choices — but in the red of the banner that follows it, so the button and its
+         consequence look like one another. Not for ordinary secondaries ("Try again",
+         "Connect a device"): red everywhere is red nowhere. -->
+    <Style x:Key="DangerOutlineButton" TargetType="Button" BasedOn="{StaticResource SecondaryOutlineButton}">
+        <Setter Property="TextColor" Value="{StaticResource ErrorRed}"/>
+        <Setter Property="BorderColor" Value="{StaticResource ErrorRed}"/>
+    </Style>
+
     <Style x:Key="GoogleButton" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
         <Setter Property="Stroke" Value="{StaticResource Primary}"/>
