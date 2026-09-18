@@ -34,25 +34,29 @@ internal static class WearerConnectPage
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <strong><c>form-action</c> names this origin explicitly as well as <c>'self'</c>.</strong>
-    /// On its own, <c>'self'</c> resolves against the document's origin, and a wearer opening the
-    /// link inside a messaging app's in-app browser can end up on a document whose origin the
-    /// browser will not match it to — at which point the consent form is blocked and "Yes, that's
-    /// me" silently does nothing. That was reported from a real device on 2026-09-18. Naming the
-    /// origin costs nothing and gives up nothing: the directive still permits exactly one host,
-    /// which is the whole of what it was protecting.
+    /// <strong><c>form-action</c> has to name the provider, not just this host.</strong> Browsers
+    /// enforce the directive across the submission's <em>redirect chain</em>, and "Continue" posts
+    /// to us and is immediately redirected to the provider's consent screen. With only our own
+    /// origin listed the submission is refused — and refused silently, with the message naming our
+    /// endpoint rather than the redirect, which is what made this look like a broken button rather
+    /// than a policy. Reported from a real device on 2026-09-18, twice: once against
+    /// <c>'self'</c> alone, then again against <c>'self'</c> plus this origin.
     /// </para>
     /// <para>
-    /// Built per request rather than as a constant because the host differs per environment, and a
-    /// hardcoded one would be wrong everywhere but the environment it was written for.
+    /// The provider origins come from the configured <c>DeviceProviders</c> authorization URLs, so
+    /// a new provider is permitted the moment it is configured and nothing here has to be
+    /// remembered. The directive still names an exact, short list: this host, and the consent
+    /// screens we deliberately send people to.
     /// </para>
     /// </remarks>
-    private static string ContentSecurityPolicyFor(HttpRequest request)
+    private static string ContentSecurityPolicyFor(HttpRequest request, IEnumerable<string> providerOrigins)
     {
-        var origin = $"{request.Scheme}://{request.Host.Value}";
+        var origins = new List<string> { $"{request.Scheme}://{request.Host.Value}" };
+        origins.AddRange(providerOrigins);
 
         return "default-src 'none'; style-src 'unsafe-inline'; " +
-               $"form-action 'self' {origin}; base-uri 'none'; frame-ancestors 'none'";
+               $"form-action 'self' {string.Join(' ', origins.Distinct())}; " +
+               "base-uri 'none'; frame-ancestors 'none'";
     }
 
     /// <summary>
@@ -80,7 +84,11 @@ internal static class WearerConnectPage
     /// privacy link would be least forgivable on exactly this screen.
     /// </remarks>
     public static ContentResult Ask(
-        HttpResponse response, WearerInviteView invite, string token, string privacyPolicyUrl)
+        HttpResponse response,
+        WearerInviteView invite,
+        string token,
+        string privacyPolicyUrl,
+        IEnumerable<string> providerOrigins)
     {
         var member = HtmlEncoder.Default.Encode(invite.MemberFirstName);
         var caregiver = HtmlEncoder.Default.Encode(invite.CaregiverFirstName);
@@ -97,7 +105,7 @@ internal static class WearerConnectPage
             ? $"""<a href="{url}" rel="noopener noreferrer">the account your {device} uses</a>"""
             : $"your {device} account settings";
 
-        return Render(response, StatusCodes.Status200OK, $$"""
+        return Render(response, StatusCodes.Status200OK, providerOrigins: providerOrigins, body: $$"""
             <h1>{{caregiver}} would like to see your health data</h1>
             <p class="lede">
               To look after <strong>{{member}}</strong> using your {{device}}.
@@ -229,7 +237,8 @@ internal static class WearerConnectPage
             </p>
             """);
 
-    private static ContentResult Render(HttpResponse response, int statusCode, string body)
+    private static ContentResult Render(
+        HttpResponse response, int statusCode, string body, IEnumerable<string>? providerOrigins = null)
     {
         // The URL carries a live invitation token: keep it out of caches, out of the Referer header
         // of anything this page links to, and out of a frame on somebody else's site.
@@ -238,7 +247,8 @@ internal static class WearerConnectPage
         response.Headers["Referrer-Policy"] = "no-referrer";
         response.Headers.XContentTypeOptions = "nosniff";
         response.Headers.XFrameOptions = "DENY";
-        response.Headers.ContentSecurityPolicy = ContentSecurityPolicyFor(response.HttpContext.Request);
+        response.Headers.ContentSecurityPolicy =
+            ContentSecurityPolicyFor(response.HttpContext.Request, providerOrigins ?? []);
 
         return new ContentResult
         {

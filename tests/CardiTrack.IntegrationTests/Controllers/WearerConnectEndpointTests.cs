@@ -41,6 +41,22 @@ public class WearerConnectEndpointTests
             {
                 PrivacyPolicyUrl = "https://carditrack.example/privacy",
             }),
+            Options.Create(new List<DeviceProviderSettings>
+            {
+                new()
+                {
+                    Provider = "GoogleHealth",
+                    AuthorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth",
+                },
+                // A second block with the same host, and one with none, so the origin list is
+                // exercised for de-duplication and for the config stubs that carry no URL yet.
+                new()
+                {
+                    Provider = "GoogleHealthTwin",
+                    AuthorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth",
+                },
+                new() { Provider = "GarminConnect", AuthorizationUrl = "" },
+            }),
             NullLogger<WearerConnectController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -117,7 +133,7 @@ public class WearerConnectEndpointTests
     }
 
     [Fact]
-    public async Task Ask_NamesItsOwnOriginInFormAction_NotJustSelf()
+    public async Task Ask_PermitsTheProviderInFormAction_NotJustThisHost()
     {
         _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);
         var sut = CreateSut();
@@ -127,12 +143,29 @@ public class WearerConnectEndpointTests
         await sut.Ask(Token, default);
         var csp = sut.Response.Headers.ContentSecurityPolicy.ToString();
 
-        // Reported from a real device on 2026-09-18: with 'self' alone the consent form was blocked
-        // outright and "Yes, that's me" silently did nothing, because the browser would not match
-        // the directive to the document's origin. Naming the origin gives up nothing — the
-        // directive still permits exactly one host — and it is the difference between a flow that
-        // works and one that fails without a word.
-        Assert.Contains("form-action 'self' https://api.dev.example.com", csp);
+        // Reported twice from a real device on 2026-09-18. "Continue" posts here and is redirected
+        // straight to the provider, and browsers apply form-action across that redirect — so a
+        // policy naming only this host refuses the submission, and refuses it silently with a
+        // message that names our endpoint rather than the redirect. Both have to be listed.
+        Assert.Contains("'self'", csp);
+        Assert.Contains("https://api.dev.example.com", csp);
+        Assert.Contains("https://accounts.google.com", csp);
+    }
+
+    [Fact]
+    public async Task Ask_ListsEachProviderOriginOnce_AndSkipsUnconfiguredOnes()
+    {
+        _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);
+        var sut = CreateSut();
+
+        await sut.Ask(Token, default);
+        var csp = sut.Response.Headers.ContentSecurityPolicy.ToString();
+
+        // Two blocks share the Google host and one has no URL at all: the directive should stay a
+        // short, exact list rather than repeating itself or emitting an empty token.
+        var formAction = csp.Split("form-action ")[1].Split(';')[0];
+        Assert.Equal(1, formAction.Split("https://accounts.google.com").Length - 1);
+        Assert.DoesNotContain("  ", formAction);
     }
 
     [Fact]
