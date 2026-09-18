@@ -156,7 +156,7 @@
                 Grid.Column="1"
                 Padding="4"
                 StrokeThickness="0"
-                BackgroundColor="{StaticResource SelectedOptionBackground}"
+                BackgroundColor="Transparent"
                 HorizontalOptions="End"
                 VerticalOptions="Center"
                 SemanticProperties.Description="Export Range"
@@ -167,9 +167,13 @@
             <Border.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnExportTapped"/>
             </Border.GestureRecognizers>
+            <!-- The gradient the app gives its actions. On the pills' own white it read as a
+                 fourth segment, sitting selected: same panel, same white, same weight, next to
+                 three things that select. This takes an action instead, so it says so — and the
+                 4-point frame stays transparent only to hold the pills' exact height. -->
             <Border Padding="14,7"
                     StrokeThickness="0"
-                    BackgroundColor="{StaticResource White}">
+                    Background="{StaticResource GradientButtonBrush}">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="11"/>
                 </Border.StrokeShape>
@@ -177,7 +181,7 @@
                        Text="Export Range"
                        FontFamily="QuicksandSemiBold"
                        FontSize="13"
-                       TextColor="{StaticResource PrimaryDark}"/>
+                       TextColor="{StaticResource White}"/>
             </Border>
         </Border>
         </Grid>
