@@ -620,9 +620,17 @@ public partial class DashboardPage : ContentPage
         SemanticProperties.SetDescription(
             LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. {LastUpdatedFooterLabel.Text}");
 
-        // Exactly one node announces the freshness state. The label owns it while it is on screen;
-        // the block picks it up only once the label has gone, so a screen reader hears it once
-        // rather than twice.
+        // Exactly one node announces the freshness state, and only while there is a state worth
+        // announcing. The label owns it whenever it is on screen — which is every case that says
+        // something is wrong, since amber and red are hours old and the label speaks from thirty
+        // minutes. The block carries it only in the narrow window where the label is hidden but the
+        // learning bar keeps the block on screen.
+        //
+        // When both are hidden nobody is told anything, and that is the intent rather than a gap:
+        // on this page the freshness colour lived on the label, so a sighted reader loses the cue
+        // at exactly the same moment. The message that goes unsaid is "Data updated" on data
+        // minutes old. Saying that to a screen reader alone would make the quiet state the one
+        // announcement they cannot escape.
         SemanticProperties.SetDescription(
             FreshnessBlock, showAge ? string.Empty : data.DataFreshnessMessage);
 
