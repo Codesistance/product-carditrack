@@ -46,6 +46,7 @@ public class WearerConnectEndpointTests
                 new()
                 {
                     Provider = "GoogleHealth",
+                    ClientId = "google-client",
                     AuthorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth",
                 },
                 // A second block with the same host, and one with none, so the origin list is
@@ -53,9 +54,18 @@ public class WearerConnectEndpointTests
                 new()
                 {
                     Provider = "GoogleHealthTwin",
+                    ClientId = "google-client-twin",
                     AuthorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth",
                 },
-                new() { Provider = "GarminConnect", AuthorizationUrl = "" },
+                new() { Provider = "GarminConnect", ClientId = "", AuthorizationUrl = "" },
+                // Configured URL but no client id: a roadmap stub nobody can connect through, and
+                // so not something to widen the policy for.
+                new()
+                {
+                    Provider = "Dropped",
+                    ClientId = "",
+                    AuthorizationUrl = "https://dropped.example.com/authorize",
+                },
             }),
             NullLogger<WearerConnectController>.Instance)
         {
@@ -180,6 +190,39 @@ public class WearerConnectEndpointTests
         Assert.Contains("action=\"/connect/decline\"", page.Content);
         // Relative, so the form follows whichever host served the page rather than a baked-in one.
         Assert.DoesNotContain("action=\"http", page.Content);
+    }
+
+    [Fact]
+    public async Task Ask_ExcludesProvidersNobodyCanConnectThrough()
+    {
+        _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);
+        var sut = CreateSut();
+
+        await sut.Ask(Token, default);
+        var csp = sut.Response.Headers.ContentSecurityPolicy.ToString();
+
+        // A block with no client id cannot serve a grant, so naming its consent screen would widen
+        // the policy for a provider nobody can reach — and the configuration still carries blocks
+        // for unbuilt integrations and for two vendors dropped from the roadmap entirely.
+        Assert.DoesNotContain("dropped.example.com", csp);
+        Assert.Contains("https://accounts.google.com", csp);
+    }
+
+    [Fact]
+    public async Task Ask_ShowsTheLogo_WithoutFetchingAnything()
+    {
+        _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);
+        var sut = CreateSut();
+
+        var page = Page(await sut.Ask(Token, default));
+        var csp = sut.Response.Headers.ContentSecurityPolicy.ToString();
+
+        // Inlined, and the policy permits data URIs and nothing else — a page carrying a live
+        // invitation token in its URL should not be opening image requests to anywhere, us
+        // included.
+        Assert.Contains("src=\"data:image/png;base64,", page.Content!);
+        Assert.Contains("img-src data:", csp);
+        Assert.DoesNotContain("img-src 'self'", csp);
     }
 
     [Fact]
