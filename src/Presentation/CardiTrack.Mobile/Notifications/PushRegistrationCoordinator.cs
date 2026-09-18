@@ -109,6 +109,13 @@ public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposabl
             if (string.IsNullOrWhiteSpace(token))
                 return;
 
+            // The permission prompt and the token fetch above can outlast the session that asked
+            // for them. Registering after a sign-out would put the departed caregiver back on
+            // this handset — the same leak UnregisterAsync exists to close, arriving from the
+            // other direction. Same check, and the same reason, as RaiseDestinationIfSignedInAsync.
+            if (await _tokens.GetAsync() is null)
+                return;
+
             var deviceId = await GetOrCreateDeviceIdAsync();
 
             await _registration.RegisterAsync(

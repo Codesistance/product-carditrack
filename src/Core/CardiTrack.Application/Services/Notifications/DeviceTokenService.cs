@@ -33,7 +33,14 @@ public interface IDeviceTokenService
 /// than logged here because this layer writes no logs; the API records it, and without that
 /// record a caregiver losing push to somebody else's install leaves no trace at all.
 /// </param>
-public readonly record struct PushDeviceRegistration(PushDeviceToken Token, Guid? DisplacedUserId);
+/// <param name="ReachabilityReconciled">
+/// Whether both users' <c>PUSH_UNREACHABLE</c> state was re-evaluated after the claim. False
+/// means the displaced caregiver has not been told they are unreachable, and is worth a line in
+/// the log — it is not worth failing the registration over, because the claim is already
+/// committed and a failed call would cost the record of the displacement itself.
+/// </param>
+public readonly record struct PushDeviceRegistration(
+    PushDeviceToken Token, Guid? DisplacedUserId, bool ReachabilityReconciled);
 
 /// <summary>
 /// Upserts a device's push token by fingerprint (§7.2 C2), records OS reachability, and arms
@@ -124,19 +131,45 @@ public class DeviceTokenService : IDeviceTokenService
                 osAuthorizationStatus, safetyChannelEnabled, ct);
         }
 
+        // Everything below is after the claim has committed, and none of it may fail the call.
+        //
         // The displaced caregiver's picture changed as much as the caller's did — they just lost
-        // a device. Re-evaluating theirs is what arms PUSH_UNREACHABLE for them; without it they
-        // go quiet with nothing anywhere saying so. Theirs runs first deliberately: both of these
-        // are after the commit and neither is durable, and the caller has a client that retries a
-        // failed registration, where the displaced user has nothing that would notice. (If it
-        // does fail, their own next inbox read resolves it — NotificationService resolves gaps
-        // for the user reading them.)
-        if (registration.DisplacedUserId is { } displacedUserId && displacedUserId != userId)
-            await ReconcileReachabilityAsync(displacedUserId, ct);
+        // a device — and re-evaluating theirs is what arms PUSH_UNREACHABLE for them. But a throw
+        // here would answer a registration that *did* succeed with a 500, and the client's retry
+        // would then find the caller already holding the token: DisplacedUserId comes back null,
+        // and the one record that a caregiver lost push is gone for good. The reconciliation is
+        // recoverable — their own next inbox read resolves their gaps (NotificationService does
+        // it for the user reading them) — and the record is not, so the record wins.
+        //
+        // Reported rather than swallowed: the API logs the reassignment either way, and says so
+        // when this part did not finish.
+        var reconciled = await TryReconcileAsync(userId, registration.DisplacedUserId, ct);
 
-        await ReconcileReachabilityAsync(userId, ct);
+        return registration with { ReachabilityReconciled = reconciled };
+    }
 
-        return registration;
+    /// <summary>
+    /// Re-evaluates <c>PUSH_UNREACHABLE</c> for the caller and, when the token was taken from
+    /// somebody, for them too — the displaced user first, since the caller has a client that
+    /// retries a failed registration where they have nothing that would notice.
+    /// </summary>
+    /// <returns>False if any of it did not complete, including on cancellation.</returns>
+    private async Task<bool> TryReconcileAsync(Guid userId, Guid? displacedUserId, CancellationToken ct)
+    {
+        try
+        {
+            if (displacedUserId is { } displaced && displaced != userId)
+                await ReconcileReachabilityAsync(displaced, ct);
+
+            await ReconcileReachabilityAsync(userId, ct);
+            return true;
+        }
+        catch
+        {
+            // Cancellation included, and deliberately: the caller having gone is no reason to
+            // lose the displacement record, which is written from the value this returns into.
+            return false;
+        }
     }
 
     /// <summary>
@@ -213,7 +246,8 @@ public class DeviceTokenService : IDeviceTokenService
             await _unitOfWork.SaveChangesAsync();
             await _unitOfWork.CommitTransactionAsync();
 
-            return new PushDeviceRegistration(entity, displacedUserId);
+            // Reconciliation is the caller's to run, once, after both attempts have settled.
+            return new PushDeviceRegistration(entity, displacedUserId, ReachabilityReconciled: false);
         }
         catch
         {

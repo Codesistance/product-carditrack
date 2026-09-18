@@ -214,6 +214,45 @@ public class DeviceTokenServiceTests
         await _unitOfWork.Received(1).BeginTransactionAsync();
     }
 
+    [Fact]
+    public async Task RegisterAsync_WhenReconciliationFails_StillReportsTheDisplacementItCommitted()
+    {
+        // The claim is committed by the time reachability is re-evaluated. Throwing here would
+        // answer a registration that succeeded with a 500, and the client's retry would find this
+        // caller already holding the token — DisplacedUserId null, and the only record that a
+        // caregiver lost push gone for good. The reconciliation is recoverable; the record is not.
+        var arriving = Guid.NewGuid();
+        var previous = Guid.NewGuid();
+
+        _tokens.GetByUserAndDeviceAsync(arriving, "device-b", Arg.Any<CancellationToken>())
+            .Returns((PushDeviceToken?)null);
+        _tokens.GetByFingerprintAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(HolderRow(previous, "device-a"));
+        _gapResolver.ResolveForUserAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("the gap resolver is having a day"));
+
+        var registration = await RegisterAsync(arriving, "device-b");
+
+        Assert.Equal(previous, registration.DisplacedUserId);
+        Assert.False(registration.ReachabilityReconciled);
+        await _unitOfWork.Received(1).CommitTransactionAsync();
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenEverythingSucceeds_ReportsReachabilityReconciled()
+    {
+        var user = Guid.NewGuid();
+
+        _tokens.GetByUserAndDeviceAsync(user, "device-a", Arg.Any<CancellationToken>())
+            .Returns((PushDeviceToken?)null);
+        _tokens.GetByFingerprintAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((PushDeviceToken?)null);
+
+        var registration = await RegisterAsync(user, "device-a");
+
+        Assert.True(registration.ReachabilityReconciled);
+    }
+
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

@@ -245,7 +245,7 @@ public class NotificationsController : BaseApiController
 
         var loggableDeviceId = RequestIdentityLog.RecordDeviceId(HttpContext, request.DeviceId);
 
-        var (token, displacedUserId) = await _deviceTokens.RegisterAsync(
+        var (token, displacedUserId, reachabilityReconciled) = await _deviceTokens.RegisterAsync(
             userId, request.DeviceId, request.Platform, request.AppVersion, request.Token,
             request.OsAuthorizationStatus, request.SafetyChannelEnabled, ct);
 
@@ -253,10 +253,24 @@ public class NotificationsController : BaseApiController
         // else in the system says so: their rows are gone, and the app that took the token has
         // no idea it did. Warning rather than Information — outside a wiped emulator or a
         // restored backup this should not happen, and a run of them is worth looking at.
+        //
+        // Written before anything else can fail, and the service makes sure nothing after the
+        // claim throws: a 500 here would be retried by the client, the retry would find this
+        // caller already holding the token, and the displacement would never be recorded at all.
         if (displacedUserId is { } displaced && displaced != userId)
+        {
             Logger.LogWarning(
                 "Push token reassigned to user {UserId} on device {DeviceId}; user {DisplacedUserId} lost their registration for it.",
                 userId, loggableDeviceId, displaced);
+
+            // Their PUSH_UNREACHABLE has not been armed, so nothing has told them they are
+            // unreachable until they next open their own inbox. Worth its own line: this pair
+            // read together is the whole of what a caregiver would report as "it went quiet".
+            if (!reachabilityReconciled)
+                Logger.LogWarning(
+                    "Reachability was not reconciled after the reassignment; user {DisplacedUserId} has not been told they are unreachable.",
+                    displaced);
+        }
 
         return Success(new PushDeviceTokenResponse
         {
