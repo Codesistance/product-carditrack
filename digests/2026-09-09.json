@@ -1,0 +1,60 @@
+{
+  "date": "2026-09-09",
+  "summary": "*CardiTrack digest — 2026-09-09* · 6 items · 4 HIGH, 2 FYI",
+  "items": [
+    {
+      "slug": "dotnet-sept-2026-servicing-cves",
+      "title": ".NET September 2026 servicing release (10.0.12) fixes 5 CVEs — none in CardiTrack's live exploit path",
+      "url": "https://github.com/dotnet/announcements/issues/443",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-09-dotnet-sept-2026-servicing-cves.md",
+      "text": "*HIGH* — .NET September 2026 servicing release (10.0.12) fixes 5 CVEs — none in CardiTrack's live exploit path\nhttps://github.com/dotnet/announcements/issues/443\n\nclaude \"work through @research/queue/2026-09-09-dotnet-sept-2026-servicing-cves.md\""
+    },
+    {
+      "slug": "google-health-guardian-bp-insulin-trends",
+      "title": "Google \"Health Guardian\" ships BP + insulin-resistance trends to Fitbit/Pixel Watch — not yet in the Health API",
+      "url": "https://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-09-google-health-guardian-bp-insulin-trends.md",
+      "text": "*HIGH* — Google \"Health Guardian\" ships BP + insulin-resistance trends to Fitbit/Pixel Watch — not yet in the Health API\nhttps://blog.google/products-and-platforms/products/google-health/pixel-watch-health-guardian/\n\nclaude \"work through @research/queue/2026-09-09-google-health-guardian-bp-insulin-trends.md\""
+    },
+    {
+      "slug": "luffu-link-family-caregiving-wearable",
+      "title": "Fitbit founders launch Luffu Link — family-caregiving wearable directly on CardiTrack's positioning",
+      "url": "https://luffu.com/products/luffu-link",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-09-luffu-link-family-caregiving-wearable.md",
+      "text": "*HIGH* — Fitbit founders launch Luffu Link — family-caregiving wearable directly on CardiTrack's positioning\nhttps://luffu.com/products/luffu-link\n\nclaude \"work through @research/queue/2026-09-09-luffu-link-family-caregiving-wearable.md\""
+    },
+    {
+      "slug": "nhs-innovation-accelerator-2027",
+      "title": "NHS Innovation Accelerator (NIA) 2027 Cohort — up to £30k + 3yr NHS scale-up support, deadline 2026-09-27",
+      "url": "https://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-09-nhs-innovation-accelerator-2027.md",
+      "text": "*HIGH* — NHS Innovation Accelerator (NIA) 2027 Cohort — up to £30k + 3yr NHS scale-up support, deadline 2026-09-27\nhttps://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/\n\nclaude \"work through @research/queue/2026-09-09-nhs-innovation-accelerator-2027.md\""
+    },
+    {
+      "slug": "mhra-health-bill-reform-amendments",
+      "title": "MHRA regulatory reform amendments tabled in the UK Health Bill — future domestic licensing pathway enabled",
+      "url": "https://www.gov.uk/government/news/mhra-regulatory-reform-amendments-tabled-in-governments-health-bill",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-09-mhra-health-bill-reform-amendments.md",
+      "text": "*FYI* — MHRA regulatory reform amendments tabled in the UK Health Bill — future domestic licensing pathway enabled\nhttps://www.gov.uk/government/news/mhra-regulatory-reform-amendments-tabled-in-governments-health-bill\n\nclaude \"work through @research/queue/2026-09-09-mhra-health-bill-reform-amendments.md\""
+    },
+    {
+      "slug": "mhra-manchester-nhs-sandbox",
+      "title": "MHRA and Manchester NHS launch a real-world AI-device evaluation sandbox",
+      "url": "https://www.gov.uk/government/news/mhra-and-manchester-nhs-partner-on-health-innovation-sandbox",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md",
+      "text": "*FYI* — MHRA and Manchester NHS launch a real-world AI-device evaluation sandbox\nhttps://www.gov.uk/government/news/mhra-and-manchester-nhs-partner-on-health-innovation-sandbox\n\nclaude \"work through @research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md\""
+    }
+  ]
+}

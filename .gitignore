@@ -167,8 +167,7 @@ Temporary Items
 # Developer-local mobile config overrides
 src/Presentation/CardiTrack.Mobile/Local.props
 
-# Digest routine run scratch (see .claude/commands/digest.md). The payloads
-# scripts/slack-post.sh posts and the parent ts it writes are per-run and
-# rebuilt every session; only research/ is committed.
-/items/
-/run-ts.txt
+# Digest routine scratch. The routine's output is digests/*.json and the briefs
+# under research/queue/, both committed; nothing else from a run is kept.
+# (/items/ and /run-ts.txt belonged to the retired in-sandbox Slack poster.)
+/added.txt

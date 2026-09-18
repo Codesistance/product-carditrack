@@ -33,6 +33,13 @@ locals {
     "apns-key-id",      # APNs auth key ID
     "apple-team-id",    # Apple Developer Team ID
   ])
+
+  # Read by .github/workflows/post-digest.yml, which posts the digest routine's
+  # committed digests/*.json to Slack. The routine itself never sees this — it
+  # ingests untrusted web content, so it holds no Slack credential.
+  digest_secrets = toset([
+    "slack-bot-token", # Slack bot token (xoxb-...) with chat:write
+  ])
 }
 
 resource "google_secret_manager_secret" "store_distribution" {
@@ -82,4 +89,34 @@ resource "google_secret_manager_secret_version" "operator_only" {
   lifecycle {
     ignore_changes = [secret_data]
   }
+}
+
+resource "google_secret_manager_secret" "digest" {
+  for_each  = local.digest_secrets
+  secret_id = "${var.project_name}-common-${each.key}"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.common_secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "digest" {
+  for_each    = local.digest_secrets
+  secret      = google_secret_manager_secret.digest[each.key].id
+  secret_data = "REPLACE_ME"
+
+  lifecycle {
+    ignore_changes = [secret_data]
+  }
+}
+
+# Granted per secret, never at project level: this binding is what keeps the
+# digest workflow from reading every other secret in the project.
+resource "google_secret_manager_secret_iam_member" "digest_accessor" {
+  for_each  = local.digest_secrets
+  secret_id = google_secret_manager_secret.digest[each.key].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:carditrack-deploy@${var.project_id}.iam.gserviceaccount.com"
 }
