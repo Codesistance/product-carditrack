@@ -601,14 +601,25 @@ public partial class DashboardPage : ContentPage
         // stopped, so a freshness reading here would misreport a deliberate pause as a gap.
         FreshnessBlock.IsVisible = !data.MonitoringPaused;
         var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[FreshnessColorKey(data.DataFreshness)];
+        // Silent while the data is arriving as it should. Readings come every ten minutes, so
+        // dating them unconditionally put "Updated 10 minutes ago" over a perfectly current
+        // dashboard — a caption that appears when nothing is wrong cannot mean anything when
+        // something is. Never-synced keeps its own line: that is a different statement.
+        var neverSynced = data.LastSyncedAt is null;
+        var ageWorthShowing = DataAge.IsWorthShowing(data.LastSyncedAt, DateTime.UtcNow);
+
+        LastUpdatedFooterLabel.IsVisible = neverSynced || ageWorthShowing;
         LastUpdatedFooterLabel.Text = data.LastSyncedAt is { } lastSynced
             ? $"Updated {RelativeTime.Format(lastSynced)}"
             : "Not synced yet";
         // The age line carries the freshness state now that the message above it is gone: colour
         // for the eye, the message itself for a screen reader, which cannot read a colour.
         LastUpdatedFooterLabel.TextColor = freshnessColor;
+        // The freshness message still reaches a screen reader when the line is hidden — it is on
+        // the block, not the label, so "data updated" is not lost with the age that outgrew it.
         SemanticProperties.SetDescription(
             LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. {LastUpdatedFooterLabel.Text}");
+        SemanticProperties.SetDescription(FreshnessBlock, data.DataFreshnessMessage);
 
         // Baseline-learning progress only while the window is still running — a permanently
         // full bar after it completes would say nothing new every day.

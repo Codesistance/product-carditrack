@@ -653,11 +653,18 @@ public partial class CardiMemberDetailPage : ContentPage
         var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[
             FreshnessColorKey(member.DataFreshness)];
         ConnectionStatusDot.Fill = freshnessColor;
+        // Same rule as the dashboard: the age is worth saying only once it has outlived the
+        // ten-minute pull cadence — see DataAge. Never-synced keeps its own line.
+        var ageWorthShowing = DataAge.IsWorthShowing(member.LastSyncedAt, DateTime.UtcNow);
+        LastContactLabel.IsVisible = member.LastSyncedAt is null || ageWorthShowing;
         LastContactLabel.Text = member.LastSyncedAt is { } lastSynced
             ? $"Updated {RelativeTime.Format(lastSynced)}"
             : "Not synced yet";
         SemanticProperties.SetDescription(
             LastContactLabel, $"{member.DataFreshnessMessage}. {LastContactLabel.Text}");
+        // The dot stays whatever the age line does, so the freshness state still reaches a screen
+        // reader when the line beside it is hidden.
+        SemanticProperties.SetDescription(ConnectionStatusRow, member.DataFreshnessMessage);
 
         // The digest has its own round trip (LoadDigestAsync). That trip now runs alongside this
         // one rather than behind it, but it still paints after this method has returned — it
