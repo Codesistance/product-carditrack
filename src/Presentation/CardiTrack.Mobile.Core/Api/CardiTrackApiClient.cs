@@ -613,14 +613,31 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             DeviceInvites(cardiMemberId), request, ct);
 
     /// <remarks>
+    /// <para>
     /// Uncached on purpose. This is polled while the wearer decides, and the whole point of each
     /// call is to find out whether the answer has changed since the last one — a cached read would
     /// report "still pending" long after they had finished.
+    /// </para>
+    /// <para>
+    /// A <c>completed</c> answer is also the only notice this client gets that a device was
+    /// connected: the grant happened on the wearer's phone, so nothing here posted anything that
+    /// would have evicted the member's snapshots. Without this, the screen that follows reads a
+    /// device list assembled before the connection existed, finds no device with the new id, and
+    /// falls back to an older connection of the same brand — and the dashboard behind it keeps
+    /// saying no device is connected.
+    /// </para>
     /// </remarks>
-    public Task<DeviceInviteResponse> GetDeviceInviteAsync(
-        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default) =>
-        GetAsync<DeviceInviteResponse>(
+    public async Task<DeviceInviteResponse> GetDeviceInviteAsync(
+        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default)
+    {
+        var invite = await GetAsync<DeviceInviteResponse>(
             $"{DeviceInvites(cardiMemberId)}/{inviteId}", ct, cache: false);
+
+        if (string.Equals(invite.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            await EvictAsync(DeviceKeys(cardiMemberId));
+
+        return invite;
+    }
 
     public async Task<DeviceInviteResponse> RevokeDeviceInviteAsync(
         Guid cardiMemberId, Guid inviteId, CancellationToken ct = default)

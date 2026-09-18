@@ -150,6 +150,22 @@ public class DeviceInviteWatchTests
     }
 
     [Fact]
+    public void ARevokeThatLostTheRace_StillReportsTheConnection()
+    {
+        var deviceId = Guid.NewGuid();
+        var watch = Watch(15, out _);
+        watch.Apply("opened");
+
+        // The caregiver taps Cancel a moment after the wearer finished. The API answers the revoke
+        // with the invitation's real outcome — "completed" — and the screen has to route that into
+        // the success flow rather than throwing it away and reporting a cancellation.
+        Assert.True(watch.Apply("completed", deviceId));
+        Assert.Equal(DeviceInviteWatchState.Connected, watch.State);
+        Assert.Equal(deviceId, watch.DeviceId);
+        Assert.False(watch.Cancel());
+    }
+
+    [Fact]
     public void Cancelling_IsTerminal_AndBeatsALaterPoll()
     {
         var watch = Watch(15, out _);

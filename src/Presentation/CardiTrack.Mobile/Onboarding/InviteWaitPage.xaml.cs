@@ -151,11 +151,21 @@ public partial class InviteWaitPage : ContentPage
         if (left <= TimeSpan.Zero)
             return string.Empty;
 
+        // Rounded up, not truncated. The remaining time is already a shade under the lifetime by
+        // the time this renders, so truncating reports a freshly minted 24-hour link as 23 hours
+        // and a 15-minute code as 14 — the caregiver watching the number they were just promised
+        // tick down before they have done anything.
         if (left >= TimeSpan.FromHours(1))
-            return $"Works for another {(int)left.TotalHours} hour{Plural((int)left.TotalHours)}";
+        {
+            var hours = (int)Math.Ceiling(left.TotalHours);
+            return $"Works for another {hours} hour{Plural(hours)}";
+        }
 
         if (left >= TimeSpan.FromMinutes(1))
-            return $"Works for another {(int)left.TotalMinutes} minute{Plural((int)left.TotalMinutes)}";
+        {
+            var minutes = (int)Math.Ceiling(left.TotalMinutes);
+            return $"Works for another {minutes} minute{Plural(minutes)}";
+        }
 
         return "Expires in under a minute";
     }
@@ -188,6 +198,23 @@ public partial class InviteWaitPage : ContentPage
     /// deadline is still honoured locally if the server never answers again.
     /// </remarks>
     private async Task PollAsync(CancellationToken ct)
+    {
+        try
+        {
+            await PollLoopAsync(ct);
+        }
+        finally
+        {
+            // The loop also ends by reaching a terminal state, not only by cancellation — and an
+            // invitation that expired is exactly when the caregiver reaches for "send again". Left
+            // set, this token makes StartPolling believe a poll is still running, and the
+            // replacement invitation is never watched at all.
+            if (!ct.IsCancellationRequested)
+                StopPolling();
+        }
+    }
+
+    private async Task PollLoopAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested && !_watch.IsFinished)
         {
@@ -322,10 +349,21 @@ public partial class InviteWaitPage : ContentPage
         // pointless round trip, and on a completed one the server rightly refuses to undo it.
         if (!_watch.IsFinished)
         {
-            _watch.Cancel();
             try
             {
-                await _api.RevokeDeviceInviteAsync(_member.Id, _invite.InviteId);
+                // The revoke is asked *before* the watch is marked cancelled, and its answer is
+                // read. The API returns "completed" when the cancel lost the race to the wearer
+                // finishing — that is the whole point of it returning the invitation's real
+                // outcome — and discarding it would drop a caregiver out of a flow whose device had
+                // just been connected, with nothing on screen saying so.
+                var outcome = await _api.RevokeDeviceInviteAsync(_member.Id, _invite.InviteId);
+
+                if (_watch.Apply(outcome.Status, outcome.DeviceId)
+                    && _watch.State == DeviceInviteWatchState.Connected)
+                {
+                    await OnConnectedAsync();
+                    return;
+                }
             }
             catch (Exception ex)
             {
@@ -333,6 +371,8 @@ public partial class InviteWaitPage : ContentPage
                 // trapping the caregiver here, and it expires on its own.
                 _logger.LogInformation(ex, "Could not revoke the device invite on cancel.");
             }
+
+            _watch.Cancel();
         }
 
         if (Navigation.NavigationStack.Count > 1)
