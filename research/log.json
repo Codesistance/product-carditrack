@@ -11,6 +11,12 @@
       "slack_ts": null,
       "item_count": 6,
       "empty_reason": null
+    },
+    {
+      "date": "2026-09-18",
+      "slack_ts": null,
+      "item_count": 16,
+      "empty_reason": null
     }
   ],
   "items": [
@@ -292,6 +298,150 @@
       "severity": "FYI",
       "category": "regulation",
       "brief": "research/queue/2026-09-09-mhra-manchester-nhs-sandbox.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "ollama-ssrf-cve-2026-85180",
+      "title": "Ollama SSRF CVE-2026-85180 (CVSS 8.7) still unpatched in latest \u2014 CardiTrack's unpinned `ollama/ollama:latest` MedGemma image is exposed on Cloud Run",
+      "url": "https://github.com/advisories/GHSA-57p7-34ff-7w3w",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-ollama-ssrf-cve-2026-85180.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "google-health-fitbit-sunset-12-days-out",
+      "title": "Fitbit legacy API hard-sunset now 12 days out (2026-09-30) \u2014 consumer-side migration fully closed (app v5.08); CardiTrack confirmed unaffected",
+      "url": "https://developers.google.com/health/migration",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-google-health-fitbit-sunset-12-days-out.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "luffu-link-preorder-pricing-confirmed",
+      "title": "Luffu Link opens preorders at $249.99 + $19.99/mo Family Plan, US shipping confirmed early 2027 \u2014 first confirmed pricing for CardiTrack's closest direct competitor",
+      "url": "https://luffu.com/products/luffu-link",
+      "severity": "HIGH",
+      "category": "competition",
+      "brief": "research/queue/2026-09-18-luffu-link-preorder-pricing-confirmed.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "uk-national-commission-ai-healthcare-report",
+      "title": "UK National Commission recommends a 'staged authorisation' (L-plate) model for AI-in-healthcare \u2014 the clearest SaMD/AIaMD boundary signal yet for MedGemma-style narration features",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-18-uk-national-commission-ai-healthcare-report.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "eic-accelerator-cutoff-correction",
+      "title": "Correction: EIC Accelerator's next cutoff is 4 Nov 2026, not 6 Oct \u2014 2026 Work Programme runs bimonthly with no October date",
+      "url": "https://eic.ec.europa.eu/eic-funding-opportunities/eic-accelerator/eic-accelerator-open_en",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-18-eic-accelerator-cutoff-correction.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "ollama-cve-2026-86289-fixed",
+      "title": "Second newer Ollama CVE (CVE-2026-86289, GGUF decoder integer overflow) \u2014 already patched in 0.31.2-rc1, no action needed",
+      "url": "https://github.com/advisories/GHSA-c2q9-58w2-gjg4",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-18-ollama-cve-2026-86289-fixed.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "claude-sonnet-4-5-retirement-floor-note",
+      "title": "Claude Sonnet 4.5's 'not sooner than Sept 29, 2026' date is a launch-floor, not a deprecation notice",
+      "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-18-claude-sonnet-4-5-retirement-floor-note.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "anthropic-dotnet-sdk-12-48-0",
+      "title": "Anthropic .NET SDK now at 12.48.0 vs CardiTrack's pinned 12.46.0 \u2014 non-breaking retry/Retry-After fixes",
+      "url": "https://github.com/anthropics/anthropic-sdk-csharp/blob/main/src/Anthropic/CHANGELOG.md",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-anthropic-dotnet-sdk-12-48-0.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "ssh-net-cves-fixed-in-pin",
+      "title": "SSH.NET: two HIGH CVEs (path-traversal, command-injection via ScpClient) fixed exactly at CardiTrack's pinned 2026.0.0 \u2014 no action needed",
+      "url": "https://github.com/advisories/GHSA-q939-rpr3-3284",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-ssh-net-cves-fixed-in-pin.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "automapper-commercial-license-5m-threshold",
+      "title": "AutoMapper 16.2.0 confirmed under a commercial dual-license \u2014 free Community tier caps at $5M annual revenue",
+      "url": "https://www.jimmybogard.com/automapper-and-mediatr-going-commercial/",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-automapper-commercial-license-5m-threshold.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "questpdf-commercial-license-1m-threshold",
+      "title": "QuestPDF 2026.8.0 Community license caps at $1M annual revenue (5x tighter than AutoMapper's $5M) \u2014 only a 90-day grace period after crossing it",
+      "url": "https://github.com/QuestPDF/QuestPDF/blob/main/LICENSE.md",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-questpdf-commercial-license-1m-threshold.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "terraform-google-provider-v8-breaking-changes",
+      "title": "Terraform hashicorp/google provider v8.0.0 removes BeyondCorp/IAP-brand/ML-Engine/Notebooks/Vertex-AI-Schedule resources \u2014 CardiTrack's `~>7.23` pin is safe today but blocks a future upgrade",
+      "url": "https://github.com/hashicorp/terraform-provider-google/releases",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-terraform-google-provider-v8-breaking-changes.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "upload-google-play-node24-deadline-cleared",
+      "title": "r0adkll/upload-google-play's Node 20\u219224 forced-runtime cutover (2026-06-02) was already covered by CardiTrack's floating @v1 pin \u2014 no CI outage occurred",
+      "url": "https://github.com/r0adkll/upload-google-play/issues/256",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-upload-google-play-node24-deadline-cleared.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "xcode-27-ios-27-sdk-shipped",
+      "title": "Xcode 27 / iOS 27 SDKs shipped (2026-09-14) \u2014 new App Store Connect minimum-SDK deadline set for April 2027; CardiTrack's Xcode 26.4.1 pin remains compliant until then",
+      "url": "https://developer.apple.com/news/?id=k1mtkt1k",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-18-xcode-27-ios-27-sdk-shipped.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "garmin-developer-program-frozen",
+      "title": "Garmin Connect Developer Program applications remain frozen ~5 months in, no reopening date \u2014 deprioritize signal for the placeholder Garmin integration",
+      "url": "https://forums.garmin.com/developer/connect-iq/f/discussion/434798/cannot-access-developer-program-application-form-under-construction",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-18-garmin-developer-program-frozen.md"
+    },
+    {
+      "date": "2026-09-18",
+      "slug": "apple-watch-series-12-health-sensing-system",
+      "title": "Apple Watch Series 12 ships a 'Health Sensing System' with 60x-frequency HR + all-day HRV and a daily Readiness score \u2014 roadmap/competitive signal only",
+      "url": "https://www.apple.com/newsroom/2026/09/introducing-apple-watch-series-12-with-the-all-new-health-sensing-system/",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-18-apple-watch-series-12-health-sensing-system.md"
     }
   ]
 }
