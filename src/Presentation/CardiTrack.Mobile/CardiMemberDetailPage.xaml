@@ -153,7 +153,7 @@
                                     <Label x:Name="SensitivityLabel"
                                            Grid.Row="2"
                                            Style="{StaticResource Body2}"
-                                           FontSize="12"
+                                           FontSize="14"
                                            VerticalOptions="End"
                                            LineBreakMode="TailTruncation"/>
                                 </Grid>

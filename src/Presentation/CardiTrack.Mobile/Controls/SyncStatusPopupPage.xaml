@@ -81,14 +81,22 @@
                            LineBreakMode="WordWrap"/>
                 </Border>
 
+                <!-- Dismissal is a mark, not a sentence: nothing on this card is decided, so
+                     the word "Close" was the widest thing on it for no reason. Tapping the
+                     scrim closes it too (OnScrimTapped), as it does on every popup here. -->
                 <Button x:Name="CloseBtn"
-                        Text="Close"
-                        BackgroundColor="Transparent"
-                        TextColor="{StaticResource MutedText}"
+                        Text="✕"
+                        BackgroundColor="{StaticResource ErrorRed}"
+                        TextColor="{StaticResource White}"
                         FontFamily="QuicksandSemiBold"
                         FontSize="16"
-                        HeightRequest="44"
+                        CornerRadius="6"
+                        WidthRequest="40"
+                        HeightRequest="40"
+                        Padding="0"
+                        HorizontalOptions="Center"
                         Margin="0,4,0,0"
+                        SemanticProperties.Description="Close"
                         Clicked="OnCloseClicked"/>
             </VerticalStackLayout>
         </Border>
