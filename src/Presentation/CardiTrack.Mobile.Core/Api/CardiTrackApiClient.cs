@@ -607,6 +607,55 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<DeviceResponse> CompleteDeviceConnectionAsync(string provider, OAuthCallbackRequest request, CancellationToken ct = default) =>
         PostAsync<OAuthCallbackRequest, DeviceResponse>($"api/v1/oauth/callback/{provider}", request, ct);
 
+    public Task<DeviceInviteResponse> CreateDeviceInviteAsync(
+        Guid cardiMemberId, CreateDeviceInviteRequest request, CancellationToken ct = default) =>
+        PostAsync<CreateDeviceInviteRequest, DeviceInviteResponse>(
+            DeviceInvites(cardiMemberId), request, ct);
+
+    /// <remarks>
+    /// <para>
+    /// Uncached on purpose. This is polled while the wearer decides, and the whole point of each
+    /// call is to find out whether the answer has changed since the last one — a cached read would
+    /// report "still pending" long after they had finished.
+    /// </para>
+    /// <para>
+    /// A <c>completed</c> answer is also the only notice this client gets that a device was
+    /// connected: the grant happened on the wearer's phone, so nothing here posted anything that
+    /// would have evicted the member's snapshots. Without this, the screen that follows reads a
+    /// device list assembled before the connection existed, finds no device with the new id, and
+    /// falls back to an older connection of the same brand — and the dashboard behind it keeps
+    /// saying no device is connected.
+    /// </para>
+    /// </remarks>
+    public async Task<DeviceInviteResponse> GetDeviceInviteAsync(
+        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default)
+    {
+        var invite = await GetAsync<DeviceInviteResponse>(
+            $"{DeviceInvites(cardiMemberId)}/{inviteId}", ct, cache: false);
+
+        if (string.Equals(invite.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            await EvictAsync(DeviceKeys(cardiMemberId));
+
+        return invite;
+    }
+
+    public async Task<DeviceInviteResponse> RevokeDeviceInviteAsync(
+        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default)
+    {
+        var invite = await SendAsync<DeviceInviteResponse>(
+            HttpMethod.Delete, $"{DeviceInvites(cardiMemberId)}/{inviteId}", ct);
+
+        // A cancel that lost the race to the wearer finishing comes back "completed", which means a
+        // device was just connected — so the member's device list this client holds is stale.
+        if (string.Equals(invite.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            await EvictAsync(DeviceKeys(cardiMemberId));
+
+        return invite;
+    }
+
+    private static string DeviceInvites(Guid cardiMemberId) =>
+        $"api/v1/cardimembers/{cardiMemberId}/device-invites";
+
     public Task ResendVerificationAsync(string email, CancellationToken ct = default) =>
         PostAsync<ResendVerificationRequest, bool>(
             "api/v1/auth/resend-verification", new ResendVerificationRequest { Email = email }, ct);

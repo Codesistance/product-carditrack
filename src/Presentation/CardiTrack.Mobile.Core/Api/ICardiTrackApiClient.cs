@@ -357,6 +357,29 @@ public interface ICardiTrackApiClient
     Task<OAuthInitiationResponse> InitiateDeviceConnectionAsync(Guid cardiMemberId, ConnectDeviceRequest request, CancellationToken ct = default);
     Task<DeviceResponse> CompleteDeviceConnectionAsync(string provider, OAuthCallbackRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Mints an invitation for the wearer to authorize the device from their own phone, and returns
+    /// it with the one-time URL to hand over.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="DeviceInviteResponse.Url"/> is populated only here. The status read below never
+    /// returns it, so the caller must keep this one if it still needs it — the waiting screen holds
+    /// it for the QR code it is displaying.
+    /// </remarks>
+    Task<DeviceInviteResponse> CreateDeviceInviteAsync(
+        Guid cardiMemberId, CreateDeviceInviteRequest request, CancellationToken ct = default);
+
+    /// <summary>One invitation's current state. What the waiting screen polls.</summary>
+    Task<DeviceInviteResponse> GetDeviceInviteAsync(
+        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Cancels an invitation, returning its resulting state — which is <c>completed</c> rather than
+    /// <c>revoked</c> when the wearer got there first.
+    /// </summary>
+    Task<DeviceInviteResponse> RevokeDeviceInviteAsync(
+        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default);
+
     /// <summary>Asks the API to resend the Auth0 verification email. Anonymous; always succeeds server-side.</summary>
     Task ResendVerificationAsync(string email, CancellationToken ct = default);
 

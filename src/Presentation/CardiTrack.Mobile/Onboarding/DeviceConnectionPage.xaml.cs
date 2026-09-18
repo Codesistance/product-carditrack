@@ -27,6 +27,27 @@ public partial class DeviceConnectionPage : ContentPage
     private readonly CardiMemberResponse _member;
     private readonly ConnectableDevice _device;
 
+    /// <summary>
+    /// Cancelled when this page goes away, so work started on it stops speaking for it.
+    /// </summary>
+    /// <remarks>
+    /// Minting an invitation is a round trip, and Cancel stays live throughout it. Without this, a
+    /// caregiver who backs out mid-request is followed by the continuation: the waiting screen is
+    /// pushed onto a wizard they have already left.
+    /// </remarks>
+    private CancellationTokenSource? _alive;
+
+    /// <summary>
+    /// True while any of the three ways off this page is running.
+    /// </summary>
+    /// <remarks>
+    /// The three are alternatives, not a menu to pick several from. Disabling only the pair meant a
+    /// caregiver could start a handover and then tap Authorize while it was still in flight: two
+    /// flows that complete independently, navigate independently, and leave whichever invitation
+    /// lost still live on a member whose device is now connected.
+    /// </remarks>
+    private bool _busy;
+
     public DeviceConnectionPage(WizardContext ctx, ConnectableDevice device)
     {
         InitializeComponent();
@@ -43,13 +64,26 @@ public partial class DeviceConnectionPage : ContentPage
         AuthorizeBtn.Text = $"Authorize {device.DisplayName}";
         NeedsLabel.Text = $"To look after {_member.Name}, CardiTrack needs:";
         AuthorizingLabel.Text = $"Connecting to {_member.Name}'s {device.DisplayName}...";
+
+        // The same-phone flow needs the system browser, which only iOS and Android have. On the
+        // Windows build it would fail at the tap with "not supported here", so the handover is not
+        // an alternative there — it is the whole feature.
+        var canAuthorizeHere = OperatingSystem.IsAndroid() || OperatingSystem.IsIOS();
+        AuthorizeBtn.IsVisible = canAuthorizeHere;
+        HandoverPrompt.Text = canAuthorizeHere
+            ? $"Is {NameFormatting.FirstName(_member.Name)} not with you?"
+            : $"Send this to {NameFormatting.FirstName(_member.Name)}";
     }
 
     private async void OnAuthorizeClicked(object? sender, EventArgs e)
     {
+        if (_busy)
+            return;
+
+        _busy = true;
         ConnectError.IsVisible = false;
         AuthorizingOverlay.IsVisible = true;
-        AuthorizeBtn.IsEnabled = false;
+        SetActionsEnabled(false);
 
         try
         {
@@ -130,7 +164,91 @@ public partial class DeviceConnectionPage : ContentPage
         finally
         {
             AuthorizingOverlay.IsVisible = false;
-            AuthorizeBtn.IsEnabled = true;
+            SetActionsEnabled(true);
+            _busy = false;
+        }
+    }
+
+    /// <summary>The three routes off this page move together — see <see cref="_busy"/>.</summary>
+    private void SetActionsEnabled(bool enabled)
+    {
+        AuthorizeBtn.IsEnabled = enabled;
+        SendLinkBtn.IsEnabled = enabled;
+        ShowQrBtn.IsEnabled = enabled;
+    }
+
+    private async void OnSendLinkClicked(object? sender, EventArgs e) =>
+        await HandOverAsync(isQr: false);
+
+    private async void OnShowQrClicked(object? sender, EventArgs e) =>
+        await HandOverAsync(isQr: true);
+
+    /// <summary>
+    /// Mints an invitation and moves to the waiting screen, which shows the link or the QR code.
+    /// </summary>
+    /// <remarks>
+    /// <strong>Nothing is sent from here, and nothing opens a share sheet on the caregiver's
+    /// behalf.</strong> The invitation is generated and shown; sending it is a separate, deliberate
+    /// tap on the next screen. An app that threw up a share sheet the moment the button was pressed
+    /// would be deciding for them that this link goes out now and through whichever app the sheet
+    /// happened to offer — and a caregiver who backed out of that sheet would have been told their
+    /// link was sent when it was not.
+    /// </remarks>
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _alive ??= new CancellationTokenSource();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _alive?.Cancel();
+        _alive?.Dispose();
+        _alive = null;
+    }
+
+    private async Task HandOverAsync(bool isQr)
+    {
+        if (_busy)
+            return;
+
+        _busy = true;
+        ConnectError.IsVisible = false;
+        SetActionsEnabled(false);
+
+        var alive = _alive?.Token ?? CancellationToken.None;
+
+        try
+        {
+            var invite = await _api.CreateDeviceInviteAsync(_member.Id, new CreateDeviceInviteRequest
+            {
+                Provider = _device.WireName,
+                Channel = isQr ? "qr" : "link",
+            }, alive);
+
+            // Cancel stays live while that round trip is in flight. Following it with a navigation
+            // would push the waiting screen onto a wizard the caregiver has already left. The
+            // invitation this abandons was never shared with anybody, expires on its own, and is
+            // superseded the moment another is minted — so it is left to lapse rather than chased
+            // with a revoke from a page that no longer exists.
+            if (alive.IsCancellationRequested)
+                return;
+
+            await Navigation.PushAsync(new InviteWaitPage(_ctx, _device, invite, isQr));
+        }
+        catch (OperationCanceledException)
+        {
+            // The page went away mid-request. Nothing to say and nowhere to say it.
+        }
+        catch (ApiException ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            SetActionsEnabled(true);
+            _busy = false;
         }
     }
 
