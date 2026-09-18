@@ -329,8 +329,10 @@
          consequence look like one another. Not for ordinary secondaries ("Try again",
          "Connect a device"): red everywhere is red nowhere. -->
     <Style x:Key="DangerOutlineButton" TargetType="Button" BasedOn="{StaticResource SecondaryOutlineButton}">
-        <Setter Property="TextColor" Value="{StaticResource ErrorRed}"/>
-        <Setter Property="BorderColor" Value="{StaticResource ErrorRed}"/>
+        <!-- DangerRed, not ErrorRed: this is 16px label text on white and has to clear 4.5:1,
+             which is the whole reason the darker token exists. ErrorRed is for fills and dots. -->
+        <Setter Property="TextColor" Value="{StaticResource DangerRed}"/>
+        <Setter Property="BorderColor" Value="{StaticResource DangerRed}"/>
     </Style>
 
     <Style x:Key="GoogleButton" TargetType="Border">

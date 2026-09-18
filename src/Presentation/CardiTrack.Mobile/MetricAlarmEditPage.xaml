@@ -190,9 +190,14 @@
                         </VerticalStackLayout>
                     </Border>
 
+                    <!-- The same removal the alert detail screen offers as a red row with this
+                         trash: one action, one look, whichever screen it is reached from. Here
+                         it wore the neutral outline that "Try again" wears. -->
                     <Button x:Name="DeleteButton"
                             Text="Remove this alert"
-                            Style="{StaticResource SecondaryOutlineButton}"
+                            Style="{StaticResource DangerOutlineButton}"
+                            ImageSource="icon_trash.svg"
+                            ContentLayout="Left,10"
                             IsVisible="False"
                             Clicked="OnDeleteTapped"/>
                 </VerticalStackLayout>

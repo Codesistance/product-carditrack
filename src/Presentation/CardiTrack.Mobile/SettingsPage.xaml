@@ -362,11 +362,11 @@
                                              CheckedColor="{StaticResource DangerRed}"
                                              CheckedChanged="OnDeleteConfirmChanged"
                                              SemanticProperties.Hint="Ticking this turns on the deletion request button"/>
+                        <!-- This button is where the danger outline came from; it spelled the
+                             two colours out inline before there was a style for them. -->
                         <Button x:Name="DeleteAccountBtn"
                                 Text="Start deletion request"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                TextColor="{StaticResource DangerRed}"
-                                BorderColor="{StaticResource DangerRed}"
+                                Style="{StaticResource DangerOutlineButton}"
                                 FontSize="16"
                                 HeightRequest="46"
                                 IsEnabled="False"
