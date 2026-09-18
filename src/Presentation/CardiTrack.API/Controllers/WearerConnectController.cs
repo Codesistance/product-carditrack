@@ -57,17 +57,41 @@ public class WearerConnectController : ControllerBase
 {
     private readonly IDeviceConnectionInviteService _invites;
     private readonly IOptions<DeviceInviteOptions> _options;
+    private readonly IOptions<List<DeviceProviderSettings>> _providers;
     private readonly ILogger<WearerConnectController> _logger;
 
     public WearerConnectController(
         IDeviceConnectionInviteService invites,
         IOptions<DeviceInviteOptions> options,
+        IOptions<List<DeviceProviderSettings>> providers,
         ILogger<WearerConnectController> logger)
     {
         _invites = invites;
         _options = options;
+        _providers = providers;
         _logger = logger;
     }
+
+    /// <summary>
+    /// The origins the consent form is allowed to end up at, taken from the configured providers'
+    /// authorization URLs.
+    /// </summary>
+    /// <remarks>
+    /// "Continue" posts here and is redirected straight to the provider, and browsers apply
+    /// <c>form-action</c> across that redirect — so a policy naming only this host refuses the
+    /// submission, silently. Read from configuration rather than written down here so that a
+    /// provider added later is permitted by being configured, which is the only place its consent
+    /// screen is named anyway.
+    /// </remarks>
+    private IReadOnlyList<string> ProviderFormActionOrigins() =>
+        _providers.Value
+            .Select(p => p.AuthorizationUrl)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => Uri.TryCreate(url, UriKind.Absolute, out var parsed) ? parsed.GetLeftPart(UriPartial.Authority) : null)
+            .Where(origin => origin is not null)
+            .Select(origin => origin!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     /// <summary>The consent ask — what the invitation link opens.</summary>
     [HttpGet("")]
@@ -80,7 +104,8 @@ public class WearerConnectController : ControllerBase
         if (view is null)
             return WearerConnectPage.NotAvailable(Response);
 
-        return WearerConnectPage.Ask(Response, view, t!, _options.Value.PrivacyPolicyUrl);
+        return WearerConnectPage.Ask(
+            Response, view, t!, _options.Value.PrivacyPolicyUrl, ProviderFormActionOrigins());
     }
 
     /// <summary>
