@@ -599,7 +599,8 @@ public partial class DashboardPage : ContentPage
         // Data-pipeline freshness (deterministic — see MemberInsightsCalculator). Suppressed
         // while paused, same rule the stale banner applies — collection is intentionally
         // stopped, so a freshness reading here would misreport a deliberate pause as a gap.
-        FreshnessBlock.IsVisible = !data.MonitoringPaused;
+        // Visibility is settled below, once it is known whether either child has anything to say.
+        var freshnessRelevant = !data.MonitoringPaused;
         var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[FreshnessColorKey(data.DataFreshness)];
         // Silent while the data is arriving as it should. Readings come every ten minutes, so
         // dating them unconditionally put "Updated 10 minutes ago" over a perfectly current
@@ -608,18 +609,22 @@ public partial class DashboardPage : ContentPage
         var neverSynced = data.LastSyncedAt is null;
         var ageWorthShowing = DataAge.IsWorthShowing(data.LastSyncedAt, DateTime.UtcNow);
 
-        LastUpdatedFooterLabel.IsVisible = neverSynced || ageWorthShowing;
+        var showAge = freshnessRelevant && (neverSynced || ageWorthShowing);
+        LastUpdatedFooterLabel.IsVisible = showAge;
         LastUpdatedFooterLabel.Text = data.LastSyncedAt is { } lastSynced
             ? $"Updated {RelativeTime.Format(lastSynced)}"
             : "Not synced yet";
         // The age line carries the freshness state now that the message above it is gone: colour
         // for the eye, the message itself for a screen reader, which cannot read a colour.
         LastUpdatedFooterLabel.TextColor = freshnessColor;
-        // The freshness message still reaches a screen reader when the line is hidden — it is on
-        // the block, not the label, so "data updated" is not lost with the age that outgrew it.
         SemanticProperties.SetDescription(
             LastUpdatedFooterLabel, $"{data.DataFreshnessMessage}. {LastUpdatedFooterLabel.Text}");
-        SemanticProperties.SetDescription(FreshnessBlock, data.DataFreshnessMessage);
+
+        // Exactly one node announces the freshness state. The label owns it while it is on screen;
+        // the block picks it up only once the label has gone, so a screen reader hears it once
+        // rather than twice.
+        SemanticProperties.SetDescription(
+            FreshnessBlock, showAge ? string.Empty : data.DataFreshnessMessage);
 
         // Baseline-learning progress only while the window is still running — a permanently
         // full bar after it completes would say nothing new every day.
@@ -627,6 +632,14 @@ public partial class DashboardPage : ContentPage
             && !data.MonitoringPaused;
         LearningProgress.Progress = data.Baseline.PercentComplete / 100.0;
         LearningProgress.ProgressColor = freshnessColor;
+
+        // The block collapses when neither child has anything to say, which on a healthy dashboard
+        // is now the usual case: the age line is silent under half an hour and the learning bar is
+        // gone once the baseline is established. Left visible it is an empty box in a stack with
+        // 16px spacing — a gap under the hero card on every normal day, which is exactly the
+        // no-news-is-good-news state this page should look calmest in.
+        FreshnessBlock.IsVisible = freshnessRelevant
+            && (LastUpdatedFooterLabel.IsVisible || LearningProgress.IsVisible);
 
         // Poor-sleep nudge: points at the real, unacknowledged Sleep alert StatisticalAlertWorker
         // already raises, rather than a second judgement derived from today's metric alone.
