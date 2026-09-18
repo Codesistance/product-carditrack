@@ -53,24 +53,55 @@
                                    Aspect="AspectFit"/>
                         </Border>
 
-                        <!-- Shown instead of the code when the caregiver sent a link. -->
-                        <Border x:Name="SentPlate"
+                        <!-- Shown instead of the code when the caregiver asked for a link. The
+                             link itself is on the screen: nothing has been sent, and sending it is
+                             the caregiver's own deliberate tap below. -->
+                        <Border x:Name="LinkPlate"
                                 IsVisible="False"
-                                BackgroundColor="#E3F1FE"
-                                StrokeThickness="0"
-                                Padding="18"
+                                BackgroundColor="{StaticResource White}"
+                                Stroke="{StaticResource Divider}"
+                                StrokeThickness="1"
+                                Padding="16,10,10,10"
                                 Margin="0,22,0,0">
                             <Border.StrokeShape>
                                 <RoundRectangle CornerRadius="14"/>
                             </Border.StrokeShape>
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                <Label Text="&#x2709;" FontSize="22" VerticalOptions="Center"/>
-                                <Label x:Name="SentLabel"
-                                       Grid.Column="1"
-                                       Text="Link sent. They can open it on any device."
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
+                                <!-- Truncated rather than wrapped: the caregiver shares or copies
+                                     this, they never have to read it. -->
+                                <Label x:Name="LinkLabel"
+                                       Text=""
                                        Style="{StaticResource Body2}"
                                        TextColor="{StaticResource HeadingText}"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="1"
                                        VerticalOptions="Center"/>
+
+                                <!-- Padding rather than a bigger glyph: a 24dp icon is the right
+                                     size to look at and the wrong size to hit. -->
+                                <Image x:Name="CopyIcon"
+                                       Grid.Column="1"
+                                       Source="icon_clipboard.svg"
+                                       WidthRequest="24" HeightRequest="24"
+                                       Margin="8"
+                                       VerticalOptions="Center"
+                                       SemanticProperties.Description="Copy link">
+                                    <Image.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnCopyTapped"/>
+                                    </Image.GestureRecognizers>
+                                </Image>
+
+                                <Image x:Name="ShareIcon"
+                                       Grid.Column="2"
+                                       Source="icon_share.svg"
+                                       WidthRequest="24" HeightRequest="24"
+                                       Margin="8"
+                                       VerticalOptions="Center"
+                                       SemanticProperties.Description="Share link">
+                                    <Image.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnShareClicked"/>
+                                    </Image.GestureRecognizers>
+                                </Image>
                             </Grid>
                         </Border>
 

@@ -150,14 +150,15 @@ public partial class DeviceConnectionPage : ContentPage
         await HandOverAsync(isQr: true);
 
     /// <summary>
-    /// Mints an invitation and moves to the waiting screen — the link goes out through the
-    /// caregiver's own share sheet, the QR code is drawn on the next page.
+    /// Mints an invitation and moves to the waiting screen, which shows the link or the QR code.
     /// </summary>
     /// <remarks>
-    /// The share sheet is opened from the waiting screen rather than here, and only after the
-    /// navigation: a caregiver who dismisses the sheet without sending should still land somewhere
-    /// that shows them a live invitation and lets them try again, not back on this page with an
-    /// invitation they cannot see.
+    /// <strong>Nothing is sent from here, and nothing opens a share sheet on the caregiver's
+    /// behalf.</strong> The invitation is generated and shown; sending it is a separate, deliberate
+    /// tap on the next screen. An app that threw up a share sheet the moment the button was pressed
+    /// would be deciding for them that this link goes out now and through whichever app the sheet
+    /// happened to offer — and a caregiver who backed out of that sheet would have been told their
+    /// link was sent when it was not.
     /// </remarks>
     private async Task HandOverAsync(bool isQr)
     {
@@ -174,9 +175,6 @@ public partial class DeviceConnectionPage : ContentPage
             });
 
             await Navigation.PushAsync(new InviteWaitPage(_ctx, _device, invite, isQr));
-
-            if (!isQr)
-                await InviteWaitPage.ShareLinkAsync(invite, _member, _device);
         }
         catch (ApiException ex)
         {

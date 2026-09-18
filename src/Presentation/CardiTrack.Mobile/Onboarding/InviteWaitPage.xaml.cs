@@ -8,14 +8,14 @@ using Microsoft.Extensions.Logging;
 namespace CardiTrack.Mobile.Onboarding;
 
 /// <summary>
-/// The caregiver's side of a wearer invitation: the QR code or the sent-link confirmation, what the
-/// wearer has done so far, and how long is left.
+/// The caregiver's side of a wearer invitation: the QR code to hold up, or the link to send, plus
+/// what the wearer has done so far and how long is left.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The screen exists because the wearer is somewhere else. Everything on it is the caregiver
-/// watching somebody else's progress, so it says what has happened rather than asking them to do
-/// anything — until it cannot finish, at which point it offers another go.
+/// The screen exists because the wearer is somewhere else. <strong>Nothing is sent from here on its
+/// own.</strong> The link is generated and shown; handing it over is the caregiver's own tap, to
+/// whichever app and whichever person they choose, so CardiTrack never learns who it went to.
 /// </para>
 /// <para>
 /// <see cref="DeviceInviteWatch"/> holds the decisions: which state a status string means, when to
@@ -26,7 +26,6 @@ namespace CardiTrack.Mobile.Onboarding;
 public partial class InviteWaitPage : ContentPage
 {
     private readonly ICardiTrackApiClient _api;
-    private readonly IPopupService _popups;
     private readonly ILogger<InviteWaitPage> _logger;
     private readonly WizardContext _ctx;
     private readonly CardiMemberResponse _member;
@@ -37,17 +36,31 @@ public partial class InviteWaitPage : ContentPage
     private DeviceInviteWatch _watch;
     private CancellationTokenSource? _polling;
 
+    /// <summary>
+    /// The invitation URL, kept here rather than read off <see cref="_invite"/>.
+    /// </summary>
+    /// <remarks>
+    /// The API returns the URL exactly once, in the response that created the invitation — a status
+    /// read deliberately leaves it null so that polling cannot keep re-issuing a live credential.
+    /// This screen polls, so the field it renders from has to be the one that does not change
+    /// underneath it; reading the latest response would blank the link on the first poll.
+    /// </remarks>
+    private string? _url;
+
+    /// <summary>Stops a second tap stacking another share sheet on top of the first.</summary>
+    private bool _sharing;
+
     public InviteWaitPage(
         WizardContext ctx, ConnectableDevice device, DeviceInviteResponse invite, bool isQr)
     {
         InitializeComponent();
         _api = ServiceHelper.GetRequiredService<ICardiTrackApiClient>();
-        _popups = ServiceHelper.GetRequiredService<IPopupService>();
         _logger = ServiceHelper.GetRequiredService<ILogger<InviteWaitPage>>();
         _ctx = ctx;
         _member = ctx.RequireMember();
         _device = device;
         _invite = invite;
+        _url = invite.Url;
         _isQr = isQr;
         _watch = new DeviceInviteWatch(invite.ExpiresAt);
 
@@ -76,10 +89,13 @@ public partial class InviteWaitPage : ContentPage
         var name = NameFormatting.FirstName(_member.Name);
 
         QrPlate.IsVisible = _isQr && !_watch.IsFinished;
-        SentPlate.IsVisible = !_isQr && !_watch.IsFinished;
+        LinkPlate.IsVisible = !_isQr && !_watch.IsFinished;
 
-        if (_isQr && QrImage.Source is null && InviteQrCode.Render(_invite.Url) is { } png)
+        if (_isQr && QrImage.Source is null && InviteQrCode.Render(_url) is { } png)
             QrImage.Source = ImageSource.FromStream(() => new MemoryStream(png));
+
+        if (!_isQr)
+            LinkLabel.Text = _url ?? string.Empty;
 
         TitleHeading.Text = _watch.State switch
         {
@@ -87,7 +103,7 @@ public partial class InviteWaitPage : ContentPage
             DeviceInviteWatchState.Declined => $"{name} said it wasn't them",
             DeviceInviteWatchState.Expired => "That link has expired",
             DeviceInviteWatchState.Cancelled => "Cancelled",
-            _ => _isQr ? "Ask them to scan this" : $"Sent to {name}",
+            _ => _isQr ? "Ask them to scan this" : $"Send this to {name}",
         };
 
         SubHeading.Text = _watch.State switch
@@ -102,7 +118,9 @@ public partial class InviteWaitPage : ContentPage
                 "That link won't work any more.",
             _ => _isQr
                 ? "Hold your phone up so they can scan it with their camera."
-                : "They can open it on any device. This screen updates when they do.",
+                // Said plainly, because the alternative is a caregiver assuming we sent it and
+                // waiting for a wearer who was never contacted.
+                : "The link is ready. Send it however you like — we don't send anything for you.",
         };
 
         StatusPlate.IsVisible = !_watch.IsFinished;
@@ -118,6 +136,7 @@ public partial class InviteWaitPage : ContentPage
         // the caregiver's own doing — offering "send again" on either would read as the app
         // second-guessing a decision somebody just made.
         ResendBtn.IsVisible = _watch.State == DeviceInviteWatchState.Expired;
+        ResendBtn.Text = _isQr ? "Show a new code" : "Get a new link";
         CancelLink.Text = _watch.IsFinished ? "Done" : "Cancel";
     }
 
@@ -248,8 +267,21 @@ public partial class InviteWaitPage : ContentPage
             Status = "active",
         };
 
+        // Every page that led here goes, not just this one. Two reasons, and the second is the
+        // one that bites: left in the stack, the connection page is a hardware-back press away with
+        // Authorize still live, which sends an already-connected member back through the provider's
+        // consent screen — and Shell cannot build a route over those pages when the wizard's modal
+        // is finally popped, so "Continue" on the confirmation threw and took the app down with it.
+        // The in-app flow never hit this because it swaps itself out for the confirmation directly;
+        // going through a waiting screen adds the page it forgot to remove.
+        var spent = Navigation.NavigationStack
+            .Where(page => page is InviteWaitPage or DeviceConnectionPage)
+            .ToList();
+
         await Navigation.PushAsync(new ConnectionSuccessPage(_ctx, device));
-        Navigation.RemovePage(this);
+
+        foreach (var page in spent)
+            Navigation.RemovePage(page);
     }
 
     private async void OnResendClicked(object? sender, EventArgs e)
@@ -265,13 +297,10 @@ public partial class InviteWaitPage : ContentPage
                 Channel = _isQr ? "qr" : "link",
             });
 
+            _url = _invite.Url;
             _watch = new DeviceInviteWatch(_invite.ExpiresAt);
             QrImage.Source = null;
             Present();
-
-            if (!_isQr)
-                await ShareLinkAsync(_invite, _member, _device);
-
             StartPolling();
         }
         catch (ApiException ex)
@@ -312,15 +341,52 @@ public partial class InviteWaitPage : ContentPage
             await _ctx.CancelAsync(this);
     }
 
+    private async void OnShareClicked(object? sender, EventArgs e)
+    {
+        if (_sharing)
+            return;
+
+        _sharing = true;
+        try
+        {
+            await ShareLinkAsync(_url, _member, _device);
+        }
+        catch (Exception ex)
+        {
+            // The link is on screen and Copy still works, so a sheet that refused to open is not
+            // worth an error banner over.
+            _logger.LogInformation(ex, "Could not open the share sheet for a device invite.");
+        }
+        finally
+        {
+            _sharing = false;
+        }
+    }
+
+    private async void OnCopyTapped(object? sender, EventArgs e)
+    {
+        if (string.IsNullOrEmpty(_url))
+            return;
+
+        await Clipboard.Default.SetTextAsync(_url);
+
+        // Confirmed on the icon that was tapped rather than in a toast: the caregiver is about to
+        // paste this somewhere and needs to know it worked, without another thing to dismiss.
+        CopyIcon.Source = "icon_action_check.svg";
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        CopyIcon.Source = "icon_clipboard.svg";
+    }
+
     /// <summary>
-    /// Hands the invitation to the caregiver's own share sheet.
+    /// Hands the invitation to the caregiver's own share sheet, when they ask for it.
     /// </summary>
     /// <remarks>
     /// Their sheet, their choice of app, their contact list. CardiTrack sends nothing and never
-    /// learns who it went to — which is why there is no recipient field anywhere in this flow.
+    /// learns who it went to — which is why there is no recipient field anywhere in this flow, and
+    /// why this runs on a deliberate tap rather than opening itself the moment a link is minted.
     /// </remarks>
     public static Task ShareLinkAsync(
-        DeviceInviteResponse invite, CardiMemberResponse member, ConnectableDevice device)
+        string? url, CardiMemberResponse member, ConnectableDevice device)
     {
         var name = NameFormatting.FirstName(member.Name);
 
@@ -330,7 +396,7 @@ public partial class InviteWaitPage : ContentPage
             Subject = $"Connect your {device.DisplayName} to CardiTrack",
             Text =
                 $"Hi {name} — open this to connect your {device.DisplayName} so I can keep an eye " +
-                $"on how you're doing. It only works for a day.{Environment.NewLine}{invite.Url}",
+                $"on how you're doing. It only works for a day.{Environment.NewLine}{url}",
         });
     }
 }

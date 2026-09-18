@@ -175,7 +175,7 @@
                               ColumnSpacing="12"
                               Margin="0,10,0,0">
                             <Button x:Name="SendLinkBtn"
-                                    Text="Send a link"
+                                    Text="Get a link"
                                     Style="{StaticResource SecondaryOutlineButton}"
                                     HorizontalOptions="Fill"
                                     Clicked="OnSendLinkClicked"/>
