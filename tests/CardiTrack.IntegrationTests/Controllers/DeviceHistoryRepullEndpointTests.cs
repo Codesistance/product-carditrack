@@ -37,6 +37,7 @@ public class DeviceHistoryRepullEndpointTests
             _userContext,
             Substitute.For<ILogger<DevicesController>>(),
             Substitute.For<IDeviceConnectionService>(),
+            Substitute.For<IDeviceConnectionInviteService>(),
             Substitute.For<IManualDeviceSyncService>(),
             _repulls,
             Substitute.For<IValidator<ConnectDeviceRequest>>(),

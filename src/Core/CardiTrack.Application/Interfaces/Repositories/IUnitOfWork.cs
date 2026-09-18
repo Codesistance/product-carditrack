@@ -36,6 +36,7 @@ public interface IUnitOfWork : IDisposable
     ICardiMemberCreationKeyRepository CardiMemberCreationKeys { get; }
     IMemberAiHoldRepository MemberAiHolds { get; }
     IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
+    IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
 
     Task<int> SaveChangesAsync();
 

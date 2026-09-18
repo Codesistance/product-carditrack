@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<UpdateCardiMemberRequest>, UpdateCardiMemberValidator>();
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
+        services.AddScoped<IValidator<CreateDeviceInviteRequest>, CreateDeviceInviteValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         services.AddScoped<IValidator<HistoryRepullRequest>, HistoryRepullValidator>();
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
@@ -112,6 +113,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemberAdviseRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseRepository>();
         services.AddScoped<IMemberAiHoldRepository, CardiTrack.Infrastructure.Repositories.MemberAiHoldRepository>();
         services.AddScoped<IDeviceHistoryRepullRepository, CardiTrack.Infrastructure.Repositories.DeviceHistoryRepullRepository>();
+        services.AddScoped<IDeviceConnectionInviteRepository, CardiTrack.Infrastructure.Repositories.DeviceConnectionInviteRepository>();
 
         // Push delivery spine (notification_engine.md Phase 3) — the API both issues the
         // immediate-attempt send (nudge/alert writing paths, and the internal enqueue endpoint)
@@ -137,6 +139,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IAuth0ManagementService, Auth0ManagementClient>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionService,
             CardiTrack.Infrastructure.Services.DeviceConnectionService>();
+        // Wearer-side device onboarding: the caregiver mints an invitation, the wearer completes
+        // the grant from their own device. Request-scoped like the connection flow it extends.
+        services.Configure<CardiTrack.Infrastructure.Settings.DeviceInviteOptions>(
+            configuration.GetSection(CardiTrack.Infrastructure.Settings.DeviceInviteOptions.SectionName));
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionInviteService,
+            CardiTrack.Infrastructure.Services.DeviceConnectionInviteService>();
         // Caregiver-triggered sync (issue #67). Request-scoped, not a background job — the
         // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,

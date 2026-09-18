@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Worker;
 using CardiTrack.Worker.Workers;
 using Microsoft.Extensions.DependencyInjection;
@@ -244,7 +245,8 @@ public class RetentionWorkerTests
     }
 
     private TestableWorker CreateWorker(
-        bool dryRun = false, int chatRetentionDays = 90, int batchSize = 100)
+        bool dryRun = false, int chatRetentionDays = 90, int batchSize = 100,
+        int inviteRetentionDays = 30)
     {
         var scope = Substitute.For<IServiceScope>();
         scope.ServiceProvider.Returns(_provider);
@@ -264,8 +266,14 @@ public class RetentionWorkerTests
             BatchSize = batchSize,
         });
 
+        var inviteOptions = Substitute.For<IOptionsMonitor<DeviceInviteOptions>>();
+        inviteOptions.CurrentValue.Returns(new DeviceInviteOptions
+        {
+            RetentionDays = inviteRetentionDays,
+        });
+
         return new TestableWorker(
-            workerOptions, options, scopeFactory,
+            workerOptions, options, inviteOptions, scopeFactory,
             NullLogger<RetentionWorker>.Instance, new FixedTimeProvider(Now));
     }
 
@@ -281,10 +289,11 @@ public class RetentionWorkerTests
     private sealed class TestableWorker(
         IOptionsMonitor<WorkerOptions> workerOptions,
         IOptionsMonitor<RetentionWorkerOptions> options,
+        IOptionsMonitor<DeviceInviteOptions> inviteOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<RetentionWorker> logger,
         TimeProvider timeProvider)
-        : RetentionWorker(workerOptions, options, scopeFactory, logger, timeProvider)
+        : RetentionWorker(workerOptions, options, inviteOptions, scopeFactory, logger, timeProvider)
     {
         public Task RunSweepAsync(CancellationToken ct) => SweepAsync(ct);
     }

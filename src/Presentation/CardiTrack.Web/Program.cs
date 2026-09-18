@@ -78,6 +78,7 @@ try
     builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
     builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
     builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
+    builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
     builder.Services.AddPushRepositories();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IUserService, UserService>();

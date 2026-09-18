@@ -2,16 +2,16 @@
 
 Handles wearable device connections via OAuth, device status management, primary device designation, and token refresh.
 
-**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**, as are the M1-15 management endpoints — **delete**, **set primary**, and a **refresh** endpoint — plus an on-demand **sync** endpoint (issue #67). Get-single-device remains **planned — not yet implemented**; note the implemented routes differ from the planned shapes below (`POST .../primary` not `PUT`, `POST .../refresh` not `POST .../reconnect`).
+**Implementation status:** the core OAuth connection flow (list, connect, bounce redirect, callback) is **implemented**, as are the M1-15 management endpoints — **delete**, **set primary**, and a **refresh** endpoint — plus an on-demand **sync** endpoint (issue #67) and the **wearer-side invitation** flow that lets the wearer authorize from their own device instead of the caregiver's phone. Get-single-device remains **planned — not yet implemented**; note the implemented routes differ from the planned shapes below (`POST .../primary` not `PUT`, `POST .../refresh` not `POST .../reconnect`).
 
 Key implementation facts (verified against `DeviceConnectionService`):
 
-- **Authorization is two-tier, member-link based** (failure → 404 "CardiMember not found" in both tiers, so an unauthorised caller can't tell a member exists). *Reading and connecting* — list, initiate, callback — need only an **active `UserCardiMember` link**. The *management* actions that change how a member is monitored — **delete, set-primary, refresh** — additionally require **`IsPrimaryCaregiver`**, so a relative invited only to watch over someone cannot cut off their data feed. **Sync** sits in the reading tier: it changes nothing about the connection and shows the caller nothing they could not already see. There are no Auth0 **role** checks on any device endpoint.
+- **Authorization is two-tier, member-link based** (failure → 404 "CardiMember not found" in both tiers, so an unauthorised caller can't tell a member exists). *Reading and connecting* — list, initiate, callback — need only an **active `UserCardiMember` link**. The *management* actions that change how a member is monitored — **delete, set-primary, refresh** — additionally require **`IsPrimaryCaregiver`**, so a relative invited only to watch over someone cannot cut off their data feed. **Sync** sits in the reading tier: it changes nothing about the connection and shows the caller nothing they could not already see. **Device invitations** (create, read, revoke) sit in the reading tier too, and deliberately: a caregiver who holds a link can already run the whole connection on their own phone, so requiring the stricter tier to do it by invitation would guard nothing while blocking the case the feature exists for. There are no Auth0 **role** checks on any device endpoint.
 - **State tokens are single-use with a 15-minute TTL**, held server-side in the distributed cache keyed to the initiating user, member, and provider. The callback consumes the state even if the code exchange fails — a replayed state always fails.
 - **Google authorize URLs include `access_type=offline`** (config-driven), without which Google issues no refresh token. `prompt=consent` (`FirstConsentAuthorizationParams`) is added **only while the member holds no refresh token** on that provider — Google re-issues one only when consent is shown again, but forcing it on every connect makes a reconnect look like a failure. A token exchange that returns no refresh token **leaves the stored one in place** rather than nulling it — unless the exchange came back with a **different `providerUserId`**, in which case the old account's token is dropped so background syncs can't keep pulling the previous wearer's data (and the next initiation re-prompts for consent).
 - **OAuth tokens are AES-encrypted at rest** before being stored on the connection record.
 - **Syncing is notify-then-fetch.** The `CardiTrack.HealthWebhookReceiver` Cloud Run service (`POST /webhooks/google-health`) receives the provider's data-availability notifications and publishes them to Pub/Sub; `NotificationDrainService` maps each notification's health-user id to the matching connections and runs a **targeted sync** through the same `IDeviceSyncService` the Worker uses. Because that stamps `LastSyncDate`, the routine poll's due-time moves out — making the Worker's 10-minute cron (`WearableSyncWorker`) the **fallback**, not a duplicate. The cron sets only how often the worker *looks*; a connection is actually due once its own `SyncFrequencyMinutes` (default 10) has elapsed. Connections belonging to a **removed or monitoring-paused** CardiMember are excluded by `GetDueForSyncAsync`, so a pause genuinely stops collection — see [cardimembers.md](cardimembers.md). Each due connection writes its own raw `DeviceActivityLogs` row, which is then merged into the member's single daily `ActivityLogs` row.
-- The anonymous bounce endpoint **only redirects into the `carditrack://` app scheme** — any other cached redirect target is rejected, preventing open-redirect leakage of `code`+`state`.
+- The anonymous bounce endpoint **only redirects into the `carditrack://` app scheme** — any other cached redirect target is rejected, preventing open-redirect leakage of `code`+`state`. It now serves **two flows**, and which one a callback belongs to is carried by its state token and nothing else: an **app** state bounces into the deep link as before, a **wearer** state is completed server-side and renders a page. A state minted for one flow cannot be spent through the other's door — the two prove possession differently, and the check is explicit at both ends.
 - **Only the GoogleHealth-backed providers (`fitbit`, `pixel_watch`) are actually connectable** — the GoogleHealth engine is the only one registered in DI. `garmin` and `withings` are the two dedicated integrations still to come; both have config blocks with **placeholder client ids**. **Apple Watch and Samsung Galaxy Watch will never get an engine of their own** (decided 2026-09-05 — see *Devices that arrive via Google Health* below): `samsung_health` still passes request validation but has no config block and fails like any other unconfigured provider. **Oura and Whoop were dropped from the roadmap** the same day; their config blocks and enum members are dead code awaiting cleanup. Every non-Google provider fails a connect attempt with 400 "not configured for connections".
 
 ### Real-time notifications
@@ -133,6 +133,158 @@ Initiate an OAuth device connection. Returns a redirect URL for the provider's a
 
 ---
 
+## Wearer-side invitations
+
+Connecting a wearable used to require the wearer to be holding the caregiver's phone: the OAuth
+round trip ran inside the app, so the consent screen could only appear there. That is fine for a son
+setting up his mother's watch at her kitchen table and impossible for a daughter three hundred miles
+away. These endpoints move the consent to the wearer's own device.
+
+The caregiver mints an invitation and hands it over themselves — a share sheet, a QR code on screen.
+**CardiTrack sends nothing and stores no address**: there is no email or phone field anywhere in this
+flow, so we never learn who the link went to. The wearer opens it, sees who is asking and what would
+be shared, and completes the provider's own consent from their own browser.
+
+**What the invitation is.** A row in `DeviceConnectionInvites` holding a member id, the caregiver's
+user id, a brand, a channel, the **SHA-256 of a 256-bit token**, and some timestamps. The token
+itself is returned exactly once, in the create response, and is never stored, logged or re-issued —
+a leaked database hands over no live invitations. There is no health data on the row, and no fact
+about anyone that `UserCardiMembers` did not already hold.
+
+**Lifetimes are per channel** (`DeviceInvites` configuration): a shared **link** lasts 24 hours
+because it has to survive an unread inbox; a **QR code** lasts 15 minutes because both people are in
+the room and nothing is waiting on a delivery. Expiry is stored as an instant, not a status, so an
+invitation is expired the moment its deadline passes whether or not anything has swept it.
+
+**At most one live invitation per member and brand.** Creating one supersedes any live predecessor —
+asking for a new link is how a caregiver takes back one they sent to the wrong person. The rule is a
+partial unique index, not just a service check, so two caregivers tapping at once cannot both win.
+
+**Statuses:** `pending` → `opened` → one of `completed`, `declined`, `revoked`; plus `expired`,
+which the API reports as a status even though it is stored as a deadline, so the caregiver's waiting
+screen is not re-deriving it from a device clock that may disagree with ours.
+
+Finished and expired invitations are deleted by `RetentionWorker` after `DeviceInvites:RetentionDays`
+(30). The durable record of the same events is the audit trail, which keeps them longer.
+
+---
+
+## POST `/api/v1/cardimembers/{id}/device-invites`
+
+Mints an invitation and returns the one-time URL to hand the wearer.
+
+**Priority:** P1 | **Auth Required:** Yes (active `UserCardiMember` link)
+
+### Request Body
+
+```json
+{
+  "provider": "fitbit",
+  "channel": "qr"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `provider` | string | Yes | `fitbit`, `pixel_watch`, `garmin`, `samsung_health`, `withings` |
+| `channel` | string | Yes | `link` (24 h) or `qr` (15 min) — sets the lifetime |
+
+### Response `201 Created`
+
+```json
+{
+  "success": true,
+  "message": "Here's the link to send them.",
+  "data": {
+    "inviteId": "8f2c…",
+    "provider": "fitbit",
+    "channel": "qr",
+    "status": "pending",
+    "url": "https://api.carditrack.com/connect?t=…",
+    "expiresAt": "2026-09-18T09:15:00Z",
+    "openedAt": null,
+    "resolvedAt": null,
+    "deviceId": null
+  }
+}
+```
+
+`url` is populated **only here**. Every later read leaves it null: it is a live credential, and a
+status endpoint that kept re-issuing it would turn the waiting screen's poll into a repeated chance
+to leak one.
+
+### Errors
+
+| Code | Status | Description |
+|------|--------|-------------|
+| `VALIDATION_ERROR` | 400 | Unknown `provider`, or `channel` that is neither `link` nor `qr` |
+| `UNSUPPORTED_PROVIDER` | 400 | Provider has no configured client |
+| — | 404 | No active link to this CardiMember |
+
+---
+
+## GET `/api/v1/cardimembers/{id}/device-invites/{inviteId}`
+
+One invitation's current state — what the caregiver's waiting screen polls. Same body as above with
+`url` null. 404 when the invitation belongs to a different member, so an id guessed off one member
+cannot read another's.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+---
+
+## DELETE `/api/v1/cardimembers/{id}/device-invites/{inviteId}`
+
+Cancels an invitation. Returns `200` with the invitation's **resulting** state, which is `completed`
+rather than `revoked` when the wearer got there first — a cancel that lost a race has still left the
+caregiver where they wanted to be, and reporting a failure would send them looking for a problem
+that is not there.
+
+**Priority:** P1 | **Auth Required:** Yes
+
+---
+
+## `GET /connect`, `POST /connect/start`, `POST /connect/decline`
+
+The wearer's three pages. **Anonymous**, HTML, and outside `/api/v1` — the person they serve has no
+CardiTrack account and, by the product decision of 2026-08-10, never will.
+
+| Route | Does |
+|-------|------|
+| `GET /connect?t=…` | The consent ask: who is asking, about whom, which brand, what would be shared, and a privacy link |
+| `POST /connect/start` | Marks the invitation opened, mints wearer-channel PKCE state, `302`s to the provider's consent screen |
+| `POST /connect/decline` | Ends the invitation as `declined` and says so |
+
+**The token is the whole authorization**, backed by a per-IP rate limit on `/connect*`. What holding
+one gets you is bounded by the service, not by the controller: every method takes a token and
+nothing else — no member id, user id or provider for a caller to substitute — and the most any page
+discloses is **two first names, a brand and a deadline**. No surname, no email, no date of birth, no
+reading, no alert, no other member of the family.
+
+**Every unusable link gets byte-for-byte the same page and the same `404`** — unknown, expired,
+already used, declined and revoked alike. Distinguishing them, in the copy or in the status, would
+answer for any token somebody cared to try whether it had ever been a real invitation.
+
+**The two actions are POSTs, not links.** A `GET` would let any preview fetch — a messaging app
+unfurling the link, a mail scanner — start or end the flow before the wearer had read a word of it.
+They carry no anti-forgery token and need none: a forged cross-site post would have to carry the
+invitation token in its body, and anyone holding that can call these endpoints directly. There is no
+ambient credential here for a forgery to ride on.
+
+**The token travels in the query string**, which is normally where a credential should not go. A QR
+code and a shared link have nowhere else to put it; request logging strips query strings entirely,
+the audit trail records paths only, and every page sends `Referrer-Policy: no-referrer`. Pages also
+send `Cache-Control: no-store`, `X-Frame-Options: DENY` and a content security policy of
+`default-src 'none'` with `form-action 'self'` — they carry **no script at all**, so a content
+injection would have nothing to execute.
+
+**Audit.** These requests have no authenticated subject, so `AuditLoggingMiddleware` would record
+nothing; the invite service writes the entries itself (`CreateDeviceInvite`, `OpenDeviceInvite`,
+`CompleteDeviceInvite`, `DeclineDeviceInvite`, `RevokeDeviceInvite`) against the **caregiver**, who
+is the accountable party in every case.
+
+---
+
 ## GET `/api/v1/oauth/redirect/{provider}`
 
 Anonymous provider-facing redirect target (the "bounce"). Google redirects the wearer's browser here after consent; the endpoint looks up the pending `state` (without consuming it) and returns an **HTML hand-off page** that navigates the browser into the app deep link cached at initiation:
@@ -152,7 +304,32 @@ carditrack://oauth/callback?state=...&error=access_denied&error_description=...
 
 Only a `state` that cannot be resolved at all — absent, expired, already spent, or not this provider's — has nowhere to go; that renders a terminal "start the connection again" page with a `400`.
 
-**Priority:** P0 | **Auth Required:** No (the state token scopes it; completing the flow still requires the authenticated callback below)
+### Two flows, one redirect URI
+
+The provider's registered redirect URI is one fixed route per API, so this endpoint serves the
+wearer-side flow as well. **The state token is the only thing that says which** — the provider sends
+back exactly what we sent it, so the state is the only part of the request we minted.
+
+A **wearer** state is not bounced anywhere: there is no app to return to. The endpoint exchanges the
+code itself, stores the connection under the member and caregiver the invitation named, closes the
+invitation out, and renders a page ("All set — thank you", or "Nothing was shared"). A wearer's
+browser is never shown a `carditrack://` link or an `intent://` URL — the first would be a dead tap
+and the second would offer to install an app they never asked for.
+
+Two things are checked at completion that the app flow has no need of. The **caregiver's access is
+re-read**, because an invitation can outlive the authority that issued it and this is the moment
+health data would start flowing to somebody already cut off. And the **channel must match**: a state
+minted for the app cannot be completed through the wearer path, nor the reverse. The two flows prove
+possession differently — the app by a verifier held on the phone, the wearer by a verifier we never
+released — and the wearer state carries the caregiver's own user id, so without an explicit channel
+check a caregiver could post their own invitation's state to the authenticated callback and complete
+a grant the wearer had started but never finished giving.
+
+A refusal at the provider (`error=access_denied`) **leaves the invitation live**, so the wearer can
+change their mind from the page they land on rather than going back to the caregiver for a fresh
+link over a mis-tap.
+
+**Priority:** P0 | **Auth Required:** No (the state token scopes it; completing the *app* flow still requires the authenticated callback below)
 
 ### Errors
 

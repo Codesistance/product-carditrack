@@ -1,18 +1,19 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Worker.Workers;
 
 /// <summary>
-/// Carries out the two retention promises nothing else keeps: it erases an account once its
-/// thirty-day cancellation window has elapsed, and it deletes member chat conversations ninety
-/// days after their last turn.
+/// Carries out the retention promises nothing else keeps: it erases an account once its thirty-day
+/// cancellation window has elapsed, deletes member chat conversations ninety days after their last
+/// turn, and clears out wearer device invitations once they have finished mattering.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Both figures are published. The privacy policy and the account-deletion page commit to
+/// The first two figures are published. The privacy policy and the account-deletion page commit to
 /// completing a deletion <em>within</em> thirty days of a verified request, and the chat retention
 /// period is stated at §6.3 of the DPIA and in the policy. Until this worker, both were kept by
 /// hand — <c>docs/technical/manual_erasure_runbook.md</c> is that procedure, and an operator
@@ -74,12 +75,14 @@ public class RetentionWorker : CronBackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<RetentionWorkerOptions> _options;
+    private readonly IOptionsMonitor<DeviceInviteOptions> _inviteOptions;
     private readonly ILogger<RetentionWorker> _logger;
     private readonly TimeProvider _timeProvider;
 
     public RetentionWorker(
         IOptionsMonitor<WorkerOptions> workerOptions,
         IOptionsMonitor<RetentionWorkerOptions> options,
+        IOptionsMonitor<DeviceInviteOptions> inviteOptions,
         IServiceScopeFactory scopeFactory,
         ILogger<RetentionWorker> logger,
         TimeProvider? timeProvider = null)
@@ -87,6 +90,7 @@ public class RetentionWorker : CronBackgroundService
     {
         _scopeFactory = scopeFactory;
         _options = options;
+        _inviteOptions = inviteOptions;
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -127,6 +131,83 @@ public class RetentionWorker : CronBackgroundService
 
         await EraseDueAccountsAsync(options, utcNow, stoppingToken);
         await DeleteExpiredChatSessionsAsync(options, utcNow, stoppingToken);
+        await DeleteFinishedDeviceInvitesAsync(options, utcNow, stoppingToken);
+    }
+
+    /// <summary>
+    /// Deletes wearer device invitations that finished, or quietly timed out, long enough ago.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The mildest of the three passes, and the only one that deletes nothing anyone would miss: an
+    /// invitation holds two ids that already sit together in <c>UserCardiMembers</c>, a brand, the
+    /// hash of a token that stopped working weeks ago, and some timestamps. No health data, no
+    /// contact detail, nothing about a person that the row's own existence did not already imply.
+    /// </para>
+    /// <para>
+    /// It still belongs here rather than being left to accumulate. The rows are unbounded — one per
+    /// invitation ever sent, for the life of the product — and the durable record of the same events
+    /// is the audit trail, which keeps them longer and is what anyone investigating would actually
+    /// read. A second copy held past the point where it answers a question is retention without a
+    /// purpose, which is the failure §7 of the DPIA is about.
+    /// </para>
+    /// <para>
+    /// The figure comes from the <c>DeviceInvites</c> configuration section, the same one the API
+    /// builds invitations from, so how long an invitation lives and how long its record is kept
+    /// cannot drift into disagreeing about what an invitation is.
+    /// </para>
+    /// </remarks>
+    private async Task DeleteFinishedDeviceInvitesAsync(
+        RetentionWorkerOptions options, DateTime utcNow, CancellationToken ct)
+    {
+        var retentionDays = _inviteOptions.CurrentValue.RetentionDays;
+        if (retentionDays <= 0)
+        {
+            // The same shape of guard as the sweep's own: a negative figure puts the cutoff in the
+            // future, where every invitation ever created is due for deletion.
+            _logger.LogError(
+                "Retention skipped device invites: DeviceInvites:RetentionDays={Days} must be positive.",
+                retentionDays);
+            return;
+        }
+
+        var cutoff = utcNow - TimeSpan.FromDays(retentionDays);
+
+        using var scope = _scopeFactory.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        var sweepable = await unitOfWork.DeviceConnectionInvites.GetSweepableAsync(
+            cutoff, options.BatchSize, ct);
+
+        if (sweepable.Count == 0)
+        {
+            _logger.LogInformation(
+                "Retention found no device invites finished or expired before {Cutoff}.", cutoff);
+            return;
+        }
+
+        if (options.DryRun)
+        {
+            // Ids and statuses, as the other two passes report theirs. A rehearsal that gives only
+            // a count cannot be reviewed.
+            foreach (var invite in sweepable)
+            {
+                _logger.LogInformation(
+                    "Retention would delete device invite {InviteId} ({Status}), last relevant at " +
+                    "{When}.", invite.Id, invite.Status, invite.ResolvedAt ?? invite.ExpiresAt);
+            }
+
+            _logger.LogInformation(
+                "Retention would delete {Count} device invite(s) in total.", sweepable.Count);
+            return;
+        }
+
+        unitOfWork.DeviceConnectionInvites.RemoveRange(sweepable);
+        await unitOfWork.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Retention deleted {Count} device invite(s) finished or expired before {Cutoff}.",
+            sweepable.Count, cutoff);
     }
 
     /// <summary>

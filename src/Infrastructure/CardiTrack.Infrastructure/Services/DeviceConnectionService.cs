@@ -34,19 +34,13 @@ public class DeviceConnectionService : IDeviceConnectionService
     // the request validator so the fail-fast and point-of-use gates can't drift apart.
     private const string AppRedirectScheme = ConnectDeviceRequest.AppRedirectScheme;
 
-    // Route/body provider names per the REST contract — one wire name per hardware brand
-    // (DeviceType). Which API a brand connects through is the DeviceProviders configuration's
-    // DeviceTypes mapping, so fitbit and pixel_watch both resolve to the GoogleHealth block
-    // without appearing here as anything but brands. apple_health is on-device-bridge only
-    // and deliberately absent — it must not enter the server OAuth flow.
-    private static readonly Dictionary<string, DeviceType> ProviderNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["fitbit"] = DeviceType.Fitbit,
-        ["pixel_watch"] = DeviceType.GooglePixelWatch,
-        ["garmin"] = DeviceType.Garmin,
-        ["samsung_health"] = DeviceType.GalaxyWatch,
-        ["withings"] = DeviceType.Withings,
-    };
+    /// <summary>
+    /// The invitation statuses a wearer grant may still be claimed from. Must name the same two as
+    /// <c>DeviceConnectionInviteService</c> and the table's partial index; a disagreement here would
+    /// let a grant land against an invitation somebody had already finished with.
+    /// </summary>
+    private static readonly DeviceInviteStatus[] LiveInviteStatuses =
+        [DeviceInviteStatus.Pending, DeviceInviteStatus.Opened];
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEncryptionService _encryption;
@@ -142,11 +136,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         var codeChallenge = PkceGenerator.GenerateCodeChallenge(codeVerifier);
 
         var payload = new OAuthStatePayload(requestingUserId, cardiMemberId, deviceType, request.RedirectUri);
-        await _cache.SetStringAsync(
-            StateKeyPrefix + state,
-            JsonSerializer.Serialize(payload),
-            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = StateLifetime },
-            ct);
+        await CacheStateAsync(state, payload, ct);
 
         // Providers that only accept https redirects (Google) get the configured bounce URI;
         // the bounce endpoint later 302s back to the app deep link cached in the state payload.
@@ -154,45 +144,71 @@ public class DeviceConnectionService : IDeviceConnectionService
             ? request.RedirectUri
             : config.RedirectUri;
 
-        var authorizationUrl =
-            $"{config.AuthorizationUrl}?response_type=code" +
-            $"&client_id={Uri.EscapeDataString(config.ClientId)}" +
-            $"&redirect_uri={Uri.EscapeDataString(providerRedirectUri)}" +
-            $"&scope={Uri.EscapeDataString(string.Join(' ', config.Scopes))}" +
-            $"&state={state}" +
-            $"&code_challenge={codeChallenge}" +
-            "&code_challenge_method=S256";
-
-        foreach (var (key, value) in config.AdditionalAuthorizationParams)
-        {
-            authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
-        }
-
-        // Re-consent params are for the first grant only. Once a refresh token is banked,
-        // re-showing the consent screen buys nothing and reads as the connection having failed.
-        if (!await HasRefreshTokenAsync(cardiMemberId, deviceType))
-        {
-            foreach (var (key, value) in config.FirstConsentAuthorizationParams)
-            {
-                authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
-            }
-        }
-
         return new OAuthInitiationResponse
         {
-            AuthorizationUrl = authorizationUrl,
+            AuthorizationUrl = await BuildAuthorizationUrlAsync(
+                config, deviceType, cardiMemberId, state, codeChallenge, providerRedirectUri),
             State = state,
             CodeVerifier = codeVerifier
         };
     }
 
-    public async Task<string?> GetAppRedirectUriAsync(string provider, string state, CancellationToken ct = default)
+    public async Task<string> InitiateWearerConnectionAsync(
+        Guid inviteId,
+        Guid creatingUserId,
+        Guid cardiMemberId,
+        DeviceType deviceType,
+        CancellationToken ct = default)
     {
-        if (!ProviderNames.TryGetValue(provider, out var deviceType))
+        var config = _providerConfigs.ConfigFor(deviceType);
+        if (config is null || string.IsNullOrEmpty(config.ClientId))
+        {
+            throw new DeviceConnectionException(
+                DeviceConnectionException.UnsupportedProvider,
+                $"{deviceType.GetDisplayName()} is not configured for connections.");
+        }
+
+        var state = PkceGenerator.GenerateStateToken();
+        var codeVerifier = PkceGenerator.GenerateCodeVerifier();
+        var codeChallenge = PkceGenerator.GenerateCodeChallenge(codeVerifier);
+
+        // No app deep link: this flow never returns to a phone, so the bounce completes it here
+        // instead of forwarding. The verifier rides in the cached state for the same reason —
+        // there is no authenticated client to hand it to and take it back from.
+        var payload = new OAuthStatePayload(
+            creatingUserId,
+            cardiMemberId,
+            deviceType,
+            RedirectUri: string.Empty,
+            Channel: DeviceOAuthChannel.Wearer,
+            InviteId: inviteId,
+            CodeVerifier: codeVerifier);
+
+        await CacheStateAsync(state, payload, ct);
+
+        // The provider's registered https redirect, which is the bounce. A wearer flow has no
+        // fallback to the request's own redirect: a provider with no configured redirect URI
+        // cannot serve this flow at all, because there would be nowhere for consent to land.
+        if (string.IsNullOrEmpty(config.RedirectUri))
+        {
+            throw new DeviceConnectionException(
+                DeviceConnectionException.UnsupportedProvider,
+                $"{deviceType.GetDisplayName()} can't be connected from a link yet.");
+        }
+
+        return await BuildAuthorizationUrlAsync(
+            config, deviceType, cardiMemberId, state, codeChallenge, config.RedirectUri);
+    }
+
+    public async Task<DeviceOAuthCallbackTarget?> ResolveCallbackTargetAsync(
+        string provider, string state, CancellationToken ct = default)
+    {
+        if (!DeviceProviderNames.TryResolve(provider, out var deviceType))
             return null;
 
-        // Peek only — the state stays cached and single-use consumption happens in
-        // CompleteConnectionAsync when the app posts the code back.
+        // Peek only — the state stays cached and single-use consumption happens wherever the flow
+        // is completed: CompleteConnectionAsync when the app posts the code back, or
+        // CompleteWearerConnectionAsync when the bounce finishes it here.
         var cached = await _cache.GetStringAsync(StateKeyPrefix + state, ct);
         if (cached is null)
             return null;
@@ -205,6 +221,9 @@ public class DeviceConnectionService : IDeviceConnectionService
         if (payload is null || !SameApi(payload.Provider, deviceType))
             return null;
 
+        if (payload.Channel == DeviceOAuthChannel.Wearer)
+            return new DeviceOAuthCallbackTarget(IsWearerFlow: true, AppRedirectUri: null);
+
         // The caller appends the callback parameters to whatever comes back, so a fragment is
         // rejected alongside the scheme: '#' would swallow everything after it and the app
         // would receive no state, code or error at all.
@@ -215,7 +234,82 @@ public class DeviceConnectionService : IDeviceConnectionService
             return null;
         }
 
-        return payload.RedirectUri;
+        return new DeviceOAuthCallbackTarget(IsWearerFlow: false, AppRedirectUri: payload.RedirectUri);
+    }
+
+    public async Task<Guid?> PeekWearerInviteIdAsync(
+        string provider, string state, CancellationToken ct = default)
+    {
+        if (!DeviceProviderNames.TryResolve(provider, out var deviceType))
+            return null;
+
+        // Peek, like the bounce's own resolution — the state is spent by whichever path completes
+        // the flow, and a liveness check that consumed it would spend the wearer's one attempt on
+        // finding out whether they still had one.
+        var cached = await _cache.GetStringAsync(StateKeyPrefix + state, ct);
+        if (cached is null)
+            return null;
+
+        JsonUtility.TryDeserialize<OAuthStatePayload>(cached, out var payload, out _);
+
+        return payload is { Channel: DeviceOAuthChannel.Wearer } && SameApi(payload.Provider, deviceType)
+            ? payload.InviteId
+            : null;
+    }
+
+    public async Task<WearerConnectionCompletion> CompleteWearerConnectionAsync(
+        string provider, string state, string code, CancellationToken ct = default)
+    {
+        var (routeDeviceType, _) = ResolveProvider(provider);
+
+        var cacheKey = StateKeyPrefix + state;
+        var cached = await _cache.GetStringAsync(cacheKey, ct);
+        OAuthStatePayload? payload = null;
+        if (cached is not null)
+            JsonUtility.TryDeserialize(cached, out payload, out _);
+
+        // Everything the app flow checks, plus the two facts that make this a wearer state at all.
+        // A state minted for the app must not be completable here: that path's whole authorization
+        // is the caller's access token, and this path has none to check.
+        if (payload is null
+            || payload.Channel != DeviceOAuthChannel.Wearer
+            || payload.InviteId is null
+            || string.IsNullOrEmpty(payload.CodeVerifier)
+            || !SameApi(payload.Provider, routeDeviceType))
+        {
+            throw new DeviceConnectionException(
+                DeviceConnectionException.InvalidStateToken, "Invalid or expired state token.");
+        }
+
+        // Single-use: a replayed state must fail even if the exchange below does too.
+        await _cache.RemoveAsync(cacheKey, ct);
+
+        // The caregiver's authority is re-checked here rather than trusted from invite creation.
+        // Between the two, they may have been removed from the care circle or the member may have
+        // been deactivated — and this is the moment health data would start flowing to them.
+        await EnsureMemberAccessAsync(payload.UserId, payload.CardiMemberId);
+
+        var inviteId = payload.InviteId.Value;
+        var device = await ExchangeAndStoreAsync(
+            payload,
+            code,
+            payload.CodeVerifier!,
+            // The invitation's move to Completed is the claim: it only succeeds while the invitation
+            // is still live, so a caregiver who revoked at any point up to this instant stops the
+            // connection being stored at all.
+            claimCt => _unitOfWork.DeviceConnectionInvites.TryResolveAsync(
+                inviteId,
+                LiveInviteStatuses,
+                DeviceInviteStatus.Completed,
+                DateTime.UtcNow,
+                deviceConnectionId: null,
+                claimCt),
+            ct);
+
+        // The connection id is known only after the write, and the claim above could not carry it.
+        await _unitOfWork.DeviceConnectionInvites.RecordConnectionAsync(inviteId, device.DeviceId, ct);
+
+        return new WearerConnectionCompletion(device, inviteId);
     }
 
     public async Task<DeviceResponse> CompleteConnectionAsync(
@@ -230,20 +324,79 @@ public class DeviceConnectionService : IDeviceConnectionService
             JsonUtility.TryDeserialize(cached, out payload, out _);
         // Same API-level match as the bounce: brands sharing an API share its callback route, so
         // the state payload — not the route segment — carries which brand was initiated.
-        if (payload is null || payload.UserId != requestingUserId || !SameApi(payload.Provider, routeDeviceType))
+        //
+        // The channel check is the other half, and it is not redundant with the user check beside
+        // it: a wearer state carries the *caregiver's* own id, so without this a caregiver could
+        // post their own invitation's state here and complete a grant the wearer had started but
+        // never finished giving. The two flows prove possession differently — this one by a code
+        // verifier held on the phone, the other by a verifier we never released — and a state may
+        // only be spent through the door it was minted for.
+        if (payload is null
+            || payload.Channel != DeviceOAuthChannel.App
+            || payload.UserId != requestingUserId
+            || !SameApi(payload.Provider, routeDeviceType))
         {
             throw new DeviceConnectionException(
                 DeviceConnectionException.InvalidStateToken, "Invalid or expired state token.");
         }
 
-        // The connection's identity is the brand the wearer picked at initiation.
-        var deviceType = payload.Provider;
-        var config = _providerConfigs.ConfigFor(deviceType)!;
-
         // Single-use: a replayed state must fail even if the exchange below does too.
         await _cache.RemoveAsync(cacheKey, ct);
 
         await EnsureMemberAccessAsync(requestingUserId, payload.CardiMemberId);
+
+        return await ExchangeAndStoreAsync(payload, request.Code, request.CodeVerifier, ct);
+    }
+
+    /// <summary>
+    /// The half of completion both channels share: exchange the code, then create or update the
+    /// member's connection for that brand.
+    /// </summary>
+    /// <remarks>
+    /// What differs between the channels is everything <em>before</em> this — who is authorized to
+    /// be here, and where the verifier came from. What a granted connection means afterwards is
+    /// identical, and was worth keeping identical: the sync worker, the token refresher and the
+    /// battery capture all read these columns without knowing or caring which screen the wearer
+    /// tapped consent on.
+    /// </remarks>
+    private async Task<DeviceResponse> ExchangeAndStoreAsync(
+        OAuthStatePayload payload, string code, string codeVerifier, CancellationToken ct) =>
+        await ExchangeAndStoreAsync(payload, code, codeVerifier, claim: null, ct);
+
+    /// <summary>
+    /// As above, with an optional <paramref name="claim"/> run in the same database transaction as
+    /// the connection write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The wearer flow passes one; the app flow does not. A claim that returns false aborts the
+    /// whole thing — nothing is stored, and the caller is told the invitation is no longer live.
+    /// </para>
+    /// <para>
+    /// <strong>It has to be in the transaction, not merely before it.</strong> Checking liveness and
+    /// then storing leaves a gap a caregiver's revocation can land in: the check passes, the revoke
+    /// commits, the connection is stored anyway, and the only thing that fails afterwards is the
+    /// invitation's own status update. The device would be connected to somebody whose caregiver had
+    /// withdrawn the invitation — quietly, and with the row saying "revoked" the whole time.
+    /// Committing the claim and the connection together is what makes "the withdrawal wins" true
+    /// rather than nearly true.
+    /// </para>
+    /// <para>
+    /// The provider call stays outside the transaction. Holding a Postgres transaction open across
+    /// an external HTTP round trip would pin a connection for the provider's latency, and a provider
+    /// that hangs would hold it for the timeout.
+    /// </para>
+    /// </remarks>
+    private async Task<DeviceResponse> ExchangeAndStoreAsync(
+        OAuthStatePayload payload,
+        string code,
+        string codeVerifier,
+        Func<CancellationToken, Task<bool>>? claim,
+        CancellationToken ct)
+    {
+        // The connection's identity is the brand picked at initiation.
+        var deviceType = payload.Provider;
+        var config = _providerConfigs.ConfigFor(deviceType)!;
 
         // Must match the redirect_uri sent in the authorize request.
         var exchangeRedirectUri = string.IsNullOrEmpty(config.RedirectUri)
@@ -254,7 +407,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         try
         {
             tokens = await _codeExchange.ExchangeCodeAsync(
-                config, request.Code, exchangeRedirectUri, request.CodeVerifier, ct);
+                config, code, exchangeRedirectUri, codeVerifier, ct);
         }
         catch (OAuthExchangeException ex)
         {
@@ -266,6 +419,10 @@ public class DeviceConnectionService : IDeviceConnectionService
         var scopes = tokens.Scope is null
             ? JsonSerializer.Serialize(config.Scopes)
             : JsonSerializer.Serialize(tokens.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+        // The exchange is done and the transaction opens here, so it spans only our own writes.
+        if (claim is not null)
+            await _unitOfWork.BeginTransactionAsync();
 
         var existing = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(payload.CardiMemberId)).ToList();
         var connection = existing.FirstOrDefault(c => c.DeviceType == deviceType);
@@ -316,7 +473,34 @@ public class DeviceConnectionService : IDeviceConnectionService
         {
             await _unitOfWork.DeviceConnections.AddAsync(connection);
         }
-        await _unitOfWork.SaveChangesAsync();
+
+        if (claim is null)
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        else
+        {
+            try
+            {
+                // The claim runs against the open transaction, so the invitation's move to a
+                // terminal state and this connection either both land or neither does.
+                if (!await claim(ct))
+                {
+                    await _unitOfWork.RollbackTransactionAsync();
+                    throw new DeviceConnectionException(
+                        DeviceConnectionException.InviteNotLive,
+                        "That invitation is no longer available.");
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+            }
+            catch (Exception ex) when (ex is not DeviceConnectionException)
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
+        }
 
         // A fresh connection closes the device gaps immediately — the caregiver should not land
         // back on a dashboard still telling them to reconnect.
@@ -474,9 +658,65 @@ public class DeviceConnectionService : IDeviceConnectionService
             throw new KeyNotFoundException("CardiMember not found");
     }
 
+    /// <summary>
+    /// Writes a state payload into the distributed cache under its token, with the flow's TTL.
+    /// </summary>
+    /// <remarks>
+    /// One place both channels mint state, so the lifetime and the key prefix cannot drift apart
+    /// between them — a wearer state that outlived an app state, or landed under a different
+    /// prefix, would be a state the bounce could not resolve and a consent the wearer had already
+    /// given for nothing.
+    /// </remarks>
+    private Task CacheStateAsync(string state, OAuthStatePayload payload, CancellationToken ct) =>
+        _cache.SetStringAsync(
+            StateKeyPrefix + state,
+            JsonSerializer.Serialize(payload),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = StateLifetime },
+            ct);
+
+    /// <summary>
+    /// The provider's authorization URL for one flow. Identical for both channels: the wearer sees
+    /// the same consent screen, asking for the same scopes, on the same client, whichever device
+    /// they are holding.
+    /// </summary>
+    private async Task<string> BuildAuthorizationUrlAsync(
+        DeviceProviderSettings config,
+        DeviceType deviceType,
+        Guid cardiMemberId,
+        string state,
+        string codeChallenge,
+        string providerRedirectUri)
+    {
+        var authorizationUrl =
+            $"{config.AuthorizationUrl}?response_type=code" +
+            $"&client_id={Uri.EscapeDataString(config.ClientId)}" +
+            $"&redirect_uri={Uri.EscapeDataString(providerRedirectUri)}" +
+            $"&scope={Uri.EscapeDataString(string.Join(' ', config.Scopes))}" +
+            $"&state={state}" +
+            $"&code_challenge={codeChallenge}" +
+            "&code_challenge_method=S256";
+
+        foreach (var (key, value) in config.AdditionalAuthorizationParams)
+        {
+            authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+        }
+
+        // Re-consent params are for the first grant only. Once a refresh token is banked,
+        // re-showing the consent screen buys nothing and reads as the connection having failed.
+        if (!await HasRefreshTokenAsync(cardiMemberId, deviceType))
+        {
+            foreach (var (key, value) in config.FirstConsentAuthorizationParams)
+            {
+                authorizationUrl += $"&{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+            }
+        }
+
+        return authorizationUrl;
+    }
+
     private (DeviceType DeviceType, DeviceProviderSettings Config) ResolveProvider(string provider)
     {
-        if (!ProviderNames.TryGetValue(provider, out var deviceType))
+        if (!DeviceProviderNames.TryResolve(provider, out var deviceType))
         {
             throw new DeviceConnectionException(
                 DeviceConnectionException.UnsupportedProvider,
@@ -534,8 +774,7 @@ public class DeviceConnectionService : IDeviceConnectionService
         DeviceConnection connection, int todayUpdateCount = 0, DeviceHistoryRepull? latestRepull = null) => new()
     {
         DeviceId = connection.Id,
-        Provider = ProviderNames.FirstOrDefault(kv => kv.Value == connection.DeviceType).Key
-                   ?? connection.DeviceType.ToString().ToLowerInvariant(),
+        Provider = DeviceProviderNames.ToWireName(connection.DeviceType),
         DisplayName = connection.DeviceName,
         // A soft-deleted connection reads as disconnected whatever its last status was.
         Status = !connection.IsActive ? "disconnected" : connection.ConnectionStatus switch
@@ -573,5 +812,33 @@ public class DeviceConnectionService : IDeviceConnectionService
             ? parsed
             : [];
 
-    private record OAuthStatePayload(Guid UserId, Guid CardiMemberId, DeviceType Provider, string RedirectUri);
+    /// <summary>Which kind of client a cached state was minted for.</summary>
+    /// <remarks>
+    /// <see cref="App"/> is zero so that a state cached before this field existed deserializes as
+    /// the app flow, which is what it is. In-flight states outlive a deploy by up to their
+    /// fifteen-minute TTL, and a wearer part-way through consent when the release rolled should not
+    /// be told their link has expired.
+    /// </remarks>
+    private enum DeviceOAuthChannel
+    {
+        App = 0,
+        Wearer = 1,
+    }
+
+    /// <summary>
+    /// What a state token stands for, held server-side for the life of one authorization.
+    /// </summary>
+    /// <remarks>
+    /// Never leaves this process. That is what lets <see cref="CodeVerifier"/> live here for the
+    /// wearer flow: the value is only ever written into the distributed cache and read back by the
+    /// bounce, so it is never exposed to the browser that is carrying the code.
+    /// </remarks>
+    private record OAuthStatePayload(
+        Guid UserId,
+        Guid CardiMemberId,
+        DeviceType Provider,
+        string RedirectUri,
+        DeviceOAuthChannel Channel = DeviceOAuthChannel.App,
+        Guid? InviteId = null,
+        string? CodeVerifier = null);
 }

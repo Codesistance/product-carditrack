@@ -59,6 +59,15 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Not soft-deletable: a finished request is history. Carries no health data — dates, counts and status only
 - No FK constraints - uses DeviceConnectionId and CardiMemberId (Guid)
 
+#### 5b. **DeviceConnectionInvite**
+- A caregiver's invitation to the wearer to authorize their own wearable from their own device, instead of having to hold the caregiver's phone — the row the anonymous `/connect` pages are authorized by
+- Contains: CardiMemberId, CreatedByUserId, DeviceType, Channel (`DeviceInviteChannel` — Link or QrCode, stored as a name), TokenHash (`char(64)`, lower-case hex SHA-256), Status (`DeviceInviteStatus`, stored as a name), ExpiresAt, OpenedAt, ResolvedAt, DeviceConnectionId (the connection the grant produced)
+- **The token is never stored** — only its SHA-256. It is returned once, in the create response, and is the whole authorization for the wearer-facing endpoints
+- **Partial unique index** on (CardiMemberId, DeviceType) where Status is Pending or Opened — at most one live invitation per member per brand, enforced in the database rather than only by the pre-insert check
+- **No Expired status:** expiry is a fact about the clock, so it lives in `ExpiresAt` and every read checks it. A status would mean a row is only really expired once something has swept it
+- Not soft-deletable; deleted outright by `RetentionWorker` 30 days after it resolves or expires. Carries no health data — two ids, a brand, a hash and timestamps
+- No FK constraints - uses CardiMemberId and CreatedByUserId (Guid)
+
 #### 6. **DeviceActivityLog** *(raw)*
 - One day of metrics exactly as a **single device** reported them — **unique on (DeviceConnectionId, Date)**
 - Same ~34 nullable metric columns as ActivityLog; indexed on (CardiMemberId, Date) for the merge read

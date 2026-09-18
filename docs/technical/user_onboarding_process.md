@@ -6,7 +6,7 @@ CardiTrack supports **two organization types** with distinct onboarding flows:
 1. **Family Accounts**: Individual/family monitoring elderly relatives
 2. **Business Accounts**: Care homes and healthcare facilities with staff management
 
-**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit/Pixel Watch device connection via Google OAuth (PKCE) with 10-minute polling ingestion (plus webhook push in dev), daily pattern-baseline calculation, the R1 statistical alert engine, and push/in-app notification delivery, plus Google/Apple social login (app-side 2026-08-10; dev tenant deployed, prod pending). Billing is planned (marked below).
+**Implemented today:** embedded Auth0 email/password auth with a hard email-verification gate, atomic organization + trial subscription + user setup (`POST /api/Onboarding/setup`), CardiMember creation, Fitbit/Pixel Watch device connection via Google OAuth (PKCE) — on the caregiver's phone or, from 2026-09-18, on the wearer's own device via a link or QR code — with 10-minute polling ingestion (plus webhook push in dev), daily pattern-baseline calculation, the R1 statistical alert engine, and push/in-app notification delivery, plus Google/Apple social login (app-side 2026-08-10; dev tenant deployed, prod pending). Billing is planned (marked below).
 
 ---
 
@@ -226,6 +226,44 @@ The `DeviceType` enum has nine members:
    ↓
 9. Notify family: "Fitbit Connected!"
 ```
+
+**Two ways to reach step 4.** Until 2026-09-18 there was one: the wearer had to be standing next to
+the caregiver, because the round trip ran inside the app and the consent screen could only appear
+there. The caregiver can now instead send a **link** or show a **QR code**, and the wearer completes
+the same grant from their own device:
+
+```
+1. Caregiver taps "Send a link" or "Show a QR code"
+   POST /api/v1/cardimembers/{id}/device-invites  { provider, channel }
+   ↓
+2. Server mints a 256-bit token, stores only its SHA-256, returns the URL once
+   (link: 24 h — it must survive an unread inbox; QR: 15 min — both are in the room)
+   ↓
+3. Caregiver hands it over themselves, through their own share sheet or their own screen.
+   CardiTrack sends nothing and stores no address — we never learn who it went to
+   ↓
+4. Wearer opens GET /connect?t=…  → who is asking, about whom, which brand, what would be
+   shared, a privacy link, and two buttons
+   ↓
+5. "Yes, that's me" → POST /connect/start → wearer-channel PKCE state → Google's consent screen
+   "This isn't me"  → POST /connect/decline → invitation ends, caregiver sees it
+   ↓
+6. Google redirects to the same bounce as the in-app flow. The state says this is a wearer
+   flow, so the bounce completes the exchange itself and renders "All set — thank you"
+   ↓
+7. Steps 7–9 above are unchanged: encrypted tokens, initial sync, family notified
+```
+
+The caregiver's app polls the invitation while they wait, and sees it move `pending` → `opened` →
+`completed` (or `declined`, `revoked`, `expired`). Full contract in
+[devices.md](../execution/backend/api/devices.md).
+
+> **Why this matters beyond convenience.** It is the first time a wearer gives consent on a screen
+> of their own. The DPIA's largest open legal risk (R-A7, §7) is that the data subject may not be
+> the consenting party — the default flow has a caregiver recording consent on the wearer's behalf,
+> with no notice to the wearer and no withdrawal channel. This does not close R-A7, but it is the
+> mechanism §7 names as the way to: a wearer-side consent ceremony. The page doubles as the Art. 14
+> notice §10 records as absent.
 
 **Database Storage:**
 ```csharp

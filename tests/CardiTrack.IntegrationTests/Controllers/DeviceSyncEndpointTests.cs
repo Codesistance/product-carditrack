@@ -33,6 +33,7 @@ public class DeviceSyncEndpointTests
             _userContext,
             Substitute.For<ILogger<DevicesController>>(),
             Substitute.For<IDeviceConnectionService>(),
+            Substitute.For<IDeviceConnectionInviteService>(),
             _manualSync,
             Substitute.For<IDeviceHistoryRepullService>(),
             Substitute.For<IValidator<ConnectDeviceRequest>>(),

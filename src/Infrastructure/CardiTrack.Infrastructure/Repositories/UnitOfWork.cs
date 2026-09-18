@@ -43,6 +43,7 @@ public class UnitOfWork : IUnitOfWork
     public ICardiMemberCreationKeyRepository CardiMemberCreationKeys { get; }
     public IMemberAiHoldRepository MemberAiHolds { get; }
     public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
+    public IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
 
     public UnitOfWork(
         CardiTrackDbContext context,
@@ -79,6 +80,7 @@ public class UnitOfWork : IUnitOfWork
         IExportConsentRepository exportConsents,
         IMemberAiHoldRepository memberAiHolds,
         IDeviceHistoryRepullRepository deviceHistoryRepulls,
+        IDeviceConnectionInviteRepository deviceConnectionInvites,
         ICardiMemberCreationKeyRepository cardiMemberCreationKeys)
     {
         _context = context;
@@ -115,6 +117,7 @@ public class UnitOfWork : IUnitOfWork
         ExportConsents = exportConsents;
         MemberAiHolds = memberAiHolds;
         DeviceHistoryRepulls = deviceHistoryRepulls;
+        DeviceConnectionInvites = deviceConnectionInvites;
         CardiMemberCreationKeys = cardiMemberCreationKeys;
     }
 
