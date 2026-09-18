@@ -6,8 +6,8 @@ using NSubstitute;
 namespace CardiTrack.UnitTests.ExternalClients;
 
 /// <summary>
-/// The pipeline's enqueue transport posts only the alert id and fails closed on a non-success
-/// status — the assessor logs that and keeps the Alert row.
+/// The pipeline's enqueue transport posts only an id and fails closed on a non-success
+/// status — the caller logs that and keeps the Alert / MemberAdvise row.
 /// </summary>
 public class InternalNotificationEnqueueClientTests
 {
@@ -39,6 +39,36 @@ public class InternalNotificationEnqueueClientTests
 
         await Assert.ThrowsAsync<HttpRequestException>(
             () => client.EnqueueForAlertAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task PostsTheMemberId_ToTheInternalAdviseEnqueuePath()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.OK);
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(InternalNotificationEnqueueClient.HttpClientName)
+            .Returns(new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") });
+
+        var memberId = Guid.Parse("bbbbbbbb-cccc-dddd-eeee-ffffffffffff");
+        await new InternalNotificationEnqueueClient(factory).EnqueueForAdviseAsync(memberId);
+
+        Assert.Equal(HttpMethod.Post, handler.Request!.Method);
+        Assert.Equal("/api/v1/internal/notifications/enqueue-advise", handler.Request.RequestUri!.AbsolutePath);
+        Assert.Contains("\"cardiMemberId\":\"bbbbbbbb-cccc-dddd-eeee-ffffffffffff\"", handler.Body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ANonSuccessStatus_OnAdvise_Throws()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.ServiceUnavailable);
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(InternalNotificationEnqueueClient.HttpClientName)
+            .Returns(new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") });
+
+        var client = new InternalNotificationEnqueueClient(factory);
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.EnqueueForAdviseAsync(Guid.NewGuid()));
     }
 
     private sealed class RecordingHandler : HttpMessageHandler

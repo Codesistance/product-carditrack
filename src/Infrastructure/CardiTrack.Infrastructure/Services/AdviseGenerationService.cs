@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -151,6 +152,7 @@ public class AdviseGenerationService
     private readonly MemberContextComposer _memberContext;
     private readonly ILogger<AdviseGenerationService> _logger;
     private readonly TimeProvider _timeProvider;
+    private readonly IAlertNotificationEnqueue? _adviseEnqueue;
 
     public AdviseGenerationService(
         IUnitOfWork unitOfWork,
@@ -158,7 +160,8 @@ public class AdviseGenerationService
         IRewriteAiService rewriteAi,
         MemberContextComposer memberContext,
         ILogger<AdviseGenerationService> logger,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IAlertNotificationEnqueue? adviseEnqueue = null)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
@@ -166,6 +169,7 @@ public class AdviseGenerationService
         _memberContext = memberContext;
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _adviseEnqueue = adviseEnqueue;
     }
 
     /// <summary>
@@ -377,6 +381,13 @@ public class AdviseGenerationService
             }
             await _unitOfWork.SaveChangesAsync();
         }
+
+        // Transport, not a copy of the send stack: the API's internal enqueue-advise endpoint
+        // runs the same DispatchService the Worker uses. A failed POST must not roll back the
+        // suggestion — the card is already the source of truth, and the next due slot will
+        // notify for the write after this one.
+        if (incoming.Count > 0)
+            await NotifyCaregiversAsync(cardiMemberId, ct);
     }
 
     /// <summary>
@@ -504,6 +515,31 @@ public class AdviseGenerationService
 
         var prefs = await _unitOfWork.NotificationPreferences.GetByUserIdAsync(userId.Value, ct);
         return (prefs?.QuietHoursStart, prefs?.QuietHoursEnd);
+    }
+
+    /// <summary>
+    /// Best-effort fan-out after a successful write. Missing transport is a host that never
+    /// registered the HTTP client (digest before its env vars landed, or a test); a throw is
+    /// the API rejecting the POST. Neither is a reason to un-write the suggestion.
+    /// </summary>
+    private async Task NotifyCaregiversAsync(Guid cardiMemberId, CancellationToken ct)
+    {
+        if (_adviseEnqueue is null)
+        {
+            _logger.LogWarning(
+                "Advise for CardiMember {CardiMemberId} was written with no enqueue transport registered — caregivers will not be pushed.",
+                cardiMemberId);
+            return;
+        }
+
+        try
+        {
+            await _adviseEnqueue.EnqueueForAdviseAsync(cardiMemberId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Push enqueue failed for Advise on CardiMember {CardiMemberId}.", cardiMemberId);
+        }
     }
 
     /// <summary>

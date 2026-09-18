@@ -218,6 +218,10 @@ public class FcmNotificationChannel : INotificationChannel
                     // non-event, so anywhere else would be a dead end.
                     DeliverySourceType.Reassurance
                         => $"carditrack://cardimembers/{delivery.SourceId}",
+                    // Advise's SourceId is also the member — one push per pass, not per topic —
+                    // and /advise is what focuses CardiMember Details on "Something to try".
+                    DeliverySourceType.Advise
+                        => $"carditrack://cardimembers/{delivery.SourceId}/advise",
                     _ => $"carditrack://notifications/{delivery.SourceId}",
                 },
                 ["ackToken"] = ackToken,

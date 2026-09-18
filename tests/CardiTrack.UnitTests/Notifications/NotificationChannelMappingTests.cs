@@ -16,6 +16,7 @@ public class NotificationChannelMappingTests
     [InlineData(DeliveryCategory.Safety, NotificationChannels.Safety)]
     [InlineData(DeliveryCategory.Health, NotificationChannels.Health)]
     [InlineData(DeliveryCategory.Nudge, NotificationChannels.Nudges)]
+    [InlineData(DeliveryCategory.Advise, NotificationChannels.Nudges)]
     public void ForCategory_MapsEachCategoryToItsChannel(DeliveryCategory category, string expected)
     {
         Assert.Equal(expected, NotificationChannels.ForCategory(category));
@@ -25,6 +26,7 @@ public class NotificationChannelMappingTests
     [InlineData(DeliveryCategory.Safety, NotificationChannels.AlertSound)]
     [InlineData(DeliveryCategory.Health, NotificationChannels.AlertSound)]
     [InlineData(DeliveryCategory.Nudge, NotificationChannels.NudgeSound)]
+    [InlineData(DeliveryCategory.Advise, NotificationChannels.NudgeSound)]
     public void AndroidSoundFor_SharesTheAlertChimeAcrossSafetyAndHealth(
         DeliveryCategory category, string expected)
     {
@@ -35,6 +37,7 @@ public class NotificationChannelMappingTests
     [InlineData(DeliveryCategory.Safety, NotificationChannels.AlertSoundFile)]
     [InlineData(DeliveryCategory.Health, NotificationChannels.AlertSoundFile)]
     [InlineData(DeliveryCategory.Nudge, NotificationChannels.NudgeSoundFile)]
+    [InlineData(DeliveryCategory.Advise, NotificationChannels.NudgeSoundFile)]
     public void IosSoundFor_NamesTheBundleFile(DeliveryCategory category, string expected)
     {
         Assert.Equal(expected, NotificationChannels.IosSoundFor(category));

@@ -6,7 +6,7 @@ using CardiTrack.Application.Interfaces.Clients;
 namespace CardiTrack.Infrastructure.ExternalClients;
 
 /// <summary>
-/// HTTP adapter for <see cref="IAlertNotificationEnqueue"/>. Posts only the alert id — which
+/// HTTP adapter for <see cref="IAlertNotificationEnqueue"/>. Posts only an id — which
 /// caregivers are notified is resolved server-side, never trusted from this caller.
 /// </summary>
 internal sealed class InternalNotificationEnqueueClient : IAlertNotificationEnqueue
@@ -14,6 +14,7 @@ internal sealed class InternalNotificationEnqueueClient : IAlertNotificationEnqu
     public const string HttpClientName = "InternalNotificationEnqueue";
 
     private const string EnqueuePath = "api/v1/internal/notifications/enqueue";
+    private const string EnqueueAdvisePath = "api/v1/internal/notifications/enqueue-advise";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -37,6 +38,19 @@ internal sealed class InternalNotificationEnqueueClient : IAlertNotificationEnqu
         {
             throw new HttpRequestException(
                 $"Internal enqueue for Alert {alertId} returned {(int)response.StatusCode}.");
+        }
+    }
+
+    public async Task EnqueueForAdviseAsync(Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var client = _httpClientFactory.CreateClient(HttpClientName);
+        using var response = await client.PostAsJsonAsync(
+            EnqueueAdvisePath, new EnqueueAdviseRequest { CardiMemberId = cardiMemberId }, JsonOptions, ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"Internal enqueue for Advise on CardiMember {cardiMemberId} returned {(int)response.StatusCode}.");
         }
     }
 }

@@ -718,6 +718,21 @@ resource "google_cloud_run_v2_job" "pipeline_jobs" {
           mount_path = "/cloudsql"
         }
 
+        # Reach the API's internal enqueue endpoint (a new "Something to try" → push).
+        # Custom-domain environments put the API behind the load balancer
+        # (INTERNAL_LOAD_BALANCER ingress), so the *.run.app URI is not routable — use
+        # the public hostname there. Audience must match the API's Pipeline__Audience
+        # pin, not the request URL. Same pair the assessor already carries for alerts.
+        env {
+          name  = "Api__BaseUrl"
+          value = var.api_custom_domain != "" ? "https://${var.api_custom_domain}" : google_cloud_run_v2_service.api.uri
+        }
+
+        env {
+          name  = "Pipeline__Audience"
+          value = "${var.project_id}-internal-notifications"
+        }
+
         resources {
           limits = {
             cpu    = "1"

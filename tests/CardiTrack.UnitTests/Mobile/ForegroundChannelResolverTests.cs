@@ -14,6 +14,7 @@ public class ForegroundChannelResolverTests
     [InlineData("Safety", NotificationChannels.Safety)]
     [InlineData("Health", NotificationChannels.Health)]
     [InlineData("Nudge", NotificationChannels.Nudges)]
+    [InlineData("Advise", NotificationChannels.Nudges)]
     public void KnownCategory_RoutesToItsOwnChannel(string category, string expectedChannel)
     {
         var data = new Dictionary<string, string> { ["category"] = category };
@@ -25,6 +26,7 @@ public class ForegroundChannelResolverTests
     [InlineData("Safety")]
     [InlineData("Health")]
     [InlineData("Nudge")]
+    [InlineData("Advise")]
     public void MatchesWhatTheServerStampsOnTheBackgroundPath(string category)
     {
         // The server sends DeliveryCategory.ToString() in the payload's data — the resolver must

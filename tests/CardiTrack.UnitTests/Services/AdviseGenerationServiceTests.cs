@@ -1,3 +1,4 @@
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -6,6 +7,7 @@ using CardiTrack.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.UnitTests.Services;
 
@@ -33,6 +35,7 @@ public class AdviseGenerationServiceTests
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly INotificationPreferenceRepository _prefs = Substitute.For<INotificationPreferenceRepository>();
+    private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
 
     private readonly Guid _memberId = Guid.NewGuid();
 
@@ -145,7 +148,7 @@ public class AdviseGenerationServiceTests
 
     private AdviseGenerationService CreateSut(TimeProvider? time = null) =>
         new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
-            NullLogger<AdviseGenerationService>.Instance, time);
+            NullLogger<AdviseGenerationService>.Instance, time, _enqueue);
 
     /// <summary>Midday UTC, so local-day math in <see cref="AdviseCadence"/> cannot straddle midnight.</summary>
     private static FrozenTimeProvider NoonUtc() =>
@@ -171,6 +174,7 @@ public class AdviseGenerationServiceTests
             && a.GuidelineCited == "WHO adult activity guidance"
             && a.PromptVersion == AdviseGenerationService.CurrentPromptVersion));
         await _unitOfWork.Received(1).SaveChangesAsync();
+        await _enqueue.Received(1).EnqueueForAdviseAsync(_memberId, Arg.Any<CancellationToken>());
     }
 
     /// <summary>One clinical call and one rewrite call, several rows — the whole point of topic
@@ -383,6 +387,7 @@ public class AdviseGenerationServiceTests
         _advises.DidNotReceive().Remove(Arg.Any<MemberAdvise>());
         await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _enqueue.DidNotReceive().EnqueueForAdviseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -401,6 +406,7 @@ public class AdviseGenerationServiceTests
         _advises.DidNotReceive().Remove(Arg.Any<MemberAdvise>());
         Assert.Equal("the readings", existing.GuidelineCited);
         await _unitOfWork.Received(1).SaveChangesAsync();
+        await _enqueue.Received(1).EnqueueForAdviseAsync(_memberId, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -412,6 +418,7 @@ public class AdviseGenerationServiceTests
 
         await _advises.DidNotReceive().AddAsync(Arg.Any<MemberAdvise>());
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        await _enqueue.DidNotReceive().EnqueueForAdviseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         // No clinical survivors means no rewrite call either — the cheap half still isn't free.
         await _rewriteAi.DidNotReceive().GenerateStructuredAsync<AdviseGenerationService.AdviseRewriteAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -679,6 +686,7 @@ public class AdviseGenerationServiceTests
         Assert.Equal("A short walk after lunch is worth trying.", winner.Suggestion);
         Assert.Equal(AdviseGenerationService.CurrentPromptVersion, winner.PromptVersion);
         await _unitOfWork.Received(2).SaveChangesAsync();
+        await _enqueue.Received(1).EnqueueForAdviseAsync(_memberId, Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -959,5 +967,60 @@ public class AdviseGenerationServiceTests
         var rewrite = (string)_rewriteAi.ReceivedCalls().Single().GetArguments()[0]!;
         Assert.DoesNotContain("wellness", clinical, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("wellness", rewrite, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ---- Caregiver push after a successful write ----
+
+    [Fact]
+    public async Task ClinicalSilence_WithdrawsRowsAndDoesNotNotify()
+    {
+        var existing = ExistingRow(_memberId);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+        ClinicalAnswers();
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        _advises.Received(1).Remove(existing);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+        await _enqueue.DidNotReceive().EnqueueForAdviseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AFailedEnqueue_DoesNotUnWriteTheSuggestion()
+    {
+        _enqueue.EnqueueForAdviseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("API 503"));
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _advises.Received(1).AddAsync(Arg.Any<MemberAdvise>());
+        await _unitOfWork.Received(1).SaveChangesAsync();
+        await _enqueue.Received(1).EnqueueForAdviseAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SeveralTopics_NotifyOnce_NotOncePerTopic()
+    {
+        ClinicalAnswers(
+            ActivityFinding(),
+            new AdviseGenerationService.AdviseClinicalEntryAiResponse
+            {
+                Topic = "Sleep",
+                Finding = "Nights run under the 7-hour reference.",
+                Action = "A steadier bedtime would lengthen them.",
+                GuidelineCited = "NSF adult sleep duration",
+            });
+        RewriteAnswers(
+            ActivityCopy(),
+            new AdviseGenerationService.AdviseRewriteEntryAiResponse
+            {
+                Topic = "Sleep",
+                Summary = "Nights have been shorter than CardiTrackCardiMemberTheir usual.",
+                Suggestion = "A steadier bedtime is worth trying.",
+            });
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _enqueue.Received(1).EnqueueForAdviseAsync(_memberId, Arg.Any<CancellationToken>());
     }
 }

@@ -68,6 +68,7 @@ public class FcmPayloadPrivacyTests
     [InlineData(DeliveryCategory.Safety, "CardiTrack", "Urgent — open CardiTrack now")]
     [InlineData(DeliveryCategory.Health, "Health alert", "Open CardiTrack to check on this.")]
     [InlineData(DeliveryCategory.Nudge, "CardiTrack", "Something needs your attention — open CardiTrack")]
+    [InlineData(DeliveryCategory.Advise, "CardiTrack", "Something to try — open CardiTrack")]
     public void Notification_IsAlwaysThePhiFreeTeaser_NeverDeliverySpecificText(
         DeliveryCategory category, string expectedTitle, string expectedBody)
     {
@@ -114,6 +115,7 @@ public class FcmPayloadPrivacyTests
     [InlineData(DeliveryCategory.Safety)]
     [InlineData(DeliveryCategory.Health)]
     [InlineData(DeliveryCategory.Nudge)]
+    [InlineData(DeliveryCategory.Advise)]
     public void Notification_NamesTheAppAndAsksForIt(DeliveryCategory category)
     {
         var body = CreateSut().BuildMessage(Delivery(category), Token()).Notification.Body;
@@ -137,6 +139,7 @@ public class FcmPayloadPrivacyTests
     [InlineData(DeliveryCategory.Safety, NotificationChannels.Safety)]
     [InlineData(DeliveryCategory.Health, NotificationChannels.Health)]
     [InlineData(DeliveryCategory.Nudge, NotificationChannels.Nudges)]
+    [InlineData(DeliveryCategory.Advise, NotificationChannels.Nudges)]
     public void AndroidNotification_TargetsTheVersionedChannel(DeliveryCategory category, string expectedChannel)
     {
         var android = CreateSut().BuildMessage(Delivery(category), Token()).Android.Notification;
@@ -148,6 +151,7 @@ public class FcmPayloadPrivacyTests
     [InlineData(DeliveryCategory.Safety, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound, true)]
     [InlineData(DeliveryCategory.Health, NotificationChannels.AlertSoundFile, NotificationChannels.AlertSound, false)]
     [InlineData(DeliveryCategory.Nudge, NotificationChannels.NudgeSoundFile, NotificationChannels.NudgeSound, false)]
+    [InlineData(DeliveryCategory.Advise, NotificationChannels.NudgeSoundFile, NotificationChannels.NudgeSound, false)]
     public void Payload_PlaysTheCategorySound_AndOnlySafetyForcesVibration(
         DeliveryCategory category, string iosSound, string androidSound, bool vibrate)
     {
@@ -204,6 +208,17 @@ public class FcmPayloadPrivacyTests
         Assert.Equal($"{expectedPrefix}{delivery.SourceId}", message.Data["deepLink"]);
     }
 
+    [Fact]
+    public void AdviseDeepLink_OpensTheMemberAdviseCard()
+    {
+        var delivery = Delivery(sourceType: DeliverySourceType.Advise);
+        delivery.CardiMemberId = delivery.SourceId;
+
+        var message = CreateSut().BuildMessage(delivery, Token());
+
+        Assert.Equal($"carditrack://cardimembers/{delivery.SourceId}/advise", message.Data["deepLink"]);
+    }
+
     // ── Critical-alert allowlist: never settable from delivery/caller input ────
 
     [Theory]
@@ -213,6 +228,7 @@ public class FcmPayloadPrivacyTests
     [InlineData(DeliveryCategory.Health, AlertSeverity.Yellow, "active")]
     [InlineData(DeliveryCategory.Health, null, "active")]
     [InlineData(DeliveryCategory.Nudge, null, "active")]
+    [InlineData(DeliveryCategory.Advise, null, "active")]
     public void InterruptionLevel_FollowsTheServerSideAllowlist_RegardlessOfSeverityAlone(
         DeliveryCategory category, AlertSeverity? severity, string expectedLevel)
     {

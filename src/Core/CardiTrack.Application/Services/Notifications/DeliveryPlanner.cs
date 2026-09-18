@@ -54,6 +54,9 @@ public static class DeliveryPlanner
             // either good news or a broken app, and cannot tell which. In-app only would reach
             // exactly the people who were already looking.
             DeliveryCategory.Reassurance => true,
+            // A new suggestion is worth leaving the app for, but it is not an anomaly — same
+            // posture as a question: push, never override quiet hours, never escalate.
+            DeliveryCategory.Advise => true,
             _ => false
         };
 
@@ -65,10 +68,11 @@ public static class DeliveryPlanner
         DateTime? scheduledFor = null;
         if (pushes && !overridesQuietHours && context.IsWithinQuietHours)
         {
-            // Orange Health, Questionnaire and Reassurance defer to the end of quiet hours;
-            // nothing else reaches this branch, since Safety and red Health already overrode
-            // above, and Nudge never pushes at all. Waking someone at 3am to tell them nothing is
-            // wrong would be the single fastest way to teach a family to mute this app.
+            // Orange Health, Questionnaire, Reassurance and Advise defer to the end of quiet
+            // hours; nothing else reaches this branch, since Safety and red Health already
+            // overrode above, and Nudge never pushes at all. Waking someone at 3am to tell them
+            // there is something to try — or that nothing is wrong — would be the single fastest
+            // way to teach a family to mute this app.
             scheduledFor = context.QuietHoursEndUtc;
         }
 
@@ -84,6 +88,10 @@ public static class DeliveryPlanner
             // TTL would quietly drop the reassurance for every caregiver not already holding
             // their phone, which is most of them.
             DeliveryCategory.Reassurance => TimeSpan.FromHours(6),
+            // A suggestion is still worth opening hours later, unlike an anomaly teaser, and the
+            // next slot is hours away — five minutes would drop it for anyone not holding the
+            // phone. Collapse per member still replaces an earlier teaser from the same day.
+            DeliveryCategory.Advise => TimeSpan.FromHours(6),
             _ => context.Severity == AlertSeverity.Red ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5),
         };
 

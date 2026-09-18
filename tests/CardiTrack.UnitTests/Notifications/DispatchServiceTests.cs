@@ -324,4 +324,80 @@ public class DispatchServiceTests
 
         Assert.Empty(await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1));
     }
+
+    // ── EnqueueForAdviseAsync ───────────────────────────────────────────────────
+
+    private readonly IMemberAdviseRepository _advises = Substitute.For<IMemberAdviseRepository>();
+
+    private (Guid MemberId, Guid Receiving, Guid OptedOut, DateTime GeneratedAt) SetupAdviseMember()
+    {
+        var (memberId, receiving, optedOut) = SetupReassuranceMember();
+        var generatedAt = new DateTime(2026, 9, 18, 12, 0, 0, DateTimeKind.Utc);
+        _unitOfWork.MemberAdvises.Returns(_advises);
+        _advises.GetAllByCardiMemberAsync(memberId).Returns(
+        [
+            new MemberAdvise
+            {
+                CardiMemberId = memberId,
+                Topic = AdviseTopic.Activity,
+                Summary = "Steps have been below her usual this week.",
+                Suggestion = "A short walk after lunch is worth trying.",
+                GuidelineCited = "the readings",
+                GeneratedAtUtc = generatedAt,
+            },
+        ]);
+        return (memberId, receiving, optedOut, generatedAt);
+    }
+
+    [Fact]
+    public async Task EnqueueForAdviseAsync_ReachesOnlyCaregiversWhoReceiveAlerts()
+    {
+        var (memberId, receiving, optedOut, _) = SetupAdviseMember();
+
+        var deliveries = await CreateSut().EnqueueForAdviseAsync(memberId);
+
+        var delivery = Assert.Single(deliveries);
+        Assert.Equal(receiving, delivery.UserId);
+        Assert.DoesNotContain(deliveries, d => d.UserId == optedOut);
+        Assert.Equal(DeliverySourceType.Advise, delivery.SourceType);
+        Assert.Equal(DeliveryCategory.Advise, delivery.Category);
+        Assert.Null(delivery.Severity);
+    }
+
+    [Fact]
+    public async Task EnqueueForAdviseAsync_KeysTheWriteIntoTheDedupKeyAndOutOfTheCollapseKey()
+    {
+        var (memberId, receiving, _, generatedAt) = SetupAdviseMember();
+
+        var delivery = Assert.Single(await CreateSut().EnqueueForAdviseAsync(memberId));
+
+        Assert.Equal($"advise:{memberId}:{receiving}:{generatedAt.Ticks}", delivery.DedupKey);
+        Assert.Equal($"advise-{memberId}", delivery.CollapseKey);
+        Assert.Equal(memberId, delivery.SourceId);
+        Assert.Equal(memberId, delivery.CardiMemberId);
+    }
+
+    [Fact]
+    public async Task EnqueueForAdviseAsync_SaysNothing_WhenEveryTopicHasBeenWithdrawn()
+    {
+        var (memberId, _, _, _) = SetupAdviseMember();
+        _advises.GetAllByCardiMemberAsync(memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
+
+        Assert.Empty(await CreateSut().EnqueueForAdviseAsync(memberId));
+    }
+
+    [Fact]
+    public async Task EnqueueForAdviseAsync_SaysNothing_AboutAMemberRemovedSinceTheWrite()
+    {
+        var (memberId, _, _, _) = SetupAdviseMember();
+        _members.GetByIdAsync(memberId).Returns(new CardiMember
+        {
+            Id = memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 2),
+            IsActive = false,
+        });
+
+        Assert.Empty(await CreateSut().EnqueueForAdviseAsync(memberId));
+    }
 }
