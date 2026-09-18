@@ -131,11 +131,16 @@ public sealed class MetricTrendCard : ContentView
         _windowCaption.FontSize = 12;
         _windowCaption.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
         ApplyStyle(_value, "Heading3");
+        // Two points under Heading3: the number is the loudest thing on the card either way,
+        // and the period under it belongs to it rather than to the card.
+        _value.FontSize = 16;
         _value.HorizontalTextAlignment = TextAlignment.End;
         ApplyStyle(_period, "Body2");
         _period.FontSize = 12;
         _period.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
         _period.HorizontalTextAlignment = TextAlignment.End;
+        // Tucked under the value's own line box rather than a line away from it.
+        _period.Margin = new Thickness(0, -2, 0, 0);
         ApplyStyle(_pillText, "StatusPillText");
 
         _pill = new Border
@@ -160,7 +165,7 @@ public sealed class MetricTrendCard : ContentView
         title.Add(_name);
         title.Add(_windowCaption);
 
-        var reading = new VerticalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center };
+        var reading = new VerticalStackLayout { Spacing = 0, VerticalOptions = LayoutOptions.Center };
         reading.Add(_value);
         reading.Add(_period);
         reading.Add(_pill);

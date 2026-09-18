@@ -155,7 +155,7 @@
                                          lifting it puts the glyphs, not the box, level with the
                                          top of the picture, and everything under it comes up. -->
                                     <Label x:Name="NameLabel" Grid.Row="0"
-                                           Style="{StaticResource Heading2}" FontSize="24"
+                                           Style="{StaticResource Heading2}" FontSize="26"
                                            Margin="0,-6,0,0"/>
                                     <Label x:Name="AgeRelationshipLabel" Grid.Row="1" Style="{StaticResource Body2}" FontSize="15"/>
                                     <!-- The pill carries the level in its own weight: a quiet
@@ -165,8 +165,8 @@
                                     <Border x:Name="SensitivityPill"
                                             Grid.Row="2"
                                             StrokeThickness="0"
-                                            Padding="10,4"
-                                            Margin="0,8,0,0"
+                                            Padding="10,5"
+                                            Margin="0,14,0,0"
                                             HorizontalOptions="Start"
                                             VerticalOptions="Start">
                                         <Border.StrokeShape>
