@@ -1133,11 +1133,11 @@ public partial class CardiMemberDetailPage : ContentPage
         }
 
         _trends.Clear();
-        foreach (var (icon, ink, name, value, axis, select) in reported)
+        foreach (var (icon, ink, name, value, axis, period, select) in reported)
         {
             _trends.Add(new MetricTrend(
-                icon, ink, name, value, axis, select(metrics!), TrendWindowPicker.SelectedDays,
-                firstName)
+                icon, ink, name, value, axis, period, select(metrics!),
+                TrendWindowPicker.SelectedDays, firstName)
             {
                 MemberId = _route.Id,
             });

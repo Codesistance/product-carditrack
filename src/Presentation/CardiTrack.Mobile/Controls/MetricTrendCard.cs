@@ -66,6 +66,12 @@ public sealed class MetricTrendCard : ContentView
     private readonly Label _name = new();
     private readonly Label _windowCaption = new();
     private readonly Label _value = new();
+
+    /// <summary>
+    /// What the headline reading covers. A number that large reads as a running total unless it
+    /// says otherwise, and only the step count is one — see <see cref="TrendMetricCatalogue"/>.
+    /// </summary>
+    private readonly Label _period = new();
     private readonly Border _pill;
     private readonly Label _pillText = new();
     private readonly TrendChart _chart = new();
@@ -126,6 +132,10 @@ public sealed class MetricTrendCard : ContentView
         _windowCaption.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
         ApplyStyle(_value, "Heading3");
         _value.HorizontalTextAlignment = TextAlignment.End;
+        ApplyStyle(_period, "Body2");
+        _period.FontSize = 12;
+        _period.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
+        _period.HorizontalTextAlignment = TextAlignment.End;
         ApplyStyle(_pillText, "StatusPillText");
 
         _pill = new Border
@@ -150,8 +160,9 @@ public sealed class MetricTrendCard : ContentView
         title.Add(_name);
         title.Add(_windowCaption);
 
-        var reading = new VerticalStackLayout { Spacing = 4, VerticalOptions = LayoutOptions.Center };
+        var reading = new VerticalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center };
         reading.Add(_value);
+        reading.Add(_period);
         reading.Add(_pill);
 
         var header = new Grid
@@ -326,7 +337,10 @@ public sealed class MetricTrendCard : ContentView
         _name.Text = _trend.Name;
         _windowCaption.Text = $"Last {_trend.Days} days";
         _value.Text = _trend.ValueText;
-        SemanticProperties.SetDescription(this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days");
+        _period.Text = _trend.PeriodText;
+        _period.IsVisible = !string.IsNullOrWhiteSpace(_trend.PeriodText);
+        SemanticProperties.SetDescription(
+            this, $"{_trend.Name}, {_trend.ValueText} {_trend.PeriodText}, last {_trend.Days} days");
 
         if (MetricStatus.Pill(_trend.Metric.Status) is { } pill)
         {

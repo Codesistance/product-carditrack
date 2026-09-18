@@ -229,7 +229,8 @@ public partial class MetricTrendPage : ContentPage
         if (_trend is null)
         {
             _trend = new MetricTrend(
-                entry.Icon, entry.Ink, entry.Name, entry.Value, entry.Axis, reading, _days, firstName);
+                entry.Icon, entry.Ink, entry.Name, entry.Value, entry.Axis, entry.Period,
+                reading, _days, firstName);
             Card.BindingContext = _trend;
         }
         else

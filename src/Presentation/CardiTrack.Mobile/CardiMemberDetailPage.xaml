@@ -128,27 +128,35 @@
                              contact; last contact lives here, and devices stay on M1-15. -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                <!-- Sized to the three-line block beside it, so its base lands
+                                     on the pill's rather than floating a line above it. -->
                                 <controls:MemberAvatar x:Name="Avatar"
                                                        Grid.Column="0"
-                                                       BoxWidth="80"
+                                                       BoxWidth="92"
                                                        VerticalOptions="Start"/>
 
-                                <!-- The identity spans the avatar's height. The name and who they
-                                     are lead by a step and sit at the box's top; the third line
-                                     drops a step and is pushed to the box's bottom by the star
-                                     row between them.
+                                <!-- Name, then who they are, then how closely they are watched —
+                                     three lines that stack from the top and set the card's
+                                     height between them.
 
-                                     That line used to be the freshness dot and "Updated 4
-                                     minutes ago" — bookkeeping about our own pipeline, in the
-                                     place the caregiver looks to read about the person. It now
-                                     says how closely this member is watched, which is a fact
-                                     about them. The sync state moved to the dot in the card's
-                                     top corner, where a tap tells the whole story instead of
-                                     a colour and a stub of a line. -->
+                                     They used to be stretched to the avatar's height with the
+                                     star row pushing the third line to the bottom, which was
+                                     right while that line was one row of small grey text about
+                                     the pipeline. A pill is taller than that line was, so the
+                                     stretch pressed it into the card's bottom edge with no air
+                                     under it. The block sits at the top now and the card grows
+                                     to whichever is taller, the avatar or these three. -->
                                 <Grid Grid.Column="1"
-                                      RowDefinitions="Auto,Auto,*"
-                                      VerticalOptions="Fill">
-                                    <Label x:Name="NameLabel" Grid.Row="0" Style="{StaticResource Heading2}" FontSize="24"/>
+                                      RowDefinitions="Auto,Auto,Auto"
+                                      RowSpacing="0"
+                                      MinimumHeightRequest="92"
+                                      VerticalOptions="Start">
+                                    <!-- The name's own line box carries leading above the caps;
+                                         lifting it puts the glyphs, not the box, level with the
+                                         top of the picture, and everything under it comes up. -->
+                                    <Label x:Name="NameLabel" Grid.Row="0"
+                                           Style="{StaticResource Heading2}" FontSize="24"
+                                           Margin="0,-6,0,0"/>
                                     <Label x:Name="AgeRelationshipLabel" Grid.Row="1" Style="{StaticResource Body2}" FontSize="15"/>
                                     <!-- The pill carries the level in its own weight: a quiet
                                          wash at Low, a firmer one at Medium, the full colour at
@@ -158,14 +166,15 @@
                                             Grid.Row="2"
                                             StrokeThickness="0"
                                             Padding="10,4"
+                                            Margin="0,8,0,0"
                                             HorizontalOptions="Start"
-                                            VerticalOptions="End">
+                                            VerticalOptions="Start">
                                         <Border.StrokeShape>
                                             <RoundRectangle CornerRadius="10"/>
                                         </Border.StrokeShape>
                                         <Label x:Name="SensitivityLabel"
                                                FontFamily="QuicksandSemiBold"
-                                               FontSize="14"
+                                               FontSize="13"
                                                LineBreakMode="TailTruncation"/>
                                     </Border>
                                 </Grid>
