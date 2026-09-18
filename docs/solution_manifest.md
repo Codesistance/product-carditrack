@@ -688,7 +688,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 
 > Waves re-baselined August 2026: **R1 → Q4 2026, R2 → Q1 2027, R3 → Q2 2027, R4 → Q3 2027.** The [release matrix](./release_matrix.md) remains canonical for what ships in each wave.
 
-### Built so far (as of August 2026)
+### Built so far (as of September 18, 2026)
 - ✅ Core backend (.NET 10, EF Core, Cloud SQL PostgreSQL 16)
 - ✅ Fitbit device integration — migration to the **Google Health API is done** (code + docs); Google console registration completed 2026-08-07, and the app is capped at 100 users until restricted-scope verification completes
 - ✅ Database schema & migrations (deployed via the migrator Cloud Run Job)
