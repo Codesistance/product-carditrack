@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.StepProgressBar">
+
+    <!-- Figma M1-04's progress pill: 8pt white track, gradient fill, both fully rounded.
+         One definition for the whole signup journey. It used to exist twice — once inside
+         WizardHeader for steps 2 to 4, once hand-rolled in CreateAccountPage with a fixed
+         100-point fill that only looked like a quarter on the phone it was measured on —
+         which is how the verify-email screen came to have no bar at all: there was nothing
+         to reuse. Hidden while Progress is 0, so a terminal step can simply not set it. -->
+
+    <Border x:Name="Track"
+            HeightRequest="8"
+            BackgroundColor="{StaticResource White}"
+            StrokeThickness="0"
+            HorizontalOptions="Fill">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="4"/>
+        </Border.StrokeShape>
+        <Border x:Name="Fill"
+                Background="{StaticResource GradientButtonBrush}"
+                StrokeThickness="0"
+                HorizontalOptions="Start"
+                VerticalOptions="Fill"
+                WidthRequest="0">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="4"/>
+            </Border.StrokeShape>
+        </Border>
+    </Border>
+</ContentView>

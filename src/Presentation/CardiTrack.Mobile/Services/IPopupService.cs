@@ -1,4 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Core.Api;
 
 namespace CardiTrack.Mobile.Services;
 
@@ -117,6 +119,28 @@ public interface IPopupService
 
     /// <summary>Shows the detail behind a dashboard/detail weather chip. Completes once dismissed.</summary>
     Task ShowWeatherAsync(WeatherSnapshotResponse weather);
+
+    /// <summary>
+    /// Shows what the freshness dot on a CardiMember card means: the tier's own colour, when
+    /// data last arrived and the pipeline's word for the state. Completes once dismissed.
+    /// </summary>
+    /// <param name="tier">The API's freshness word — red, amber, blue or green.</param>
+    /// <param name="stateMessage">That tier's description, as the API worded it.</param>
+    /// <param name="lastSyncedUtc">When data last arrived, or null if it never has.</param>
+    Task ShowSyncStatusAsync(string? tier, string? stateMessage, DateTime? lastSyncedUtc);
+
+    /// <summary>
+    /// Asks which stretch of the CardiJournal to export, in the cadence's own unit — days,
+    /// whole weeks or whole months. Returns the range as it will be exported, already widened
+    /// to whole periods, or null when dismissed.
+    /// </summary>
+    Task<(DateOnly From, DateOnly To)?> ChooseJournalRangeAsync(JournalCadence cadence, DateOnly today);
+
+    /// <summary>
+    /// Asks which file an export should produce. Returns null when dismissed, which every
+    /// caller treats as "cancelled".
+    /// </summary>
+    Task<ReportFormat?> ChooseExportFormatAsync();
 
     /// <summary>
     /// Opens the CardiMember card's pending question as a modal — the same <c>QuestionCard</c>

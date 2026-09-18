@@ -128,55 +128,100 @@
                              contact; last contact lives here, and devices stay on M1-15. -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+                                <!-- Sized to the three-line block beside it, so its base lands
+                                     on the pill's rather than floating a line above it. -->
                                 <controls:MemberAvatar x:Name="Avatar"
                                                        Grid.Column="0"
-                                                       BoxWidth="80"
+                                                       BoxWidth="92"
                                                        VerticalOptions="Start"/>
 
-                                <!-- The identity spans the avatar's height. The name and who they
-                                     are lead by a step and sit at the box's top; the "Updated"
-                                     line is bookkeeping, drops a step, and is pushed to the box's
-                                     bottom by the star row between them — who they are and how
-                                     current we are on them are the two ends of the same box, and
-                                     what sits between just fills. -->
+                                <!-- Name, then who they are, then how closely they are watched —
+                                     three lines that stack from the top and set the card's
+                                     height between them.
+
+                                     They used to be stretched to the avatar's height with the
+                                     star row pushing the third line to the bottom, which was
+                                     right while that line was one row of small grey text about
+                                     the pipeline. A pill is taller than that line was, so the
+                                     stretch pressed it into the card's bottom edge with no air
+                                     under it. The block sits at the top now and the card grows
+                                     to whichever is taller, the avatar or these three. -->
                                 <Grid Grid.Column="1"
-                                      RowDefinitions="Auto,Auto,*"
-                                      VerticalOptions="Fill">
-                                    <Label x:Name="NameLabel" Grid.Row="0" Style="{StaticResource Heading2}" FontSize="24"/>
+                                      RowDefinitions="Auto,Auto,Auto"
+                                      RowSpacing="0"
+                                      MinimumHeightRequest="92"
+                                      VerticalOptions="Start">
+                                    <!-- The name's own line box carries leading above the caps;
+                                         lifting it puts the glyphs, not the box, level with the
+                                         top of the picture, and everything under it comes up. -->
+                                    <Label x:Name="NameLabel" Grid.Row="0"
+                                           Style="{StaticResource Heading2}" FontSize="26"
+                                           Margin="0,-6,0,0"/>
                                     <Label x:Name="AgeRelationshipLabel" Grid.Row="1" Style="{StaticResource Body2}" FontSize="15"/>
-                                    <HorizontalStackLayout x:Name="ConnectionStatusRow"
-                                                           Grid.Row="2"
-                                                           VerticalOptions="End"
-                                                           Spacing="6">
-                                        <Ellipse x:Name="ConnectionStatusDot"
-                                                 WidthRequest="10" HeightRequest="10"
-                                                 VerticalOptions="Center"
-                                                 AutomationProperties.IsInAccessibleTree="False"/>
-                                        <Label x:Name="LastContactLabel"
-                                               Style="{StaticResource Body2}"
-                                               FontSize="12"
-                                               VerticalOptions="Center"
+                                    <!-- The pill carries the level in its own weight: a quiet
+                                         wash at Low, a firmer one at Medium, the full colour at
+                                         High. Three words that differ by one adjective are hard
+                                         to tell apart at a glance; three weights are not. -->
+                                    <Border x:Name="SensitivityPill"
+                                            Grid.Row="2"
+                                            StrokeThickness="0"
+                                            Padding="10,5"
+                                            Margin="0,10,0,0"
+                                            HorizontalOptions="Start"
+                                            VerticalOptions="Start">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10"/>
+                                        </Border.StrokeShape>
+                                        <Label x:Name="SensitivityLabel"
+                                               FontFamily="QuicksandSemiBold"
+                                               FontSize="13"
                                                LineBreakMode="TailTruncation"/>
-                                    </HorizontalStackLayout>
+                                    </Border>
                                 </Grid>
 
-                                <!-- Last-session weather (EnvironmentalReading — not live, no
-                                     stored coordinate). Same chip and popup as the dashboard hero
-                                     card; hidden when the member has no reading or hasn't
-                                     consented to environmental context. -->
-                                <HorizontalStackLayout x:Name="WeatherChip"
-                                                        Grid.Column="2"
-                                                        Spacing="4"
-                                                        VerticalOptions="Center"
-                                                        IsVisible="False">
-                                    <HorizontalStackLayout.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnWeatherTapped"/>
-                                    </HorizontalStackLayout.GestureRecognizers>
-                                    <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
-                                    <Label x:Name="WeatherTemperatureLabel"
-                                           Style="{StaticResource Body2Dark}"
-                                           VerticalOptions="Center"/>
-                                </HorizontalStackLayout>
+                                <Grid Grid.Column="2" RowDefinitions="Auto,*">
+
+                                    <!-- Data-pipeline freshness, four-tier coloured like the
+                                         dashboard's. The negative margin pulls the dot itself
+                                         out to the card's corner inset while the padding keeps
+                                         a finger-sized target around it. -->
+                                    <Grid x:Name="SyncStatusTap"
+                                          Grid.Row="0"
+                                          Padding="12"
+                                          Margin="0,-10,-10,0"
+                                          BackgroundColor="Transparent"
+                                          HorizontalOptions="End"
+                                          VerticalOptions="Start"
+                                          SemanticProperties.Hint="Shows when this CardiMember last synced">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnSyncStatusTapped"/>
+                                        </Grid.GestureRecognizers>
+                                        <Ellipse x:Name="ConnectionStatusDot"
+                                                 WidthRequest="10" HeightRequest="10"
+                                                 HorizontalOptions="Center"
+                                                 VerticalOptions="Center"
+                                                 AutomationProperties.IsInAccessibleTree="False"/>
+                                    </Grid>
+
+                                    <!-- Last-session weather (EnvironmentalReading — not live, no
+                                         stored coordinate). Same chip and popup as the dashboard
+                                         hero card; hidden when the member has no reading or hasn't
+                                         consented to environmental context. -->
+                                    <HorizontalStackLayout x:Name="WeatherChip"
+                                                            Grid.Row="1"
+                                                            Spacing="4"
+                                                            HorizontalOptions="End"
+                                                            VerticalOptions="Center"
+                                                            IsVisible="False">
+                                        <HorizontalStackLayout.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnWeatherTapped"/>
+                                        </HorizontalStackLayout.GestureRecognizers>
+                                        <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
+                                        <Label x:Name="WeatherTemperatureLabel"
+                                               Style="{StaticResource Body2Dark}"
+                                               VerticalOptions="Center"/>
+                                    </HorizontalStackLayout>
+                                </Grid>
                             </Grid>
                         </Border>
 

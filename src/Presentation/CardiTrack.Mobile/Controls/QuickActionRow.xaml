@@ -16,13 +16,16 @@
          a thumb lands and where the eye starts. The others are reachable in the seconds that
          emergency is not.
 
-         Inset from the container's content box by the shadow's own radius. The Dashboard's card
-         Border clips its content, and the row was flush with that edge — so the outer tiles'
-         shadows were sliced off vertically on the left of SOS and the right of Details, which read
-         as a rendering fault rather than as depth. The tiles lose five points of width each and
-         the row keeps its shadow whole. -->
+         Inset from this view's own bounds by the shadow's reach. Android clips a ContentView's
+         children to its bounds and the grid fills it exactly, so whatever the tiles cast outside
+         the grid is sliced off and reads as a rendering fault rather than as depth. The first fix
+         gave the row a horizontal gutter only, which left the same hard cut along the top and
+         bottom of all four tiles. The gutter is now the shadow's own geometry (QuickActionTile:
+         radius 10, offset 0,3) — 10 on three sides, 13 below to carry the offset — and the call
+         sites pull the extra height back out with a negative margin so the row sits where it
+         always did. -->
 
-    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,0">
+    <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,10,10,13">
         <Border x:Name="EmergencyCallAction"
                 Grid.Column="0"
                 Style="{StaticResource QuickActionTile}"
@@ -79,7 +82,11 @@
                 <TapGestureRecognizer Tapped="OnViewDetailsTapped"/>
             </Border.GestureRecognizers>
             <VerticalStackLayout Spacing="10">
-                <Image Source="icon_action_details.svg"
+                <!-- A member card, not the bar chart: that glyph belongs to Key Metrics, which
+                     sits four rows below this tile on the same card, and two controls wearing
+                     the same icon on one screen is two controls that look like one. Details
+                     opens the person; Key Metrics opens their numbers. -->
+                <Image Source="icon_action_profile.svg"
                        WidthRequest="22" HeightRequest="22"
                        HorizontalOptions="Center"/>
                 <Label Text="Details" Style="{StaticResource QuickActionLabel}"/>

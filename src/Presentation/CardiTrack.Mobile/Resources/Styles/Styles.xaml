@@ -323,6 +323,18 @@
         <Setter Property="Padding" Value="24,0"/>
     </Style>
 
+    <!-- The secondary button for an action that stops something: leaving, disconnecting,
+         ending. Same shape and weight as SecondaryOutlineButton — it is still the quieter of
+         two choices — but in the red of the banner that follows it, so the button and its
+         consequence look like one another. Not for ordinary secondaries ("Try again",
+         "Connect a device"): red everywhere is red nowhere. -->
+    <Style x:Key="DangerOutlineButton" TargetType="Button" BasedOn="{StaticResource SecondaryOutlineButton}">
+        <!-- DangerRed, not ErrorRed: this is 16px label text on white and has to clear 4.5:1,
+             which is the whole reason the darker token exists. ErrorRed is for fills and dots. -->
+        <Setter Property="TextColor" Value="{StaticResource DangerRed}"/>
+        <Setter Property="BorderColor" Value="{StaticResource DangerRed}"/>
+    </Style>
+
     <Style x:Key="GoogleButton" TargetType="Border">
         <Setter Property="BackgroundColor" Value="{StaticResource White}"/>
         <Setter Property="Stroke" Value="{StaticResource Primary}"/>
@@ -381,6 +393,21 @@
         <Setter Property="TextDecorations" Value="Underline"/>
     </Style>
 
+    <!-- The quiet second action on a signed-out screen: resend, go back. It reads as the
+         links Forgot Password uses, but stays a Button so a screen reader still announces a
+         button and the target stays 44 points. Verify Email spelled these setters out
+         inline, which is how it drifted from the screens either side of it. -->
+    <Style x:Key="AuthActionLink" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent"/>
+        <Setter Property="TextColor" Value="{StaticResource Primary}"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="HeightRequest" Value="44"/>
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="BorderWidth" Value="0"/>
+        <Setter Property="HorizontalOptions" Value="Center"/>
+    </Style>
+
     <Style x:Key="DividerLine" TargetType="BoxView">
         <Setter Property="HeightRequest" Value="1"/>
         <Setter Property="BackgroundColor" Value="{StaticResource Divider}"/>
@@ -422,6 +449,25 @@
         <Setter Property="Shadow">
             <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.30" Radius="10" Offset="0,3"/>
         </Setter>
+    </Style>
+
+    <!-- One of two large choices on the export popup: a glyph with its name underneath, sized
+         so the pair fills the card's width and the tap target is the whole tile. -->
+    <Style x:Key="FormatTile" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="8,18"/>
+        <Setter Property="BackgroundColor" Value="{StaticResource InputBackground}"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="16"/>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FormatTileLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+        <Setter Property="HorizontalTextAlignment" Value="Center"/>
+        <Setter Property="LineBreakMode" Value="WordWrap"/>
     </Style>
 
     <Style x:Key="QuickActionTile" TargetType="Border">

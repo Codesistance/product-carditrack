@@ -17,11 +17,8 @@ public partial class WizardHeader : ContentView
                 var header = (WizardHeader)b;
                 if (header.StepProgress is null)
                     return;
-                header.StepProgress.IsVisible = (double)v > 0;
-                header.UpdateProgressFill();
-
-                var percent = (int)Math.Round(Math.Clamp((double)v, 0d, 1d) * 100);
-                SemanticProperties.SetDescription(header.StepProgress, $"Wizard progress: {percent} percent");
+                // The bar owns its own fill, visibility and announcement.
+                header.StepProgress.Progress = (double)v;
             });
 
     public static readonly BindableProperty IsBackVisibleProperty =
@@ -52,17 +49,8 @@ public partial class WizardHeader : ContentView
     public WizardHeader()
     {
         InitializeComponent();
-        StepProgress.SizeChanged += (_, _) => UpdateProgressFill();
         ApplyStepVisibility();
         ApplyIcon();
-    }
-
-    private void UpdateProgressFill()
-    {
-        if (StepProgress.Width <= 0)
-            return;
-
-        StepProgressFill.WidthRequest = StepProgress.Width * Math.Clamp(Progress, 0d, 1d);
     }
 
     private void ApplyStepVisibility()

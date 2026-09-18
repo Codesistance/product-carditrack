@@ -1,5 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Mobile.Services;
 
@@ -116,6 +118,67 @@ public sealed class PopupService : IPopupService
             {
                 await page.Navigation.PushModalAsync(popup, animated: false);
                 await popup.Closed;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
+    public Task ShowSyncStatusAsync(string? tier, string? stateMessage, DateTime? lastSyncedUtc) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return;
+
+            var popup = new SyncStatusPopupPage(tier, stateMessage, lastSyncedUtc);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                await popup.Closed;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
+    public Task<(DateOnly From, DateOnly To)?> ChooseJournalRangeAsync(
+        JournalCadence cadence, DateOnly today) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return ((DateOnly From, DateOnly To)?)null;
+
+            var popup = new JournalRangePopupPage(cadence, today);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                return await popup.Closed;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
+    public Task<ReportFormat?> ChooseExportFormatAsync() =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return (ReportFormat?)null;
+
+            var popup = new ExportFormatPopupPage();
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                return await popup.Closed;
             }
             finally
             {

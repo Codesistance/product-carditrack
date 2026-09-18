@@ -15,13 +15,20 @@
         <!-- Same band as the other three signed-out screens (Sign In, Create Account, Forgot
              Password): their inset, their title and subtitle styles, their watermark. This
              one had a 48/32 inset around an 18pt title — the tallest band in the app for two
-             lines of text, and the odd one out in the flow it sits in. -->
+             lines of text, and the odd one out in the flow it sits in.
+
+             It now carries Create Account's step chrome, because it is the same step: the
+             account exists but cannot be used until the link is opened. Without it the
+             progress bar vanished for one screen and returned at step 2, which read as
+             having dropped out of the flow. The subtitle slot holds the step, exactly as on
+             Create Account, so the "open the link" instruction moved into the body. -->
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,24,20,20" ShowWatermark="True">
             <VerticalStackLayout Spacing="4">
                 <Label Text="Verify your email"
                        Style="{StaticResource AuthHeaderTitle}" />
-                <Label Text="Open the link we sent, then come back"
+                <Label Text="Step 1 of 4"
                        Style="{StaticResource AuthHeaderSubtitle}" />
+                <controls:StepProgressBar Progress="0.25" Margin="0,12,0,0"/>
             </VerticalStackLayout>
         </controls:HeaderBand>
 
@@ -31,9 +38,18 @@
         <Grid Grid.Row="1"
               Padding="20,0,20,36">
             <ScrollView>
-            <Grid Padding="0,32,0,0">
+            <Grid Padding="0,40,0,0">
 
                 <VerticalStackLayout Spacing="0" VerticalOptions="Start">
+
+                    <!-- Opens the way Forgot Password's "Check your email" state opens — the
+                         screen this one does the same job as. It had no heading at all, so
+                         the body began mid-sentence in Body2 and the page read as though its
+                         title had failed to render. -->
+                    <Label Text="Check your email"
+                           Style="{StaticResource Heading2}"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,0,0,8"/>
 
                     <Label Text="We sent a verification link to"
                            Style="{StaticResource Body2}"
@@ -100,27 +116,13 @@
 
                     <Button x:Name="ResendBtn"
                             Text="Resend verification email"
-                            BackgroundColor="Transparent"
-                            TextColor="{StaticResource Primary}"
-                            FontFamily="QuicksandSemiBold"
-                            FontSize="16"
-                            HeightRequest="44"
-                            Padding="12,8"
-                            BorderWidth="0"
-                            HorizontalOptions="Center"
+                            Style="{StaticResource AuthActionLink}"
                             SemanticProperties.Hint="Sends another verification email"
                             Clicked="OnResendClicked"/>
 
                     <Button x:Name="BackBtn"
                             Text="Wrong email? Go back"
-                            BackgroundColor="Transparent"
-                            TextColor="{StaticResource Primary}"
-                            FontFamily="QuicksandSemiBold"
-                            FontSize="16"
-                            HeightRequest="44"
-                            Padding="12,8"
-                            BorderWidth="0"
-                            HorizontalOptions="Center"
+                            Style="{StaticResource AuthActionLink}"
                             Margin="0,12,0,0"
                             SemanticProperties.Hint="Returns to sign in so you can use a different email"
                             Clicked="OnBackToSignInClicked"/>

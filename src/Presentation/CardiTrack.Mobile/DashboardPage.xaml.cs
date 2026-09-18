@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
@@ -334,14 +334,6 @@ public partial class DashboardPage : ContentPage
     /// unrecognised or empty value falls back to the neutral "unknown" color, not green — an
     /// unexpected value showing a reassuring color would be worse than showing none.
     /// </summary>
-    private static string FreshnessColorKey(string tier) => tier switch
-    {
-        "red" => "StatusRed",
-        "amber" => "StatusYellow",
-        "blue" => "StatusBlue",
-        "green" => "StatusGreen",
-        _ => "StatusUnknown",
-    };
 
     private async void OnPullToRefresh(object? sender, EventArgs e)
     {
@@ -601,7 +593,7 @@ public partial class DashboardPage : ContentPage
         // stopped, so a freshness reading here would misreport a deliberate pause as a gap.
         // Visibility is settled below, once it is known whether either child has anything to say.
         var freshnessRelevant = !data.MonitoringPaused;
-        var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[FreshnessColorKey(data.DataFreshness)];
+        var freshnessColor = FreshnessPalette.ColorFor(data.DataFreshness);
         // Silent while the data is arriving as it should. Readings come every ten minutes, so
         // dating them unconditionally put "Updated 10 minutes ago" over a perfectly current
         // dashboard — a caption that appears when nothing is wrong cannot mean anything when

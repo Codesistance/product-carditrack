@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.Controls.JournalRangePopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Same shell as the other popups (scrim, card, entry animation). The two fields are the
+         app's own DateField, so the dates are picked in the platform's calendar exactly as they
+         are on the health-data export. What the cadence changes is the unit: a Weekbook range
+         is snapped out to whole weeks and a Monthbook range to whole months, and the line under
+         the fields reads the snapped range back before anything is exported. -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout Spacing="16">
+
+                <Grid>
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="Export range"
+                               Style="{StaticResource Heading3}"/>
+                        <Label x:Name="SubtitleLabel"
+                               Style="{StaticResource Body2}"
+                               TextColor="{StaticResource BodyText}"/>
+                    </VerticalStackLayout>
+
+                    <!-- Dismissal as a mark, in the corner, the same one the sync popup uses. -->
+                    <Grid x:Name="CloseHit"
+                          Padding="12"
+                          Margin="0,-12,-12,0"
+                          BackgroundColor="Transparent"
+                          HorizontalOptions="End"
+                          VerticalOptions="Start"
+                          SemanticProperties.Description="Close">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCloseTapped"/>
+                        </Grid.GestureRecognizers>
+                        <Border BackgroundColor="{StaticResource ErrorRed}"
+                                StrokeThickness="0"
+                                WidthRequest="20"
+                                HeightRequest="20">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="4"/>
+                            </Border.StrokeShape>
+                            <Label Text="✕"
+                                   TextColor="{StaticResource White}"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="11"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"/>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                    <VerticalStackLayout Grid.Column="0" Spacing="2">
+                        <Label Text="From" Style="{StaticResource AuthFieldLabel}"/>
+                        <controls:DateField x:Name="FromPicker"
+                                            Format="d MMM yyyy"
+                                            SemanticProperties.Description="From"
+                                            DateSelected="OnRangeChanged"/>
+                    </VerticalStackLayout>
+                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                        <Label Text="To" Style="{StaticResource AuthFieldLabel}"/>
+                        <controls:DateField x:Name="ToPicker"
+                                            Format="d MMM yyyy"
+                                            SemanticProperties.Description="To"
+                                            DateSelected="OnRangeChanged"/>
+                    </VerticalStackLayout>
+                </Grid>
+
+                <Border x:Name="SummaryRow"
+                        BackgroundColor="{StaticResource InputBackground}"
+                        StrokeThickness="0"
+                        Padding="14,10">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12"/>
+                    </Border.StrokeShape>
+                    <Label x:Name="SummaryLabel"
+                           Style="{StaticResource Body2Dark}"
+                           HorizontalTextAlignment="Center"
+                           LineBreakMode="WordWrap"/>
+                </Border>
+
+                <Button x:Name="ExportBtn"
+                        Text="Export"
+                        Style="{StaticResource PrimaryGradientButton}"
+                        Padding="12,0"
+                        Clicked="OnExportClicked"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

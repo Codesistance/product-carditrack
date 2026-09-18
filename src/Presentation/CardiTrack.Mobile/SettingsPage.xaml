@@ -307,9 +307,15 @@
                      banner the dashboard shows for a back-swipe, the second inside the window
                      signs out. A dialog asked the same question with more ceremony and a button
                      to find. -->
+                <!-- In the red of the banner it raises, carrying that banner's power glyph. It
+                     used to wear the neutral outline every "Try again" in the app wears, one
+                     card above the deletion box: the only part of leaving that did not look
+                     like leaving. -->
                 <Button x:Name="SignOutBtn"
                         Text="Sign out"
-                        Style="{StaticResource SecondaryOutlineButton}"
+                        Style="{StaticResource DangerOutlineButton}"
+                        ImageSource="icon_power_red.svg"
+                        ContentLayout="Left,10"
                         HorizontalOptions="Fill"
                         Margin="0,12,0,0"
                         Clicked="OnSignOutClicked"/>
@@ -356,11 +362,11 @@
                                              CheckedColor="{StaticResource DangerRed}"
                                              CheckedChanged="OnDeleteConfirmChanged"
                                              SemanticProperties.Hint="Ticking this turns on the deletion request button"/>
+                        <!-- This button is where the danger outline came from; it spelled the
+                             two colours out inline before there was a style for them. -->
                         <Button x:Name="DeleteAccountBtn"
                                 Text="Start deletion request"
-                                Style="{StaticResource SecondaryOutlineButton}"
-                                TextColor="{StaticResource DangerRed}"
-                                BorderColor="{StaticResource DangerRed}"
+                                Style="{StaticResource DangerOutlineButton}"
                                 FontSize="16"
                                 HeightRequest="46"
                                 IsEnabled="False"

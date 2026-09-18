@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.ExportFormatPopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Which file to take away, as two things to look at rather than two lines to read. The
+         generic chooser stacked them as outlined rows of text, which made a choice between two
+         familiar file types — one everybody recognises by its red sheet, one by its green grid —
+         into a reading task. The glyphs are the ones those formats wear everywhere else. -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout Spacing="16">
+
+                <Grid>
+                    <Label Text="How should this copy look?"
+                           Style="{StaticResource Heading3}"
+                           Margin="0,0,28,0"/>
+
+                    <!-- Dismissal as a mark, in the corner, the same one the other popups use. -->
+                    <Grid x:Name="CloseHit"
+                          Padding="12"
+                          Margin="0,-12,-12,0"
+                          BackgroundColor="Transparent"
+                          HorizontalOptions="End"
+                          VerticalOptions="Start"
+                          SemanticProperties.Description="Close">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCloseTapped"/>
+                        </Grid.GestureRecognizers>
+                        <Border BackgroundColor="{StaticResource ErrorRed}"
+                                StrokeThickness="0"
+                                WidthRequest="20"
+                                HeightRequest="20">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="4"/>
+                            </Border.StrokeShape>
+                            <Label Text="✕"
+                                   TextColor="{StaticResource White}"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="11"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"/>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+
+                    <Border x:Name="PdfTile"
+                            Grid.Column="0"
+                            Style="{StaticResource FormatTile}"
+                            SemanticProperties.Description="PDF report"
+                            SemanticProperties.Hint="A document to read or print">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnPdfTapped"/>
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="10">
+                            <Image Source="icon_format_pdf.svg"
+                                   WidthRequest="40" HeightRequest="40"
+                                   HorizontalOptions="Center"/>
+                            <Label Text="PDF report"
+                                   Style="{StaticResource FormatTileLabel}"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border x:Name="CsvTile"
+                            Grid.Column="1"
+                            Style="{StaticResource FormatTile}"
+                            SemanticProperties.Description="CSV spreadsheet"
+                            SemanticProperties.Hint="Rows to open in a spreadsheet">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCsvTapped"/>
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="10">
+                            <Image Source="icon_format_csv.svg"
+                                   WidthRequest="40" HeightRequest="40"
+                                   HorizontalOptions="Center"/>
+                            <Label Text="CSV spreadsheet"
+                                   Style="{StaticResource FormatTileLabel}"/>
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

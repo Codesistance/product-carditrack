@@ -66,6 +66,12 @@ public sealed class MetricTrendCard : ContentView
     private readonly Label _name = new();
     private readonly Label _windowCaption = new();
     private readonly Label _value = new();
+
+    /// <summary>
+    /// What the headline reading covers. A number that large reads as a running total unless it
+    /// says otherwise, and only the step count is one — see <see cref="TrendMetricCatalogue"/>.
+    /// </summary>
+    private readonly Label _period = new();
     private readonly Border _pill;
     private readonly Label _pillText = new();
     private readonly TrendChart _chart = new();
@@ -125,14 +131,25 @@ public sealed class MetricTrendCard : ContentView
         _windowCaption.FontSize = 12;
         _windowCaption.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
         ApplyStyle(_value, "Heading3");
+        // Two points under Heading3: the number is the loudest thing on the card either way,
+        // and the period under it belongs to it rather than to the card.
+        _value.FontSize = 16;
         _value.HorizontalTextAlignment = TextAlignment.End;
+        ApplyStyle(_period, "Body2");
+        _period.FontSize = 12;
+        _period.TextColor = MetricStatus.Resource("MutedText", Colors.Gray);
+        _period.HorizontalTextAlignment = TextAlignment.End;
+        // Tucked under the value's own line box rather than a line away from it.
+        _period.Margin = new Thickness(0, -2, 0, 0);
         ApplyStyle(_pillText, "StatusPillText");
 
         _pill = new Border
         {
             IsVisible = false,
             Style = Resource<Style>("StatusPill"),
-            HorizontalOptions = LayoutOptions.End,
+            // Centred under the reading it judges, rather than hung off the card's right edge
+            // where it read as a third right-aligned line instead of that number's verdict.
+            HorizontalOptions = LayoutOptions.Center,
             Content = _pillText,
         };
 
@@ -150,8 +167,9 @@ public sealed class MetricTrendCard : ContentView
         title.Add(_name);
         title.Add(_windowCaption);
 
-        var reading = new VerticalStackLayout { Spacing = 4, VerticalOptions = LayoutOptions.Center };
+        var reading = new VerticalStackLayout { Spacing = 0, VerticalOptions = LayoutOptions.Center };
         reading.Add(_value);
+        reading.Add(_period);
         reading.Add(_pill);
 
         var header = new Grid
@@ -326,7 +344,10 @@ public sealed class MetricTrendCard : ContentView
         _name.Text = _trend.Name;
         _windowCaption.Text = $"Last {_trend.Days} days";
         _value.Text = _trend.ValueText;
-        SemanticProperties.SetDescription(this, $"{_trend.Name}, {_trend.ValueText}, last {_trend.Days} days");
+        _period.Text = _trend.PeriodText;
+        _period.IsVisible = !string.IsNullOrWhiteSpace(_trend.PeriodText);
+        SemanticProperties.SetDescription(
+            this, $"{_trend.Name}, {_trend.ValueText} {_trend.PeriodText}, last {_trend.Days} days");
 
         if (MetricStatus.Pill(_trend.Metric.Status) is { } pill)
         {

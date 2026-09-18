@@ -23,11 +23,12 @@ public sealed class MetricTrend : INotifyPropertyChanged
 
     public MetricTrend(
         string iconSource, string inkKey, string name, string valueFormat, string axisFormat,
-        DashboardMetric metric, int days, string? memberFirstName = null)
+        string periodText, DashboardMetric metric, int days, string? memberFirstName = null)
     {
         IconSource = iconSource;
         InkKey = inkKey;
         Name = name;
+        PeriodText = periodText;
         AxisFormat = axisFormat;
         MemberFirstName = memberFirstName;
         _valueFormat = valueFormat;
@@ -58,6 +59,12 @@ public sealed class MetricTrend : INotifyPropertyChanged
 
     /// <summary>The latest reading, already formatted with its unit ("72 bpm").</summary>
     public string ValueText { get; private set; }
+
+    /// <summary>
+    /// What that reading covers, said under it: a step count is today adding up, a night's sleep
+    /// is finished. See <see cref="TrendMetricCatalogue"/> for why it is per metric.
+    /// </summary>
+    public string PeriodText { get; }
 
     /// <summary>Format for the chart's own min/max labels — the same number without its unit.</summary>
     public string AxisFormat { get; }

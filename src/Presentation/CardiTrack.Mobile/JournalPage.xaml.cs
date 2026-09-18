@@ -234,11 +234,10 @@ public partial class JournalPage : ContentPage
 
         SearchEntry.Placeholder = $"Search the {_cadence.EntryName()}s";
 
-        SemanticProperties.SetDescription(
-            ExportHit, $"Export all {_cadence.EntryName()}s");
+        SemanticProperties.SetDescription(ExportHit, "Export Range");
         SemanticProperties.SetHint(
             ExportHit,
-            $"Saves every {_cadence.EntryName()} in the selected time window");
+            $"Asks which {PeriodNoun(_cadence)}s to save, then saves those {_cadence.EntryName()}s");
     }
 
     /// <summary>
@@ -653,7 +652,15 @@ public partial class JournalPage : ContentPage
             return;
 
         var today = DateOnly.FromDateTime(DateTime.Now);
-        var (from, to) = JournalExportRequests.Window(today, _windowDays);
+
+        // The range is asked for in the unit on screen — days on the Daybook, whole weeks on
+        // the Weekbook, whole months on the Monthbook. It used to take whatever window the
+        // filter chip happened to hold, which is a different question ("how far back to look")
+        // answered for a different purpose.
+        if (await _popups.ChooseJournalRangeAsync(_cadence, today) is not { } range)
+            return;
+
+        var (from, to) = range;
         var name = _members.FirstOrDefault(m => m.Id == _memberId)?.Name
             ?? _memberFirstName
             ?? "CardiJournal";
