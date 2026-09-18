@@ -240,7 +240,7 @@ Cadence belongs to the **device type**, not to any one connection — providers 
 | Failure | Effect |
 |---|---|
 | Provider API exception mid-sync | `ConnectionStatus.SyncError`, but **still in the sync rotation** — retry rides its own `SyncFrequencyMinutes` |
-| Refresh token rejected (`invalid_grant`, `invalid_token`, `expired_token`, `access_denied`) | `TokenExpired` — out of the sync rotation, but no longer terminal: `DeviceAuthRecoveryWorker` retries the grant on a widening per-connection backoff (`NextAuthRecoveryAt`/`AuthRecoveryAttempts`); re-consent is needed only for a genuinely revoked grant |
+| Refresh token rejected (`invalid_grant`, `invalid_token`, `expired_token`, `access_denied`) | `TokenExpired` — out of the sync rotation, but no longer terminal: `DeviceAuthRecoveryWorker` retries the grant on a widening per-connection backoff (`NextAuthRecoveryAt`/`AuthRecoveryAttempts`); re-consent is needed only for a genuinely revoked grant. Raised as `DeviceGrantRejectedException` rather than the plain refusal the transient rows throw, so `WearableSyncWorker` logs it at Warning as a device awaiting reconnection: the state is handled, and at Error it lifted the service's error rate on every tick for as long as the device stayed unreconnected |
 | Network/DNS failure during refresh | Status untouched — a DNS blip must not retire a working device |
 | `400`/`404` on `daily-resting-heart-rate` | Tolerated, `RestingHeartRate` stays null — unless it is a malformed-request `400`, which propagates |
 | Audit pull failure | Logged at **Warning**; no data and no status affected |

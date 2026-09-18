@@ -121,9 +121,14 @@ public class OAuthTokenRefreshServiceTests
 
         var connection = ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var rejection = await Assert.ThrowsAsync<DeviceGrantRejectedException>(() =>
             CreateSut(new FakeHttpHandler(statusCode: status))
                 .RefreshIfExpiredAsync(connection, _config));
+
+        // The type is the contract, not a detail: it is what lets the sync worker log this as a
+        // device awaiting reconnection rather than as a failure of its own.
+        Assert.Equal(connection.Id, rejection.DeviceConnectionId);
+        Assert.Equal(status, rejection.StatusCode);
 
         await _deviceConnections.Received(1)
             .UpdateStatusAsync(connection.Id, ConnectionStatus.TokenExpired);
@@ -132,7 +137,9 @@ public class OAuthTokenRefreshServiceTests
     // These say nothing about the grant — the provider is having a bad minute, or throttling us.
     // Marking them TokenExpired retired a working connection on a transient fault: it dropped out
     // of the sync rotation for good and the app started asking the user to reconnect a device
-    // that had never lost authorisation.
+    // that had never lost authorisation. ThrowsAsync matches the exact type, so asking for the
+    // base exception here is also the assertion that these do not come back as the typed refusal —
+    // which would quiet them in the worker, and a provider outage must stay loud.
     [Theory]
     [InlineData(HttpStatusCode.InternalServerError)]
     [InlineData(HttpStatusCode.BadGateway)]
@@ -214,7 +221,7 @@ public class OAuthTokenRefreshServiceTests
 
         var connection = ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<DeviceGrantRejectedException>(() =>
             CreateSut(new FakeHttpHandler(BuildErrorResponse(errorCode), HttpStatusCode.BadRequest))
                 .RefreshIfExpiredAsync(connection, _config));
 
@@ -235,7 +242,7 @@ public class OAuthTokenRefreshServiceTests
 
         var connection = ActiveConnection(expiry: DateTime.UtcNow.AddMinutes(-10));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<DeviceGrantRejectedException>(() =>
             CreateSut(new FakeHttpHandler(body, HttpStatusCode.Unauthorized))
                 .RefreshIfExpiredAsync(connection, _config));
 

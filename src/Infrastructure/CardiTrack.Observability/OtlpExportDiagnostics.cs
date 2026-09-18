@@ -61,7 +61,8 @@ internal sealed class OtlpExportDiagnostics : IHostedService, IDisposable
 
                 Serilog.Debugging.SelfLog.WriteLine(
                     "[OTel:{0}/{1}] {2}", eventData.EventSource.Name, eventData.EventName, message);
-                _logger.LogWarning(
+                _logger.Log(
+                    LevelFor(eventData.EventName),
                     "[OTel:{EventSource}/{EventName}] {Message}",
                     eventData.EventSource.Name, eventData.EventName, message);
             }
@@ -71,4 +72,24 @@ internal sealed class OtlpExportDiagnostics : IHostedService, IDisposable
             }
         }
     }
+
+    /// <summary>
+    /// What level an SDK event is worth. Warning for everything by default — a failed export is
+    /// otherwise silent, which is the whole reason this listener exists.
+    /// </summary>
+    /// <remarks>
+    /// <c>MetricInstrumentIgnored</c> is the exception. The SDK raises it once per instrument
+    /// belonging to a meter this app did not subscribe, on every start, so it reports a collection
+    /// choice rather than anything going wrong. Left at Warning it was the single largest source of
+    /// warnings the API wrote — four per start, ahead of every real one — and a warn stream that is
+    /// mostly startup chatter is a warn stream nobody reads the export failures out of. Debug keeps
+    /// the line for whoever is asking which meters are collected, at a level nothing pages on.
+    /// </remarks>
+    internal static LogLevel LevelFor(string? eventName) =>
+        eventName == MetricInstrumentIgnoredEvent ? LogLevel.Debug : LogLevel.Warning;
+
+    /// <summary>
+    /// OpenTelemetry-Sdk's name for "this instrument belongs to a meter no provider subscribed".
+    /// </summary>
+    internal const string MetricInstrumentIgnoredEvent = "MetricInstrumentIgnored";
 }
