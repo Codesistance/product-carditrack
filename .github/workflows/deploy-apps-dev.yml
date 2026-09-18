@@ -1,17 +1,14 @@
 name: CI / Deploy Apps → Dev
 
-# Push/PR CI is gated by .github/ACTIONS_ON_PUSH (0/false off, 1/true on).
-# workflow_dispatch always runs. See docs/technical/github_repository_access.md.
+# Dispatch-only: never runs on push or pull_request. Cloud agents already build
+# every change as it is written, so an automatic run on top of that paid twice for
+# the same answer. See docs/technical/github_repository_access.md.
 #
 # Mobile is built here, one input per platform, because the iOS device build is
 # ~13 macOS minutes at ten times the Linux rate and should only run when asked
 # for. The builds land in the GCS builds bucket under the release tag; pushing
 # them to TestFlight / Play is deploy-mobile-dev.yml's job, by tag.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       api:
@@ -56,28 +53,16 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  # ── ACTIONS_ON_PUSH flag (0/false skips the rest on push and pull_request) ──
-  #
-  # Runs on workflow_dispatch too, even though `env` below ignores its answer there. That is not
-  # redundancy: a skipped job poisons the whole chain beneath it, past any `always()` in between.
-  # This job was originally skipped on workflow_dispatch, `env` survived that skip via `always()`
-  # and succeeded — and `changes`, whose only dependency was that successful `env` and which
-  # carries no `if:` of its own, was skipped anyway, taking all 36 downstream jobs with it. The
-  # run reported success having built and deployed nothing, which is the worst way to fail.
-  # So: never skip the root of the chain. Fifteen seconds of checkout-and-parse on a manual run
-  # is the price of a dependency graph with nothing skipped in it.
-  actions-on-push:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    uses: ./.github/workflows/_actions-on-push.yml
-
   # ── Shared config (single source of truth via _env.yml) ─────────────────────
+  #
+  # The root of the chain, and it carries no `if:` on purpose. A skipped job poisons
+  # everything beneath it, past any `always()` in between: when the old flag-reader
+  # that used to sit here skipped on a dispatch, `env` survived via `always()` and
+  # succeeded, and `changes` — whose only dependency was that successful `env` — was
+  # skipped anyway, taking all 36 downstream jobs with it. The run reported success
+  # having built and deployed nothing, which is the worst way to fail. Never skip
+  # the root.
   env:
-    needs: [actions-on-push]
-    if: >-
-      always()
-      && !cancelled()
-      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-      && (github.event_name == 'workflow_dispatch' || needs.actions-on-push.outputs.enabled == 'true')
     uses: ./.github/workflows/_env.yml
 
   # ── Detect changed paths ─────────────────────────────────────────────────────
@@ -87,24 +72,17 @@ jobs:
     name: Detect changes
     needs: env
     runs-on: ubuntu-latest
-    # paths-filter reads the PR's file list from GET /repos/:o/:r/pulls/:n/files,
-    # which needs pull-requests:read. The workflow-level grant does not carry it,
-    # so every PR run failed with "Resource not accessible by integration".
-    # Scoped here rather than widened at the top: no other job calls that API,
-    # and this job needs no id-token.
     permissions:
       contents: read
-      pull-requests: read
     outputs:
-      api:            ${{ steps.manual.outputs.api      || steps.filter.outputs.api }}
-      web:            ${{ steps.manual.outputs.web      || steps.filter.outputs.web }}
-      worker:         ${{ steps.manual.outputs.worker   || steps.filter.outputs.worker }}
-      # On push/PR the one mobile paths filter feeds all three platforms; on dispatch each is its own tick.
-      mobile_android: ${{ steps.manual.outputs.mobile_android || steps.filter.outputs.mobile }}
-      mobile_ios:     ${{ steps.manual.outputs.mobile_ios     || steps.filter.outputs.mobile }}
-      mobile_windows: ${{ steps.manual.outputs.mobile_windows || steps.filter.outputs.mobile }}
-      pipeline:       ${{ steps.manual.outputs.pipeline || steps.filter.outputs.pipeline }}
-      webhook:        ${{ steps.manual.outputs.webhook  || steps.filter.outputs.webhook }}
+      api:            ${{ steps.manual.outputs.api }}
+      web:            ${{ steps.manual.outputs.web }}
+      worker:         ${{ steps.manual.outputs.worker }}
+      mobile_android: ${{ steps.manual.outputs.mobile_android }}
+      mobile_ios:     ${{ steps.manual.outputs.mobile_ios }}
+      mobile_windows: ${{ steps.manual.outputs.mobile_windows }}
+      pipeline:       ${{ steps.manual.outputs.pipeline }}
+      webhook:        ${{ steps.manual.outputs.webhook }}
       dotnet_version:      ${{ needs.env.outputs.dotnet_version }}
       registry:            ${{ needs.env.outputs.registry }}
       gcp_project_id:      ${{ needs.env.outputs.gcp_project_id }}
@@ -115,9 +93,10 @@ jobs:
       api_url_dev:         ${{ needs.env.outputs.api_url_dev }}
       web_url_dev:         ${{ needs.env.outputs.web_url_dev }}
     steps:
-      - uses: actions/checkout@v6
+      # No checkout: the only step here echoes the dispatch inputs. The tree was
+      # needed by the paths filter, which went with the push and pull_request
+      # triggers it existed to serve.
       - name: Set components for manual run
-        if: github.event_name == 'workflow_dispatch'
         id: manual
         run: |
           echo "api=${{ inputs.api }}"           >> $GITHUB_OUTPUT
@@ -128,58 +107,6 @@ jobs:
           echo "mobile_windows=${{ inputs.mobile_windows }}" >> $GITHUB_OUTPUT
           echo "pipeline=${{ inputs.pipeline }}" >> $GITHUB_OUTPUT
           echo "webhook=${{ inputs.webhook }}"   >> $GITHUB_OUTPUT
-      - uses: dorny/paths-filter@v4
-        if: github.event_name != 'workflow_dispatch'
-        id: filter
-        with:
-          filters: |
-            api:
-              - '.github/workflows/deploy-apps-dev.yml'
-              - '.github/workflows/deploy-apps-prod.yml'
-              - 'src/Presentation/CardiTrack.API/**'
-              - 'src/Core/**'
-              - 'src/Infrastructure/**'
-              - 'tests/**'
-              - 'CardiTrack.sln'
-            web:
-              - '.github/workflows/deploy-apps-dev.yml'
-              - '.github/workflows/deploy-apps-prod.yml'
-              - 'src/Presentation/CardiTrack.Web/**'
-              - 'src/Core/**'
-              - 'src/Infrastructure/**'
-              - 'CardiTrack.sln'
-            worker:
-              - '.github/workflows/deploy-apps-dev.yml'
-              - '.github/workflows/deploy-apps-prod.yml'
-              - 'src/Worker/**'
-              - 'src/Core/**'
-              - 'src/Infrastructure/**'
-              - 'tests/**'
-              - 'CardiTrack.sln'
-            mobile:
-              - '.github/workflows/deploy-apps-dev.yml'
-              - '.github/workflows/deploy-apps-prod.yml'
-              - 'src/Presentation/CardiTrack.Mobile/**'
-              - 'src/Presentation/CardiTrack.Mobile.Core/**'
-              - 'src/Core/CardiTrack.Domain/**'
-              - 'src/Core/CardiTrack.Application/**'
-              # Mobile.Core references it directly; a change there must compile mobile too.
-              - 'src/Infrastructure/CardiTrack.Shared/**'
-              - 'CardiTrack.sln'
-            pipeline:
-              - '.github/workflows/deploy-apps-dev.yml'
-              - '.github/workflows/deploy-apps-prod.yml'
-              - 'src/Pipeline/CardiTrack.PipelineJobs/**'
-              - 'src/Core/**'
-              - 'src/Infrastructure/**'
-              - 'CardiTrack.sln'
-            webhook:
-              - '.github/workflows/deploy-apps-dev.yml'
-              - '.github/workflows/deploy-apps-prod.yml'
-              - 'src/Pipeline/CardiTrack.HealthWebhookReceiver/**'
-              - 'src/Infrastructure/CardiTrack.Observability/**'
-              - 'src/Infrastructure/CardiTrack.Shared/**'
-              - 'CardiTrack.sln'
 
   # ── Compute next semver (main only) ─────────────────────────────────────────
   compute-version:
@@ -193,7 +120,7 @@ jobs:
     # that lane, while the run still reports success (issue #409: a model-only dispatch
     # built and deployed nothing, twice, before anyone noticed).
     if: |
-      github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' &&
       (needs.changes.outputs.api      == 'true' ||
        needs.changes.outputs.web      == 'true' ||
        needs.changes.outputs.worker   == 'true' ||
@@ -475,7 +402,7 @@ jobs:
   build-mobile-android:
     name: Build Mobile (Android)
     needs: changes
-    if: needs.changes.outputs.mobile_android == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'))
+    if: needs.changes.outputs.mobile_android == 'true' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -522,7 +449,7 @@ jobs:
   build-mobile-ios:
     name: Build Mobile (iOS)
     needs: changes
-    if: needs.changes.outputs.mobile_ios == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'))
+    if: needs.changes.outputs.mobile_ios == 'true' && github.ref != 'refs/heads/main'
     runs-on: macos-26
     permissions:
       contents: read
@@ -583,7 +510,7 @@ jobs:
   build-mobile-windows:
     name: Build Mobile (Windows)
     needs: changes
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile_windows == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.mobile_windows == 'true'
     runs-on: windows-latest
     permissions:
       id-token: write
@@ -673,7 +600,7 @@ jobs:
     needs:
       - changes
       - compute-version
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile_android == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.mobile_android == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -808,7 +735,7 @@ jobs:
     needs:
       - changes
       - compute-version
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.mobile_ios == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.mobile_ios == 'true'
     runs-on: macos-26
     timeout-minutes: 40
     permissions:
@@ -1011,7 +938,7 @@ jobs:
       - test-integration
       - security-api
       - check-migrations
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.api == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.push.outputs.image }}
@@ -1048,7 +975,7 @@ jobs:
       - test-integration
       - security-api
       - check-migrations
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.api == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.push.outputs.image }}
@@ -1080,7 +1007,7 @@ jobs:
       - compute-version
       - build-web
       - security-web
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.web == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.push.outputs.image }}
@@ -1113,7 +1040,7 @@ jobs:
       - build-worker
       - test-unit-worker
       - security-worker
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.worker == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.push.outputs.image }}
@@ -1144,7 +1071,7 @@ jobs:
       - changes
       - compute-version
       - test-unit
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.pipeline == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.pipeline == 'true'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.push.outputs.image }}
@@ -1175,7 +1102,7 @@ jobs:
       - changes
       - compute-version
       - test-unit
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.webhook == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.webhook == 'true'
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.push.outputs.image }}
@@ -1217,7 +1144,7 @@ jobs:
       - security-mobile
     if: |
       !cancelled() &&
-      github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' &&
       needs.compute-version.result == 'success' &&
       needs.security-mobile.result == 'success' &&
       !contains(needs.*.result, 'failure') &&
@@ -1277,7 +1204,7 @@ jobs:
   run-db-migrations:
     name: DB Migrations (Dev)
     needs: [changes, push-migrator-image]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.api == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -1311,7 +1238,7 @@ jobs:
   deploy-api-dev:
     name: Deploy API → Dev
     needs: [changes, push-api-image, run-db-migrations]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.api == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -1396,7 +1323,6 @@ jobs:
     if: >-
       !cancelled()
       && github.ref == 'refs/heads/main'
-      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && needs.changes.outputs.web == 'true'
       && needs.push-web-image.result == 'success'
       && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
@@ -1473,7 +1399,6 @@ jobs:
     if: >-
       !cancelled()
       && github.ref == 'refs/heads/main'
-      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && needs.changes.outputs.worker == 'true'
       && needs.push-worker-image.result == 'success'
       && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
@@ -1515,7 +1440,7 @@ jobs:
   deploy-webhook-dev:
     name: Deploy Webhook Receiver → Dev
     needs: [changes, push-webhook-image]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.webhook == 'true'
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.webhook == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: google-github-actions/auth@v3
@@ -1540,7 +1465,6 @@ jobs:
     if: >-
       !cancelled()
       && github.ref == 'refs/heads/main'
-      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       && needs.changes.outputs.pipeline == 'true'
       && needs.push-pipeline-image.result == 'success'
       && (needs.run-db-migrations.result == 'success' || needs.run-db-migrations.result == 'skipped')
@@ -1609,7 +1533,7 @@ jobs:
     # a tag with no builds behind it is one deploy-mobile-dev.yml can never push.
     if: |
       always() &&
-      github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       needs.compute-version.result == 'success' &&
@@ -1635,23 +1559,21 @@ jobs:
   # ── Did the manual run actually do anything? ────────────────────────────────
   #
   # A dispatch whose job graph collapses is indistinguishable from a successful one: everything
-  # skips, and GitHub scores a run of nothing as a green tick. That is exactly how the broken
-  # ACTIONS_ON_PUSH gate above went unnoticed — the run was ✓ and had built and deployed nothing.
-  # This makes that state red.
+  # skips, and GitHub scores a run of nothing as a green tick. That is exactly how a broken
+  # gate once went unnoticed — the run was ✓ and had built and deployed nothing. This makes
+  # that state red.
   #
-  # The "did it resolve anything" assertion is dispatch-only on purpose: on push and
-  # pull_request a fully-skipped run is the *intended* outcome whenever the flag is off.
-  # The mobile-archive assertion below also runs on a push to main, where a gated-off
-  # signing secret would otherwise leave a green run with no tag and no build behind it.
+  # Every run reaching here is a dispatch now, so both assertions apply unconditionally:
+  # a run that resolved no components built nothing, and a mobile tick on main that
+  # archived nothing leaves a tag with no build behind it.
   dispatch-sanity:
     name: Dispatch ran something
     needs: [changes, upload-mobile-artifacts]
-    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Assert the dispatch resolved its components
         env:
-          EVENT: ${{ github.event_name }}
           CHANGES_RESULT: ${{ needs.changes.result }}
           ARCHIVE_RESULT: ${{ needs.upload-mobile-artifacts.result }}
           ON_MAIN: ${{ github.ref == 'refs/heads/main' }}
@@ -1665,21 +1587,16 @@ jobs:
             ${{ needs.changes.outputs.webhook }}
         run: |
           set -euo pipefail
-          if [ "${EVENT}" = "workflow_dispatch" ]; then
-            if [ "${CHANGES_RESULT}" != "success" ]; then
-              echo "::error::Manual dispatch resolved no components — 'Detect changes' was ${CHANGES_RESULT}, so every build and deploy job skipped. Nothing was built or deployed."
-              exit 1
-            fi
-            # Unticking every box is a legitimate no-op, but it is almost never intended; say so
-            # without failing, since the graph itself is healthy.
-            case "${SELECTED}" in
-              *true*) echo "Components selected: ${SELECTED}" ;;
-              *) echo "::warning::Dispatch ran with every component unticked — nothing to build or deploy." ;;
-            esac
-          elif [ "${CHANGES_RESULT}" != "success" ]; then
-            echo "Push with ACTIONS_ON_PUSH off — nothing to check."
-            exit 0
+          if [ "${CHANGES_RESULT}" != "success" ]; then
+            echo "::error::Manual dispatch resolved no components — 'Detect changes' was ${CHANGES_RESULT}, so every build and deploy job skipped. Nothing was built or deployed."
+            exit 1
           fi
+          # Unticking every box is a legitimate no-op, but it is almost never intended; say so
+          # without failing, since the graph itself is healthy.
+          case "${SELECTED}" in
+            *true*) echo "Components selected: ${SELECTED}" ;;
+            *) echo "::warning::Dispatch ran with every component unticked — nothing to build or deploy." ;;
+          esac
           # A mobile tick on main promises an archive in the builds bucket. If the signed
           # build's secret gate closed or its upload was rejected, the archive job skips and
           # the run would otherwise go green with nothing behind the tick.

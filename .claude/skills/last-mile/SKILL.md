@@ -11,10 +11,10 @@ get a Copilot review, and have its comments triaged rather than applied blindly.
 This skill is that contract as a procedure, with the repo mechanics that make it
 work.
 
-The one fact that shapes everything else: **CI does not gate PRs here.**
-[`.github/ACTIONS_ON_PUSH`](../../../.github/ACTIONS_ON_PUSH) is `0`, so the only
-automation a PR triggers is the Copilot-review request — no build, no tests, no
-migration check runs against your diff
+The one fact that shapes everything else: **CI does not gate PRs here.** Every
+deploy workflow is dispatch-only, so the only automation a PR triggers is the
+Copilot-review request — no build, no tests, no migration check runs against your
+diff
 ([github_repository_access.md](../../../docs/technical/github_repository_access.md)).
 Local verification is the entire gate. Nothing downstream catches what you skip.
 
@@ -125,8 +125,8 @@ Report that state.
 - **Merging is manual and the maintainer's call.** There is no auto-merge (the
   workflow was removed 2026-08-21). Do not merge unless the user asks; when they
   do, squash — `main`'s history is one commit per PR.
-- **Merging does not deploy.** With `ACTIONS_ON_PUSH` at `0`, nothing rolls out
-  on merge. If the change should reach dev, dispatch **CI / Deploy Apps → Dev**
+- **Merging does not deploy.** No workflow runs on a push to `main`, so nothing
+  rolls out on merge. If the change should reach dev, dispatch **CI / Deploy Apps → Dev**
   on `main` — and note that run also executes the build, test and migration
   checks this PR skipped, so a skipped section 1 gate surfaces there, at the
   worst possible time.
