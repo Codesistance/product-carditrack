@@ -101,11 +101,16 @@ if [ "$CI" -eq 1 ]; then
   if ! command -v gh >/dev/null 2>&1; then REASON="gh is not installed"; fi
   if [ -z "$REASON" ] && ! gh auth status >/dev/null 2>&1; then REASON="gh is not authenticated (set GH_TOKEN to a fine-grained PAT with Actions: read and write, Contents: read)"; fi
   if [ -z "$REASON" ] && [ -z "$BRANCH" -o "$BRANCH" = "HEAD" ]; then REASON="detached HEAD — check out a branch"; fi
-  if [ -z "$REASON" ] && ! git rev-parse --verify -q "origin/$BRANCH" >/dev/null; then REASON="branch $BRANCH is not on origin — push it first"; fi
   HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
-  # CI builds what origin has, so a local commit that is not there yet would be
-  # "verified" by a run of something else.
-  if [ -z "$REASON" ] && [ "$HEAD_SHA" != "$(git rev-parse "origin/$BRANCH" 2>/dev/null)" ]; then REASON="local HEAD is not what origin/$BRANCH points at — push first"; fi
+  # Ask origin itself rather than the local tracking ref, which is absent after a
+  # push with no upstream and stale until the next fetch. CI builds what origin
+  # has, so a local commit that is not there yet would be "verified" by a run
+  # of something else.
+  if [ -z "$REASON" ]; then
+    REMOTE_SHA=$(git ls-remote --heads origin "$BRANCH" 2>/dev/null | cut -f1)
+    if [ -z "$REMOTE_SHA" ]; then REASON="branch $BRANCH is not on origin — push it first"
+    elif [ "$REMOTE_SHA" != "$HEAD_SHA" ]; then REASON="origin/$BRANCH is at ${REMOTE_SHA:0:8}, local HEAD is ${HEAD_SHA:0:8} — push first"; fi
+  fi
   if [ -z "$REASON" ] && [ -n "$(git status --porcelain)" ]; then log "note: working tree has uncommitted changes; CI builds what is pushed, not what is here"; fi
   if [ -n "$REASON" ]; then
     record "mobile ($PLATFORM, CI)" "SKIPPED — $REASON"

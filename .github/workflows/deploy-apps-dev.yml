@@ -1618,6 +1618,9 @@ jobs:
       - deploy-web-dev
       - deploy-worker-dev
       - upload-mobile-artifacts
+      # Not a producer of anything the tag names, but a ticked Windows compile
+      # that fails must fail the run before the tag exists, not after.
+      - build-mobile-windows
     permissions:
       contents: write
     # compute-version must have *succeeded*, not merely not-failed. It is gated on api/web/worker/

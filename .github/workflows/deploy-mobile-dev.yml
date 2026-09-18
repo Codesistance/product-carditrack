@@ -128,7 +128,7 @@ jobs:
             git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "::error::Tag '$TAG' does not exist."; exit 1; }
             MISSING=$(has_builds "$TAG")
             if [ -n "$MISSING" ]; then
-              echo "::error::No signed build for $TAG in $BUCKET for:$MISSING. Build it first — dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks — then push. The bucket keeps builds for 10 days; an older tag has to be rebuilt."
+              echo "::error::No signed build for $TAG in $BUCKET for:$MISSING. Builds are only archived by CI / Deploy Apps → Dev on main, under the version it allocates, and the bucket keeps them for 10 days — so either this tag was built without that platform, or its builds have expired. Dispatch the pipeline on main with the mobile_android / mobile_ios ticks; it archives the current main under the next version, and this workflow pushes that tag."
               exit 1
             fi
           else
@@ -152,7 +152,9 @@ jobs:
           echo "Pushing $TAG (build $BUILD_NUMBER):$PRESENT"
 
       # Same "What's new" the builds used to carry: commits since the previous
-      # v* tag, up to this tag — so the checkout moves to the tag first.
+      # v* tag, up to this tag. The checkout stays on the workflow's own revision
+      # and the tag is only ever a git ref the script reads — this job holds GCP
+      # credentials, and a tag is something any repository writer can retarget.
       - name: Release notes
         id: changelog
         env:
@@ -160,7 +162,6 @@ jobs:
           BUILD_NUMBER: ${{ steps.tag.outputs.build_number }}
         run: |
           set -euo pipefail
-          git checkout --quiet "$TAG"
           # The previous release: the highest v* tag that is an ancestor of this one.
           SINCE=""
           for CANDIDATE in $(git tag --sort=-version:refname | grep '^v[0-9]' | grep -vx "$TAG"); do
@@ -170,6 +171,7 @@ jobs:
           echo "Changelog since $SINCE"
           python3 .github/scripts/mobile-build-changelog.py \
             --since "$SINCE" \
+            --until "$TAG" \
             --version "$TAG" \
             --build "$BUILD_NUMBER" \
             --testflight-out /tmp/changelog-testflight.txt \
@@ -289,12 +291,11 @@ jobs:
       # First on purpose: checkout wipes untracked files from the workspace, so
       # anything it runs after loses its output — the downloaded IPA, and the
       # gha-creds-*.json the auth step leaves there for every later gcloud call.
-      # Only here for .github/scripts/testflight-release-notes.py and the bundle
-      # id it reads from the csproj — at the tag being pushed, since an older
-      # tag's project may not match today's main.
+      # Only here for .github/scripts/testflight-release-notes.py. It stays on
+      # the workflow's own revision: this job goes on to hold the App Store
+      # Connect private key, and a tag is something any repository writer can
+      # retarget. The tag's csproj is read below with `git show`, as data.
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.resolve.outputs.tag }}
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -376,6 +377,7 @@ jobs:
         if: steps.gate.outputs.available == 'true'
         continue-on-error: true
         env:
+          TAG: ${{ needs.resolve.outputs.tag }}
           NOTES: ${{ needs.resolve.outputs.changelog_testflight }}
           BUILD_NUMBER: ${{ needs.resolve.outputs.build_number }}
           ISSUER_ID: ${{ steps.secrets.outputs.issuer_id }}
@@ -387,9 +389,11 @@ jobs:
           printf '%s' "$API_PRIVATE_KEY" > "$KEY_FILE"
           printf '%s\n' "$NOTES" > "$RUNNER_TEMP/notes.txt"
           # The bundle id has to match the uploaded IPA, so read it from the same
-          # place the build did rather than restating it here.
-          BUNDLE_ID=$(sed -n 's|.*<ApplicationId>\(.*\)</ApplicationId>.*|\1|p' \
-            src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj | head -1)
+          # place the build did — the csproj *at the tag*, fetched and read as
+          # data rather than checked out.
+          git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG"
+          BUNDLE_ID=$(git show "$TAG:src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj" \
+            | sed -n 's|.*<ApplicationId>\(.*\)</ApplicationId>.*|\1|p' | head -1)
           # `python`, not `python3`: the setup-python interpreter above is the
           # one holding PyJWT.
           python .github/scripts/testflight-release-notes.py \

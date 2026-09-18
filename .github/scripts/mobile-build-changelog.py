@@ -87,14 +87,18 @@ RS = "\x1e"
 US = "\x1f"
 
 
-def git_commits(since_tag: str) -> list[tuple[str, str, str]]:
-    """Return (subject, release_note, changed_files) per commit, newest first."""
+def git_commits(since_tag: str, until: str = "HEAD") -> list[tuple[str, str, str]]:
+    """Return (subject, release_note, changed_files) per commit, newest first.
+
+    `until` is the release being described — a tag name when the push workflow
+    runs this from the workflow's own checkout, so the tag is read as data and
+    nothing from it is ever executed."""
     fmt = f"%x1e%s%x1f%(trailers:key={TRAILER},valueonly,separator=%x20)%x1f"
     cmd = ["git", "log", "--no-merges", "--name-only", f"--pretty=format:{fmt}"]
     if since_tag == "v0.0.0":
-        cmd += ["-n", "40"]
+        cmd += ["-n", "40", until]
     else:
-        cmd.append(f"{since_tag}..HEAD")
+        cmd.append(f"{since_tag}..{until}")
     # Decode as UTF-8 regardless of the runner locale: subjects and trailers
     # carry curly quotes and dashes, and a C locale would choke on them.
     result = subprocess.run(
@@ -206,6 +210,7 @@ def fit(header: str, bullets: list[str], footer: str, limit: int) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--since", required=True, help="Previous semver tag, or v0.0.0")
+    parser.add_argument("--until", default="HEAD", help="The release's commit or tag (default HEAD)")
     parser.add_argument("--version", required=True)
     parser.add_argument("--build", required=True, help="Kept for the job summary; not shown to customers")
     parser.add_argument("--testflight-out", required=True)
@@ -213,7 +218,7 @@ def main() -> int:
     args = parser.parse_args()
 
     header = f"What's new in CardiTrack {args.version.lstrip('v')}"
-    bullets, folded = bullets_for(git_commits(args.since))
+    bullets, folded = bullets_for(git_commits(args.since, args.until))
     footer = BEHIND_THE_SCENES if (bullets and folded) else ""
     if not bullets:
         footer = NOTHING_NEW
