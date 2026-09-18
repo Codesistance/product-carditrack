@@ -700,12 +700,13 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite) **and on the mobile dashboard since 2026-09-13**, both recording the dismissal on the account
 
 ### R1 — Q4 2026: MVP Launch
-- 🔄 Blazor dashboard (basic features)
-- 🔄 Statistical anomaly detection
-- 🔄 Email/push alerts
-- 🔄 Subscription management
+- 🔄 Blazor dashboard (basic features) — **not started**; the web app is still the stock template. The single largest piece of R1 left
+- ✅ Statistical anomaly detection — shipped; five launch alert types plus inactivity
+- 🔶 Push alerts — shipped (FCM HTTP v1, escalation ladder, quiet hours). **There is no email sender in the solution**, so "email alerts" is unbuilt and undesigned
+- ⬜ ~~Subscription management~~ — **R2, not R1** (decision log 1 in the [release matrix](./release_matrix.md)): R1 is trial-only
 - 🔄 Beta testing with 20 families
 - 🔄 Public launch (BYOD model)
+- ⬜ Google restricted-scope verification + CASA — not started, and it caps the beta at 100 connected wearers
 
 ### R2 — Q1 2027: AI Pipeline & Multi-Device Start
 - 🔄 AI pipeline rollout — Pub/Sub ingestion, SSA pre-processing + deterministic trend features, MedGemma inference (running in dev ahead of schedule; prod enablement remains — see [llm_design.md](./llm_design.md))

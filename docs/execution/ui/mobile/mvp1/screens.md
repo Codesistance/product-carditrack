@@ -5,7 +5,7 @@
 ## Project Overview
 
 **Product:** CardiTrack - Remote health monitoring for elderly family members
-**Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **16 of 17 built** as of August 14, 2026
+**Release:** MVP 1 — Core Monitoring (R1, Q4 2026) — 17 designed screens / 37 designed states; **all 17 built** as of September 18, 2026 (the "16 of 17" this line carried was true on August 14 and went stale when M1-17 shipped)
 **Platform:** iOS 17+ (iPhone 12+) & Android 12+ (API 31)
 **Minimum OS:** iOS 17.0 · Android 12 (API level 31)
 **Target OS:** iOS 18 · Android 15 (API level 35)
@@ -1156,4 +1156,4 @@ Saves via `PUT /api/v1/cardimembers/{id}` — a full replacement, so clearing a 
 ---
 
 **Source:** Extracted from [ui_screens_maui_mobile.md](../ui_screens_maui_mobile.md) v3.1 (manually re-synced August 9, 2026)
-**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **16 of 17 built**; 6 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires)
+**Total MVP 1 Screens:** 17 designed screens · 37 designed states — **all 17 built**; 6 additional shipped screens have no Figma M1 frame (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires)
