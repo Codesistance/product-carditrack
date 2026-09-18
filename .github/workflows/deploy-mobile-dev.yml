@@ -86,6 +86,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - run: python -m pip install 'pyjwt[crypto]==2.13.0'
 
       - uses: google-github-actions/auth@v3
         with:
@@ -144,12 +148,109 @@ jobs:
             [ -n "$TAG" ] || { echo "::error::No release tag in $BUCKET has signed builds for the requested platform(s). Dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks first (the bucket keeps builds for 10 days)."; exit 1; }
             echo "Newest tag with the requested builds: $TAG"
           fi
-          # The build number CI stamped into the binaries: the commit count at the tag.
-          BUILD_NUMBER=$(git rev-list --count "$TAG")
+          # The build number CI stamped into the binaries. It is archived beside them,
+          # because this side has to push the number that is actually in the binary
+          # rather than work it out again — two sides deriving it independently is how
+          # they came to disagree. Tags archived before build-number.txt existed carry
+          # the commit count the old scheme used, so that stays the fallback.
+          BUILD_NUMBER=$(gcloud storage cat "$BUCKET/$TAG/build-number.txt" 2>/dev/null | tr -cd '[:digit:]' || true)
+          if [ -z "$BUILD_NUMBER" ]; then
+            BUILD_NUMBER=$(git rev-list --count "$TAG")
+            echo "$TAG was archived before build numbers were recorded — using its commit count ($BUILD_NUMBER)."
+          fi
           echo "tag=$TAG"                   >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           PRESENT=""; [ "$ANDROID" = "true" ] && PRESENT="$PRESENT android"; [ "$IOS" = "true" ] && PRESENT="$PRESENT ios"
           echo "Pushing $TAG (build $BUILD_NUMBER):$PRESENT"
+
+      # Ask the stores before uploading anything. A build number a store has already
+      # seen is spent for the life of the app, and the only way this workflow used to
+      # find out was by uploading and being refused — once per platform, after the
+      # binary had been sent. That is what happened on 2026-09-18: the resolve step
+      # selected a tag that had already shipped, and both stores rejected build 1524.
+      #
+      # This runs before the tag is checked out below, because the script only exists
+      # on main; an older tag would not carry it.
+      #
+      # A store that cannot be reached is not a veto. The upload step still refuses a
+      # duplicate, so a momentary API failure warns and lets the run continue rather
+      # than blocking a release that would have been fine.
+      - name: Stores do not already have this build
+        env:
+          PROJECT: ${{ needs.env.outputs.gcp_project_id }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          BUILD_NUMBER: ${{ steps.tag.outputs.build_number }}
+          ANDROID: ${{ steps.platforms.outputs.android }}
+          IOS: ${{ steps.platforms.outputs.ios }}
+        run: |
+          set -uo pipefail
+          KEYS="$RUNNER_TEMP/store-preflight"
+          rm -rf "$KEYS"; mkdir -p "$KEYS"; chmod 700 "$KEYS"
+          trap 'rm -rf "$KEYS"' EXIT
+
+          secret() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>/dev/null || true; }
+          populated() { [ -n "$1" ] && [ "$1" != "REPLACE_ME" ]; }
+
+          CLASH=0
+          # $1 = store name, $2 = what it holds, $3 = the unit it calls the number
+          verdict() {
+            if [ "$2" -ge "$BUILD_NUMBER" ]; then
+              echo "::error::$1 already holds $3 $2, and $TAG would upload $BUILD_NUMBER — it will be refused as a duplicate. $TAG has been pushed before, or its build predates the current numbering. Build a new tag (dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks) and push that instead."
+              CLASH=1
+            else
+              echo "$1 holds $3 $2; $TAG uploads $BUILD_NUMBER."
+            fi
+          }
+
+          if [ "$ANDROID" = "true" ]; then
+            PLAY_KEY=$(secret carditrack-common-play-service-account-key)
+            if populated "$PLAY_KEY"; then
+              printf '%s' "$PLAY_KEY" > "$KEYS/play.json"
+              # The package name the upload step uses, stated the same way it states it.
+              HIGHEST=$(python .github/scripts/mobile-store-build-numbers.py \
+                --platform android \
+                --package-name com.codesistance.carditrack.mobile \
+                --play-key-file "$KEYS/play.json") && OK=0 || OK=$?
+              if [ "$OK" -eq 0 ]; then verdict "Play Console" "$HIGHEST" versionCode; else
+                echo "::warning::Could not ask Play Console what it holds; the upload step will still refuse a duplicate."
+              fi
+            else
+              echo "::warning::Play Console secret not populated — skipping its duplicate check."
+            fi
+          fi
+
+          if [ "$IOS" = "true" ]; then
+            ISSUER=$(secret carditrack-common-appstore-connect-issuer-id)
+            KEY_ID=$(secret carditrack-common-appstore-connect-api-key-id)
+            PRIVATE_KEY=$(secret carditrack-common-appstore-connect-api-private-key)
+            if populated "$ISSUER" && populated "$KEY_ID" && populated "$PRIVATE_KEY"; then
+              printf '%s' "$PRIVATE_KEY" > "$KEYS/appstore.p8"
+              # Read at the tag, like the upload job does, so an older tag whose bundle
+              # id differs from today's main is still checked against its own app.
+              # Captured before being filtered, and the filter tolerated: under pipefail
+              # a `head -1` that exits early can SIGPIPE sed and abort the step. An
+              # unreadable bundle id only costs the check, which is reported below.
+              CSPROJ=$(git show "$TAG:src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj" 2>/dev/null || true)
+              BUNDLE_ID=$(printf '%s\n' "$CSPROJ" | sed -n 's|.*<ApplicationId>\(.*\)</ApplicationId>.*|\1|p' | head -1 || true)
+              if [ -n "$BUNDLE_ID" ]; then
+                HIGHEST=$(python .github/scripts/mobile-store-build-numbers.py \
+                  --platform ios \
+                  --bundle-id "$BUNDLE_ID" \
+                  --issuer-id "$ISSUER" \
+                  --key-id "$KEY_ID" \
+                  --private-key-file "$KEYS/appstore.p8") && OK=0 || OK=$?
+                if [ "$OK" -eq 0 ]; then verdict "App Store Connect" "$HIGHEST" build; else
+                  echo "::warning::Could not ask App Store Connect what it holds; the upload step will still refuse a duplicate."
+                fi
+              else
+                echo "::warning::No ApplicationId in $TAG's mobile csproj — skipping the TestFlight duplicate check."
+              fi
+            else
+              echo "::warning::App Store Connect secrets not populated — skipping its duplicate check."
+            fi
+          fi
+
+          exit $CLASH
 
       # Same "What's new" the builds used to carry: commits since the previous
       # v* tag, up to this tag — so the checkout moves to the tag first.
