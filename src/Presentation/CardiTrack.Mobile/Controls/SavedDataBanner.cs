@@ -55,9 +55,26 @@ public sealed class SavedDataBanner : Border
     }
 
     /// <summary>Puts the banner up in <paramref name="state"/>, dated by when the snapshot was saved.</summary>
+    /// <remarks>
+    /// <see cref="SavedDataState.Checking"/> is held back while the snapshot is younger than
+    /// <see cref="DataAge.WorthMentioning"/>. That state says nothing a caregiver can act on —
+    /// the live call is already running and will replace the screen in a second — and readings
+    /// are pulled every ten minutes, so a snapshot saved two minutes ago is data behaving exactly
+    /// as designed. Announcing it made the banner the first thing on almost every cold paint,
+    /// and a warning that is up when nothing is wrong cannot mean anything when something is.
+    /// The two failure states are not gated: "you're offline" and "couldn't refresh" are true and
+    /// worth saying at any age, and they are the ones that stop saved data passing for live.
+    /// </remarks>
     public void Show(SavedDataState state, DateTimeOffset? savedAt)
     {
         if (state == SavedDataState.Hidden)
+        {
+            Hide();
+            return;
+        }
+
+        if (state == SavedDataState.Checking
+            && !DataAge.ShouldAnnounceSavedSnapshot(savedAt, DateTime.UtcNow))
         {
             Hide();
             return;

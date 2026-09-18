@@ -58,4 +58,18 @@ public static class DataAge
         var age = utcNow - DateTime.SpecifyKind(synced, DateTimeKind.Utc);
         return age >= WorthMentioning;
     }
+
+    /// <summary>
+    /// Whether a saved snapshot is old enough that a screen showing it while a live call runs
+    /// should say so. The same threshold as <see cref="IsWorthShowing"/> and for the same reason:
+    /// a snapshot minutes old, on a pipeline that pulls every ten, is not news.
+    /// </summary>
+    /// <remarks>
+    /// An undated snapshot counts as old. The store could not say when it was saved, so nothing
+    /// here can promise it is recent, and the honest reading of "unknown age" on health data is
+    /// the cautious one. This governs only the "checking for updates" state; a screen that could
+    /// not reach the API at all says so at any age.
+    /// </remarks>
+    public static bool ShouldAnnounceSavedSnapshot(DateTimeOffset? savedAt, DateTime utcNow) =>
+        savedAt is not { } at || IsWorthShowing(at.UtcDateTime, utcNow);
 }

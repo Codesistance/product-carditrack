@@ -67,4 +67,32 @@ public class DataAgeTests
 
         Assert.True(DataAge.IsWorthShowing(unspecified, Now));
     }
+
+    [Fact]
+    public void ShouldAnnounceSavedSnapshot_StaysQuiet_ForASnapshotMinutesOld()
+    {
+        var now = new DateTime(2026, 9, 18, 12, 0, 0, DateTimeKind.Utc);
+
+        // Two minutes old, on a pipeline that pulls every ten: nothing has gone wrong.
+        Assert.False(DataAge.ShouldAnnounceSavedSnapshot(
+            new DateTimeOffset(now.AddMinutes(-2)), now));
+    }
+
+    [Fact]
+    public void ShouldAnnounceSavedSnapshot_SpeaksUp_OnceItHasOutlivedTheCadence()
+    {
+        var now = new DateTime(2026, 9, 18, 12, 0, 0, DateTimeKind.Utc);
+
+        Assert.True(DataAge.ShouldAnnounceSavedSnapshot(
+            new DateTimeOffset(now - DataAge.WorthMentioning), now));
+        Assert.True(DataAge.ShouldAnnounceSavedSnapshot(
+            new DateTimeOffset(now.AddHours(-1)), now));
+    }
+
+    [Fact]
+    public void ShouldAnnounceSavedSnapshot_TreatsAnUndatedSnapshotAsOld()
+    {
+        // The store could not say when it was saved, so nothing can promise it is recent.
+        Assert.True(DataAge.ShouldAnnounceSavedSnapshot(null, DateTime.UtcNow));
+    }
 }
