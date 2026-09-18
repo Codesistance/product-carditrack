@@ -56,6 +56,18 @@ public partial class InviteWaitPage : ContentPage
     /// </summary>
     private CancellationTokenSource? _alive;
 
+    /// <summary>
+    /// True while this page is on its way somewhere — handing over to the confirmation, or
+    /// withdrawing the invitation.
+    /// </summary>
+    /// <remarks>
+    /// Both of those await before they navigate, and the link the caregiver taps to trigger them
+    /// stays on screen throughout. Two quick taps otherwise issue two revokes, or pop this page
+    /// while the confirmation is still being assembled behind it — after which the continuation
+    /// pushes and removes pages in a stack that has already moved on.
+    /// </remarks>
+    private bool _leaving;
+
     public InviteWaitPage(
         WizardContext ctx, ConnectableDevice device, DeviceInviteResponse invite, bool isQr)
     {
@@ -278,6 +290,11 @@ public partial class InviteWaitPage : ContentPage
     /// </summary>
     private async Task OnConnectedAsync()
     {
+        if (_leaving)
+            return;
+
+        _leaving = true;
+        CancelLink.IsEnabled = false;
         StopPolling();
         _ctx.DeviceConnected = true;
         Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey);
@@ -366,6 +383,11 @@ public partial class InviteWaitPage : ContentPage
 
     private async void OnCancelTapped(object? sender, EventArgs e)
     {
+        if (_leaving)
+            return;
+
+        _leaving = true;
+        CancelLink.IsEnabled = false;
         StopPolling();
 
         // Only a live invitation needs withdrawing. Cancelling one that already finished would be a
@@ -384,18 +406,27 @@ public partial class InviteWaitPage : ContentPage
                 if (_watch.Apply(outcome.Status, outcome.DeviceId)
                     && _watch.State == DeviceInviteWatchState.Connected)
                 {
+                    _leaving = false;
                     await OnConnectedAsync();
                     return;
                 }
+
+                _watch.Cancel();
             }
             catch (Exception ex)
             {
-                // The link outliving this screen by its remaining minutes is a smaller problem than
-                // trapping the caregiver here, and it expires on its own.
+                // The link is still live and may already be in somebody's hands, so the caregiver
+                // is not told it was cancelled and is not walked away from it. Telling them a
+                // working link is dead is the one outcome here worse than the failure itself.
                 _logger.LogInformation(ex, "Could not revoke the device invite on cancel.");
-            }
 
-            _watch.Cancel();
+                WaitError.Text = "We couldn't cancel that link — it's still live. Try again.";
+                WaitError.IsVisible = true;
+                CancelLink.IsEnabled = true;
+                _leaving = false;
+                StartPolling();
+                return;
+            }
         }
 
         if (Navigation.NavigationStack.Count > 1)

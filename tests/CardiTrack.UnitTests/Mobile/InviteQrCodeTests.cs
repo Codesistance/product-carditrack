@@ -53,6 +53,12 @@ public class InviteQrCodeTests
     [Fact]
     public void TheSameUrl_ProducesTheSameCode()
     {
-        Assert.Equal(InviteQrCode.Render(InviteUrl), InviteQrCode.Render(InviteUrl));
+        var first = InviteQrCode.Render(InviteUrl);
+        var second = InviteQrCode.Render(InviteUrl);
+
+        // Also the proof that the assertion above compares bytes rather than references: these are
+        // two separately allocated arrays, so under reference equality this would fail.
+        Assert.NotSame(first, second);
+        Assert.Equal(first, second);
     }
 }

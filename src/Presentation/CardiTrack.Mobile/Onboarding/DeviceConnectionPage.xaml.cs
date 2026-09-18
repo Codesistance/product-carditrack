@@ -37,6 +37,17 @@ public partial class DeviceConnectionPage : ContentPage
     /// </remarks>
     private CancellationTokenSource? _alive;
 
+    /// <summary>
+    /// True while any of the three ways off this page is running.
+    /// </summary>
+    /// <remarks>
+    /// The three are alternatives, not a menu to pick several from. Disabling only the pair meant a
+    /// caregiver could start a handover and then tap Authorize while it was still in flight: two
+    /// flows that complete independently, navigate independently, and leave whichever invitation
+    /// lost still live on a member whose device is now connected.
+    /// </remarks>
+    private bool _busy;
+
     public DeviceConnectionPage(WizardContext ctx, ConnectableDevice device)
     {
         InitializeComponent();
@@ -66,9 +77,13 @@ public partial class DeviceConnectionPage : ContentPage
 
     private async void OnAuthorizeClicked(object? sender, EventArgs e)
     {
+        if (_busy)
+            return;
+
+        _busy = true;
         ConnectError.IsVisible = false;
         AuthorizingOverlay.IsVisible = true;
-        AuthorizeBtn.IsEnabled = false;
+        SetActionsEnabled(false);
 
         try
         {
@@ -149,8 +164,17 @@ public partial class DeviceConnectionPage : ContentPage
         finally
         {
             AuthorizingOverlay.IsVisible = false;
-            AuthorizeBtn.IsEnabled = true;
+            SetActionsEnabled(true);
+            _busy = false;
         }
+    }
+
+    /// <summary>The three routes off this page move together — see <see cref="_busy"/>.</summary>
+    private void SetActionsEnabled(bool enabled)
+    {
+        AuthorizeBtn.IsEnabled = enabled;
+        SendLinkBtn.IsEnabled = enabled;
+        ShowQrBtn.IsEnabled = enabled;
     }
 
     private async void OnSendLinkClicked(object? sender, EventArgs e) =>
@@ -186,9 +210,12 @@ public partial class DeviceConnectionPage : ContentPage
 
     private async Task HandOverAsync(bool isQr)
     {
+        if (_busy)
+            return;
+
+        _busy = true;
         ConnectError.IsVisible = false;
-        SendLinkBtn.IsEnabled = false;
-        ShowQrBtn.IsEnabled = false;
+        SetActionsEnabled(false);
 
         var alive = _alive?.Token ?? CancellationToken.None;
 
@@ -220,8 +247,8 @@ public partial class DeviceConnectionPage : ContentPage
         }
         finally
         {
-            SendLinkBtn.IsEnabled = true;
-            ShowQrBtn.IsEnabled = true;
+            SetActionsEnabled(true);
+            _busy = false;
         }
     }
 
