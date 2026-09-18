@@ -229,6 +229,26 @@ public class DeviceConnectionService : IDeviceConnectionService
         return new DeviceOAuthCallbackTarget(IsWearerFlow: false, AppRedirectUri: payload.RedirectUri);
     }
 
+    public async Task<Guid?> PeekWearerInviteIdAsync(
+        string provider, string state, CancellationToken ct = default)
+    {
+        if (!DeviceProviderNames.TryResolve(provider, out var deviceType))
+            return null;
+
+        // Peek, like the bounce's own resolution — the state is spent by whichever path completes
+        // the flow, and a liveness check that consumed it would spend the wearer's one attempt on
+        // finding out whether they still had one.
+        var cached = await _cache.GetStringAsync(StateKeyPrefix + state, ct);
+        if (cached is null)
+            return null;
+
+        JsonUtility.TryDeserialize<OAuthStatePayload>(cached, out var payload, out _);
+
+        return payload is { Channel: DeviceOAuthChannel.Wearer } && SameApi(payload.Provider, deviceType)
+            ? payload.InviteId
+            : null;
+    }
+
     public async Task<WearerConnectionCompletion> CompleteWearerConnectionAsync(
         string provider, string state, string code, CancellationToken ct = default)
     {

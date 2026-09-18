@@ -72,6 +72,32 @@ public class WearerConnectEndpointTests
     }
 
     [Fact]
+    public async Task Ask_LinksGooglesPermissionsScreen_ForAGoogleBackedBrand()
+    {
+        _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);
+        var sut = CreateSut();
+
+        var page = Page(await sut.Ask(Token, default));
+
+        Assert.Contains("https://myaccount.google.com/permissions", page.Content!);
+    }
+
+    [Fact]
+    public async Task Ask_NamesNoProvidersScreen_ForABrandThatDoesNotUseOne()
+    {
+        _invites.ViewAsync(Token, Arg.Any<CancellationToken>())
+            .Returns(View with { Provider = "garmin", DeviceDisplayName = "Garmin" });
+        var sut = CreateSut();
+
+        var page = Page(await sut.Ask(Token, default));
+
+        // Sending a Garmin wearer to Google's permissions screen would show them a page that has
+        // never heard of them, and the one instruction about taking access back would be wrong.
+        Assert.DoesNotContain("myaccount.google.com", page.Content!);
+        Assert.Contains("Garmin account settings", page.Content);
+    }
+
+    [Fact]
     public async Task Ask_SendsHeadersThatKeepTheTokenFromTravelling()
     {
         _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);

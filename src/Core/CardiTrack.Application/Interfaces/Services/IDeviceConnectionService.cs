@@ -48,6 +48,19 @@ public interface IDeviceConnectionService
         CancellationToken ct = default);
 
     /// <summary>
+    /// The invitation a pending wearer state was minted for, without consuming the state. Null when
+    /// the state is unknown, expired, already spent, or not a wearer state.
+    /// </summary>
+    /// <remarks>
+    /// Exists so the invitation's own liveness can be checked <em>before</em> the code is exchanged.
+    /// The state outlives a revocation — it is cached for fifteen minutes and knows nothing about
+    /// the row — so without this a caregiver who cancels while the wearer is still on the provider's
+    /// consent screen would be overruled by the wearer finishing.
+    /// </remarks>
+    Task<Guid?> PeekWearerInviteIdAsync(
+        string provider, string state, CancellationToken ct = default);
+
+    /// <summary>
     /// Completes a wearer-channel callback server-side: consumes the state, exchanges the code, and
     /// stores the connection under the member and caregiver the invite named.
     /// </summary>

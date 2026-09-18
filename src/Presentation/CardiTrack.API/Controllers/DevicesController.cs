@@ -330,7 +330,19 @@ public class DevicesController : BaseApiController
 
         if (target.IsWearerFlow)
         {
-            var outcome = await _invites.CompleteFromCallbackAsync(provider, state, code, error, ct);
+            WearerConnectionOutcome outcome;
+            try
+            {
+                outcome = await _invites.CompleteFromCallbackAsync(provider, state, code, error, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The wearer has just come back from granting consent, so a cache or database fault
+                // must not meet them with a 500. They are told the truth — nothing was shared — and
+                // the detail goes to the log, not to a page served to whoever holds the link.
+                Logger.LogError(ex, "Wearer device connection failed unexpectedly for {Provider}.", provider);
+                return WearerConnectPage.NotGranted(Response, token: null);
+            }
 
             return outcome.Result switch
             {

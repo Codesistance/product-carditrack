@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 namespace CardiTrack.IntegrationTests.Controllers;
 
@@ -207,6 +208,27 @@ public class DeviceOAuthBounceTests
         // and a denial leaves the invitation live so the wearer can change their mind.
         await _invites.Received(1).CompleteFromCallbackAsync(
             "fitbit", "state_1", null, "access_denied", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WearerFlow_SaysNothingWasShared_WhenCompletionThrows()
+    {
+        _connections.ResolveCallbackTargetAsync("fitbit", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new DeviceOAuthCallbackTarget(IsWearerFlow: true, AppRedirectUri: null));
+        _invites.CompleteFromCallbackAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("redis is down"));
+
+        var sut = NewController();
+
+        var page = Bounce(await sut.RedirectToApp("fitbit", "auth_code", "state_1", null, null, default));
+
+        // The wearer has just granted consent. A cache or database fault must not meet them with a
+        // 500, and the reason must not reach a page served to whoever holds the link.
+        Assert.Equal(StatusCodes.Status200OK, page.StatusCode);
+        Assert.Contains("Nothing was shared", page.Content!);
+        Assert.DoesNotContain("redis is down", page.Content);
     }
 
     [Fact]

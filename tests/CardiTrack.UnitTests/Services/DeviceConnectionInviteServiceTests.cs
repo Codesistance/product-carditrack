@@ -101,6 +101,12 @@ public class DeviceConnectionInviteServiceTests
                 Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<DeviceType>(),
                 Arg.Any<CancellationToken>())
             .Returns("https://accounts.google.com/o/oauth2/v2/auth?state=abc");
+
+        // The state the bounce comes back with names the invitation it was minted for. The default
+        // is whichever invitation is live, which is what every happy-path test wants.
+        _connections.PeekWearerInviteIdAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(c => _stored.LastOrDefault(i => IsLive(i.Status))?.Id);
     }
 
     private static bool IsLive(DeviceInviteStatus status) =>
@@ -401,6 +407,68 @@ public class DeviceConnectionInviteServiceTests
         // "The invitation you sent on Tuesday is why this device is connected", answerable later
         // without inferring it from timestamps.
         Assert.Equal(deviceId, read.DeviceId);
+    }
+
+    [Fact]
+    public async Task Complete_RefusesOnceTheCaregiverHasRevoked_EvenMidConsent()
+    {
+        var sut = CreateSut();
+        var created = await sut.CreateAsync(_userId, _memberId, Request(), BaseUrl);
+        await sut.StartAsync(TokenFrom(created));
+
+        // The state stays valid for fifteen minutes and knows nothing about the invitation row, so
+        // the wearer can be standing on the provider's consent screen when the caregiver cancels.
+        _connections.PeekWearerInviteIdAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(created.InviteId);
+        await sut.RevokeAsync(_userId, _memberId, created.InviteId);
+
+        var outcome = await sut.CompleteFromCallbackAsync("fitbit", "state_1", "auth_code", null);
+
+        Assert.Equal(WearerConnectionResult.Failed, outcome.Result);
+        Assert.False(outcome.CanRetry);
+
+        // And nothing was stored. The withdrawal has to win outright, not merely fail to update the
+        // invitation's status after the connection has already been created.
+        await _connections.DidNotReceiveWithAnyArgs()
+            .CompleteWearerConnectionAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task Complete_RefusesOnceTheInviteHasExpired()
+    {
+        var sut = CreateSut();
+        var created = await sut.CreateAsync(_userId, _memberId, Request("qr"), BaseUrl);
+        await sut.StartAsync(TokenFrom(created));
+
+        _connections.PeekWearerInviteIdAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(created.InviteId);
+        _time.Advance(TimeSpan.FromMinutes(16));
+
+        var outcome = await sut.CompleteFromCallbackAsync("fitbit", "state_1", "auth_code", null);
+
+        Assert.Equal(WearerConnectionResult.Failed, outcome.Result);
+        await _connections.DidNotReceiveWithAnyArgs()
+            .CompleteWearerConnectionAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public async Task Complete_OffersNoRetry_WhenTheInviteIsNotLive()
+    {
+        var sut = CreateSut();
+        await sut.CreateAsync(_userId, _memberId, Request(), BaseUrl);
+
+        _connections.CompleteWearerConnectionAsync(
+                "fitbit", "state_1", "auth_code", Arg.Any<CancellationToken>())
+            .ThrowsAsyncForAnyArgs(new DeviceConnectionException(
+                DeviceConnectionException.InviteNotLive, "That link is no longer available."));
+
+        var outcome = await sut.CompleteFromCallbackAsync("fitbit", "state_1", "auth_code", null);
+
+        Assert.Equal(WearerConnectionResult.Failed, outcome.Result);
+        // A dead invitation is as unretryable as a spent state — a button would lead nowhere.
+        Assert.False(outcome.CanRetry);
     }
 
     [Fact]

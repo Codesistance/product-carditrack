@@ -51,6 +51,17 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
     private const string LinkChannel = "link";
     private const string QrChannel = "qr";
 
+    /// <summary>
+    /// Routes recorded on the audit entries this service writes. Constants rather than values read
+    /// from a request, because half these events arrive on the anonymous wearer endpoints where the
+    /// service is the only thing that knows which action it is performing — and because an audit
+    /// trail should say which operation happened, not which URL spelling reached it.
+    /// </summary>
+    private const string InvitesRoute = "/api/v1/cardimembers/{cardiMemberId}/device-invites";
+    private const string ConnectRoute = "/connect";
+    private const string ConnectStartRoute = "/connect/start";
+    private const string ConnectDeclineRoute = "/connect/decline";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDeviceConnectionService _connections;
     private readonly IAuditLogRepository _auditLogs;
@@ -122,7 +133,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
             "{Superseded} earlier invite(s) revoked.",
             invite.Id, cardiMemberId, deviceType, channel, superseded);
 
-        await AuditAsync(invite, "CreateDeviceInvite", StatusCodes200, ct);
+        await AuditAsync(invite, "CreateDeviceInvite", InvitesRoute, "POST", StatusCodes201, ct);
 
         var response = ToResponse(invite, now);
         response.Url = BuildInviteUrl(requestBaseUrl, token);
@@ -156,7 +167,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
         if (revoked)
         {
             _logger.LogInformation("Device invite {InviteId} revoked by its caregiver.", inviteId);
-            await AuditAsync(invite, "RevokeDeviceInvite", StatusCodes200, ct);
+            await AuditAsync(invite, "RevokeDeviceInvite", InvitesRoute, "DELETE", StatusCodes200, ct);
         }
 
         return ToResponse(await RequireInviteAsync(cardiMemberId, inviteId), now);
@@ -197,7 +208,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
         // caregiver's waiting screen needs, and a wearer who opens the consent page and thinks
         // better of it has still seen it.
         if (await _unitOfWork.DeviceConnectionInvites.TryMarkOpenedAsync(invite.Id, now, ct))
-            await AuditAsync(invite, "OpenDeviceInvite", StatusCodes200, ct);
+            await AuditAsync(invite, "OpenDeviceInvite", ConnectStartRoute, "POST", StatusCodes200, ct);
 
         return await _connections.InitiateWearerConnectionAsync(
             invite.Id, invite.CreatedByUserId, invite.CardiMemberId, invite.DeviceType, ct);
@@ -216,7 +227,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
         if (declined)
         {
             _logger.LogInformation("Device invite {InviteId} declined by the wearer.", invite.Id);
-            await AuditAsync(invite, "DeclineDeviceInvite", StatusCodes200, ct);
+            await AuditAsync(invite, "DeclineDeviceInvite", ConnectDeclineRoute, "POST", StatusCodes200, ct);
         }
 
         return declined;
@@ -238,6 +249,22 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
             return new WearerConnectionOutcome(WearerConnectionResult.Denied, null, CanRetry: true);
         }
 
+        // Checked before the exchange, not after it. The OAuth state knows nothing about the
+        // invitation row and lives for fifteen minutes, so a caregiver who cancels while the wearer
+        // is still on the provider's consent screen would otherwise be overruled by the wearer
+        // finishing: the grant would be stored and only the invitation's own status transition would
+        // fail, silently. The caregiver's withdrawal has to win, and the only place it can is here,
+        // before anything is stored.
+        var inviteId = await _connections.PeekWearerInviteIdAsync(provider, state, ct);
+        if (inviteId is null || !await IsStillLiveAsync(inviteId.Value))
+        {
+            _logger.LogInformation(
+                "Wearer device connection refused — the invitation is no longer live.");
+
+            // Nothing left to retry with, so the page must not offer one.
+            return new WearerConnectionOutcome(WearerConnectionResult.Failed, null, CanRetry: false);
+        }
+
         WearerConnectionCompletion completion;
         try
         {
@@ -248,10 +275,12 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
             _logger.LogWarning(ex,
                 "Wearer device connection failed with code {Code}.", ex.Code);
 
-            // A spent or expired state is the one failure a retry cannot fix — there is nothing
-            // left to retry with. Everything else (the provider rejecting the exchange, a transient
-            // fault) is worth another go while the invitation is still live.
-            var canRetry = ex.Code != DeviceConnectionException.InvalidStateToken;
+            // A spent state and a dead invitation are the two failures a retry cannot fix — there is
+            // nothing left to retry with, and a button would only lead to a dead end. Everything
+            // else (the provider rejecting the exchange, a transient fault) is worth another go
+            // while the invitation is still live.
+            var canRetry = ex.Code is not (DeviceConnectionException.InvalidStateToken
+                                           or DeviceConnectionException.InviteNotLive);
             return new WearerConnectionOutcome(WearerConnectionResult.Failed, null, canRetry);
         }
         catch (KeyNotFoundException ex)
@@ -274,7 +303,7 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
 
         var invite = await _unitOfWork.DeviceConnectionInvites.GetByIdAsync(completion.InviteId);
         if (invite is not null)
-            await AuditAsync(invite, "CompleteDeviceInvite", StatusCodes201, ct);
+            await AuditAsync(invite, "CompleteDeviceInvite", ConnectRoute, "GET", StatusCodes201, ct);
 
         _logger.LogInformation(
             "Device invite {InviteId} completed; connection {DeviceId} stored.",
@@ -289,6 +318,17 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
 
     private const int StatusCodes200 = 200;
     private const int StatusCodes201 = 201;
+
+    /// <summary>
+    /// Whether an invitation, named by id rather than by token, is still completable.
+    /// </summary>
+    private async Task<bool> IsStillLiveAsync(Guid inviteId)
+    {
+        var invite = await _unitOfWork.DeviceConnectionInvites.GetByIdAsync(inviteId);
+        return invite is not null
+               && LiveStatuses.Contains(invite.Status)
+               && invite.ExpiresAt > _timeProvider.GetUtcNow().UtcDateTime;
+    }
 
     /// <summary>
     /// The invitation a token names, if it is still usable. Null for every other case — unknown,
@@ -392,9 +432,24 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
     /// consent failed because our audit database was briefly unreachable, having already granted it
     /// at the provider. The event is still in the application log.
     /// </para>
+    /// <para>
+    /// <strong><see cref="AuditLog.IpAddress"/> and <see cref="AuditLog.UserAgent"/> are left empty,
+    /// deliberately.</strong> On the caregiver's own calls the middleware's entry already carries
+    /// them. On the wearer's, the request comes from somebody with no account who never asked to be
+    /// in this flow, and recording their address and browser would collect more about them than the
+    /// feature collects about anyone else — the whole design of it is that we never learn who the
+    /// link went to. The entry still answers who is accountable (the caregiver), what happened, to
+    /// which invitation, about which member, and when, which is what an investigation of an
+    /// invitation actually asks.
+    /// </para>
     /// </remarks>
     private async Task AuditAsync(
-        DeviceConnectionInvite invite, string action, int responseStatus, CancellationToken ct)
+        DeviceConnectionInvite invite,
+        string action,
+        string requestPath,
+        string httpMethod,
+        int responseStatus,
+        CancellationToken ct)
     {
         try
         {
@@ -406,8 +461,8 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
                 EntityType = "DeviceConnectionInvite",
                 EntityId = invite.Id,
                 Timestamp = _timeProvider.GetUtcNow().UtcDateTime,
-                RequestPath = string.Empty,
-                HttpMethod = string.Empty,
+                RequestPath = requestPath,
+                HttpMethod = httpMethod,
                 IpAddress = string.Empty,
                 UserAgent = string.Empty,
                 ResponseStatus = responseStatus,

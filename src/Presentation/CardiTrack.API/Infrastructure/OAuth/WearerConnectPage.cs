@@ -36,6 +36,22 @@ internal static class WearerConnectPage
         "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
     /// <summary>
+    /// Where each brand's wearer goes to take access back, keyed by the contract's wire name.
+    /// </summary>
+    /// <remarks>
+    /// Keyed by brand rather than assumed, because "revoke here" is the one instruction on this page
+    /// that is actively harmful when wrong: a Garmin wearer sent to Google's permissions screen
+    /// would find no mention of CardiTrack and could reasonably conclude there was nothing to
+    /// revoke. Fitbit and Pixel Watch both authorize through the Google Health API, so both land on
+    /// the Google screen; a brand absent from here gets wording with no link at all.
+    /// </remarks>
+    private static readonly Dictionary<string, string> RevokeUrls = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["fitbit"] = "https://myaccount.google.com/permissions",
+        ["pixel_watch"] = "https://myaccount.google.com/permissions",
+    };
+
+    /// <summary>
     /// The consent ask: who is asking, for what, and the two ways to answer.
     /// </summary>
     /// <remarks>
@@ -51,6 +67,15 @@ internal static class WearerConnectPage
         var device = HtmlEncoder.Default.Encode(invite.DeviceDisplayName);
         var safeToken = HtmlEncoder.Default.Encode(token);
         var privacy = HtmlEncoder.Default.Encode(privacyPolicyUrl);
+
+        // "Stop sharing" is a link to the provider's own permissions screen, and each provider has
+        // its own. Naming Google's for a brand that does not use it would send a Garmin wearer to a
+        // page that has never heard of them — worse than saying nothing, because the one instruction
+        // the page gives about taking access back would be wrong. Brands with no known screen get
+        // wording that still tells them the control exists and where it lives.
+        var revokeLink = RevokeUrls.TryGetValue(invite.Provider, out var url)
+            ? $"""<a href="{url}" rel="noopener noreferrer">the account your {device} uses</a>"""
+            : $"your {device} account settings";
 
         return Render(response, StatusCodes.Status200OK, $$"""
             <h1>{{caregiver}} would like to keep an eye on your health</h1>
@@ -68,9 +93,8 @@ internal static class WearerConnectPage
             </ul>
             <p class="note">
               {{caregiver}} sees these. CardiTrack never posts anything to your accounts and never
-              sells your data. You can stop sharing at any time from your
-              <a href="https://myaccount.google.com/permissions" rel="noopener noreferrer">Google account</a>,
-              and ask {{caregiver}} to remove the device.
+              sells your data. You can stop sharing at any time from {{revokeLink}}, and ask
+              {{caregiver}} to remove the device.
             </p>
 
             <form method="post" action="/connect/start">

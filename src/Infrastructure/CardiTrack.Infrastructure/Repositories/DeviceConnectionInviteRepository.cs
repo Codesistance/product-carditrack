@@ -132,10 +132,15 @@ public class DeviceConnectionInviteRepository
         // Two ways an invite stops mattering: somebody finished with it, or it timed out with
         // nobody touching it. Both are aged from the moment they happened, so an invitation sent
         // and ignored is retained no longer than one that was used.
+        //
+        // Ordered by that same moment rather than by expiry alone. Expiry is set from the channel's
+        // lifetime, so ordering on it would work through every QR invite before any link invite of
+        // the same age — and when a backlog exceeds one batch, that bias decides whose rows wait
+        // another day.
         return await _dbSet
             .Where(i => (i.ResolvedAt != null && i.ResolvedAt < cutoff)
                         || (i.ResolvedAt == null && i.ExpiresAt < cutoff))
-            .OrderBy(i => i.ExpiresAt)
+            .OrderBy(i => i.ResolvedAt ?? i.ExpiresAt)
             .Take(limit)
             .ToListAsync(ct);
     }
