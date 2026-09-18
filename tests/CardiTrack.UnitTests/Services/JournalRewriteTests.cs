@@ -244,8 +244,9 @@ public class JournalRewriteTests
     [Fact]
     public async Task Composes_a_daybook_for_a_finished_day()
     {
+        string? prompt = null;
         _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.DaybookAiResponse>(
-                Arg.Any<string>(), Arg.Any<CancellationToken>())
+                Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DigestGenerationService.DaybookAiResponse>(
                 new DigestGenerationService.DaybookAiResponse
                 {
@@ -263,6 +264,12 @@ public class JournalRewriteTests
         Assert.Equal(WeekEnd, result.Entry.LocalDate);
         Assert.Equal(DigestAudience.Daybook, result.Entry.Audience);
         Assert.Equal("A settled Sunday", result.Entry.Headline);
+        Assert.NotNull(prompt);
+        Assert.Contains("[PATIENT CONTEXT]", prompt);
+        Assert.Contains("[INPUT DATA]", prompt);
+        Assert.Contains("\"sleep_duration_hours\":", prompt);
+        Assert.Contains("\"resting_heart_rate\":", prompt);
+        Assert.EndsWith("JSON:", prompt.TrimEnd());
         await AssertNothingChanged();
     }
 

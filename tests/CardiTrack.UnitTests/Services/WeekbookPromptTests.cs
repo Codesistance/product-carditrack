@@ -42,8 +42,8 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline: null, ageYears: 70);
 
-        Assert.Contains("1,000 steps on average", section);
-        Assert.Contains("measured on 2 days of the week", section);
+        Assert.Contains("\"average\": \"1,000 steps\"", section);
+        Assert.Contains("\"measured_days\": 2", section);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline: null, ageYears: 70);
 
-        Assert.Contains("Steps:", section);
+        Assert.Contains("\"label\": \"Steps\"", section);
         // Nothing carried a resting heart rate, so the week says nothing about one.
         Assert.DoesNotContain("Resting heart rate", section);
     }
@@ -74,7 +74,7 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
 
-        Assert.Contains("Their usual is 4,000 steps", section);
+        Assert.Contains("\"usual\": \"4,000 steps\"", section);
     }
 
     [Fact]
@@ -113,8 +113,8 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
 
-        Assert.Contains(
-            "Their usual is 4,000 steps, and the week sat 1,000 steps above it", section);
+        Assert.Contains("\"usual\": \"4,000 steps\"", section);
+        Assert.Contains("the week sat 1,000 steps above it", section);
     }
 
     [Fact]
@@ -125,7 +125,7 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
 
-        Assert.Contains("Their usual is 7h 00m, and the week sat 1h 00m below it", section);
+        Assert.Contains("the week sat 1h 00m below it", section);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
 
-        Assert.Contains("and the week sat level with it", section);
+        Assert.Contains("the week sat level with it", section);
     }
 
     /// <summary>
@@ -152,7 +152,8 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
 
-        Assert.Contains("Their usual is 4,000 steps, and the week sat about level with it", section);
+        Assert.Contains("\"usual\": \"4,000 steps\"", section);
+        Assert.Contains("the week sat about level with it", section);
         Assert.DoesNotContain("40 steps above", section);
     }
 
@@ -164,7 +165,7 @@ public class WeekbookPromptTests
 
         var section = WeekbookPrompt.ReadingsSection(days, baseline, ageYears: 70);
 
-        Assert.Contains("and the week sat 200 steps above it", section);
+        Assert.Contains("the week sat 200 steps above it", section);
     }
 
     /// <summary>

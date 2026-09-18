@@ -544,15 +544,21 @@ day, every fetch bounded by that day's own UTC window:
 
 | Section | Source | Notes |
 |---|---|---|
-| The day in full | `ActivityLog` daily rollup vs the 30-day `PatternBaseline` and the published bands (NSF/AHA/WHO named) | absent readings say "not measured" |
+| The day in full | `ActivityLog` daily rollup vs the 30-day `PatternBaseline` and the published bands (NSF/AHA/WHO named), as a JSON object (`sleep_duration_hours`, `resting_heart_rate`, `steps`, `active_zone_minutes`, plus computed `vs_usual` / `vs_published_band`) | absent headline readings are JSON `null`, never interpolated |
 | Devices line | `DeviceActivityLog` per-device day rows | which watch the readings came from |
-| Hour by hour | `MetricRollupHourly` via the all-metrics range read | **quoted verbatim by explicit product decision** — the one exception to "code computes, model phrases"; the instructions bind the model to quote only figures that appear. Whole hours no metric covered are stated as gaps — computed deterministically, and only between hours that have data, so an unpopulated granular store is not mistaken for a day of silence |
+| Hour by hour | `MetricRollupHourly` via the all-metrics range read | **quoted as a JSON hour table by explicit product decision** — the one exception to "code computes, model phrases"; the instructions bind the model to quote only figures that appear. Whole hours no metric covered are JSON `gaps` — computed deterministically, and only between hours that have data, so an unpopulated granular store is not mistaken for a day of silence |
 | The day's monitoring | `Alert` rows attributed to the day via `AlertDetailComposer.AboutDate` + the day's Yellow+ `RealtimeAssessment` verdicts via the new range read | replaces `MonitoringContextSource` for this purpose — that source answers "the last 24h from now", the wrong clock for yesterday. The injection guardrail names the day-scoped label |
 | Conditions during the day | `EnvironmentalReading` sessions overlapping the day, via the new overlap read | **consent-gated before the fetch** — withdrawing consent means the rows are not even read. Replaces `EnvironmentalContextSource` for this purpose |
 | Family answers, demographics | `MemberContextComposer` as before | unchanged |
 
 Every section degrades to absence rather than gating the entry, and the instructions turn absence
-into "never mention it" rather than an invitation to invent.
+into "never mention it" rather than an invitation to invent. The brief stays family-facing
+(`JournalTone`) and does not open with the wearable clinical-reasoning role the two-slot callers
+use — a book is something a caregiver reads, so the condition line stays `JournalNoCondition`.
+What it takes from Google's wearable pattern is the shell: `[DATA CONSTRAINTS]`, `[PATIENT CONTEXT]`
+with isolated baselines, `[INPUT DATA]` as JSON, `[OUTPUT FORMAT]` plus a `JSON:` cue. Comparisons
+against usual and published bands are still computed in code (`vs_usual`, `vs_published_band`) so
+MedGemma phrases them rather than subtracting.
 
 **The register, and the line it turns on.** The journal's books are the prompts allowed clinical
 vocabulary, and the allowance is bounded by a rule that is regulatory rather than stylistic: *a
@@ -703,8 +709,9 @@ already up):
   source is stored as "the readings" rather than dropped. A condition name in the note is
   allowed: the register boundary is held on the rewrite. Digest, status, member-chat, alert and
   baseline clinical briefs send the same JSON daily array; the real-time assessment hour is a
-  JSON object of SSA yardsticks, not a daily array. Journals already group readings against
-  usual and stay as tables.
+  JSON object of SSA yardsticks, not a daily array. Journals send the same `[PATIENT CONTEXT]` /
+  `[INPUT DATA]` shell: a JSON object (Daybook) or metric array (Weekbook/Monthbook) with
+  comparisons already computed, not `steps=` prose tables.
 - **Rewrite (AI:Rewrite, Gemini).** Translation and addressing: the caregiver register, written
   to the family about the member, who is named only through the `CardiTrackCardiMember`
   placeholder — resolved to the real first name in code afterwards, so no model ever sees it.

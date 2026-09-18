@@ -1017,7 +1017,11 @@ public partial class DigestGenerationService : IDigestGenerationService
         var prompt = $"""
             {DaybookPrompt.Instructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
+            Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
+
+            [INPUT DATA]
             {DaybookPrompt.ReadingsSection(
                 log,
                 baseline,
@@ -1032,6 +1036,8 @@ public partial class DigestGenerationService : IDigestGenerationService
             {DaybookPrompt.IntradaySection(rollups, dayStartUtc, dayEndUtc, timeZone)}
             {DaybookPrompt.MonitoringSection(dayAlerts, assessments, timeZone)}
             {DaybookPrompt.ConditionsSection(conditions, timeZone)}
+
+            JSON:
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<DaybookAiResponse>(prompt, ct);
@@ -1098,10 +1104,16 @@ public partial class DigestGenerationService : IDigestGenerationService
         var prompt = $"""
             {WeekbookPrompt.Instructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
+            Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
+
+            [INPUT DATA]
             {WeekbookPrompt.CoverageLine(days, weekStart, weekEnd)}
             {WeekbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(weekEnd))}
             {WeekbookPrompt.MonitoringSection(weekAlerts, assessments)}
+
+            JSON:
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<WeekbookAiResponse>(prompt, ct);
@@ -1166,10 +1178,16 @@ public partial class DigestGenerationService : IDigestGenerationService
         var prompt = $"""
             {MonthbookPrompt.Instructions}
 
+            [PATIENT CONTEXT]
             {memberContext}
+            Known baselines: {MedicalPromptBlocks.BaselineSummary(baseline)}
+
+            [INPUT DATA]
             {MonthbookPrompt.CoverageLine(days, monthStart, monthEnd)}
             {MonthbookPrompt.ReadingsSection(days, baseline, member.DateOfBirth.ToAgeInYears(monthEnd))}
             {MonthbookPrompt.MonitoringSection(monthAlerts, assessments)}
+
+            JSON:
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<MonthbookAiResponse>(prompt, ct);
