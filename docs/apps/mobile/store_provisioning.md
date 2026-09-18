@@ -1,13 +1,15 @@
 # Store Provisioning — Keys, Certificates & Secrets
 
-One-time setup that enables CI (`.github/workflows/deploy-mobile-dev.yml`) to deliver signed mobile
+One-time setup that enables CI (`deploy-apps-dev.yml` to build, `deploy-mobile-dev.yml` to push) to deliver signed mobile
 builds to **TestFlight** (iOS) and the **Google Play internal testing track** (Android). Everything
 lands in GCP Secret Manager as the twelve `carditrack-common-*` secrets defined in
 `infrastructure/common/secret_manager.tf` — nine read by CI, plus three **operator-only** APNs
 secrets (`apns-auth-key-p8`, `apns-key-id`, `apple-team-id` — see section F) that no deploy
 workflow reads. Run *Deploy Infrastructure → Common* first so the
-secrets exist (seeded `REPLACE_ME`). Until a secret holds a real value, the corresponding CI jobs
-skip with a warning; nothing fails.
+secrets exist (seeded `REPLACE_ME`). Until a secret holds a real value, the corresponding
+*build* job in `deploy-apps-dev.yml` skips with a warning; a *push* requested from
+`deploy-mobile-dev.yml` for that platform fails, on purpose, because uploading is the only
+thing that workflow is for.
 
 Commands below are Windows-oriented (PowerShell + the JDK/openssl paths used on the dev machine);
 any environment with `keytool`, `openssl`, and `gcloud` works the same way.

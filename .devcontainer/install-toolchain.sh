@@ -18,6 +18,7 @@
 # Usage:
 #   sudo ./install-toolchain.sh            # core toolchain
 #   INSTALL_GCLOUD=1 ./install-toolchain.sh  # also install the gcloud CLI
+#   INSTALL_MAUI=1 ./install-toolchain.sh    # also the maui-android workload, JDK and Android SDK
 set -euo pipefail
 
 # ── Version pins ─────────────────────────────────────────────────────────────
@@ -198,8 +199,17 @@ install_maui() {
     log "maui-android workload already installed"
   else
     log "Installing the maui-android workload (several GB — this takes a while)"
-    dotnet workload install maui-android --skip-manifest-update \
-      || die "maui-android workload install failed"
+    # Workloads land next to the SDK (/usr/share/dotnet or /usr/lib/dotnet). In
+    # the dev-container image build this script runs as the non-root vscode
+    # user, so elevate when that directory is not writable.
+    local dotnet_root; dotnet_root="$(dirname "$(readlink -f "$(command -v dotnet)")")"
+    if [ -w "$dotnet_root" ]; then
+      dotnet workload install maui-android --skip-manifest-update \
+        || die "maui-android workload install failed"
+    else
+      as_root env DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet workload install maui-android --skip-manifest-update \
+        || die "maui-android workload install failed"
+    fi
   fi
 
   if [ -d "${ANDROID_SDK_ROOT_DIR}/platforms" ]; then
@@ -207,11 +217,20 @@ install_maui() {
     return 0
   fi
 
+  # The SDK is fetched through the Mobile project's InstallAndroidDependencies
+  # target, which needs the repository on disk. In the image build the script is
+  # copied to /usr/local/share and no repository exists yet; post-create.sh
+  # finishes this step once the workspace is mounted.
+  local mobile_proj="${REPO_ROOT}/src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj"
+  if [ ! -f "$mobile_proj" ]; then
+    warn "no repository at ${REPO_ROOT} — the Android SDK is installed by post-create.sh once the workspace exists"
+    return 0
+  fi
+
   # Pulls platform/build-tools from dl.google.com. Restricted networks block it,
   # and the workload alone is still enough for restore and IDE analysis, so a
   # failure here is a warning.
   log "Installing the Android SDK into ${ANDROID_SDK_ROOT_DIR}"
-  local mobile_proj="${REPO_ROOT}/src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj"
   if dotnet build "$mobile_proj" -f net10.0-android -t:InstallAndroidDependencies \
        -p:AndroidSdkDirectory="${ANDROID_SDK_ROOT_DIR}" \
        -p:AcceptAndroidSDKLicenses=True --nologo 2>&1 | tail -5; then
@@ -251,10 +270,17 @@ main() {
   if [ "$INSTALL_GCLOUD" = "1" ]; then
     install_gcloud
   fi
+  if [ "$INSTALL_MAUI" = "1" ]; then
+    install_maui
+  fi
 
   log "Done."
   log "  dotnet    $(dotnet --version 2>/dev/null || echo 'MISSING')"
   log "  terraform $(terraform version 2>/dev/null | head -1 | awk '{print $2}' || echo 'MISSING')"
+  if [ "$INSTALL_MAUI" = "1" ]; then
+    log "  maui      $(dotnet workload list 2>/dev/null | grep -q '^maui-android' && echo 'maui-android' || echo 'MISSING')"
+    log "  android   $([ -d "${ANDROID_SDK_ROOT_DIR}/platforms" ] && echo "${ANDROID_SDK_ROOT_DIR}" || echo 'SDK MISSING (dl.google.com blocked?)')"
+  fi
 }
 
 main "$@"

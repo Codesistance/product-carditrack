@@ -58,7 +58,9 @@ index.docker.io
 | --- | --- | --- |
 | `releases.hashicorp.com`, `registry.terraform.io` | `infrastructure/` (Terraform) | `registry.terraform.io` is the one the dev container README already flags as commonly blocked |
 | `packages.cloud.google.com` | gcloud CLI | Only if `INSTALL_GCLOUD=1`; off by default on the cloud bootstrap path |
-| `dl.google.com` | Android SDK for `CardiTrack.Mobile` | Only if `INSTALL_MAUI=1` and building `CardiTrack.sln` instead of the server filter |
+| `dl.google.com` | Android SDK for `CardiTrack.Mobile` | With `INSTALL_MAUI=1` (recommended below), so Android compiles in the session |
+| `api.uk1.datadoghq.com` | Datadog REST API (logs, spans, monitors) | With `DD_API_KEY` / `DD_APP_KEY` set — see [Datadog](#datadog) |
+| `api.github.com` (already in Core) | `gh workflow run` / `gh run watch` | With `GH_TOKEN` set — see [Building and testing everything](#building-and-testing-everything) |
 | `generativelanguage.googleapis.com` | Live Gemini calls | Only if the placeholder `AI__Public__ApiKey` is swapped for a real key |
 | `registry.ollama.ai`, `huggingface.co`, `hf.co` | Pulling the MedGemma model into local Ollama | Only for AI-insight debugging (`docker compose --profile full up ollama medgemma-init`) |
 
@@ -83,7 +85,22 @@ AI__Private__Model=hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M
 AI__Private__TimeoutSeconds=120
 DOTNET_CLI_TELEMETRY_OPTOUT=1
 DOTNET_NOLOGO=1
+INSTALL_MAUI=1
+DD_SITE=uk1.datadoghq.com
 ```
+
+`INSTALL_MAUI=1` makes the `SessionStart` hook (`.devcontainer/bootstrap.sh`) install the
+`maui-android` workload, a JDK and the Android SDK, and restore `CardiTrack.sln` rather than
+the server filter, so `CardiTrack.Mobile` compiles for Android inside the session. It needs
+`dl.google.com` in network access. (Before 2026-09-17 the variable was documented but
+`install-toolchain.sh` never acted on it.)
+
+### Secrets (the environment's secrets store, not the variables box)
+
+| Secret | Purpose | Scope |
+| --- | --- | --- |
+| `GH_TOKEN` | `gh workflow run` / `gh run watch` — the iOS build, which only CI can do | Fine-grained PAT on `Codesistance/product-carditrack`: **Actions: read and write**, **Contents: read**, **Pull requests: read and write** (the latter for `gh pr` work) |
+| `DD_API_KEY`, `DD_APP_KEY` | Datadog REST API | A Datadog API key plus an application key scoped to logs, APM and monitors read |
 
 `AI__Public__ApiKey` stays a placeholder by design — chat/report calls get a 401,
 everything else (including MedGemma-backed insights against local Ollama) still runs.
@@ -113,31 +130,39 @@ set +e
 
 log() { printf '[setup] %s\n' "$*"; }
 
+# Root, or passwordless sudo, for the daemon. A non-root user gets the docker
+# group (effective in new shells) rather than a world-writable socket, and the
+# calls below go through sudo meanwhile.
+if [ "$(id -u)" -eq 0 ]; then ROOT=""; else ROOT="sudo -n"; fi
+DOCKER="docker"
+
 # Start the Docker daemon if the binary is present but nothing is running yet.
 if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
   log "starting dockerd"
-  if [ "$(id -u)" -eq 0 ]; then
-    nohup dockerd >/var/log/dockerd.log 2>&1 &
-  else
-    sudo -n true 2>/dev/null && sudo -b nohup dockerd >/var/log/dockerd.log 2>&1
-  fi
-  for i in $(seq 1 15); do docker info >/dev/null 2>&1 && break; sleep 1; done
+  # Redirect inside the privileged shell; an unprivileged one cannot open the log.
+  $ROOT sh -c 'nohup dockerd >/var/log/dockerd.log 2>&1 &'
+  for i in $(seq 1 15); do { docker info >/dev/null 2>&1 || $ROOT docker info >/dev/null 2>&1; } && break; sleep 1; done
+fi
+if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1 && $ROOT docker info >/dev/null 2>&1; then
+  DOCKER="$ROOT docker"
+  getent group docker >/dev/null 2>&1 && $ROOT usermod -aG docker "$(id -un)" 2>/dev/null
 fi
 
-if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+if ! command -v docker >/dev/null 2>&1 || ! $DOCKER info >/dev/null 2>&1; then
   log "no usable docker daemon — skipping Postgres/Redis bring-up; run 'docker compose up -d db redis' by hand once the repo is checked out"
 else
   # Same images/credentials as the repo's docker-compose.yml, started standalone
   # since the compose file itself isn't checked out yet at this point.
-  docker start carditrack-db carditrack-redis >/dev/null 2>&1
-  docker inspect carditrack-db >/dev/null 2>&1 || docker run -d --name carditrack-db \
+  $DOCKER start carditrack-db carditrack-redis >/dev/null 2>&1
+  $DOCKER inspect carditrack-db >/dev/null 2>&1 || $DOCKER run -d --name carditrack-db \
     -e POSTGRES_DB=carditrack -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \
     -p 5432:5432 postgres:17-alpine
-  docker inspect carditrack-redis >/dev/null 2>&1 || docker run -d --name carditrack-redis \
+  $DOCKER inspect carditrack-redis >/dev/null 2>&1 || $DOCKER run -d --name carditrack-redis \
     -p 6379:6379 redis:7-alpine
 
   for i in $(seq 1 30); do
-    docker exec carditrack-db pg_isready -U postgres -d carditrack >/dev/null 2>&1 && break
+    $DOCKER exec carditrack-db pg_isready -U postgres -d carditrack >/dev/null 2>&1 && \
+    [ "$($DOCKER exec carditrack-redis redis-cli ping 2>/dev/null)" = "PONG" ] && break
     sleep 2
   done
   log "Postgres + Redis up."
@@ -163,6 +188,10 @@ exit 0
 - The .NET/Terraform/`dotnet-ef`/PostgreSQL-client toolchain is *not* installed
   here — that's the `.claude/settings.json` `SessionStart` hook's job
   (`.devcontainer/bootstrap.sh`), which runs once the repo actually exists.
+- A non-root session is added to the `docker` group rather than given a
+  world-writable socket; that lands in new terminals, and the script itself goes
+  through `sudo` meanwhile. The `.claude/settings.json` hook (`bootstrap.sh`) does the
+  same when it has to start the daemon.
 - Container names (`carditrack-db`, `carditrack-redis`) make the script idempotent
   across re-runs on a warm container — `docker start` on an existing container,
   `docker run` only the first time.
@@ -182,46 +211,91 @@ exit 0
   insight debugging): `docker compose --profile full up ollama medgemma-init` once the
   repo is checked out.
 
-## Mobile (MAUI) coverage
+## Building and testing everything
 
-This environment does **not** cover `CardiTrack.Mobile` by default, deliberately —
-matching `.devcontainer/install-toolchain.sh`'s own `INSTALL_MAUI=0` default. The
-`maui-android` workload and Android SDK add several GB and need `dl.google.com`,
-which most restricted network policies exclude, so the default keeps the setup fast
-and scoped to `CardiTrack.Server.slnf`.
-
-**Where Mobile actually gets built:** `.github/workflows/deploy-mobile-dev.yml`, a
-dispatch-only workflow that builds `CardiTrack.Mobile.csproj` directly for the
-platform you pick (`android`, `ios`, `both`, optional Windows), each on its own
-GitHub-hosted runner — not through this environment, not through `CardiTrack.sln`.
-The runner images ship an Android SDK, so it needs no `dl.google.com` access; it just
-runs `dotnet workload install maui-android` and builds. Those jobs are the
-authoritative check for Mobile — treat a local/cloud MAUI build as faster local
-feedback, never as a substitute for them. From a session with a `GH_TOKEN` that has
-the `workflow` scope:
+Two scripts are the agent's entry points, in a Claude Code cloud session and in a
+Cursor cloud agent alike (Cursor's `.cursor/environment.json` runs the same bootstrap):
 
 ```bash
-gh workflow run deploy-mobile-dev.yml --ref <branch> -f platform=both
-gh run watch --exit-status "$(gh run list --workflow deploy-mobile-dev.yml --branch <branch> --limit 1 --json databaseId --jq '.[0].databaseId')"
+scripts/agent/build-all.sh   # server filter → Android locally → iOS (and Android if skipped) via CI
+scripts/agent/test-all.sh    # unit + integration, Release, Testcontainers; names what has no tests
 ```
 
-A dispatch on a branch builds and ships nothing; on `main` the same dispatch also
-uploads to TestFlight / Play internal and tags. It is not path-filtered — the
-`platform` input decides what builds — so a change anywhere in the app's dependency
+iOS cannot be linked on Linux, so "all builds" means the Android compile happens here and
+the iOS compile happens by dispatching **CI / Deploy Apps → Dev** on the current branch with
+only the mobile ticks on and waiting for it. On a branch that is the unsigned Debug
+simulator compile gate (a few macOS minutes, no secrets); the signed device build only runs
+on `main`. A branch dispatch builds and ships nothing. That needs
+`GH_TOKEN` (above) and the branch pushed; without them the script reports the step as
+skipped rather than passed. `scripts/agent/services-up.sh` starts the Docker daemon and
+Postgres/Redis for the tests and for running the API locally.
+
+## Datadog
+
+Two routes to the CardiTrack org, which is on **UK1**:
+
+- **MCP** — `.mcp.json` at the repo root registers Datadog's remote MCP server
+  (`https://mcp.uk1.datadoghq.com/v1/mcp`, project scope). It needs an interactive OAuth
+  sign-in the first time, so it is for the desktop app and the Cursor extension
+  (`.cursor/mcp.json` carries the same entry; `.vscode/` is git-ignored, so a VS Code user
+  adds the same server to their own `mcp.json`), not for a headless cloud session.
+- **REST** — `DD_API_KEY` + `DD_APP_KEY` from the secrets store and `DD_SITE` from the
+  variables (also set for every session by `.claude/settings.json`). The user-level
+  `datadog-pup` skill and the repo's `carditrack-trace-triage` skill query
+  `https://api.uk1.datadoghq.com` with them; `infrastructure/datadog/README.md` has the
+  curl shape. Add `api.uk1.datadoghq.com` to network access. The application key in use
+  cannot query metrics (403); logs, spans, monitors and CI visibility work.
+
+## Mobile (MAUI) coverage
+
+With `INSTALL_MAUI=1` in the environment variables (the recommended setting above), the
+session compiles `CardiTrack.Mobile` for Android. Without it the setup matches
+`.devcontainer/install-toolchain.sh`'s `INSTALL_MAUI=0` default and stays scoped to
+`CardiTrack.Server.slnf`: the `maui-android` workload and Android SDK add several GB and
+need `dl.google.com`, which some restricted network policies exclude.
+
+**Where Mobile actually gets built:** the mobile lanes of
+`.github/workflows/deploy-apps-dev.yml`, one tick per platform (`mobile_android`,
+`mobile_ios`, `mobile_windows`), each on its own GitHub-hosted runner — not through
+this environment, not through `CardiTrack.sln`. The runner images ship an Android SDK,
+so it needs no `dl.google.com` access; it just runs `dotnet workload install
+maui-android` and builds. Those jobs are the authoritative check for Mobile — treat a
+local/cloud MAUI build as faster local feedback, never as a substitute for them. From
+a session whose `GH_TOKEN` can dispatch workflows (the fine-grained PAT in the Secrets
+table above):
+
+```bash
+scripts/agent/build-all.sh          # does the dispatch below, waits for the *new* run, reports per job
+```
+
+or by hand — dispatch is asynchronous, so wait for a run created after the dispatch rather
+than trusting `gh run list --limit 1`, which can still return the previous run:
+
+```bash
+SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+gh workflow run deploy-apps-dev.yml --ref <branch> -f api=false -f web=false -f worker=false -f pipeline=false -f webhook=false -f mobile_android=true -f mobile_ios=true
+until RUN_ID=$(gh run list --workflow deploy-apps-dev.yml --branch <branch> --event workflow_dispatch --limit 5 --json databaseId,createdAt --jq "map(select(.createdAt >= \"$SINCE\")) | .[0].databaseId // empty") && [ -n "$RUN_ID" ]; do sleep 5; done
+gh run watch --exit-status "$RUN_ID"
+```
+
+A dispatch on a branch runs the unsigned compile gates (Release Android, Debug iOS
+simulator — no secrets, a few minutes) and ships nothing; the signed builds, the GCS
+archive and the tag are `main`-only, and `deploy-mobile-dev.yml` pushes that tag to the
+stores. On dispatch the ticks,
+not the paths filter, decide what builds, so a change anywhere in the app's dependency
 graph (`CardiTrack.Mobile`, `CardiTrack.Mobile.Core`, `CardiTrack.Domain`,
 `CardiTrack.Application`) is covered by dispatching it.
 
-**To opt into local Mobile builds anyway** (e.g. debugging a Mobile-only change
-without waiting on CI):
+**In a session that was bootstrapped without `INSTALL_MAUI=1`**, the same layer can be
+added afterwards:
 1. Add `dl.google.com` to the environment's network access (see the Optional table
    above).
-2. In the Setup script, once the repo exists (i.e. from a Claude Code session, not
-   the pre-checkout setup script itself), run:
+2. From the session (the pre-checkout setup script cannot, the repo is not there yet):
    ```bash
-   INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh
+   INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh && dotnet restore CardiTrack.sln
    ```
-3. Build with `dotnet build CardiTrack.sln` instead of the server filter, or target
-   the project directly: `dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -f net10.0-android`.
+3. Build with `scripts/agent/build-all.sh --no-ci`, or target the project directly:
+   `dotnet build src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj -f net10.0-android`.
 
 `install-toolchain.sh` degrades gracefully if `dl.google.com` is still blocked: the
 workload installs and C#/XAML compile far enough to surface language-level warnings,

@@ -33,23 +33,39 @@ done
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 export DOTNET_NOLOGO=1
 
-# ── Docker daemon ────────────────────────────────────────────────────────────
+# ── Docker, Postgres, Redis ──────────────────────────────────────────────────
 # The integration tests and parts of the unit suite start PostgreSQL through
-# Testcontainers, which needs a daemon. Cloud containers ship the binaries but
-# no init system to run them, so start it here when it is not already up.
-if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+# Testcontainers, which needs a daemon; the API and Worker need Postgres and
+# Redis. scripts/agent/services-up.sh is the one place that installs Docker
+# when the image has none, configures and starts the daemon, sorts out socket
+# access for a non-root session and brings the two services up — the same path
+# Cursor's environment `start` takes. Linux only: on the Windows dev box Docker
+# Desktop is already running and nothing here applies.
+if [ "$(uname -s)" = "Linux" ] && [ -x "${REPO_ROOT}/scripts/agent/services-up.sh" ]; then
+  "${REPO_ROOT}/scripts/agent/services-up.sh"
+elif command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
   log "Starting the Docker daemon (Testcontainers needs it)"
   if [ "$(id -u)" -eq 0 ]; then
     nohup dockerd >/var/log/dockerd.log 2>&1 &
   else
-    sudo -n true 2>/dev/null && sudo -b nohup dockerd >/var/log/dockerd.log 2>&1 || true
+    # The redirection has to happen inside the privileged shell: an unprivileged
+    # one cannot open /var/log/dockerd.log, so the daemon would never start.
+    sudo -n sh -c 'nohup dockerd >/var/log/dockerd.log 2>&1 &' 2>/dev/null || true
   fi
   for _ in $(seq 1 15); do
-    docker info >/dev/null 2>&1 && break
+    { docker info >/dev/null 2>&1 || sudo -n docker info >/dev/null 2>&1; } && break
     sleep 1
   done
   if docker info >/dev/null 2>&1; then
     log "  Docker daemon up"
+  elif sudo -n docker info >/dev/null 2>&1; then
+    # Root's daemon, non-root session: grant the docker group rather than
+    # loosening the socket (a world-writable socket is root for every process).
+    # Group membership lands in new shells, so this one still needs sudo.
+    if getent group docker >/dev/null 2>&1 && ! id -nG | tr ' ' '\n' | grep -qx docker; then
+      sudo -n usermod -aG docker "$(id -un)" 2>/dev/null || true
+    fi
+    log "  Docker daemon up (root); $(id -un) added to the docker group — open a new terminal before running the tests, or prefix docker with sudo in this one"
   else
     log "  Could not start dockerd — Testcontainers-backed tests will fail (see /var/log/dockerd.log)"
   fi
@@ -57,13 +73,24 @@ fi
 
 # ── Warm the NuGet cache ─────────────────────────────────────────────────────
 # CardiTrack.Server.slnf is the whole solution minus CardiTrack.Mobile, which
-# needs the maui-android workload and the Android SDK. Set INSTALL_MAUI=1 on
-# install-toolchain.sh to add those and restore CardiTrack.sln instead.
+# needs the maui-android workload and the Android SDK. With INSTALL_MAUI=1 the
+# toolchain step above installed those, so restore CardiTrack.sln instead —
+# under its own marker, so a container first bootstrapped without mobile
+# restores again when the variable is later switched on.
+# The toolchain step degrades gracefully when dl.google.com is blocked (workload
+# present, SDK absent); restoring Mobile then fails, so fall back to the filter.
+if [ "${INSTALL_MAUI:-0}" = "1" ] && [ -d "${ANDROID_SDK_ROOT_DIR:-$HOME/Android/Sdk}/platforms" ]; then
+  SOLUTION="${REPO_ROOT}/CardiTrack.sln"
+  MARKER="${MARKER}-sln"
+else
+  [ "${INSTALL_MAUI:-0}" = "1" ] && log "Android SDK not present — restoring the server filter; CardiTrack.Mobile will not build until INSTALL_MAUI=1 ./.devcontainer/install-toolchain.sh succeeds"
+  SOLUTION="${REPO_ROOT}/CardiTrack.Server.slnf"
+fi
 if [ -f "$MARKER" ]; then
   log "Packages already restored in this container — skipping"
 else
-  log "Restoring NuGet packages (first run in this container)"
-  if dotnet restore "${REPO_ROOT}/CardiTrack.Server.slnf" --nologo 2>&1 | tail -3; then
+  log "Restoring NuGet packages for $(basename "$SOLUTION") (first run in this container)"
+  if dotnet restore "$SOLUTION" --nologo 2>&1 | tail -3; then
     mkdir -p "$(dirname "$MARKER")" && touch "$MARKER"
     log "Restore complete"
   else
@@ -72,3 +99,6 @@ else
 fi
 
 log "Ready: dotnet $(dotnet --version 2>/dev/null || echo MISSING), terraform $(terraform version 2>/dev/null | head -1 | awk '{print $2}' || echo MISSING)"
+if [ "${INSTALL_MAUI:-0}" = "1" ]; then
+  log "Mobile: maui-android $(dotnet workload list 2>/dev/null | grep -q '^maui-android' && echo present || echo MISSING); Android SDK $([ -d "${ANDROID_SDK_ROOT_DIR:-$HOME/Android/Sdk}/platforms" ] && echo present || echo MISSING)"
+fi

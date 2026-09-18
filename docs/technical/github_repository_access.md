@@ -68,15 +68,16 @@ its quarter-hourly sweep bought nothing that `gh pr merge` does not).
 | Workflow | When it runs |
 |---|---|
 | CI / Deploy Apps → Dev | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
-| Deploy Mobile → Dev | **workflow_dispatch only** (`platform` = android / ios / both); ships only from `main` |
+| Deploy Mobile → Dev | **workflow_dispatch only**, on `main` (`platform` = android / ios / both, `tag`); pushes a tag's existing builds, builds nothing |
 | Deploy Infrastructure → Dev / Common | `ACTIONS_ON_PUSH` plus **workflow_dispatch** |
 | Deploy Apps / Infra → Prod | **workflow_dispatch only** (unchanged) |
 | Request Copilot review | `pull_request` opened / reopened / ready_for_review (not synchronize) |
 
 With the flag at `0`, Dev Cloud Run does not start on merge; TestFlight / Play never
-do, whatever the flag says. Dispatch **CI / Deploy Apps → Dev** on `main` (or set the
-flag to `1`) for the services, and **Deploy Mobile → Dev** with a platform for the
-stores.
+do, whatever the flag says. Dispatch **CI / Deploy Apps → Dev** on `main` with the
+lanes you want — the mobile ones are per platform, and iOS is off by default because
+it is the expensive one — or set the flag to `1`. Then push the tag it created to the
+stores with **Deploy Mobile → Dev**.
 
 ## Operator steps (console)
 

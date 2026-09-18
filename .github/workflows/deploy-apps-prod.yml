@@ -27,6 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.check.outputs.tag }}
+      android_built: ${{ steps.mobile.outputs.android_built }}
+      ios_built: ${{ steps.mobile.outputs.ios_built }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -68,16 +70,31 @@ jobs:
           check_image web
           check_image worker
           check_image migrator
-      - name: Verify mobile artifacts exist in GCS
+      # Dev builds mobile per platform tick (mobile_android / mobile_ios), so a
+      # tag may carry one platform, both, or neither. Each mobile job below
+      # promotes only what dev built for the tag; a tag with no mobile build at
+      # all still fails here, because nothing would be promoted.
+      - name: Check which mobile builds dev archived for the tag
+        id: mobile
         run: |
           TAG="${{ inputs.tag }}"
           BUCKET=gs://${{ needs.env.outputs.gcs_builds_bucket }}
-          gcloud storage ls $BUCKET/$TAG/android/ > /dev/null 2>&1 || \
-            (echo "::error::Android artifacts not found for tag $TAG" && exit 1)
-          echo "✓ Android artifacts found"
-          gcloud storage ls $BUCKET/$TAG/ios/ > /dev/null 2>&1 || \
-            (echo "::error::iOS artifacts not found for tag $TAG" && exit 1)
-          echo "✓ iOS artifacts found"
+          ANDROID=false; IOS=false
+          # The binaries themselves, not just the prefix: a prefix with only symbols or
+          # metadata in it must not count as a build. Listing captured before grep, as in
+          # deploy-mobile-dev.yml, so a pipeline status cannot abort the step.
+          LISTING=$(gcloud storage ls "$BUCKET/$TAG/android/**" 2>/dev/null || true)
+          printf '%s\n' "$LISTING" | grep -q '\-Signed\.aab$' && ANDROID=true
+          LISTING=$(gcloud storage ls "$BUCKET/$TAG/ios/**" 2>/dev/null || true)
+          printf '%s\n' "$LISTING" | grep -q '\.ipa$' && IOS=true
+          echo "android_built=$ANDROID" >> $GITHUB_OUTPUT
+          echo "ios_built=$IOS"         >> $GITHUB_OUTPUT
+          if [ "$ANDROID" = "false" ] && [ "$IOS" = "false" ]; then
+            echo "::error::No mobile build for tag $TAG in $BUCKET — build it on dev first (mobile_android / mobile_ios ticks)."
+            exit 1
+          fi
+          [ "$ANDROID" = "true" ] && echo "✓ Android build found" || echo "::warning::No Android build for $TAG — the Android prod job will skip"
+          [ "$IOS" = "true" ]     && echo "✓ iOS build found"     || echo "::warning::No iOS build for $TAG — the iOS prod job will skip"
 
   # ── DB Migrations ────────────────────────────────────────────────────────────
   run-db-migrations-prod:
@@ -195,6 +212,7 @@ jobs:
   deploy-mobile-android:
     name: Deploy Mobile (Android) → Prod
     needs: [env, validate-tag]
+    if: needs.validate-tag.outputs.android_built == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -223,6 +241,7 @@ jobs:
   deploy-mobile-ios:
     name: Deploy Mobile (iOS) → Prod
     needs: [env, validate-tag]
+    if: needs.validate-tag.outputs.ios_built == 'true'
     runs-on: macos-26
     timeout-minutes: 40
 
