@@ -221,8 +221,12 @@ jobs:
           NEXT="v${MAJOR}.${MINOR}.$((PATCH+1))"
           echo "version=${NEXT}" >> $GITHUB_OUTPUT
           echo "Next version: ${NEXT}"
-          # Monotonic build number for store uploads (TestFlight CFBundleVersion / Play versionCode)
-          BUILD_NUMBER=$(git rev-list --count HEAD)
+          # Monotonic build number for store uploads (TestFlight CFBundleVersion / Play
+          # versionCode), derived from the tag this run is about to create rather than
+          # from the commit count. The commit count is not a function of the tag: two
+          # tags minted on one commit got the same number, and the second could then
+          # never be uploaded to either store for the life of the app.
+          BUILD_NUMBER=$(python3 .github/scripts/mobile-build-number.py --tag "$NEXT")
           echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
           echo "Build number: ${BUILD_NUMBER}"
 
@@ -1247,6 +1251,7 @@ jobs:
       - name: Upload to GCS
         env:
           TAG: ${{ needs.compute-version.outputs.version }}
+          BUILD_NUMBER: ${{ needs.compute-version.outputs.build_number }}
           BUCKET: gs://${{ needs.changes.outputs.gcs_builds_bucket }}
         run: |
           # Either can be absent when it was not ticked.
@@ -1261,6 +1266,12 @@ jobs:
           # The bucket's 10-day lifecycle rule deletes these along with the binaries;
           # the 90-day Actions artifact is the copy that outlives a late crash report.
           if [ -d artifacts/ios-symbols ]; then gcloud storage cp -n -r artifacts/ios-symbols/** $BUCKET/$TAG/ios/symbols/; fi
+          # The number stamped into the binaries above, written down beside them so the
+          # push workflow reads it instead of re-deriving it from the tag. Two sides
+          # each computing the build number is how they came to disagree; a tag's
+          # number is now decided once, here, and the archive carries it.
+          printf '%s\n' "$BUILD_NUMBER" > build-number.txt
+          gcloud storage cp -n build-number.txt $BUCKET/$TAG/build-number.txt
 
   # ── Main only: DB Migrations + Deploy Dev ───────────────────────────────────
   run-db-migrations:

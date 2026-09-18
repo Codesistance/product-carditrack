@@ -166,7 +166,8 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
      -p:ApplicationDisplayVersion=1.0 -p:ApplicationVersion=1
    ```
 
-   `versionCode 1` is safe — CI stamps builds with the repo commit count, which is always higher.
+   `versionCode 1` is safe — CI stamps builds with a number derived from the release tag
+   (`v0.2.318` → `20318`), which is always higher.
 3. **Test and release → Testing → Internal testing** → Create release → accept the Play App
    Signing default → upload `...\publish\com.codesistance.carditrack.mobile-Signed.aab` →
    **Save and publish**. This manual first upload is mandatory: the Play API refuses uploads for a
