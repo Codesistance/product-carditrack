@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
+using CardiTrack.API.Infrastructure.Logging;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Exceptions;
 
@@ -54,12 +55,19 @@ public class ExceptionHandlingMiddleware
 
         // Expected client faults (mapped 4xx) are warnings; everything else is an error.
         var level = (int)statusCode >= 500 ? LogLevel.Error : LogLevel.Warning;
-        _logger.Log(level, exception,
-            "{ExceptionType} handling {Method} {Path} => {StatusCode}",
-            exception.GetType().Name,
-            context.Request.Method,
-            context.Request.Path.Value,
-            (int)statusCode);
+
+        // Who the failed request was for. This middleware sits outside UserContextMiddleware, so
+        // the properties that middleware pushes onto LogContext never reach this line — the
+        // scoped user context does. See RequestIdentityLog.
+        using (_logger.BeginScope(RequestIdentityLog.Scope(context)))
+        {
+            _logger.Log(level, exception,
+                "{ExceptionType} handling {Method} {Path} => {StatusCode}",
+                exception.GetType().Name,
+                context.Request.Method,
+                context.Request.Path.Value,
+                (int)statusCode);
+        }
 
         // Too late to replace the body once the response has started streaming.
         if (context.Response.HasStarted)

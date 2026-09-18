@@ -10,7 +10,7 @@ namespace CardiTrack.Application.Services.Notifications;
 
 public interface IDeviceTokenService
 {
-    Task<PushDeviceToken> RegisterAsync(
+    Task<PushDeviceRegistration> RegisterAsync(
         Guid userId,
         string deviceId,
         DevicePlatform platform,
@@ -22,6 +22,18 @@ public interface IDeviceTokenService
 
     Task UnregisterAsync(Guid userId, string deviceId, CancellationToken ct = default);
 }
+
+/// <summary>
+/// The outcome of a registration.
+/// </summary>
+/// <param name="Token">The caller's row, whether inserted or updated.</param>
+/// <param name="DisplacedUserId">
+/// Who held this push token before the call, on the occasions where somebody did — see
+/// <see cref="DeviceTokenService.RegisterAsync"/>. Null in the ordinary case. Returned rather
+/// than logged here because this layer writes no logs; the API records it, and without that
+/// record a caregiver losing push to somebody else's install leaves no trace at all.
+/// </param>
+public readonly record struct PushDeviceRegistration(PushDeviceToken Token, Guid? DisplacedUserId);
 
 /// <summary>
 /// Upserts a device's push token by fingerprint (§7.2 C2), records OS reachability, and arms
@@ -50,7 +62,26 @@ public class DeviceTokenService : IDeviceTokenService
 
     private DateTime UtcNow => _timeProvider.GetUtcNow().UtcDateTime;
 
-    public async Task<PushDeviceToken> RegisterAsync(
+    /// <summary>
+    /// Upserts the caller's row for this install, taking the push token off whichever install
+    /// held it last.
+    /// </summary>
+    /// <remarks>
+    /// FCM and APNs each issue one token per app installation, which is what the unique index on
+    /// <c>TokenFingerprint</c> records. The same token still reaches us under a second install
+    /// now and then — a cloned emulator image, an Android device-to-device transfer, a restore
+    /// that carried the Firebase installation across — and the upsert key here, (UserId,
+    /// DeviceId), does not see that: the lookup misses and the insert used to die on the index,
+    /// answering a caregiver's registration with a 500 until the install was wiped.
+    ///
+    /// Taking the token is the only resolution available. The provider itself delivers a given
+    /// token to one install, whichever registered last, so the displaced row could not be
+    /// delivered to even if it were kept — and every send attempted against it would put one
+    /// caregiver's health notifications on another's screen. The displaced user goes unreachable
+    /// instead, which <c>PUSH_UNREACHABLE</c> tells them about, and their install recovers by
+    /// itself once the provider issues it a token of its own.
+    /// </remarks>
+    public async Task<PushDeviceRegistration> RegisterAsync(
         Guid userId,
         string deviceId,
         DevicePlatform platform,
@@ -62,31 +93,100 @@ public class DeviceTokenService : IDeviceTokenService
     {
         var fingerprint = Fingerprint(rawToken);
 
-        // Upsert by (UserId, DeviceId) — a token rotation on the same install must not read as a
-        // new device — but re-encrypt every call, since the raw token itself may have rotated.
-        var existing = await _unitOfWork.PushDeviceTokens.GetByUserAndDeviceAsync(userId, deviceId, ct);
-
-        var entity = existing ?? new PushDeviceToken { UserId = userId, DeviceId = deviceId };
-        entity.Platform = platform;
-        entity.AppVersion = appVersion;
-        entity.Token = _encryption.Encrypt(rawToken);
-        entity.TokenFingerprint = fingerprint;
-        entity.OsAuthorizationStatus = osAuthorizationStatus;
-        entity.SafetyChannelEnabled = safetyChannelEnabled;
-        entity.LastSeenDate = UtcNow;
-        entity.DisabledDate = null;
-        entity.DisabledReason = null;
-
-        if (existing is null)
-            await _unitOfWork.PushDeviceTokens.AddAsync(entity);
-        else
-            _unitOfWork.PushDeviceTokens.Update(entity);
-
-        await _unitOfWork.SaveChangesAsync();
+        PushDeviceRegistration registration;
+        try
+        {
+            registration = await ClaimAsync(
+                userId, deviceId, platform, appVersion, rawToken, fingerprint,
+                osAuthorizationStatus, safetyChannelEnabled, ct);
+        }
+        catch
+        {
+            // Two installs registering the same token at once both read no holder, and the unique
+            // index fails the loser's insert. The winner has committed by the time we are here,
+            // so the second pass finds the row and takes it the ordinary way. Tracking is dropped
+            // first: the failed entries would otherwise fail every later save on this scope.
+            _unitOfWork.ClearTracking();
+            registration = await ClaimAsync(
+                userId, deviceId, platform, appVersion, rawToken, fingerprint,
+                osAuthorizationStatus, safetyChannelEnabled, ct);
+        }
 
         await ReconcileReachabilityAsync(userId, ct);
 
-        return entity;
+        // The displaced caregiver's picture changed as much as the caller's did — they just lost
+        // a device. Re-evaluating theirs too is what arms PUSH_UNREACHABLE for them; without it
+        // they go quiet with nothing anywhere saying so.
+        if (registration.DisplacedUserId is { } displacedUserId && displacedUserId != userId)
+            await ReconcileReachabilityAsync(displacedUserId, ct);
+
+        return registration;
+    }
+
+    private async Task<PushDeviceRegistration> ClaimAsync(
+        Guid userId,
+        string deviceId,
+        DevicePlatform platform,
+        string appVersion,
+        string rawToken,
+        string fingerprint,
+        OsAuthorizationStatus osAuthorizationStatus,
+        bool safetyChannelEnabled,
+        CancellationToken ct)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+        try
+        {
+            // Upsert by (UserId, DeviceId) — a token rotation on the same install must not read
+            // as a new device — but re-encrypt every call, since the raw token itself may have
+            // rotated.
+            var existing = await _unitOfWork.PushDeviceTokens.GetByUserAndDeviceAsync(userId, deviceId, ct);
+
+            Guid? displacedUserId = null;
+            var holder = await _unitOfWork.PushDeviceTokens.GetByFingerprintAsync(fingerprint, ct);
+            if (holder is not null && holder.Id != existing?.Id)
+            {
+                displacedUserId = holder.UserId;
+
+                // Deleted rather than disabled: a token moving to another install is not a
+                // delivery failure worth a DisabledReason, and a disabled row would hold the
+                // index against every future registration until the 30-day sweep cleared it —
+                // the same 500, just later. Keeping another user's encrypted token also has no
+                // purpose left under the Tier 1 rule in data_protection_architecture.md.
+                _unitOfWork.PushDeviceTokens.Remove(holder);
+
+                // Freed in its own save: the write below takes the fingerprint this one
+                // releases, and only statement order inside the transaction guarantees the
+                // unique index sees the release first.
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            var entity = existing ?? new PushDeviceToken { UserId = userId, DeviceId = deviceId };
+            entity.Platform = platform;
+            entity.AppVersion = appVersion;
+            entity.Token = _encryption.Encrypt(rawToken);
+            entity.TokenFingerprint = fingerprint;
+            entity.OsAuthorizationStatus = osAuthorizationStatus;
+            entity.SafetyChannelEnabled = safetyChannelEnabled;
+            entity.LastSeenDate = UtcNow;
+            entity.DisabledDate = null;
+            entity.DisabledReason = null;
+
+            if (existing is null)
+                await _unitOfWork.PushDeviceTokens.AddAsync(entity);
+            else
+                _unitOfWork.PushDeviceTokens.Update(entity);
+
+            await _unitOfWork.SaveChangesAsync();
+            await _unitOfWork.CommitTransactionAsync();
+
+            return new PushDeviceRegistration(entity, displacedUserId);
+        }
+        catch
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw;
+        }
     }
 
     public async Task UnregisterAsync(Guid userId, string deviceId, CancellationToken ct = default)

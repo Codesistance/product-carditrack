@@ -27,7 +27,10 @@ public class PushDeviceToken : BaseEntity
     /// <summary>AES-256-GCM via <c>IEncryptionService</c>, same pattern as <c>DeviceConnection</c>'s OAuth tokens — never stored in the clear.</summary>
     public string Token { get; set; } = string.Empty;
 
-    /// <summary>SHA-256 hex of the plaintext token — the upsert/lookup key, since GCM ciphertext is non-deterministic.</summary>
+    /// <summary>
+    /// SHA-256 hex of the plaintext token — the lookup key, since GCM ciphertext is
+    /// non-deterministic, and unique across every install: one token belongs to one of them.
+    /// </summary>
     public string TokenFingerprint { get; set; } = string.Empty;
 
     public OsAuthorizationStatus OsAuthorizationStatus { get; set; } = OsAuthorizationStatus.NotDetermined;

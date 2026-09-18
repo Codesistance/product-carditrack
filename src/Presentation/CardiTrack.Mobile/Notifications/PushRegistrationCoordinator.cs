@@ -127,6 +127,36 @@ public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposabl
     }
 
     /// <summary>
+    /// Gives up this install's push registration, for the caregiver signing out of it.
+    /// </summary>
+    /// <remarks>
+    /// Must be awaited *before* the access token is cleared — the call is authenticated, and the
+    /// server has no other way to know whose registration to release.
+    ///
+    /// Without this the outgoing caregiver stays reachable at this handset indefinitely: the row
+    /// keeps its OS grant, so the dispatcher goes on sending, and their health and Safety alerts
+    /// land on a phone somebody else is now holding. The device id is deliberately *not* cleared
+    /// — it names the install, not the person, and the next caregiver to sign in here must upsert
+    /// the same row rather than accumulate a second one.
+    ///
+    /// Failure is swallowed, like registration's. Sign-out is the caregiver's own instruction and
+    /// must complete offline; a registration that outlives its session is closed from the other
+    /// end anyway, by the next sign-in on this install claiming the token (see
+    /// <c>DeviceTokenService.RegisterAsync</c>) or by the liveness sweep disabling it.
+    /// </remarks>
+    public async Task UnregisterAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await _registration.UnregisterAsync(await GetOrCreateDeviceIdAsync(), ct);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Push unregistration failed — sign-out continues.");
+        }
+    }
+
+    /// <summary>
     /// The background handler's ack — posted the moment the push arrives, before any user
     /// interaction (§6.3). Fire-and-forget is deliberate: a slow or offline ack must never delay
     /// the OS from displaying the notification, and a missed ack just means the escalation ladder

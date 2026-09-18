@@ -1,6 +1,7 @@
 using AspNetCoreRateLimit;
 using CardiTrack.API.Controllers.Dev;
 using CardiTrack.API.Extensions;
+using CardiTrack.API.Infrastructure.Logging;
 using CardiTrack.API.Middleware;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Infrastructure.Extensions;
@@ -216,6 +217,17 @@ try
     app.UseSerilogRequestLogging(options =>
     {
         options.IncludeQueryInRequestPath = false;
+        // Who it was for, and which install it came from. This line is the one every query
+        // starts from, and without these it can say a request 500'd but not to whom — see
+        // RequestIdentityLog for why these are read here rather than pushed onto LogContext.
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            if (RequestIdentityLog.UserId(httpContext) is { } userId)
+                diagnosticContext.Set(RequestIdentityLog.UserIdProperty, userId);
+
+            if (RequestIdentityLog.DeviceId(httpContext) is { } deviceId)
+                diagnosticContext.Set(RequestIdentityLog.DeviceIdProperty, deviceId);
+        };
         // Probe traffic is dropped rather than logged, matching the trace filter in
         // ApmExtensions. Cloud Run probes continuously, so once a service is turned up to
         // Information the probe would otherwise outnumber real requests in Cloud Logging and

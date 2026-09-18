@@ -1,3 +1,4 @@
+using CardiTrack.API.Infrastructure.Logging;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -242,9 +243,20 @@ public class NotificationsController : BaseApiController
         if (string.IsNullOrWhiteSpace(request.DeviceId) || string.IsNullOrWhiteSpace(request.Token))
             return Error("A device id and token are both required.");
 
-        var token = await _deviceTokens.RegisterAsync(
+        var loggableDeviceId = RequestIdentityLog.RecordDeviceId(HttpContext, request.DeviceId);
+
+        var (token, displacedUserId) = await _deviceTokens.RegisterAsync(
             userId, request.DeviceId, request.Platform, request.AppVersion, request.Token,
             request.OsAuthorizationStatus, request.SafetyChannelEnabled, ct);
+
+        // The one record that a caregiver just lost push to somebody else's install. Nothing
+        // else in the system says so: their rows are gone, and the app that took the token has
+        // no idea it did. Warning rather than Information — outside a wiped emulator or a
+        // restored backup this should not happen, and a run of them is worth looking at.
+        if (displacedUserId is { } displaced && displaced != userId)
+            Logger.LogWarning(
+                "Push token reassigned to user {UserId} on device {DeviceId}; user {DisplacedUserId} lost their registration for it.",
+                userId, loggableDeviceId, displaced);
 
         return Success(new PushDeviceTokenResponse
         {
@@ -264,6 +276,8 @@ public class NotificationsController : BaseApiController
     {
         if (!TryGetUserId(out var userId, out var denied))
             return denied!;
+
+        RequestIdentityLog.RecordDeviceId(HttpContext, request.DeviceId);
 
         await _deviceTokens.UnregisterAsync(userId, request.DeviceId, ct);
         return Success("Device unregistered.");
