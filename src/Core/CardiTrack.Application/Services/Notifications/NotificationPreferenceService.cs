@@ -88,12 +88,7 @@ public class NotificationPreferenceService : INotificationPreferenceService
         var start = prefs.QuietHoursStart.Value;
         var end = prefs.QuietHoursEnd.Value;
 
-        // Overnight windows (e.g. 22:00-07:00) wrap past midnight; same-day windows don't.
-        var within = start <= end
-            ? localTime >= start && localTime < end
-            : localTime >= start || localTime < end;
-
-        if (!within)
+        if (!QuietHours.Contains(start, end, localTime))
             return (false, null);
 
         // Same-day window: end falls later today. Overnight window: end falls today if we're

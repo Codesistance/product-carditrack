@@ -13,7 +13,7 @@ namespace CardiTrack.UnitTests.Services;
 /// <see cref="AdviseGenerationService"/> — the two-slot batch writer behind the CardiMember
 /// Details "Something to try" card: MedGemma's clinical read of the data, rewritten for the
 /// family by the Rewrite slot, one row per <see cref="AdviseTopic"/>. Pins the
-/// due-check (age and <see cref="MemberAdvise.PromptVersion"/> alike), the treatment-scope
+    /// due-check (five writes in the waking window, older <see cref="MemberAdvise.PromptVersion"/>), the treatment-scope
 /// contract (a dose-change note is withheld; a citation naming no published table is stored
 /// against the readings rather than dropped), the per-topic
 /// reconciliation (silence removes, a hiccup keeps — and a failed rewrite is a hiccup), the copy
@@ -30,6 +30,10 @@ public class AdviseGenerationServiceTests
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IMemberAdviseRepository _advises = Substitute.For<IMemberAdviseRepository>();
 
+    private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
+    private readonly IUserRepository _users = Substitute.For<IUserRepository>();
+    private readonly INotificationPreferenceRepository _prefs = Substitute.For<INotificationPreferenceRepository>();
+
     private readonly Guid _memberId = Guid.NewGuid();
 
     public AdviseGenerationServiceTests()
@@ -38,6 +42,11 @@ public class AdviseGenerationServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.MemberAdvises.Returns(_advises);
+        _unitOfWork.UserCardiMembers.Returns(_links);
+        _unitOfWork.Users.Returns(_users);
+        _unitOfWork.NotificationPreferences.Returns(_prefs);
+
+        _links.GetByCardiMemberIdAsync(_memberId).Returns([]);
 
         _members.GetByIdAsync(_memberId).Returns(new CardiMember
         {
@@ -91,16 +100,40 @@ public class AdviseGenerationServiceTests
         Guid memberId,
         AdviseTopic topic = AdviseTopic.Activity,
         double ageDays = 2,
-        int promptVersion = AdviseGenerationService.CurrentPromptVersion) => new()
+        int promptVersion = AdviseGenerationService.CurrentPromptVersion,
+        DateTime? generatedAtUtc = null) => new()
         {
             CardiMemberId = memberId,
             Topic = topic,
             Summary = "Old summary.",
             Suggestion = "Old suggestion.",
             GuidelineCited = "Old reference",
-            GeneratedAtUtc = DateTime.UtcNow.AddDays(-ageDays),
+            GeneratedAtUtc = generatedAtUtc ?? DateTime.UtcNow.AddDays(-ageDays),
             PromptVersion = promptVersion,
         };
+
+    private void AnchorCaregiver(string TimeZone, TimeOnly quietStart, TimeOnly quietEnd)
+    {
+        var userId = Guid.NewGuid();
+        _links.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new UserCardiMember
+            {
+                UserId = userId,
+                CardiMemberId = _memberId,
+                IsActive = true,
+                CreatedDate = DateTime.UtcNow,
+            },
+        ]);
+        _users.GetByIdAsync(userId).Returns(new User { Id = userId, TimeZoneId = TimeZone });
+        _prefs.GetByUserIdAsync(userId, Arg.Any<CancellationToken>())
+            .Returns(new NotificationPreference
+            {
+                UserId = userId,
+                QuietHoursStart = quietStart,
+                QuietHoursEnd = quietEnd,
+            });
+    }
 
     /// <summary>The shape the narrowed catch filters for: a DbUpdateException whose inner is
     /// Postgres's unique violation — any other write failure now bubbles.</summary>
@@ -110,9 +143,20 @@ public class AdviseGenerationServiceTests
             "duplicate key value violates unique constraint", "ERROR", "ERROR",
             Npgsql.PostgresErrorCodes.UniqueViolation));
 
-    private AdviseGenerationService CreateSut() =>
+    private AdviseGenerationService CreateSut(TimeProvider? time = null) =>
         new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
-            NullLogger<AdviseGenerationService>.Instance);
+            NullLogger<AdviseGenerationService>.Instance, time);
+
+    /// <summary>Midday UTC, so local-day math in <see cref="AdviseCadence"/> cannot straddle midnight.</summary>
+    private static FrozenTimeProvider NoonUtc() =>
+        new(new DateTimeOffset(2026, 9, 18, 12, 0, 0, TimeSpan.Zero));
+
+    private sealed class FrozenTimeProvider : TimeProvider
+    {
+        private readonly DateTimeOffset _utc;
+        public FrozenTimeProvider(DateTimeOffset utc) => _utc = utc;
+        public override DateTimeOffset GetUtcNow() => _utc;
+    }
 
     [Fact]
     public async Task NoExistingRows_PersistsAFreshTopicRow()
@@ -194,16 +238,94 @@ public class AdviseGenerationServiceTests
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 
-    /// <summary>The whole cost discipline: rows regenerated recently are left alone rather than
-    /// spending another model call — the newest row's age gates the pass, since the batch writes
-    /// every topic together.</summary>
+    /// <summary>The whole cost discipline: a row written inside the current waking slot is left
+    /// alone rather than spending another model call — the newest row's age gates the pass,
+    /// since the batch writes every topic together. With no quiet hours the slot is 24h / 5.</summary>
     [Fact]
-    public async Task ExistingRowWithinTheInterval_IsNotRegenerated()
+    public async Task ExistingRowWithinTheSlot_IsNotRegenerated()
     {
+        var noon = NoonUtc();
         _advises.GetAllByCardiMemberAsync(_memberId).Returns(
-            (IReadOnlyList<MemberAdvise>)[ExistingRow(_memberId, ageDays: 0.05)]);
+            (IReadOnlyList<MemberAdvise>)[ExistingRow(_memberId, generatedAtUtc: noon.GetUtcNow().UtcDateTime.AddHours(-1))]);
 
-        await CreateSut().RegenerateIfDueAsync(_memberId);
+        await CreateSut(noon).RegenerateIfDueAsync(_memberId);
+
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<AdviseGenerationService.AdviseClinicalAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ExistingRowPastTheWakingSlot_IsRegenerated()
+    {
+        var noon = NoonUtc();
+        var existing = ExistingRow(_memberId, generatedAtUtc: noon.GetUtcNow().UtcDateTime.AddHours(-5));
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[existing]);
+
+        await CreateSut(noon).RegenerateIfDueAsync(_memberId);
+
+        Assert.Equal("A short walk after lunch is worth trying.", existing.Suggestion);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task QuietHours_SkipThePassEvenWhenTheSlotHasElapsed()
+    {
+        var threeAm = new FrozenTimeProvider(new DateTimeOffset(2026, 9, 18, 3, 0, 0, TimeSpan.Zero));
+        AnchorCaregiver(TimeZone: "UTC", quietStart: new TimeOnly(22, 0), quietEnd: new TimeOnly(7, 0));
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns(
+            (IReadOnlyList<MemberAdvise>)[ExistingRow(_memberId, generatedAtUtc: threeAm.GetUtcNow().UtcDateTime.AddHours(-12))]);
+
+        await CreateSut(threeAm).RegenerateIfDueAsync(_memberId);
+
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<AdviseGenerationService.AdviseClinicalAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Quiet hours must come from the caregiver whose zone actually anchored the clock —
+    /// including when an earlier link is skipped for a blank or invalid TimeZoneId.
+    /// </summary>
+    [Fact]
+    public async Task QuietHours_ComeFromTheCaregiverWhoseZoneAnchoredTheClock()
+    {
+        var earliest = Guid.NewGuid();
+        var later = Guid.NewGuid();
+        _links.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new UserCardiMember
+            {
+                UserId = earliest,
+                CardiMemberId = _memberId,
+                IsActive = true,
+                CreatedDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            },
+            new UserCardiMember
+            {
+                UserId = later,
+                CardiMemberId = _memberId,
+                IsActive = true,
+                CreatedDate = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            },
+        ]);
+        _users.GetByIdAsync(earliest).Returns(new User { Id = earliest, TimeZoneId = "Not/AZone" });
+        _users.GetByIdAsync(later).Returns(new User { Id = later, TimeZoneId = "UTC" });
+        _prefs.GetByUserIdAsync(earliest, Arg.Any<CancellationToken>())
+            .Returns(new NotificationPreference { UserId = earliest });
+        _prefs.GetByUserIdAsync(later, Arg.Any<CancellationToken>())
+            .Returns(new NotificationPreference
+            {
+                UserId = later,
+                QuietHoursStart = new TimeOnly(22, 0),
+                QuietHoursEnd = new TimeOnly(7, 0),
+            });
+
+        var threeAm = new FrozenTimeProvider(new DateTimeOffset(2026, 9, 18, 3, 0, 0, TimeSpan.Zero));
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns(
+            (IReadOnlyList<MemberAdvise>)[ExistingRow(_memberId, generatedAtUtc: threeAm.GetUtcNow().UtcDateTime.AddHours(-12))]);
+
+        await CreateSut(threeAm).RegenerateIfDueAsync(_memberId);
 
         await _medicalAi.DidNotReceive().GenerateStructuredAsync<AdviseGenerationService.AdviseClinicalAiResponse>(
             Arg.Any<string>(), Arg.Any<CancellationToken>());

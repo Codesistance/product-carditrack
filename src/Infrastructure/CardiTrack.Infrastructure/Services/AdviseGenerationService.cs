@@ -2,6 +2,7 @@ using System.ComponentModel;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
@@ -33,13 +34,14 @@ namespace CardiTrack.Infrastructure.Services;
 /// rewrite does.
 /// </para>
 /// <para>
-/// Gated on its own regeneration interval rather than running on every trigger, unlike
+/// Gated on <see cref="AdviseCadence"/> rather than running on every trigger, unlike
 /// <see cref="StatusLineGenerationService"/>: a status line is ambient copy read on every
-/// dashboard view and worth refreshing on every digest/assess pass, but a suggestion does not
-/// need to move that often, and MedGemma's dev cost profile makes cadence the one lever that
-/// matters — running this on the same half-hourly-plus-5-minute cadence as the status line would
-/// multiply call volume across the whole member base for no benefit a caregiver would notice.
-/// The added rewrite call rides the same gate and is the cheap half of the pair.
+/// dashboard view and worth refreshing on every digest/assess pass, but a suggestion is
+/// capped at five writes in the member's local day, spaced through the waking window
+/// (the complement of the anchor caregiver's quiet hours). MedGemma's cost profile is
+/// why the digest job still only *asks* this on every pass — the gate decides whether
+/// the pair actually runs. The added rewrite call rides the same gate and is the cheap
+/// half of the pair.
 /// </para>
 /// </remarks>
 public class AdviseGenerationService
@@ -48,22 +50,15 @@ public class AdviseGenerationService
     private const int PrimaryBaselinePeriodDays = 30;
 
     /// <summary>
-    /// How often this regenerates, at most. Checked against the existing row's
-    /// <see cref="MemberAdvise.GeneratedAtUtc"/> before spending a model call — the due-check this
-    /// service's whole cost discipline rests on.
-    /// </summary>
-    private static readonly TimeSpan RegenerationInterval = TimeSpan.FromDays(1);
-
-    /// <summary>
     /// The version of the two briefs below, stamped onto every row this pass writes
     /// (<see cref="MemberAdvise.PromptVersion"/>) and checked by the due-gate: a row written by an
     /// older brief is due now, whatever its age. Bump this on any change to either brief.
     /// </summary>
     /// <remarks>
-    /// Without it, a deployed prompt fix is invisible for up to a day of
-    /// <see cref="RegenerationInterval"/> plus the serve window — which is how a card this feature
-    /// was corrected for kept showing the old generation while the summary beside it had already
-    /// moved. The cost is bounded and known: one regeneration per member per prompt change.
+    /// Without it, a deployed prompt fix hides behind <see cref="AdviseCadence"/> until the next
+    /// waking pass — which is how a card this feature was corrected for kept showing the old
+    /// generation while the summary beside it had already moved. The cost is bounded and known:
+    /// one regeneration per member per prompt change.
     /// Version 2 is the two-slot split; rows from before the column exist at 0 and regenerate on
     /// their next pass. Version 3 unclamps the clinical half — <see cref="MedicalPromptBlocks.ClinicalRead"/>
     /// in place of the old three-rule block, and the register guard off the clinical entry.
@@ -155,28 +150,29 @@ public class AdviseGenerationService
     private readonly IRewriteAiService _rewriteAi;
     private readonly MemberContextComposer _memberContext;
     private readonly ILogger<AdviseGenerationService> _logger;
+    private readonly TimeProvider _timeProvider;
 
     public AdviseGenerationService(
         IUnitOfWork unitOfWork,
         IMedicalAiService medicalAi,
         IRewriteAiService rewriteAi,
         MemberContextComposer memberContext,
-        ILogger<AdviseGenerationService> logger)
+        ILogger<AdviseGenerationService> logger,
+        TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
         _rewriteAi = rewriteAi;
         _memberContext = memberContext;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <summary>
-    /// Regenerates and persists the member's suggestions, but only when the existing rows (if
-    /// any) are past <see cref="RegenerationInterval"/> or carry an older
-    /// <see cref="MemberAdvise.PromptVersion"/> — callers are expected to invoke this on every
-    /// digest pass and rely on the due-check rather than gating the call themselves. Treats a
-    /// failure as theirs to log and swallow: Advise is a suggestion, not the digest or assessment
-    /// that triggered this call.
+    /// Regenerates and persists the member's suggestions, but only when <see cref="AdviseCadence"/>
+    /// says the pass is due — callers are expected to invoke this on every digest pass and rely
+    /// on that gate rather than gating the call themselves. Treats a failure as theirs to log
+    /// and swallow: Advise is a suggestion, not the digest or assessment that triggered this call.
     /// </summary>
     /// <remarks>
     /// Three kinds of bad reply are told apart, per topic. A blank clinical <c>finding</c> or
@@ -193,19 +189,25 @@ public class AdviseGenerationService
     /// </remarks>
     public async Task RegenerateIfDueAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
-        if (member is null || !member.IsActive || member.IsMonitoringPaused(DateTime.UtcNow))
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return;
 
         var existing = await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId);
-        // The batch writes every topic in one pass, so the newest row's age gates them all — and
-        // a row written by an older brief re-opens the gate whatever its age.
-        if (existing.Count > 0
-            && existing.All(a => a.PromptVersion == CurrentPromptVersion)
-            && DateTime.UtcNow - existing.Max(a => a.GeneratedAtUtc) < RegenerationInterval)
+        var anchor = await MemberAnchorTimeZone.ResolveAnchorAsync(_unitOfWork, cardiMemberId);
+        var (quietStart, quietEnd) = await AnchorQuietHoursAsync(anchor.UserId, ct);
+        DateTime? lastGenerated = existing.Count == 0 ? null : existing.Max(a => a.GeneratedAtUtc);
+        var storedVersion = existing.Count == 0
+            ? CurrentPromptVersion
+            : existing.Min(a => a.PromptVersion);
+        if (!AdviseCadence.IsDue(
+                utcNow, lastGenerated, storedVersion, CurrentPromptVersion, quietStart, quietEnd, anchor.TimeZone))
             return;
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
+            utcNow.Kind == DateTimeKind.Utc ? utcNow : DateTime.SpecifyKind(utcNow, DateTimeKind.Utc),
+            anchor.TimeZone));
         var recentLogs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-14), today);
 
@@ -213,7 +215,7 @@ public class AdviseGenerationService
             .GetLatestByCardiMemberAsync(cardiMemberId, PrimaryBaselinePeriodDays);
 
         var memberContext = await _memberContext.ComposeAsync(
-            new MemberContextRequest(member, cardiMemberId, today, DateTime.UtcNow, PromptPurpose.Advise), ct);
+            new MemberContextRequest(member, cardiMemberId, today, utcNow, PromptPurpose.Advise), ct);
 
         var clinicalPrompt = BuildClinicalPrompt(memberContext, baseline, recentLogs, today);
         var clinicalResponse = await _medicalAi.GenerateStructuredAsync<AdviseClinicalAiResponse>(clinicalPrompt, ct);
@@ -315,7 +317,7 @@ public class AdviseGenerationService
             var row = existing.FirstOrDefault(r => r.Topic == topic);
             if (row is not null)
             {
-                Overwrite(row, summary, suggestion, guideline);
+                Overwrite(row, summary, suggestion, guideline, utcNow);
                 continue;
             }
 
@@ -326,7 +328,7 @@ public class AdviseGenerationService
                 Summary = summary,
                 Suggestion = suggestion,
                 GuidelineCited = guideline,
-                GeneratedAtUtc = DateTime.UtcNow,
+                GeneratedAtUtc = utcNow,
                 PromptVersion = CurrentPromptVersion,
             };
             staged.Add(fresh);
@@ -354,7 +356,7 @@ public class AdviseGenerationService
                 var winner = winners.FirstOrDefault(r => r.Topic == topic);
                 if (winner is not null)
                 {
-                    Overwrite(winner, summary, suggestion, guideline);
+                    Overwrite(winner, summary, suggestion, guideline, utcNow);
                     continue;
                 }
 
@@ -369,7 +371,7 @@ public class AdviseGenerationService
                     Summary = summary,
                     Suggestion = suggestion,
                     GuidelineCited = guideline,
-                    GeneratedAtUtc = DateTime.UtcNow,
+                    GeneratedAtUtc = utcNow,
                     PromptVersion = CurrentPromptVersion,
                 });
             }
@@ -479,14 +481,29 @@ public class AdviseGenerationService
     }
 
     private static void Overwrite(
-        MemberAdvise advise, string summary, string suggestion, string guidelineCited)
+        MemberAdvise advise, string summary, string suggestion, string guidelineCited, DateTime utcNow)
     {
         advise.Summary = summary;
         advise.Suggestion = suggestion;
         advise.GuidelineCited = guidelineCited;
-        advise.GeneratedAtUtc = DateTime.UtcNow;
+        advise.GeneratedAtUtc = utcNow;
         advise.PromptVersion = CurrentPromptVersion;
-        advise.UpdatedDate = DateTime.UtcNow;
+        advise.UpdatedDate = utcNow;
+    }
+
+    /// <summary>
+    /// Quiet hours for the caregiver <see cref="MemberAnchorTimeZone"/> actually anchored to —
+    /// the same person, including when an earlier link was skipped for a blank or invalid zone.
+    /// No resolvable caregiver means no window, matching the UTC fallback clock.
+    /// </summary>
+    private async Task<(TimeOnly? Start, TimeOnly? End)> AnchorQuietHoursAsync(
+        Guid? userId, CancellationToken ct)
+    {
+        if (userId is null)
+            return (null, null);
+
+        var prefs = await _unitOfWork.NotificationPreferences.GetByUserIdAsync(userId.Value, ct);
+        return (prefs?.QuietHoursStart, prefs?.QuietHoursEnd);
     }
 
     /// <summary>

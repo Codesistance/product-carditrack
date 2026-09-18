@@ -22,7 +22,18 @@ namespace CardiTrack.Application.Services;
 /// </remarks>
 public static class MemberAnchorTimeZone
 {
-    public static async Task<TimeZoneInfo> ResolveAsync(IUnitOfWork unitOfWork, Guid cardiMemberId)
+    /// <summary>
+    /// The zone <see cref="ResolveAsync"/> returns, plus the caregiver it came from — so a
+    /// second lookup (quiet hours) can use the same person instead of the earliest link.
+    /// <see cref="Anchor.UserId"/> is null when no caregiver had a resolvable zone and the
+    /// clock fell back to UTC.
+    /// </summary>
+    public readonly record struct Anchor(TimeZoneInfo TimeZone, Guid? UserId);
+
+    public static async Task<TimeZoneInfo> ResolveAsync(IUnitOfWork unitOfWork, Guid cardiMemberId) =>
+        (await ResolveAnchorAsync(unitOfWork, cardiMemberId)).TimeZone;
+
+    public static async Task<Anchor> ResolveAnchorAsync(IUnitOfWork unitOfWork, Guid cardiMemberId)
     {
         var links = (await unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId))
             .Where(l => l.IsActive)
@@ -37,7 +48,8 @@ public static class MemberAnchorTimeZone
 
             try
             {
-                return TimeZoneInfo.FindSystemTimeZoneById(user.TimeZoneId);
+                var zone = TimeZoneInfo.FindSystemTimeZoneById(user.TimeZoneId);
+                return new Anchor(zone, link.UserId);
             }
             catch (TimeZoneNotFoundException)
             {
@@ -47,6 +59,6 @@ public static class MemberAnchorTimeZone
             }
         }
 
-        return TimeZoneInfo.Utc;
+        return new Anchor(TimeZoneInfo.Utc, UserId: null);
     }
 }
