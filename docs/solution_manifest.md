@@ -697,7 +697,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - ✅ Push delivery spine: notification outbox + FCM HTTP v1 (APNs passthrough), escalation ladder, quiet hours
 - ✅ AI pipeline running in dev: webhook receiver → Pub/Sub → aggregator → SSA pre-processing → MedGemma assessment, family digests, real-time heart-rate assessment (prod gated off)
 - ✅ AI providers wired in the API: MedGemma (Ollama on Cloud Run) + Gemini 2.0 Flash (chat, insights, reports)
-- ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite; the mobile equivalent is pending)
+- ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite) **and on the mobile dashboard since 2026-09-13**, both recording the dismissal on the account
 
 ### R1 — Q4 2026: MVP Launch
 - 🔄 Blazor dashboard (basic features)
@@ -721,8 +721,8 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 
 ### R4 — Q3 2027: Enterprise & Scale
 - ⏳ Enterprise features (assisted living)
-- ⏳ Mobile offline support (local SQLite cache) + HealthKit integration
-- ⏳ Withings, Oura, Whoop support
+- ⏳ Mobile offline **writes** — the cache-first read path shipped in R1 (2026-09-09); the write/sync queue is what remains. ~~HealthKit integration~~ retired 2026-09-05: Apple Watch arrives via Google Health instead
+- ⏳ Withings support. ~~Oura, Whoop~~ dropped 2026-09-05 — subscription trackers for athletes, not this product's wearers
 - ~~Refined per-user LSTM risk models~~ — descoped 2026-08-10; replaced by qualitative trend interpretation (SSA + deterministic trend features read by MedGemma; no per-user models, no risk scores)
 - ⏳ Telemedicine integration
 - ⏳ Scale to 1,000+ users
