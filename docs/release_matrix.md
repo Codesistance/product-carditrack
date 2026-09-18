@@ -96,7 +96,7 @@ Legend: wave number = ships in that wave; — = not planned for that surface. **
 10. **A wearer may authorize their own device, and is still not an app user (2026-09-18).** The rule that the wearer never becomes a CardiTrack user stands — decision log #9 rests on it. What changed is who holds the provider credentials during the connect step: until now a caregiver had to sign in as the wearer to connect a device, which is both a poor ask and a poor consent record. A caregiver can now send an invite link or QR code, and the wearer completes Google's consent on an anonymous hosted page (`/connect`) that creates no account, grants no app access and sends them nothing afterwards. The invite is short-lived, pollable and revocable; the caregiver's own connect flow is unchanged and remains the default.
 11. **Trend charts ship at 7 / 14 / 30 days, not 7 / 30 / 90 / custom (2026-09-18).** The windows were chosen against the card the caregiver actually reads: at 30 days the carousel card already puts a point every 11dp, and 90 days on that surface is a smear. 90-day and custom windows remain R2 scope, and the constraint is the data rather than the screen: the charts read the tail of the dashboard response's 30-point `DashboardMetric.Series`, so a longer window means extending that series for every caller or giving trends a request of their own. Web is not blocked on either for 7/14/30.
 
-## What Remains — R2 and R3
+## What Remains — R1, R2 and R3
 
 The matrix above is the detail; this is the wave-level answer to "what is left".
 

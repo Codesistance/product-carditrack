@@ -710,7 +710,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 
 ### R2 — Q1 2027: AI Pipeline & Multi-Device Start
 - 🔄 AI pipeline rollout — Pub/Sub ingestion, SSA pre-processing + deterministic trend features, MedGemma inference (running in dev ahead of schedule; prod enablement remains — see [llm_design.md](./llm_design.md))
-- ✅ .NET MAUI mobile app (iOS & Android) — **shipped in R1**, 16 of 17 Figma M1 screens; distributed to Play internal testing and TestFlight, not public store availability
+- ✅ .NET MAUI mobile app (iOS & Android) — **shipped in R1**, all 17 Figma M1 screens; distributed to Play internal testing and TestFlight, not public store availability
 - ⏳ Garmin integration
 - ⏳ Advanced dashboard features
 - ⏳ Apply for device intraday access

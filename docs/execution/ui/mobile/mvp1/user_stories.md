@@ -4,7 +4,7 @@
 
 > **Build status (September 6, 2026):** all 17 Figma M1 screens are built (M1-01 through M1-17). Alert detail is one page (`AlertDetailPage`) covering M1-11/12/16. Seven shipped surfaces have **no Figma M1 frame — needs design sync**: SignInPage, ForgotPasswordPage, VerifyEmailPage, Onboarding/AccountSetupPage (Stories 1.5–1.8), plus NotificationsPage, QuestionnairesPage, and QuestionCard.
 
-Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped screens without Figma M1 frames.
+Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the ten shipped surfaces without Figma M1 frames.
 
 **Platform Requirements**
 - **Minimum iOS:** 17.0 — required for modern platform APIs and reliable background push delivery
