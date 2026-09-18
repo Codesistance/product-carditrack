@@ -626,7 +626,7 @@ Based on the solution manifest, market analysis, and README, here are comprehens
 
 ### Step 6: Invite Family (Optional)
 - "Want to share monitoring with family members?"
-- The "Invite Family Member First" link **ships in MVP 1** on the baseline screen, but the invite flow (M3-02) is MVP 2 — the link is currently a dead end
+- The baseline screen has no family-invite link: it was removed because the invite flow (M3-02) is MVP 2. Family invites arrive with M3-02, from the Family tab
 - Email invite form with role selection _(MVP 2)_
 - Skip option: "I'll do this later"
 

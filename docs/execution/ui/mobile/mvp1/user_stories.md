@@ -264,7 +264,7 @@ Stories mapped to MVP 1 screens (M1-01 through M1-17), plus the four shipped scr
 
 ### Step 6: First Dashboard View
 - Celebratory tone: "You're all set! Here's [Name]'s health overview."
-- The baseline screen's "Invite Family Member First" link **ships in MVP 1** but the invite flow (M3-02) is MVP 2 — the link is currently a dead end
+- The baseline screen has no family-invite link: it was removed because the invite flow (M3-02) is MVP 2. Family invites arrive with M3-02, from the Family tab
 - Guided tour overlay (5 tooltips) — **planned, not shipped** (no guided tour exists in the current app):
   1. "This shows overall health status"
   2. "View detailed trends here"

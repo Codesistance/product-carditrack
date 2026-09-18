@@ -94,22 +94,14 @@
                     </Grid>
                 </Border>
 
+                <!-- Single exit. The "Invite Family Member First" link that used to sit under
+                     this button was removed: family invites (M3-02) do not exist yet, so it
+                     only ever reached a "coming soon" dialog. -->
                 <Button Text="Go to Dashboard"
                         Style="{StaticResource AuthGradientButton}"
                         HorizontalOptions="Fill"
                         Margin="0,26,0,0"
                         Clicked="OnGoToDashboardClicked"/>
-
-                <Label Text="Invite Family Member First"
-                       Style="{StaticResource PrimaryLink}"
-                       TextDecorations="None"
-                       FontSize="16"
-                       HorizontalOptions="Center"
-                       Margin="0,18,0,0">
-                    <Label.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnInviteFamilyTapped"/>
-                    </Label.GestureRecognizers>
-                </Label>
 
             </VerticalStackLayout>
         </ScrollView>

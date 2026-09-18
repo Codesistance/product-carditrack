@@ -86,6 +86,14 @@ public sealed class WizardContext
 
         try
         {
+            // Foreground the app *before* touching the UI. The OAuth round-trip can leave a
+            // Custom Tab above us in the task or a browser task ahead of ours, and popping the
+            // modal and swapping the shell underneath that is what puts the caregiver back on
+            // the provider's page instead of the dashboard this button named. Doing it first
+            // clears the browser off the task; the repeat in the finally below wins the race
+            // if the browser takes the foreground again while the navigation animates.
+            AppForeground.BringToFront();
+
             // Capture the window first: after the modal pops, `current` is no longer
             // parented and its Window is gone.
             var window = current.Window
@@ -113,7 +121,6 @@ public sealed class WizardContext
             if (!dismissed)
             {
                 ExitedToDashboard = false;
-                AppForeground.BringToFront();
                 return;
             }
 
@@ -124,7 +131,6 @@ public sealed class WizardContext
             if (Shell.Current is { } existing)
             {
                 await GoToDashboardTabAsync(existing);
-                AppForeground.BringToFront();
                 return;
             }
 
@@ -137,10 +143,12 @@ public sealed class WizardContext
                     WindowNavigation.SetRootPage(current, shell);
             });
             await GoToDashboardTabAsync(shell);
-            AppForeground.BringToFront();
         }
         finally
         {
+            // Every exit from here — success, a modal that would not come down, or a throw —
+            // owes the caregiver the app in front of them rather than the OAuth browser.
+            AppForeground.BringToFront();
             DashboardExit?.Invoke(this, EventArgs.Empty);
             if (!ExitedToDashboard)
                 Interlocked.Exchange(ref _dashboardExitBusy, 0);

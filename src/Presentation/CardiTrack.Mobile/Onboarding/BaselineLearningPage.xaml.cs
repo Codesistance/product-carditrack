@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Services;
+using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Mobile.Onboarding;
 
@@ -48,13 +49,23 @@ public partial class BaselineLearningPage : ContentPage
         }
     }
 
-    private async void OnGoToDashboardClicked(object? sender, EventArgs e) =>
-        await _ctx.GoToDashboardAsync(this);
-
-    private async void OnInviteFamilyTapped(object? sender, EventArgs e)
+    /// <summary>
+    /// The page's only exit. Nothing here may escape: this is an <c>async void</c> handler, so an
+    /// exception from the hand-off would be raised on the sync context and take the app down —
+    /// leaving whatever sits below us in the Android task (the OAuth browser) on screen, which is
+    /// the very failure <see cref="WizardContext.GoToDashboardAsync"/> exists to prevent.
+    /// </summary>
+    private async void OnGoToDashboardClicked(object? sender, EventArgs e)
     {
-        await ServiceHelper.GetRequiredService<IPopupService>().ShowInfoAsync(
-            "Family invitations arrive with the next release. You can invite your family from the Family tab once it's live.",
-            "Coming soon");
+        try
+        {
+            await _ctx.GoToDashboardAsync(this);
+        }
+        catch (Exception ex)
+        {
+            ServiceHelper.GetRequiredService<ILogger<BaselineLearningPage>>()
+                .LogError(ex, "Go to Dashboard could not hand over to the shell.");
+            AppForeground.BringToFront();
+        }
     }
 }
