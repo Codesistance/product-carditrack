@@ -54,10 +54,30 @@ internal static class WearerConnectPage
         var origins = new List<string> { $"{request.Scheme}://{request.Host.Value}" };
         origins.AddRange(providerOrigins);
 
-        return "default-src 'none'; style-src 'unsafe-inline'; " +
+        // img-src data: and nothing more — the only image on these pages is the mark inlined
+        // above, so no host, not even ours, needs to be reachable for one.
+        return "default-src 'none'; img-src data:; style-src 'unsafe-inline'; " +
                $"form-action 'self' {string.Join(' ', origins.Distinct())}; " +
                "base-uri 'none'; frame-ancestors 'none'";
     }
+
+    /// <summary>
+    /// The CardiTrack mark, inlined as a data URI.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Inlined rather than served as a file because this page has no other request to make and
+    /// should not start making them: <c>default-src 'none'</c> is the posture, and a logo is not a
+    /// good reason to open an image fetch on a page that carries a live invitation token in its
+    /// URL. It costs about 1.4 KB, which is smaller than the round trip it replaces.
+    /// </para>
+    /// <para>
+    /// The app's own mark, trimmed of its transparent margin and reduced to 48px and 64 colours —
+    /// it renders at 24px, and the full asset is 250 KB.
+    /// </para>
+    /// </remarks>
+    private const string LogoDataUri =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAAwCAMAAABzC0lBAAAAwFBMVEUqmaEdYpxV2OItntTr8/RRoasOKl8OaW0NMm1FtdASX6Oh4OQPVHxVn6AaNF5FdJs6xN4oaJMnZZQ1xKAhescgnqBJxbgEOzxhanAA//8nTHExkq6UuMYWMWGIqLk3jKEUPYL///8AAP9CmI9dDw8UQnZFrK9OxqH///+T37FIucNmfKKqVVX//wD/AAC5xdyrvcufn7+ZZpkAf/9Mxs9QwstNyJ8/v39/fwA/w6YAAAAWV4wQN24RRXkadpAXZ45h0Pv2AAAAQHRSTlP8/f7+/vz3CBH+Df/0FmH7/p9b/v8Y+wYKAV2i/Z7zW/wCAVoGlpdpUxRbDQMBARakCAUCtVm4BAKsAP7+/v7+idy6KgAABDBJREFUeNqNlYd22zgURPEAghRFySqxFBXXuKRt74tC/v9f7QxYVGxvgnNYTONy5s0DIeUOY7rFaTNdraa/4ubv/mnxrJ+L1cN06o6HGu62hXOr271K49+PmLZNnLvVWlvLp8/TL3/+UGxPQWC3Shmj1Lt3PNYff3IbclOlj8cfbrU9BsdutScFRqm6rnH96zN8uwelrdbJhk3kF7c6Ags3VkZRTtW+aeqE2s8rcmulNKk1MaP1PpGq56STa8A1xCgBn2twCalAJ8lyjwI6cLwZODkC1UMS0zZJtvclzrcgVVvg8lJaUHzrVPVDk4PUPL3AqpKPvm4Lgh9gVBKo/DlYtsEkj5avAKn1wiUQgtKR0fuDVWtbYm3nuqrwBihqSpaqtVo46UAZQJJZpdTc6DWyATmf0y30DcAlwW1ymsCGYO/VZhkezZPjuTFmjkCBMVezoNXxMSgDWLdgFxGUNT0qMZU2ZkHFUVsiwTpI71XqKsus6pJhlJYxiYIyltj4FFRRBsk660H2Lx1Gc3UB45vOwINXyW6YDqcPMFxingjB+74bCfQJ9I2vG5vZqqo52/SgKY1J02h1c//1vvC+L7L1KlYASpUBTIYFoAiiVTVRhrPjV+8TOUjGm8xOrjKwqgZ4VavUZMPvFedSzGKrdtP7n11SETavDhF1IpdJVk3gFnCWMaqmMaopS4oao/eParT45dOnmxmH5cAVFmeZza4mAuEKd+kfZZlO+CTR0nKp3Ggyu8rOhg08+QYwhKuj/1QEzby8VdhrLp7kMBRPMc6yTDwoiDZ8UpbS7R6GY7+BIvae3xY+pZla6FlmRJUeASHbplEorfFSok6WqGT52H4dI7dpsbTaVENyZqOPTGbihY1Hegr5+MZIs3C/d1vHyO38oFirVlM8472JnjqQ4cWLweZSjIthlysmvVc2pSVjnGTZDG8A0Qg/qEtvTPQ7LLbD9rhjBL2kmnRklsUgWCuIK6INl5gik3+Kkw35qSfT19+Swd4E4cpvcGDJAYuxcMXJTwDNJrYlYwgBk0ODqUGaQC1vIJmMnvx2FLEj63bthZD+pFUsUVyt4INctNzRr9XY7aLEnmRTgke7iSMWIyF63iw+nIPoyUXqQkfWMfdQgN9gSoCpSGOWLxQHkp9kjUIhKZeSB8/5EryHhcUS2/cLkGRgJjGmJTTJo89z7F/CEj3iGr32i3xEYpBklDmPHAdvR248fh08JSGF+EOe5x6Zhnzk3r+leEICQ5p3ORB2BVzh3gbx0o5s078MAaq6lDPuJXggGYpBlKgP1/en3Csg3eYcNCsskDvgkxu5b4GYMsoZCRcp23EXri/OuVdBuE0kE2Ib8mvXt/0bIMp5vA5g0Xm84MIVY/d9IIz9CBJyd+RGr8x4A+wiCuBO2v4dINvCbN/g/gdMEV1vzto3jP8APIVKwIMgzhEAAAAASUVORK5CYII=";
 
     /// <summary>
     /// Where each brand's wearer goes to take access back, keyed by the contract's wire name.
@@ -294,10 +314,7 @@ internal static class WearerConnectPage
                     display: flex; align-items: center; gap: 8px;
                     font-size: 15px; color: var(--muted); margin-bottom: 20px;
                   }
-                  .mark {
-                    width: 22px; height: 22px; border-radius: 6px; flex: 0 0 22px;
-                    background: linear-gradient(135deg, #135497, #2bb673);
-                  }
+                  .mark { width: 24px; height: 21px; flex: 0 0 24px; display: block; }
                   h1 {
                     font-size: 24px; font-weight: 400; line-height: 1.3;
                     margin: 0 0 12px; letter-spacing: 0;
@@ -361,7 +378,7 @@ internal static class WearerConnectPage
                 </style>
                 </head>
                 <body><main>
-                <div class="brand"><span class="mark"></span>CardiTrack</div>
+                <div class="brand"><img class="mark" src="{{LogoDataUri}}" alt="" width="24" height="21">CardiTrack</div>
                 {{body}}
                 </main></body>
                 </html>

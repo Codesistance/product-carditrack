@@ -85,6 +85,13 @@ public class WearerConnectController : ControllerBase
     /// </remarks>
     private IReadOnlyList<string> ProviderFormActionOrigins() =>
         _providers.Value
+            // Connectable ones only, which is the same test the connect flow itself applies: a
+            // block with no client id cannot serve a grant, so naming its consent screen here would
+            // widen the policy for a provider nobody can reach. The configuration still carries
+            // blocks for Garmin and Withings, which are unbuilt, and for Oura and Whoop, which were
+            // dropped from the roadmap on 2026-09-05 — none of them belong in a security header on
+            // the one page in the product that asks a stranger for their heart data.
+            .Where(p => !string.IsNullOrWhiteSpace(p.ClientId))
             .Select(p => p.AuthorizationUrl)
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Select(url => Uri.TryCreate(url, UriKind.Absolute, out var parsed) ? parsed.GetLeftPart(UriPartial.Authority) : null)
