@@ -107,10 +107,10 @@ Success             Failure
    │                   └──> [M1-05 Device Selection]
    ▼
 [M1-08 Baseline Learning Info]
-   │                   │
-"Go to Dashboard"   "Invite Family Member First"
-   │                   └──> [M3-02 Invite Family Modal] (MVP 2 —
-   ▼                        link ships in MVP 1 but is a dead end today)
+   │
+"Go to Dashboard"          (the "Invite Family Member First" link was removed —
+   │                        it only reached a "coming soon" dialog; the invite
+   ▼                        entry point arrives with M3-02 in MVP 2)
 [M1-09 Dashboard]
 ```
 
@@ -536,7 +536,7 @@ Each device card:
 **Status:** Built (`Onboarding/BaselineLearningPage`)
 **User Story:** 1.3 Baseline Setup
 **Entry:** ← M1-07 Device Success — **first connected device only**; skipped when an additional device is added (see M1-07 CTA)
-**Exit:** → M1-09 Dashboard ("Go to Dashboard") | "Invite Family Member First" link (ships now; dead end until M3-02)
+**Exit:** → M1-09 Dashboard ("Go to Dashboard") — the screen's only exit
 
 **Header:**
 - Title: "Learning Phase"
@@ -563,7 +563,7 @@ Each device card:
 
 **CTA:**
 - Primary button: "Go to Dashboard"
-- Text link: "Invite Family Member First" — **ships now in MVP 1** (unconditional), but the invite flow (M3-02) does not exist yet, so the link is currently a dead end. Not an MVP 2 addition.
+- No secondary link. An "Invite Family Member First" link shipped here initially and was **removed**: the invite flow (M3-02) is MVP 2, so the link only ever opened a "coming soon" dialog. Family invites return with M3-02, from the Family tab rather than from this screen.
 
 ---
 

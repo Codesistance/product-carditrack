@@ -1,3 +1,7 @@
+#if ANDROID
+using Android.Content;
+#endif
+
 namespace CardiTrack.Mobile.Services;
 
 /// <summary>
@@ -13,26 +17,33 @@ internal static class AppForeground
 #if ANDROID
         try
         {
-            var activity = Platform.CurrentActivity;
-            if (activity is null)
+            // The launcher intent, not an explicit component intent. Both name MainActivity, but
+            // only ACTION_MAIN + CATEGORY_LAUNCHER matches the *base intent* of the task the app
+            // was started in, which is what makes Android resume that task — exactly as tapping
+            // the app icon does. An explicit `new Intent(activity, typeof(MainActivity))` carries
+            // no action or category, so a NEW_TASK launch of it is free to resolve somewhere
+            // other than the app's own launcher task, and the browser task stays in front.
+            var context = (Context?)Platform.CurrentActivity
+                ?? global::Android.App.Application.Context;
+            var packageName = context.PackageName;
+            if (packageName is null)
                 return;
 
-            // Always retarget MainActivity. Starting CurrentActivity.Class used to relaunch
-            // the callback activity (or a Custom Tab) when that was still "current", which
-            // is exactly the browser "Go to Dashboard" must not walk back into.
-            //
-            // CLEAR_TOP | SINGLE_TOP finishes a Custom Tab sitting above us. NEW_TASK
-            // is what a SingleTask MainActivity needs to take the foreground when
-            // Chrome opened a sibling task. Do not combine CLEAR_TOP with
-            // REORDER_TO_FRONT — Android documents those as mutually exclusive, and
-            // the pair used to leave the bounce on the wrong task. Do not call
+            var intent = context.PackageManager?.GetLaunchIntentForPackage(packageName)
+                ?? new Intent(context, typeof(Platforms.Android.MainActivity));
+
+            // CLEAR_TOP | SINGLE_TOP finishes a Custom Tab sitting above us without recreating
+            // MainActivity (it gets the intent through OnNewIntent). NEW_TASK is what a
+            // SingleTask MainActivity needs to take the foreground when Chrome opened a sibling
+            // task, and is required at all when the context is not an activity. Do not combine
+            // CLEAR_TOP with REORDER_TO_FRONT — Android documents those as mutually exclusive,
+            // and the pair used to leave the bounce on the wrong task. Do not call
             // ActivityManager.MoveTaskToFront either; that needs REORDER_TASKS.
-            var intent = new Android.Content.Intent(activity, typeof(Platforms.Android.MainActivity));
             intent.AddFlags(
-                Android.Content.ActivityFlags.ClearTop
-                | Android.Content.ActivityFlags.SingleTop
-                | Android.Content.ActivityFlags.NewTask);
-            activity.StartActivity(intent);
+                ActivityFlags.ClearTop
+                | ActivityFlags.SingleTop
+                | ActivityFlags.NewTask);
+            context.StartActivity(intent);
         }
         catch (Exception)
         {
