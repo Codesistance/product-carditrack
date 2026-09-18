@@ -119,6 +119,15 @@ public interface IPopupService
     Task ShowWeatherAsync(WeatherSnapshotResponse weather);
 
     /// <summary>
+    /// Shows what the freshness dot on a CardiMember card means: the tier's own colour, when
+    /// data last arrived and the pipeline's word for the state. Completes once dismissed.
+    /// </summary>
+    /// <param name="tier">The API's freshness word — red, amber, blue or green.</param>
+    /// <param name="stateMessage">That tier's description, as the API worded it.</param>
+    /// <param name="lastSyncedUtc">When data last arrived, or null if it never has.</param>
+    Task ShowSyncStatusAsync(string? tier, string? stateMessage, DateTime? lastSyncedUtc);
+
+    /// <summary>
     /// Opens the CardiMember card's pending question as a modal — the same <c>QuestionCard</c>
     /// <c>QuestionnairesPage</c>/<c>CardiMemberDetailPage</c> show inline, in the popup shell
     /// <see cref="ShowWeatherAsync"/> uses. Completes with what the caregiver did; see
