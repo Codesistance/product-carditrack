@@ -47,29 +47,11 @@
                 </VerticalStackLayout>
             </Grid>
 
-            <!-- Figma M1-04 progress bar: 8px white pill track, gradient pill fill.
-                 Hidden until Progress > 0 (terminal wizard screens have no progress bar). -->
-            <Border x:Name="StepProgress"
-                    Grid.Row="1"
-                    HeightRequest="8"
-                    Margin="0,12,0,0"
-                    BackgroundColor="{StaticResource White}"
-                    StrokeThickness="0"
-                    IsVisible="False"
-                    SemanticProperties.Description="Wizard progress">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="4"/>
-                </Border.StrokeShape>
-                <Border x:Name="StepProgressFill"
-                        Background="{StaticResource GradientButtonBrush}"
-                        StrokeThickness="0"
-                        HorizontalOptions="Start"
-                        WidthRequest="0">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="4"/>
-                    </Border.StrokeShape>
-                </Border>
-            </Border>
+            <!-- The same pill the signed-out steps use (Controls/StepProgressBar). It hides
+                 itself while Progress is 0, so terminal wizard screens have no bar. -->
+            <controls:StepProgressBar x:Name="StepProgress"
+                                      Grid.Row="1"
+                                      Margin="0,12,0,0"/>
 
         </Grid>
     </controls:HeaderBand>

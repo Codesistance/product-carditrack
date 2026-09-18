@@ -21,28 +21,10 @@
                     <Label Text="Step 1 of 4"
                            Style="{StaticResource AuthHeaderSubtitle}" />
 
-                    <!-- Progress bar -->
-                    <Grid Margin="0,12,0,0" HeightRequest="8"
-                          HorizontalOptions="Fill">
-                        <Border BackgroundColor="{StaticResource White}"
-                                StrokeThickness="0"
-                                HorizontalOptions="Fill"
-                                VerticalOptions="Fill">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="4"/>
-                            </Border.StrokeShape>
-                        </Border>
-                        <Border BackgroundColor="Transparent"
-                                Background="{StaticResource GradientButtonBrush}"
-                                StrokeThickness="0"
-                                HorizontalOptions="Start"
-                                VerticalOptions="Fill"
-                                WidthRequest="100">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="4"/>
-                            </Border.StrokeShape>
-                        </Border>
-                    </Grid>
+                    <!-- A quarter of the way in, as a fraction of the track rather than the
+                         fixed 100 points this screen used to draw. The same pill steps 2 to 4
+                         use, and the one the verify-email gate after this screen carries. -->
+                    <controls:StepProgressBar Progress="0.25" Margin="0,12,0,0"/>
                 </VerticalStackLayout>
             </controls:HeaderBand>
 
