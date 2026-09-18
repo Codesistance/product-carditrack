@@ -121,4 +121,78 @@ public class JournalExportRequestsTests
         Assert.False(pdf.IncludeMetrics);
         Assert.False(csv.IncludeTrends);
     }
+
+    [Fact]
+    public void SnapToCadence_LeavesDaysAlone()
+    {
+        var from = new DateOnly(2026, 9, 9);
+        var to = new DateOnly(2026, 9, 15);
+
+        var snapped = JournalExportRequests.SnapToCadence(JournalCadence.Daybook, from, to);
+
+        Assert.Equal((from, to), snapped);
+    }
+
+    [Fact]
+    public void SnapToCadence_WidensWeeks_MondayToSunday()
+    {
+        // A Wednesday to the Friday of the week after.
+        var from = new DateOnly(2026, 9, 9);
+        var to = new DateOnly(2026, 9, 18);
+
+        var (start, end) = JournalExportRequests.SnapToCadence(JournalCadence.Weekbook, from, to);
+
+        Assert.Equal(new DateOnly(2026, 9, 7), start);
+        Assert.Equal(new DateOnly(2026, 9, 20), end);
+        Assert.Equal(DayOfWeek.Monday, start.DayOfWeek);
+        Assert.Equal(DayOfWeek.Sunday, end.DayOfWeek);
+    }
+
+    [Fact]
+    public void SnapToCadence_WidensMonths_FirstToLast()
+    {
+        var from = new DateOnly(2026, 1, 20);
+        var to = new DateOnly(2026, 2, 3);
+
+        var (start, end) = JournalExportRequests.SnapToCadence(JournalCadence.Monthbook, from, to);
+
+        Assert.Equal(new DateOnly(2026, 1, 1), start);
+        // February 2026 has 28 days; the snap must read the calendar, not assume 30.
+        Assert.Equal(new DateOnly(2026, 2, 28), end);
+    }
+
+    [Fact]
+    public void SnapToCadence_OrdersTheEnds_WhicheverWayTheyWerePicked()
+    {
+        var snapped = JournalExportRequests.SnapToCadence(
+            JournalCadence.Daybook, new DateOnly(2026, 9, 15), new DateOnly(2026, 9, 9));
+
+        Assert.Equal((new DateOnly(2026, 9, 9), new DateOnly(2026, 9, 15)), snapped);
+    }
+
+    [Fact]
+    public void SnapToCadence_TrimsTheStart_WhenTheRangeOutrunsTheApiCeiling()
+    {
+        var from = new DateOnly(2024, 1, 1);
+        var to = new DateOnly(2026, 9, 18);
+
+        var (start, end) = JournalExportRequests.SnapToCadence(JournalCadence.Daybook, from, to);
+
+        // The recent end is the one being asked about, so the oldest days are the ones dropped.
+        Assert.Equal(to, end);
+        Assert.Equal(JournalExportRequests.MaxRangeDays, end.DayNumber - start.DayNumber + 1);
+    }
+
+    [Theory]
+    [InlineData(JournalCadence.Daybook, "2026-09-12", "2026-09-18", 7)]
+    [InlineData(JournalCadence.Weekbook, "2026-08-17", "2026-09-20", 5)]
+    [InlineData(JournalCadence.Monthbook, "2026-01-01", "2026-03-31", 3)]
+    public void PeriodCount_CountsInTheCadencesOwnUnit(
+        JournalCadence cadence, string from, string to, int expected)
+    {
+        var count = JournalExportRequests.PeriodCount(
+            cadence, DateOnly.Parse(from), DateOnly.Parse(to));
+
+        Assert.Equal(expected, count);
+    }
 }

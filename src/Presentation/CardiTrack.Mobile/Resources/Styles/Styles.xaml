@@ -439,6 +439,25 @@
         </Setter>
     </Style>
 
+    <!-- One of two large choices on the export popup: a glyph with its name underneath, sized
+         so the pair fills the card's width and the tap target is the whole tile. -->
+    <Style x:Key="FormatTile" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="8,18"/>
+        <Setter Property="BackgroundColor" Value="{StaticResource InputBackground}"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="16"/>
+        </Setter>
+    </Style>
+
+    <Style x:Key="FormatTileLabel" TargetType="Label">
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="TextColor" Value="{StaticResource HeadingText}"/>
+        <Setter Property="HorizontalTextAlignment" Value="Center"/>
+        <Setter Property="LineBreakMode" Value="WordWrap"/>
+    </Style>
+
     <Style x:Key="QuickActionTile" TargetType="Border">
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="6,12,6,9"/>

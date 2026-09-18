@@ -147,20 +147,38 @@
             </Grid>
         </Border>
 
+        <!-- Export wears the cadence pills' own chrome — the same panel, the same inner pill,
+             the same 13pt semibold — because it is the same size of decision taken on the same
+             row. As an icon alone it named itself only to a screen reader, and it exported
+             whatever window the filter chip happened to hold; it now says what it does, and
+             asks which range. -->
         <Border x:Name="ExportHit"
-                Style="{StaticResource IconActionChip}"
                 Grid.Column="1"
+                Padding="4"
+                StrokeThickness="0"
+                BackgroundColor="{StaticResource SelectedOptionBackground}"
                 HorizontalOptions="End"
-                SemanticProperties.Description="Export all Daybooks"
-                SemanticProperties.Hint="Saves every Daybook in the selected time window">
+                VerticalOptions="Center"
+                SemanticProperties.Description="Export Range"
+                SemanticProperties.Hint="Choose which Daybooks to save">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="14"/>
+            </Border.StrokeShape>
             <Border.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnExportTapped"/>
             </Border.GestureRecognizers>
-            <Image Source="icon_clipboard.svg"
-                   WidthRequest="20"
-                   HeightRequest="20"
-                   HorizontalOptions="Center"
-                   VerticalOptions="Center"/>
+            <Border Padding="14,7"
+                    StrokeThickness="0"
+                    BackgroundColor="{StaticResource White}">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="11"/>
+                </Border.StrokeShape>
+                <Label x:Name="ExportLabel"
+                       Text="Export Range"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="13"
+                       TextColor="{StaticResource PrimaryDark}"/>
+            </Border>
         </Border>
         </Grid>
 

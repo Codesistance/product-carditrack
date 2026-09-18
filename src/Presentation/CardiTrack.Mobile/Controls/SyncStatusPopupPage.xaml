@@ -52,7 +52,7 @@
                                  VerticalOptions="Center"/>
                     </Border>
 
-                    <!-- The mark is 16 points; the transparent padding around it is what a
+                    <!-- The mark is 20 points; the transparent padding around it is what a
                          finger actually lands on, the same trick the dot on the card uses.
                          The negative margin keeps the box itself in the card's corner while
                          that target overhangs the padding. -->
@@ -68,15 +68,15 @@
                         </Grid.GestureRecognizers>
                         <Border BackgroundColor="{StaticResource ErrorRed}"
                                 StrokeThickness="0"
-                                WidthRequest="16"
-                                HeightRequest="16">
+                                WidthRequest="20"
+                                HeightRequest="20">
                             <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="3"/>
+                                <RoundRectangle CornerRadius="4"/>
                             </Border.StrokeShape>
                             <Label Text="✕"
                                    TextColor="{StaticResource White}"
                                    FontFamily="QuicksandSemiBold"
-                                   FontSize="9"
+                                   FontSize="11"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center"/>
                         </Border>

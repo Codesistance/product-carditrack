@@ -33,6 +33,53 @@ public static class JournalExportRequests
         return (today.AddDays(-(span - 1)), today);
     }
 
+    /// <summary>
+    /// Widens a picked range to whole periods of the cadence: a Weekbook export cannot start on
+    /// a Wednesday and a Monthbook export cannot end mid-month, because the entries themselves
+    /// cover whole weeks and whole months — half a period asked for is a whole one returned.
+    /// Days are already whole. Ends are ordered, and the result stays inside the API's ceiling.
+    /// </summary>
+    public static (DateOnly From, DateOnly To) SnapToCadence(
+        JournalCadence cadence, DateOnly from, DateOnly to)
+    {
+        if (from > to)
+            (from, to) = (to, from);
+
+        (from, to) = cadence switch
+        {
+            JournalCadence.Weekbook => (StartOfWeek(from), StartOfWeek(to).AddDays(6)),
+            JournalCadence.Monthbook => (
+                new DateOnly(from.Year, from.Month, 1),
+                new DateOnly(to.Year, to.Month, DateTime.DaysInMonth(to.Year, to.Month))),
+            _ => (from, to),
+        };
+
+        // The ceiling trims the start, not the end: the recent period is the one being asked
+        // about, so a range too long loses its oldest entries rather than its newest.
+        if (to.DayNumber - from.DayNumber + 1 > MaxRangeDays)
+            from = to.AddDays(-(MaxRangeDays - 1));
+
+        return (from, to);
+    }
+
+    /// <summary>How many periods of the cadence a snapped range covers, for the caregiver to
+    /// read back before they commit to the export.</summary>
+    public static int PeriodCount(JournalCadence cadence, DateOnly from, DateOnly to)
+    {
+        var days = to.DayNumber - from.DayNumber + 1;
+        return cadence switch
+        {
+            JournalCadence.Weekbook => Math.Max(1, (int)Math.Ceiling(days / 7d)),
+            JournalCadence.Monthbook => Math.Max(
+                1, ((to.Year - from.Year) * 12) + to.Month - from.Month + 1),
+            _ => Math.Max(1, days),
+        };
+    }
+
+    /// <summary>Monday of the week <paramref name="date"/> falls in.</summary>
+    private static DateOnly StartOfWeek(DateOnly date) =>
+        date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
+
     public static RecordExportConsentRequest Consent(
         Guid memberId,
         DateOnly from,

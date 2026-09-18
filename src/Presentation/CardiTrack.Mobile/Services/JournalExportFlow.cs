@@ -35,9 +35,6 @@ public sealed class JournalExportFlow : IJournalExportFlow
     private static readonly TimeSpan GenerationCeiling = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
-    private const string PdfChoice = "PDF report";
-    private const string CsvChoice = "CSV spreadsheet";
-
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly IExportConsentFlow _consent;
@@ -74,15 +71,11 @@ public sealed class JournalExportFlow : IJournalExportFlow
 
         try
         {
-            var formatChoice = await _popups.ChooseAsync(
-                "How should this copy look?",
-                "Cancel",
-                PdfChoice,
-                CsvChoice);
-            if (formatChoice is null || ct.IsCancellationRequested)
+            // Two tiles rather than two rows of text: the formats are recognised by their own
+            // glyphs long before their names are read.
+            var chosen = await _popups.ChooseExportFormatAsync();
+            if (chosen is not { } format || ct.IsCancellationRequested)
                 return;
-
-            var format = formatChoice == CsvChoice ? ReportFormat.Csv : ReportFormat.Pdf;
             var title = entryDate is { } day
                 ? $"{memberName} — {audience}, {day.ToString("d MMM yyyy", CultureInfo.InvariantCulture)}"
                 : $"{memberName} — {audience}s";
