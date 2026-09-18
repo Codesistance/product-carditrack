@@ -27,6 +27,16 @@ public partial class DeviceConnectionPage : ContentPage
     private readonly CardiMemberResponse _member;
     private readonly ConnectableDevice _device;
 
+    /// <summary>
+    /// Cancelled when this page goes away, so work started on it stops speaking for it.
+    /// </summary>
+    /// <remarks>
+    /// Minting an invitation is a round trip, and Cancel stays live throughout it. Without this, a
+    /// caregiver who backs out mid-request is followed by the continuation: the waiting screen is
+    /// pushed onto a wizard they have already left.
+    /// </remarks>
+    private CancellationTokenSource? _alive;
+
     public DeviceConnectionPage(WizardContext ctx, ConnectableDevice device)
     {
         InitializeComponent();
@@ -160,11 +170,27 @@ public partial class DeviceConnectionPage : ContentPage
     /// happened to offer — and a caregiver who backed out of that sheet would have been told their
     /// link was sent when it was not.
     /// </remarks>
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _alive ??= new CancellationTokenSource();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _alive?.Cancel();
+        _alive?.Dispose();
+        _alive = null;
+    }
+
     private async Task HandOverAsync(bool isQr)
     {
         ConnectError.IsVisible = false;
         SendLinkBtn.IsEnabled = false;
         ShowQrBtn.IsEnabled = false;
+
+        var alive = _alive?.Token ?? CancellationToken.None;
 
         try
         {
@@ -172,9 +198,21 @@ public partial class DeviceConnectionPage : ContentPage
             {
                 Provider = _device.WireName,
                 Channel = isQr ? "qr" : "link",
-            });
+            }, alive);
+
+            // Cancel stays live while that round trip is in flight. Following it with a navigation
+            // would push the waiting screen onto a wizard the caregiver has already left. The
+            // invitation this abandons was never shared with anybody, expires on its own, and is
+            // superseded the moment another is minted — so it is left to lapse rather than chased
+            // with a revoke from a page that no longer exists.
+            if (alive.IsCancellationRequested)
+                return;
 
             await Navigation.PushAsync(new InviteWaitPage(_ctx, _device, invite, isQr));
+        }
+        catch (OperationCanceledException)
+        {
+            // The page went away mid-request. Nothing to say and nowhere to say it.
         }
         catch (ApiException ex)
         {

@@ -50,6 +50,12 @@ public partial class InviteWaitPage : ContentPage
     /// <summary>Stops a second tap stacking another share sheet on top of the first.</summary>
     private bool _sharing;
 
+    /// <summary>
+    /// Cancelled when this page goes away, so a request started on it stops speaking for it —
+    /// separate from <see cref="_polling"/>, which is the loop's own token.
+    /// </summary>
+    private CancellationTokenSource? _alive;
+
     public InviteWaitPage(
         WizardContext ctx, ConnectableDevice device, DeviceInviteResponse invite, bool isQr)
     {
@@ -71,6 +77,7 @@ public partial class InviteWaitPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        _alive ??= new CancellationTokenSource();
         StartPolling();
     }
 
@@ -78,6 +85,9 @@ public partial class InviteWaitPage : ContentPage
     {
         base.OnDisappearing();
         StopPolling();
+        _alive?.Cancel();
+        _alive?.Dispose();
+        _alive = null;
     }
 
     /// <summary>
@@ -316,19 +326,32 @@ public partial class InviteWaitPage : ContentPage
         ResendBtn.IsEnabled = false;
         WaitError.IsVisible = false;
 
+        var alive = _alive?.Token ?? CancellationToken.None;
+
         try
         {
-            _invite = await _api.CreateDeviceInviteAsync(_member.Id, new CreateDeviceInviteRequest
+            var replacement = await _api.CreateDeviceInviteAsync(_member.Id, new CreateDeviceInviteRequest
             {
                 Provider = _device.WireName,
                 Channel = _isQr ? "qr" : "link",
-            });
+            }, alive);
 
-            _url = _invite.Url;
-            _watch = new DeviceInviteWatch(_invite.ExpiresAt);
+            // Back or Cancel can pop this page while that was in flight. Carrying on would redraw a
+            // screen nobody is looking at and start polling an invitation whose result the
+            // caregiver will never see — worse, one they do not know exists.
+            if (alive.IsCancellationRequested)
+                return;
+
+            _invite = replacement;
+            _url = replacement.Url;
+            _watch = new DeviceInviteWatch(replacement.ExpiresAt);
             QrImage.Source = null;
             Present();
             StartPolling();
+        }
+        catch (OperationCanceledException)
+        {
+            // The page went away mid-request.
         }
         catch (ApiException ex)
         {

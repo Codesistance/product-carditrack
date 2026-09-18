@@ -1035,6 +1035,118 @@ public class CardiTrackApiClientTests
         Assert.DoesNotContain($"api/v1/cardimembers/{memberId}/dashboard", cache.Items.Keys);
     }
 
+    // ── Wearer invitations ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateDeviceInvite_PostsToTheMembersInviteRoute()
+    {
+        var (client, http) = CreateSut();
+        http.Enqueue(HttpStatusCode.OK, EmptyObjectEnvelope);
+        var memberId = Guid.Parse("11111111-2222-3333-4444-555555555555");
+
+        await client.CreateDeviceInviteAsync(
+            memberId, new CreateDeviceInviteRequest { Provider = "fitbit", Channel = "qr" });
+
+        var request = http.Requests.Single();
+        Assert.Equal(
+            "/api/v1/cardimembers/11111111-2222-3333-4444-555555555555/device-invites",
+            request.Uri!.AbsolutePath);
+        Assert.Contains("fitbit", request.Body);
+        Assert.Contains("qr", request.Body);
+    }
+
+    [Fact]
+    public async Task GetDeviceInvite_ReadsTheInviteRoute_AndNeverFromTheCache()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK, EmptyObjectEnvelope);
+        var memberId = Guid.NewGuid();
+        var inviteId = Guid.NewGuid();
+
+        await client.GetDeviceInviteAsync(memberId, inviteId);
+
+        Assert.Equal(
+            $"/api/v1/cardimembers/{memberId}/device-invites/{inviteId}",
+            http.Requests.Single().Uri!.AbsolutePath);
+        // This is polled while the wearer decides, and each call exists to find out whether the
+        // answer has changed. A cached read would report "still pending" long after they finished,
+        // so nothing from it may be written to the store either.
+        Assert.Empty(cache.Items);
+    }
+
+    [Fact]
+    public async Task GetDeviceInvite_EvictsTheDeviceKeys_WhenTheWearerHasFinished()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        var untouched = $"api/v1/cardimembers/{memberId}/alarms";
+        foreach (var key in new[]
+                 {
+                     $"api/v1/cardimembers/{memberId}/devices",
+                     $"api/v1/cardimembers/{memberId}/dashboard",
+                     $"api/v1/cardimembers/{memberId}",
+                     untouched,
+                 })
+            cache.Items[key] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK,
+            """{"success":true,"message":"ok","data":{"status":"completed"},"timestamp":"2026-09-18T00:00:00Z"}""");
+
+        await client.GetDeviceInviteAsync(memberId, Guid.NewGuid());
+
+        // This poll is the only notice the client gets that a device was connected — the grant
+        // happened on the wearer's phone, so nothing here posted anything that would have evicted
+        // a snapshot. Without it the success screen reads a device list assembled before the
+        // connection existed.
+        Assert.Equal([untouched], cache.Items.Keys);
+    }
+
+    [Fact]
+    public async Task GetDeviceInvite_LeavesTheCacheAlone_WhileTheWearerIsStillDeciding()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        var devices = $"api/v1/cardimembers/{memberId}/devices";
+        cache.Items[devices] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK,
+            """{"success":true,"message":"ok","data":{"status":"opened"},"timestamp":"2026-09-18T00:00:00Z"}""");
+
+        await client.GetDeviceInviteAsync(memberId, Guid.NewGuid());
+
+        // Evicting on every poll would throw the device list away every few seconds for the whole
+        // time the caregiver is waiting.
+        Assert.Equal([devices], cache.Items.Keys);
+    }
+
+    [Fact]
+    public async Task RevokeDeviceInvite_DeletesTheInvite_AndEvictsOnlyWhenItLostTheRace()
+    {
+        var cache = new MemoryOfflineCache();
+        var memberId = Guid.NewGuid();
+        var inviteId = Guid.NewGuid();
+        var devices = $"api/v1/cardimembers/{memberId}/devices";
+        cache.Items[devices] = new OfflineCacheEntry(EmptyObjectEnvelope, DateTimeOffset.UtcNow);
+
+        var (client, http) = CreateSut(cache);
+        http.Enqueue(HttpStatusCode.OK,
+            """{"success":true,"message":"ok","data":{"status":"completed"},"timestamp":"2026-09-18T00:00:00Z"}""");
+
+        await client.RevokeDeviceInviteAsync(memberId, inviteId);
+
+        var request = http.Requests.Single();
+        Assert.Equal(HttpMethod.Delete, request.Method);
+        Assert.Equal(
+            $"/api/v1/cardimembers/{memberId}/device-invites/{inviteId}",
+            request.Uri!.AbsolutePath);
+        // "completed" from a revoke means the wearer finished first, so a device exists that this
+        // client's snapshots do not know about.
+        Assert.Empty(cache.Items);
+    }
+
     [Fact]
     public async Task UpdateCardiMember_EvictsTheProfileDashboardAndMemberList()
     {
