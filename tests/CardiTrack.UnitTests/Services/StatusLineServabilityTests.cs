@@ -42,7 +42,8 @@ public class StatusLineServabilityTests
     }
 
     /// <summary>
-    /// Tighter than Advise's, and deliberately: Advise regenerates roughly daily and its ceiling is
+    /// Tighter than Advise's, and deliberately: Advise regenerates at most five times in the waking
+    /// day and its ceiling is
     /// a buffer against one missed pass; this one regenerates every pass, so the same buffer would
     /// mean serving three-day-old copy as current.
     /// </summary>

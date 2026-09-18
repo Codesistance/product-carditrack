@@ -723,11 +723,14 @@ already up):
   are `RewriteCopyGuards`, shared with the family digest — see the pronoun-token section above,
   and note what they cannot catch: a summary that contradicts a reading the read *did* name
   passes both.
-- **Cadence and freshness.** Regenerates on the half-hourly `--job digest` pass behind its own
-  due-gate: at most daily, **or immediately when the stored rows carry an older
-  `PromptVersion`** — so a deployed brief change reaches every member within one pass instead of
-  hiding behind the interval. Rows serve for at most 3 days (`AdviseStaleness.MaxAge`); the card
-  shows its own "Updated N ago" so a day-old suggestion cannot masquerade as an answer to today.
+- **Cadence and freshness.** Regenerates on the half-hourly `--job digest` pass behind
+  `AdviseCadence`: at most **five** successful writes in the member's local day, spaced through
+  the waking window (the complement of the earliest-linked caregiver's quiet hours). Unset
+  quiet hours mean no night skip and a 24-hour window. A stored row from an older
+  `PromptVersion` is due on the next waking pass, so a deployed brief change does not hide
+  behind the interval or fire at 03:00. Rows serve for at most 3 days (`AdviseStaleness.MaxAge`);
+  the card shows its own "Updated N ago" so a day-old suggestion cannot masquerade as an
+  answer to today.
 - **Failure posture.** A blank clinical field, a failed rewrite call, or rejected copy keeps the
   previous row (a hiccup); clinical silence on a topic removes its row (deliberate); a guard-
   tripped clinical entry is withheld and its row withdrawn.

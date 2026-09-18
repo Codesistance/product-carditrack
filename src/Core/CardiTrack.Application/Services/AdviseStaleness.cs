@@ -12,9 +12,8 @@ public static class AdviseStaleness
 {
     /// <summary>
     /// Wider than <c>StatusLineGenerationService</c>'s status-line ceiling because Advise
-    /// regenerates roughly daily (<c>AdviseGenerationService.RegenerateIfDueAsync</c>'s own due
-    /// window), not every batch pass — this is a buffer against one missed pass, not the cadence
-    /// itself.
+    /// regenerates at most five times in the waking day (<see cref="AdviseCadence.MaxPerLocalDay"/>),
+    /// not every batch pass — this is a buffer against missed passes, not the cadence itself.
     /// </summary>
     public static readonly TimeSpan MaxAge = TimeSpan.FromDays(3);
 }
