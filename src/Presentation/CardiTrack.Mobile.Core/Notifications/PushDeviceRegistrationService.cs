@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
@@ -38,6 +36,7 @@ public class PushDeviceRegistrationService : IPushDeviceRegistrationService
 {
     private readonly ICardiTrackApiClient _api;
     private readonly ITokenStore _tokens;
+    private readonly SessionGeneration? _session;
 
     /// <summary>
     /// Registration is fire-and-forget from the shell and from the first device connection, and
@@ -52,28 +51,31 @@ public class PushDeviceRegistrationService : IPushDeviceRegistrationService
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     /// <summary>
-    /// The session whose registration was last given up, once <see cref="UnregisterAsync"/> has
-    /// run — guarded by <see cref="_gate"/>, so it is read and written only inside it.
+    /// The <see cref="SessionGeneration"/> that last gave up its registration, or null before any
+    /// has — guarded by <see cref="_gate"/>, so it is read and written only inside it.
     /// </summary>
     /// <remarks>
     /// Ordering alone is not enough. A registration can pass every check it makes before the
     /// gate, queue behind the sign-out's DELETE, and post the moment the gate frees — still
     /// inside the session, because <c>SignOutAsync</c> clears the token store only after the
     /// release returns. It would put the departing caregiver's row back for the next person
-    /// holding the phone. Recording which session was released closes that: a registration
-    /// carrying it has been overtaken and is dropped, and the next sign-in brings a different
-    /// session, so nothing has to re-arm anything.
+    /// holding the phone.
     ///
-    /// The access token stands in for the session's identity and is hashed rather than kept: this
-    /// only ever has to answer "the same one?", and a credential held a second time in a second
-    /// field is a credential in one more place than it needs to be.
+    /// The generation is the identity to compare, not anything token-shaped: it moves on sign-in
+    /// and sign-out and on nothing else, where an access token is replaced by any refresh in
+    /// between — and a registration whose token was refreshed while the release was in flight
+    /// would then read as a new session and post anyway. It is the same mechanism
+    /// <c>CardiTrackApiClient</c> already uses to decide whether a response has outlived the
+    /// session that asked for it. The next sign-in advances it, so nothing has to re-arm.
     /// </remarks>
-    private string? _releasedSession;
+    private int? _releasedGeneration;
 
-    public PushDeviceRegistrationService(ICardiTrackApiClient api, ITokenStore tokens)
+    public PushDeviceRegistrationService(
+        ICardiTrackApiClient api, ITokenStore tokens, SessionGeneration? session = null)
     {
         _api = api;
         _tokens = tokens;
+        _session = session;
     }
 
     public async Task<PushDeviceTokenResponse?> RegisterAsync(
@@ -91,8 +93,7 @@ public class PushDeviceRegistrationService : IPushDeviceRegistrationService
             // Inside the gate, not before it: a check made outside proves only that the session
             // was alive when this call queued, which is exactly the registration that overtakes a
             // sign-out.
-            var session = await SessionAsync();
-            if (session is null || session == _releasedSession)
+            if (await _tokens.GetAsync() is null || CurrentGeneration() == _releasedGeneration)
                 return null;
 
             return await _api.RegisterPushDeviceAsync(new RegisterPushDeviceRequest
@@ -120,7 +121,7 @@ public class PushDeviceRegistrationService : IPushDeviceRegistrationService
             // session has given up its registration and must not quietly take it back. The
             // caller decides what to do about the failure; this only decides that no
             // registration of this session's follows it.
-            _releasedSession = await SessionAsync() ?? _releasedSession;
+            _releasedGeneration = CurrentGeneration();
 
             await _api.UnregisterPushDeviceAsync(deviceId, ct);
         }
@@ -131,16 +132,10 @@ public class PushDeviceRegistrationService : IPushDeviceRegistrationService
     }
 
     /// <summary>
-    /// A stable, non-reversible mark for the signed-in session, or null when there is none. Only
-    /// ever compared with another of its own — see <see cref="_releasedSession"/>.
+    /// The current session's generation, defaulting to zero where none is wired — the same
+    /// <c>_session?.Current ?? 0</c> reading <c>CardiTrackApiClient</c> takes.
     /// </summary>
-    private async Task<string?> SessionAsync()
-    {
-        var tokens = await _tokens.GetAsync();
-        return tokens is null
-            ? null
-            : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(tokens.AccessToken)));
-    }
+    private int CurrentGeneration() => _session?.Current ?? 0;
 
     public Task AckDeliveredAsync(Guid deliveryId, string ackToken, CancellationToken ct = default) =>
         _api.AckDeliveredAsync(deliveryId, ackToken, ct);

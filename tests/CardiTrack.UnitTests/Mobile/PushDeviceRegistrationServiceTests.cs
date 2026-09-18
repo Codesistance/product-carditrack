@@ -26,7 +26,9 @@ public class PushDeviceRegistrationServiceTests
     public PushDeviceRegistrationServiceTests() =>
         _tokens.GetAsync().Returns(Session("the-signed-in-session"));
 
-    private PushDeviceRegistrationService CreateSut() => new(_api, _tokens);
+    private readonly SessionGeneration _session = new();
+
+    private PushDeviceRegistrationService CreateSut() => new(_api, _tokens, _session);
 
     private Task<PushDeviceTokenResponse?> RegisterAsync(PushDeviceRegistrationService sut) =>
         sut.RegisterAsync(
@@ -105,16 +107,32 @@ public class PushDeviceRegistrationServiceTests
     }
 
     [Fact]
+    public async Task ARegistrationSurvivingATokenRefreshIsStillDropped()
+    {
+        // The marker is the session's generation, not anything token-shaped. A refresh replaces
+        // the access token without ending the session, and a registration that read the new one
+        // would otherwise look like a fresh sign-in and post after the release.
+        var sut = CreateSut();
+
+        await sut.UnregisterAsync("install-a");
+        _tokens.GetAsync().Returns(Session("refreshed-during-the-unregister"));
+
+        Assert.Null(await RegisterAsync(sut));
+        await _api.DidNotReceiveWithAnyArgs().RegisterPushDeviceAsync(default!, default);
+    }
+
+    [Fact]
     public async Task ARegistrationForTheNextSessionIsSentNormally()
     {
-        // Nothing has to re-arm anything: the next sign-in is a different session, so the record
-        // of the released one simply stops matching.
+        // Nothing has to re-arm anything: signing in advances the generation, so the record of
+        // the released session simply stops matching.
         _api.RegisterPushDeviceAsync(Arg.Any<RegisterPushDeviceRequest>(), Arg.Any<CancellationToken>())
             .Returns(new PushDeviceTokenResponse());
 
         var sut = CreateSut();
         await sut.UnregisterAsync("install-a");
 
+        _session.Advance();
         _tokens.GetAsync().Returns(Session("the-next-caregivers-session"));
         var result = await RegisterAsync(sut);
 

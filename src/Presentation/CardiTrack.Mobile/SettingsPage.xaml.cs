@@ -197,17 +197,11 @@ public partial class SettingsPage : ContentPage
         DeleteAccountBtn.IsEnabled = false;
         try
         {
-            // Before the request, not after it. Once the deletion is recorded,
-            // PendingDeletionGateMiddleware refuses everything but the deletion endpoint itself,
-            // so the release would take a 403 and be swallowed — and it is needed: dispatch
-            // resolves recipients on IsActive and ReceiveAlerts alone, so for the 30 days the
-            // request can still be cancelled this account goes on being pushed to, on a phone
-            // that may already have been handed over. If the request below then fails, the
-            // caregiver keeps their session and the app registers again on its next trigger;
-            // the unregister arms PUSH_UNREACHABLE meanwhile, so they are told rather than
-            // quietly unreachable.
-            await ReleasePushRegistrationAsync();
-
+            // No push release on this path, unlike the ordinary sign-out. The request itself
+            // gives up this account's registrations server-side (UserService.RequestDeletionAsync),
+            // which is where it belongs: the request can come from a second device, and a
+            // best-effort call from this one would leave a live token behind exactly when it
+            // failed. After the request PendingDeletionGateMiddleware would refuse it anyway.
             var status = await _api.RequestAccountDeletionAsync();
 
             // Signed out, then told — in that order, so the message is the last thing on screen
@@ -269,8 +263,8 @@ public partial class SettingsPage : ContentPage
         // one step throwing must not stop the rest, or a token or a cached reading survives on a
         // phone whose owner has just asked for all of it to go. An ordinary sign-out can afford to
         // surface the failure; this one cannot afford to stop.
-        // No push release here: the deletion path releases before it makes the request, while
-        // the gate is still open (see OnDeleteAccountClicked). By this point it would 403.
+        // No push release here either — see OnDeleteAccountClicked: the deletion request has
+        // already given up this account's registrations, server-side.
         await TryAsync(() => _authService.SignOutAsync(), "sign-out");
         Try(() => Preferences.Default.Remove("PrimaryCardiMemberId"), "primary member");
         Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");
