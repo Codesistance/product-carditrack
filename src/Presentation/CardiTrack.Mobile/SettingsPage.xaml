@@ -225,7 +225,7 @@
                                             VerticalOptions="Center"
                                             Toggled="OnDiagnosticsToggled"
                                             SemanticProperties.Description="Send session telemetry"
-                                            SemanticProperties.Hint="Off stops session telemetry. Crash reports from the sign-in screen may still be sent."
+                                            SemanticProperties.Hint="Off stops session telemetry. Crash reports from the sign-in screen may still be sent."/>
                                 </Grid>
 
                                 <BoxView Style="{StaticResource DividerLine}"/>
