@@ -92,6 +92,32 @@ public class AdviseCadenceTests
             UtcAt(22), UtcAt(19), Version, Version, QuietStart, QuietEnd, Utc));
 
     [Fact]
+    public void SameDayQuiet_AdvancesAMissedCandidatePastTheWindow()
+    {
+        var napStart = new TimeOnly(12, 0);
+        var napEnd = new TimeOnly(13, 0);
+        // last 08:00, 23h/5 = 4h36 → 12:36 inside the nap; 14:00 is awake and past 13:00.
+        Assert.False(AdviseCadence.IsDue(
+            UtcAt(12, 30), UtcAt(8), Version, Version, napStart, napEnd, Utc));
+        Assert.True(AdviseCadence.IsDue(
+            UtcAt(14), UtcAt(8), Version, Version, napStart, napEnd, Utc));
+    }
+
+    [Fact]
+    public void SameDayQuiet_CountsWritesOnBothSidesOfTheWindowTowardTheCap()
+    {
+        var napStart = new TimeOnly(12, 0);
+        var napEnd = new TimeOnly(13, 0);
+        // 00:00, 04:36, 09:12, 13:48, 18:24 — a sixth at 23:00 would exceed five.
+        Assert.True(AdviseCadence.IsDue(
+            UtcAt(13, 48), UtcAt(9, 12), Version, Version, napStart, napEnd, Utc));
+        Assert.True(AdviseCadence.IsDue(
+            UtcAt(18, 24), UtcAt(13, 48), Version, Version, napStart, napEnd, Utc));
+        Assert.False(AdviseCadence.IsDue(
+            UtcAt(23), UtcAt(18, 24), Version, Version, napStart, napEnd, Utc));
+    }
+
+    [Fact]
     public void OlderPromptVersion_WaitsOutQuietHours()
     {
         Assert.False(AdviseCadence.IsDue(

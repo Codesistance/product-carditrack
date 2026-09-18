@@ -195,19 +195,19 @@ public class AdviseGenerationService
             return;
 
         var existing = await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId);
-        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
-        var (quietStart, quietEnd) = await AnchorQuietHoursAsync(cardiMemberId, ct);
+        var anchor = await MemberAnchorTimeZone.ResolveAnchorAsync(_unitOfWork, cardiMemberId);
+        var (quietStart, quietEnd) = await AnchorQuietHoursAsync(anchor.UserId, ct);
         DateTime? lastGenerated = existing.Count == 0 ? null : existing.Max(a => a.GeneratedAtUtc);
         var storedVersion = existing.Count == 0
             ? CurrentPromptVersion
             : existing.Min(a => a.PromptVersion);
         if (!AdviseCadence.IsDue(
-                utcNow, lastGenerated, storedVersion, CurrentPromptVersion, quietStart, quietEnd, timeZone))
+                utcNow, lastGenerated, storedVersion, CurrentPromptVersion, quietStart, quietEnd, anchor.TimeZone))
             return;
 
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(
             utcNow.Kind == DateTimeKind.Utc ? utcNow : DateTime.SpecifyKind(utcNow, DateTimeKind.Utc),
-            timeZone));
+            anchor.TimeZone));
         var recentLogs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, today.AddDays(-14), today);
 
@@ -492,22 +492,17 @@ public class AdviseGenerationService
     }
 
     /// <summary>
-    /// The earliest-linked active caregiver's quiet hours — the same person
-    /// <see cref="MemberAnchorTimeZone"/> takes the zone from, so the waking window and the
-    /// clock it is measured on cannot belong to two different readers.
+    /// Quiet hours for the caregiver <see cref="MemberAnchorTimeZone"/> actually anchored to —
+    /// the same person, including when an earlier link was skipped for a blank or invalid zone.
+    /// No resolvable caregiver means no window, matching the UTC fallback clock.
     /// </summary>
     private async Task<(TimeOnly? Start, TimeOnly? End)> AnchorQuietHoursAsync(
-        Guid cardiMemberId, CancellationToken ct)
+        Guid? userId, CancellationToken ct)
     {
-        var anchor = (await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId))
-            .Where(l => l.IsActive)
-            .OrderBy(l => l.CreatedDate)
-            .ThenBy(l => l.UserId)
-            .FirstOrDefault();
-        if (anchor is null)
+        if (userId is null)
             return (null, null);
 
-        var prefs = await _unitOfWork.NotificationPreferences.GetByUserIdAsync(anchor.UserId, ct);
+        var prefs = await _unitOfWork.NotificationPreferences.GetByUserIdAsync(userId.Value, ct);
         return (prefs?.QuietHoursStart, prefs?.QuietHoursEnd);
     }
 

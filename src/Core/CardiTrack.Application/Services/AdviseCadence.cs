@@ -35,13 +35,9 @@ public static class AdviseCadence
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, timeZone);
         var localTime = TimeOnly.FromDateTime(localNow);
 
-        TimeOnly? quietStart = quietHoursStart;
-        TimeOnly? quietEnd = quietHoursEnd;
-        if (quietStart is { } start && quietEnd is { } end)
-        {
-            if (QuietHours.Contains(start, end, localTime))
-                return false;
-        }
+        if (quietHoursStart is { } start && quietHoursEnd is { } end
+            && QuietHours.Contains(start, end, localTime))
+            return false;
 
         if (lastGeneratedAtUtc is null || storedPromptVersion < currentPromptVersion)
             return true;
@@ -51,7 +47,7 @@ public static class AdviseCadence
         var today = DateOnly.FromDateTime(localNow);
         var lastDay = DateOnly.FromDateTime(lastLocal);
 
-        var waking = quietStart is { } qStart && quietEnd is { } qEnd
+        var waking = quietHoursStart is { } qStart && quietHoursEnd is { } qEnd
             ? TimeSpan.FromDays(1) - QuietHours.Duration(qStart, qEnd)
             : TimeSpan.FromDays(1);
         if (waking <= TimeSpan.Zero)
@@ -62,16 +58,19 @@ public static class AdviseCadence
         if (lastDay < today)
             return true;
 
-        if (now < lastUtc + slot)
+        var candidateUtc = lastUtc + slot;
+        if (quietHoursStart is { } nextStart && quietHoursEnd is { } nextEnd)
+        {
+            var candidateLocal = TimeZoneInfo.ConvertTimeFromUtc(candidateUtc, timeZone);
+            if (QuietHours.Contains(nextStart, nextEnd, TimeOnly.FromDateTime(candidateLocal)))
+                candidateUtc = NextWakingUtc(candidateLocal, nextStart, nextEnd, timeZone);
+        }
+
+        if (now < candidateUtc)
             return false;
 
-        var nextLocal = TimeZoneInfo.ConvertTimeFromUtc(lastUtc + slot, timeZone);
-        if (quietStart is { } nextStart && quietEnd is { } nextEnd
-            && QuietHours.Contains(nextStart, nextEnd, TimeOnly.FromDateTime(nextLocal)))
-            return false;
-
-        var wakingStart = WakingStart(today, quietStart, quietEnd);
-        var lastOffset = lastLocal - wakingStart;
+        var origin = SlotOrigin(today, quietHoursStart, quietHoursEnd);
+        var lastOffset = lastLocal - origin;
         if (lastOffset < TimeSpan.Zero)
             lastOffset = TimeSpan.Zero;
 
@@ -80,15 +79,32 @@ public static class AdviseCadence
     }
 
     /// <summary>
-    /// The local instant the waking window opens on <paramref name="day"/>: quiet-hours end
-    /// when a window is set, otherwise local midnight.
+    /// The local instant the next slot is counted from on <paramref name="day"/>. Overnight
+    /// quiet (start after end) includes midnight, so the waking day opens at quiet-hours end.
+    /// A same-day window sits in the middle of the clock: origin stays local midnight so
+    /// writes before and after it share one five-slot budget instead of each looking like
+    /// the first write of the day.
     /// </summary>
-    private static DateTime WakingStart(DateOnly day, TimeOnly? quietStart, TimeOnly? quietEnd)
+    private static DateTime SlotOrigin(DateOnly day, TimeOnly? quietStart, TimeOnly? quietEnd)
     {
-        if (quietStart is not null && quietEnd is { } end)
+        if (quietStart is { } start && quietEnd is { } end && start > end)
             return day.ToDateTime(end);
 
         return day.ToDateTime(TimeOnly.MinValue);
+    }
+
+    /// <summary>
+    /// The UTC instant the family is next awake after <paramref name="localInstant"/>, which
+    /// the caller has already placed inside the quiet window. Same-day windows end later
+    /// today; overnight windows that have started in the evening end tomorrow.
+    /// </summary>
+    private static DateTime NextWakingUtc(
+        DateTime localInstant, TimeOnly quietStart, TimeOnly quietEnd, TimeZoneInfo timeZone)
+    {
+        var day = DateOnly.FromDateTime(localInstant);
+        var time = TimeOnly.FromDateTime(localInstant);
+        var endDay = quietStart > quietEnd && time >= quietStart ? day.AddDays(1) : day;
+        return TimeZoneInfo.ConvertTimeToUtc(endDay.ToDateTime(quietEnd), timeZone);
     }
 
     private static DateTime AsUtc(DateTime value) =>

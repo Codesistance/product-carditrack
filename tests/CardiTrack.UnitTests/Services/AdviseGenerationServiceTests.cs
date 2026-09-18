@@ -284,6 +284,55 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
+    /// Quiet hours must come from the caregiver whose zone actually anchored the clock —
+    /// including when an earlier link is skipped for a blank or invalid TimeZoneId.
+    /// </summary>
+    [Fact]
+    public async Task QuietHours_ComeFromTheCaregiverWhoseZoneAnchoredTheClock()
+    {
+        var earliest = Guid.NewGuid();
+        var later = Guid.NewGuid();
+        _links.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new UserCardiMember
+            {
+                UserId = earliest,
+                CardiMemberId = _memberId,
+                IsActive = true,
+                CreatedDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            },
+            new UserCardiMember
+            {
+                UserId = later,
+                CardiMemberId = _memberId,
+                IsActive = true,
+                CreatedDate = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            },
+        ]);
+        _users.GetByIdAsync(earliest).Returns(new User { Id = earliest, TimeZoneId = "Not/AZone" });
+        _users.GetByIdAsync(later).Returns(new User { Id = later, TimeZoneId = "UTC" });
+        _prefs.GetByUserIdAsync(earliest, Arg.Any<CancellationToken>())
+            .Returns(new NotificationPreference { UserId = earliest });
+        _prefs.GetByUserIdAsync(later, Arg.Any<CancellationToken>())
+            .Returns(new NotificationPreference
+            {
+                UserId = later,
+                QuietHoursStart = new TimeOnly(22, 0),
+                QuietHoursEnd = new TimeOnly(7, 0),
+            });
+
+        var threeAm = new FrozenTimeProvider(new DateTimeOffset(2026, 9, 18, 3, 0, 0, TimeSpan.Zero));
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns(
+            (IReadOnlyList<MemberAdvise>)[ExistingRow(_memberId, generatedAtUtc: threeAm.GetUtcNow().UtcDateTime.AddHours(-12))]);
+
+        await CreateSut(threeAm).RegenerateIfDueAsync(_memberId);
+
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<AdviseGenerationService.AdviseClinicalAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
     /// The version gate: a fresh row written by an older brief is due now, whatever its age —
     /// this is what makes a deployed prompt change visible within one digest pass instead of
     /// hiding behind the daily interval for up to the serve window.

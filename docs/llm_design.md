@@ -725,7 +725,8 @@ already up):
   passes both.
 - **Cadence and freshness.** Regenerates on the half-hourly `--job digest` pass behind
   `AdviseCadence`: at most **five** successful writes in the member's local day, spaced through
-  the waking window (the complement of the earliest-linked caregiver's quiet hours). Unset
+  the waking window (the complement of the anchor caregiver's quiet hours — the same person
+  `MemberAnchorTimeZone` took the zone from). Unset
   quiet hours mean no night skip and a 24-hour window. A stored row from an older
   `PromptVersion` is due on the next waking pass, so a deployed brief change does not hide
   behind the interval or fire at 03:00. Rows serve for at most 3 days (`AdviseStaleness.MaxAge`);
