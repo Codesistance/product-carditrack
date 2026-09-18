@@ -32,8 +32,28 @@ internal static class WearerConnectPage
     /// pages post plain forms — so a content injection has nothing to execute even if one were
     /// found, and no external origin can be reached to carry anything away.
     /// </summary>
-    private const string ContentSecurityPolicy =
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+    /// <remarks>
+    /// <para>
+    /// <strong><c>form-action</c> names this origin explicitly as well as <c>'self'</c>.</strong>
+    /// On its own, <c>'self'</c> resolves against the document's origin, and a wearer opening the
+    /// link inside a messaging app's in-app browser can end up on a document whose origin the
+    /// browser will not match it to — at which point the consent form is blocked and "Yes, that's
+    /// me" silently does nothing. That was reported from a real device on 2026-09-18. Naming the
+    /// origin costs nothing and gives up nothing: the directive still permits exactly one host,
+    /// which is the whole of what it was protecting.
+    /// </para>
+    /// <para>
+    /// Built per request rather than as a constant because the host differs per environment, and a
+    /// hardcoded one would be wrong everywhere but the environment it was written for.
+    /// </para>
+    /// </remarks>
+    private static string ContentSecurityPolicyFor(HttpRequest request)
+    {
+        var origin = $"{request.Scheme}://{request.Host.Value}";
+
+        return "default-src 'none'; style-src 'unsafe-inline'; " +
+               $"form-action 'self' {origin}; base-uri 'none'; frame-ancestors 'none'";
+    }
 
     /// <summary>
     /// Where each brand's wearer goes to take access back, keyed by the contract's wire name.
@@ -78,39 +98,65 @@ internal static class WearerConnectPage
             : $"your {device} account settings";
 
         return Render(response, StatusCodes.Status200OK, $$"""
-            <h1>{{caregiver}} would like to keep an eye on your health</h1>
+            <h1>{{caregiver}} would like to see your health data</h1>
             <p class="lede">
-              They've asked CardiTrack to look after <strong>{{member}}</strong> using your
-              <strong>{{device}}</strong>.
+              To look after <strong>{{member}}</strong> using your {{device}}.
             </p>
 
-            <h2>What CardiTrack would see</h2>
+            <h2>This will let CardiTrack see</h2>
             <ul class="shares">
-              <li><strong>Heart rate</strong> — so it can spot if something looks off</li>
-              <li><strong>Activity and steps</strong> — to see you're keeping active</li>
-              <li><strong>Sleep</strong> — how long and how well you rested</li>
-              <li><strong>Your watch's battery</strong> — so nobody is caught out by a flat watch</li>
+              <li>
+                <span class="tick" aria-hidden="true">&#x2713;</span>
+                <span>
+                  <span class="what">Your heart rate</span>
+                  <span class="why">So it can spot if something looks off</span>
+                </span>
+              </li>
+              <li>
+                <span class="tick" aria-hidden="true">&#x2713;</span>
+                <span>
+                  <span class="what">Your activity and steps</span>
+                  <span class="why">To see you're keeping active</span>
+                </span>
+              </li>
+              <li>
+                <span class="tick" aria-hidden="true">&#x2713;</span>
+                <span>
+                  <span class="what">Your sleep</span>
+                  <span class="why">How long and how well you rested</span>
+                </span>
+              </li>
+              <li>
+                <span class="tick" aria-hidden="true">&#x2713;</span>
+                <span>
+                  <span class="what">Your watch's battery</span>
+                  <span class="why">So nobody is caught out by a flat watch</span>
+                </span>
+              </li>
             </ul>
+
+            <div class="divider"></div>
+
             <p class="note">
               {{caregiver}} sees these. CardiTrack never posts anything to your accounts and never
               sells your data. You can stop sharing at any time from {{revokeLink}}, and ask
               {{caregiver}} to remove the device.
             </p>
-
-            <form method="post" action="/connect/start">
-              <input type="hidden" name="t" value="{{safeToken}}">
-              <button class="cta" type="submit">Yes, that's me — continue</button>
-            </form>
-            <form method="post" action="/connect/decline">
-              <input type="hidden" name="t" value="{{safeToken}}">
-              <button class="secondary" type="submit">This isn't me</button>
-            </form>
-
-            <p class="note small">
-              You'll sign in with the account your {{device}} already uses. CardiTrack never sees
-              your password.
-              <a href="{{privacy}}" rel="noopener noreferrer">How CardiTrack handles your data</a>
+            <p class="note">
+              You'll sign in with the account your {{device}} already uses — CardiTrack never sees
+              your password. <a href="{{privacy}}" rel="noopener noreferrer">Privacy policy</a>
             </p>
+
+            <div class="actions">
+              <form method="post" action="/connect/decline">
+                <input type="hidden" name="t" value="{{safeToken}}">
+                <button class="secondary" type="submit">This isn't me</button>
+              </form>
+              <form method="post" action="/connect/start">
+                <input type="hidden" name="t" value="{{safeToken}}">
+                <button class="cta" type="submit">Continue</button>
+              </form>
+            </div>
             """);
     }
 
@@ -192,7 +238,7 @@ internal static class WearerConnectPage
         response.Headers["Referrer-Policy"] = "no-referrer";
         response.Headers.XContentTypeOptions = "nosniff";
         response.Headers.XFrameOptions = "DENY";
-        response.Headers.ContentSecurityPolicy = ContentSecurityPolicy;
+        response.Headers.ContentSecurityPolicy = ContentSecurityPolicyFor(response.HttpContext.Request);
 
         return new ContentResult
         {
@@ -207,40 +253,105 @@ internal static class WearerConnectPage
                 <meta name="robots" content="noindex, nofollow">
                 <title>CardiTrack</title>
                 <style>
-                  :root { color-scheme: light dark; }
+                  :root {
+                    color-scheme: light dark;
+                    --ink: #202124;
+                    --muted: #5f6368;
+                    --line: #dadce0;
+                    --card: #ffffff;
+                    --page: #ffffff;
+                    --accent: #1a73e8;
+                    --accent-ink: #ffffff;
+                    --chip: #f1f3f4;
+                  }
                   * { box-sizing: border-box; }
                   body {
-                    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-                    padding: 2rem 1rem;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                    background: #f7f9fc; color: #17233a; line-height: 1.5;
+                    margin: 0; min-height: 100vh;
+                    display: flex; align-items: center; justify-content: center;
+                    padding: 24px 16px;
+                    font-family: "Google Sans", Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+                    background: var(--page); color: var(--ink);
+                    line-height: 1.5; -webkit-font-smoothing: antialiased;
                   }
-                  main { max-width: 32rem; width: 100%; }
-                  h1 { font-size: 1.4rem; margin: 0 0 .75rem; }
-                  h2 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
-                  p { margin: 0 0 .75rem; }
-                  .lede { font-size: 1.05rem; }
-                  .note { color: #5b6b84; }
-                  .small { font-size: .875rem; }
-                  a { color: #135497; }
-                  ul.shares { margin: 0; padding-left: 1.1rem; }
-                  ul.shares li { margin-bottom: .4rem; }
+                  main {
+                    width: 100%; max-width: 448px;
+                    background: var(--card);
+                    border: 1px solid var(--line);
+                    border-radius: 28px;
+                    padding: 48px 40px 32px;
+                  }
+                  .brand {
+                    display: flex; align-items: center; gap: 8px;
+                    font-size: 15px; color: var(--muted); margin-bottom: 20px;
+                  }
+                  .mark {
+                    width: 22px; height: 22px; border-radius: 6px; flex: 0 0 22px;
+                    background: linear-gradient(135deg, #135497, #2bb673);
+                  }
+                  h1 {
+                    font-size: 24px; font-weight: 400; line-height: 1.3;
+                    margin: 0 0 12px; letter-spacing: 0;
+                  }
+                  .lede { font-size: 14px; color: var(--muted); margin: 0 0 8px; }
+                  h2 {
+                    font-size: 14px; font-weight: 500; color: var(--ink);
+                    margin: 28px 0 8px;
+                  }
+                  p { margin: 0 0 12px; font-size: 14px; }
+                  .note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+                  a { color: var(--accent); text-decoration: none; }
+                  a:hover { text-decoration: underline; }
+
+                  ul.shares { list-style: none; margin: 0; padding: 0; }
+                  ul.shares li {
+                    display: flex; gap: 14px; align-items: flex-start;
+                    padding: 10px 0; font-size: 14px;
+                  }
+                  ul.shares .tick {
+                    flex: 0 0 20px; width: 20px; height: 20px; margin-top: 1px;
+                    border-radius: 50%; background: var(--chip);
+                    display: flex; align-items: center; justify-content: center;
+                    color: var(--muted); font-size: 12px;
+                  }
+                  ul.shares .what { display: block; }
+                  ul.shares .why { display: block; color: var(--muted); font-size: 13px; }
+
+                  .divider { height: 1px; background: var(--line); margin: 24px 0 20px; }
+
+                  .actions {
+                    display: flex; justify-content: flex-end; align-items: center;
+                    gap: 8px; margin-top: 28px; flex-wrap: wrap;
+                  }
                   form { margin: 0; }
                   button {
-                    display: block; width: 100%; margin-top: .75rem; padding: .85rem 1.5rem;
-                    border-radius: 999px; border: 0; font: inherit; font-weight: 600; cursor: pointer;
+                    font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
+                    border-radius: 100px; padding: 10px 24px; border: 1px solid transparent;
+                    min-height: 40px;
                   }
-                  .cta { background: #135497; color: #fff; }
-                  .secondary { background: transparent; color: #135497; border: 1px solid #c3cfe0; }
+                  .cta { background: var(--accent); color: var(--accent-ink); }
+                  .cta:hover { filter: brightness(1.07); }
+                  .secondary { background: transparent; color: var(--accent); }
+                  .secondary:hover { background: rgba(26,115,232,.08); }
+
+                  /* One column, full-width buttons on a phone: the side-by-side pair is a
+                     desktop shape, and a 24px-padded row of two is a mis-tap waiting to happen. */
+                  @media (max-width: 420px) {
+                    main { padding: 32px 24px 24px; border: 0; border-radius: 0; }
+                    .actions { flex-direction: column-reverse; align-items: stretch; gap: 10px; }
+                    button { width: 100%; }
+                  }
+
                   @media (prefers-color-scheme: dark) {
-                    body { background: #10161f; color: #e8edf5; }
-                    .note { color: #97a3b6; }
-                    a { color: #7fb2ea; }
-                    .secondary { color: #7fb2ea; border-color: #33405a; }
+                    :root {
+                      --ink: #e8eaed; --muted: #9aa0a6; --line: #5f6368;
+                      --card: #1f1f1f; --page: #131314; --accent: #8ab4f8;
+                      --accent-ink: #202124; --chip: #2d2e30;
+                    }
                   }
                 </style>
                 </head>
                 <body><main>
+                <div class="brand"><span class="mark"></span>CardiTrack</div>
                 {{body}}
                 </main></body>
                 </html>

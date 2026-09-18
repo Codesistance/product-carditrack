@@ -67,7 +67,7 @@ public class WearerConnectEndpointTests
         Assert.Contains("John", page.Content!);
         Assert.Contains("Margaret", page.Content);
         Assert.Contains("Fitbit", page.Content);
-        Assert.Contains("Heart rate", page.Content);
+        Assert.Contains("Your heart rate", page.Content);
         Assert.Contains("https://carditrack.example/privacy", page.Content);
     }
 
@@ -114,6 +114,39 @@ public class WearerConnectEndpointTests
         Assert.Contains("form-action 'self'", headers.ContentSecurityPolicy.ToString());
         // No script at all, so a content injection would have nothing to execute.
         Assert.Contains("default-src 'none'", headers.ContentSecurityPolicy.ToString());
+    }
+
+    [Fact]
+    public async Task Ask_NamesItsOwnOriginInFormAction_NotJustSelf()
+    {
+        _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);
+        var sut = CreateSut();
+        sut.Request.Scheme = "https";
+        sut.Request.Host = new HostString("api.dev.example.com");
+
+        await sut.Ask(Token, default);
+        var csp = sut.Response.Headers.ContentSecurityPolicy.ToString();
+
+        // Reported from a real device on 2026-09-18: with 'self' alone the consent form was blocked
+        // outright and "Yes, that's me" silently did nothing, because the browser would not match
+        // the directive to the document's origin. Naming the origin gives up nothing — the
+        // directive still permits exactly one host — and it is the difference between a flow that
+        // works and one that fails without a word.
+        Assert.Contains("form-action 'self' https://api.dev.example.com", csp);
+    }
+
+    [Fact]
+    public async Task Ask_OffersBothAnswers_AsFormsThatPostToUs()
+    {
+        _invites.ViewAsync(Token, Arg.Any<CancellationToken>()).Returns(View);
+        var sut = CreateSut();
+
+        var page = Page(await sut.Ask(Token, default));
+
+        Assert.Contains("action=\"/connect/start\"", page.Content!);
+        Assert.Contains("action=\"/connect/decline\"", page.Content);
+        // Relative, so the form follows whichever host served the page rather than a baked-in one.
+        Assert.DoesNotContain("action=\"http", page.Content);
     }
 
     [Fact]
