@@ -9,11 +9,11 @@
 **Orientation:** Portrait primary, landscape supported
 **Target Users:** Family caregivers across the US & EU monitoring elderly relatives' wearable health data
 **Document Version:** 3.1
-**Last Updated:** August 14, 2026
+**Last Updated:** September 18, 2026
 
 ---
 
-## Build Status (as of August 14, 2026)
+## Build Status (as of September 18, 2026)
 
 > **17 of 17 Figma M1 screens are built** in `CardiTrack.Mobile`: M1-01 Splash, M1-02 Welcome, M1-03 Sign Up (CreateAccountPage), M1-04 Add First CardiMember, M1-05 Device Selection, M1-06 Fitbit Connection, M1-07 Connection Success, M1-08 Baseline Learning, M1-09 Dashboard, M1-10 Alerts List (AlertsPage), M1-11/M1-12/M1-16 Alert Detail (`AlertDetailPage`), M1-13 CardiMember Detail (CardiMemberDetailPage), M1-14 Edit CardiMember (EditCardiMemberPage), M1-15 Device Management (DeviceManagementPage), M1-17 Health Data Export (`ExportHealthDataPage`).
 >
@@ -2276,7 +2276,7 @@ Once connected, screen designs can be referenced directly by Figma frame URL dur
 
 ---
 
-**Total Screens:** 68 designed (counting each state as a screen), plus 6 shipped screens without Figma M1 frames (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Questionnaires)
-**MVP 1:** 37 screens — Core Monitoring (design first) — **16 of 17 Figma M1 screens built** as of August 14, 2026
+**Total Screens:** 68 designed (counting each state as a screen), plus the **ten** shipped surfaces without Figma M1 frames listed under Build Status (SignIn, ForgotPassword, VerifyEmail, AccountSetup, Notifications, Journal, JournalEntry, ExportConsents, QuestionCard, Questions & Answers)
+**MVP 1:** 37 screens — Core Monitoring (design first) — **all 17 Figma M1 screens built** as of September 18, 2026
 **MVP 2:** 18 screens — Management, Settings & Family Collaboration (Q1 2027)
 **MVP 3:** 13 screens — Native & Offline (Q2 2027)

@@ -281,7 +281,7 @@ dotnet build
 ## 📝 Documentation Version History
 
 ### Version 2.4 (August 14, 2026)
-- ✅ Alert detail shipped as one `AlertDetailPage` covering M1-11/12/16 (16 of 17 Figma frames; only M1-17 export remains)
+- ✅ Alert detail shipped as one `AlertDetailPage` covering M1-11/12/16 (all 17 Figma M1 frames built; M1-17 export shipped 2026-09-07)
 - ✅ Math.NET Numerics is the in-process SSA eigen engine; median/MAD persisted on baselines unused for live alerts
 - ✅ Digest payload is one `suggestion` + `urgency` (not a three-item array); digest retention 90 days
 - ✅ Safety-class nudges push; three-tier battery (Warning/Urgent/Critical), 12-hour freshness

@@ -688,7 +688,7 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 
 > Waves re-baselined August 2026: **R1 → Q4 2026, R2 → Q1 2027, R3 → Q2 2027, R4 → Q3 2027.** The [release matrix](./release_matrix.md) remains canonical for what ships in each wave.
 
-### Built so far (as of August 2026)
+### Built so far (as of September 18, 2026)
 - ✅ Core backend (.NET 10, EF Core, Cloud SQL PostgreSQL 16)
 - ✅ Fitbit device integration — migration to the **Google Health API is done** (code + docs); Google console registration completed 2026-08-07, and the app is capped at 100 users until restricted-scope verification completes
 - ✅ Database schema & migrations (deployed via the migrator Cloud Run Job)
@@ -697,19 +697,20 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 - ✅ Push delivery spine: notification outbox + FCM HTTP v1 (APNs passthrough), escalation ladder, quiet hours
 - ✅ AI pipeline running in dev: webhook receiver → Pub/Sub → aggregator → SSA pre-processing → MedGemma assessment, family digests, real-time heart-rate assessment (prod gated off)
 - ✅ AI providers wired in the API: MedGemma (Ollama on Cloud Run) + Gemini 2.0 Flash (chat, insights, reports)
-- ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite; the mobile equivalent is pending)
+- ✅ Datadog APM with opt-in metrics (PR #4); atomic onboarding + orphaned-organization cleanup (PR #5); health-data disclosure banner on Web (PR #9 — a Google verification prerequisite) **and on the mobile dashboard since 2026-09-13**, both recording the dismissal on the account
 
 ### R1 — Q4 2026: MVP Launch
-- 🔄 Blazor dashboard (basic features)
-- 🔄 Statistical anomaly detection
-- 🔄 Email/push alerts
-- 🔄 Subscription management
+- 🔄 Blazor dashboard (basic features) — **not started**; the web app is still the stock template. The single largest piece of R1 left
+- ✅ Statistical anomaly detection — shipped; five launch alert types plus inactivity
+- 🔶 Push alerts — shipped (FCM HTTP v1, escalation ladder, quiet hours). **There is no email sender in the solution**, so "email alerts" is unbuilt and undesigned
+- ⬜ ~~Subscription management~~ — **R2, not R1** (decision log 1 in the [release matrix](./release_matrix.md)): R1 is trial-only
 - 🔄 Beta testing with 20 families
 - 🔄 Public launch (BYOD model)
+- ⬜ Google restricted-scope verification + CASA — not started, and it caps the beta at 100 connected wearers
 
 ### R2 — Q1 2027: AI Pipeline & Multi-Device Start
 - 🔄 AI pipeline rollout — Pub/Sub ingestion, SSA pre-processing + deterministic trend features, MedGemma inference (running in dev ahead of schedule; prod enablement remains — see [llm_design.md](./llm_design.md))
-- ✅ .NET MAUI mobile app (iOS & Android) — **shipped in R1**, 16 of 17 Figma M1 screens; distributed to Play internal testing and TestFlight, not public store availability
+- ✅ .NET MAUI mobile app (iOS & Android) — **shipped in R1**, all 17 Figma M1 screens; distributed to Play internal testing and TestFlight, not public store availability
 - ⏳ Garmin integration
 - ⏳ Advanced dashboard features
 - ⏳ Apply for device intraday access
@@ -721,8 +722,8 @@ The Cloud Run pay-per-use model keeps pre-launch costs near zero and scales line
 
 ### R4 — Q3 2027: Enterprise & Scale
 - ⏳ Enterprise features (assisted living)
-- ⏳ Mobile offline support (local SQLite cache) + HealthKit integration
-- ⏳ Withings, Oura, Whoop support
+- ⏳ Mobile offline **writes** — the cache-first read path shipped in R1 (2026-09-09); the write/sync queue is what remains. ~~HealthKit integration~~ retired 2026-09-05: Apple Watch arrives via Google Health instead
+- ⏳ Withings support. ~~Oura, Whoop~~ dropped 2026-09-05 — subscription trackers for athletes, not this product's wearers
 - ~~Refined per-user LSTM risk models~~ — descoped 2026-08-10; replaced by qualitative trend interpretation (SSA + deterministic trend features read by MedGemma; no per-user models, no risk scores)
 - ⏳ Telemedicine integration
 - ⏳ Scale to 1,000+ users
