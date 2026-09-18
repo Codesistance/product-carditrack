@@ -65,24 +65,20 @@
                 </VerticalStackLayout>
 
                 <!-- The pipeline's own verdict, as a row rather than a sentence: it is a state
-                     with a colour, not prose, and the dot beside it is the one on the card. -->
+                     with a colour, not prose. The row is tinted with that colour, which is the
+                     dot said at the width of a sentence — a dot in front of it would be the
+                     same fact a third time on one card. -->
                 <Border x:Name="StateRow"
-                        BackgroundColor="{StaticResource InputBackground}"
                         StrokeThickness="0"
                         Padding="14,10">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="12"/>
                     </Border.StrokeShape>
-                    <HorizontalStackLayout Spacing="8" HorizontalOptions="Center">
-                        <Ellipse x:Name="StateDot"
-                                 WidthRequest="10" HeightRequest="10"
-                                 VerticalOptions="Center"
-                                 AutomationProperties.IsInAccessibleTree="False"/>
-                        <Label x:Name="StateLabel"
-                               Style="{StaticResource Body2Dark}"
-                               VerticalOptions="Center"
-                               LineBreakMode="WordWrap"/>
-                    </HorizontalStackLayout>
+                    <Label x:Name="StateLabel"
+                           Style="{StaticResource Body2Dark}"
+                           HorizontalTextAlignment="Center"
+                           VerticalOptions="Center"
+                           LineBreakMode="WordWrap"/>
                 </Border>
 
                 <Button x:Name="CloseBtn"

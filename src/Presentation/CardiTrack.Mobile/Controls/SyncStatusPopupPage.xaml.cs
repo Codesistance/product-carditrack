@@ -27,10 +27,13 @@ public partial class SyncStatusPopupPage : ContentPage
         On<iOS>().SetModalPresentationStyle(UIModalPresentationStyle.OverFullScreen);
 
         var accent = FreshnessPalette.ColorFor(tier);
-        // The disc is the same colour as the dot, at the weight a background can carry.
-        Badge.BackgroundColor = accent.WithAlpha(0.14f);
+        // The disc and the state row are the dot's colour at the weight a background can
+        // carry; the text over them stays the body colour, which holds its contrast on a pale
+        // wash of any of the four tiers — amber over amber would not.
+        var wash = accent.WithAlpha(0.14f);
+        Badge.BackgroundColor = wash;
         BadgeDot.Fill = accent;
-        StateDot.Fill = accent;
+        StateRow.BackgroundColor = wash;
 
         if (lastSyncedUtc is { } lastSynced)
         {
