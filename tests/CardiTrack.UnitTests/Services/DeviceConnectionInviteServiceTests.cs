@@ -173,6 +173,27 @@ public class DeviceConnectionInviteServiceTests
     private static string TokenFrom(DeviceInviteResponse invite) =>
         Uri.UnescapeDataString(invite.Url!.Split("t=")[1]);
 
+    /// <summary>
+    /// A successful wearer completion, including the side effect the real connection service has:
+    /// the invitation is claimed to Completed inside the same transaction as the connection, so a
+    /// substitute that only returned a value would leave these tests describing a sequence that no
+    /// longer exists.
+    /// </summary>
+    private void StubCompletion(Guid inviteId, Guid deviceId) =>
+        _connections.CompleteWearerConnectionAsync(
+                "fitbit", "state_1", "auth_code", Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                Transition(inviteId, LiveStatusSet, DeviceInviteStatus.Completed,
+                    _time.GetUtcNow().UtcDateTime, deviceId, opened: false);
+
+                return new WearerConnectionCompletion(
+                    new DeviceResponse { DeviceId = deviceId, DisplayName = "Fitbit" }, inviteId);
+            });
+
+    private static readonly DeviceInviteStatus[] LiveStatusSet =
+        [DeviceInviteStatus.Pending, DeviceInviteStatus.Opened];
+
     [Fact]
     public async Task Create_ReturnsTheUrlOnce_AndNeverAgain()
     {
@@ -391,11 +412,7 @@ public class DeviceConnectionInviteServiceTests
         var created = await sut.CreateAsync(_userId, _memberId, Request(), BaseUrl);
         await sut.StartAsync(TokenFrom(created));
 
-        _connections.CompleteWearerConnectionAsync(
-                "fitbit", "state_1", "auth_code", Arg.Any<CancellationToken>())
-            .Returns(new WearerConnectionCompletion(
-                new DeviceResponse { DeviceId = deviceId, DisplayName = "Fitbit" },
-                created.InviteId));
+        StubCompletion(created.InviteId, deviceId);
 
         var outcome = await sut.CompleteFromCallbackAsync("fitbit", "state_1", "auth_code", null);
 
@@ -472,6 +489,27 @@ public class DeviceConnectionInviteServiceTests
     }
 
     [Fact]
+    public async Task Complete_AuditsAgainstTheBounce_NotOurOwnConsentPage()
+    {
+        var sut = CreateSut();
+        var created = await sut.CreateAsync(_userId, _memberId, Request(), BaseUrl);
+        await sut.StartAsync(TokenFrom(created));
+        StubCompletion(created.InviteId, Guid.NewGuid());
+
+        await sut.CompleteFromCallbackAsync("fitbit", "state_1", "auth_code", null);
+
+        // The grant arrives from the provider at the bounce, and the page the wearer then sees is a
+        // 200. Filing it under /connect with a 201 would point an investigation at a request that
+        // never happened.
+        await _auditLogs.Received(1).AppendAsync(
+            Arg.Is<AuditLog>(a => a.Action == "CompleteDeviceInvite"
+                                  && a.RequestPath == "/api/v1/oauth/redirect/fitbit"
+                                  && a.HttpMethod == "GET"
+                                  && a.ResponseStatus == 200),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task Complete_LeavesTheInviteLive_WhenTheWearerRefusedAtTheProvider()
     {
         var sut = CreateSut();
@@ -531,11 +569,7 @@ public class DeviceConnectionInviteServiceTests
         var sut = CreateSut();
         var created = await sut.CreateAsync(_userId, _memberId, Request(), BaseUrl);
 
-        _connections.CompleteWearerConnectionAsync(
-                "fitbit", "state_1", "auth_code", Arg.Any<CancellationToken>())
-            .Returns(new WearerConnectionCompletion(
-                new DeviceResponse { DeviceId = deviceId, DisplayName = "Fitbit" },
-                created.InviteId));
+        StubCompletion(created.InviteId, deviceId);
 
         await sut.CompleteFromCallbackAsync("fitbit", "state_1", "auth_code", null);
 

@@ -50,6 +50,18 @@ public interface IDeviceConnectionInviteRepository : IRepository<DeviceConnectio
     Task<bool> TryMarkOpenedAsync(Guid inviteId, DateTime openedAt, CancellationToken ct = default);
 
     /// <summary>
+    /// Records which connection a completed invitation produced.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="TryResolveAsync"/> because the two facts become known at different
+    /// moments: the invitation is claimed <em>before</em> the connection is written — that ordering
+    /// is what lets a revocation stop the write — and the connection's id does not exist until
+    /// afterwards. Writes nothing unless the invitation is already Completed, so a late or repeated
+    /// call cannot attach a connection to an invitation that was declined or revoked.
+    /// </remarks>
+    Task RecordConnectionAsync(Guid inviteId, Guid deviceConnectionId, CancellationToken ct = default);
+
+    /// <summary>
     /// Revokes every live invite for this member and brand, returning how many it revoked. Called
     /// when a replacement is created: the caregiver asking for a new code means the old one should
     /// stop working, whether they sent it to the wrong person or simply let it go stale.

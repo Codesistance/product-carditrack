@@ -34,6 +34,14 @@ public class DeviceConnectionService : IDeviceConnectionService
     // the request validator so the fail-fast and point-of-use gates can't drift apart.
     private const string AppRedirectScheme = ConnectDeviceRequest.AppRedirectScheme;
 
+    /// <summary>
+    /// The invitation statuses a wearer grant may still be claimed from. Must name the same two as
+    /// <c>DeviceConnectionInviteService</c> and the table's partial index; a disagreement here would
+    /// let a grant land against an invitation somebody had already finished with.
+    /// </summary>
+    private static readonly DeviceInviteStatus[] LiveInviteStatuses =
+        [DeviceInviteStatus.Pending, DeviceInviteStatus.Opened];
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IEncryptionService _encryption;
     private readonly IDistributedCache _cache;
@@ -281,8 +289,27 @@ public class DeviceConnectionService : IDeviceConnectionService
         // been deactivated — and this is the moment health data would start flowing to them.
         await EnsureMemberAccessAsync(payload.UserId, payload.CardiMemberId);
 
-        var device = await ExchangeAndStoreAsync(payload, code, payload.CodeVerifier!, ct);
-        return new WearerConnectionCompletion(device, payload.InviteId.Value);
+        var inviteId = payload.InviteId.Value;
+        var device = await ExchangeAndStoreAsync(
+            payload,
+            code,
+            payload.CodeVerifier!,
+            // The invitation's move to Completed is the claim: it only succeeds while the invitation
+            // is still live, so a caregiver who revoked at any point up to this instant stops the
+            // connection being stored at all.
+            claimCt => _unitOfWork.DeviceConnectionInvites.TryResolveAsync(
+                inviteId,
+                LiveInviteStatuses,
+                DeviceInviteStatus.Completed,
+                DateTime.UtcNow,
+                deviceConnectionId: null,
+                claimCt),
+            ct);
+
+        // The connection id is known only after the write, and the claim above could not carry it.
+        await _unitOfWork.DeviceConnectionInvites.RecordConnectionAsync(inviteId, device.DeviceId, ct);
+
+        return new WearerConnectionCompletion(device, inviteId);
     }
 
     public async Task<DeviceResponse> CompleteConnectionAsync(
@@ -333,7 +360,39 @@ public class DeviceConnectionService : IDeviceConnectionService
     /// tapped consent on.
     /// </remarks>
     private async Task<DeviceResponse> ExchangeAndStoreAsync(
-        OAuthStatePayload payload, string code, string codeVerifier, CancellationToken ct)
+        OAuthStatePayload payload, string code, string codeVerifier, CancellationToken ct) =>
+        await ExchangeAndStoreAsync(payload, code, codeVerifier, claim: null, ct);
+
+    /// <summary>
+    /// As above, with an optional <paramref name="claim"/> run in the same database transaction as
+    /// the connection write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The wearer flow passes one; the app flow does not. A claim that returns false aborts the
+    /// whole thing — nothing is stored, and the caller is told the invitation is no longer live.
+    /// </para>
+    /// <para>
+    /// <strong>It has to be in the transaction, not merely before it.</strong> Checking liveness and
+    /// then storing leaves a gap a caregiver's revocation can land in: the check passes, the revoke
+    /// commits, the connection is stored anyway, and the only thing that fails afterwards is the
+    /// invitation's own status update. The device would be connected to somebody whose caregiver had
+    /// withdrawn the invitation — quietly, and with the row saying "revoked" the whole time.
+    /// Committing the claim and the connection together is what makes "the withdrawal wins" true
+    /// rather than nearly true.
+    /// </para>
+    /// <para>
+    /// The provider call stays outside the transaction. Holding a Postgres transaction open across
+    /// an external HTTP round trip would pin a connection for the provider's latency, and a provider
+    /// that hangs would hold it for the timeout.
+    /// </para>
+    /// </remarks>
+    private async Task<DeviceResponse> ExchangeAndStoreAsync(
+        OAuthStatePayload payload,
+        string code,
+        string codeVerifier,
+        Func<CancellationToken, Task<bool>>? claim,
+        CancellationToken ct)
     {
         // The connection's identity is the brand picked at initiation.
         var deviceType = payload.Provider;
@@ -360,6 +419,10 @@ public class DeviceConnectionService : IDeviceConnectionService
         var scopes = tokens.Scope is null
             ? JsonSerializer.Serialize(config.Scopes)
             : JsonSerializer.Serialize(tokens.Scope.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+        // The exchange is done and the transaction opens here, so it spans only our own writes.
+        if (claim is not null)
+            await _unitOfWork.BeginTransactionAsync();
 
         var existing = (await _unitOfWork.DeviceConnections.GetByCardiMemberIdAsync(payload.CardiMemberId)).ToList();
         var connection = existing.FirstOrDefault(c => c.DeviceType == deviceType);
@@ -410,7 +473,34 @@ public class DeviceConnectionService : IDeviceConnectionService
         {
             await _unitOfWork.DeviceConnections.AddAsync(connection);
         }
-        await _unitOfWork.SaveChangesAsync();
+
+        if (claim is null)
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
+        else
+        {
+            try
+            {
+                // The claim runs against the open transaction, so the invitation's move to a
+                // terminal state and this connection either both land or neither does.
+                if (!await claim(ct))
+                {
+                    await _unitOfWork.RollbackTransactionAsync();
+                    throw new DeviceConnectionException(
+                        DeviceConnectionException.InviteNotLive,
+                        "That invitation is no longer available.");
+                }
+
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+            }
+            catch (Exception ex) when (ex is not DeviceConnectionException)
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
+        }
 
         // A fresh connection closes the device gaps immediately — the caregiver should not land
         // back on a dashboard still telling them to reconnect.

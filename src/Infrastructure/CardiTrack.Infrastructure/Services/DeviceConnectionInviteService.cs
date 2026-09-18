@@ -58,9 +58,15 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
     /// trail should say which operation happened, not which URL spelling reached it.
     /// </summary>
     private const string InvitesRoute = "/api/v1/cardimembers/{cardiMemberId}/device-invites";
-    private const string ConnectRoute = "/connect";
     private const string ConnectStartRoute = "/connect/start";
     private const string ConnectDeclineRoute = "/connect/decline";
+
+    /// <summary>
+    /// Where a completion actually arrives: the provider's bounce, not our own consent page. The
+    /// wearer's grant comes back from the provider to <c>oauth/redirect/{provider}</c>, and filing
+    /// it under <c>/connect</c> would point an investigation at the wrong request entirely.
+    /// </summary>
+    private static string BounceRoute(string provider) => $"/api/v1/oauth/redirect/{provider}";
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IDeviceConnectionService _connections;
@@ -292,18 +298,15 @@ public class DeviceConnectionInviteService : IDeviceConnectionInviteService
             return new WearerConnectionOutcome(WearerConnectionResult.Failed, null, CanRetry: false);
         }
 
-        var now = _timeProvider.GetUtcNow().UtcDateTime;
-        await _unitOfWork.DeviceConnectionInvites.TryResolveAsync(
-            completion.InviteId,
-            LiveStatuses,
-            DeviceInviteStatus.Completed,
-            now,
-            completion.Device.DeviceId,
-            ct);
-
+        // The invitation was already moved to Completed, inside the same transaction as the
+        // connection — see ExchangeAndStoreAsync's claim. Nothing to transition here; this is only
+        // the record of what happened.
         var invite = await _unitOfWork.DeviceConnectionInvites.GetByIdAsync(completion.InviteId);
         if (invite is not null)
-            await AuditAsync(invite, "CompleteDeviceInvite", ConnectRoute, "GET", StatusCodes201, ct);
+        {
+            await AuditAsync(
+                invite, "CompleteDeviceInvite", BounceRoute(provider), "GET", StatusCodes200, ct);
+        }
 
         _logger.LogInformation(
             "Device invite {InviteId} completed; connection {DeviceId} stored.",

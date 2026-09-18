@@ -108,6 +108,18 @@ public class DeviceConnectionInviteRepository
         return affected > 0;
     }
 
+    public async Task RecordConnectionAsync(
+        Guid inviteId, Guid deviceConnectionId, CancellationToken ct = default)
+    {
+        // Guarded on Completed rather than written unconditionally: this runs after the claim, and
+        // an invitation that is anything else by now is one this connection does not belong to.
+        await _dbSet
+            .Where(i => i.Id == inviteId && i.Status == DeviceInviteStatus.Completed)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(i => i.DeviceConnectionId, deviceConnectionId),
+                ct);
+    }
+
     public async Task<int> RevokeLiveAsync(
         Guid cardiMemberId, DeviceType deviceType, DateTime utcNow, CancellationToken ct = default)
     {

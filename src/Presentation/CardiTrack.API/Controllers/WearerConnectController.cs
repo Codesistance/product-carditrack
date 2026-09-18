@@ -104,10 +104,14 @@ public class WearerConnectController : ControllerBase
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A provider that is not configured, or a transient fault reaching the cache. The wearer
-            // is told nothing was shared and offered another go; the detail belongs in the log.
+            // The same page an unknown token gets, and for the same reason. A provider with no
+            // configured bounce redirect throws here, so rendering anything distinctive would tell
+            // a caller that this token was real and merely unusable, while an invented one returned
+            // the byte-identical 404 — which is exactly the difference the rest of this controller
+            // is built to hide. The wearer loses nothing: their invitation is still live, so
+            // reopening the link brings the ask back.
             _logger.LogError(ex, "Failed to start a wearer device connection.");
-            return WearerConnectPage.NotGranted(Response, t);
+            return WearerConnectPage.NotAvailable(Response);
         }
 
         if (authorizationUrl is null)

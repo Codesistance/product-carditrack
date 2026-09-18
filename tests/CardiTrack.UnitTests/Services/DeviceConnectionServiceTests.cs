@@ -43,6 +43,13 @@ public class DeviceConnectionServiceTests
             .GetLatestByConnectionIdsAsync(Arg.Any<IEnumerable<Guid>>(), Arg.Any<CancellationToken>())
             .Returns([]);
         _unitOfWork.Devices.GetByDeviceTypeAsync(DeviceType.Fitbit).Returns((Device?)null);
+        // A wearer completion claims its invitation inside the same transaction as the connection.
+        // The default here is "the invitation was still live", which is what the happy paths mean.
+        _unitOfWork.DeviceConnectionInvites
+            .TryResolveAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DeviceInviteStatus>>(),
+                Arg.Any<DeviceInviteStatus>(), Arg.Any<DateTime>(), Arg.Any<Guid?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(true);
         _encryption.Encrypt(Arg.Any<string>()).Returns(c => $"enc({c.Arg<string>()})");
     }
 
@@ -640,6 +647,36 @@ public class DeviceConnectionServiceTests
         Assert.Equal(inviteId, completion.InviteId);
         Assert.Equal("active", completion.Device.Status);
         await _unitOfWork.Received().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CompleteWearerConnection_StoresNothing_WhenTheInvitationWasRevokedMidFlight()
+    {
+        _codeExchange.ExchangeCodeAsync(
+                Arg.Any<DeviceProviderSettings>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(new OAuthTokenResult("access", "refresh", 3600, null, null));
+
+        // The caregiver revoked while the wearer was on the provider's consent screen, so the claim
+        // finds nothing live to move.
+        _unitOfWork.DeviceConnectionInvites
+            .TryResolveAsync(Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DeviceInviteStatus>>(),
+                Arg.Any<DeviceInviteStatus>(), Arg.Any<DateTime>(), Arg.Any<Guid?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        var sut = CreateSut(WithBounceRedirect);
+        var url = await sut.InitiateWearerConnectionAsync(
+            Guid.NewGuid(), _userId, _memberId, DeviceType.Fitbit);
+
+        var ex = await Assert.ThrowsAsync<DeviceConnectionException>(
+            () => sut.CompleteWearerConnectionAsync("fitbit", StateFrom(url), "auth_code"));
+
+        Assert.Equal(DeviceConnectionException.InviteNotLive, ex.Code);
+
+        // The claim and the connection share a transaction, so losing the claim rolls the write
+        // back rather than leaving a device connected under a withdrawn invitation.
+        await _unitOfWork.Received().RollbackTransactionAsync();
+        await _unitOfWork.DidNotReceive().CommitTransactionAsync();
     }
 
     [Fact]
