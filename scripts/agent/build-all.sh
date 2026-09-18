@@ -102,6 +102,10 @@ if [ "$CI" -eq 1 ]; then
   if [ -z "$REASON" ] && ! gh auth status >/dev/null 2>&1; then REASON="gh is not authenticated (set GH_TOKEN to a fine-grained PAT with Actions: read and write, Contents: read)"; fi
   if [ -z "$REASON" ] && [ -z "$BRANCH" -o "$BRANCH" = "HEAD" ]; then REASON="detached HEAD — check out a branch"; fi
   if [ -z "$REASON" ] && ! git rev-parse --verify -q "origin/$BRANCH" >/dev/null; then REASON="branch $BRANCH is not on origin — push it first"; fi
+  HEAD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "")
+  # CI builds what origin has, so a local commit that is not there yet would be
+  # "verified" by a run of something else.
+  if [ -z "$REASON" ] && [ "$HEAD_SHA" != "$(git rev-parse "origin/$BRANCH" 2>/dev/null)" ]; then REASON="local HEAD is not what origin/$BRANCH points at — push first"; fi
   if [ -z "$REASON" ] && [ -n "$(git status --porcelain)" ]; then log "note: working tree has uncommitted changes; CI builds what is pushed, not what is here"; fi
   if [ -n "$REASON" ]; then
     record "mobile ($PLATFORM, CI)" "SKIPPED — $REASON"
@@ -121,8 +125,11 @@ if [ "$CI" -eq 1 ]; then
       RUN_ID=""
       for _ in $(seq 1 30); do
         sleep 4
-        RUN_ID=$(gh run list --workflow deploy-apps-dev.yml --branch "$BRANCH" --event workflow_dispatch --limit 5 \
-                   --json databaseId,createdAt --jq "map(select(.createdAt >= \"$SINCE\")) | .[0].databaseId // empty")
+        # The run for *this* dispatch: same commit, created after it. The commit
+        # check keeps another agent's dispatch of the same branch, or a run left
+        # from before, from being mistaken for ours.
+        RUN_ID=$(gh run list --workflow deploy-apps-dev.yml --branch "$BRANCH" --event workflow_dispatch --limit 10 \
+                   --json databaseId,createdAt,headSha --jq "map(select(.headSha == \"$HEAD_SHA\" and .createdAt >= \"$SINCE\")) | .[0].databaseId // empty")
         [ -n "$RUN_ID" ] && break
       done
       if [ -z "$RUN_ID" ]; then
