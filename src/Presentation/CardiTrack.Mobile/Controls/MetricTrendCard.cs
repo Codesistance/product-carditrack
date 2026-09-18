@@ -147,7 +147,9 @@ public sealed class MetricTrendCard : ContentView
         {
             IsVisible = false,
             Style = Resource<Style>("StatusPill"),
-            HorizontalOptions = LayoutOptions.End,
+            // Centred under the reading it judges, rather than hung off the card's right edge
+            // where it read as a third right-aligned line instead of that number's verdict.
+            HorizontalOptions = LayoutOptions.Center,
             Content = _pillText,
         };
 
