@@ -134,49 +134,73 @@
                                                        VerticalOptions="Start"/>
 
                                 <!-- The identity spans the avatar's height. The name and who they
-                                     are lead by a step and sit at the box's top; the "Updated"
-                                     line is bookkeeping, drops a step, and is pushed to the box's
-                                     bottom by the star row between them — who they are and how
-                                     current we are on them are the two ends of the same box, and
-                                     what sits between just fills. -->
+                                     are lead by a step and sit at the box's top; the third line
+                                     drops a step and is pushed to the box's bottom by the star
+                                     row between them.
+
+                                     That line used to be the freshness dot and "Updated 4
+                                     minutes ago" — bookkeeping about our own pipeline, in the
+                                     place the caregiver looks to read about the person. It now
+                                     says how closely this member is watched, which is a fact
+                                     about them. The sync state moved to the dot in the card's
+                                     top corner, where a tap tells the whole story instead of
+                                     a colour and a stub of a line. -->
                                 <Grid Grid.Column="1"
                                       RowDefinitions="Auto,Auto,*"
                                       VerticalOptions="Fill">
                                     <Label x:Name="NameLabel" Grid.Row="0" Style="{StaticResource Heading2}" FontSize="24"/>
                                     <Label x:Name="AgeRelationshipLabel" Grid.Row="1" Style="{StaticResource Body2}" FontSize="15"/>
-                                    <HorizontalStackLayout x:Name="ConnectionStatusRow"
-                                                           Grid.Row="2"
-                                                           VerticalOptions="End"
-                                                           Spacing="6">
-                                        <Ellipse x:Name="ConnectionStatusDot"
-                                                 WidthRequest="10" HeightRequest="10"
-                                                 VerticalOptions="Center"
-                                                 AutomationProperties.IsInAccessibleTree="False"/>
-                                        <Label x:Name="LastContactLabel"
-                                               Style="{StaticResource Body2}"
-                                               FontSize="12"
-                                               VerticalOptions="Center"
-                                               LineBreakMode="TailTruncation"/>
-                                    </HorizontalStackLayout>
+                                    <Label x:Name="SensitivityLabel"
+                                           Grid.Row="2"
+                                           Style="{StaticResource Body2}"
+                                           FontSize="12"
+                                           VerticalOptions="End"
+                                           LineBreakMode="TailTruncation"/>
                                 </Grid>
 
-                                <!-- Last-session weather (EnvironmentalReading — not live, no
-                                     stored coordinate). Same chip and popup as the dashboard hero
-                                     card; hidden when the member has no reading or hasn't
-                                     consented to environmental context. -->
-                                <HorizontalStackLayout x:Name="WeatherChip"
-                                                        Grid.Column="2"
-                                                        Spacing="4"
-                                                        VerticalOptions="Center"
-                                                        IsVisible="False">
-                                    <HorizontalStackLayout.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnWeatherTapped"/>
-                                    </HorizontalStackLayout.GestureRecognizers>
-                                    <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
-                                    <Label x:Name="WeatherTemperatureLabel"
-                                           Style="{StaticResource Body2Dark}"
-                                           VerticalOptions="Center"/>
-                                </HorizontalStackLayout>
+                                <Grid Grid.Column="2" RowDefinitions="Auto,*">
+
+                                    <!-- Data-pipeline freshness, four-tier coloured like the
+                                         dashboard's. The negative margin pulls the dot itself
+                                         out to the card's corner inset while the padding keeps
+                                         a finger-sized target around it. -->
+                                    <Grid x:Name="SyncStatusTap"
+                                          Grid.Row="0"
+                                          Padding="12"
+                                          Margin="0,-10,-10,0"
+                                          BackgroundColor="Transparent"
+                                          HorizontalOptions="End"
+                                          VerticalOptions="Start"
+                                          SemanticProperties.Hint="Shows when this CardiMember last synced">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnSyncStatusTapped"/>
+                                        </Grid.GestureRecognizers>
+                                        <Ellipse x:Name="ConnectionStatusDot"
+                                                 WidthRequest="10" HeightRequest="10"
+                                                 HorizontalOptions="Center"
+                                                 VerticalOptions="Center"
+                                                 AutomationProperties.IsInAccessibleTree="False"/>
+                                    </Grid>
+
+                                    <!-- Last-session weather (EnvironmentalReading — not live, no
+                                         stored coordinate). Same chip and popup as the dashboard
+                                         hero card; hidden when the member has no reading or hasn't
+                                         consented to environmental context. -->
+                                    <HorizontalStackLayout x:Name="WeatherChip"
+                                                            Grid.Row="1"
+                                                            Spacing="4"
+                                                            HorizontalOptions="End"
+                                                            VerticalOptions="Center"
+                                                            IsVisible="False">
+                                        <HorizontalStackLayout.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnWeatherTapped"/>
+                                        </HorizontalStackLayout.GestureRecognizers>
+                                        <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
+                                        <Label x:Name="WeatherTemperatureLabel"
+                                               Style="{StaticResource Body2Dark}"
+                                               VerticalOptions="Center"/>
+                                    </HorizontalStackLayout>
+                                </Grid>
                             </Grid>
                         </Border>
 

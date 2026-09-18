@@ -646,28 +646,23 @@ public partial class CardiMemberDetailPage : ContentPage
         if (member.MonitoringPaused)
             ResetPauseDurations();
 
+        // How closely this member is watched (M1-14). Recorded preference only for now — see
+        // AlertSensitivity — so it says what the family asked for, not what the pipeline does.
+        SensitivityLabel.Text = $"{member.AlertSensitivity.GetDisplayName()} alert sensitivity";
+
         // Same four-tier pipeline freshness as the dashboard (red / amber / blue / green). Hidden
         // while paused: collection is deliberately stopped, so a coloured dot would misreport a
         // pause as a connection gap. The paused banner above is the status in that case.
-        ConnectionStatusRow.IsVisible = !member.MonitoringPaused;
+        SyncStatusTap.IsVisible = !member.MonitoringPaused;
         var freshnessColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources[
             FreshnessColorKey(member.DataFreshness)];
         ConnectionStatusDot.Fill = freshnessColor;
-        // Same rule as the dashboard: the age is worth saying only once it has outlived the
-        // ten-minute pull cadence — see DataAge. Never-synced keeps its own line.
-        var ageWorthShowing = DataAge.IsWorthShowing(member.LastSyncedAt, DateTime.UtcNow);
-        var showAge = member.LastSyncedAt is null || ageWorthShowing;
-        LastContactLabel.IsVisible = showAge;
-        LastContactLabel.Text = member.LastSyncedAt is { } lastSynced
-            ? $"Updated {RelativeTime.Format(lastSynced)}"
-            : "Not synced yet";
-        SemanticProperties.SetDescription(
-            LastContactLabel, $"{member.DataFreshnessMessage}. {LastContactLabel.Text}");
 
-        // Exactly one node announces the freshness state. The label owns it while it is on screen;
-        // the row that holds the dot picks it up only once the label has gone.
+        // The dot is the whole of it on the card now, so it carries the state a screen reader
+        // would otherwise have read off the line that used to sit beside it, and a tap spells
+        // the same thing out on screen (OnSyncStatusTapped).
         SemanticProperties.SetDescription(
-            ConnectionStatusRow, showAge ? string.Empty : member.DataFreshnessMessage);
+            SyncStatusTap, $"{member.DataFreshnessMessage}. {LastSyncedSummary(member)}");
 
         // The digest has its own round trip (LoadDigestAsync). That trip now runs alongside this
         // one rather than behind it, but it still paints after this method has returned — it
@@ -1448,6 +1443,33 @@ public partial class CardiMemberDetailPage : ContentPage
         if (_member?.Weather is { } weather)
             await _popups.ShowWeatherAsync(weather);
     }
+
+    /// <summary>
+    /// The freshness dot's own explanation. The dot alone says "something about the data" in a
+    /// colour; this says which state it is and when the watch last heard from them, which is
+    /// what the line beside it used to carry before the corner took the job.
+    /// </summary>
+    private async void OnSyncStatusTapped(object? sender, TappedEventArgs e)
+    {
+        if (_member is not { } member)
+            return;
+
+        var message = string.IsNullOrWhiteSpace(member.DataFreshnessMessage)
+            ? LastSyncedSummary(member)
+            : $"{member.DataFreshnessMessage}\n\n{LastSyncedSummary(member)}";
+
+        await _popups.ShowInfoAsync(message, "Sync status");
+    }
+
+    /// <summary>
+    /// When the data last arrived, in both the forms a caregiver reads: how long ago, and the
+    /// clock time it happened at. Never-synced has no clock time to give.
+    /// </summary>
+    private static string LastSyncedSummary(CardiMemberDetailResponse member) =>
+        member.LastSyncedAt is { } lastSynced
+            ? $"Last synced {RelativeTime.Format(lastSynced)}, at "
+              + $"{DateTime.SpecifyKind(lastSynced, DateTimeKind.Utc).ToLocalTime():MMM d, h:mm tt}."
+            : "This CardiMember has not synced yet.";
 
     private async void OnManageDevicesTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync($"{DeviceManagementPage.Route}?memberId={_route.Id}");
