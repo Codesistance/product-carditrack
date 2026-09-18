@@ -33,10 +33,9 @@ public static class AdviseCadence
     {
         var now = AsUtc(utcNow);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, timeZone);
-        var localTime = TimeOnly.FromDateTime(localNow);
 
         if (quietHoursStart is { } start && quietHoursEnd is { } end
-            && QuietHours.Contains(start, end, localTime))
+            && QuietHours.Contains(start, end, TimeOnly.FromDateTime(localNow)))
             return false;
 
         if (lastGeneratedAtUtc is null || storedPromptVersion < currentPromptVersion)
@@ -58,53 +57,108 @@ public static class AdviseCadence
         if (lastDay < today)
             return true;
 
-        var candidateUtc = lastUtc + slot;
-        if (quietHoursStart is { } nextStart && quietHoursEnd is { } nextEnd)
-        {
-            var candidateLocal = TimeZoneInfo.ConvertTimeFromUtc(candidateUtc, timeZone);
-            if (QuietHours.Contains(nextStart, nextEnd, TimeOnly.FromDateTime(candidateLocal)))
-                candidateUtc = NextWakingUtc(candidateLocal, nextStart, nextEnd, timeZone);
-        }
+        var lastWaking = WakingElapsedSinceMidnight(
+            lastUtc, lastLocal, today, timeZone, quietHoursStart, quietHoursEnd);
+        var nextWaking = lastWaking + slot;
+        if (nextWaking >= waking)
+            return false;
 
+        var candidateLocal = today.ToDateTime(
+            WallClockFromWaking(nextWaking, quietHoursStart, quietHoursEnd));
+        var candidateUtc = LocalToUtc(candidateLocal, timeZone);
         if (now < candidateUtc)
             return false;
 
-        var origin = SlotOrigin(today, quietHoursStart, quietHoursEnd);
-        var lastOffset = lastLocal - origin;
-        if (lastOffset < TimeSpan.Zero)
-            lastOffset = TimeSpan.Zero;
-
-        var slotsUsed = (int)Math.Floor(lastOffset / slot) + 1;
+        var slotsUsed = (int)Math.Floor(lastWaking / slot) + 1;
         return slotsUsed < MaxPerLocalDay;
     }
 
     /// <summary>
-    /// The local instant the next slot is counted from on <paramref name="day"/>. Overnight
-    /// quiet (start after end) includes midnight, so the waking day opens at quiet-hours end.
-    /// A same-day window sits in the middle of the clock: origin stays local midnight so
-    /// writes before and after it share one five-slot budget instead of each looking like
-    /// the first write of the day.
+    /// Waking time from local midnight to <paramref name="lastLocal"/>, as UTC elapsed minus
+    /// quiet hours already passed. UTC elapsed keeps the repeated hour on a fall-back day
+    /// instead of counting <c>TimeOfDay</c> twice as the same clock face.
     /// </summary>
-    private static DateTime SlotOrigin(DateOnly day, TimeOnly? quietStart, TimeOnly? quietEnd)
+    private static TimeSpan WakingElapsedSinceMidnight(
+        DateTime lastUtc,
+        DateTime lastLocal,
+        DateOnly today,
+        TimeZoneInfo timeZone,
+        TimeOnly? quietStart,
+        TimeOnly? quietEnd)
     {
-        if (quietStart is { } start && quietEnd is { } end && start > end)
-            return day.ToDateTime(end);
+        var originUtc = LocalToUtc(today.ToDateTime(TimeOnly.MinValue), timeZone);
+        var elapsed = lastUtc - originUtc;
+        if (elapsed < TimeSpan.Zero)
+            elapsed = TimeSpan.Zero;
 
-        return day.ToDateTime(TimeOnly.MinValue);
+        if (quietStart is not { } start || quietEnd is not { } end)
+            return elapsed;
+
+        var waking = elapsed - QuietElapsedSinceMidnight(start, end, TimeOnly.FromDateTime(lastLocal));
+        return waking < TimeSpan.Zero ? TimeSpan.Zero : waking;
     }
 
     /// <summary>
-    /// The UTC instant the family is next awake after <paramref name="localInstant"/>, which
-    /// the caller has already placed inside the quiet window. Same-day windows end later
-    /// today; overnight windows that have started in the evening end tomorrow.
+    /// Quiet time from local midnight to <paramref name="at"/>, wrapping overnight when start
+    /// is after end. Same-day windows contribute nothing until <paramref name="at"/> reaches
+    /// start, then their full duration once it has passed end.
     /// </summary>
-    private static DateTime NextWakingUtc(
-        DateTime localInstant, TimeOnly quietStart, TimeOnly quietEnd, TimeZoneInfo timeZone)
+    private static TimeSpan QuietElapsedSinceMidnight(TimeOnly start, TimeOnly end, TimeOnly at)
     {
-        var day = DateOnly.FromDateTime(localInstant);
-        var time = TimeOnly.FromDateTime(localInstant);
-        var endDay = quietStart > quietEnd && time >= quietStart ? day.AddDays(1) : day;
-        return TimeZoneInfo.ConvertTimeToUtc(endDay.ToDateTime(quietEnd), timeZone);
+        if (start <= end)
+        {
+            if (at <= start)
+                return TimeSpan.Zero;
+            if (at >= end)
+                return QuietHours.Duration(start, end);
+            return at.ToTimeSpan() - start.ToTimeSpan();
+        }
+
+        var morning = at < end ? at.ToTimeSpan() : end.ToTimeSpan();
+        var evening = at <= start ? TimeSpan.Zero : at.ToTimeSpan() - start.ToTimeSpan();
+        return morning + evening;
+    }
+
+    /// <summary>
+    /// The wall-clock time at which <paramref name="wakingOffset"/> waking hours have elapsed
+    /// since local midnight, jumping over the quiet window.
+    /// </summary>
+    private static TimeOnly WallClockFromWaking(
+        TimeSpan wakingOffset, TimeOnly? quietStart, TimeOnly? quietEnd)
+    {
+        if (quietStart is not { } start || quietEnd is not { } end)
+            return TimeOnly.FromTimeSpan(ClampToDay(wakingOffset));
+
+        if (start <= end)
+        {
+            var morning = start.ToTimeSpan();
+            if (wakingOffset < morning)
+                return TimeOnly.FromTimeSpan(ClampToDay(wakingOffset));
+            return end.Add(wakingOffset - morning);
+        }
+
+        return end.Add(wakingOffset);
+    }
+
+    private static TimeSpan ClampToDay(TimeSpan value)
+    {
+        if (value < TimeSpan.Zero)
+            return TimeSpan.Zero;
+        var day = TimeSpan.FromDays(1);
+        return value >= day ? day - TimeSpan.FromTicks(1) : value;
+    }
+
+    /// <summary>
+    /// Local unspecified time as UTC. A spring-forward can delete the configured instant
+    /// (quiet-hours end at 02:30, a slot at 02:00); the first minute that exists is used so
+    /// the digest cannot throw and leave the candidate blocked for the rest of the day.
+    /// </summary>
+    private static DateTime LocalToUtc(DateTime local, TimeZoneInfo timeZone)
+    {
+        var value = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        while (timeZone.IsInvalidTime(value))
+            value = value.AddMinutes(1);
+        return TimeZoneInfo.ConvertTimeToUtc(value, timeZone);
     }
 
     private static DateTime AsUtc(DateTime value) =>

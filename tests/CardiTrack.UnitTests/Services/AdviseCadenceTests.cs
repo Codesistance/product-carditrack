@@ -96,7 +96,7 @@ public class AdviseCadenceTests
     {
         var napStart = new TimeOnly(12, 0);
         var napEnd = new TimeOnly(13, 0);
-        // last 08:00, 23h/5 = 4h36 → 12:36 inside the nap; 14:00 is awake and past 13:00.
+        // last 08:00, 23h/5 = 4h36 waking → 13:36 (the quiet hour is skipped, not waited out).
         Assert.False(AdviseCadence.IsDue(
             UtcAt(12, 30), UtcAt(8), Version, Version, napStart, napEnd, Utc));
         Assert.True(AdviseCadence.IsDue(
@@ -108,13 +108,49 @@ public class AdviseCadenceTests
     {
         var napStart = new TimeOnly(12, 0);
         var napEnd = new TimeOnly(13, 0);
-        // 00:00, 04:36, 09:12, 13:48, 18:24 — a sixth at 23:00 would exceed five.
+        // Waking timeline: 00:00, 04:36, 09:12, 14:48, 19:24 — a sixth would exceed five.
         Assert.True(AdviseCadence.IsDue(
-            UtcAt(13, 48), UtcAt(9, 12), Version, Version, napStart, napEnd, Utc));
+            UtcAt(14, 48), UtcAt(9, 12), Version, Version, napStart, napEnd, Utc));
         Assert.True(AdviseCadence.IsDue(
-            UtcAt(18, 24), UtcAt(13, 48), Version, Version, napStart, napEnd, Utc));
+            UtcAt(19, 24), UtcAt(14, 48), Version, Version, napStart, napEnd, Utc));
         Assert.False(AdviseCadence.IsDue(
-            UtcAt(23), UtcAt(18, 24), Version, Version, napStart, napEnd, Utc));
+            UtcAt(23), UtcAt(19, 24), Version, Version, napStart, napEnd, Utc));
+    }
+
+    [Fact]
+    public void LongSameDayQuiet_DoesNotSpendTheCapOnTheQuietInterval()
+    {
+        var quietStart = new TimeOnly(6, 0);
+        var quietEnd = new TimeOnly(18, 0);
+        // Waking 12h / 5 = 2h24. After 04:48 the next waking offset is 7h12 → 19:12, not a cap.
+        Assert.True(AdviseCadence.IsDue(
+            UtcAt(19, 12), UtcAt(4, 48), Version, Version, quietStart, quietEnd, Utc));
+        Assert.True(AdviseCadence.IsDue(
+            UtcAt(21, 36), UtcAt(19, 12), Version, Version, quietStart, quietEnd, Utc));
+        Assert.False(AdviseCadence.IsDue(
+            UtcAt(23, 59), UtcAt(21, 36), Version, Version, quietStart, quietEnd, Utc));
+    }
+
+    [Fact]
+    public void FallBackDay_DoesNotAdmitASixthWrite()
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        // 18:12 EST after the 2026-11-01 repeated hour; UTC elapsed from midnight is 19h12.
+        var last = new DateTime(2026, 11, 1, 23, 12, 0, DateTimeKind.Utc);
+        var now = new DateTime(2026, 11, 2, 4, 0, 0, DateTimeKind.Utc);
+        Assert.False(AdviseCadence.IsDue(now, last, Version, Version, null, null, zone));
+    }
+
+    [Fact]
+    public void SpringForward_DoesNotThrowWhenQuietHoursEndIsSkipped()
+    {
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        var quietStart = new TimeOnly(22, 0);
+        var quietEnd = new TimeOnly(2, 30);
+        // 2026-03-08 02:00–03:00 never occurs; 07:00 EDT is 11:00 UTC, last was yesterday.
+        var now = new DateTime(2026, 3, 8, 11, 0, 0, DateTimeKind.Utc);
+        var last = new DateTime(2026, 3, 7, 23, 0, 0, DateTimeKind.Utc);
+        Assert.True(AdviseCadence.IsDue(now, last, Version, Version, quietStart, quietEnd, zone));
     }
 
     [Fact]
