@@ -34,21 +34,54 @@
 
             <VerticalStackLayout Spacing="16">
 
-                <!-- The dot from the card, at popup scale: a soft disc of the tier's colour
-                     with the dot itself at its centre. -->
-                <Border x:Name="Badge"
-                        StrokeThickness="0"
-                        WidthRequest="56"
-                        HeightRequest="56"
-                        HorizontalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="28"/>
-                    </Border.StrokeShape>
-                    <Ellipse x:Name="BadgeDot"
-                             WidthRequest="18" HeightRequest="18"
-                             HorizontalOptions="Center"
-                             VerticalOptions="Center"/>
-                </Border>
+                <!-- The dot from the card at popup scale, with dismissal in the corner beside
+                     it: a soft disc of the tier's colour, the dot at its centre, and a small
+                     red mark whose top sits level with the disc's. -->
+                <Grid>
+                    <Border x:Name="Badge"
+                            StrokeThickness="0"
+                            WidthRequest="56"
+                            HeightRequest="56"
+                            HorizontalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="28"/>
+                        </Border.StrokeShape>
+                        <Ellipse x:Name="BadgeDot"
+                                 WidthRequest="18" HeightRequest="18"
+                                 HorizontalOptions="Center"
+                                 VerticalOptions="Center"/>
+                    </Border>
+
+                    <!-- The mark is 16 points; the transparent padding around it is what a
+                         finger actually lands on, the same trick the dot on the card uses.
+                         The negative margin keeps the box itself in the card's corner while
+                         that target overhangs the padding. -->
+                    <Grid x:Name="CloseHit"
+                          Padding="12"
+                          Margin="0,-12,-12,0"
+                          BackgroundColor="Transparent"
+                          HorizontalOptions="End"
+                          VerticalOptions="Start"
+                          SemanticProperties.Description="Close">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCloseTapped"/>
+                        </Grid.GestureRecognizers>
+                        <Border BackgroundColor="{StaticResource ErrorRed}"
+                                StrokeThickness="0"
+                                WidthRequest="16"
+                                HeightRequest="16">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="3"/>
+                            </Border.StrokeShape>
+                            <Label Text="✕"
+                                   TextColor="{StaticResource White}"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="9"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"/>
+                        </Border>
+                    </Grid>
+                </Grid>
 
                 <VerticalStackLayout Spacing="2">
                     <Label Text="Last synced"
@@ -81,23 +114,6 @@
                            LineBreakMode="WordWrap"/>
                 </Border>
 
-                <!-- Dismissal is a mark, not a sentence: nothing on this card is decided, so
-                     the word "Close" was the widest thing on it for no reason. Tapping the
-                     scrim closes it too (OnScrimTapped), as it does on every popup here. -->
-                <Button x:Name="CloseBtn"
-                        Text="✕"
-                        BackgroundColor="{StaticResource ErrorRed}"
-                        TextColor="{StaticResource White}"
-                        FontFamily="QuicksandSemiBold"
-                        FontSize="16"
-                        CornerRadius="6"
-                        WidthRequest="40"
-                        HeightRequest="40"
-                        Padding="0"
-                        HorizontalOptions="Center"
-                        Margin="0,4,0,0"
-                        SemanticProperties.Description="Close"
-                        Clicked="OnCloseClicked"/>
             </VerticalStackLayout>
         </Border>
     </Grid>

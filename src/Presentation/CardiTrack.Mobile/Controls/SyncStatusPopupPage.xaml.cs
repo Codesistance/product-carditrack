@@ -89,7 +89,7 @@ public partial class SyncStatusPopupPage : ContentPage
 
     private async void OnScrimTapped(object? sender, TappedEventArgs e) => await CloseAsync();
 
-    private async void OnCloseClicked(object? sender, EventArgs e) => await CloseAsync();
+    private async void OnCloseTapped(object? sender, TappedEventArgs e) => await CloseAsync();
 
     private async Task CloseAsync()
     {
