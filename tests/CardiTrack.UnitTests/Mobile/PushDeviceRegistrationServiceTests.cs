@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Notifications;
 using NSubstitute;
 
@@ -17,8 +18,17 @@ namespace CardiTrack.UnitTests.Mobile;
 public class PushDeviceRegistrationServiceTests
 {
     private readonly ICardiTrackApiClient _api = Substitute.For<ICardiTrackApiClient>();
+    private readonly ITokenStore _tokens = Substitute.For<ITokenStore>();
 
-    private Task<PushDeviceTokenResponse> RegisterAsync(PushDeviceRegistrationService sut) =>
+    private static AuthTokens Session(string accessToken) =>
+        new(accessToken, RefreshToken: null, IdToken: null, DateTimeOffset.UtcNow.AddHours(1));
+
+    public PushDeviceRegistrationServiceTests() =>
+        _tokens.GetAsync().Returns(Session("the-signed-in-session"));
+
+    private PushDeviceRegistrationService CreateSut() => new(_api, _tokens);
+
+    private Task<PushDeviceTokenResponse?> RegisterAsync(PushDeviceRegistrationService sut) =>
         sut.RegisterAsync(
             "install-a", DevicePlatform.Android, appVersion: "1.0+1", token: "fcm-token",
             OsAuthorizationStatus.Granted, safetyChannelEnabled: true);
@@ -45,7 +55,7 @@ public class PushDeviceRegistrationServiceTests
                 return Task.CompletedTask;
             });
 
-        var sut = new PushDeviceRegistrationService(_api);
+        var sut = CreateSut();
 
         var registering = RegisterAsync(sut);
         await registrationReached.Task;
@@ -70,11 +80,56 @@ public class PushDeviceRegistrationServiceTests
         _api.RegisterPushDeviceAsync(Arg.Any<RegisterPushDeviceRequest>(), Arg.Any<CancellationToken>())
             .Returns<PushDeviceTokenResponse>(_ => throw new HttpRequestException("offline"));
 
-        var sut = new PushDeviceRegistrationService(_api);
+        var sut = CreateSut();
 
         await Assert.ThrowsAsync<HttpRequestException>(() => RegisterAsync(sut));
         await sut.UnregisterAsync("install-a").WaitAsync(TimeSpan.FromSeconds(5));
 
         await _api.Received(1).UnregisterPushDeviceAsync("install-a", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ARegistrationBelongingToAReleasedSessionIsDropped()
+    {
+        // Ordering alone does not settle this one. A registration can be waiting on the gate
+        // while the sign-out's DELETE goes out, and still be inside the session when it acquires
+        // it — SignOutAsync clears the token store only after the release returns. Posting then
+        // would put the departing caregiver's row back for the next person holding the phone.
+        var sut = CreateSut();
+
+        await sut.UnregisterAsync("install-a");
+        var result = await RegisterAsync(sut);
+
+        Assert.Null(result);
+        await _api.DidNotReceiveWithAnyArgs().RegisterPushDeviceAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task ARegistrationForTheNextSessionIsSentNormally()
+    {
+        // Nothing has to re-arm anything: the next sign-in is a different session, so the record
+        // of the released one simply stops matching.
+        _api.RegisterPushDeviceAsync(Arg.Any<RegisterPushDeviceRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new PushDeviceTokenResponse());
+
+        var sut = CreateSut();
+        await sut.UnregisterAsync("install-a");
+
+        _tokens.GetAsync().Returns(Session("the-next-caregivers-session"));
+        var result = await RegisterAsync(sut);
+
+        Assert.NotNull(result);
+        await _api.Received(1).RegisterPushDeviceAsync(
+            Arg.Any<RegisterPushDeviceRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ARegistrationWithNoSessionLeftIsDropped()
+    {
+        // The permission prompt and token fetch can outlast the session that asked for them.
+        _tokens.GetAsync().Returns((AuthTokens?)null);
+
+        Assert.Null(await RegisterAsync(CreateSut()));
+        await _api.DidNotReceiveWithAnyArgs().RegisterPushDeviceAsync(default!, default);
     }
 }

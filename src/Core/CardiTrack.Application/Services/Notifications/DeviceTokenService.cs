@@ -33,14 +33,25 @@ public interface IDeviceTokenService
 /// than logged here because this layer writes no logs; the API records it, and without that
 /// record a caregiver losing push to somebody else's install leaves no trace at all.
 /// </param>
-/// <param name="ReachabilityReconciled">
-/// Whether both users' <c>PUSH_UNREACHABLE</c> state was re-evaluated after the claim. False
-/// means the displaced caregiver has not been told they are unreachable, and is worth a line in
-/// the log — it is not worth failing the registration over, because the claim is already
-/// committed and a failed call would cost the record of the displacement itself.
+/// <param name="CallerReachabilityReconciled">
+/// Whether the caller's own <c>PUSH_UNREACHABLE</c> state was re-evaluated after the claim.
+/// </param>
+/// <param name="DisplacedReachabilityReconciled">
+/// Whether the displaced user's was — true when there was nobody to displace. False means that
+/// caregiver has not been told they are unreachable, which is the one of the two nothing else
+/// would surface: the caller's client retries a registration it is unhappy with, and theirs has
+/// no idea anything happened.
+///
+/// Reported per user rather than as one flag, because one line saying "they were not told" when
+/// it was in fact the caller's own that failed is worse than no line: it sends whoever reads it
+/// after the wrong person. Neither is worth failing the registration over — the claim is already
+/// committed, and a failed call would cost the record of the displacement itself.
 /// </param>
 public readonly record struct PushDeviceRegistration(
-    PushDeviceToken Token, Guid? DisplacedUserId, bool ReachabilityReconciled);
+    PushDeviceToken Token,
+    Guid? DisplacedUserId,
+    bool CallerReachabilityReconciled,
+    bool DisplacedReachabilityReconciled);
 
 /// <summary>
 /// Upserts a device's push token by fingerprint (§7.2 C2), records OS reachability, and arms
@@ -143,24 +154,30 @@ public class DeviceTokenService : IDeviceTokenService
         //
         // Reported rather than swallowed: the API logs the reassignment either way, and says so
         // when this part did not finish.
-        var reconciled = await TryReconcileAsync(userId, registration.DisplacedUserId, ct);
+        // Independently, and the displaced user first: one failing must not take the other's
+        // with it, and they are the one nothing else would catch up on.
+        var displacedReconciled =
+            registration.DisplacedUserId is { } displaced && displaced != userId
+                ? await TryReconcileAsync(displaced, ct)
+                : true;
 
-        return registration with { ReachabilityReconciled = reconciled };
+        var callerReconciled = await TryReconcileAsync(userId, ct);
+
+        return registration with
+        {
+            CallerReachabilityReconciled = callerReconciled,
+            DisplacedReachabilityReconciled = displacedReconciled,
+        };
     }
 
     /// <summary>
-    /// Re-evaluates <c>PUSH_UNREACHABLE</c> for the caller and, when the token was taken from
-    /// somebody, for them too — the displaced user first, since the caller has a client that
-    /// retries a failed registration where they have nothing that would notice.
+    /// Re-evaluates <c>PUSH_UNREACHABLE</c> for one user, reporting rather than throwing.
     /// </summary>
-    /// <returns>False if any of it did not complete, including on cancellation.</returns>
-    private async Task<bool> TryReconcileAsync(Guid userId, Guid? displacedUserId, CancellationToken ct)
+    /// <returns>False if it did not complete, including on cancellation.</returns>
+    private async Task<bool> TryReconcileAsync(Guid userId, CancellationToken ct)
     {
         try
         {
-            if (displacedUserId is { } displaced && displaced != userId)
-                await ReconcileReachabilityAsync(displaced, ct);
-
             await ReconcileReachabilityAsync(userId, ct);
             return true;
         }
@@ -247,7 +264,9 @@ public class DeviceTokenService : IDeviceTokenService
             await _unitOfWork.CommitTransactionAsync();
 
             // Reconciliation is the caller's to run, once, after both attempts have settled.
-            return new PushDeviceRegistration(entity, displacedUserId, ReachabilityReconciled: false);
+            return new PushDeviceRegistration(
+                entity, displacedUserId,
+                CallerReachabilityReconciled: false, DisplacedReachabilityReconciled: false);
         }
         catch
         {

@@ -245,7 +245,7 @@ public class NotificationsController : BaseApiController
 
         var loggableDeviceId = RequestIdentityLog.RecordDeviceId(HttpContext, request.DeviceId);
 
-        var (token, displacedUserId, reachabilityReconciled) = await _deviceTokens.RegisterAsync(
+        var (token, displacedUserId, callerReconciled, displacedReconciled) = await _deviceTokens.RegisterAsync(
             userId, request.DeviceId, request.Platform, request.AppVersion, request.Token,
             request.OsAuthorizationStatus, request.SafetyChannelEnabled, ct);
 
@@ -266,11 +266,21 @@ public class NotificationsController : BaseApiController
             // Their PUSH_UNREACHABLE has not been armed, so nothing has told them they are
             // unreachable until they next open their own inbox. Worth its own line: this pair
             // read together is the whole of what a caregiver would report as "it went quiet".
-            if (!reachabilityReconciled)
+            // Named for the displaced user specifically — the caller's own reconciliation
+            // failing is a different line below, and reporting either as the other would send
+            // whoever reads it after the wrong person.
+            if (!displacedReconciled)
                 Logger.LogWarning(
                     "Reachability was not reconciled after the reassignment; user {DisplacedUserId} has not been told they are unreachable.",
                     displaced);
         }
+
+        // The caller's own, which their next registration re-runs — the client retries a
+        // foreground heartbeat it did not like. Information rather than warning for that reason.
+        if (!callerReconciled)
+            Logger.LogInformation(
+                "Reachability was not reconciled for user {UserId} after registering device {DeviceId}.",
+                userId, loggableDeviceId);
 
         return Success(new PushDeviceTokenResponse
         {

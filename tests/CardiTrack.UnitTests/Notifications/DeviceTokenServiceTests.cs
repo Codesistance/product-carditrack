@@ -234,7 +234,7 @@ public class DeviceTokenServiceTests
         var registration = await RegisterAsync(arriving, "device-b");
 
         Assert.Equal(previous, registration.DisplacedUserId);
-        Assert.False(registration.ReachabilityReconciled);
+        Assert.False(registration.DisplacedReachabilityReconciled);
         await _unitOfWork.Received(1).CommitTransactionAsync();
     }
 
@@ -250,7 +250,34 @@ public class DeviceTokenServiceTests
 
         var registration = await RegisterAsync(user, "device-a");
 
-        Assert.True(registration.ReachabilityReconciled);
+        Assert.True(registration.CallerReachabilityReconciled);
+
+        // True with nobody displaced: there was nothing to reconcile for anyone else, and
+        // reporting that as a failure would put a warning on every ordinary registration.
+        Assert.True(registration.DisplacedReachabilityReconciled);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenOnlyTheDisplacedUsersReconciliationFails_StillReconcilesTheCaller()
+    {
+        // One failing must not take the other's with it, and the two must not be reported as one
+        // flag: a line saying the displaced caregiver was not told, when it was the caller's own
+        // that failed, sends whoever reads it after the wrong person.
+        var arriving = Guid.NewGuid();
+        var previous = Guid.NewGuid();
+
+        _tokens.GetByUserAndDeviceAsync(arriving, "device-b", Arg.Any<CancellationToken>())
+            .Returns((PushDeviceToken?)null);
+        _tokens.GetByFingerprintAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(HolderRow(previous, "device-a"));
+        _gapResolver.ResolveForUserAsync(previous, Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("only theirs fails"));
+
+        var registration = await RegisterAsync(arriving, "device-b");
+
+        Assert.False(registration.DisplacedReachabilityReconciled);
+        Assert.True(registration.CallerReachabilityReconciled);
+        await _gapResolver.Received(1).ResolveForUserAsync(arriving, Arg.Any<CancellationToken>());
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
