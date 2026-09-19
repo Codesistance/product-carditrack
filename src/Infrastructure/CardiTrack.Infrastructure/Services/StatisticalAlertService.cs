@@ -136,7 +136,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         }
 
         _logger.LogInformation(
-            "Statistical judgement pass complete. Candidates: {Candidates}, alerts raised: {Raised}.",
+            "Statistical judgement pass complete. Members evaluated: {MembersEvaluated}, alerts raised: {Raised}.",
             memberIds.Count, raised);
         return raised;
     }
