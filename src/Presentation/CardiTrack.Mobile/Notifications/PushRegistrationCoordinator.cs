@@ -109,6 +109,13 @@ public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposabl
             if (string.IsNullOrWhiteSpace(token))
                 return;
 
+            // The permission prompt and the token fetch above can outlast the session that asked
+            // for them. Registering after a sign-out would put the departed caregiver back on
+            // this handset — the same leak UnregisterAsync exists to close, arriving from the
+            // other direction. Same check, and the same reason, as RaiseDestinationIfSignedInAsync.
+            if (await _tokens.GetAsync() is null)
+                return;
+
             var deviceId = await GetOrCreateDeviceIdAsync();
 
             await _registration.RegisterAsync(
@@ -123,6 +130,36 @@ public sealed class PushRegistrationCoordinator : IPendingNavigation, IDisposabl
         catch (Exception ex)
         {
             Log.Warning(ex, "Push registration failed — will retry on next foreground.");
+        }
+    }
+
+    /// <summary>
+    /// Gives up this install's push registration, for the caregiver signing out of it.
+    /// </summary>
+    /// <remarks>
+    /// Must be awaited *before* the access token is cleared — the call is authenticated, and the
+    /// server has no other way to know whose registration to release.
+    ///
+    /// Without this the outgoing caregiver stays reachable at this handset indefinitely: the row
+    /// keeps its OS grant, so the dispatcher goes on sending, and their health and Safety alerts
+    /// land on a phone somebody else is now holding. The device id is deliberately *not* cleared
+    /// — it names the install, not the person, and the next caregiver to sign in here must upsert
+    /// the same row rather than accumulate a second one.
+    ///
+    /// Failure is swallowed, like registration's. Sign-out is the caregiver's own instruction and
+    /// must complete offline; a registration that outlives its session is closed from the other
+    /// end anyway, by the next sign-in on this install claiming the token (see
+    /// <c>DeviceTokenService.RegisterAsync</c>) or by the liveness sweep disabling it.
+    /// </remarks>
+    public async Task UnregisterAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await _registration.UnregisterAsync(await GetOrCreateDeviceIdAsync(), ct);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Push unregistration failed — sign-out continues.");
         }
     }
 

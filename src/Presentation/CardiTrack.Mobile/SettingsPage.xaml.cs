@@ -5,6 +5,9 @@ using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Onboarding;
 using CardiTrack.Mobile.Services;
 using Serilog;
+#if ANDROID || IOS
+using CardiTrack.Mobile.Notifications;
+#endif
 // CardiTrack.Application (the DTO assembly's root namespace) shadows MAUI's Application in
 // any file importing it, so the control type is aliased rather than qualified at each use.
 using MauiApplication = Microsoft.Maui.Controls.Application;
@@ -194,6 +197,11 @@ public partial class SettingsPage : ContentPage
         DeleteAccountBtn.IsEnabled = false;
         try
         {
+            // No push release on this path, unlike the ordinary sign-out. The request itself
+            // gives up this account's registrations server-side (UserService.RequestDeletionAsync),
+            // which is where it belongs: the request can come from a second device, and a
+            // best-effort call from this one would leave a live token behind exactly when it
+            // failed. After the request PendingDeletionGateMiddleware would refuse it anyway.
             var status = await _api.RequestAccountDeletionAsync();
 
             // Signed out, then told — in that order, so the message is the last thing on screen
@@ -255,6 +263,8 @@ public partial class SettingsPage : ContentPage
         // one step throwing must not stop the rest, or a token or a cached reading survives on a
         // phone whose owner has just asked for all of it to go. An ordinary sign-out can afford to
         // surface the failure; this one cannot afford to stop.
+        // No push release here either — see OnDeleteAccountClicked: the deletion request has
+        // already given up this account's registrations, server-side.
         await TryAsync(() => _authService.SignOutAsync(), "sign-out");
         Try(() => Preferences.Default.Remove("PrimaryCardiMemberId"), "primary member");
         Try(() => Preferences.Default.Remove("VerifyEmailNudgeDismissed"), "verify-email nudge");
@@ -267,6 +277,18 @@ public partial class SettingsPage : ContentPage
         // load anything is the worst of the available outcomes.
         WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
     }
+
+    /// <summary>
+    /// Hands this install's push registration back to the server, so the caregiver leaving stops
+    /// being reachable on a phone the next one will be holding. A no-op off Android and iOS,
+    /// where there is no push registration to give up.
+    /// </summary>
+    private static Task ReleasePushRegistrationAsync() =>
+#if ANDROID || IOS
+        ServiceHelper.GetRequiredService<PushRegistrationCoordinator>().UnregisterAsync();
+#else
+        Task.CompletedTask;
+#endif
 
     private void Try(Action step, string what)
     {
@@ -562,6 +584,9 @@ public partial class SettingsPage : ContentPage
         SignOutBtn.IsEnabled = false;
         try
         {
+            // Before the session goes: the call is authenticated, and after SignOutAsync there is
+            // no token left to make it with.
+            await ReleasePushRegistrationAsync();
             await _authService.SignOutAsync();
             Preferences.Default.Remove("PrimaryCardiMemberId");
             Preferences.Default.Remove("VerifyEmailNudgeDismissed");

@@ -123,6 +123,8 @@ Registers or upserts a device's FCM token for the authenticated user, and double
 
 Never carries the token itself in the response — it is Tier 1 data ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §2), and the client already knows its own token.
 
+**One token, one install.** FCM and APNs each issue a token per app installation, and the registration takes the token off whichever install held it last — deleting that row, whether it was live or already disabled. The same token does reach the API under a second install occasionally: a cloned emulator image, an Android device-to-device transfer, a restore that carried the Firebase installation across. There is no arrangement in which both stay reachable, because the provider delivers a given token to one install only, so the alternative to taking it is delivering the previous caregiver's health alerts to this one's screen. The displaced user is left unreachable, which `PUSH_UNREACHABLE` raises for them, and their install recovers on its own once the provider issues it a token of its own. The reassignment is logged as a warning on the API.
+
 ### DELETE `/api/v1/notifications/devices`
 
 Unregisters a device — call on logout or when the user disables push in-app.

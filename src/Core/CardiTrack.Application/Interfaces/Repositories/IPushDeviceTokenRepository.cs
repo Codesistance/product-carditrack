@@ -5,7 +5,11 @@ namespace CardiTrack.Application.Interfaces.Repositories;
 
 public interface IPushDeviceTokenRepository : IRepository<PushDeviceToken>
 {
-    /// <summary>The upsert/lookup key — ciphertext is non-deterministic, so lookups go by fingerprint, never the token itself.</summary>
+    /// <summary>
+    /// Whoever currently holds this token, across every user and install — ciphertext is
+    /// non-deterministic, so lookups go by fingerprint, never the token itself. Registration uses
+    /// it to take the token off a stale install rather than collide with the unique index on it.
+    /// </summary>
     Task<PushDeviceToken?> GetByFingerprintAsync(string tokenFingerprint, CancellationToken ct = default);
 
     Task<PushDeviceToken?> GetByUserAndDeviceAsync(Guid userId, string deviceId, CancellationToken ct = default);

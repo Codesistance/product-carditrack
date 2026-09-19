@@ -517,7 +517,7 @@ entity.Token = request.PushToken;
 // SECURED — the pattern DeviceConnection OAuth tokens already use (IEncryptionService, AES-256-GCM)
 entity.Token            = _encryption.Encrypt(request.PushToken);
 entity.TokenFingerprint = Convert.ToHexString(
-    SHA256.HashData(Encoding.UTF8.GetBytes(request.PushToken)));   // upsert/lookup key
+    SHA256.HashData(Encoding.UTF8.GetBytes(request.PushToken)));   // lookup + claim key
 ```
 
 Disabled tokens are **hard-deleted at 30 days**, not soft-retained for 180; `PushDeviceToken` is
@@ -642,11 +642,15 @@ NotificationDelivery                    -- transactional outbox; BOTH producers 
 PushDeviceToken                         -- Tier 1 data (§7.2 C2)
 ├── UserId, DeviceId, Platform (Ios|Android), AppVersion
 ├── Token            string             -- ENCRYPTED, AES-256-GCM via IEncryptionService
-├── TokenFingerprint string(64)         -- SHA-256 hex; upsert/lookup key, since the
+├── TokenFingerprint string(64)         -- SHA-256 hex; the lookup key, since the
 │                                          ciphertext is non-deterministic
 ├── OsAuthorizationStatus enum, SafetyChannelEnabled bool   -- §4 reachability
 ├── LastSeenDate, LastAckDate, DisabledDate, DisabledReason
 └── UNIQUE(UserId, DeviceId), UNIQUE(TokenFingerprint)
+    -- the first is the upsert key: one row per install, and a token rotation on that
+    -- install updates it rather than adding a second. The second says one token belongs
+    -- to one install, which is what the provider itself guarantees — registration takes
+    -- the token off any other row holding it (live or disabled) rather than colliding.
 
 NotificationPreference                  -- per user
 ├── UserId UNIQUE
@@ -1102,8 +1106,10 @@ and takes the safety alerts down with it.
 - **Security controls** (§7.2), each with a negative test:
   - **C1** — persisting a notification with a name in `TemplateData` fails; the rendered API response
     still carries the name, proving resolution happens at read time.
-  - **C2** — the token column is unreadable without `IEncryptionService`; upsert matches on
-    fingerprint; a disabled token is gone at 30 days, not soft-flagged.
+  - **C2** — the token column is unreadable without `IEncryptionService`; the upsert matches on
+    `(UserId, DeviceId)` and takes the token from any other row holding its fingerprint, so a
+    second install presenting the same token registers rather than colliding; a disabled token
+    is gone at 30 days, not soft-flagged.
   - **C3** — an ack with a forged, expired, replayed, or other-device `ackToken` returns 404 **and
     does not stop escalation**. This is the test that matters most in the suite: it is the one whose
     absence looks exactly like success.

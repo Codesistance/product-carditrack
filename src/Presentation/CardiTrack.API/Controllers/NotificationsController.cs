@@ -1,3 +1,4 @@
+using CardiTrack.API.Infrastructure.Logging;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -242,9 +243,44 @@ public class NotificationsController : BaseApiController
         if (string.IsNullOrWhiteSpace(request.DeviceId) || string.IsNullOrWhiteSpace(request.Token))
             return Error("A device id and token are both required.");
 
-        var token = await _deviceTokens.RegisterAsync(
+        var loggableDeviceId = RequestIdentityLog.RecordDeviceId(HttpContext, request.DeviceId);
+
+        var (token, displacedUserId, callerReconciled, displacedReconciled) = await _deviceTokens.RegisterAsync(
             userId, request.DeviceId, request.Platform, request.AppVersion, request.Token,
             request.OsAuthorizationStatus, request.SafetyChannelEnabled, ct);
+
+        // The one record that a caregiver just lost push to somebody else's install. Nothing
+        // else in the system says so: their rows are gone, and the app that took the token has
+        // no idea it did. Warning rather than Information — outside a wiped emulator or a
+        // restored backup this should not happen, and a run of them is worth looking at.
+        //
+        // Written before anything else can fail, and the service makes sure nothing after the
+        // claim throws: a 500 here would be retried by the client, the retry would find this
+        // caller already holding the token, and the displacement would never be recorded at all.
+        if (displacedUserId is { } displaced && displaced != userId)
+        {
+            Logger.LogWarning(
+                "Push token reassigned to user {UserId} on device {DeviceId}; user {DisplacedUserId} lost their registration for it.",
+                userId, loggableDeviceId, displaced);
+
+            // Their PUSH_UNREACHABLE has not been armed, so nothing has told them they are
+            // unreachable until they next open their own inbox. Worth its own line: this pair
+            // read together is the whole of what a caregiver would report as "it went quiet".
+            // Named for the displaced user specifically — the caller's own reconciliation
+            // failing is a different line below, and reporting either as the other would send
+            // whoever reads it after the wrong person.
+            if (!displacedReconciled)
+                Logger.LogWarning(
+                    "Reachability was not reconciled after the reassignment; user {DisplacedUserId} has not been told they are unreachable.",
+                    displaced);
+        }
+
+        // The caller's own, which their next registration re-runs — the client retries a
+        // foreground heartbeat it did not like. Information rather than warning for that reason.
+        if (!callerReconciled)
+            Logger.LogInformation(
+                "Reachability was not reconciled for user {UserId} after registering device {DeviceId}.",
+                userId, loggableDeviceId);
 
         return Success(new PushDeviceTokenResponse
         {
@@ -264,6 +300,8 @@ public class NotificationsController : BaseApiController
     {
         if (!TryGetUserId(out var userId, out var denied))
             return denied!;
+
+        RequestIdentityLog.RecordDeviceId(HttpContext, request.DeviceId);
 
         await _deviceTokens.UnregisterAsync(userId, request.DeviceId, ct);
         return Success("Device unregistered.");

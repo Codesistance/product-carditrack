@@ -54,7 +54,9 @@ public class PushDeviceTokenConfiguration : IEntityTypeConfiguration<PushDeviceT
         // One row per install; re-registering the same device upserts rather than duplicates.
         builder.HasIndex(t => new { t.UserId, t.DeviceId }).IsUnique();
 
-        // The upsert/lookup key — ciphertext is non-deterministic, so lookups go by fingerprint.
+        // One token belongs to one installation, which is what the provider itself guarantees.
+        // Registration takes the token off any other row holding it rather than colliding here —
+        // see DeviceTokenService.RegisterAsync for why taking it is the only resolution available.
         builder.HasIndex(t => t.TokenFingerprint).IsUnique();
 
         // 30-day hard-delete sweep (§7.2 C2 / §13).

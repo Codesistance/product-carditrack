@@ -171,7 +171,50 @@ public class UserService : IUserService
 
         // Null means the account went between the two reads. Inventing a request for a row that no
         // longer exists would have the caller report a deletion scheduled against nobody.
-        return stored?.DeletionRequestedAtUtc is { } persisted ? StatusOf(persisted) : null;
+        if (stored?.DeletionRequestedAtUtc is not { } persisted)
+            return null;
+
+        await ReleasePushRegistrationsAsync(stored.Id);
+
+        return StatusOf(persisted);
+    }
+
+    /// <summary>
+    /// Gives up every push registration this account holds, as part of asking to be deleted.
+    /// </summary>
+    /// <remarks>
+    /// Done here rather than left to the client, because the client cannot be relied on to
+    /// manage it: the request can come from a second device, the app's own release is
+    /// best-effort and swallows its failures, and after this call
+    /// <c>PendingDeletionGateMiddleware</c> refuses the unregister endpoint anyway.
+    ///
+    /// It matters because a live token stays deliverable. Recipients are resolved on
+    /// <c>IsActive</c> and <c>ReceiveAlerts</c> and never on <c>DeletionRequestedAtUtc</c>
+    /// (see issue #1144, which is about whether that ought to change), so for the thirty days
+    /// the request can still be cancelled this account would go on being pushed to — a monitored
+    /// person's health and Safety notifications, on a phone whose owner has asked to be erased
+    /// and may well have handed it on.
+    ///
+    /// Disabled rather than deleted: the 30-day sweep removes them, and cancelling within the
+    /// window restores push by itself — the app re-registers on its next launch, and the upsert
+    /// keys on (UserId, DeviceId), so the same row comes back live.
+    /// </remarks>
+    private async Task ReleasePushRegistrationsAsync(Guid userId)
+    {
+        var live = await _unitOfWork.PushDeviceTokens.FindAsync(
+            token => token.UserId == userId && token.DisabledDate == null);
+
+        var released = live.ToList();
+        if (released.Count == 0)
+            return;
+
+        foreach (var token in released)
+        {
+            Notifications.DeviceTokenService.Disable(token, "Account deletion requested");
+            _unitOfWork.PushDeviceTokens.Update(token);
+        }
+
+        await _unitOfWork.SaveChangesAsync();
     }
 
     public async Task<AccountDeletionStatusResponse?> CancelDeletionAsync(string auth0UserId)

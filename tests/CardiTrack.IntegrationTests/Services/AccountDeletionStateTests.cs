@@ -174,6 +174,84 @@ public class AccountDeletionStateTests : IAsyncLifetime
         Assert.Null(await WithService(s => s.CancelDeletionAsync(stranger)));
     }
 
+    /// <summary>
+    /// Asking to be deleted gives up this account's push registrations, server-side.
+    /// </summary>
+    /// <remarks>
+    /// The client releases its own before making the request, but it cannot be relied on for
+    /// this: the request can come from a second device, the app's release is best-effort, and
+    /// once the request is recorded the gate refuses the unregister endpoint anyway. A token left
+    /// live stays deliverable — recipients are resolved on IsActive and ReceiveAlerts, never on
+    /// DeletionRequestedAtUtc (issue #1144) — so a monitored person's alerts would go on reaching
+    /// a phone whose owner asked to be erased, for the whole 30 days.
+    /// </remarks>
+    [Fact]
+    public async Task Requesting_GivesUpThePushRegistrations()
+    {
+        var auth0Id = await SeedUserAsync();
+        var userId = await UserIdAsync(auth0Id);
+        await SeedPushTokenAsync(userId);
+
+        await WithService(s => s.RequestDeletionAsync(auth0Id));
+
+        using var scope = _services.CreateScope();
+        var token = await scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>()
+            .Set<PushDeviceToken>().AsNoTracking().SingleAsync(t => t.UserId == userId);
+
+        Assert.NotNull(token.DisabledDate);
+        Assert.Equal("Account deletion requested", token.DisabledReason);
+    }
+
+    /// <summary>
+    /// A row already disabled — by a sign-out, or by the client's own release moments earlier —
+    /// keeps the reason it was disabled for, and its place in the 30-day sweep.
+    /// </summary>
+    [Fact]
+    public async Task Requesting_LeavesAnAlreadyDisabledRegistrationAlone()
+    {
+        var auth0Id = await SeedUserAsync();
+        var userId = await UserIdAsync(auth0Id);
+        var disabledAt = DateTime.UtcNow.AddDays(-2);
+        await SeedPushTokenAsync(userId, disabledAt, "Unregistered by client");
+
+        await WithService(s => s.RequestDeletionAsync(auth0Id));
+
+        using var scope = _services.CreateScope();
+        var token = await scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>()
+            .Set<PushDeviceToken>().AsNoTracking().SingleAsync(t => t.UserId == userId);
+
+        Assert.Equal("Unregistered by client", token.DisabledReason);
+        Assert.Equal(disabledAt, token.DisabledDate!.Value, TimeSpan.FromSeconds(1));
+    }
+
+    private async Task<Guid> UserIdAsync(string auth0Id)
+    {
+        using var scope = _services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>()
+            .Users.AsNoTracking().Where(u => u.Auth0UserId == auth0Id).Select(u => u.Id).SingleAsync();
+    }
+
+    private async Task SeedPushTokenAsync(
+        Guid userId, DateTime? disabledDate = null, string? disabledReason = null)
+    {
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        db.Add(new PushDeviceToken
+        {
+            UserId = userId,
+            DeviceId = $"install-{Guid.NewGuid():N}",
+            Platform = DevicePlatform.Android,
+            AppVersion = "1.0+1",
+            Token = "ciphertext",
+            TokenFingerprint = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
+            OsAuthorizationStatus = OsAuthorizationStatus.Granted,
+            LastSeenDate = DateTime.UtcNow,
+            DisabledDate = disabledDate,
+            DisabledReason = disabledReason,
+        });
+        await db.SaveChangesAsync();
+    }
+
     private async Task<T> WithService<T>(Func<UserService, Task<T>> act)
     {
         using var scope = _services.CreateScope();
