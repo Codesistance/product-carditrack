@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 
 namespace CardiTrack.Mobile.Services;
@@ -9,7 +10,8 @@ public sealed record ExportCollected(ReportFile? File, string? Failure);
 
 /// <summary>
 /// The half of an export that is the same whatever was exported: wait for the queued report,
-/// download it, put it in the cache directory, and hand it to the OS.
+/// download it, and put it where the caregiver asked — kept on this phone, or handed to another
+/// app.
 /// </summary>
 /// <remarks>
 /// Split out when the chat transcript became the second thing a caregiver can export. The consent
@@ -25,8 +27,27 @@ public interface IExportFileDelivery
     /// </summary>
     Task<ExportCollected> CollectAsync(string reportId, CancellationToken ct);
 
-    /// <summary>Writes the file where the share sheet can reach it and offers it to the OS.</summary>
+    /// <summary>
+    /// Asks the caregiver where the finished file should go and puts it there. Dismissing the
+    /// question leaves the file in the cache, which the next export sweeps.
+    /// </summary>
     Task OfferAsync(ReportFile file, CancellationToken ct);
+
+    /// <summary>
+    /// Keeps the file on this phone and tells the caregiver where it landed, falling back to
+    /// <see cref="ShareAsync"/> on their say-so if it could not be kept. For a surface that asks
+    /// the question in its own layout rather than through <see cref="OfferAsync"/>'s popup.
+    /// </summary>
+    Task SaveAsync(ReportFile file, CancellationToken ct);
+
+    /// <summary>Hands the file to the system share sheet.</summary>
+    Task ShareAsync(ReportFile file, CancellationToken ct);
+
+    /// <summary>
+    /// Whether this platform can keep a file somewhere the caregiver would find it again. False
+    /// means a surface should not offer Save at all — see <c>IExportFileSaver</c>.
+    /// </summary>
+    bool CanSave { get; }
 
     /// <summary>
     /// Drops earlier exports from the cache before a new one is written. A named health record
@@ -47,11 +68,13 @@ public sealed class ExportFileDelivery : IExportFileDelivery
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly IExportFileSaver _saver;
 
-    public ExportFileDelivery(ICardiTrackApiClient api, IPopupService popups)
+    public ExportFileDelivery(ICardiTrackApiClient api, IPopupService popups, IExportFileSaver saver)
     {
         _api = api;
         _popups = popups;
+        _saver = saver;
     }
 
     public async Task<ExportCollected> CollectAsync(string reportId, CancellationToken ct)
@@ -66,45 +89,59 @@ public sealed class ExportFileDelivery : IExportFileDelivery
         return new ExportCollected(await _api.DownloadReportAsync(reportId, ct), null);
     }
 
+    public bool CanSave => _saver.IsSupported;
+
     public async Task OfferAsync(ReportFile file, CancellationToken ct)
     {
+        var chosen = await _popups.ChooseExportDeliveryAsync(
+            file.FileName, _saver.IsSupported ? _saver.PlaceName : null);
+        if (chosen is null || ct.IsCancellationRequested)
+            return;
+
+        if (chosen == ExportDelivery.Share)
+            await ShareAsync(file, ct);
+        else
+            await SaveAsync(file, ct);
+    }
+
+    public async Task SaveAsync(ReportFile file, CancellationToken ct)
+    {
+        var saved = await _saver.SaveAsync(file, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        if (saved is { Ok: true, Where: { } where })
+        {
+            await _popups.ShowInfoAsync($"{file.FileName} is in {where}.", "Saved to this phone");
+            return;
+        }
+
+        // The save failed — a full disk, a revoked permission, a platform that moved. The
+        // caregiver asked for this file, so the sheet is offered rather than the export being
+        // lost to an apology: it reaches the same Files app by a longer road.
+        var share = await _popups.ConfirmWarningAsync(
+            "We couldn't keep it on this phone. You can still send it somewhere from here.",
+            "Couldn't save it",
+            "Share instead",
+            "Not now");
+        if (share && !ct.IsCancellationRequested)
+            await ShareAsync(file, ct);
+    }
+
+    public async Task ShareAsync(ReportFile file, CancellationToken ct)
+    {
+        // The sheet takes a file, so the bytes have to be somewhere it can reach. The cache is
+        // that somewhere, and the next export sweeps it: a named health record must not sit in
+        // app storage longer than the share it was written for.
         var path = await WriteToCacheAsync(file, ct);
         if (ct.IsCancellationRequested)
             return;
 
-        var choice = await _popups.ChooseAsync(
-            $"{file.FileName}",
-            "Close",
-            "Save or share",
-            "Open");
-
-        if (choice == "Save or share")
+        await Share.Default.RequestAsync(new ShareFileRequest
         {
-            await Share.Default.RequestAsync(new ShareFileRequest
-            {
-                Title = "Save or share export",
-                File = new ShareFile(path)
-            });
-            return;
-        }
-
-        if (choice != "Open")
-            return;
-
-        try
-        {
-            await Launcher.Default.OpenAsync(new OpenFileRequest
-            {
-                Title = file.FileName,
-                File = new ReadOnlyFile(path)
-            });
-        }
-        catch (Exception)
-        {
-            await _popups.ShowInfoAsync(
-                "There's no app on this device that opens this kind of file. Try \"Save or share\" instead.",
-                "Can't open it here");
-        }
+            Title = file.FileName,
+            File = new ShareFile(path)
+        });
     }
 
     public void DiscardCached()

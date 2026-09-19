@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.ExportDeliveryPopupPage"
+             BackgroundColor="Transparent">
+
+    <!-- Where the finished file goes, as the same two tiles the format question is asked with
+         (ExportFormatPopupPage) — one card, one shell, one glyph language, so the two halves of
+         an export read as one flow rather than as a styled question followed by a system list.
+
+         Two choices, and they are genuinely different things: Save keeps the file on this phone,
+         Share hands it to another app. The chooser this replaced offered "Save or share" and
+         "Open" beside each other, which named one action twice and a third that is neither —
+         a caregiver who wanted a copy on their phone had to know that the share sheet hides one
+         behind "Save to Files". -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                Stroke="{StaticResource Divider}"
+                StrokeThickness="1"
+                Padding="24"
+                Margin="32,0"
+                Scale="0.92"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="20"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout Spacing="16">
+
+                <Grid>
+                    <VerticalStackLayout Spacing="2" Margin="0,0,28,0">
+                        <Label Text="Your export is ready"
+                               Style="{StaticResource Heading3}"/>
+                        <!-- The filename, quietly: it is what the caregiver will look for in
+                             Files or in the app they send it to, and it names the format they
+                             picked a moment ago without asking them to remember it. -->
+                        <Label x:Name="FileNameLabel"
+                               FontFamily="Quicksand"
+                               FontSize="12"
+                               TextColor="{StaticResource MutedText}"
+                               LineBreakMode="MiddleTruncation"/>
+                    </VerticalStackLayout>
+
+                    <!-- Dismissal as a mark, in the corner, the same one the other popups use. -->
+                    <Grid x:Name="CloseHit"
+                          Padding="12"
+                          Margin="0,-12,-12,0"
+                          BackgroundColor="Transparent"
+                          HorizontalOptions="End"
+                          VerticalOptions="Start"
+                          SemanticProperties.Description="Close">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCloseTapped"/>
+                        </Grid.GestureRecognizers>
+                        <Border BackgroundColor="{StaticResource ErrorRed}"
+                                StrokeThickness="0"
+                                WidthRequest="20"
+                                HeightRequest="20">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="4"/>
+                            </Border.StrokeShape>
+                            <Label Text="✕"
+                                   TextColor="{StaticResource White}"
+                                   FontFamily="QuicksandSemiBold"
+                                   FontSize="11"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"/>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+
+                    <Border x:Name="SaveTile"
+                            Grid.Column="0"
+                            Style="{StaticResource FormatTile}"
+                            SemanticProperties.Description="Save"
+                            SemanticProperties.Hint="Keeps the file on this phone">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSaveTapped"/>
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="10">
+                            <Image Source="icon_save.svg"
+                                   WidthRequest="40" HeightRequest="40"
+                                   HorizontalOptions="Center"/>
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Save"
+                                       Style="{StaticResource FormatTileLabel}"/>
+                                <!-- Where it lands differs by phone, so the tile says what the
+                                     choice means rather than naming a folder it might be wrong
+                                     about; the confirmation afterwards names the real place. -->
+                                <Label x:Name="SaveHint"
+                                       Text="Keep it on this phone"
+                                       Style="{StaticResource FormatTileHint}"/>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border x:Name="ShareTile"
+                            Grid.Column="1"
+                            Style="{StaticResource FormatTile}"
+                            SemanticProperties.Description="Share"
+                            SemanticProperties.Hint="Sends the file to another app">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnShareTapped"/>
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="10">
+                            <Image Source="icon_share.svg"
+                                   WidthRequest="40" HeightRequest="40"
+                                   HorizontalOptions="Center"/>
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Share"
+                                       Style="{StaticResource FormatTileLabel}"/>
+                                <Label Text="Send it somewhere"
+                                       Style="{StaticResource FormatTileHint}"/>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+
+                <!-- The responsibility line, once more and briefly. This is the moment the file
+                     actually leaves CardiTrack's keeping, and it is the last screen before it
+                     does. -->
+                <Label Text="This file is a named health record. You're responsible for who sees it."
+                       FontFamily="Quicksand"
+                       FontSize="11"
+                       TextColor="{StaticResource MutedText}"
+                       HorizontalTextAlignment="Center"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

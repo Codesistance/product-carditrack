@@ -1,5 +1,6 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 
 namespace CardiTrack.Mobile.Services;
@@ -141,6 +142,15 @@ public interface IPopupService
     /// caller treats as "cancelled".
     /// </summary>
     Task<ReportFormat?> ChooseExportFormatAsync();
+
+    /// <summary>
+    /// Asks where a finished export should go, naming the file and — when the platform can keep
+    /// one — where Save would put it. Returns null when dismissed, which the flow treats as
+    /// "cancelled": the file stays in the cache and the next export sweeps it.
+    /// </summary>
+    /// <param name="saveHint">Where Save lands here ("Downloads"), or null to hide the Save tile
+    /// on a platform that cannot keep a file anywhere the caregiver would find it.</param>
+    Task<ExportDelivery?> ChooseExportDeliveryAsync(string fileName, string? saveHint);
 
     /// <summary>
     /// Opens the CardiMember card's pending question as a modal — the same <c>QuestionCard</c>

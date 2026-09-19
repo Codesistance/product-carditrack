@@ -600,15 +600,12 @@
                             Clicked="OnContinueClicked"/>
                     <!-- Beside Continue, not instead of it: a conversation worth keeping a copy
                          of is usually one the caregiver is about to take somewhere, and the two
-                         are the only things there is to do with a finished thread. -->
-                    <Button Text="Export"
-                            Style="{StaticResource SecondaryOutlineButton}"
-                            FontSize="14"
-                            HeightRequest="40"
-                            CornerRadius="20"
-                            Padding="20,0"
-                            SemanticProperties.Hint="Double tap to save or share a copy of this conversation"
-                            Clicked="OnExportPastSessionClicked"/>
+                         are the only things there is to do with a finished thread. The app's one
+                         export control, so this reads as the same action the journal offers. -->
+                    <controls:ExportAction
+                            Text="Export"
+                            SemanticProperties.Hint="Saves or shares a copy of this conversation"
+                            Tapped="OnExportPastSessionTapped"/>
                 </HorizontalStackLayout>
             </Grid>
 
@@ -640,19 +637,17 @@
                     </HorizontalStackLayout>
                 </Border>
 
-                <!-- Same pill, same row: a caregiver who has just been told something worth
-                     taking to an appointment should not have to close the conversation and find
-                     it again in history to keep a copy of it. -->
-                <Border x:Name="ExportThreadAction"
-                        Style="{StaticResource ActionPill}"
+                <!-- Same row: a caregiver who has just been told something worth taking to an
+                     appointment should not have to close the conversation and find it again in
+                     history to keep a copy of it. The app's one export control rather than this
+                     sheet's tonal pill — the pill language belongs to the sheet's own quiet
+                     actions ("Start a new conversation"), and this is the same action the
+                     journal offers, so it should look like it. -->
+                <controls:ExportAction x:Name="ExportThreadAction"
+                        Text="Export"
                         IsVisible="False"
-                        SemanticProperties.Description="Export this conversation"
-                        SemanticProperties.Hint="Double tap to save or share a copy of this conversation">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnExportThreadTapped"/>
-                    </Border.GestureRecognizers>
-                    <Label Text="Export" Style="{StaticResource ActionPillText}" VerticalOptions="Center"/>
-                </Border>
+                        SemanticProperties.Hint="Saves or shares a copy of this conversation"
+                        Tapped="OnExportThreadTapped"/>
             </HorizontalStackLayout>
         </Grid>
 

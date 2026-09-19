@@ -646,7 +646,7 @@ public partial class JournalPage : ContentPage
         return card;
     }
 
-    private async void OnExportTapped(object? sender, TappedEventArgs e)
+    private async void OnExportTapped(object? sender, EventArgs e)
     {
         if (_memberId == Guid.Empty)
             return;

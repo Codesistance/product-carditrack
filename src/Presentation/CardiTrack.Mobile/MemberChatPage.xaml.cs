@@ -399,7 +399,7 @@ public partial class MemberChatPage : ContentView
     }
 
     /// <summary>The same export, for the finished conversation open from the history list.</summary>
-    private void OnExportPastSessionClicked(object? sender, EventArgs e)
+    private void OnExportPastSessionTapped(object? sender, EventArgs e)
     {
         if (_mode != ChatViewMode.PastSession || _viewedSession is not { } session)
             return;

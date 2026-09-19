@@ -6,6 +6,15 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Lists this app's Documents directory in Files, so an export the caregiver chose to save
+	     is somewhere they can find it again. Only Documents is exposed, and the only thing the
+	     app puts there is a saved export: the offline read cache, the logs and the draft photos
+	     all live under AppDataDirectory (Library), which these keys do not reach. See
+	     Services/ExportFileSaver.cs. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UIDeviceFamily</key>
 	<array>
 		<integer>1</integer>

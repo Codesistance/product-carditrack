@@ -201,12 +201,18 @@
                     <Label x:Name="CompleteDetailLabel"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Save or share"
+                    <!-- Two things, and they are different things. This panel offered "Save or
+                         share" and "Open" — one button naming two actions, beside one that is
+                         neither, and a caregiver who wanted a copy on their phone had to know
+                         the share sheet hides a save inside it. The same two choices the
+                         export popup offers, in the same words. -->
+                    <Button x:Name="SaveButton"
+                            Text="Save to this phone"
                             Style="{StaticResource AuthGradientButton}"
-                            Clicked="OnShareClicked"/>
-                    <Button Text="Open"
+                            Clicked="OnSaveClicked"/>
+                    <Button Text="Share"
                             Style="{StaticResource SecondaryOutlineButton}"
-                            Clicked="OnOpenClicked"/>
+                            Clicked="OnShareClicked"/>
                     <Button Text="Export something else"
                             Style="{StaticResource SecondaryOutlineButton}"
                             Clicked="OnStartOverClicked"/>
