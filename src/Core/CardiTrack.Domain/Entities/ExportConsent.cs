@@ -55,6 +55,13 @@ public class ExportConsent : BaseEntity
 
     public DigestAudience? JournalAudience { get; set; }
 
+    /// <summary>
+    /// The member-chat conversation a transcript export copies, or null for a health-data
+    /// export. Recorded on the row as well as inside <see cref="RequestFingerprint"/> so the
+    /// trail says what was exported without anyone having to recompute a hash.
+    /// </summary>
+    public Guid? ChatSessionId { get; set; }
+
     /// <summary>Policy text version the caregiver was shown, e.g. <c>export-responsibility-2026-09</c>.</summary>
     public string PolicyVersion { get; set; } = string.Empty;
 

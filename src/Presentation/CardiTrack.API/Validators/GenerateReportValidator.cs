@@ -56,6 +56,19 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
                 .WithMessage($"Choose a date range of up to {MaxRangeDays} days")
             .When(x => x.DateRangeTo >= x.DateRangeFrom);
 
+        RuleFor(x => x)
+            .Must(x => ExportTranscriptRules.NamesOneMember(x.ChatSessionId, x.CardiMemberIds))
+                .WithMessage(ExportTranscriptRules.OneMember);
+
+        RuleFor(x => x)
+            .Must(x => ExportTranscriptRules.FormatCarriesAConversation(x.ChatSessionId, x.Format))
+                .WithMessage(ExportTranscriptRules.PdfOrCsv);
+
+        RuleFor(x => x)
+            .Must(x => ExportTranscriptRules.NotAlsoAJournalExport(
+                x.ChatSessionId, x.IncludeJournals, x.JournalAudience, x.JournalEntryDate))
+                .WithMessage(ExportTranscriptRules.NotAlsoJournals);
+
         // Only the three MVP 1 formats render. HL7 v2 is a defined enum member for MVP 2, so
         // without this it would be accepted here and fail later as a generation error the
         // caregiver could do nothing about.
@@ -70,7 +83,8 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
             .Must(x => HasARenderableSection(
                 x.Format, x.IncludeMetrics, x.IncludeTrends, x.IncludeAlerts,
                 x.IncludeDevices, x.IncludeJournals, x.IncludeNotices))
-                .WithMessage("Choose at least one kind of data to include");
+                .WithMessage("Choose at least one kind of data to include")
+            .When(x => ExportTranscriptRules.SectionsMustBeChosen(x.ChatSessionId));
 
         if (requireConsentToken)
         {
@@ -103,7 +117,7 @@ public class GenerateReportValidator : AbstractValidator<GenerateReportRequest>
             .Must(x => x.IncludeMetrics || x.IncludeDevices)
                 .WithMessage("FHIR R4 exports carry readings and devices — tick one of those too, "
                     + "or choose PDF or CSV to export alerts")
-            .When(x => x.Format == ReportFormat.FhirR4);
+            .When(x => x.Format == ReportFormat.FhirR4 && x.ChatSessionId is null);
     }
 
     /// <summary>

@@ -47,6 +47,19 @@ public partial class MemberChatPage : ContentView
     /// reopens. Meaningful only in <see cref="ChatViewMode.PastSession"/>.</summary>
     private Guid _viewedSessionId;
 
+    /// <summary>The past conversation currently open, for the export action beside Continue —
+    /// its label and the days it spans, which the list row already knew and a
+    /// <c>MemberChatHistoryResponse</c> does not carry.</summary>
+    private ChatSessionItem? _viewedSession;
+
+    /// <summary>The live conversation on screen, or empty when there is none yet — a caregiver
+    /// who has not asked anything has nothing to export.</summary>
+    private Guid _currentSessionId;
+
+    /// <summary>The local day the live conversation began, for dating an export of it. Default
+    /// until a thread with turns has loaded.</summary>
+    private DateOnly _currentStartedOn;
+
     private bool _isLoading;
     private bool _isSending;
 
@@ -277,6 +290,10 @@ public partial class MemberChatPage : ContentView
             var history = await _api.ContinueMemberChatSessionAsync(_memberId, sessionId);
 
             _turns.Clear();
+            _currentSessionId = history.SessionId;
+            _currentStartedOn = history.Turns.Count > 0
+                ? DateOnly.FromDateTime(history.Turns[0].CreatedAtUtc.ToLocalTime().DateTime)
+                : DateOnly.FromDateTime(DateTime.Now);
             foreach (var turn in history.Turns)
                 _turns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
             _threadLoadFailed = false;
@@ -337,6 +354,7 @@ public partial class MemberChatPage : ContentView
             return;
 
         NewConversationAction.IsVisible = false;
+        ExportThreadAction.IsVisible = false;
 
         try
         {
@@ -352,15 +370,75 @@ public partial class MemberChatPage : ContentView
         }
 
         _turns.Clear();
+        _currentSessionId = Guid.Empty;
+        _currentStartedOn = default;
         _ = LoadSuggestionsAsync();
         UpdateNewConversationAction();
     }
 
+    /// <summary>
+    /// Saves or shares a copy of the live conversation. The caregiver picks a format, confirms
+    /// they accept responsibility for the copy — the same step-up every export takes — and the
+    /// file arrives through the OS share sheet. See <see cref="IChatTranscriptExportFlow"/>.
+    /// </summary>
+    private void OnExportThreadTapped(object? sender, EventArgs e)
+    {
+        // Not mid-send: the reply on its way is part of the conversation, and a copy taken
+        // without it would be missing the answer the caregiver is exporting it for.
+        if (_mode != ChatViewMode.Thread || _isSending || _currentSessionId == Guid.Empty)
+            return;
+
+        // Dated from the conversation's first turn to today: the thread on screen is the live
+        // one, so its last turn is however recently the caregiver was just talking to it.
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        _ = ExportAsync(
+            _currentSessionId,
+            label: null,
+            _currentStartedOn == default ? today : _currentStartedOn,
+            today);
+    }
+
+    /// <summary>The same export, for the finished conversation open from the history list.</summary>
+    private void OnExportPastSessionTapped(object? sender, EventArgs e)
+    {
+        if (_mode != ChatViewMode.PastSession || _viewedSession is not { } session)
+            return;
+
+        _ = ExportAsync(session.SessionId, session.Title, session.StartedOn, session.LastTurnOn);
+    }
+
+    private async Task ExportAsync(Guid sessionId, string? label, DateOnly started, DateOnly lastTurn)
+    {
+        try
+        {
+            await Services.ServiceHelper.GetRequiredService<IChatTranscriptExportFlow>()
+                .RunAsync(sessionId: sessionId,
+                    memberId: _memberId,
+                    memberName: _memberFirstName ?? string.Empty,
+                    label: label,
+                    started: started,
+                    lastTurn: lastTurn,
+                    busy: Updating);
+        }
+        catch (Exception ex)
+        {
+            // Reached from a gesture: an export that cannot start must not take the app down,
+            // and the flow reports its own failures to the caregiver.
+            ScreenRefresh.LogFailure(ex, nameof(MemberChatPage), "while exporting a conversation");
+        }
+    }
+
     /// <summary>The "Start a new conversation" action belongs to a live thread with something in
     /// it — never to history browsing, an empty window, or the middle of a send.</summary>
-    private void UpdateNewConversationAction() =>
-        NewConversationAction.IsVisible =
-            _mode == ChatViewMode.Thread && _turns.Count > 0 && !_isSending;
+    private void UpdateNewConversationAction()
+    {
+        var onALiveThread = _mode == ChatViewMode.Thread && _turns.Count > 0 && !_isSending;
+        NewConversationAction.IsVisible = onALiveThread;
+
+        // Also needs a session to name: a thread whose first send failed has bubbles on screen
+        // and nothing persisted behind them, and an export of it would be an empty document.
+        ExportThreadAction.IsVisible = onALiveThread && _currentSessionId != Guid.Empty;
+    }
 
     /// <summary>Puts the live thread back: its bubbles, its input bar, its subtitle. If the
     /// thread's own load had failed, returning here retries it instead of presenting the empty
@@ -392,8 +470,16 @@ public partial class MemberChatPage : ContentView
     private void ApplyThread(MemberChatHistoryResponse? history)
     {
         _turns.Clear();
+        _currentSessionId = history?.SessionId ?? Guid.Empty;
+        _currentStartedOn = default;
         if (history is null)
             return;
+
+        if (history.Turns.Count > 0)
+        {
+            _currentStartedOn = DateOnly.FromDateTime(
+                history.Turns[0].CreatedAtUtc.ToLocalTime().DateTime);
+        }
 
         foreach (var turn in history.Turns)
             _turns.Add(ChatTurnItem.FromHistory(turn, _memberFirstName));
@@ -495,6 +581,7 @@ public partial class MemberChatPage : ContentView
     {
         _mode = ChatViewMode.PastSession;
         _viewedSessionId = item.SessionId;
+        _viewedSession = item;
         SubtitleLabel.Text = item.OpenedLabel;
         SessionsList.IsVisible = false;
         BackToChatPanel.IsVisible = false;
@@ -807,6 +894,11 @@ public partial class MemberChatPage : ContentView
         {
             var response = await _api.SendMemberChatMessageAsync(
                 _memberId, new MemberChatMessageRequest { Message = message });
+            // The first send of a window is what creates the session, so this is where the
+            // thread learns which conversation it is — the export action needs it named.
+            _currentSessionId = response.SessionId;
+            if (_currentStartedOn == default)
+                _currentStartedOn = DateOnly.FromDateTime(DateTime.Now);
             _turns.Add(ChatTurnItem.FromReply(response, _memberFirstName));
         }
         catch (ApiException ex)
@@ -1277,6 +1369,13 @@ public sealed class ChatSessionItem : System.ComponentModel.INotifyPropertyChang
 
     public required Guid SessionId { get; init; }
 
+    /// <summary>The local days the conversation spans — what an export of it is dated by, and
+    /// what the caregiver confirms. Local, not UTC: the row above says "Started yesterday", and a
+    /// document dated the day before that would look like a different conversation.</summary>
+    public required DateOnly StartedOn { get; init; }
+
+    public required DateOnly LastTurnOn { get; init; }
+
     /// <summary>What names the row: the conversation's generated theme, or — until the theming
     /// job has visited it — the caregiver's opening question.</summary>
     public required string Title { get; init; }
@@ -1305,6 +1404,8 @@ public sealed class ChatSessionItem : System.ComponentModel.INotifyPropertyChang
         return new ChatSessionItem
         {
             SessionId = session.SessionId,
+            StartedOn = day,
+            LastTurnOn = DateOnly.FromDateTime(session.LastTurnAtUtc.ToLocalTime().DateTime),
             // Theme first; opening question until one exists. A row whose question also
             // decrypts to nothing (written before encryption, or under a rotated key) still
             // gets a nameable label rather than a blank one.

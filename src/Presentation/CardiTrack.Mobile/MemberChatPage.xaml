@@ -590,14 +590,23 @@
                  conversation above it. Hugging its text at pill scale keeps it plainly a
                  control — and still the only one here — without out-shouting what it follows. -->
             <Grid x:Name="ContinuePanel" Grid.Row="3" Margin="16,6,16,14" IsVisible="False">
-                <Button Text="Continue this conversation"
-                        Style="{StaticResource SecondaryOutlineButton}"
-                        HorizontalOptions="Center"
-                        FontSize="14"
-                        HeightRequest="40"
-                        CornerRadius="20"
-                        Padding="20,0"
-                        Clicked="OnContinueClicked"/>
+                <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                    <Button Text="Continue this conversation"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            FontSize="14"
+                            HeightRequest="40"
+                            CornerRadius="20"
+                            Padding="20,0"
+                            Clicked="OnContinueClicked"/>
+                    <!-- Beside Continue, not instead of it: a conversation worth keeping a copy
+                         of is usually one the caregiver is about to take somewhere, and the two
+                         are the only things there is to do with a finished thread. The app's one
+                         export control, so this reads as the same action the journal offers. -->
+                    <controls:ExportAction
+                            Text="Export"
+                            SemanticProperties.Hint="Saves or shares a copy of this conversation"
+                            Tapped="OnExportPastSessionTapped"/>
+                </HorizontalStackLayout>
             </Grid>
 
             <!-- The way to close the current conversation and start clean, one glance below the
@@ -605,28 +614,46 @@
                  missed — now a tonal pill: unmistakably a control, with a real 44dp target, but
                  tinted rather than elevated so it still never competes with sending, which is
                  what this row's neighbour is for. -->
-            <Border x:Name="NewConversationAction"
-                    Grid.Row="4"
-                    Style="{StaticResource ActionPill}"
-                    HorizontalOptions="Center"
-                    Margin="20,0,20,14"
-                    IsVisible="False"
-                    SemanticProperties.Description="Start a new conversation"
-                    SemanticProperties.Hint="Double tap to end this conversation and start a fresh one">
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnNewConversationTapped"/>
-                </Border.GestureRecognizers>
-                <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
-                    <!-- A plus, not a broom: the action starts something, and the glyph should
-                         promise the fresh thread rather than dwell on discarding this one. -->
-                    <Label Text="+"
-                           Style="{StaticResource ActionPillText}"
-                           FontSize="17"
-                           Margin="0,0,0,1"/>
-                    <Label Text="Start a new conversation" Style="{StaticResource ActionPillText}"/>
-                </HorizontalStackLayout>
-            </Border>
+            <HorizontalStackLayout Grid.Row="4"
+                                   Spacing="10"
+                                   HorizontalOptions="Center"
+                                   Margin="20,0,20,14">
+                <Border x:Name="NewConversationAction"
+                        Style="{StaticResource ActionPill}"
+                        IsVisible="False"
+                        SemanticProperties.Description="Start a new conversation"
+                        SemanticProperties.Hint="Double tap to end this conversation and start a fresh one">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnNewConversationTapped"/>
+                    </Border.GestureRecognizers>
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                        <!-- A plus, not a broom: the action starts something, and the glyph should
+                             promise the fresh thread rather than dwell on discarding this one. -->
+                        <Label Text="+"
+                               Style="{StaticResource ActionPillText}"
+                               FontSize="17"
+                               Margin="0,0,0,1"/>
+                        <Label Text="Start a new conversation" Style="{StaticResource ActionPillText}"/>
+                    </HorizontalStackLayout>
+                </Border>
+
+                <!-- Same row: a caregiver who has just been told something worth taking to an
+                     appointment should not have to close the conversation and find it again in
+                     history to keep a copy of it. The app's one export control rather than this
+                     sheet's tonal pill — the pill language belongs to the sheet's own quiet
+                     actions ("Start a new conversation"), and this is the same action the
+                     journal offers, so it should look like it. -->
+                <controls:ExportAction x:Name="ExportThreadAction"
+                        Text="Export"
+                        IsVisible="False"
+                        SemanticProperties.Hint="Saves or shares a copy of this conversation"
+                        Tapped="OnExportThreadTapped"/>
+            </HorizontalStackLayout>
         </Grid>
+
+        <!-- Last child of the sheet's root grid and spanning both its rows, so the wait while an
+             export is prepared covers the whole sheet. See UpdatingOverlay. -->
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="2"/>
     </Grid>
     </Border>
     </Grid>

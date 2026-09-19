@@ -216,10 +216,26 @@ Entry points:
 
                                   [M1-17 Health Data Export]
                                             │
-                           ┌────────────────┼────────────────┐
-                           ▼                ▼                ▼
-                      [Save to Device]   [Email to...]  [Share via...]
+                                 ┌──────────┼──────────┐
+                                 ▼          ▼          ▼
+                          [Save to phone] [Share via...] [Open]
 ```
+
+**As built (2026-09-19):** **Save** keeps the file where the platform's own file manager reads it
+(Android Downloads via MediaStore; the app's folder in Files on iOS) and names the place back to
+the caregiver; **Share** opens the system sheet; **Open** looks at it now and puts it nowhere.
+Save and Share are the pair — the two places the file can go — and Open sits under them rather
+than beside them, which is what the old "Save or share"/"Open" row got wrong by making one
+button name two actions. "Email to…" is not built: mailing PHI from the server is its own
+subsystem and is not MVP 1 scope.
+
+The **CardiJournal** and **member-chat** exports ask the same question in a popup
+(`Controls/ExportDeliveryPopupPage`) rather than on a page, with the same two tiles, words and
+glyphs; all three go through one `IExportFileDelivery`. Every surface that offers an export wears
+one control, `Controls/ExportAction` — a glyph and a word, in the app's action gradient on a page
+and in the header band's own tint when it sits on the band. It replaced four different
+treatments of the same action, one of which (a single CardiJournal entry) was a bare icon that
+named itself only to a screen reader.
 
 ### Flow 5: Family Collaboration (MVP 2)
 

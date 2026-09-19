@@ -25,6 +25,7 @@ public class GenerateReportValidatorTests
         bool includeNotices = false,
         DateOnly? journalEntryDate = null,
         DigestAudience? journalAudience = null,
+        Guid? chatSessionId = null,
         string? consentToken = "consent-token") => new()
         {
             CardiMemberIds = memberIds ?? [Guid.NewGuid()],
@@ -39,6 +40,7 @@ public class GenerateReportValidatorTests
             IncludeNotices = includeNotices,
             JournalEntryDate = journalEntryDate,
             JournalAudience = journalAudience,
+            ChatSessionId = chatSessionId,
             ConsentToken = consentToken
         };
 
@@ -46,6 +48,56 @@ public class GenerateReportValidatorTests
     public void Accepts_ATypicalRequest()
     {
         Assert.True(_validator.Validate(Build()).IsValid);
+    }
+
+    // ── Chat transcripts ────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(ReportFormat.Pdf)]
+    [InlineData(ReportFormat.Csv)]
+    public void Accepts_AConversationWithEverySectionOff(ReportFormat format)
+    {
+        // A transcript's content is the conversation, so the section flags — which default on —
+        // say nothing about it, and the "choose something to include" rule does not apply.
+        var result = _validator.Validate(Build(
+            format: format, includeMetrics: false, includeTrends: false, includeAlerts: false,
+            chatSessionId: Guid.NewGuid()));
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.ErrorMessage)));
+    }
+
+    [Fact]
+    public void Rejects_AConversationAsFhir()
+    {
+        // FHIR R4 has no resource for "a caregiver asked this and was told that": the bundle
+        // would be a lone Patient, which is a successful export missing what was asked for.
+        Assert.False(_validator.Validate(Build(
+            format: ReportFormat.FhirR4, chatSessionId: Guid.NewGuid())).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_AConversationNamingMoreThanOneMember()
+    {
+        // The other four would be in the consent fingerprint and in none of the file.
+        Assert.False(_validator.Validate(Build(
+            memberIds: [Guid.NewGuid(), Guid.NewGuid()], chatSessionId: Guid.NewGuid())).IsValid);
+    }
+
+    [Fact]
+    public void Rejects_AConversationThatIsAlsoAJournalExport()
+    {
+        // One export is one document, and a file that was both would have no title describing it.
+        Assert.False(_validator.Validate(Build(
+            includeJournals: true, journalAudience: DigestAudience.Daybook,
+            chatSessionId: Guid.NewGuid())).IsValid);
+    }
+
+    [Fact]
+    public void StillRejects_AHealthExportWithEverySectionOff()
+    {
+        // The transcript exemption must not become a hole in the rule it sits beside.
+        Assert.False(_validator.Validate(Build(
+            includeMetrics: false, includeTrends: false, includeAlerts: false)).IsValid);
     }
 
     // ── Member count ────────────────────────────────────────────────────────────

@@ -147,43 +147,21 @@
             </Grid>
         </Border>
 
-        <!-- Export wears the cadence pills' own chrome — the same panel, the same inner pill,
-             the same 13pt semibold — because it is the same size of decision taken on the same
-             row. As an icon alone it named itself only to a screen reader, and it exported
-             whatever window the filter chip happened to hold; it now says what it does, and
-             asks which range. -->
-        <Border x:Name="ExportHit"
+        <!-- The app's one export control (ExportAction), in its page tone. It wears the cadence
+             pills' own chrome — the same inner pill, the same 13pt semibold — because it is the
+             same size of decision taken on the same row, and the app's action gradient, which on
+             the pills' own white keeps it from reading as a fourth segment sitting selected. As
+             an icon alone it named itself only to a screen reader, and it exported whatever
+             window the filter chip happened to hold; it now says what it does, and asks which
+             range. The 4-point frame stays transparent only to hold the pills' exact height. -->
+        <controls:ExportAction x:Name="ExportHit"
                 Grid.Column="1"
+                Text="Export Range"
                 Padding="4"
-                StrokeThickness="0"
-                BackgroundColor="Transparent"
                 HorizontalOptions="End"
                 VerticalOptions="Center"
-                SemanticProperties.Description="Export Range"
-                SemanticProperties.Hint="Choose which Daybooks to save">
-            <Border.StrokeShape>
-                <RoundRectangle CornerRadius="14"/>
-            </Border.StrokeShape>
-            <Border.GestureRecognizers>
-                <TapGestureRecognizer Tapped="OnExportTapped"/>
-            </Border.GestureRecognizers>
-            <!-- The gradient the app gives its actions. On the pills' own white it read as a
-                 fourth segment, sitting selected: same panel, same white, same weight, next to
-                 three things that select. This takes an action instead, so it says so — and the
-                 4-point frame stays transparent only to hold the pills' exact height. -->
-            <Border Padding="14,7"
-                    StrokeThickness="0"
-                    Background="{StaticResource GradientButtonBrush}">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="11"/>
-                </Border.StrokeShape>
-                <Label x:Name="ExportLabel"
-                       Text="Export Range"
-                       FontFamily="QuicksandSemiBold"
-                       FontSize="13"
-                       TextColor="{StaticResource White}"/>
-            </Border>
-        </Border>
+                SemanticProperties.Hint="Choose which Daybooks to save"
+                Tapped="OnExportTapped"/>
         </Grid>
 
         <!-- Search and the two filter chips sit outside the scroller so narrowing the list stays

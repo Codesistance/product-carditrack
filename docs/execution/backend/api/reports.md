@@ -15,6 +15,7 @@ How generation works:
 - **Business validation** now exists (`GenerateReportValidator`): **max 5 CardiMembers**, **max 365-day range**, no duplicate members, at least one section, and an MVP 1 format.
 - **Privacy:** the **AI narrative is generated only for PDF**. Because it goes to the public Gemini endpoint, member names are pseudonymised as "Patient A", "Patient B", … before the model call and swapped back only after the response returns. The model never sees a real name. **CSV and FHIR R4 make no model call at all.**
 - **No caregiver free text crosses into any export** — no medical notes, no alert message bodies, no caregiver device labels ([data_protection_architecture.md](../../../technical/data_protection_architecture.md) §70, §85). Journals are CardiTrack-generated AI text and may be included on PDF/CSV when ticked; each entry is labelled as AI. Notices export `RuleCode` / category / state, never localized `TitleKey` bodies.
+- **Chat transcripts.** A generate naming `chatSessionId` exports **one member-chat conversation** instead of the member's readings: every question and reply, and the charts each reply carried, drawn from what was stored with it (`MemberChatTurn.Charts`) rather than re-plotted from today's data. PDF or CSV, exactly one CardiMember, and the section toggles do not apply — its content is the conversation. Ownership is stricter than for a health export: the session must be the **caller's own** conversation **about that member**, checked before anything is queued, so someone else's thread about a member you can view is a 404. **No model call is made** — a transcript already is prose, and summarising it would send a caregiver's questions and a clinical read about a named person to the general provider. The document carries a provenance banner saying what wrote the answers and that they are not a clinical assessment. Audited as `ExportChatTranscript`.
 - **Recorded consent.** The password is verified on the device against Auth0 and is **never sent to CardiTrack**. The API records only that the caregiver accepted responsibility and which proof they used (`Password` or `Biometric`). The generate token is single-use, owner-scoped, bound to the request fingerprint, and expires in five minutes. On the consent prompt the caregiver may also keep that confirmation for **1 week, 2 weeks, or 1 month** (30 days). A standing grant authorizes later exports of the **same members or a subset**, after another biometric-or-password step-up; each reuse mints a fresh five-minute token, is written as its own row (so the audit trail names every export), and the API/client **always tell the caregiver the confirmation is being reused**. Settings lists every confirmation and can stop a standing grant. A changed policy hash cannot be reused — they confirm again.
 
 **User Stories:** 2.3 (Trend Charts & Historical Data — export), 6.3 (Health Data Export), 9.2 (Printable Reports)
@@ -51,6 +52,7 @@ The same snapshot generate will send — members, dates, format, and section fla
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | snapshot fields | — | Yes | Same ceilings as generate (members, range, format, at least one section) |
+| `chatSessionId` | GUID | No | Confirming a chat transcript export — same rules as generate, and part of the fingerprint, so a confirmation given for one conversation cannot generate another |
 | `method` | integer enum | Yes | `ExportConsentMethod`: Password=1, Biometric=2 |
 | `acceptedResponsibility` | boolean | Yes | Must be `true` — the client only sends this after the responsibility popup |
 | `rememberFor` | integer enum | No | `ExportConsentRememberFor`: ThisExport=1 (default), OneWeek=2, TwoWeeks=3, OneMonth=4 (30 days). A value other than ThisExport keeps a standing grant the next export may reuse |
@@ -174,6 +176,23 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 }
 ```
 
+A chat transcript export is the same call with `chatSessionId` set and the section toggles off:
+
+```json
+{
+  "cardiMemberIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
+  "dateRangeFrom": "2026-08-07",
+  "dateRangeTo": "2026-08-07",
+  "format": 1,
+  "includeMetrics": false,
+  "includeTrends": false,
+  "includeAlerts": false,
+  "chatSessionId": "6f1d2c30-9a4b-4e2f-8c77-0b1a2d3e4f50",
+  "consentToken": "8f14e45fceea167a5a36dedd4bea2543",
+  "title": "Margaret — Sleep over the week, 7 Aug 2026"
+}
+```
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `cardiMemberIds` | GUID array | Yes | 1–**5** CardiMember IDs, no duplicates. Each is ownership-checked (`RequireViewAccessAsync`) — one unreadable id fails the request with **404** |
@@ -190,10 +209,11 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 | `journalEntryDate` / `journalAudience` | date / enum | No | When both are set, journals are scoped to that one entry rather than every book in the range. `journalAudience` must be Daybook / Weekbook / Monthbook (`Family` and `Wearer` are 400). A pinned day must fall inside `dateRangeFrom`–`dateRangeTo`. Either field without `includeJournals` is 400 |
 | `includeNotes` | boolean | No | Default `false`; no notes feature exists |
 | `includeDevices` | boolean | No | Include device provenance — device **types** only, never caregiver labels (default `false`) |
+| `chatSessionId` | GUID | No | Export the transcript of that member-chat conversation instead of the member's readings. Requires exactly **one** `cardiMemberIds` entry — the member the conversation is about — and `format` **1 (PDF) or 2 (CSV)**; FHIR R4 is 400, as is combining it with `includeJournals` / `journalAudience` / `journalEntryDate`. The section toggles are ignored (and the "choose at least one section" rule does not apply), but they are still part of the consent fingerprint, so a client sends them off. A session that is not the caller's own conversation about that member is **404**. The range still frames the document — header, filename and fingerprint — so send the days the conversation spans |
 | `consentToken` | string | Yes | Token from `POST /api/v1/reports/consent` for this same snapshot |
 | `title` | string | No | Rendered onto the PDF cover; ignored by CSV and FHIR |
 
-`GenerateReportValidator` enforces the rules above. At least one of `includeMetrics` / `includeAlerts` / `includeDevices` / `includeJournals` / `includeNotices` / `includeTrends` (PDF only) must be true, and for `format: 3` (FHIR R4) at least one of `includeMetrics` / `includeDevices` must be true — journals and notices are PDF/CSV only. See the FHIR note under the download endpoint.
+`GenerateReportValidator` enforces the rules above. Except on a transcript export, at least one of `includeMetrics` / `includeAlerts` / `includeDevices` / `includeJournals` / `includeNotices` / `includeTrends` (PDF only) must be true, and for `format: 3` (FHIR R4) at least one of `includeMetrics` / `includeDevices` must be true — journals and notices are PDF/CSV only. See the FHIR note under the download endpoint.
 
 ### Response `202 Accepted` (wrapped in `ApiResponse<T>`)
 
@@ -217,8 +237,8 @@ Flat shape — date range and section toggles are **top-level fields**, not nest
 
 | Status | When |
 |--------|------|
-| 400 | A business rule failed — too many members, a range over 365 days, duplicate members, no sections, HL7 v2, a missing/expired/mismatched consent token |
-| 404 | A requested CardiMember ID is unknown **or not readable by the caller** — deliberately indistinguishable |
+| 400 | A business rule failed — too many members, a range over 365 days, duplicate members, no sections, HL7 v2, a missing/expired/mismatched consent token; or, on a transcript, more than one member, FHIR R4, or a journal scope alongside it |
+| 404 | A requested CardiMember ID is unknown **or not readable by the caller** — deliberately indistinguishable. Likewise a `chatSessionId` that is not the caller's own conversation about that member |
 
 ---
 

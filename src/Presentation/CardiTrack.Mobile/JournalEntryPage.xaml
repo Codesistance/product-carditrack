@@ -58,22 +58,18 @@
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
 
-                <controls:SquareBorder x:Name="ExportHit"
+                <!-- The app's one export control (ExportAction), in its header tone. It was a
+                     clipboard glyph in a round button here: the only place in the app where
+                     taking a copy away was offered without a word, so it named itself to a
+                     screen reader and to nobody else — and it sat in the row where the other
+                     round buttons navigate, which is not what this one does. -->
+                <controls:ExportAction x:Name="ExportHit"
                         Grid.Column="2"
-                        MinimumHeightRequest="40"
-                        StrokeThickness="0"
-                        BackgroundColor="{StaticResource HeaderButtonTint}"
-                        VerticalOptions="Fill"
-                        SemanticProperties.Description="Export this Daybook"
-                        SemanticProperties.Hint="Saves this one entry">
-                    <controls:SquareBorder.StrokeShape>
-                        <RoundRectangle CornerRadius="99"/>
-                    </controls:SquareBorder.StrokeShape>
-                    <controls:SquareBorder.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnExportTapped"/>
-                    </controls:SquareBorder.GestureRecognizers>
-                    <Image Source="icon_clipboard_white.svg" WidthRequest="20" HeightRequest="20"/>
-                </controls:SquareBorder>
+                        Text="Export"
+                        Tone="Header"
+                        VerticalOptions="Center"
+                        SemanticProperties.Hint="Saves or shares this one entry"
+                        Tapped="OnExportTapped"/>
             </Grid>
         </controls:HeaderBand>
 

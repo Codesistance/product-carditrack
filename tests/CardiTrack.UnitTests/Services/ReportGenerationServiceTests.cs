@@ -31,6 +31,7 @@ public class ReportGenerationServiceTests
     private readonly RecordingRenderer _csvRenderer = new(ReportFormat.Csv);
     private readonly ICardiMemberAccessService _access = Substitute.For<ICardiMemberAccessService>();
     private readonly IExportConsentService _consent = Substitute.For<IExportConsentService>();
+    private readonly IChatTranscriptSource _transcripts = Substitute.For<IChatTranscriptSource>();
     private readonly IDigestRepository _digests = Substitute.For<IDigestRepository>();
     private readonly INotificationRepository _notifications = Substitute.For<INotificationRepository>();
     private readonly ReportStorageOptions _options = new();
@@ -70,7 +71,8 @@ public class ReportGenerationServiceTests
         {
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
-            [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer, _csvRenderer }
+            [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer, _csvRenderer },
+            [typeof(IChatTranscriptSource)] = _transcripts
         });
 
         var scope = Substitute.For<IServiceScope>();
@@ -82,7 +84,7 @@ public class ReportGenerationServiceTests
     }
 
     private ReportGenerationService CreateSut() =>
-        new(_unitOfWork, _storage, _access, _consent, _options, BuildScopeFactory(),
+        new(_unitOfWork, _storage, _access, _consent, _transcripts, _options, BuildScopeFactory(),
             Substitute.For<ILogger<ReportGenerationService>>());
 
     /// <summary>Makes the access service refuse the given member, as it does for an unlinked user.</summary>
@@ -516,7 +518,7 @@ public class ReportGenerationServiceTests
         // should not wait on an inference, or fail when the provider is down.
         var renderer = new RecordingRenderer(format);
         var sut = new ReportGenerationService(
-            _unitOfWork, _storage, _access, _consent, _options,
+            _unitOfWork, _storage, _access, _consent, _transcripts, _options,
             BuildScopeFactoryFor(renderer), Substitute.For<ILogger<ReportGenerationService>>());
 
         var queued = await sut.GenerateAsync(_userId, BuildRequest(format));
@@ -525,6 +527,138 @@ public class ReportGenerationServiceTests
         Assert.Equal(ReportStatus.Ready, status.Status);
         Assert.Null(renderer.LastNarrative);
         await _generativeAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    // ── Chat transcripts ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ChatTranscript_IsGatheredAndHandedToTheRenderer()
+    {
+        var sessionId = Guid.NewGuid();
+        var transcript = BuildTranscript(sessionId);
+        _transcripts.GetAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns(transcript);
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildTranscriptRequest(sessionId));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Same(transcript, _renderer.LastData?.Transcript);
+    }
+
+    [Fact]
+    public async Task ChatTranscript_IsNeverSummarisedByTheModel()
+    {
+        // A transcript already is prose, written from in-estate data. Summarising it would send
+        // a caregiver's questions and a clinical read about a named person to the general
+        // provider — a flow the DPIA does not cover and the document has no use for.
+        var sessionId = Guid.NewGuid();
+        _transcripts.GetAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns(BuildTranscript(sessionId));
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildTranscriptRequest(sessionId));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        Assert.Null(_renderer.LastNarrative);
+        await _generativeAi.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ChatTranscript_ReadsNoHealthDataItDoesNotShow()
+    {
+        // Its content is the conversation and its charts are the ones stored on the replies.
+        // A window of readings loaded for it would be a read of health data no part of the
+        // document shows — and one the audit trail would record against an export that never
+        // used it.
+        var sessionId = Guid.NewGuid();
+        _transcripts.GetAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns(BuildTranscript(sessionId));
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildTranscriptRequest(sessionId));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        await _activityLogs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+        await _alerts.DidNotReceive().GetByCardiMemberAsync(Arg.Any<Guid>(), Arg.Any<bool>());
+    }
+
+    [Fact]
+    public async Task ChatTranscript_IsNamedAsAConversation()
+    {
+        var sessionId = Guid.NewGuid();
+        _transcripts.GetAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns(BuildTranscript(sessionId));
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildTranscriptRequest(sessionId));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+        var file = (await sut.DownloadAsync(_userId, queued.ReportId)).FileName;
+
+        Assert.StartsWith("carditrack-chat-margaret-doe-20260210", file);
+    }
+
+    [Fact]
+    public async Task ChatTranscript_IsRefusedUpFront_WhenTheConversationIsNotTheirs()
+    {
+        // A background job failing minutes later with nothing the caregiver can act on is the
+        // wrong shape for "that isn't your conversation".
+        var sessionId = Guid.NewGuid();
+        _transcripts.RequireOwnedAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new KeyNotFoundException("We couldn't find that conversation."));
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().GenerateAsync(_userId, BuildTranscriptRequest(sessionId)));
+
+        await _consent.DidNotReceive().ConsumeAsync(
+            Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<GenerateReportRequest>(), Arg.Any<Guid>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ChatTranscript_IsNotReadTwice_ToAuthoriseAndThenToRender()
+    {
+        // The gate on the request path answers yes or no; reading the conversation to decide it
+        // would decrypt every turn and its stored charts, throw the result away, and leave
+        // generation to do the same work again on its own scope.
+        var sessionId = Guid.NewGuid();
+        _transcripts.GetAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns(BuildTranscript(sessionId));
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildTranscriptRequest(sessionId));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        await _transcripts.Received(1).RequireOwnedAsync(
+            _userId, _memberId, sessionId, Arg.Any<CancellationToken>());
+        await _transcripts.Received(1).GetAsync(
+            _userId, _memberId, sessionId, Arg.Any<CancellationToken>());
+    }
+
+    private GenerateReportRequest BuildTranscriptRequest(Guid sessionId) => new()
+    {
+        CardiMemberIds = [_memberId],
+        DateRangeFrom = new DateOnly(2026, 2, 10),
+        DateRangeTo = new DateOnly(2026, 2, 10),
+        Format = ReportFormat.Pdf,
+        IncludeMetrics = false,
+        IncludeTrends = false,
+        IncludeAlerts = false,
+        ChatSessionId = sessionId,
+        ConsentToken = "consent-token"
+    };
+
+    private static ChatTranscript BuildTranscript(Guid sessionId)
+    {
+        var started = new DateTimeOffset(2026, 2, 10, 9, 14, 0, TimeSpan.Zero);
+        return new ChatTranscript(
+            sessionId, Guid.NewGuid(), "Sleep over the week", started, started.AddMinutes(4),
+            [
+                new ChatTranscriptTurn(ChatTurnRole.User, "How has she been sleeping?", started, []),
+                new ChatTranscriptTurn(
+                    ChatTurnRole.Assistant, "A little longer each night.", started.AddMinutes(1), []),
+            ]);
     }
 
     // ── Access control ──────────────────────────────────────────────────────────
@@ -1211,7 +1345,8 @@ public class ReportGenerationServiceTests
         {
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
-            [typeof(IEnumerable<IReportRenderer>)] = new[] { renderer }
+            [typeof(IEnumerable<IReportRenderer>)] = new[] { renderer },
+            [typeof(IChatTranscriptSource)] = _transcripts
         });
 
         var scope = Substitute.For<IServiceScope>();

@@ -470,6 +470,29 @@
         <Setter Property="LineBreakMode" Value="WordWrap"/>
     </Style>
 
+    <!-- The line under a tile's name, where the two choices are alike enough that the name
+         alone does not separate them — Save and Share are both "get the file out of here"
+         until one of them says it stays on the phone. A step down in weight and colour so it
+         reads as the tile's own subtitle rather than as a second label. -->
+    <Style x:Key="FormatTileHint" TargetType="Label" BasedOn="{StaticResource FormatTileLabel}">
+        <Setter Property="FontFamily" Value="Quicksand"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="TextColor" Value="{StaticResource MutedText}"/>
+    </Style>
+
+    <!-- A choice that belongs with the tiles above it but is not one of them: the export
+         popup's "Open", which is not a place to put the file but a look at it before you
+         decide. Same surface and radius as FormatTile, laid out as a row across the card's
+         width, so it reads as the quieter thing under the pair rather than a third of three. -->
+    <Style x:Key="FormatRow" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="14,11"/>
+        <Setter Property="BackgroundColor" Value="{StaticResource InputBackground}"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="16"/>
+        </Setter>
+    </Style>
+
     <Style x:Key="QuickActionTile" TargetType="Border">
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="6,12,6,9"/>

@@ -38,6 +38,12 @@ public class ExportConsentConfiguration : IEntityTypeConfiguration<ExportConsent
             .HasConversion<string>()
             .HasMaxLength(20);
 
+        // No foreign key to MemberChatSessions: chat sessions are hard-deleted (the caregiver's
+        // own delete, and the retention sweep), and a consent row is an append-only record of
+        // what was confirmed — it must outlive the conversation it named rather than cascade
+        // away with it.
+        builder.Property(c => c.ChatSessionId);
+
         builder.Property(c => c.PolicyVersion).HasMaxLength(80).IsRequired();
         builder.Property(c => c.PolicySha256).HasMaxLength(64).IsRequired();
         builder.Property(c => c.RequestFingerprint).HasMaxLength(64).IsRequired();

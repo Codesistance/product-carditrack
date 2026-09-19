@@ -30,24 +30,24 @@ namespace CardiTrack.Infrastructure.Services.Reports;
 /// </remarks>
 public class PdfReportRenderer : IReportRenderer
 {
-    // The app's own palette (Colors.xaml), so the printout and the screen agree.
-    private const string Ink = "#1F1F1F";
-    private const string Body = "#343434";
-    private const string Secondary = "#727272";
-    private const string Muted = "#939DAA";
-    private const string Divider = "#E2E8F0";
-    private const string Brand = "#1884DC";
-    private const string BrandDark = "#174E86";
-    private const string Tint = "#F4F8FB";
-    private const string TableHead = "#F2F5F9";
-    private const string Zebra = "#FAFBFD";
-    private const string White = "#FFFFFF";
+    // The app's own palette, shared with the transcript document — see ReportPalette.
+    private const string Ink = ReportPalette.Ink;
+    private const string Body = ReportPalette.Body;
+    private const string Secondary = ReportPalette.Secondary;
+    private const string Muted = ReportPalette.Muted;
+    private const string Divider = ReportPalette.Divider;
+    private const string Brand = ReportPalette.Brand;
+    private const string BrandDark = ReportPalette.BrandDark;
+    private const string Tint = ReportPalette.Tint;
+    private const string TableHead = ReportPalette.TableHead;
+    private const string Zebra = ReportPalette.Zebra;
+    private const string White = ReportPalette.White;
 
     private const float MarginHorizontalCm = 1.8f;
     private const float MarginVerticalCm = 1.4f;
 
     /// <summary>The content width, and so the chart width: the figure is drawn 1:1 in points.</summary>
-    private static readonly float ContentWidth =
+    internal static readonly float ContentWidth =
         PageSizes.A4.Width - 2 * MarginHorizontalCm * 72 / 2.54f;
 
     private const float ChartHeight = 130;
@@ -70,7 +70,18 @@ public class PdfReportRenderer : IReportRenderer
         string? narrative,
         CancellationToken ct = default) =>
         Task.FromResult(new RenderedReport(
-            Compose(data, sections, narrative).GeneratePdf(), "application/pdf", "pdf"));
+            ChooseDocument(data, sections, narrative).GeneratePdf(), "application/pdf", "pdf"));
+
+    /// <summary>
+    /// A transcript export is a different document, not a further section of this one — see
+    /// <see cref="ChatTranscriptDocument"/>. Branching here rather than registering a second
+    /// renderer keeps one implementation per <see cref="ReportFormat"/>, which is the contract
+    /// <c>ReportGenerationService</c> resolves renderers by.
+    /// </summary>
+    private static IDocument ChooseDocument(ReportDataSet data, ReportSections sections, string? narrative) =>
+        data.Transcript is { } transcript
+            ? ChatTranscriptDocument.Compose(data, transcript)
+            : Compose(data, sections, narrative);
 
     /// <summary>The document before it is serialised — what a preview or a test renders pages from.</summary>
     internal static IDocument Compose(ReportDataSet data, ReportSections sections, string? narrative) =>
@@ -458,7 +469,7 @@ public class PdfReportRenderer : IReportRenderer
     /// The marks as vector geometry with the labels set over them in the document's own face —
     /// see <see cref="ReportChartRenderer"/> for why the SVG carries no text of its own.
     /// </summary>
-    private static void Figure(IContainer container, ReportChartRenderer.Chart chart) =>
+    internal static void Figure(IContainer container, ReportChartRenderer.Chart chart) =>
         container.Width(chart.Width).Height(chart.Height).Layers(layers =>
         {
             layers.PrimaryLayer().Svg(chart.Svg).FitArea();

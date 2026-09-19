@@ -186,6 +186,26 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<ExportDelivery?> ChooseExportDeliveryAsync(string fileName, string? saveHint) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return (ExportDelivery?)null;
+
+            var popup = new ExportDeliveryPopupPage(fileName, saveHint);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(popup, animated: false);
+                return await popup.Closed;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     public Task<string?> AskPasswordAsync(string title, string message) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {

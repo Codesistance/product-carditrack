@@ -212,7 +212,7 @@ public partial class JournalEntryPage : ContentPage
     /// This one entry — journals only, this day (or week/month), this book.
     /// Consent is the two pop-ups; the file never goes through M1-17.
     /// </summary>
-    private async void OnExportTapped(object? sender, TappedEventArgs e)
+    private async void OnExportTapped(object? sender, EventArgs e)
     {
         if (_route.IsMissing || _date == default)
             return;
@@ -228,11 +228,14 @@ public partial class JournalEntryPage : ContentPage
             Updating);
     }
 
-    private void DescribeExport()
-    {
-        SemanticProperties.SetDescription(ExportHit, $"Export this {_cadence.EntryName()}");
-        SemanticProperties.SetHint(ExportHit, "Saves this one entry");
-    }
+    /// <summary>
+    /// Names the book in the hint rather than in the label. The control's word stays "Export"
+    /// wherever it appears — that is what makes one action look like one action — and which
+    /// book this is is already the heading two lines above it.
+    /// </summary>
+    private void DescribeExport() =>
+        SemanticProperties.SetHint(
+            ExportHit, $"Saves or shares this {_cadence.EntryName()}");
 
     /// <param name="force">
     /// Supersedes a load already in flight rather than skipping — for anything the caregiver

@@ -177,6 +177,12 @@ public class ReportsController : BaseApiController
         if (!validation.IsValid)
             return ValidationFailed(validation);
 
+        // A conversation leaving the app is a different thing from a period of readings leaving
+        // it, and the trail has to be able to tell them apart: a transcript carries the
+        // caregiver's own questions and the assistant's answers about a named person.
+        if (request.ChatSessionId is not null)
+            HttpContext.Items[AuditHealthDataAccessAttribute.ActionItemKey] = "ExportChatTranscript";
+
         try
         {
             var result = await _reportService.GenerateAsync(UserContext.UserId, request);

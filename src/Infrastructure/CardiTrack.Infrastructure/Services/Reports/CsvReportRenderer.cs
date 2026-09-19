@@ -48,34 +48,15 @@ public class CsvReportRenderer : IReportRenderer
         // and a localised date would be ambiguous in a file the caregiver may send onward.
         using (var csv = new CsvWriter(buffer, CultureInfo.InvariantCulture))
         {
-            if (sections.IncludeMetrics)
-                WriteDailyMetrics(csv, data);
-
-            if (sections.IncludeAlerts && data.Members.Any(m => m.Alerts.Count > 0))
-            {
-                if (sections.IncludeMetrics)
-                    csv.NextRecord();
-
-                WriteAlerts(csv, data);
-            }
-
-            if (sections.IncludeDevices && data.Members.Any(m => m.Devices.Count > 0))
-            {
-                csv.NextRecord();
-                WriteDevices(csv, data);
-            }
-
-            if (sections.IncludeJournals && data.Members.Any(m => m.Journals.Count > 0))
-            {
-                csv.NextRecord();
-                WriteJournals(csv, data);
-            }
-
-            if (sections.IncludeNotices && data.Members.Any(m => m.Notices.Count > 0))
-            {
-                csv.NextRecord();
-                WriteNotices(csv, data);
-            }
+            // A transcript is not a further section of the health export: it has its own grain —
+            // one row per message — and the section flags say nothing about it. The PDF is the
+            // format a caregiver would usually want a conversation in (see
+            // ChatTranscriptDocument); this one is for the caregiver who wants the exchange
+            // somewhere they can search, filter or quote from.
+            if (data.Transcript is { } transcript)
+                WriteTranscript(csv, data, transcript);
+            else
+                WriteHealthData(csv, data, sections);
 
             csv.Flush();
         }
@@ -93,6 +74,107 @@ public class CsvReportRenderer : IReportRenderer
         body.CopyTo(bytes, preamble.Length);
 
         return Task.FromResult(new RenderedReport(bytes, "text/csv; charset=utf-8", "csv"));
+    }
+
+    private static void WriteHealthData(CsvWriter csv, ReportDataSet data, ReportSections sections)
+    {
+        if (sections.IncludeMetrics)
+            WriteDailyMetrics(csv, data);
+
+        if (sections.IncludeAlerts && data.Members.Any(m => m.Alerts.Count > 0))
+        {
+            if (sections.IncludeMetrics)
+                csv.NextRecord();
+
+            WriteAlerts(csv, data);
+        }
+
+        if (sections.IncludeDevices && data.Members.Any(m => m.Devices.Count > 0))
+        {
+            csv.NextRecord();
+            WriteDevices(csv, data);
+        }
+
+        if (sections.IncludeJournals && data.Members.Any(m => m.Journals.Count > 0))
+        {
+            csv.NextRecord();
+            WriteJournals(csv, data);
+        }
+
+        if (sections.IncludeNotices && data.Members.Any(m => m.Notices.Count > 0))
+        {
+            csv.NextRecord();
+            WriteNotices(csv, data);
+        }
+    }
+
+    /// <summary>
+    /// The conversation as two blocks: one row per message, then the readings behind the replies
+    /// — the same series the PDF draws, one row per point, so the figures an answer rests on can
+    /// be checked rather than taken on trust.
+    /// </summary>
+    /// <remarks>
+    /// Message text goes through <see cref="WriteText"/> like every other string a person wrote:
+    /// a caregiver's question is free text, and an assistant reply quotes it back. The charts are
+    /// the ones stored with each reply, not a fresh read of the same days — an exported answer
+    /// must not be checkable only against readings that arrived after it was written.
+    /// </remarks>
+    private static void WriteTranscript(CsvWriter csv, ReportDataSet data, ChatTranscript transcript)
+    {
+        var memberName = data.Members.Count > 0 ? data.Members[0].Member.Name : string.Empty;
+
+        foreach (var header in new[] { "Member", "SentUtc", "Speaker", "Message" })
+            csv.WriteField(header);
+        csv.NextRecord();
+
+        // Numbered from one, not from the turn's row id: the number is for a reader citing "the
+        // third question", and an id would be an internal handle in a file meant to be forwarded.
+        foreach (var turn in transcript.Turns)
+        {
+            WriteText(csv, memberName);
+            csv.WriteField(turn.CreatedAtUtc.UtcDateTime.ToString(
+                "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
+            csv.WriteField(turn.Role == ChatTurnRole.User ? "Caregiver" : "CardiTrack assistant");
+            WriteText(csv, turn.Content);
+            csv.NextRecord();
+        }
+
+        if (!transcript.Turns.Any(t => t.Charts.Count > 0))
+            return;
+
+        csv.NextRecord();
+        foreach (var header in new[]
+                 {
+                     "Member", "ReplySentUtc", "Metric", "Date", "Value", "TheirUsual",
+                     "TypicalLow", "TypicalHigh", "TypicalSource"
+                 })
+        {
+            csv.WriteField(header);
+        }
+        csv.NextRecord();
+
+        foreach (var turn in transcript.Turns)
+        {
+            var sent = turn.CreatedAtUtc.UtcDateTime.ToString(
+                "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+
+            foreach (var series in turn.Charts)
+            {
+                foreach (var point in series.Points)
+                {
+                    WriteText(csv, memberName);
+                    csv.WriteField(sent);
+                    WriteText(csv, series.Metric);
+                    csv.WriteField(point.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+                    csv.WriteField(point.Value);
+                    csv.WriteField(series.Baseline);
+                    csv.WriteField(series.Reference?.Low);
+                    csv.WriteField(series.Reference?.High);
+                    WriteText(csv, series.Reference?.Source);
+                    csv.NextRecord();
+                }
+            }
+        }
     }
 
     /// <summary>

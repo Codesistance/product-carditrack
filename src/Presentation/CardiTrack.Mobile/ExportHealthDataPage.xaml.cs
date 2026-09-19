@@ -55,6 +55,7 @@ public partial class ExportHealthDataPage : ContentPage
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
     private readonly IExportConsentFlow _consent;
+    private readonly IExportFileDelivery _delivery;
     private readonly Dictionary<ReportFormat, Border> _formatCards = [];
 
     private readonly MemberRoute _route = new();
@@ -63,7 +64,6 @@ public partial class ExportHealthDataPage : ContentPage
     private CancellationTokenSource? _generation;
     private CancellationTokenSource? _page;
     private ReportFile? _ready;
-    private string? _readyPath;
     private bool _exporting;
     private readonly LoadGate _gate = new();
     private readonly RefreshFeedback _feedback;
@@ -71,12 +71,18 @@ public partial class ExportHealthDataPage : ContentPage
     public ExportHealthDataPage(
         ICardiTrackApiClient api,
         IPopupService popups,
-        IExportConsentFlow consent)
+        IExportConsentFlow consent,
+        IExportFileDelivery delivery)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
         _consent = consent;
+        _delivery = delivery;
+
+        // Nothing to save to on a platform with no caregiver-visible folder, so the button goes
+        // rather than being offered and then apologised for.
+        SaveButton.IsVisible = delivery.CanSave;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
 
         BuildFormatCards();
@@ -420,8 +426,10 @@ public partial class ExportHealthDataPage : ContentPage
                     return;
                 }
 
+                // Held in memory only. The cache copy is written by the delivery, and only if
+                // a share actually needs a path — a second copy of a health record sitting in
+                // app storage is a liability with no reader.
                 _ready = await _api.DownloadReportAsync(queued.ReportId, ct);
-                _readyPath = await WriteToCacheAsync(_ready, ct);
 
                 CompleteDetailLabel.Text =
                     $"{_ready.FileName} · {Describe(_ready.Content.LongLength)}";
@@ -486,67 +494,63 @@ public partial class ExportHealthDataPage : ContentPage
     // ── Delivery ────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Writes the export to the app's cache so the OS can hand it to another app by path. Cache
-    /// rather than a permanent directory: once it is shared or saved, the copy the caregiver
-    /// keeps is the one they chose, and a second copy of a health record sitting in app storage
-    /// is a liability with no reader.
+    /// Keeps the file on this phone, and says where. This panel used to offer "Save or share" —
+    /// the system sheet, which does hide a save inside it, under a label that named two actions
+    /// and performed one. Save and Share are now the same two choices, in the same words, that
+    /// the export popup offers on every other export surface, with Open beneath them as it
+    /// always was; see <see cref="IExportFileDelivery"/>.
     /// </summary>
-    private static async Task<string> WriteToCacheAsync(ReportFile file, CancellationToken ct)
+    private async void OnSaveClicked(object? sender, EventArgs e)
     {
-        var path = System.IO.Path.Combine(FileSystem.CacheDirectory, file.FileName);
-        await File.WriteAllBytesAsync(path, file.Content, ct);
-        return path;
-    }
-
-    /// <summary>
-    /// The share sheet is both delivery methods M1-17 asks for: on iOS and Android it is the
-    /// route to "Save to Files" / "Save to Drive" as well as to mail and messaging. A separate
-    /// "Save to Device" button would open this same sheet, so there is one action rather than two
-    /// that do the same thing wearing different labels.
-    /// </summary>
-    private async void OnShareClicked(object? sender, EventArgs e)
-    {
-        if (_ready is null || _readyPath is null)
+        if (_ready is null)
             return;
 
-        await Share.Default.RequestAsync(new ShareFileRequest
-        {
-            Title = "Save or share export",
-            File = new ShareFile(_readyPath)
-        });
+        await DeliverAsync(_delivery.SaveAsync(_ready, CancellationToken.None));
+    }
+
+    private async void OnShareClicked(object? sender, EventArgs e)
+    {
+        if (_ready is null)
+            return;
+
+        await DeliverAsync(_delivery.ShareAsync(_ready, CancellationToken.None));
     }
 
     private async void OnOpenClicked(object? sender, EventArgs e)
     {
-        if (_readyPath is null)
+        if (_ready is null)
             return;
 
+        await DeliverAsync(_delivery.OpenAsync(_ready, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Both handlers are <c>async void</c>, because a Clicked handler has to be — so nothing
+    /// they await may throw out of them, or the app goes down holding an export the caregiver
+    /// just waited for. The delivery reports its own failures to them; what this catches is the
+    /// step that cannot report anything, a popup or a share sheet that will not open.
+    /// </summary>
+    private static async Task DeliverAsync(Task delivery)
+    {
         try
         {
-            await Launcher.Default.OpenAsync(new OpenFileRequest
-            {
-                Title = _ready?.FileName,
-                File = new ReadOnlyFile(_readyPath)
-            });
+            await delivery;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // No installed app claims the type — likelier for FHIR JSON than for a PDF.
-            await _popups.ShowInfoAsync(
-                "There's no app on this device that opens this kind of file. Try \"Save or share\" instead.",
-                "Can't open it here");
+            ScreenRefresh.LogFailure(ex, nameof(ExportHealthDataPage), "while delivering an export");
         }
     }
 
     private void OnStartOverClicked(object? sender, EventArgs e)
     {
-        // Delete, not just dereference. The comment on WriteToCacheAsync calls this copy a
-        // liability with no reader, and the caregiver asking for a different export is the one
-        // moment we know for certain they are finished with this one.
+        // Delete, not just dereference. A shared export leaves a copy in the cache, and a
+        // second copy of a health record sitting in app storage is a liability with no reader;
+        // the caregiver asking for a different export is the one moment we know for certain
+        // they are finished with this one.
         DiscardCachedExports();
 
         _ready = null;
-        _readyPath = null;
         ShowOnly(FormPanel);
         UpdateEstimate();
     }

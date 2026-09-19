@@ -201,8 +201,18 @@
                     <Label x:Name="CompleteDetailLabel"
                            Style="{StaticResource Body2}"
                            HorizontalTextAlignment="Center"/>
-                    <Button Text="Save or share"
+                    <!-- Two places the file can go, and they are different things. This panel
+                         offered "Save or share" — one button naming two actions — so a caregiver
+                         who wanted a copy on their phone had to know the share sheet hides a
+                         save inside it. The same two choices the export popup offers, in the
+                         same words, with Open under them: looking at the file is a real thing
+                         to want, and is not a place to put it. -->
+                    <Button x:Name="SaveButton"
+                            Text="Save to this phone"
                             Style="{StaticResource AuthGradientButton}"
+                            Clicked="OnSaveClicked"/>
+                    <Button Text="Share"
+                            Style="{StaticResource SecondaryOutlineButton}"
                             Clicked="OnShareClicked"/>
                     <Button Text="Open"
                             Style="{StaticResource SecondaryOutlineButton}"
