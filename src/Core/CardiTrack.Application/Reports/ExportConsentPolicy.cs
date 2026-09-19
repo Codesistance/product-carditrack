@@ -90,7 +90,13 @@ public static class ExportConsentPolicy
             request.JournalEntryDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "",
             request.JournalAudience is { } audience
                 ? ((int)audience).ToString(CultureInfo.InvariantCulture)
-                : "");
+                : "",
+            // Appended rather than woven in, so the canonical string for a health-data export
+            // reads as it always did with one empty field on the end. It has to be in here: a
+            // transcript export names no sections and differs from the export beside it only by
+            // which conversation it copies, so without this a confirmation given for one
+            // conversation would generate any other of the same member, range and format.
+            request.ChatSessionId?.ToString("N") ?? "");
 
         return Sha256HexOf(canonical);
     }

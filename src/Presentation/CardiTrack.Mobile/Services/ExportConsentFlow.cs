@@ -341,6 +341,7 @@ public sealed class ExportConsentFlow : IExportConsentFlow
         IncludeDevices = snapshot.IncludeDevices,
         JournalEntryDate = snapshot.JournalEntryDate,
         JournalAudience = snapshot.JournalAudience,
+        ChatSessionId = snapshot.ChatSessionId,
         Method = method,
         RememberFor = rememberFor,
         AcceptedResponsibility = true

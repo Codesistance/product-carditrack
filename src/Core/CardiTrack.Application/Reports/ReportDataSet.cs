@@ -42,6 +42,17 @@ public record ReportDataSet(
     }
 
     /// <summary>
+    /// The member-chat conversation this export copies, or null on a health-data export.
+    /// </summary>
+    /// <remarks>
+    /// An init-only property rather than another positional parameter: every existing caller
+    /// builds a health-data set, and a transcript is not a further section of one but a different
+    /// document that happens to travel the same queue, renderers and bucket. A renderer branches
+    /// on it before it reads <see cref="ReportSections"/> at all.
+    /// </remarks>
+    public ChatTranscript? Transcript { get; init; }
+
+    /// <summary>
     /// Readings that belong on the daily table and in the narrative — the
     /// requested days, not the wider chart window a pinned journal needs.
     /// </summary>

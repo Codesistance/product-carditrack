@@ -129,7 +129,9 @@ public static class MauiProgram
         builder.Services.AddSingleton<IDeviceBiometric, DeviceBiometric>();
         builder.Services.AddSingleton<IPopupService, PopupService>();
         builder.Services.AddSingleton<IExportConsentFlow, ExportConsentFlow>();
+        builder.Services.AddSingleton<IExportFileDelivery, ExportFileDelivery>();
         builder.Services.AddSingleton<IJournalExportFlow, JournalExportFlow>();
+        builder.Services.AddSingleton<IChatTranscriptExportFlow, ChatTranscriptExportFlow>();
 
         // Singleton so the "already reported" set outlives the pages that consult it — the member
         // detail page and the questions page both load the same pending question, and a lapsed one

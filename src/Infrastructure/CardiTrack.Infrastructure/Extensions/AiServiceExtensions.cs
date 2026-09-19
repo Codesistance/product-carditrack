@@ -126,6 +126,10 @@ public static class AiServiceExtensions
         services.AddScoped<IGenerativeAiService, GenerativeAiService>();
         services.AddScoped<IHealthInsightService, HealthInsightService>();
         services.AddScoped<IReportGenerationService, ReportGenerationService>();
+        // Registered beside the report service rather than with the chat pipeline: reading a
+        // stored conversation back is what an export needs, and it depends on nothing the chat
+        // send path pulls in.
+        services.AddScoped<IChatTranscriptSource, ChatTranscriptSource>();
         services.AddScoped<IDataQueryPlanner, DataQueryPlannerService>();
         services.AddScoped<IChatRouter, ChatRouterService>();
         services.AddScoped<IAlertChangePlanner, AlertChangePlannerService>();

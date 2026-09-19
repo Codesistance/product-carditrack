@@ -55,6 +55,7 @@ public class ExportConsentService : IExportConsentService
             IncludeDevices = request.IncludeDevices,
             JournalEntryDate = request.JournalEntryDate,
             JournalAudience = request.JournalAudience,
+            ChatSessionId = request.ChatSessionId,
             PolicyVersion = ExportConsentPolicy.Version,
             PolicySha256 = ExportConsentPolicy.Sha256Hex,
             RequestFingerprint = ExportConsentPolicy.Fingerprint(snapshot),
@@ -146,6 +147,7 @@ public class ExportConsentService : IExportConsentService
                 IncludeDevices = request.IncludeDevices,
                 JournalEntryDate = request.JournalEntryDate,
                 JournalAudience = request.JournalAudience,
+                ChatSessionId = request.ChatSessionId,
                 PolicyVersion = grant.PolicyVersion,
                 PolicySha256 = grant.PolicySha256,
                 RequestFingerprint = ExportConsentPolicy.Fingerprint(request),
@@ -334,7 +336,8 @@ public class ExportConsentService : IExportConsentService
         IncludeNotices = request.IncludeNotices,
         IncludeDevices = request.IncludeDevices,
         JournalEntryDate = request.JournalEntryDate,
-        JournalAudience = request.JournalAudience
+        JournalAudience = request.JournalAudience,
+        ChatSessionId = request.ChatSessionId
     };
 
     private static DateTimeOffset Utc(DateTime value) =>

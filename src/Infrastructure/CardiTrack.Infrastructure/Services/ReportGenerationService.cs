@@ -38,6 +38,7 @@ public class ReportGenerationService : IReportGenerationService
     private readonly IReportStorage _storage;
     private readonly ICardiMemberAccessService _access;
     private readonly IExportConsentService _consent;
+    private readonly IChatTranscriptSource _transcripts;
     private readonly ReportStorageOptions _options;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ReportGenerationService> _logger;
@@ -47,6 +48,7 @@ public class ReportGenerationService : IReportGenerationService
         IReportStorage storage,
         ICardiMemberAccessService access,
         IExportConsentService consent,
+        IChatTranscriptSource transcripts,
         ReportStorageOptions options,
         IServiceScopeFactory scopeFactory,
         ILogger<ReportGenerationService> logger)
@@ -55,6 +57,7 @@ public class ReportGenerationService : IReportGenerationService
         _storage = storage;
         _access = access;
         _consent = consent;
+        _transcripts = transcripts;
         _options = options;
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -66,6 +69,17 @@ public class ReportGenerationService : IReportGenerationService
         // the call rather than as a silently-abandoned background job. Because the whole set is
         // vetted up front, the gather below can trust every id in the request.
         await _access.RequireViewAccessAsync(requestingUserId, request.CardiMemberIds);
+
+        // A transcript export names a conversation as well as a member, and a session is one
+        // caregiver's own thread about one member — a stricter gate than viewing the member.
+        // Checked here so a session that is not theirs is a 404 on the call, rather than a
+        // background job that fails minutes later with nothing the caregiver can act on. The
+        // validator has already held the request to exactly one member.
+        if (request.ChatSessionId is { } chatSessionId)
+        {
+            await _transcripts.GetAsync(
+                requestingUserId, request.CardiMemberIds[0], chatSessionId);
+        }
 
         var now = DateTime.UtcNow;
         var report = new Report
@@ -197,6 +211,19 @@ public class ReportGenerationService : IReportGenerationService
                     $"No renderer is registered for report format {report.Format}.");
 
             var data = await GatherAsync(unitOfWork, request, report.OwnerUserId);
+            if (request.ChatSessionId is { } chatSessionId)
+            {
+                // Read again rather than carried from the queueing request: generation runs on
+                // its own scope minutes later, and the export must copy the conversation as it
+                // stands now — a turn deleted in between is a turn that does not go out.
+                var transcripts = scope.ServiceProvider.GetRequiredService<IChatTranscriptSource>();
+                data = data with
+                {
+                    Transcript = await transcripts.GetAsync(
+                        report.OwnerUserId, request.CardiMemberIds[0], chatSessionId),
+                };
+            }
+
             var sections = new ReportSections(
                 request.IncludeMetrics,
                 request.IncludeAlerts,
@@ -254,6 +281,23 @@ public class ReportGenerationService : IReportGenerationService
         IUnitOfWork unitOfWork, GenerateReportRequest request, Guid ownerUserId)
     {
         var members = new List<ReportMemberData>(request.CardiMemberIds.Count);
+
+        // A transcript export needs the member row and nothing else: its content is the stored
+        // conversation, and its charts are the ones each reply was written from. Loading a
+        // window of readings for it would be a read of health data no part of the document
+        // shows — and one the audit trail would record against an export that never used it.
+        if (request.ChatSessionId is not null)
+        {
+            foreach (var memberId in request.CardiMemberIds)
+            {
+                var subject = await unitOfWork.CardiMembers.GetByIdAsync(memberId);
+                if (subject is not null)
+                    members.Add(new ReportMemberData(subject, [], [], [], [], []));
+            }
+
+            return new ReportDataSet(
+                members, request.DateRangeFrom, request.DateRangeTo, request.Title);
+        }
 
         // Charts are PDF-only. includeTrends defaults on, and a CSV/FHIR call
         // that also pins a journal day must not fetch the fortnight and write
@@ -386,6 +430,14 @@ public class ReportGenerationService : IReportGenerationService
         if (format != ReportFormat.Pdf)
             return null;
 
+        // A transcript already is prose, written by this platform's own assistant from in-estate
+        // data. Summarising it would send a caregiver's questions and a clinical read about a
+        // named person to the general provider — a flow the DPIA does not cover and that the
+        // document has no use for. The transcript document carries its own provenance banner
+        // instead (see ChatTranscriptDocument).
+        if (data.Transcript is not null)
+            return null;
+
         var prompt = BuildReportPrompt(data, sections.IncludeMetrics);
         var generated = await generativeAi.GenerateAsync(prompt.Text);
 
@@ -402,6 +454,14 @@ public class ReportGenerationService : IReportGenerationService
         var subject = data.Members.Count == 1
             ? Slug(data.Members[0].Member.Name)
             : $"{data.Members.Count}-members";
+
+        // A transcript says so in its name and is dated by the conversation, not by the range
+        // the client framed the request with: a caregiver saving two of these on the same day
+        // needs to tell them apart in a file picker, and "export" would not.
+        if (data.Transcript is { } transcript)
+        {
+            return $"carditrack-chat-{subject}-{transcript.StartedAtUtc.UtcDateTime:yyyyMMdd-HHmm}.{extension}";
+        }
 
         return $"carditrack-export-{subject}-{data.From:yyyyMMdd}-{data.To:yyyyMMdd}.{extension}";
     }

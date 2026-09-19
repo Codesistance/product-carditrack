@@ -10,7 +10,8 @@ public class ExportConsentPolicyTests
         Guid? memberA = null,
         Guid? memberB = null,
         bool includeJournals = false,
-        DateOnly? journalDay = null) => new()
+        DateOnly? journalDay = null,
+        Guid? chatSessionId = null) => new()
     {
         CardiMemberIds = memberB is { } b
             ? [memberA ?? Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), b]
@@ -19,7 +20,8 @@ public class ExportConsentPolicyTests
         DateRangeTo = new DateOnly(2026, 3, 9),
         Format = ReportFormat.Pdf,
         IncludeJournals = includeJournals,
-        JournalEntryDate = journalDay
+        JournalEntryDate = journalDay,
+        ChatSessionId = chatSessionId
     };
 
     [Fact]
@@ -43,6 +45,27 @@ public class ExportConsentPolicyTests
                 DateRangeTo = new DateOnly(2026, 3, 9),
                 Format = ReportFormat.Pdf
             }));
+    }
+
+    [Fact]
+    public void Fingerprint_ChangesWhenTheConversationChanges()
+    {
+        // A transcript export names no sections and differs from the one beside it only by which
+        // conversation it copies — so without this, a confirmation given for one thread would
+        // generate any other of the same member, range and format.
+        Assert.NotEqual(
+            ExportConsentPolicy.Fingerprint(
+                Request(chatSessionId: Guid.Parse("11111111-1111-1111-1111-111111111111"))),
+            ExportConsentPolicy.Fingerprint(
+                Request(chatSessionId: Guid.Parse("22222222-2222-2222-2222-222222222222"))));
+    }
+
+    [Fact]
+    public void Fingerprint_SeparatesATranscriptFromAHealthExport()
+    {
+        Assert.NotEqual(
+            ExportConsentPolicy.Fingerprint(Request()),
+            ExportConsentPolicy.Fingerprint(Request(chatSessionId: Guid.NewGuid())));
     }
 
     [Fact]

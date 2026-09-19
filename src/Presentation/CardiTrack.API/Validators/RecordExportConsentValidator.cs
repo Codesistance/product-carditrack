@@ -35,16 +35,30 @@ public class RecordExportConsentValidator : AbstractValidator<RecordExportConsen
                 .WithMessage("Choose PDF, CSV or FHIR R4");
 
         RuleFor(x => x)
+            .Must(x => ExportTranscriptRules.NamesOneMember(x.ChatSessionId, x.CardiMemberIds))
+                .WithMessage(ExportTranscriptRules.OneMember);
+
+        RuleFor(x => x)
+            .Must(x => ExportTranscriptRules.FormatCarriesAConversation(x.ChatSessionId, x.Format))
+                .WithMessage(ExportTranscriptRules.PdfOrCsv);
+
+        RuleFor(x => x)
+            .Must(x => ExportTranscriptRules.NotAlsoAJournalExport(
+                x.ChatSessionId, x.IncludeJournals, x.JournalAudience, x.JournalEntryDate))
+                .WithMessage(ExportTranscriptRules.NotAlsoJournals);
+
+        RuleFor(x => x)
             .Must(x => GenerateReportValidator.HasARenderableSection(
                 x.Format, x.IncludeMetrics, x.IncludeTrends, x.IncludeAlerts,
                 x.IncludeDevices, x.IncludeJournals, x.IncludeNotices))
-                .WithMessage("Choose at least one kind of data to include");
+                .WithMessage("Choose at least one kind of data to include")
+            .When(x => ExportTranscriptRules.SectionsMustBeChosen(x.ChatSessionId));
 
         RuleFor(x => x)
             .Must(x => x.IncludeMetrics || x.IncludeDevices)
                 .WithMessage("FHIR R4 exports carry readings and devices — tick one of those too, "
                     + "or choose PDF or CSV to export journals, alerts or notices")
-            .When(x => x.Format == ReportFormat.FhirR4);
+            .When(x => x.Format == ReportFormat.FhirR4 && x.ChatSessionId is null);
 
         RuleFor(x => x)
             .Must(x => ExportJournalRules.ScopeMatchesJournalsFlag(

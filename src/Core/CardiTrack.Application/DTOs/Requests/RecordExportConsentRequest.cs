@@ -22,6 +22,11 @@ public class RecordExportConsentRequest
     public bool IncludeNotices { get; init; }
     public bool IncludeDevices { get; init; }
 
+    /// <summary>The conversation a transcript export covers — see
+    /// <see cref="GenerateReportRequest.ChatSessionId"/>. Part of the fingerprint, so a
+    /// confirmation given for one conversation cannot generate another.</summary>
+    public Guid? ChatSessionId { get; init; }
+
     public DateOnly? JournalEntryDate { get; init; }
     public DigestAudience? JournalAudience { get; init; }
 

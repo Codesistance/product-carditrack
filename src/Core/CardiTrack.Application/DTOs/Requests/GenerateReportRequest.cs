@@ -23,6 +23,21 @@ public class GenerateReportRequest
     public bool IncludeNotices { get; init; }
 
     /// <summary>
+    /// When set, the export is the transcript of that member-chat conversation — what the
+    /// caregiver asked and what the assistant answered, with the charts each reply carried —
+    /// rather than the member's readings. Exactly one <see cref="CardiMemberIds"/> entry, which
+    /// must be the member the conversation is about, and PDF or CSV only.
+    /// </summary>
+    /// <remarks>
+    /// The section flags do not apply to it: a conversation has no alerts block and no daily
+    /// table, and its charts are the ones stored on the replies rather than a window of readings
+    /// re-plotted now. <see cref="DateRangeFrom"/> and <see cref="DateRangeTo"/> still frame the
+    /// document — they are what the header, the filename and the consent fingerprint are built
+    /// from — so a client sends the days the conversation actually spans.
+    /// </remarks>
+    public Guid? ChatSessionId { get; init; }
+
+    /// <summary>
     /// When set with <see cref="JournalAudience"/>, the export is scoped to that
     /// one journal entry rather than every book in the date range.
     /// </summary>

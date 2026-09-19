@@ -35,6 +35,48 @@ public class RecordExportConsentValidatorTests
     }
 
     [Fact]
+    public void Accepts_AConfirmationForAConversation()
+    {
+        // The consent for an export generate accepts must not be refused here, or the caregiver
+        // confirms and is then told the export they confirmed cannot be made.
+        var request = new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 2, 10),
+            DateRangeTo = new DateOnly(2026, 2, 10),
+            Format = ReportFormat.Pdf,
+            IncludeMetrics = false,
+            IncludeTrends = false,
+            IncludeAlerts = false,
+            ChatSessionId = Guid.NewGuid(),
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true
+        };
+
+        var result = _validator.Validate(request);
+
+        Assert.True(result.IsValid, string.Join("; ", result.Errors.Select(e => e.ErrorMessage)));
+    }
+
+    [Fact]
+    public void Rejects_AConfirmationForAConversationAsFhir()
+    {
+        var request = new RecordExportConsentRequest
+        {
+            CardiMemberIds = [Guid.NewGuid()],
+            DateRangeFrom = new DateOnly(2026, 2, 10),
+            DateRangeTo = new DateOnly(2026, 2, 10),
+            Format = ReportFormat.FhirR4,
+            IncludeMetrics = true,
+            ChatSessionId = Guid.NewGuid(),
+            Method = ExportConsentMethod.Password,
+            AcceptedResponsibility = true
+        };
+
+        Assert.False(_validator.Validate(request).IsValid);
+    }
+
+    [Fact]
     public void Rejects_AFhirRequestWithOnlyJournalsTicked()
     {
         var request = new RecordExportConsentRequest
