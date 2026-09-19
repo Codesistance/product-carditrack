@@ -54,6 +54,11 @@ public sealed class ExportFileSaver : IExportFileSaver
 
     public async Task<ExportSaved> SaveAsync(ReportFile file, CancellationToken ct = default)
     {
+        var resolver = Android.App.Application.Context.ContentResolver;
+        if (resolver is null)
+            return new ExportSaved(false, null);
+
+        Android.Net.Uri? uri = null;
         try
         {
             var values = new Android.Content.ContentValues();
@@ -63,22 +68,34 @@ public sealed class ExportFileSaver : IExportFileSaver
                 Android.Provider.MediaStore.IMediaColumns.RelativePath,
                 Android.OS.Environment.DirectoryDownloads);
 
-            var resolver = Android.App.Application.Context.ContentResolver;
-            if (resolver is null)
-                return new ExportSaved(false, null);
+            // Inserted pending, published below once every byte is down. Without this the row is
+            // visible to Files and to the media scanner from the moment it is created, so a
+            // caregiver who taps straight into Downloads can open a truncated health record that
+            // looks exactly like their export. It also means a write that dies half way leaves a
+            // row the system reaps rather than a corrupt file sitting in Downloads.
+            values.Put(Android.Provider.MediaStore.IMediaColumns.IsPending, 1);
 
             // MediaStore gives the file a "(1)" suffix rather than overwriting a name already
             // there, which is what a caregiver exporting the same conversation twice expects.
-            var uri = resolver.Insert(Android.Provider.MediaStore.Downloads.ExternalContentUri, values);
+            uri = resolver.Insert(Android.Provider.MediaStore.Downloads.ExternalContentUri, values);
             if (uri is null)
                 return new ExportSaved(false, null);
 
-            await using var output = resolver.OpenOutputStream(uri, "w");
-            if (output is null)
-                return new ExportSaved(false, null);
+            // Closed inside the try, before the row is published: "saved" has to mean the bytes
+            // are down, not that they are on their way.
+            await using (var output = resolver.OpenOutputStream(uri, "w"))
+            {
+                if (output is null)
+                    return new ExportSaved(false, null);
 
-            await output.WriteAsync(file.Content, ct);
-            await output.FlushAsync(ct);
+                await output.WriteAsync(file.Content, ct);
+                await output.FlushAsync(ct);
+            }
+
+            var published = new Android.Content.ContentValues();
+            published.Put(Android.Provider.MediaStore.IMediaColumns.IsPending, 0);
+            resolver.Update(uri, published, null, null);
+
             return new ExportSaved(true, PlaceName);
         }
         catch (Exception ex)
@@ -86,7 +103,27 @@ public sealed class ExportFileSaver : IExportFileSaver
             // A save that fails must not cost the caregiver the export: the caller falls back to
             // the share sheet, which reaches the same Files app by a longer road.
             ScreenRefresh.LogFailure(ex, nameof(ExportFileSaver), "while saving an export");
+            Discard(resolver, uri);
             return new ExportSaved(false, null);
+        }
+    }
+
+    /// <summary>
+    /// Drops a row whose write did not finish. The system clears abandoned pending rows on its
+    /// own eventually; taking ours now means a failed save leaves nothing behind at all.
+    /// </summary>
+    private static void Discard(Android.Content.ContentResolver resolver, Android.Net.Uri? uri)
+    {
+        if (uri is null)
+            return;
+
+        try
+        {
+            resolver.Delete(uri, null, null);
+        }
+        catch (Exception)
+        {
+            // Already gone, or not ours to remove. The pending row expires either way.
         }
     }
 
