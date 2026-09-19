@@ -506,7 +506,7 @@ public partial class ExportHealthDataPage : ContentPage
         if (_ready is null)
             return;
 
-        await _delivery.SaveAsync(_ready, CancellationToken.None);
+        await DeliverAsync(_delivery.SaveAsync(_ready, CancellationToken.None));
     }
 
     private async void OnShareClicked(object? sender, EventArgs e)
@@ -514,7 +514,25 @@ public partial class ExportHealthDataPage : ContentPage
         if (_ready is null)
             return;
 
-        await _delivery.ShareAsync(_ready, CancellationToken.None);
+        await DeliverAsync(_delivery.ShareAsync(_ready, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Both handlers are <c>async void</c>, because a Clicked handler has to be — so nothing
+    /// they await may throw out of them, or the app goes down holding an export the caregiver
+    /// just waited for. The delivery reports its own failures to them; what this catches is the
+    /// step that cannot report anything, a popup or a share sheet that will not open.
+    /// </summary>
+    private static async Task DeliverAsync(Task delivery)
+    {
+        try
+        {
+            await delivery;
+        }
+        catch (Exception ex)
+        {
+            ScreenRefresh.LogFailure(ex, nameof(ExportHealthDataPage), "while delivering an export");
+        }
     }
 
     private void OnStartOverClicked(object? sender, EventArgs e)
