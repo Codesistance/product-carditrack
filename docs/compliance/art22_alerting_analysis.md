@@ -140,6 +140,7 @@ different solver, and must not be treated as bit-stable against post-swap rows.
 |---|---|---|
 | 2026-08-14 | Jacobi → Math.NET EVD for SSA | Same algebra, different solver. Stored `HrDeviationScore` values are not bit-stable across the swap and must not be pooled in a V2 claim |
 | 2026-09-06 | **Caregiver-defined alarms** (`MetricAlarm`) — a fourth producer whose thresholds are set by the user | See below |
+| 2026-09-19 | **Statistical rules become findings; MedGemma returns the verdict** (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`, `StatisticalAlertService`, moved from the Worker to the pipeline's assessor job) | Thresholds in the algorithm card's §2 are unchanged and still decide *whether a finding is put to the model*; what changed is who decides the severity and writes the copy. Every R1 alert row from this date carries a model verdict, so pre/post rows must not be pooled in a V2 claim about R1 severities. The severity mapping, parser strictness and fail-closed behaviour are the assessor's, pinned by the same unit-test contract (V1). The R1 rows now fall under the LLM-routed producer's validation (V2/V3), not the boundary-test exemption above |
 
 **On the 2026-09-06 change.** It does not alter any threshold in the algorithm card's §2: the nine
 statistical rules run unchanged, and `AlertSensitivity` still drives nothing. What it adds is a

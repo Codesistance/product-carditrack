@@ -66,7 +66,14 @@ public enum PromptPurpose
     /// </summary>
     Advise = 512,
 
+    /// <summary>
+    /// The daily statistical findings judgement — <c>StatisticalAlertService</c> handing the R1
+    /// rules' findings to MedGemma for the severity and the words. A private-slot prompt like the
+    /// real-time assessment, and gated by the same sources.
+    /// </summary>
+    StatisticalJudgement = 1024,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
     All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook
-        | Weekbook | Monthbook | MemberChat | Advise,
+        | Weekbook | Monthbook | MemberChat | Advise | StatisticalJudgement,
 }

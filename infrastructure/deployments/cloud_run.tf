@@ -1042,9 +1042,12 @@ resource "google_cloud_scheduler_job" "pipeline_aggregator_5min" {
 
 # ── Pipeline assessor job (AI pipeline — real-time assessment) ───────────────────────────────
 # Same image as the digest job, selected via container args: SSA over each member's latest
-# hour of heart rate, one MedGemma assessment per moved window, severity routed to alerts,
-# then a digest pass so a window just flagged as a problem rewrites the family summary on
-# the same execution rather than waiting for the next */30 digest schedule. Works entirely
+# hour of heart rate, one MedGemma assessment per moved window, severity routed to alerts;
+# then the R1 statistical findings judgement (the nine daily rules compute findings against the
+# 30-day baseline, MedGemma returns each finding's severity and copy — moved here from the
+# Worker on 2026-09-19, one call per member per pass with a finding to judge); then a digest pass so a window or
+# a finding just flagged as a problem rewrites the family summary on the same execution
+# rather than waiting for the next */30 digest schedule. Works entirely
 # off the granular store, so it needs the digest job's exact environment (database + MedGemma
 # + encryption) and reuses those variables — no device credentials and no Pub/Sub. Gated on
 # the pipeline alone: unlike the aggregator it consumes no topic, and it is useful with

@@ -314,11 +314,67 @@ public class MemberChatRoutedDispatchTests
     /// <summary>
     /// "Anything to follow up on?" under a Yellow hero reading "Steps are very low today." came
     /// back "Everything looks settled…" (2026-09-07). The inference read saw only what its planner
-    /// fetched, and the tier rested on today's digest, which is not in its vocabulary. Now the
-    /// clinical read is shown the hero, and a verdict that still says settled is led by the line.
+    /// fetched, and the tier rested on today's digest, which is not in its vocabulary. The clinical
+    /// read is shown the hero and what it rests on; a verdict that still says settled is asked
+    /// once more with the disagreement named, and the second verdict is the reply — the model's
+    /// sentence, with nothing written in front of it.
     /// </summary>
     [Fact]
-    public async Task AnInferenceVerdict_CannotSaySettled_UnderAYellowHero()
+    public async Task AnInferenceVerdict_ThatSaysSettledUnderAYellowHero_IsAskedAgain()
+    {
+        RouterAnswers(MemberChatWorkflow.Inference);
+        TheHeroIsYellow("Steps are very low today.");
+        InferenceAnswers(
+            analysis: "Settled. No alerts; readings at baseline.",
+            rewrite: "Everything looks settled — nothing there needs your attention.");
+        // The second read, with the basis named, weighs it.
+        _medicalAi.GenerateStructuredWithUsageAsync<MemberChatService.InferenceClinicalAiResponse>(
+                Arg.Is<string>(prompt => prompt.Contains("Your first read of this data called things settled")),
+                Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<MemberChatService.InferenceClinicalAiResponse>(
+                new MemberChatService.InferenceClinicalAiResponse
+                {
+                    Analysis = "Worth attention: today's summary flags steps well below usual.",
+                    ReferencesUsed = [],
+                    ReadingsFrom = null,
+                    ReadingsTo = null,
+                },
+                new AiUsage()));
+        _rewriteAi.GenerateWithUsageAsync(
+                Arg.Is<string>(prompt => prompt.Contains("today's summary flags steps")), Arg.Any<CancellationToken>())
+            .Returns(new AiGenerationResult<string>(
+                "Steps are well below usual today, so that's worth keeping an eye on.", new AiUsage()));
+
+        var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
+
+        // The model's second sentence, and nothing written in front of it.
+        Assert.Equal("Steps are well below usual today, so that's worth keeping an eye on.", reply.Reply);
+
+        // Two clinical reads: the first was given the hero to disagree with — tier, line and what
+        // the tier rests on, on the Private slot, where the line's resolved name may travel — and
+        // the second was told the first had called things settled beneath it.
+        var clinicalPrompts = _medicalAi.ReceivedCalls().Select(c => (string)c.GetArguments()[0]!).ToList();
+        Assert.Equal(2, clinicalPrompts.Count);
+        Assert.Contains("--- Current status (dashboard) ---", clinicalPrompts[0], StringComparison.Ordinal);
+        Assert.Contains("Tier: Yellow", clinicalPrompts[0], StringComparison.Ordinal);
+        Assert.Contains("Line: Steps are very low today.", clinicalPrompts[0], StringComparison.Ordinal);
+        Assert.Contains("Rests on:", clinicalPrompts[0], StringComparison.Ordinal);
+        Assert.Contains("Your first read of this data called things settled", clinicalPrompts[1], StringComparison.Ordinal);
+        // Never the rewrite: the status line carries the member's real name.
+        var rewritePrompts = _rewriteAi.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IRewriteAiService.GenerateWithUsageAsync))
+            .Select(c => (string)c.GetArguments()[0]!);
+        Assert.All(rewritePrompts, prompt =>
+            Assert.DoesNotContain("Current status (dashboard)", prompt, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A verdict that reads settled twice beneath a Yellow hero is withheld, not corrected: code
+    /// never writes "I wouldn't call things settled" in front of a model that just did. The
+    /// screenshot this replaces carried both sentences in one bubble.
+    /// </summary>
+    [Fact]
+    public async Task AnInferenceVerdict_ThatSaysSettledTwiceUnderAYellowHero_IsWithheld()
     {
         RouterAnswers(MemberChatWorkflow.Inference);
         TheHeroIsYellow("Steps are very low today.");
@@ -328,23 +384,9 @@ public class MemberChatRoutedDispatchTests
 
         var reply = await CreateSut().SendMessageAsync(_userId, _memberId, "anything to follow up on?");
 
-        // The family's screen leads, in the app's words; the verdict follows rather than being
-        // rewritten by code.
-        Assert.StartsWith("Steps are very low today. The dashboard is showing that as worth attention today",
-            reply.Reply, StringComparison.Ordinal);
-        Assert.Contains("Everything looks settled", reply.Reply, StringComparison.Ordinal);
-
-        // And the clinical read was given the hero to disagree with — tier and line, on the
-        // Private slot, where the line's resolved name may travel.
-        var clinicalPrompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
-        Assert.Contains("--- Current status (dashboard) ---", clinicalPrompt, StringComparison.Ordinal);
-        Assert.Contains("Tier: Yellow", clinicalPrompt, StringComparison.Ordinal);
-        Assert.Contains("Line: Steps are very low today.", clinicalPrompt, StringComparison.Ordinal);
-        // Never the rewrite: the status line carries the member's real name.
-        var rewritePrompt = (string)_rewriteAi.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IRewriteAiService.GenerateWithUsageAsync))
-            .GetArguments()[0]!;
-        Assert.DoesNotContain("Current status (dashboard)", rewritePrompt, StringComparison.Ordinal);
+        Assert.Equal(MemberChatService.CouldNotAnswerReply, reply.Reply);
+        Assert.DoesNotContain("settled", reply.Reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, _medicalAi.ReceivedCalls().Count());
     }
 
     /// <summary>A settled verdict under a settled hero is left exactly as the rewrite wrote it —

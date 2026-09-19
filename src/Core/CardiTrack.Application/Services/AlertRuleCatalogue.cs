@@ -84,6 +84,10 @@ public static class AlertRuleCatalogue
     public static bool IsKnown(string ruleId) => KnownIds.Contains(ruleId);
 
     public static bool IsImplemented(string ruleId) => ImplementedIds.Contains(ruleId);
+
+    /// <summary>The catalogue's own entry for <paramref name="ruleId"/>, or null for a rule it does not list.</summary>
+    public static AlertRuleDefinition? Find(string ruleId) =>
+        ClustersInternal.SelectMany(c => c.Rules).FirstOrDefault(r => r.Id == ruleId);
 }
 
 public sealed record AlertRuleClusterDefinition(

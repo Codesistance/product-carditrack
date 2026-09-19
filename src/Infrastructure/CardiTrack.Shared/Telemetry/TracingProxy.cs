@@ -21,7 +21,7 @@ namespace CardiTrack.Shared.Telemetry;
 /// throw <c>ArgumentException: The base type ... cannot be sealed</c> — at DI resolution time, not
 /// at startup, so nothing fails until the first real call. That is exactly how it reached dev:
 /// <c>INotificationChannel</c>, <c>IDispatchService</c> and <c>IAckDeliveryService</c> all became
-/// unresolvable, which took down push dispatch, <c>StatisticalAlertWorker</c> and
+/// unresolvable, which took down push dispatch, the then-Worker-hosted statistical alerts and
 /// <c>InactivityDetectionWorker</c> — alerts stopped being raised at all, not merely delivered
 /// (2026-08-14, 05:59Z until this fix). <c>TracingProxyResolutionTests</c> is the guard.
 /// </remarks>

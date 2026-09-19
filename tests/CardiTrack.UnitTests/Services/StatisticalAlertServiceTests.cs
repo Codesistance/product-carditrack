@@ -1,5 +1,7 @@
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
-using CardiTrack.Application.Services.Notifications;
+using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
@@ -10,10 +12,12 @@ using NSubstitute.ExceptionExtensions;
 namespace CardiTrack.UnitTests.Services;
 
 /// <summary>
-/// Pins the engine's orchestration guarantees: no established baseline means total silence
+/// Pins the pass's orchestration guarantees: no established baseline means total silence
 /// (provisional never alerts), cooldowns are scoped to the family's remedy — rule-scoped
-/// where remedies differ, type-scoped for the heart — and one day's data produces at most one
-/// alert per rule regardless of the 15-minute cadence.
+/// where remedies differ, type-scoped for the heart — one day's data produces at most one
+/// alert per rule regardless of the cadence, and <b>the verdict is the model's</b>: severity,
+/// headline and message come from MedGemma's answer, matched to each finding by rule, and any
+/// answer that cannot be used raises nothing rather than something code wrote.
 /// </summary>
 public class StatisticalAlertServiceTests
 {
@@ -25,6 +29,9 @@ public class StatisticalAlertServiceTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
+    private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
+    private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -42,9 +49,10 @@ public class StatisticalAlertServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.AlertPreferences.Returns(_alertPreferences);
+        _unitOfWork.EnvironmentalReadings.Returns(_environmentalReadings);
 
         // Defaults: one active London-anchored member with an established baseline, a sharp
-        // step decline yesterday, and no standing alerts.
+        // step decline yesterday, no standing alerts, and a model that answers every rule.
         _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([_memberId]);
         _members.GetByIdAsync(_memberId).Returns(Member());
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns(EstablishedBaseline());
@@ -55,6 +63,7 @@ public class StatisticalAlertServiceTests
         _users.GetByIdAsync(_userId).Returns(new User { Id = _userId, TimeZoneId = "Europe/London" });
         SetupLogs(new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 1000 });
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([]);
+        ModelJudges(DefaultVerdicts);
     }
 
     private CardiMember Member() => new()
@@ -62,6 +71,7 @@ public class StatisticalAlertServiceTests
         Id = _memberId,
         Name = "Margaret Doe",
         DateOfBirth = new DateOnly(1948, 3, 2),
+        Gender = Gender.Female,
         IsActive = true,
     };
 
@@ -79,13 +89,52 @@ public class StatisticalAlertServiceTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns(logs);
 
+    /// <summary>
+    /// A verdict for every rule the pass can ask about, so any fixture reaches an alert. The
+    /// severities echo what the rules used to hard-code, which keeps the orchestration tests
+    /// readable — the point of the pass is that these now come from the answer, not the rule.
+    /// </summary>
+    private static readonly IReadOnlyList<StatisticalAlertService.JudgementVerdict> DefaultVerdicts =
+    [
+        Verdict(StatisticalAlertRules.ActivityDeclineRule, "medium"),
+        Verdict(StatisticalAlertRules.IrregularSleepRule, "medium"),
+        Verdict(StatisticalAlertRules.ElevatedHeartRateRule, "high"),
+        Verdict(StatisticalAlertRules.NoMorningActivityRule, "critical"),
+        Verdict(StatisticalAlertRules.LongTermTrendRule, "high"),
+        Verdict(StatisticalAlertRules.HeartRateVariabilityDropRule, "high"),
+        Verdict(StatisticalAlertRules.OvernightBreathingUpRule, "high"),
+        Verdict(StatisticalAlertRules.ElevatedZoneWithoutMovementRule, "high"),
+        Verdict(StatisticalAlertRules.DaytimeInactivityBlockRule, "medium"),
+    ];
+
+    private static StatisticalAlertService.JudgementVerdict Verdict(
+        string rule, string severity, string headline = "Quieter than usual", string? message = null) => new()
+    {
+        Rule = rule,
+        Severity = severity,
+        Headline = headline,
+        Message = message ?? "A quieter day than usual for her. Worth a gentle check-in when you next speak.",
+    };
+
+    private void ModelJudges(IReadOnlyList<StatisticalAlertService.JudgementVerdict> verdicts) =>
+        _medicalAi.GenerateStructuredAsync<StatisticalAlertService.JudgementAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new StatisticalAlertService.JudgementAiResponse { Verdicts = verdicts });
+
     private StatisticalAlertService CreateSut() =>
-        new(_unitOfWork, Substitute.For<IDispatchService>(),
-            NullLogger<StatisticalAlertService>.Instance);
+        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+            InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance, _enqueue);
+
+    // ── The verdict is the model's ────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ASharpDecline_RaisesOneYellowInactivityAlert_WithItsRuleMarker()
+    public async Task ASharpDecline_RaisesOneAlert_WithTheModelsSeverityHeadlineAndMessage()
     {
+        ModelJudges([Verdict(
+            StatisticalAlertRules.ActivityDeclineRule, "medium",
+            headline: "A much quieter day",
+            message: "She moved far less than usual. Worth asking how she is feeling.")]);
+
         var raised = await CreateSut().EvaluateAsync(UtcNow);
 
         Assert.Equal(1, raised);
@@ -93,26 +142,26 @@ public class StatisticalAlertServiceTests
             a.CardiMemberId == _memberId
             && a.AlertType == AlertType.Inactivity
             && a.Severity == AlertSeverity.Yellow
+            && a.Title == "A much quieter day"
+            && a.Message == "She moved far less than usual. Worth asking how she is feeling."
             && a.MetricValues!.Contains("\"rule\":\"activity_decline\"")));
         await _unitOfWork.Received(1).SaveChangesAsync();
+        await _enqueue.Received(1).EnqueueForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
-    // Provisional-never-alerts, enforced by what is fetched: no 30-day baseline, no rules —
-    // and no wasted reads.
+    /// <summary>The severity is whatever the model said, not what the rule used to carry.</summary>
     [Fact]
-    public async Task NoEstablishedBaseline_MeansTotalSilence()
+    public async Task TheModelsSeverity_IsTheAlerts_WhateverTheRuleUsedToSay()
     {
-        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "critical")]);
 
-        var raised = await CreateSut().EvaluateAsync(UtcNow);
+        await CreateSut().EvaluateAsync(UtcNow);
 
-        Assert.Equal(0, raised);
-        await _activityLogs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
-            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a => a.Severity == AlertSeverity.Red));
     }
 
     [Fact]
-    public async Task SeveralRulesCanFireTogether_InOneSave()
+    public async Task TheModelIsAskedOnce_WithEveryFindingOfThePass()
     {
         // Decline + short sleep + elevated resting HR, all in yesterday's log.
         SetupLogs(new ActivityLog
@@ -128,6 +177,155 @@ public class StatisticalAlertServiceTests
 
         Assert.Equal(3, raised);
         await _unitOfWork.Received(1).SaveChangesAsync();
+        var prompt = (string)_medicalAi.ReceivedCalls().Single().GetArguments()[0]!;
+        Assert.Contains("[FINDINGS]", prompt, StringComparison.Ordinal);
+        Assert.Contains("\"rule\": \"activity_decline\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("\"rule\": \"irregular_sleep\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("\"rule\": \"elevated_heart_rate\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("[PATIENT CONTEXT]", prompt, StringComparison.Ordinal);
+    }
+
+    /// <summary>A verdict is matched to its finding by rule, so a reordered answer cannot write
+    /// one finding's severity against another.</summary>
+    [Fact]
+    public async Task AVerdict_IsMatchedByRule_NotByPosition()
+    {
+        SetupLogs(new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 1000, RestingHeartRate = 80 });
+        ModelJudges([
+            Verdict(StatisticalAlertRules.ElevatedHeartRateRule, "critical"),
+            Verdict(StatisticalAlertRules.ActivityDeclineRule, "medium"),
+        ]);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.AlertType == AlertType.HeartRate && a.Severity == AlertSeverity.Red));
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.AlertType == AlertType.Inactivity && a.Severity == AlertSeverity.Yellow));
+    }
+
+    // ── Fail closed ───────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ASeverityOutsideTheTaxonomy_RaisesNothing()
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "urgent-ish")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task AVerdictTheModelDidNotGive_RaisesNothing()
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ElevatedHeartRateRule, "high")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>Low is the model saying "not worth attention today". Nothing is written, and
+    /// nothing marks the day as judged, so the next pass asks again with the day's new readings.</summary>
+    [Fact]
+    public async Task ALowVerdict_RaisesNothing()
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "low")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    [Fact]
+    public async Task AModelFailure_RaisesNothing_AndLeavesTheFindingForTheNextPass()
+    {
+        _medicalAi.GenerateStructuredAsync<StatisticalAlertService.JudgementAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("MedGemma cold"));
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task AnEmptyMessage_RaisesNothing()
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "medium", message: "   ")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+    }
+
+    /// <summary>A pronoun the record does not bear out is a claim about someone's mother or
+    /// father; the alert is withheld, on the same terms as every other rewrite guard.</summary>
+    [Fact]
+    public async Task AMessageStatingAnUnsupportedSex_RaisesNothing()
+    {
+        ModelJudges([Verdict(
+            StatisticalAlertRules.ActivityDeclineRule, "medium",
+            message: "He moved far less than usual. Worth asking how he is feeling.")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+    }
+
+    /// <summary>Severity still routes when the sentence names a condition; the sentence does not.</summary>
+    [Fact]
+    public async Task AMessageNamingACondition_KeepsTheSeverity_AndLosesTheSentence()
+    {
+        ModelJudges([Verdict(
+            StatisticalAlertRules.ActivityDeclineRule, "high",
+            message: "This pattern is consistent with atrial fibrillation. Call her doctor.")]);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.Severity == AlertSeverity.Orange
+            && a.Message == StatisticalAlertService.NonClinicalObservation));
+    }
+
+    /// <summary>A headline that is not a title — empty, a sentence, a leftover token — falls back
+    /// to the settings catalogue's own name for the rule: the observation the caregiver chose to
+    /// be told about, not a verdict.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("Everything about the day looked much quieter than it usually does for her")]
+    [InlineData("CardiTrackCardiMemberTheir quieter day")]
+    public async Task AnUnusableHeadline_FallsBackToTheCatalogueName(string headline)
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "medium", headline: headline)]);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a => a.Title == "Activity decline"));
+    }
+
+    // ── Provisional never alerts, preferences, cooldown, dedup — all ahead of the model ──
+
+    // Provisional-never-alerts, enforced by what is fetched: no 30-day baseline, no rules —
+    // and no wasted reads, and no inference.
+    [Fact]
+    public async Task NoEstablishedBaseline_MeansTotalSilence()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _activityLogs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
+            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
+        Assert.Empty(_medicalAi.ReceivedCalls());
     }
 
     [Fact]
@@ -143,10 +341,13 @@ public class StatisticalAlertServiceTests
 
         Assert.Equal(0, raised);
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        Assert.Empty(_medicalAi.ReceivedCalls());
     }
 
+    /// <summary>Cooldown and dedup run before the model, so a finding that would be suppressed
+    /// costs no inference.</summary>
     [Fact]
-    public async Task AnUnresolvedAlertOfTheSameRule_Suppresses()
+    public async Task AnUnresolvedAlertOfTheSameRule_Suppresses_BeforeTheModelIsAsked()
     {
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns(
         [
@@ -160,6 +361,7 @@ public class StatisticalAlertServiceTests
         var raised = await CreateSut().EvaluateAsync(UtcNow);
 
         Assert.Equal(0, raised);
+        Assert.Empty(_medicalAi.ReceivedCalls());
     }
 
     // Device-silence and activity-decline share the Inactivity type but ask for different
@@ -247,7 +449,7 @@ public class StatisticalAlertServiceTests
     }
 
     // Deleting is housekeeping, not a new episode: the same quieter day must not page again
-    // 15 minutes later just because the card left the list.
+    // five minutes later just because the card left the list.
     [Fact]
     public async Task ADeletedAlertFromToday_StillDedupes()
     {
@@ -268,7 +470,7 @@ public class StatisticalAlertServiceTests
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
     }
 
-    // A deleted statistical alert must not latch the rule forever — this engine does not
+    // A deleted statistical alert must not latch the rule forever — this pass does not
     // auto-resolve, so yesterday's deleted quieter-day card is spent history, not a cooldown.
     [Fact]
     public async Task ADeletedAlertFromYesterday_DoesNotDedupeToday()
@@ -333,8 +535,6 @@ public class StatisticalAlertServiceTests
     //
     // Sleep sessions are attributed to the civil day they ended on, so the night a family is
     // looking at this morning is today's row — the same row the dashboard's sleep card rates.
-    // The engine used to read yesterday's row, which meant a poor night showed POOR on the
-    // dashboard all day while the alert could only arrive tomorrow.
 
     [Fact]
     public async Task AShortNightOnTodaysLog_AlertsTheSameDay()
@@ -465,7 +665,7 @@ public class StatisticalAlertServiceTests
 
     // Wiring, not thresholds: the pure rules are pinned in StatisticalAlertRulesTests, but only
     // EvaluateAsync can catch a rule registered under the wrong preference id, reading the wrong
-    // row, or losing its candidate to the shared HeartRate cooldown.
+    // row, or losing its finding to the shared HeartRate cooldown.
     [Fact]
     public async Task TheOvernightBreathingRule_RaisesThroughTheOrchestrator()
     {
@@ -505,8 +705,9 @@ public class StatisticalAlertServiceTests
         var raised = await CreateSut().EvaluateAsync(UtcNow);
 
         // The step decline fires too — they are the same quiet day read two ways, which is the
-        // point of the pairing.
+        // point of the pairing, and the model reads them together in one call.
         Assert.Equal(2, raised);
+        Assert.Single(_medicalAi.ReceivedCalls());
         await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
             a.MetricValues!.Contains("\"rule\":\"elevated_zone_without_movement\"")));
     }
