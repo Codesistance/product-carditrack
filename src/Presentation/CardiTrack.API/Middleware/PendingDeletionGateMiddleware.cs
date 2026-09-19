@@ -25,6 +25,21 @@ namespace CardiTrack.API.Middleware;
 /// service say so in as many words, because a family must not discover it from silence.
 /// </para>
 /// <para>
+/// <strong>What this middleware does not do, and what does it instead.</strong> This gate is a
+/// refusal of *inbound* requests. It says nothing about what the server sends unprompted, and for
+/// a while nothing else did either: where a member had a second caregiver, monitoring carried on,
+/// alerts were still raised, and the departing caregiver was still among the recipients — so a
+/// monitored person's health and Safety pushes went on reaching a phone whose owner had asked to
+/// be erased, and may well have handed it on. That was issue #1144, and the answer there was that
+/// a caregiver awaiting deletion receives nothing at all.
+///
+/// Enforced in two places, neither of them here: <c>DispatchService.EnqueueAsync</c> declines to
+/// create a delivery for such a recipient, which covers everything raised from the moment of the
+/// request; and <c>PushDeviceTokenRepository</c> excludes their tokens from the send set and the
+/// liveness probe, which covers what was already queued when it landed — including after signing
+/// in to cancel re-registers the device.
+/// </para>
+/// <para>
 /// The account is not dormant to its owner: signing in still works, and
 /// <c>DELETE /api/v1/users/me/deletion</c> calls the whole thing off and restores everything,
 /// which is the only reason a 30-day window exists at all. Those endpoints are the exceptions

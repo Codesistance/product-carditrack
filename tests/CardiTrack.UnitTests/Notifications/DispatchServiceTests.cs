@@ -280,6 +280,66 @@ public class DispatchServiceTests
     }
 
     [Fact]
+    public async Task EnqueueAsync_DeclinesARecipientAwaitingAccountDeletion()
+    {
+        // Issue #1144: a caregiver who has asked to be deleted receives nothing at all. The gate
+        // refuses them every inbound request, but says nothing about what the server sends
+        // unprompted — so where a member has a second caregiver, monitoring carries on and the
+        // departing one was still a recipient, on a phone they may already have handed on.
+        var (memberId, receiving, _) = SetupReassuranceMember();
+        _users.GetByIdAsync(receiving).Returns(new User
+        {
+            Id = receiving,
+            DeletionRequestedAtUtc = _timeProvider.GetUtcNow().UtcDateTime.AddDays(-2),
+        });
+
+        var deliveries = await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1);
+
+        // Nothing recorded, not merely nothing sent: the gate refuses them every read endpoint,
+        // so a row written now is one nobody can see, and one that would surface unread and
+        // stale if they cancelled inside the thirty days.
+        Assert.Empty(deliveries);
+        await _deliveries.DidNotReceiveWithAnyArgs().AddAsync(default!);
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_StillReachesTheOtherCaregiversOfTheSameMember()
+    {
+        // The member is still watched by somebody, and they must still hear about them — the
+        // request is one caregiver's, not the member's.
+        var (memberId, receiving, optedOut) = SetupReassuranceMember();
+        var second = Guid.NewGuid();
+        _links.GetByCardiMemberIdAsync(memberId).Returns(
+        [
+            new UserCardiMember { UserId = receiving, CardiMemberId = memberId, IsActive = true, ReceiveAlerts = true },
+            new UserCardiMember { UserId = second, CardiMemberId = memberId, IsActive = true, ReceiveAlerts = true },
+            new UserCardiMember { UserId = optedOut, CardiMemberId = memberId, IsActive = true, ReceiveAlerts = false },
+        ]);
+        _users.GetByIdAsync(receiving).Returns(new User
+        {
+            Id = receiving,
+            DeletionRequestedAtUtc = _timeProvider.GetUtcNow().UtcDateTime.AddDays(-2),
+        });
+
+        var deliveries = await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1);
+
+        Assert.Equal(second, Assert.Single(deliveries).UserId);
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_ResumesForACancelledDeletion()
+    {
+        // Cancelling clears the timestamp, and nothing else has to be undone for notifications
+        // to start again — the filter reads the column, not a copy of it taken at request time.
+        var (memberId, receiving, _) = SetupReassuranceMember();
+        _users.GetByIdAsync(receiving).Returns(new User { Id = receiving, DeletionRequestedAtUtc = null });
+
+        var deliveries = await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1);
+
+        Assert.Equal(receiving, Assert.Single(deliveries).UserId);
+    }
+
+    [Fact]
     public async Task EnqueueForReassuranceAsync_KeysTheWeekIntoTheDedupKeyAndOutOfTheCollapseKey()
     {
         var (memberId, receiving, _) = SetupReassuranceMember();

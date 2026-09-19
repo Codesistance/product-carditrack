@@ -20,7 +20,16 @@ public interface IDispatchService
     /// with <c>ReceiveAlerts</c> gets a red alert) is the caller's job: loop and call this once per
     /// recipient user id.
     /// </remarks>
-    Task<NotificationDelivery> EnqueueAsync(EnqueueRequest request, CancellationToken ct = default);
+    /// <summary>
+    /// Records a delivery and, for an immediate push, attempts it.
+    /// </summary>
+    /// <returns>
+    /// The delivery, or null when there is nobody to deliver to: the recipient has asked for
+    /// their account to be deleted, and until that request is cancelled they are not a recipient
+    /// of anything. See the implementation for why it is declined here rather than filtered by
+    /// each caller.
+    /// </returns>
+    Task<NotificationDelivery?> EnqueueAsync(EnqueueRequest request, CancellationToken ct = default);
 
     /// <summary>
     /// Resolves an <see cref="Domain.Entities.Alert"/> to its recipients and enqueues one delivery
@@ -121,7 +130,7 @@ public class DispatchService : IDispatchService
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public async Task<NotificationDelivery> EnqueueAsync(EnqueueRequest request, CancellationToken ct = default)
+    public async Task<NotificationDelivery?> EnqueueAsync(EnqueueRequest request, CancellationToken ct = default)
     {
         using var activity = PushDispatchTelemetry.Source.StartActivity("notification.enqueue", ActivityKind.Internal);
         activity?.SetTag(PushDispatchTelemetry.CategoryTag, request.Category.ToString());
@@ -140,6 +149,25 @@ public class DispatchService : IDispatchService
         activity?.SetTag(PushDispatchTelemetry.DedupHitTag, false);
 
         var user = await _unitOfWork.Users.GetByIdAsync(request.UserId);
+
+        // An account that has asked to be deleted receives nothing at all — not a push, not an
+        // in-app row, not a record of one it was never told about. Declined here rather than in
+        // each fan-out because this is the one place every caller passes through: the four
+        // fan-outs above, the dev push endpoint, both worker paths and the canary. A filter in
+        // the fan-outs would be four copies of a rule, and the next caller would not have it.
+        //
+        // Nothing is recorded, deliberately. The gate refuses this account every read endpoint,
+        // so an inbox row written now is one nobody can see and one that would appear, unread
+        // and stale, if they cancelled inside the thirty days.
+        //
+        // The pairing query in PushDeviceTokenRepository covers what this cannot: deliveries
+        // already queued when the request landed.
+        if (user?.DeletionRequestedAtUtc is not null)
+        {
+            activity?.SetTag(PushDispatchTelemetry.DeclinedTag, "awaiting-deletion");
+            return null;
+        }
+
         var timeZoneId = user?.TimeZoneId ?? "UTC";
         var (isWithinQuietHours, quietHoursEndUtc) =
             await _preferences.EvaluateQuietHoursAsync(request.UserId, timeZoneId, utcNow, ct);
@@ -216,7 +244,8 @@ public class DispatchService : IDispatchService
                 CollapseKey: $"alert-{alert.Id}",
                 AlertType: alert.AlertType);
 
-            results.Add(await EnqueueAsync(request, ct));
+            if (await EnqueueAsync(request, ct) is { } delivery)
+                results.Add(delivery);
         }
 
         return results;
@@ -258,7 +287,8 @@ public class DispatchService : IDispatchService
                 // original push on the device rather than stack beneath it.
                 CollapseKey: $"questionnaire-{questionnaire.Id}");
 
-            results.Add(await EnqueueAsync(request, ct));
+            if (await EnqueueAsync(request, ct) is { } delivery)
+                results.Add(delivery);
         }
 
         return results;
@@ -298,7 +328,8 @@ public class DispatchService : IDispatchService
                 // news in the shade.
                 CollapseKey: $"reassurance-{cardiMemberId}");
 
-            results.Add(await EnqueueAsync(request, ct));
+            if (await EnqueueAsync(request, ct) is { } delivery)
+                results.Add(delivery);
         }
 
         return results;

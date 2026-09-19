@@ -117,6 +117,27 @@ public class DevPushController : ControllerBase
             // one on the device, since seeing both arrive is half the point.
             CollapseKey: null), ct);
 
+        // Declined outright, which for this endpoint is the answer rather than a fault: the
+        // account has asked to be deleted and is not a recipient of anything until it cancels.
+        // Said plainly, because "the test push did not arrive" is exactly the question this
+        // endpoint exists to answer.
+        if (delivery is null)
+        {
+            _logger.LogWarning(
+                "Dev push declined: user {UserId} is awaiting account deletion.", request.UserId);
+
+            const string declined = "Nothing was sent: this account has asked to be deleted, so it "
+                                    + "receives nothing until the request is cancelled.";
+
+            return Ok(new ApiResponse<DevPushResponse>
+            {
+                Success = true,
+                Message = declined,
+                Data = new DevPushResponse { Hint = declined },
+                Timestamp = utcNow
+            });
+        }
+
         _logger.LogWarning(
             "Dev push sent: delivery {DeliveryId}, user {UserId}, category {Category}, severity {Severity}.",
             delivery.Id, request.UserId, request.Category, request.Severity);
