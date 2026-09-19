@@ -21,7 +21,8 @@ is reused here as-is:
 |---|---|
 | Project | `carditrack-490120` (number `206164751924`) |
 | Pool / provider | `carditrack-pool` / `github` |
-| Service account | `carditrack-deploy@carditrack-490120.iam.gserviceaccount.com` |
+| Service account | `carditrack-deploy@carditrack-490120.iam.gserviceaccount.com` (deploys) |
+| Digest identity | `carditrack-digest@carditrack-490120.iam.gserviceaccount.com` (this workflow; no project roles) |
 | Attribute condition | `assertion.repository=='Codesistance/product-carditrack'` |
 
 That condition is the thing that stops any repo on GitHub assuming the service
@@ -40,10 +41,24 @@ no project IDs to fill in anywhere.
 
 ## 2. Secret into Secret Manager
 
+**Rerun the bootstrap first.** `carditrack-digest` is created by
+`scripts/setup-gcp-auth.sh`, not by Terraform, and this project has already run
+an older copy of that script — which skips anything that exists and so will not
+add the account on its own:
+
+```bash
+bash scripts/setup-gcp-auth.sh
+```
+
+That run also adds `attribute.job_workflow_ref` to the OIDC provider and binds
+the account to the posting workflow. Until it has happened, the Terraform
+binding below refers to a principal that does not exist and the workflow cannot
+authenticate.
+
 The secret and its IAM binding are declared in
 `infrastructure/common/secret_manager.tf` (`carditrack-common-slack-bot-token`),
-created with a `REPLACE_ME` placeholder that Terraform then ignores. Apply the
-common stack, then load the real value:
+created with a `REPLACE_ME` placeholder that Terraform then ignores. Then apply
+the common stack and load the real value:
 
 ```bash
 echo -n 'xoxb-your-token' | \
@@ -51,12 +66,13 @@ echo -n 'xoxb-your-token' | \
     --project=carditrack-490120 --data-file=-
 ```
 
-The accessor grant is written **per secret**, to `carditrack-deploy`. Be clear
-about what that does and does not buy: `scripts/setup-gcp-auth.sh` already grants
-that same account project-level `roles/secretmanager.admin` (line 47), so it can
-read every secret in the project regardless of this binding. The per-secret grant
-is the correct shape and is what a dedicated identity would need, but **this
-setup is not least privilege today** — see *Hardening still required* below.
+The accessor grant is **per secret**, to `carditrack-digest` — an identity with
+no project-level roles, so this binding is the whole of its read access, and the
+bootstrap now fails closed if that account is ever found holding one. It is
+deliberately not `carditrack-deploy`, which holds project-level
+`roles/secretmanager.admin` and could read every secret regardless of any
+per-secret binding. See *Hardening still required* for what this does and does
+not protect against.
 
 ## 3. Repo settings
 
@@ -117,51 +133,72 @@ workflow only posts files a push adds, so a later delete cannot re-trigger it.
   `HEAD^ HEAD`, so a push carrying several commits posts every digest in it. It
   filters to added files only, so editing a digest after the fact does not
   re-post it.
-- Grant `secretAccessor` per secret, never at project level — and note the
-  project-level `secretmanager.admin` already held by `carditrack-deploy`
-  currently makes that moot for this identity.
+- Grant `secretAccessor` per secret, never at project level — and grant it to
+  `carditrack-digest`, not `carditrack-deploy`: a per-secret grant to an account
+  that already holds project-level `secretmanager.admin` isolates nothing.
 
 ## Hardening still required
 
-Two gaps, both found in review of this design. Neither is fixable inside the
-workflow file, because both concern what the workflow file *is*.
+**1. The routine can rewrite the workflow that holds the credential.** Still
+open, and it is the one that matters. The routine pushes directly to `main`, and
+`post-digest.yml` lives on `main`. A `push` event runs the workflow definition
+*from the pushed commit*, so a prompt injection that got the routine to commit an
+altered `post-digest.yml` alongside a digest would have that altered version run,
+with `id-token: write`. No guard inside the workflow can prevent this, since the
+attacker's version is the one that executes.
 
-**1. The routine can rewrite the workflow that holds the credential.** It pushes
-directly to `main`, and `post-digest.yml` lives on `main`. A `push` event runs
-the workflow definition *from the pushed commit*, so a prompt injection that got
-the routine to commit an altered `post-digest.yml` alongside a digest would have
-that altered version run — with `id-token: write` and access to Secret Manager.
-No guard inside the workflow can prevent this, since the attacker's version is
-the one that executes.
+Close it with one of:
 
-This is why the sandbox/runner split alone is not the whole boundary. Close it
-with one of:
-
-- **Branch protection on `main`** requiring review for `.github/workflows/**`
-  (CODEOWNERS enforces this only under branch protection). The routine then
-  cannot land a workflow change without a human. This is the smallest change,
-  and the only cost is that the routine needs a path to commit digests that
-  protection allows.
+- **A repository ruleset restricting `.github/workflows/**`** so the routine
+  cannot land a workflow change without review, while still committing digests.
+  Smallest change, keeps this design intact, and it is what the digest identity
+  below assumes.
 - **Scope the routine's credential** to `digests/*` via a fine-grained token or
   a GitHub App installation limited to that path.
 - **Trigger from the default branch.** A `schedule:` or `workflow_run:` workflow
-  always runs the definition on the default branch, not the pushed commit, so
-  the routine pushing to a side branch cannot alter what runs.
+  runs the definition on the default branch rather than the pushed commit, so a
+  routine pushing to a side branch — with no `main` write at all — cannot alter
+  what runs.
 
-**2. The posting identity is over-privileged.** `carditrack-deploy` holds
-project-level `roles/secretmanager.admin`. Because this workflow assumes that
-account, a successful tamper under gap 1 reaches not just the Slack token but
-every secret in the project — database passwords, encryption keys, the lot. A
-dedicated `carditrack-digest` service account, holding only `secretAccessor` on
-`carditrack-common-slack-bot-token` and bound to the same WIF pool, would cap
-the blast radius at the Slack token. That change touches the shared bootstrap
-and every workflow that assumes the deploy account, so it is deliberately not in
-this change.
+**2. The posting identity is over-privileged.** Closed. Posting now assumes
+`carditrack-digest`, created by `scripts/setup-gcp-auth.sh` with **no
+project-level roles**; its only grant is `secretAccessor` on
+`carditrack-common-slack-bot-token`. A legitimate run of this workflow can reach
+the Slack token and nothing else — previously it assumed `carditrack-deploy`,
+which holds project-level `roles/secretmanager.admin` and can read every secret
+in the project.
 
-Until both are closed, this design is still a net improvement on the routine
-holding the token outright — tampering is a harder path than reading an
-environment variable — but the improvement is narrower than "the routine cannot
-reach the credential".
+`carditrack-digest` is also bound to the posting workflow rather than to the
+repository, via `attribute.workflow_ref`, so no other workflow authenticating on
+its own can assume it — every deploy workflow already requests `id-token: write`,
+so a repository-wide binding would have made "scoped identity" untrue. The
+bootstrap asserts that binding is the only one on the account, across every role
+rather than just `workloadIdentityUser`, and fails naming anything else.
+
+One more limit, stated because the obvious reading of the above is wrong:
+`carditrack-deploy` holds **project-level** `serviceAccountTokenCreator` and
+`serviceAccountUser`, granted by `scripts/setup-gcp-auth.sh` because the deploy
+workflows need them. Project-level roles reach every service account in the
+project, so anything holding the deploy account can mint a token for
+`carditrack-digest`. It gains nothing by doing so — the deploy account already
+holds `secretmanager.admin` — but the accurate claim is about *reach*, not
+*access*: the digest identity cannot be used to read more than the Slack token,
+and assuming it requires either being the posting workflow or already holding a
+strictly more powerful account. The bootstrap prints these holders on every run
+so the claim cannot quietly drift again.
+
+The first real run is what proves the claim matches: if the binding is wrong,
+`post-digest.yml` fails at the auth step and posts nothing, which is the
+direction you want it to fail in. Check the run before assuming the digest is
+live.
+
+Be clear about the limit, because it is easy to overrate: this does **not**
+defend against gap 1. `carditrack-deploy` is still bound repository-wide, so a
+tampered workflow can simply ask for that account instead and read everything.
+Narrowing the deploy account the same way would touch every deploy workflow and
+is not attempted here. What the scoped identity buys is a correct blast radius
+for the workflow as written, and a real reduction once gap 1 is closed. Gap 1
+remains the load-bearing fix; this is defence in depth behind it.
 
 ## Deferred
 

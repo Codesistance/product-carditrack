@@ -76,6 +76,15 @@ else
 fi
 
 # ── GitHub OIDC Provider ───────────────────────────────────────────────────────
+# workflow_ref lets a service account be bound to one workflow file rather than to
+# the whole repository, which is what scopes the digest identity below. It is the
+# ref of the workflow that was triggered, which is what post-digest.yml is — its
+# posting job is defined inline, not in a reusable workflow. job_workflow_ref is
+# mapped alongside it (it names the workflow defining the job, and is documented
+# for the reusable-workflow case) so the binding can move without touching the
+# provider if that job is ever factored out.
+ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.workflow_ref=assertion.workflow_ref,attribute.job_workflow_ref=assertion.job_workflow_ref"
+
 if gcloud iam workload-identity-pools providers describe $PROVIDER_NAME \
     --location=global --workload-identity-pool=$POOL_NAME \
     --project=$PROJECT_ID > /dev/null 2>&1; then
@@ -85,9 +94,58 @@ else
     --location=global \
     --workload-identity-pool=$POOL_NAME \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+    --attribute-mapping="$ATTR_MAPPING" \
     --attribute-condition="assertion.repository=='${REPO}'" \
     --project=$PROJECT_ID
+fi
+
+# Applied on every run, not only at creation: the mapping gained
+# attribute.job_workflow_ref after this provider already existed, and the branch
+# above only skips. Adding a mapping is additive — principalSets bound on
+# attribute.repository keep working — so this is safe to reapply.
+gcloud iam workload-identity-pools providers update-oidc $PROVIDER_NAME \
+  --location=global \
+  --workload-identity-pool=$POOL_NAME \
+  --attribute-mapping="$ATTR_MAPPING" \
+  --project=$PROJECT_ID
+
+# ── Digest posting identity ───────────────────────────────────────────────────
+# Deliberately separate from carditrack-deploy, which holds project-level
+# roles/secretmanager.admin and so can read every secret in the project. This
+# account gets NO project-level roles: its only grant is secretAccessor on
+# carditrack-common-slack-bot-token, made per secret in
+# infrastructure/common/secret_manager.tf.
+DIGEST_SA_NAME=carditrack-digest
+DIGEST_SA_EMAIL=$DIGEST_SA_NAME@$PROJECT_ID.iam.gserviceaccount.com
+
+if gcloud iam service-accounts describe $DIGEST_SA_EMAIL --project=$PROJECT_ID > /dev/null 2>&1; then
+  echo "Service account $DIGEST_SA_EMAIL already exists — skipping"
+else
+  gcloud iam service-accounts create $DIGEST_SA_NAME \
+    --display-name="CardiTrack Digest Poster" \
+    --project=$PROJECT_ID
+fi
+
+# The whole claim of this account is that it holds no project-level role, so
+# assert it rather than assume it. The branch above only skips creation, so an
+# account that picked up a role elsewhere would otherwise sail through and the
+# per-secret binding in Terraform would be describing an isolation that is not
+# there. Fail closed and make a human look.
+DIGEST_PROJECT_ROLES=$(gcloud projects get-iam-policy $PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:serviceAccount:${DIGEST_SA_EMAIL}" \
+  --format="value(bindings.role)")
+
+if [ -n "$DIGEST_PROJECT_ROLES" ]; then
+  echo "ERROR: $DIGEST_SA_EMAIL holds project-level roles it must not have:" >&2
+  echo "$DIGEST_PROJECT_ROLES" | sed 's/^/  /' >&2
+  echo "" >&2
+  echo "This account exists to read one secret. Any project-level role defeats" >&2
+  echo "that and makes the per-secret grant in" >&2
+  echo "infrastructure/common/secret_manager.tf meaningless. Remove them with:" >&2
+  echo "  gcloud projects remove-iam-policy-binding $PROJECT_ID \\" >&2
+  echo "    --member=serviceAccount:$DIGEST_SA_EMAIL --role=<role>" >&2
+  exit 1
 fi
 
 # ── Bind pool to service account ──────────────────────────────────────────────
@@ -96,6 +154,83 @@ gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}" \
   --project=$PROJECT_ID
 
+# Bound to the posting workflow, not to the repository. A repository-wide
+# principalSet would let any workflow in the repo — every deploy workflow
+# already requests id-token: write — authenticate as this account and read the
+# Slack token, which would make "scoped identity" untrue.
+DIGEST_WORKFLOW_REF="${REPO}/.github/workflows/post-digest.yml@refs/heads/main"
+DIGEST_MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.workflow_ref/${DIGEST_WORKFLOW_REF}"
+
+# Drop the repository-wide binding if an earlier run of this script added one, so
+# reruns converge on the narrow grant instead of keeping both. Checked for first
+# and then removed without swallowing errors: blanket-ignoring a failed removal
+# would let a conditional binding or a transient IAM error leave the wide binding
+# in place while the narrow one is added and the script reports success — and the
+# wide binding is precisely what this account must not have.
+DIGEST_LEGACY_MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}"
+
+DIGEST_LEGACY_BINDING=$(gcloud iam service-accounts get-iam-policy $DIGEST_SA_EMAIL \
+  --project=$PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.role=roles/iam.workloadIdentityUser AND bindings.members=\"${DIGEST_LEGACY_MEMBER}\"" \
+  --format="value(bindings.members)")
+
+if [ -n "$DIGEST_LEGACY_BINDING" ]; then
+  echo "Removing repository-wide binding from $DIGEST_SA_EMAIL"
+  gcloud iam service-accounts remove-iam-policy-binding $DIGEST_SA_EMAIL \
+    --role=roles/iam.workloadIdentityUser \
+    --member="$DIGEST_LEGACY_MEMBER" \
+    --project=$PROJECT_ID
+fi
+
+gcloud iam service-accounts add-iam-policy-binding $DIGEST_SA_EMAIL \
+  --role=roles/iam.workloadIdentityUser \
+  --member="$DIGEST_MEMBER" \
+  --project=$PROJECT_ID
+
+# Assert the end state rather than trusting the two steps above to have produced
+# it. Checked across every role on this account's own policy, not just
+# workloadIdentityUser: serviceAccountTokenCreator is an impersonation path too,
+# and a check that looked at one role would call the account workflow-only while
+# another role handed it to someone else.
+DIGEST_SA_BINDINGS=$(gcloud iam service-accounts get-iam-policy $DIGEST_SA_EMAIL \
+  --project=$PROJECT_ID \
+  --flatten="bindings[].members" \
+  --format="value(bindings.role,bindings.members)")
+
+DIGEST_EXPECTED_BINDING=$(printf 'roles/iam.workloadIdentityUser\t%s' "$DIGEST_MEMBER")
+
+if [ "$DIGEST_SA_BINDINGS" != "$DIGEST_EXPECTED_BINDING" ]; then
+  echo "ERROR: $DIGEST_SA_EMAIL has bindings beyond the posting workflow." >&2
+  echo "expected exactly:" >&2
+  echo "  $DIGEST_EXPECTED_BINDING" >&2
+  echo "found:" >&2
+  echo "$DIGEST_SA_BINDINGS" | sed 's/^/  /' >&2
+  exit 1
+fi
+
+# Project-level impersonation roles reach every service account in the project,
+# including this one, and so are not visible in the policy checked above. This
+# reports rather than fails: carditrack-deploy is granted
+# serviceAccountTokenCreator and serviceAccountUser at project level by this very
+# script, and the deploy workflows need them. The honest claim is therefore
+# narrower than "only the posting workflow" — see "Hardening still required" in
+# SETUP.md — and printing the list keeps it from drifting again.
+PROJECT_IMPERSONATORS=$(gcloud projects get-iam-policy $PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.role=roles/iam.serviceAccountTokenCreator OR bindings.role=roles/iam.serviceAccountUser OR bindings.role=roles/owner OR bindings.role=roles/editor" \
+  --format="value(bindings.role,bindings.members)")
+
+if [ -n "$PROJECT_IMPERSONATORS" ]; then
+  echo ""
+  echo "NOTE: these hold project-level roles that can impersonate any service"
+  echo "account in $PROJECT_ID, $DIGEST_SA_EMAIL included:"
+  echo "$PROJECT_IMPERSONATORS" | sed 's/^/  /'
+  echo "Each already outranks the digest identity, so this widens nothing — but"
+  echo "it does mean the scoping above limits what the account can reach, not"
+  echo "who can assume it."
+fi
+
 # ── Print values for _env.yml ──────────────────────────────────────────────────
 echo ""
 echo "Update _env.yml with:"
@@ -103,3 +238,4 @@ echo "  GCP_PROJECT_ID     = $PROJECT_ID"
 echo "  GCP_PROJECT_NUMBER = $PROJECT_NUMBER"
 echo "  gcp_wif_provider   = projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/providers/${PROVIDER_NAME}"
 echo "  gcp_service_account= $SA_EMAIL"
+echo "  gcp_digest_service_account = $DIGEST_SA_EMAIL"
