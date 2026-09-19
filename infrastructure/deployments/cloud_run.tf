@@ -1045,7 +1045,7 @@ resource "google_cloud_scheduler_job" "pipeline_aggregator_5min" {
 # hour of heart rate, one MedGemma assessment per moved window, severity routed to alerts;
 # then the R1 statistical findings judgement (the nine daily rules compute findings against the
 # 30-day baseline, MedGemma returns each finding's severity and copy — moved here from the
-# Worker on 2026-09-19, one call per member per rule-day); then a digest pass so a window or
+# Worker on 2026-09-19, one call per member per pass with a finding to judge); then a digest pass so a window or
 # a finding just flagged as a problem rewrites the family summary on the same execution
 # rather than waiting for the next */30 digest schedule. Works entirely
 # off the granular store, so it needs the digest job's exact environment (database + MedGemma

@@ -224,8 +224,10 @@ try
             // findings against the 30-day baseline, and MedGemma — already warm from the
             // assessor — returns the severity, headline and message for each. Runs before the
             // digest pass below so a summary written on this execution already sees the alerts.
-            // Bounded by the same-day dedup: a member with findings costs one call per rule-day,
-            // not one per pass, and a member with nothing off costs nothing.
+            // Cost: one call per member per pass in which a finding survives cooldown and dedup,
+            // and none for a member with nothing off. A raised alert dedups its rule for the day;
+            // a finding the model judges low is not persisted and is asked again next pass while
+            // its yardstick keeps tripping — see StatisticalAlertService's remarks.
             var judgements = scope.ServiceProvider.GetRequiredService<IStatisticalAlertService>();
             var judged = await judgements.EvaluateAsync(DateTime.UtcNow);
             // The digest job still runs at :00/:30; this pass runs every 5 minutes, two minutes

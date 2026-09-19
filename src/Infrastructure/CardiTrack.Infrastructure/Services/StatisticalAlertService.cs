@@ -35,9 +35,12 @@ namespace CardiTrack.Infrastructure.Services;
 /// <em>standing</em> alert per remedy) and a same-local-day dedup (a daily-grain rule that
 /// already judged today — whether that alert is still on the list, resolved, or the caregiver
 /// deleted it — must not re-fire from the same day's data that evening). A finding the model
-/// judged benign is not written anywhere, so it is judged again on the next pass; the dedup
-/// bounds that to the passes of one day, and the rules only produce a finding when a yardstick
-/// is crossed, so a member with nothing off costs nothing.
+/// judged benign is not written anywhere, so it is judged again on the next pass while its
+/// yardstick keeps tripping — up to one call per pass for that member until the readings move
+/// or the day turns — and the rules only produce a finding when a yardstick is crossed, so a
+/// member with nothing off costs nothing. Persisting a benign verdict as a judged-day marker
+/// would bound that to one call per rule-day; it needs a row of its own (a green alert would
+/// re-surface the retired benign-sleep card), and is left as the follow-up it is.
 /// </para>
 /// <para>
 /// <b>Fail closed.</b> A model call that throws, a verdict the parser cannot map, a verdict for
