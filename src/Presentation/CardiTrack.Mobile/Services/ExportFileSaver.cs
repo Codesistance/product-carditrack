@@ -14,8 +14,8 @@ public sealed record ExportSaved(bool Ok, string? Where);
 /// <para>
 /// This exists so that "Save" and "Share" can be two honest choices. The share sheet does hide a
 /// save inside it — "Save to Files" on iOS, a Files target on Android — but a caregiver who
-/// wanted a copy on their phone had to know that, and the chooser this replaced offered them
-/// "Save or share" and "Open" as if those were three different things.
+/// wanted a copy on their phone had to know that, and the chooser this replaced put it behind
+/// one button reading "Save or share", which named two actions and performed one.
 /// </para>
 /// <para>
 /// A cache file is not a save: the cache is swept by the next export (and by the OS under

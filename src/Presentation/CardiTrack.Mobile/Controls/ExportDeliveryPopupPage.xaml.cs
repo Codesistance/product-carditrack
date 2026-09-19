@@ -11,6 +11,9 @@ public enum ExportDelivery
 
     /// <summary>Hand it to another app through the system share sheet.</summary>
     Share = 2,
+
+    /// <summary>Look at it now, and put it nowhere.</summary>
+    Open = 3,
 }
 
 /// <summary>
@@ -97,6 +100,9 @@ public partial class ExportDeliveryPopupPage : ContentPage
 
     private async void OnShareTapped(object? sender, TappedEventArgs e) =>
         await CloseAsync(ExportDelivery.Share);
+
+    private async void OnOpenTapped(object? sender, TappedEventArgs e) =>
+        await CloseAsync(ExportDelivery.Open);
 
     private async Task CloseAsync(ExportDelivery? result)
     {

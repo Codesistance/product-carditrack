@@ -216,16 +216,18 @@ Entry points:
 
                                   [M1-17 Health Data Export]
                                             │
-                                 ┌──────────┴──────────┐
-                                 ▼                     ▼
-                           [Save to phone]        [Share via...]
+                                 ┌──────────┼──────────┐
+                                 ▼          ▼          ▼
+                          [Save to phone] [Share via...] [Open]
 ```
 
-**As built (2026-09-19):** two delivery choices, not three. **Save** keeps the file where the
-platform's own file manager reads it (Android Downloads via MediaStore; the app's folder in
-Files on iOS) and names the place back to the caregiver; **Share** opens the system sheet.
-"Email to…" is not built — mailing PHI from the server is its own subsystem and is not MVP 1
-scope — and the old "Open" is gone, since a file manager opens what it holds.
+**As built (2026-09-19):** **Save** keeps the file where the platform's own file manager reads it
+(Android Downloads via MediaStore; the app's folder in Files on iOS) and names the place back to
+the caregiver; **Share** opens the system sheet; **Open** looks at it now and puts it nowhere.
+Save and Share are the pair — the two places the file can go — and Open sits under them rather
+than beside them, which is what the old "Save or share"/"Open" row got wrong by making one
+button name two actions. "Email to…" is not built: mailing PHI from the server is its own
+subsystem and is not MVP 1 scope.
 
 The **CardiJournal** and **member-chat** exports ask the same question in a popup
 (`Controls/ExportDeliveryPopupPage`) rather than on a page, with the same two tiles, words and

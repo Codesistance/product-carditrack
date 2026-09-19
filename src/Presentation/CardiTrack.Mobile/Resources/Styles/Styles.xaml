@@ -480,6 +480,19 @@
         <Setter Property="TextColor" Value="{StaticResource MutedText}"/>
     </Style>
 
+    <!-- A choice that belongs with the tiles above it but is not one of them: the export
+         popup's "Open", which is not a place to put the file but a look at it before you
+         decide. Same surface and radius as FormatTile, laid out as a row across the card's
+         width, so it reads as the quieter thing under the pair rather than a third of three. -->
+    <Style x:Key="FormatRow" TargetType="Border">
+        <Setter Property="StrokeThickness" Value="0"/>
+        <Setter Property="Padding" Value="14,11"/>
+        <Setter Property="BackgroundColor" Value="{StaticResource InputBackground}"/>
+        <Setter Property="StrokeShape">
+            <RoundRectangle CornerRadius="16"/>
+        </Setter>
+    </Style>
+
     <Style x:Key="QuickActionTile" TargetType="Border">
         <Setter Property="StrokeThickness" Value="0"/>
         <Setter Property="Padding" Value="6,12,6,9"/>

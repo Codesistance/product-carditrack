@@ -44,6 +44,12 @@ public interface IExportFileDelivery
     Task ShareAsync(ReportFile file, CancellationToken ct);
 
     /// <summary>
+    /// Opens the file in whatever app on this device claims its type, putting it nowhere. Says so
+    /// plainly when nothing does — likelier for a FHIR bundle than for a PDF.
+    /// </summary>
+    Task OpenAsync(ReportFile file, CancellationToken ct);
+
+    /// <summary>
     /// Whether this platform can keep a file somewhere the caregiver would find it again. False
     /// means a surface should not offer Save at all — see <c>IExportFileSaver</c>.
     /// </summary>
@@ -98,10 +104,18 @@ public sealed class ExportFileDelivery : IExportFileDelivery
         if (chosen is null || ct.IsCancellationRequested)
             return;
 
-        if (chosen == ExportDelivery.Share)
-            await ShareAsync(file, ct);
-        else
-            await SaveAsync(file, ct);
+        switch (chosen)
+        {
+            case ExportDelivery.Share:
+                await ShareAsync(file, ct);
+                break;
+            case ExportDelivery.Open:
+                await OpenAsync(file, ct);
+                break;
+            default:
+                await SaveAsync(file, ct);
+                break;
+        }
     }
 
     public async Task SaveAsync(ReportFile file, CancellationToken ct)
@@ -142,6 +156,30 @@ public sealed class ExportFileDelivery : IExportFileDelivery
             Title = file.FileName,
             File = new ShareFile(path)
         });
+    }
+
+    public async Task OpenAsync(ReportFile file, CancellationToken ct)
+    {
+        // Same cache copy the share sheet needs, for the same reason: the launcher takes a file,
+        // not bytes. Nothing is kept by opening — the next export sweeps it.
+        var path = await WriteToCacheAsync(file, ct);
+        if (ct.IsCancellationRequested)
+            return;
+
+        try
+        {
+            await Launcher.Default.OpenAsync(new OpenFileRequest
+            {
+                Title = file.FileName,
+                File = new ReadOnlyFile(path)
+            });
+        }
+        catch (Exception)
+        {
+            await _popups.ShowInfoAsync(
+                "There's no app on this device that opens this kind of file. Try Save or Share instead.",
+                "Can't open it here");
+        }
     }
 
     public void DiscardCached()

@@ -8,11 +8,12 @@
          (ExportFormatPopupPage) — one card, one shell, one glyph language, so the two halves of
          an export read as one flow rather than as a styled question followed by a system list.
 
-         Two choices, and they are genuinely different things: Save keeps the file on this phone,
-         Share hands it to another app. The chooser this replaced offered "Save or share" and
-         "Open" beside each other, which named one action twice and a third that is neither —
-         a caregiver who wanted a copy on their phone had to know that the share sheet hides one
-         behind "Save to Files". -->
+         Two places the file can go, and they are genuinely different: Save keeps it on this
+         phone, Share hands it to another app. The chooser this replaced offered "Save or share"
+         and "Open" as peers, which named one action twice — a caregiver who wanted a copy on
+         their phone had to know that the share sheet hides one behind "Save to Files". Open is
+         still here, under them, because looking at the file is a real thing to want and is not
+         a place to put it. -->
     <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
         <Grid.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnScrimTapped"/>
@@ -127,6 +128,30 @@
                         </VerticalStackLayout>
                     </Border>
                 </Grid>
+
+                <!-- Not a third tile. Save and Share are the two places the file can go; Open
+                     is a look at it before deciding, and it puts it nowhere. Under the pair, in
+                     the same surface, so it reads as the quieter thing it is — and so three
+                     40-point glyphs are not squeezed across a 296-point card. -->
+                <Border x:Name="OpenRow"
+                        Style="{StaticResource FormatRow}"
+                        SemanticProperties.Description="Open"
+                        SemanticProperties.Hint="Looks at the file now without keeping it">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnOpenTapped"/>
+                    </Border.GestureRecognizers>
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                        <Image Source="icon_open.svg"
+                               WidthRequest="20" HeightRequest="20"
+                               VerticalOptions="Center"/>
+                        <Label Text="Open"
+                               Style="{StaticResource FormatTileLabel}"
+                               VerticalOptions="Center"/>
+                        <Label Text="just look at it"
+                               Style="{StaticResource FormatTileHint}"
+                               VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </Border>
 
                 <!-- The responsibility line, once more and briefly. This is the moment the file
                      actually leaves CardiTrack's keeping, and it is the last screen before it

@@ -496,10 +496,9 @@ public partial class ExportHealthDataPage : ContentPage
     /// <summary>
     /// Keeps the file on this phone, and says where. This panel used to offer "Save or share" —
     /// the system sheet, which does hide a save inside it, under a label that named two actions
-    /// and performed one — beside an "Open" that was neither. Save and Share are now the same
-    /// two choices, in the same words, that the export popup offers on every other export
-    /// surface; see <see cref="IExportFileDelivery"/>. Opening it is what the file manager the
-    /// save lands in is for, and what the share sheet's own viewers are for.
+    /// and performed one. Save and Share are now the same two choices, in the same words, that
+    /// the export popup offers on every other export surface, with Open beneath them as it
+    /// always was; see <see cref="IExportFileDelivery"/>.
     /// </summary>
     private async void OnSaveClicked(object? sender, EventArgs e)
     {
@@ -515,6 +514,14 @@ public partial class ExportHealthDataPage : ContentPage
             return;
 
         await DeliverAsync(_delivery.ShareAsync(_ready, CancellationToken.None));
+    }
+
+    private async void OnOpenClicked(object? sender, EventArgs e)
+    {
+        if (_ready is null)
+            return;
+
+        await DeliverAsync(_delivery.OpenAsync(_ready, CancellationToken.None));
     }
 
     /// <summary>
