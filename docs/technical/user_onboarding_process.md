@@ -322,12 +322,12 @@ Unverified apps are capped at 100 connected users — enough for dev and beta, b
 
 > **Status: Implemented (push + in-app).** Notification delivery is live: push via FCM and in-app delivery, with quiet hours, a lock-screen-detail opt-in, per-category mutes, retry/escalation, and ack tracking (`NotificationDispatchWorker` runs every 30 seconds; `PushCanaryWorker` probes end-to-end delivery). Per-user preferences live in the **`NotificationPreferences` table** (`NotificationPreference` entity — the JSON column on `UserCardiMembers` was dropped), alongside the `ReceiveAlerts` flag; push reachability derives from `PushDeviceTokens.OsAuthorizationStatus`. **SMS and email are permanently out of scope.**
 
-**Alert types (implemented — the R1 rules in `StatisticalAlertRules`, judged by MedGemma in the pipeline's `StatisticalAlertService` since 2026-09-19, see Step 8):**
-1. **Activity decline** (`activity_decline` → Yellow): steps well below baseline
-2. **Elevated heart rate** (`elevated_heart_rate` → Orange): resting HR above baseline
-3. **Irregular sleep** (`irregular_sleep` — a shorter night, or a longer one past the recommended ceiling at their age; a longer night inside the band raises nothing and belongs to the daybook. Severity is the model's verdict since 2026-09-19): sleep pattern deviation
-4. **No morning activity** (`no_morning_activity` → Red): no activity by late morning
-5. **Long-term trend** (`long_term_trend` → Orange): sustained decline over weeks
+**Alert types (implemented — the R1 rules in `StatisticalAlertRules` produce findings, and the severity, headline and message of each alert are MedGemma's verdict, judged in the pipeline's `StatisticalAlertService` since 2026-09-19, see Step 8). The colour each rule carried as a constant until then is given in brackets for lineage only:**
+1. **Activity decline** (`activity_decline`; formerly Yellow): steps well below baseline
+2. **Elevated heart rate** (`elevated_heart_rate`; formerly Orange): resting HR above baseline
+3. **Irregular sleep** (`irregular_sleep`; formerly Yellow): a shorter night, or a longer one past the recommended ceiling at their age; a longer night inside the band raises nothing and belongs to the daybook
+4. **No morning activity** (`no_morning_activity`; formerly Red): no activity by late morning
+5. **Long-term trend** (`long_term_trend`; formerly Orange): sustained decline over weeks
 
 Device silence is detected separately by `InactivityDetectionWorker` (Step 6).
 

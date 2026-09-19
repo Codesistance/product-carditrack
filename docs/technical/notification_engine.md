@@ -62,17 +62,19 @@ renderer that gets woken, plus a full-sync-on-foreground safety net (§6.4) for 
 ```
         ┌─ CardiTrack.Worker ────────────┐
         │  DataCompletenessWorker  (6am) │  gap detection, non-AI DB polling
-        │  StatisticalAlertService (#118)│  statistical findings judged by MedGemma (pipeline assess job since 2026-09-19)
         │  InactivityDetectionWorker     │  device silence, 2h
         │  NotificationDispatchWorker    │  outbox retry + escalation timer
         │  PushCanaryWorker        (15m) │  end-to-end delivery canary
         │  DeviceAuthRecoveryWorker (15m)│  retries broken device grants
         └──────────────┬─────────────────┘
                        │  enqueue
-        ┌──────────────▼─────────────────┐        ┌──────────────────────────┐
-        │  Notification + Delivery outbox │◄───────┤ GCP AI pipeline (R2)     │
-        │  prefs · quiet hours · dedup    │  HTTP  │ SeverityRouter           │
-        └──────────────┬─────────────────┘        └──────────────────────────┘
+        ┌──────────────▼─────────────────┐        ┌──────────────────────────────────┐
+        │  Notification + Delivery outbox │◄───────┤ GCP AI pipeline (R2), assess job │
+        │  prefs · quiet hours · dedup    │  HTTP  │ SeverityRouter (real-time hour)  │
+        └──────────────┬─────────────────┘        │ StatisticalAlertService (#118;   │
+                                                  │  R1 findings judged by MedGemma  │
+                                                  │  since 2026-09-19)               │
+                                                  └──────────────────────────────────┘
                        │  immediate attempt, outbox is the backstop
         ┌──────────────▼─────────────────┐
         │  FCM HTTP v1  ──► APNs (iOS)   │
