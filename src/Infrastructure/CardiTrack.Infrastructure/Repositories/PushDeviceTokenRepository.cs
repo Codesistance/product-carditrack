@@ -25,7 +25,17 @@ public class PushDeviceTokenRepository : Repository<PushDeviceToken>, IPushDevic
                         && t.DisabledDate == null
                         && (t.OsAuthorizationStatus == OsAuthorizationStatus.Granted
                             || t.OsAuthorizationStatus == OsAuthorizationStatus.Provisional)
-                        && (category != DeliveryCategory.Safety || t.SafetyChannelEnabled))
+                        && (category != DeliveryCategory.Safety || t.SafetyChannelEnabled)
+                        // Nothing leaves the server for an account that has asked to be deleted.
+                        // The enqueue path already declines to create a delivery for one
+                        // (DispatchService.EnqueueAsync); this is the other half — deliveries
+                        // queued *before* the request, and the retries and escalations that
+                        // follow them. It cannot be left to the token being disabled when the
+                        // request is recorded, because signing in to cancel re-registers the
+                        // device on the next launch, which would make those queued pushes
+                        // deliverable again while the request still stands. Written the same way
+                        // DeviceConnectionRepository writes it at its sync-scheduling sites.
+                        && !_context.Users.Any(u => u.Id == t.UserId && u.DeletionRequestedAtUtc != null))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<PushDeviceToken>> GetDueForLivenessProbeAsync(
@@ -37,7 +47,11 @@ public class PushDeviceTokenRepository : Repository<PushDeviceToken>, IPushDevic
         // same rows when today is a UTC day boundary.
         var today = utcNow.Date;
         return await _dbSet
-            .Where(t => t.DisabledDate == null && (t.LastAckDate == null || t.LastAckDate < today))
+            .Where(t => t.DisabledDate == null
+                        && (t.LastAckDate == null || t.LastAckDate < today)
+                        // A silent probe is still a push that reaches the handset, and an
+                        // account on its way out has nothing to prove about its reachability.
+                        && !_context.Users.Any(u => u.Id == t.UserId && u.DeletionRequestedAtUtc != null))
             .ToListAsync(ct);
     }
 

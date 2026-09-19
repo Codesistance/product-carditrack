@@ -30,4 +30,12 @@ internal static class PushDispatchTelemetry
     public const string DedupHitTag = "notification.dedup_hit";
     public const string AttemptNumberTag = "notification.attempt_number";
     public const string StateTag = "notification.state";
+
+    /// <summary>
+    /// Why an enqueue produced no delivery, when it produced none. Present only on the spans
+    /// that declined — a recipient awaiting account deletion is the one reason today, and the
+    /// tag exists so "it never arrived" can be answered from the trace rather than inferred
+    /// from the absence of a delivery id.
+    /// </summary>
+    public const string DeclinedTag = "notification.declined";
 }

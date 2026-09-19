@@ -224,6 +224,28 @@ public class DevPushEndpointTests
         Assert.DoesNotContain(fullFingerprint, System.Text.Json.JsonSerializer.Serialize(response));
     }
 
+    /// <summary>
+    /// The fourth way this endpoint returns 200 having sent nothing: the recipient has asked for
+    /// their account to be deleted, so the dispatcher declines to create a delivery at all
+    /// (#1144). Said in words rather than left as an empty result — "the test push did not
+    /// arrive" is the question this endpoint exists to answer, and a silent 200 here would send
+    /// whoever is diagnosing it looking at FCM.
+    /// </summary>
+    [Fact]
+    public async Task ARecipientAwaitingDeletion_Is200_WithTheReasonAndNoDelivery()
+    {
+        var request = Request();
+        _dispatch.EnqueueAsync(Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>())
+            .Returns((NotificationDelivery?)null);
+
+        var response = await SendAndUnwrap(request);
+
+        Assert.Equal(Guid.Empty, response.DeliveryId);
+        Assert.NotNull(response.Hint);
+        Assert.Contains("asked to be deleted", response.Hint);
+        Assert.Empty(response.Devices);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────────
 
     private static DevPushRequest Request(
