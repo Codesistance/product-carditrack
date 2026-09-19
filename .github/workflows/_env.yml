@@ -37,6 +37,9 @@ on:
       gcp_service_account:
         description: 'GCP service account email for deployments'
         value: ${{ jobs.config.outputs.gcp_service_account }}
+      gcp_digest_service_account:
+        description: 'GCP service account email for digest posting (secret-scoped)'
+        value: ${{ jobs.config.outputs.gcp_digest_service_account }}
       registry:
         description: 'Artifact Registry base path (REGION-docker.pkg.dev/PROJECT/REPO)'
         value: ${{ jobs.config.outputs.registry }}
@@ -80,6 +83,7 @@ jobs:
       gcp_region:          ${{ steps.out.outputs.gcp_region }}
       gcp_wif_provider:    ${{ steps.out.outputs.gcp_wif_provider }}
       gcp_service_account: ${{ steps.out.outputs.gcp_service_account }}
+      gcp_digest_service_account: ${{ steps.out.outputs.gcp_digest_service_account }}
       registry:            ${{ steps.out.outputs.registry }}
       tf_state_bucket_dev:    ${{ steps.out.outputs.tf_state_bucket_dev }}
       tf_state_bucket_prod:   ${{ steps.out.outputs.tf_state_bucket_prod }}
@@ -109,6 +113,9 @@ jobs:
           # ── Workload Identity Federation ────────────────────────────────────────
           echo "gcp_wif_provider=projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/carditrack-pool/providers/github" >> $GITHUB_OUTPUT
           echo "gcp_service_account=carditrack-deploy@${GCP_PROJECT_ID}.iam.gserviceaccount.com" >> $GITHUB_OUTPUT
+          # Secret-scoped identity for the digest poster: no project-level roles,
+          # only secretAccessor on carditrack-common-slack-bot-token.
+          echo "gcp_digest_service_account=carditrack-digest@${GCP_PROJECT_ID}.iam.gserviceaccount.com" >> $GITHUB_OUTPUT
 
           # ── Artifact Registry ───────────────────────────────────────────────────
           echo "registry=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/carditrack-common" >> $GITHUB_OUTPUT

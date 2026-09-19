@@ -90,8 +90,30 @@ else
     --project=$PROJECT_ID
 fi
 
+# ── Digest posting identity ───────────────────────────────────────────────────
+# Deliberately separate from carditrack-deploy, which holds project-level
+# roles/secretmanager.admin and so can read every secret in the project. This
+# account gets NO project-level roles: its only grant is secretAccessor on
+# carditrack-common-slack-bot-token, made per secret in
+# infrastructure/common/secret_manager.tf.
+DIGEST_SA_NAME=carditrack-digest
+DIGEST_SA_EMAIL=$DIGEST_SA_NAME@$PROJECT_ID.iam.gserviceaccount.com
+
+if gcloud iam service-accounts describe $DIGEST_SA_EMAIL --project=$PROJECT_ID > /dev/null 2>&1; then
+  echo "Service account $DIGEST_SA_EMAIL already exists — skipping"
+else
+  gcloud iam service-accounts create $DIGEST_SA_NAME \
+    --display-name="CardiTrack Digest Poster" \
+    --project=$PROJECT_ID
+fi
+
 # ── Bind pool to service account ──────────────────────────────────────────────
 gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}" \
+  --project=$PROJECT_ID
+
+gcloud iam service-accounts add-iam-policy-binding $DIGEST_SA_EMAIL \
   --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}" \
   --project=$PROJECT_ID
@@ -103,3 +125,4 @@ echo "  GCP_PROJECT_ID     = $PROJECT_ID"
 echo "  GCP_PROJECT_NUMBER = $PROJECT_NUMBER"
 echo "  gcp_wif_provider   = projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/providers/${PROVIDER_NAME}"
 echo "  gcp_service_account= $SA_EMAIL"
+echo "  gcp_digest_service_account = $DIGEST_SA_EMAIL"

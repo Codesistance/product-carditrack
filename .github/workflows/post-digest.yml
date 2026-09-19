@@ -69,7 +69,7 @@ jobs:
         if: steps.find.outputs.count != '0'
         with:
           workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
-          service_account: ${{ needs.env.outputs.gcp_service_account }}
+          service_account: ${{ needs.env.outputs.gcp_digest_service_account }}
 
       - uses: google-github-actions/get-secretmanager-secrets@v3
         if: steps.find.outputs.count != '0'
