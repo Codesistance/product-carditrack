@@ -16,11 +16,16 @@ Jurisdiction priority: UK/EU first, US second.
 
 ## State — read first, write last
 
-Read the last 30 days of `digests/*.json` before anything else. Those files are
-the entire record of what has already been reported — there is no separate log.
-`url` is the dedup key, compared exactly: skip anything whose URL is already
-there, unless the item has materially changed, in which case report what changed
-rather than the original news.
+Read **every** file in `digests/` before anything else, not a recent window.
+Those files are the entire record of what has already been reported — there is
+no separate log — so an item that scrolls out of a window gets republished as if
+it were new. `url` is the dedup key, compared exactly. The whole set is one
+command, however many files have accumulated:
+
+    jq -r '.items[].url' digests/*.json | sort -u
+
+Skip anything whose URL is already in there, unless the item has materially
+changed, in which case report what changed rather than the original news.
 
 At the end of the run, write this run's digest and commit it. The sandbox is
 destroyed after each session and sessions share no filesystem; if you do not

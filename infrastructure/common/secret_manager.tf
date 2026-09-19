@@ -112,8 +112,12 @@ resource "google_secret_manager_secret_version" "digest" {
   }
 }
 
-# Granted per secret, never at project level: this binding is what keeps the
-# digest workflow from reading every other secret in the project.
+# Granted per secret rather than at project level. Note this does not by itself
+# isolate the digest workflow: carditrack-deploy also holds project-level
+# roles/secretmanager.admin from scripts/setup-gcp-auth.sh, so it can read every
+# secret regardless. Capping the blast radius at the Slack token needs a
+# dedicated identity for this workflow — see "Hardening still required" in
+# SETUP.md. This binding is the shape that identity would use.
 resource "google_secret_manager_secret_iam_member" "digest_accessor" {
   for_each  = local.digest_secrets
   secret_id = google_secret_manager_secret.digest[each.key].id
