@@ -76,9 +76,14 @@ else
 fi
 
 # ── GitHub OIDC Provider ───────────────────────────────────────────────────────
-# job_workflow_ref lets a service account be bound to one workflow file rather
-# than to the whole repository, which is what scopes the digest identity below.
-ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.job_workflow_ref=assertion.job_workflow_ref"
+# workflow_ref lets a service account be bound to one workflow file rather than to
+# the whole repository, which is what scopes the digest identity below. It is the
+# ref of the workflow that was triggered, which is what post-digest.yml is — its
+# posting job is defined inline, not in a reusable workflow. job_workflow_ref is
+# mapped alongside it (it names the workflow defining the job, and is documented
+# for the reusable-workflow case) so the binding can move without touching the
+# provider if that job is ever factored out.
+ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.workflow_ref=assertion.workflow_ref,attribute.job_workflow_ref=assertion.job_workflow_ref"
 
 if gcloud iam workload-identity-pools providers describe $PROVIDER_NAME \
     --location=global --workload-identity-pool=$POOL_NAME \
@@ -154,6 +159,7 @@ gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
 # already requests id-token: write — authenticate as this account and read the
 # Slack token, which would make "scoped identity" untrue.
 DIGEST_WORKFLOW_REF="${REPO}/.github/workflows/post-digest.yml@refs/heads/main"
+DIGEST_MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.workflow_ref/${DIGEST_WORKFLOW_REF}"
 
 # Drop the repository-wide binding if an earlier run of this script added one, so
 # reruns converge on the narrow grant instead of keeping both. Checked for first
@@ -179,8 +185,28 @@ fi
 
 gcloud iam service-accounts add-iam-policy-binding $DIGEST_SA_EMAIL \
   --role=roles/iam.workloadIdentityUser \
-  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.job_workflow_ref/${DIGEST_WORKFLOW_REF}" \
+  --member="$DIGEST_MEMBER" \
   --project=$PROJECT_ID
+
+# Assert the end state rather than trusting the two steps above to have produced
+# it: what matters is not that the narrow binding was added, but that it is the
+# only way to impersonate this account. Anything else here — a leftover from an
+# earlier layout, a hand-added grant — means the Slack token is reachable by
+# something other than the posting workflow.
+DIGEST_WIF_MEMBERS=$(gcloud iam service-accounts get-iam-policy $DIGEST_SA_EMAIL \
+  --project=$PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.role=roles/iam.workloadIdentityUser" \
+  --format="value(bindings.members)")
+
+if [ "$DIGEST_WIF_MEMBERS" != "$DIGEST_MEMBER" ]; then
+  echo "ERROR: $DIGEST_SA_EMAIL can be impersonated by more than the posting workflow." >&2
+  echo "expected exactly:" >&2
+  echo "  $DIGEST_MEMBER" >&2
+  echo "found:" >&2
+  echo "$DIGEST_WIF_MEMBERS" | sed 's/^/  /' >&2
+  exit 1
+fi
 
 # ── Print values for _env.yml ──────────────────────────────────────────────────
 echo ""

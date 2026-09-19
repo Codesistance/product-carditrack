@@ -169,10 +169,16 @@ which holds project-level `roles/secretmanager.admin` and can read every secret
 in the project.
 
 `carditrack-digest` is also bound to the posting workflow rather than to the
-repository, via `attribute.job_workflow_ref`, so no other workflow in the repo
-can authenticate as it — every deploy workflow already requests
-`id-token: write`, so a repository-wide binding would have made "scoped
-identity" untrue.
+repository, via `attribute.workflow_ref`, so no other workflow in the repo can
+authenticate as it — every deploy workflow already requests `id-token: write`,
+so a repository-wide binding would have made "scoped identity" untrue. The
+bootstrap asserts that binding is the *only* way to impersonate the account, and
+fails naming anything else it finds.
+
+The first real run is what proves the claim matches: if the binding is wrong,
+`post-digest.yml` fails at the auth step and posts nothing, which is the
+direction you want it to fail in. Check the run before assuming the digest is
+live.
 
 Be clear about the limit, because it is easy to overrate: this does **not**
 defend against gap 1. `carditrack-deploy` is still bound repository-wide, so a
