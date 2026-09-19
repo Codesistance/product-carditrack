@@ -360,12 +360,16 @@ public class StatusLineGenerationService
     /// The headline is a label, not prose: a trailing full stop or a wrapping quote reads wrong
     /// as a card title, and an answer that ran on into a sentence is not a headline at all. One
     /// that fails is dropped rather than fixed up — the dashboard keeps the per-tier headline it
-    /// already rendered, which is a better line than a mangled one.
+    /// already rendered, which is a better line than a mangled one. The word cap is
+    /// <see cref="GeneratedTitles.MaxWords"/>: the hero renders the headline on one line with tail
+    /// truncation, and a headline that clears the character ceiling can still overflow it.
     /// </summary>
     private static string? CleanStatusHeadline(string? headline)
     {
         var cleaned = (headline ?? string.Empty).Trim().Trim('"', '\'', '.', '—', '-').Trim();
-        return cleaned.Length is 0 or > MaxStatusHeadlineLength ? null : cleaned;
+        return cleaned.Length is 0 or > MaxStatusHeadlineLength || GeneratedTitles.ExceedsWordCap(cleaned)
+            ? null
+            : cleaned;
     }
 
     private static string BuildCurrentStatusPrompt(

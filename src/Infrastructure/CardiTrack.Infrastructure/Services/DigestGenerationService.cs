@@ -2308,6 +2308,8 @@ public partial class DigestGenerationService : IDigestGenerationService
         {
             0 => "the model returned none",
             > MaxHeadlineLength => $"it ran to {cleaned.Length} characters",
+            _ when GeneratedTitles.ExceedsWordCap(cleaned)
+                => $"it ran to {GeneratedTitles.WordCount(cleaned)} words, over the {GeneratedTitles.MaxWords}-word title cap",
             _ when ParrotedHeadlines.Contains(cleaned, StringComparer.OrdinalIgnoreCase)
                 => "it repeated a generic label",
             _ => ReadsLikeTheInstructions(cleaned) ? "it restated the instructions" : null,
@@ -2830,7 +2832,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         public required string Summary { get; init; }
 
         [Description(
-            "A five-to-seven-word qualification of the day described above, in sentence case — "
+            "A five-to-six-word qualification of the day described above, in sentence case — "
             + "what kind of day it was, never a generic label that could title any day at all. "
             + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
@@ -2864,7 +2866,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         public required string Summary { get; init; }
 
         [Description(
-            "A five-to-seven-word qualification of the week described above, in sentence case — "
+            "A five-to-six-word qualification of the week described above, in sentence case — "
             + "what kind of week it was, never a generic label that could title any week at all. "
             + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]
@@ -2895,7 +2897,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         public required string Summary { get; init; }
 
         [Description(
-            "A five-to-seven-word qualification of the month described above, in sentence case — "
+            "A five-to-six-word qualification of the month described above, in sentence case — "
             + "what kind of month it was, never a generic label that could title any month at all. "
             + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
             + "not a sentence.")]

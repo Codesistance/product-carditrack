@@ -32,8 +32,9 @@ public class ChatThemeService : IChatThemeService
     private const int MaxTranscriptTurns = 12;
     private const int MaxTranscriptLineLength = 400;
 
-    /// <summary>Hard cap on the stored label. The prompt asks for three to six words; this is the
-    /// backstop that keeps a runaway generation from putting a paragraph where a title belongs.</summary>
+    /// <summary>Hard cap on the stored label's characters. The prompt asks for three to six words
+    /// and <see cref="GeneratedTitles.MaxWords"/> holds it to six; this is the backstop behind that
+    /// for a label whose six words are each a paragraph long.</summary>
     private const int MaxThemeLength = 60;
 
     private const string ThemeInstructions = """
@@ -180,6 +181,9 @@ public class ChatThemeService : IChatThemeService
         if (NamePlaceholder.IsPresentIn(cleaned))
             return null;
 
+        // Words first, then characters: the word cap is the title's width, the character cap is
+        // the backstop for a label made of very long words.
+        cleaned = GeneratedTitles.TruncateToWordCap(cleaned);
         return cleaned.Length > MaxThemeLength ? cleaned[..MaxThemeLength].TrimEnd() : cleaned;
     }
 

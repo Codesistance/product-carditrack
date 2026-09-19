@@ -1021,6 +1021,7 @@ public class DigestGenerationServiceTests
     [InlineData("Respond with: headline, a label of two to five words naming what this is about.")]
     [InlineData("Everything about the last day looked broadly settled, with steady readings "
                 + "through the evening and a full night's sleep afterwards, which is what we hoped for.")]
+    [InlineData("A quiet and steady day so far today")]
     [MemberData(nameof(ParrotedHeadlineLabels))]
     public async Task StoresTheSummaryWithoutAHeadline_WhenTheHeadlineIsUnusable(string headline)
     {
