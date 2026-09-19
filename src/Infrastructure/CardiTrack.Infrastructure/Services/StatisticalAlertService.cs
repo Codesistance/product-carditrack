@@ -292,9 +292,10 @@ public class StatisticalAlertService : IStatisticalAlertService
 
         // One call per member per pass, however many findings: the model reads them together,
         // which is the point — a quiet day and a raised overnight vital are one picture, not two.
+        // The member's own local day, not the UTC one: the context block dates and ages the
+        // person by it, and the findings above are already dated in that calendar.
         var memberContext = await _memberContext.ComposeAsync(
-            new MemberContextRequest(
-                member, memberId, DateOnly.FromDateTime(utcNow), utcNow, PromptPurpose.StatisticalJudgement),
+            new MemberContextRequest(member, memberId, localToday, utcNow, PromptPurpose.StatisticalJudgement),
             ct);
         var prompt = BuildPrompt(JudgementInstructions, memberContext, toJudge);
 
