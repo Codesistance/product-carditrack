@@ -605,8 +605,8 @@ public class ReportGenerationServiceTests
         // A background job failing minutes later with nothing the caregiver can act on is the
         // wrong shape for "that isn't your conversation".
         var sessionId = Guid.NewGuid();
-        _transcripts.GetAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
-            .Returns<Task<ChatTranscript>>(_ => throw new KeyNotFoundException("We couldn't find that conversation."));
+        _transcripts.RequireOwnedAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns<Task>(_ => throw new KeyNotFoundException("We couldn't find that conversation."));
 
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().GenerateAsync(_userId, BuildTranscriptRequest(sessionId)));
@@ -614,6 +614,26 @@ public class ReportGenerationServiceTests
         await _consent.DidNotReceive().ConsumeAsync(
             Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<GenerateReportRequest>(), Arg.Any<Guid>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ChatTranscript_IsNotReadTwice_ToAuthoriseAndThenToRender()
+    {
+        // The gate on the request path answers yes or no; reading the conversation to decide it
+        // would decrypt every turn and its stored charts, throw the result away, and leave
+        // generation to do the same work again on its own scope.
+        var sessionId = Guid.NewGuid();
+        _transcripts.GetAsync(_userId, _memberId, sessionId, Arg.Any<CancellationToken>())
+            .Returns(BuildTranscript(sessionId));
+        var sut = CreateSut();
+
+        var queued = await sut.GenerateAsync(_userId, BuildTranscriptRequest(sessionId));
+        await WaitForTerminalStatusAsync(sut, queued.ReportId);
+
+        await _transcripts.Received(1).RequireOwnedAsync(
+            _userId, _memberId, sessionId, Arg.Any<CancellationToken>());
+        await _transcripts.Received(1).GetAsync(
+            _userId, _memberId, sessionId, Arg.Any<CancellationToken>());
     }
 
     private GenerateReportRequest BuildTranscriptRequest(Guid sessionId) => new()

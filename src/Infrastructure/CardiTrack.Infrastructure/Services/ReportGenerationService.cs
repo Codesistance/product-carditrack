@@ -77,7 +77,7 @@ public class ReportGenerationService : IReportGenerationService
         // validator has already held the request to exactly one member.
         if (request.ChatSessionId is { } chatSessionId)
         {
-            await _transcripts.GetAsync(
+            await _transcripts.RequireOwnedAsync(
                 requestingUserId, request.CardiMemberIds[0], chatSessionId);
         }
 

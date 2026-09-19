@@ -41,9 +41,9 @@ public class ChatTranscriptSource : IChatTranscriptSource
     public async Task<ChatTranscript> GetAsync(
         Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default)
     {
-        var session = await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct);
-        if (session is null || session.UserId != userId || session.CardiMemberId != cardiMemberId)
-            throw new KeyNotFoundException("We couldn't find that conversation.");
+        var session = RequireOwned(
+            await _unitOfWork.MemberChatSessions.GetByIdWithTurnsAsync(sessionId, ct),
+            userId, cardiMemberId);
 
         return new ChatTranscript(
             session.Id,
@@ -55,6 +55,31 @@ public class ChatTranscriptSource : IChatTranscriptSource
                 .OrderBy(t => t.CreatedAtUtc)
                 .Select(ToTurn)
                 .ToList());
+    }
+
+    public async Task RequireOwnedAsync(
+        Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default)
+    {
+        // The session row by its key, without its turns: this answers yes or no, and pulling a
+        // conversation in to decrypt and throw away would be the expensive half of GetAsync run
+        // for none of its result.
+        RequireOwned(
+            await _unitOfWork.MemberChatSessions.GetByIdAsync(sessionId), userId, cardiMemberId);
+    }
+
+    /// <summary>
+    /// The one ownership predicate both reads use — stricter than the member gate the export
+    /// pipeline already applied, and failing the same way for a session that is not theirs as
+    /// for one that never existed, so a guessed id learns nothing either way. Returns the
+    /// session so the caller carries it on as non-null.
+    /// </summary>
+    private static MemberChatSession RequireOwned(
+        MemberChatSession? session, Guid userId, Guid cardiMemberId)
+    {
+        if (session is null || session.UserId != userId || session.CardiMemberId != cardiMemberId)
+            throw new KeyNotFoundException("We couldn't find that conversation.");
+
+        return session;
     }
 
     private ChatTranscriptTurn ToTurn(MemberChatTurn turn) => new(

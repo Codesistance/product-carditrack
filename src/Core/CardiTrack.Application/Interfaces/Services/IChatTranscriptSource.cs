@@ -22,4 +22,19 @@ public interface IChatTranscriptSource
     /// </summary>
     Task<ChatTranscript> GetAsync(
         Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Throws the same <see cref="KeyNotFoundException"/> as <see cref="GetAsync"/> unless the
+    /// session is this caregiver's own conversation about this member, without reading the
+    /// conversation itself.
+    /// </summary>
+    /// <remarks>
+    /// For the gate on the request path, where the answer is only yes or no. <see cref="GetAsync"/>
+    /// loads every turn and decrypts every one of them plus its stored charts; running that to
+    /// decide an authorization question would do the work twice — generation reads the
+    /// conversation again on its own scope — and would materialise the plaintext of a health
+    /// conversation on a request that is about to discard it.
+    /// </remarks>
+    Task RequireOwnedAsync(
+        Guid userId, Guid cardiMemberId, Guid sessionId, CancellationToken ct = default);
 }

@@ -70,7 +70,20 @@ public sealed class ExportFileDelivery : IExportFileDelivery
 
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
 
-    private const string CachePrefix = "carditrack-";
+    /// <summary>
+    /// The filename shapes the server gives an export — a health export, and a conversation.
+    /// </summary>
+    /// <remarks>
+    /// Named in full rather than swept as <c>carditrack-*</c>: the same cache holds the log
+    /// bundles <c>AppLogShare</c> stages as <c>carditrack-logs-*.zip</c>, and an export sweep
+    /// that deleted one out from under a share sheet the caregiver had just opened would be this
+    /// class reaching past its own business.
+    /// </remarks>
+    private static readonly string[] CachePatterns =
+    [
+        "carditrack-export-*",
+        "carditrack-chat-*",
+    ];
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
@@ -151,11 +164,25 @@ public sealed class ExportFileDelivery : IExportFileDelivery
         if (ct.IsCancellationRequested)
             return;
 
-        await Share.Default.RequestAsync(new ShareFileRequest
+        try
         {
-            Title = file.FileName,
-            File = new ShareFile(path)
-        });
+            await Share.Default.RequestAsync(new ShareFileRequest
+            {
+                Title = file.FileName,
+                File = new ShareFile(path)
+            });
+        }
+        catch (Exception)
+        {
+            // Reported here rather than left to the caller: the journal flows catch only
+            // ApiException and cancellation, and their pages hand this to an async void
+            // handler — so a device with nothing to share to would have taken the app down
+            // holding an export the caregiver had just waited for. Same posture as OpenAsync.
+            await _popups.ShowErrorAsync(
+                "This device couldn't open anything to share it with. "
+                + "You can still save it to this phone.",
+                "Couldn't share it");
+        }
     }
 
     public async Task OpenAsync(ReportFile file, CancellationToken ct)
@@ -186,16 +213,18 @@ public sealed class ExportFileDelivery : IExportFileDelivery
     {
         try
         {
-            foreach (var path in Directory.EnumerateFiles(
-                         FileSystem.CacheDirectory, CachePrefix + "*"))
+            foreach (var pattern in CachePatterns)
             {
-                try
+                foreach (var path in Directory.EnumerateFiles(FileSystem.CacheDirectory, pattern))
                 {
-                    File.Delete(path);
-                }
-                catch (Exception)
-                {
-                    // One undeletable file must not stop the sweep clearing the rest.
+                    try
+                    {
+                        File.Delete(path);
+                    }
+                    catch (Exception)
+                    {
+                        // One undeletable file must not stop the sweep clearing the rest.
+                    }
                 }
             }
         }

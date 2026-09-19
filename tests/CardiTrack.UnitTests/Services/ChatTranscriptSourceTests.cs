@@ -212,6 +212,42 @@ public class ChatTranscriptSourceTests
     }
 
     [Fact]
+    public async Task RequireOwned_AcceptsTheirOwnConversation_WithoutReadingIt()
+    {
+        // The gate answers yes or no. Decrypting a conversation to decide it would materialise
+        // the plaintext of a health conversation on a request that is about to discard it.
+        _sessions.GetByIdAsync(_sessionId).Returns(BuildSession());
+
+        await CreateSut().RequireOwnedAsync(_userId, _memberId, _sessionId);
+
+        _encryption.DidNotReceive().Decrypt(Arg.Any<string>());
+        await _sessions.DidNotReceive().GetByIdWithTurnsAsync(
+            Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task RequireOwned_HidesAConversationThatIsNotTheirs(bool otherUser, bool otherMember)
+    {
+        _sessions.GetByIdAsync(_sessionId).Returns(BuildSession(
+            userId: otherUser ? Guid.NewGuid() : _userId,
+            memberId: otherMember ? Guid.NewGuid() : _memberId));
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RequireOwnedAsync(_userId, _memberId, _sessionId));
+    }
+
+    [Fact]
+    public async Task RequireOwned_HidesAConversationThatDoesNotExist()
+    {
+        _sessions.GetByIdAsync(_sessionId).Returns((MemberChatSession?)null);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => CreateSut().RequireOwnedAsync(_userId, _memberId, _sessionId));
+    }
+
+    [Fact]
     public async Task Label_FallsBackToTheOpeningQuestion_WhileThemingHasNotVisited()
     {
         _sessions.GetByIdWithTurnsAsync(_sessionId, Arg.Any<CancellationToken>())
