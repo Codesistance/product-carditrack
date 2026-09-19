@@ -169,11 +169,23 @@ which holds project-level `roles/secretmanager.admin` and can read every secret
 in the project.
 
 `carditrack-digest` is also bound to the posting workflow rather than to the
-repository, via `attribute.workflow_ref`, so no other workflow in the repo can
-authenticate as it — every deploy workflow already requests `id-token: write`,
+repository, via `attribute.workflow_ref`, so no other workflow authenticating on
+its own can assume it — every deploy workflow already requests `id-token: write`,
 so a repository-wide binding would have made "scoped identity" untrue. The
-bootstrap asserts that binding is the *only* way to impersonate the account, and
-fails naming anything else it finds.
+bootstrap asserts that binding is the only one on the account, across every role
+rather than just `workloadIdentityUser`, and fails naming anything else.
+
+One more limit, stated because the obvious reading of the above is wrong:
+`carditrack-deploy` holds **project-level** `serviceAccountTokenCreator` and
+`serviceAccountUser`, granted by `scripts/setup-gcp-auth.sh` because the deploy
+workflows need them. Project-level roles reach every service account in the
+project, so anything holding the deploy account can mint a token for
+`carditrack-digest`. It gains nothing by doing so — the deploy account already
+holds `secretmanager.admin` — but the accurate claim is about *reach*, not
+*access*: the digest identity cannot be used to read more than the Slack token,
+and assuming it requires either being the posting workflow or already holding a
+strictly more powerful account. The bootstrap prints these holders on every run
+so the claim cannot quietly drift again.
 
 The first real run is what proves the claim matches: if the binding is wrong,
 `post-digest.yml` fails at the auth step and posts nothing, which is the

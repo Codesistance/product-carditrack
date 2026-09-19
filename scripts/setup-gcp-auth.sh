@@ -189,23 +189,46 @@ gcloud iam service-accounts add-iam-policy-binding $DIGEST_SA_EMAIL \
   --project=$PROJECT_ID
 
 # Assert the end state rather than trusting the two steps above to have produced
-# it: what matters is not that the narrow binding was added, but that it is the
-# only way to impersonate this account. Anything else here — a leftover from an
-# earlier layout, a hand-added grant — means the Slack token is reachable by
-# something other than the posting workflow.
-DIGEST_WIF_MEMBERS=$(gcloud iam service-accounts get-iam-policy $DIGEST_SA_EMAIL \
+# it. Checked across every role on this account's own policy, not just
+# workloadIdentityUser: serviceAccountTokenCreator is an impersonation path too,
+# and a check that looked at one role would call the account workflow-only while
+# another role handed it to someone else.
+DIGEST_SA_BINDINGS=$(gcloud iam service-accounts get-iam-policy $DIGEST_SA_EMAIL \
   --project=$PROJECT_ID \
   --flatten="bindings[].members" \
-  --filter="bindings.role=roles/iam.workloadIdentityUser" \
-  --format="value(bindings.members)")
+  --format="value(bindings.role,bindings.members)")
 
-if [ "$DIGEST_WIF_MEMBERS" != "$DIGEST_MEMBER" ]; then
-  echo "ERROR: $DIGEST_SA_EMAIL can be impersonated by more than the posting workflow." >&2
+DIGEST_EXPECTED_BINDING=$(printf 'roles/iam.workloadIdentityUser\t%s' "$DIGEST_MEMBER")
+
+if [ "$DIGEST_SA_BINDINGS" != "$DIGEST_EXPECTED_BINDING" ]; then
+  echo "ERROR: $DIGEST_SA_EMAIL has bindings beyond the posting workflow." >&2
   echo "expected exactly:" >&2
-  echo "  $DIGEST_MEMBER" >&2
+  echo "  $DIGEST_EXPECTED_BINDING" >&2
   echo "found:" >&2
-  echo "$DIGEST_WIF_MEMBERS" | sed 's/^/  /' >&2
+  echo "$DIGEST_SA_BINDINGS" | sed 's/^/  /' >&2
   exit 1
+fi
+
+# Project-level impersonation roles reach every service account in the project,
+# including this one, and so are not visible in the policy checked above. This
+# reports rather than fails: carditrack-deploy is granted
+# serviceAccountTokenCreator and serviceAccountUser at project level by this very
+# script, and the deploy workflows need them. The honest claim is therefore
+# narrower than "only the posting workflow" — see "Hardening still required" in
+# SETUP.md — and printing the list keeps it from drifting again.
+PROJECT_IMPERSONATORS=$(gcloud projects get-iam-policy $PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.role=roles/iam.serviceAccountTokenCreator OR bindings.role=roles/iam.serviceAccountUser OR bindings.role=roles/owner OR bindings.role=roles/editor" \
+  --format="value(bindings.role,bindings.members)")
+
+if [ -n "$PROJECT_IMPERSONATORS" ]; then
+  echo ""
+  echo "NOTE: these hold project-level roles that can impersonate any service"
+  echo "account in $PROJECT_ID, $DIGEST_SA_EMAIL included:"
+  echo "$PROJECT_IMPERSONATORS" | sed 's/^/  /'
+  echo "Each already outranks the digest identity, so this widens nothing — but"
+  echo "it does mean the scoping above limits what the account can reach, not"
+  echo "who can assume it."
 fi
 
 # ── Print values for _env.yml ──────────────────────────────────────────────────
