@@ -200,6 +200,22 @@ public class ChatThemeServiceTests
         Assert.True(theme.Length <= 60, $"stored theme is {theme.Length} chars");
     }
 
+    /// <summary>The six-word cap every generated title shares: a label that runs on is cut to
+    /// its first six words, the same cut-not-drop convention as the character backstop.</summary>
+    [Fact]
+    public async Task AnOverlongLabel_IsCutToSixWords()
+    {
+        var session = ArrangeSession((ChatTurnRole.User, "How is she doing?"));
+        Batch(session);
+        Generates("Sleep quality and heart rate this week and every alert raised");
+
+        await CreateSut().ThemeDueSessionsAsync(DateTime.UtcNow);
+
+        Assert.Equal(
+            "Sleep quality and heart rate this",
+            PromptContextFactory.Encryption.Decrypt(session.Theme!));
+    }
+
     /// <summary>An empty generation stores nothing — the row keeps its opening-question fallback
     /// and a later pass tries again.</summary>
     [Fact]

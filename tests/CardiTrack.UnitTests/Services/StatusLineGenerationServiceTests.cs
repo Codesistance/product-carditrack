@@ -260,6 +260,8 @@ public class StatusLineGenerationServiceTests
     [InlineData("\"Quieter than usual.\"", "Quieter than usual")]
     [InlineData("   ", null)]
     [InlineData("Everything about today has looked broadly settled so far, which is reassuring", null)]
+    [InlineData("Quieter and slower than usual so far", null)]
+    [InlineData("Quieter and slower than usual today", "Quieter and slower than usual today")]
     public async Task HeadlineIsCleanedOrDropped_ButNeverCostsTheMessage(string headline, string? expected)
     {
         RewriteAnswers(headline, "CardiTrackCardiMember seems steady today.");

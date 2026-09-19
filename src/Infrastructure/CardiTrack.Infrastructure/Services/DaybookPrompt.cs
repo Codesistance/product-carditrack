@@ -75,7 +75,7 @@ internal static class DaybookPrompt
           Open with one or two sentences saying what kind of day it was and what the
           readings mean for the family — plainly, before any figures, so a reader who gets no
           further still has the answer. Then the account, keeping every number it has now.
-        - headline: a five-to-seven-word qualification of the day you just described — what kind
+        - headline: a five-to-six-word qualification of the day you just described — what kind
           of day it was, never a generic label that could title any day at all. Sentence case, no
           full stop, no name and no CardiTrackCardiMember, not a sentence.
         - suggestion: one supportive, specific thing the family could do, at most 25 words,
