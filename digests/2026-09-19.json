@@ -1,0 +1,60 @@
+{
+  "date": "2026-09-19",
+  "summary": "*CardiTrack digest — 2026-09-19* · 6 items · 1 CRITICAL, 3 HIGH, 2 FYI",
+  "items": [
+    {
+      "slug": "ollama-ssrf-blob-pull-redirect",
+      "title": "Ollama SSRF via unvalidated blob-pull redirects (CVE-2026-85180) — unpatched",
+      "url": "https://github.com/advisories/GHSA-57p7-34ff-7w3w",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-19-ollama-ssrf-blob-pull-redirect.md",
+      "text": "*CRITICAL* — Ollama SSRF via unvalidated blob-pull redirects (CVE-2026-85180)\nOllama does not validate redirect destinations when pulling tensor-layer model blobs, letting a malicious or compromised registry redirect the download to an arbitrary host — including cloud metadata endpoints (169.254.169.254). CVSS 8.7 (High). Published 2026-09-03. No patched version available yet.\nCardiTrack's MedGemma image (`src/Infrastructure/MedGemma/Dockerfile`) is `FROM ollama/ollama:latest` (unpinned) and pulls the model from a third-party HuggingFace mirror (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF`) via `ollama pull` at build time — exactly the code path this advisory describes.\nhttps://github.com/advisories/GHSA-57p7-34ff-7w3w\n\nclaude \"work through @research/queue/2026-09-19-ollama-ssrf-blob-pull-redirect.md\""
+    },
+    {
+      "slug": "ollama-gguf-decoder-integer-overflow",
+      "title": "Ollama GGUF decoder integer overflow (CVE-2026-86289) — patched in 0.31.2-rc1",
+      "url": "https://github.com/advisories/GHSA-c2q9-58w2-gjg4",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-19-ollama-gguf-decoder-integer-overflow.md",
+      "text": "*HIGH* — Ollama GGUF decoder integer overflow (CVE-2026-86289), patched\nInteger overflow in Ollama's GGUF string-reading code (`readGGUFV1String`), remotely triggerable while loading a model file. CVSS 2.1 (Low), but it's in the exact GGUF-parsing path used to load the unsloth MedGemma artifact. Published 2026-09-07, fixed in Ollama 0.31.2-rc1.\nCardiTrack's MedGemma base image is unpinned (`ollama/ollama:latest`), so whether the running image carries the fix depends entirely on build date.\nhttps://github.com/advisories/GHSA-c2q9-58w2-gjg4\n\nclaude \"work through @research/queue/2026-09-19-ollama-gguf-decoder-integer-overflow.md\""
+    },
+    {
+      "slug": "terraform-google-provider-v8-ga",
+      "title": "Terraform google/google-beta provider v8.0.0 GA drops several resource families with no deprecation grace",
+      "url": "https://github.com/hashicorp/terraform-provider-google/releases",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-19-terraform-google-provider-v8-ga.md",
+      "text": "*FYI* — Terraform google/google-beta provider hits v8.0.0 GA, drops resources with no deprecation grace\n`hashicorp/google` and `hashicorp/google-beta` went GA on v8.0.0 (~2026-09-03) and are iterating fast (v8.4.0 by 09-18). v8 removes `google_beyondcorp_app_connection/connector/gateway`, `google_iap_brand`/`google_iap_client`, `google_ml_engine_model`, and all `google_notebooks_*` resources — outright, not deprecated-then-removed.\nCardiTrack's `versions.tf` pins `~>7.23`, so nothing breaks today. Worth confirming none of `infrastructure/**` uses those four resource families before anyone widens the constraint.\nhttps://github.com/hashicorp/terraform-provider-google/releases\n\nclaude \"work through @research/queue/2026-09-19-terraform-google-provider-v8-ga.md\""
+    },
+    {
+      "slug": "google-health-api-womens-health-read-scopes",
+      "title": "Google Health API v4 adds read-only Women's Health scopes (logged symptoms, mindfulness, reproductive health)",
+      "url": "https://developers.google.com/health/release-notes",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-19-google-health-api-womens-health-read-scopes.md",
+      "text": "*FYI* — Google Health API v4 adds read-only Women's Health scopes\nThe discovery document gained three new read-only scopes (`googlehealth.logged_symptoms.readonly`, `.mindfulness.readonly`, `.reproductive_health.readonly`), the read-half of the write-only Women's Health types shipped 2026-08-17. Purely additive — existing scopes and payload shapes are unchanged.\nNo action needed unless CardiTrack wants to ingest these new data types.\nhttps://developers.google.com/health/release-notes\n\nclaude \"work through @research/queue/2026-09-19-google-health-api-womens-health-read-scopes.md\""
+    },
+    {
+      "slug": "garmin-connect-developer-program-closed",
+      "title": "Garmin Connect Developer Program's public application form removed — no ETA",
+      "url": "https://the5krunner.com/2026/09/14/garmin-developer-api-access-paused/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-19-garmin-connect-developer-program-closed.md",
+      "text": "*HIGH* — Garmin Connect Developer Program's application form removed, no ETA\nGarmin froze new developer applications in spring 2026 (after a Strava API-terms lawsuit) and has now removed the public application form from developer.garmin.com entirely — \"Stay tuned for more updates,\" no ETA. Existing integrations and Connect IQ are unaffected, but that's not CardiTrack's path.\nCardiTrack's `garmin` provider is a config-only stub awaiting developer-program access for planned R2 engine work; the docs already named Withings as the fallback if access didn't come — this closes that path indefinitely rather than merely gating it.\nhttps://the5krunner.com/2026/09/14/garmin-developer-api-access-paused/\n\nclaude \"work through @research/queue/2026-09-19-garmin-connect-developer-program-closed.md\""
+    },
+    {
+      "slug": "uk-ai-healthcare-commission-recommendations",
+      "title": "UK National Commission into the Regulation of AI in Healthcare publishes final recommendations",
+      "url": "https://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework",
+      "severity": "HIGH",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-19-uk-ai-healthcare-commission-recommendations.md",
+      "text": "*HIGH* — UK National Commission into the Regulation of AI in Healthcare publishes final recommendations\nAn MHRA-convened independent commission (NHS-doctor-chaired, 12,000+ respondents) published its final report on 2026-09-10: continuous real-world post-market monitoring for AI-enabled medical devices, oversight proportionate to patient risk rather than a fixed device/non-device binary, a public incident database, and a \"patients should know when AI is used in their care\" transparency expectation.\nNot yet law — no dated compliance obligation — but the risk-proportionate framing is exactly the kind of test that could eventually decide whether CardiTrack's narration tool sits inside SaMD scope, and the transparency recommendation is worth checking against CardiTrack's existing AI-disclosure copy.\nhttps://www.gov.uk/government/publications/national-commission-into-the-regulation-of-ai-in-healthcare-recommendations-for-a-future-regulatory-framework\n\nclaude \"work through @research/queue/2026-09-19-uk-ai-healthcare-commission-recommendations.md\""
+    }
+  ]
+}
