@@ -155,12 +155,27 @@ gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
 # Slack token, which would make "scoped identity" untrue.
 DIGEST_WORKFLOW_REF="${REPO}/.github/workflows/post-digest.yml@refs/heads/main"
 
-# Drop the repository-wide binding if an earlier run of this script added one,
-# so reruns converge on the narrow grant instead of accumulating both.
-gcloud iam service-accounts remove-iam-policy-binding $DIGEST_SA_EMAIL \
-  --role=roles/iam.workloadIdentityUser \
-  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}" \
-  --project=$PROJECT_ID 2>/dev/null || true
+# Drop the repository-wide binding if an earlier run of this script added one, so
+# reruns converge on the narrow grant instead of keeping both. Checked for first
+# and then removed without swallowing errors: blanket-ignoring a failed removal
+# would let a conditional binding or a transient IAM error leave the wide binding
+# in place while the narrow one is added and the script reports success — and the
+# wide binding is precisely what this account must not have.
+DIGEST_LEGACY_MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}"
+
+DIGEST_LEGACY_BINDING=$(gcloud iam service-accounts get-iam-policy $DIGEST_SA_EMAIL \
+  --project=$PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.role=roles/iam.workloadIdentityUser AND bindings.members=\"${DIGEST_LEGACY_MEMBER}\"" \
+  --format="value(bindings.members)")
+
+if [ -n "$DIGEST_LEGACY_BINDING" ]; then
+  echo "Removing repository-wide binding from $DIGEST_SA_EMAIL"
+  gcloud iam service-accounts remove-iam-policy-binding $DIGEST_SA_EMAIL \
+    --role=roles/iam.workloadIdentityUser \
+    --member="$DIGEST_LEGACY_MEMBER" \
+    --project=$PROJECT_ID
+fi
 
 gcloud iam service-accounts add-iam-policy-binding $DIGEST_SA_EMAIL \
   --role=roles/iam.workloadIdentityUser \
