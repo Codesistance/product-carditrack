@@ -41,10 +41,24 @@ no project IDs to fill in anywhere.
 
 ## 2. Secret into Secret Manager
 
+**Rerun the bootstrap first.** `carditrack-digest` is created by
+`scripts/setup-gcp-auth.sh`, not by Terraform, and this project has already run
+an older copy of that script — which skips anything that exists and so will not
+add the account on its own:
+
+```bash
+bash scripts/setup-gcp-auth.sh
+```
+
+That run also adds `attribute.job_workflow_ref` to the OIDC provider and binds
+the account to the posting workflow. Until it has happened, the Terraform
+binding below refers to a principal that does not exist and the workflow cannot
+authenticate.
+
 The secret and its IAM binding are declared in
 `infrastructure/common/secret_manager.tf` (`carditrack-common-slack-bot-token`),
-created with a `REPLACE_ME` placeholder that Terraform then ignores. Apply the
-common stack, then load the real value:
+created with a `REPLACE_ME` placeholder that Terraform then ignores. Then apply
+the common stack and load the real value:
 
 ```bash
 echo -n 'xoxb-your-token' | \
@@ -53,7 +67,8 @@ echo -n 'xoxb-your-token' | \
 ```
 
 The accessor grant is **per secret**, to `carditrack-digest` — an identity with
-no project-level roles, so this binding is the whole of its read access. It is
+no project-level roles, so this binding is the whole of its read access, and the
+bootstrap now fails closed if that account is ever found holding one. It is
 deliberately not `carditrack-deploy`, which holds project-level
 `roles/secretmanager.admin` and could read every secret regardless of any
 per-secret binding. See *Hardening still required* for what this does and does
@@ -153,12 +168,19 @@ the Slack token and nothing else — previously it assumed `carditrack-deploy`,
 which holds project-level `roles/secretmanager.admin` and can read every secret
 in the project.
 
-Be clear about the limit of that, because it is easy to overrate: it does **not**
-defend against gap 1. Both accounts are bound to the same WIF pool by repository,
-so a tampered workflow can simply ask for `carditrack-deploy` instead and get
-everything. What the scoped identity buys is a correct blast radius for the
-workflow as written, and a real reduction once gap 1 is closed. Gap 1 is the
-load-bearing fix; this is defence in depth behind it.
+`carditrack-digest` is also bound to the posting workflow rather than to the
+repository, via `attribute.job_workflow_ref`, so no other workflow in the repo
+can authenticate as it — every deploy workflow already requests
+`id-token: write`, so a repository-wide binding would have made "scoped
+identity" untrue.
+
+Be clear about the limit, because it is easy to overrate: this does **not**
+defend against gap 1. `carditrack-deploy` is still bound repository-wide, so a
+tampered workflow can simply ask for that account instead and read everything.
+Narrowing the deploy account the same way would touch every deploy workflow and
+is not attempted here. What the scoped identity buys is a correct blast radius
+for the workflow as written, and a real reduction once gap 1 is closed. Gap 1
+remains the load-bearing fix; this is defence in depth behind it.
 
 ## Deferred
 

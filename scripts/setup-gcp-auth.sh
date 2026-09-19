@@ -76,6 +76,10 @@ else
 fi
 
 # ── GitHub OIDC Provider ───────────────────────────────────────────────────────
+# job_workflow_ref lets a service account be bound to one workflow file rather
+# than to the whole repository, which is what scopes the digest identity below.
+ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.job_workflow_ref=assertion.job_workflow_ref"
+
 if gcloud iam workload-identity-pools providers describe $PROVIDER_NAME \
     --location=global --workload-identity-pool=$POOL_NAME \
     --project=$PROJECT_ID > /dev/null 2>&1; then
@@ -85,10 +89,20 @@ else
     --location=global \
     --workload-identity-pool=$POOL_NAME \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+    --attribute-mapping="$ATTR_MAPPING" \
     --attribute-condition="assertion.repository=='${REPO}'" \
     --project=$PROJECT_ID
 fi
+
+# Applied on every run, not only at creation: the mapping gained
+# attribute.job_workflow_ref after this provider already existed, and the branch
+# above only skips. Adding a mapping is additive — principalSets bound on
+# attribute.repository keep working — so this is safe to reapply.
+gcloud iam workload-identity-pools providers update-oidc $PROVIDER_NAME \
+  --location=global \
+  --workload-identity-pool=$POOL_NAME \
+  --attribute-mapping="$ATTR_MAPPING" \
+  --project=$PROJECT_ID
 
 # ── Digest posting identity ───────────────────────────────────────────────────
 # Deliberately separate from carditrack-deploy, which holds project-level
@@ -107,15 +121,50 @@ else
     --project=$PROJECT_ID
 fi
 
+# The whole claim of this account is that it holds no project-level role, so
+# assert it rather than assume it. The branch above only skips creation, so an
+# account that picked up a role elsewhere would otherwise sail through and the
+# per-secret binding in Terraform would be describing an isolation that is not
+# there. Fail closed and make a human look.
+DIGEST_PROJECT_ROLES=$(gcloud projects get-iam-policy $PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:serviceAccount:${DIGEST_SA_EMAIL}" \
+  --format="value(bindings.role)")
+
+if [ -n "$DIGEST_PROJECT_ROLES" ]; then
+  echo "ERROR: $DIGEST_SA_EMAIL holds project-level roles it must not have:" >&2
+  echo "$DIGEST_PROJECT_ROLES" | sed 's/^/  /' >&2
+  echo "" >&2
+  echo "This account exists to read one secret. Any project-level role defeats" >&2
+  echo "that and makes the per-secret grant in" >&2
+  echo "infrastructure/common/secret_manager.tf meaningless. Remove them with:" >&2
+  echo "  gcloud projects remove-iam-policy-binding $PROJECT_ID \\" >&2
+  echo "    --member=serviceAccount:$DIGEST_SA_EMAIL --role=<role>" >&2
+  exit 1
+fi
+
 # ── Bind pool to service account ──────────────────────────────────────────────
 gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL \
   --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}" \
   --project=$PROJECT_ID
 
-gcloud iam service-accounts add-iam-policy-binding $DIGEST_SA_EMAIL \
+# Bound to the posting workflow, not to the repository. A repository-wide
+# principalSet would let any workflow in the repo — every deploy workflow
+# already requests id-token: write — authenticate as this account and read the
+# Slack token, which would make "scoped identity" untrue.
+DIGEST_WORKFLOW_REF="${REPO}/.github/workflows/post-digest.yml@refs/heads/main"
+
+# Drop the repository-wide binding if an earlier run of this script added one,
+# so reruns converge on the narrow grant instead of accumulating both.
+gcloud iam service-accounts remove-iam-policy-binding $DIGEST_SA_EMAIL \
   --role=roles/iam.workloadIdentityUser \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.repository/${REPO}" \
+  --project=$PROJECT_ID 2>/dev/null || true
+
+gcloud iam service-accounts add-iam-policy-binding $DIGEST_SA_EMAIL \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_NAME}/attribute.job_workflow_ref/${DIGEST_WORKFLOW_REF}" \
   --project=$PROJECT_ID
 
 # ── Print values for _env.yml ──────────────────────────────────────────────────
