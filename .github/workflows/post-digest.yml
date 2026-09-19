@@ -1,0 +1,94 @@
+name: Post digest
+
+# The digest routine (.claude/commands/digest.md) runs in a Claude Code Cloud
+# sandbox that ingests untrusted web content — changelogs, vendor blogs, news.
+# It is therefore given repo write access and nothing else: it commits
+# digests/YYYY-MM-DD.json and stops. This workflow does the posting, so the
+# Slack credential never sits in a sandbox a prompt injection can reach.
+#
+# Do not "simplify" this by having the routine post to Slack directly.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'digests/**.json'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: post-digest-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  env:
+    uses: ./.github/workflows/_env.yml
+
+  post:
+    name: Post to Slack
+    needs: env
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Need the pushed range, not just the tip, to diff it below.
+          fetch-depth: 0
+
+      - name: Find digests added by this push
+        id: find
+        run: |
+          set -euo pipefail
+
+          # Diff the whole pushed range rather than HEAD^..HEAD: a push carrying
+          # more than one commit would hide every digest but the last.
+          # github.event.before is all-zeros on a branch's first push or after a
+          # force-push, in which case fall back to the tip commit alone.
+          BEFORE='${{ github.event.before }}'
+          if [ -z "${BEFORE//0/}" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            RANGE="${{ github.sha }}^..${{ github.sha }}"
+          else
+            RANGE="$BEFORE..${{ github.sha }}"
+          fi
+          echo "range: $RANGE"
+
+          # Added only. A digest that is edited after the fact has already been
+          # posted, and re-posting it would double up the thread.
+          git diff --name-only --diff-filter=A "$RANGE" -- 'digests/*.json' > added.txt || true
+
+          if [ ! -s added.txt ]; then
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            echo "No new digest files in this push."
+          else
+            echo "count=$(wc -l < added.txt)" >> "$GITHUB_OUTPUT"
+            cat added.txt
+          fi
+
+      - uses: google-github-actions/auth@v3
+        if: steps.find.outputs.count != '0'
+        with:
+          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.env.outputs.gcp_service_account }}
+
+      - uses: google-github-actions/get-secretmanager-secrets@v3
+        if: steps.find.outputs.count != '0'
+        id: slack
+        with:
+          secrets: |
+            bot_token:${{ needs.env.outputs.gcp_project_id }}/carditrack-common-slack-bot-token
+
+      - name: Post
+        if: steps.find.outputs.count != '0'
+        env:
+          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL }}
+          SLACK_BOT_TOKEN: ${{ steps.slack.outputs.bot_token }}
+        run: |
+          set -euo pipefail
+          failed=0
+          while read -r f; do
+            echo "::group::$f"
+            scripts/post-digest.sh "$f" || failed=1
+            echo "::endgroup::"
+          done < added.txt
+          exit $failed
