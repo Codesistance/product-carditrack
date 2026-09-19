@@ -219,6 +219,21 @@ public class ChatTranscriptRendererTests
         Assert.DoesNotContain("SleepEfficiencyPercent", Encoding.UTF8.GetString(rendered.Content));
     }
 
+    [Fact]
+    public void Pdf_SaysWhichZoneEveryTimestampIsIn()
+    {
+        // The document is built to be forwarded, and the generation has no idea what the
+        // caregiver's clock said. A bare "09:14" reads as local wherever it lands — and the zone
+        // rides on each timestamp rather than a line at the top, because a reader handed one
+        // page never sees the line that would have carried the qualifier.
+        var morning = new DateTimeOffset(2026, 2, 10, 9, 14, 0, TimeSpan.Zero);
+
+        Assert.Equal("09:14 UTC", ChatTranscriptDocument.Time(morning));
+
+        // An offset that is not UTC still prints the UTC instant, not the wall clock it carries.
+        Assert.Equal("09:14 UTC", ChatTranscriptDocument.Time(morning.ToOffset(TimeSpan.FromHours(5))));
+    }
+
     private static int CountInk(ReportDataSet data, byte red, byte green, byte blue)
     {
         var images = ChatTranscriptDocument.Compose(data, data.Transcript!)

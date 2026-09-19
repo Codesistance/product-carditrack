@@ -139,7 +139,11 @@ public sealed class ExportFileDelivery : IExportFileDelivery
 
         if (saved is { Ok: true, Where: { } where })
         {
-            await _popups.ShowInfoAsync($"{file.FileName} is in {where}.", "Saved to this phone");
+            // The name the saver actually wrote, not the one it was handed: neither platform
+            // overwrites a name already taken, so a second export of the same conversation is
+            // sitting under a suffixed name and this is where the caregiver is told which.
+            await _popups.ShowInfoAsync(
+                $"{saved.FileName ?? file.FileName} is in {where}.", "Saved to this phone");
             return;
         }
 

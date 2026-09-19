@@ -329,16 +329,22 @@ internal static class ChatTranscriptDocument
         var questions = transcript.QuestionCount;
         var asked = questions == 1 ? "1 question" : $"{questions} questions";
         return $"{asked} · {Day(transcript.StartedAtUtc)} {Time(transcript.StartedAtUtc)}"
-            + $" – {Day(transcript.LastTurnAtUtc)} {Time(transcript.LastTurnAtUtc)} UTC";
+            + $" – {Day(transcript.LastTurnAtUtc)} {Time(transcript.LastTurnAtUtc)}";
     }
 
     /// <summary>
-    /// Times print as UTC, and say so. The generation has no idea what the caregiver's clock
-    /// said, and an unlabelled local-looking time in a document that may be read in another
-    /// country is worse than an honest one in a zone.
+    /// Times print as UTC, and every one of them says so. The generation has no idea what the
+    /// caregiver's clock said, and an unlabelled local-looking time in a document that may be
+    /// read in another country is worse than an honest one in a zone.
     /// </summary>
-    private static string Time(DateTimeOffset value) =>
-        value.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+    /// <remarks>
+    /// The zone rides on each time rather than being stated once at the top. Four characters per
+    /// turn is a cheap price for a document built to be forwarded: a reader who starts halfway
+    /// down the second page, or who is handed one page of it, never sees the line that would
+    /// have carried the qualifier.
+    /// </remarks>
+    internal static string Time(DateTimeOffset value) =>
+        value.UtcDateTime.ToString("HH:mm", CultureInfo.InvariantCulture) + " UTC";
 
     private static string Day(DateTimeOffset value) =>
         value.UtcDateTime.ToString("d MMM yyyy", CultureInfo.InvariantCulture);

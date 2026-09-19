@@ -5,7 +5,13 @@ namespace CardiTrack.Mobile.Services;
 /// <summary>Where a saved export landed, in the caregiver's words, or why it did not.</summary>
 /// <param name="Where">The place to name back to them ("Downloads", "Files, under CardiTrack"),
 /// or null when the save failed.</param>
-public sealed record ExportSaved(bool Ok, string? Where);
+/// <param name="FileName">
+/// The name the file actually ended up under, which is not always the one asked for: neither
+/// platform overwrites a name already taken, so a second export of the same conversation lands
+/// beside the first. Null when the save failed. The caregiver is told this one — naming the
+/// requested file would send them looking for something that is not there.
+/// </param>
+public sealed record ExportSaved(bool Ok, string? Where, string? FileName = null);
 
 /// <summary>
 /// Keeps a finished export on this phone, where the operating system keeps files.
@@ -96,7 +102,7 @@ public sealed class ExportFileSaver : IExportFileSaver
             published.Put(Android.Provider.MediaStore.IMediaColumns.IsPending, 0);
             resolver.Update(uri, published, null, null);
 
-            return new ExportSaved(true, PlaceName);
+            return new ExportSaved(true, PlaceName, SavedNameOf(resolver, uri) ?? file.FileName);
         }
         catch (Exception ex)
         {
@@ -105,6 +111,26 @@ public sealed class ExportFileSaver : IExportFileSaver
             ScreenRefresh.LogFailure(ex, nameof(ExportFileSaver), "while saving an export");
             Discard(resolver, uri);
             return new ExportSaved(false, null);
+        }
+    }
+
+    /// <summary>
+    /// What MediaStore settled on. It suffixes "(1)" rather than overwriting a name already in
+    /// Downloads, so the name asked for and the name written are not always the same — and the
+    /// caregiver is about to be told where to look. Null if the row will not answer, and the
+    /// caller falls back to the requested name.
+    /// </summary>
+    private static string? SavedNameOf(Android.Content.ContentResolver resolver, Android.Net.Uri uri)
+    {
+        try
+        {
+            using var cursor = resolver.Query(
+                uri, [Android.Provider.MediaStore.IMediaColumns.DisplayName], null, null, null);
+            return cursor?.MoveToFirst() == true ? cursor.GetString(0) : null;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 
@@ -143,14 +169,49 @@ public sealed class ExportFileSaver : IExportFileSaver
         {
             var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             Directory.CreateDirectory(documents);
-            await File.WriteAllBytesAsync(Path.Combine(documents, file.FileName), file.Content, ct);
-            return new ExportSaved(true, PlaceName);
+
+            // Never over the top of one already there. Plain WriteAllBytes would replace it, and
+            // a caregiver who exported the same conversation twice would be told both were saved
+            // while holding one — silent loss of a health record, and the opposite of what the
+            // Android half does, which leaves the earlier copy alone and suffixes the new one.
+            var name = FreeNameIn(documents, file.FileName);
+            await File.WriteAllBytesAsync(Path.Combine(documents, name), file.Content, ct);
+            return new ExportSaved(true, PlaceName, name);
         }
         catch (Exception ex)
         {
             ScreenRefresh.LogFailure(ex, nameof(ExportFileSaver), "while saving an export");
             return new ExportSaved(false, null);
         }
+    }
+
+    /// <summary>
+    /// <paramref name="name"/> if nothing in <paramref name="directory"/> holds it, otherwise the
+    /// same name with " (1)", " (2)" … before the extension — the shape MediaStore uses on the
+    /// other platform, so a caregiver switching phones sees the same convention.
+    /// </summary>
+    /// <remarks>
+    /// The check and the write are not atomic, which is a race this app cannot lose: the only
+    /// writer to this directory is an export, and one caregiver cannot tap Save on two of them at
+    /// the same instant. The ceiling is there so a directory in a state nobody expects returns a
+    /// name rather than spinning.
+    /// </remarks>
+    private static string FreeNameIn(string directory, string name)
+    {
+        if (!File.Exists(Path.Combine(directory, name)))
+            return name;
+
+        var stem = Path.GetFileNameWithoutExtension(name);
+        var extension = Path.GetExtension(name);
+
+        for (var suffix = 1; suffix < 1000; suffix++)
+        {
+            var candidate = $"{stem} ({suffix}){extension}";
+            if (!File.Exists(Path.Combine(directory, candidate)))
+                return candidate;
+        }
+
+        return name;
     }
 
 #else
@@ -162,7 +223,7 @@ public sealed class ExportFileSaver : IExportFileSaver
     public string PlaceName => string.Empty;
 
     public Task<ExportSaved> SaveAsync(ReportFile file, CancellationToken ct = default) =>
-        Task.FromResult(new ExportSaved(false, null));
+        Task.FromResult(new ExportSaved(false, null, null));
 
 #endif
 }
