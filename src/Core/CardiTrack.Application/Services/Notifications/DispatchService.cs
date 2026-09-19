@@ -347,6 +347,24 @@ public class DispatchService : IDispatchService
             or DeliveryState.Undelivered or DeliveryState.Suppressed)
             return;
 
+        // Ahead of everything else, because it is the more fundamental reason to stop: a
+        // recipient who has asked to be deleted receives nothing, and a row queued before the
+        // request is exactly what would otherwise still arrive. EnqueueAsync stops new ones and
+        // GetLiveForUserAsync stops the re-resolving path below, but neither sees this one —
+        // once a delivery carries a PushDeviceTokenId it is retried against that token directly,
+        // and the 120-second repush of a Sent row comes through here too. Suppressed rather
+        // than dead-lettered: nothing failed, and cancelling inside the window should not leave
+        // a trail of errors behind it.
+        var recipient = await _unitOfWork.Users.GetByIdAsync(delivery.UserId);
+        if (recipient?.DeletionRequestedAtUtc is not null)
+        {
+            delivery.State = DeliveryState.Suppressed;
+            delivery.LastError = "Recipient is awaiting account deletion.";
+            _unitOfWork.NotificationDeliveries.Update(delivery);
+            await _unitOfWork.SaveChangesAsync();
+            return;
+        }
+
         if (RetryBackoffPolicy.IsExhausted(delivery.Attempts))
         {
             delivery.State = DeliveryState.DeadLettered;

@@ -190,7 +190,7 @@ public class NotificationDispatchWorker : CronBackgroundService
                 if (!claimed)
                     continue;
 
-                await dispatch.EnqueueAsync(new EnqueueRequest(
+                var enqueuedDelivery = await dispatch.EnqueueAsync(new EnqueueRequest(
                     SourceType: DeliverySourceType.Notification,
                     SourceId: notification.Id,
                     UserId: notification.UserId,
@@ -208,7 +208,12 @@ public class NotificationDispatchWorker : CronBackgroundService
                     // battery should replace the first rather than stack beneath it.
                     CollapseKey: $"nudge-{notification.Fingerprint}"), ct);
 
-                enqueued++;
+                // Null means the dispatcher declined it — the recipient has asked for their
+                // account to be deleted, so no outbox row was written. Counting it would have
+                // this line report pushes that do not exist, for the accounts most worth being
+                // able to prove nothing was sent to.
+                if (enqueuedDelivery is not null)
+                    enqueued++;
             }
             catch (Exception ex)
             {

@@ -19,7 +19,12 @@ public enum DeliveryState
     [Display(Name = "Delivered")]
     Delivered = 3,
 
-    /// <summary>The explicit collapse rule at send time dropped it — never a unique-constraint side effect.</summary>
+    /// <summary>
+    /// Deliberately not sent, and not a failure: the explicit collapse rule at send time dropped
+    /// it — never a unique-constraint side effect — or the recipient stopped being one, which
+    /// today means they asked for their account to be deleted. Terminal, and distinct from
+    /// <see cref="DeadLettered"/>, where something was tried and did not work.
+    /// </summary>
     [Display(Name = "Suppressed")]
     Suppressed = 4,
 

@@ -303,6 +303,47 @@ public class DispatchServiceTests
     }
 
     [Fact]
+    public async Task RetryClaimedAsync_SuppressesADeliveryQueuedBeforeTheDeletionRequest()
+    {
+        // The path neither of the other two guards can see. Once a delivery carries a
+        // PushDeviceTokenId it is retried against that token directly rather than through
+        // GetLiveForUserAsync — and the 120-second repush of a Sent row comes through here too —
+        // so a row queued before the request would still have arrived.
+        var userId = Guid.NewGuid();
+        var delivery = SentDelivery(_tokenId, _timeProvider.GetUtcNow().UtcDateTime.AddSeconds(-125));
+        delivery.UserId = userId;
+
+        _unitOfWork.Users.Returns(_users);
+        _users.GetByIdAsync(userId).Returns(new User
+        {
+            Id = userId,
+            DeletionRequestedAtUtc = _timeProvider.GetUtcNow().UtcDateTime.AddDays(-1),
+        });
+
+        await CreateSut().RetryClaimedAsync(delivery);
+
+        Assert.Equal(DeliveryState.Suppressed, delivery.State);
+        await _channel.DidNotReceiveWithAnyArgs().SendAsync(default!, default!, default);
+    }
+
+    [Fact]
+    public async Task RetryClaimedAsync_StillRepushesForAnAccountThatIsNotBeingDeleted()
+    {
+        var userId = Guid.NewGuid();
+        var delivery = SentDelivery(_tokenId, _timeProvider.GetUtcNow().UtcDateTime.AddSeconds(-125));
+        delivery.UserId = userId;
+
+        _unitOfWork.Users.Returns(_users);
+        _users.GetByIdAsync(userId).Returns(new User { Id = userId, DeletionRequestedAtUtc = null });
+        _channel.SendAsync(delivery, Arg.Any<PushDeviceToken>(), Arg.Any<CancellationToken>())
+            .Returns(new SendResult.Sent("provider-msg"));
+
+        await CreateSut().RetryClaimedAsync(delivery);
+
+        await _channel.Received(1).SendAsync(delivery, Arg.Any<PushDeviceToken>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task EnqueueAsync_StillReachesTheOtherCaregiversOfTheSameMember()
     {
         // The member is still watched by somebody, and they must still hear about them — the

@@ -70,6 +70,11 @@ public class NotificationDelivery : BaseEntity
 
     public int Attempts { get; set; }
     public DateTime? NextAttemptAt { get; set; }
+    /// <summary>
+    /// Why the row is where it is, when that needs saying — a send failure, or the reason a
+    /// <see cref="DeliveryState.Suppressed"/> row was never attempted. Named for the common case;
+    /// not every value in it is an error.
+    /// </summary>
     public string? LastError { get; set; }
     public string? ProviderMessageId { get; set; }
 
