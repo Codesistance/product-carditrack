@@ -102,7 +102,6 @@ The aggregator's **first increment is live (dev)**: every 5 minutes the `pipelin
 | | `OrphanedOrganizationCleanupWorker` | EF Core bulk delete | `0 0 3 * * *` — daily 03:00 |
 | | `PartitionMaintenanceWorker` | partition DDL over the sub-daily/pipeline tables | `0 15 * * * *` — hourly at :15, plus `RunOnStartup` |
 | | `InactivityDetectionWorker` | device-silence `Inactivity` alerts | `0 */15 * * * *` — every 15 min |
-| | `StatisticalAlertWorker` | statistical alert rules over `ActivityLogs` vs baselines | `0 7-59/15 * * * *` — every 15 min, :07 offset |
 | | `DeviceAuthRecoveryWorker` | retries `TokenExpired`/`AuthError` grants, per-connection backoff | `0 3-59/15 * * * *` — every 15 min, :03 offset |
 | | `DataCompletenessWorker` | data-gap detection → notifications | `0 0 6 * * *` — daily 06:00 |
 | | `QuietReassuranceWorker` | all-clear pushes for members with no alert in 7+ days | `0 30 8 * * *` — daily 08:30 |
@@ -192,7 +191,6 @@ The same query excludes removed and monitoring-paused members — in the query r
 | `DeviceSyncAuditWorker` cron / sample | `0 0 4 * * 0` / 25 | `Workers:DeviceSyncAuditWorker` |
 | `PartitionMaintenanceWorker` cron | `0 15 * * * *` (+ `RunOnStartup`) | `Workers:…:CronExpression` |
 | `InactivityDetectionWorker` cron | `0 */15 * * * *` | `Workers:…:CronExpression` |
-| `StatisticalAlertWorker` cron | `0 7-59/15 * * * *` | `Workers:…:CronExpression` |
 | `DeviceAuthRecoveryWorker` cron | `0 3-59/15 * * * *` | `Workers:…:CronExpression` |
 | `DataCompletenessWorker` cron | `0 0 6 * * *` | `Workers:…:CronExpression` |
 | `QuietReassuranceWorker` cron | `0 30 8 * * *` | `Workers:…:CronExpression` |

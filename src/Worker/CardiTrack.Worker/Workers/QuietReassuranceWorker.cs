@@ -10,8 +10,9 @@ namespace CardiTrack.Worker.Workers;
 /// <remarks>
 /// <para>
 /// Pure rule evaluation against data already in the database — no AI call — which is why it lives
-/// in the Worker per CLAUDE.md, alongside <see cref="StatisticalAlertWorker"/> whose candidate
-/// filter and per-member isolation it mirrors.
+/// in the Worker per CLAUDE.md, alongside <see cref="InactivityDetectionWorker"/> whose candidate
+/// filter and per-member isolation it mirrors (the statistical rules, which do call the model since
+/// 2026-09-19, moved to the pipeline's assessor job for the same rule).
 /// </para>
 /// <para>
 /// <b>Daily, but paced weekly.</b> The cadence a caregiver experiences is one all-clear a week per

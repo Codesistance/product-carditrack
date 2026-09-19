@@ -7,7 +7,9 @@ namespace CardiTrack.UnitTests.Services;
 /// <summary>
 /// Pins every rule to its boundary. The thresholds are the product's hard-coded "medium"
 /// sensitivity, and the null-vs-zero discipline is load-bearing: a day the device did not
-/// measure must never read as a day the member did nothing.
+/// measure must never read as a day the member did nothing. A rule returns a finding — what
+/// was measured, against what — and never a severity or a sentence: those are the model's
+/// (<c>StatisticalAlertService</c>), so nothing here asserts a verdict.
 /// </summary>
 public class StatisticalAlertRulesTests
 {
@@ -40,7 +42,6 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.Inactivity, candidate.Type);
-        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
         Assert.Contains("\"rule\":\"activity_decline\"", candidate.MetricValues);
         Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
     }
@@ -97,7 +98,7 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.Sleep, candidate.Type);
-        Assert.Contains(direction, candidate.Message);
+        Assert.Contains(direction, candidate.Observation);
     }
 
     /// <summary>
@@ -138,17 +139,17 @@ public class StatisticalAlertRulesTests
     /// <c>ageYears</c> has no default.
     /// </summary>
     [Theory]
-    [InlineData(AdultAge, null)]
-    [InlineData(OlderAdultAge, AlertSeverity.Yellow)]
+    [InlineData(AdultAge, false)]
+    [InlineData(OlderAdultAge, true)]
     public void IrregularSleep_WarnsOnlyOnceALongerNightOvershootsTheBandForTheirAge(
-        int age, AlertSeverity? expected)
+        int age, bool fires)
     {
         var baseline = Baseline();
         baseline.AvgSleepMinutes = 360;
 
         var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 510), age);
 
-        Assert.Equal(expected, candidate?.Severity);
+        Assert.Equal(fires, candidate is not null);
     }
 
     /// <summary>
@@ -165,15 +166,14 @@ public class StatisticalAlertRulesTests
         var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 480), AdultAge);
 
         Assert.NotNull(candidate);
-        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
-        Assert.Contains("less", candidate.Message);
+        Assert.Contains("less", candidate.Observation);
     }
 
     /// <summary>
-    /// The sentence quotes hours the way every surface around it does. It used to use F1 while the
-    /// comparison card, the chart key and the recommended band beside it all used 0.#, so a
-    /// six-hour night read "the usual 6.0" in the message and "6 hours" in the card directly under
-    /// it — one figure, two spellings, on one screen.
+    /// The observation quotes hours the way every surface around it does. It used to use F1 while
+    /// the comparison card, the chart key and the recommended band beside it all used 0.#, so a
+    /// six-hour night read "the usual 6.0" in the copy and "6 hours" in the card directly under
+    /// it — one figure, two spellings, on one screen. The model quotes what it is handed.
     /// </summary>
     [Fact]
     public void IrregularSleep_QuotesWholeHoursWithoutATrailingZero()
@@ -188,9 +188,9 @@ public class StatisticalAlertRulesTests
         var candidate = StatisticalAlertRules.IrregularSleep(baseline, Log(sleepMinutes: 510), OlderAdultAge);
 
         Assert.NotNull(candidate);
-        Assert.Contains("the usual 6 ", candidate.Message);
-        Assert.DoesNotContain("6.0", candidate.Message);
-        Assert.Contains("8.5 hours of sleep", candidate.Message);
+        Assert.Contains("the usual 6 ", candidate.Observation);
+        Assert.DoesNotContain("6.0", candidate.Observation);
+        Assert.Contains(": 8.5 hours", candidate.Observation);
     }
 
     /// <summary>
@@ -207,10 +207,10 @@ public class StatisticalAlertRulesTests
     /// which makes it the one place this trap can still bite.
     /// </remarks>
     [Theory]
-    [InlineData(481, AlertSeverity.Yellow)]
-    [InlineData(479, null)]
+    [InlineData(481, true)]
+    [InlineData(479, false)]
     public void IrregularSleep_ThresholdsOnExactMinutes_NotTheRoundedFigureItPrints(
-        int sleepMinutes, AlertSeverity? expected)
+        int sleepMinutes, bool fires)
     {
         var baseline = Baseline();
         baseline.AvgSleepMinutes = 240;
@@ -218,11 +218,11 @@ public class StatisticalAlertRulesTests
         var candidate = StatisticalAlertRules.IrregularSleep(
             baseline, Log(sleepMinutes: sleepMinutes), OlderAdultAge);
 
-        Assert.Equal(expected, candidate?.Severity);
+        Assert.Equal(fires, candidate is not null);
         if (candidate is not null)
         {
-            Assert.Contains("Around 8 hours", candidate.Message);
-            Assert.Contains("past the 8 hours recommended", candidate.Message);
+            Assert.Contains(": 8 hours", candidate.Observation);
+            Assert.Contains("past the 8-hour ceiling", candidate.Observation);
         }
     }
 
@@ -293,9 +293,8 @@ public class StatisticalAlertRulesTests
         var candidate = StatisticalAlertRules.ElevatedHeartRate(Baseline(), Log(restingHr: 68));
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.HeartRate, candidate.Type);
-        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
         Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
-        Assert.DoesNotContain("today", candidate.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("today", candidate.Observation, StringComparison.OrdinalIgnoreCase);
     }
 
     // σ = 6 → 2σ = 12 beats the floor: 62 + 12 = 74 is the boundary.
@@ -330,7 +329,6 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.PatternBreak, candidate.Type);
-        Assert.Equal(AlertSeverity.Red, candidate.Severity);
     }
 
     [Fact]
@@ -391,7 +389,6 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.Trend, candidate.Type);
-        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
         Assert.Contains("\"rule\":\"long_term_trend\"", candidate.MetricValues);
         Assert.Contains("\"day\":\"2026-08-09\"", candidate.MetricValues);
     }
@@ -464,7 +461,6 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.HeartRate, candidate.Type);
-        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
         Assert.Contains("\"rule\":\"hrv_drop\"", candidate.MetricValues);
         Assert.Equal(new DateOnly(2026, 8, 10), candidate.NightOf);
     }
@@ -527,7 +523,6 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.PatternBreak, candidate.Type);
-        Assert.Equal(AlertSeverity.Orange, candidate.Severity);
         Assert.Contains("\"rule\":\"overnight_breathing_up\"", candidate.MetricValues);
         Assert.Equal(new DateOnly(2026, 8, 10), candidate.NightOf);
     }
@@ -592,7 +587,7 @@ public class StatisticalAlertRulesTests
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.HeartRate, candidate.Type);
         Assert.Contains("\"rule\":\"elevated_zone_without_movement\"", candidate.MetricValues);
-        Assert.Contains("96 bpm", candidate.Message);
+        Assert.Contains("96 bpm", candidate.Observation);
     }
 
     // The same minutes after a walk are what exercise looks like, and say nothing.
@@ -640,10 +635,9 @@ public class StatisticalAlertRulesTests
 
         Assert.NotNull(candidate);
         Assert.Equal(AlertType.Inactivity, candidate.Type);
-        Assert.Equal(AlertSeverity.Yellow, candidate.Severity);
         Assert.Contains("\"rule\":\"daytime_inactivity_block\"", candidate.MetricValues);
         // The clock time is deliberately not in the message — see the copy test below.
-        Assert.Contains("4.3 hours", candidate.Message);
+        Assert.Contains("4.3 hours", candidate.Observation);
     }
 
     // Three hours is ordinary — a nap, a long film, an afternoon in a chair.
@@ -720,30 +714,31 @@ public class StatisticalAlertRulesTests
             StretchBaseline(120), StretchLog(260, startedAt));
 
         Assert.NotNull(candidate);
-        Assert.DoesNotContain("UTC", candidate.Message);
-        Assert.DoesNotContain("13:15", candidate.Message);
+        Assert.DoesNotContain("UTC", candidate.Observation);
+        Assert.DoesNotContain("13:15", candidate.Observation);
         Assert.Contains(startedAt.ToString("O"), candidate.MetricValues);
     }
 
     /// <summary>
-    /// Relative day words and the chair sentence go stale the moment the next midnight
-    /// passes — the banner and comparison already localise the civil day and the clock.
-    /// Persist the fact; let the detail screen name when.
+    /// Relative day words go stale the moment the next midnight passes, and a model handed
+    /// "yesterday" writes "yesterday". The observation names the civil day as a date instead —
+    /// the banner and comparison localise it — and the judgement brief tells the model to name
+    /// no day at all.
     /// </summary>
     [Fact]
-    public void PersistedMessages_NameNoRelativeDay_AndNoChair()
+    public void Observations_NameNoRelativeDay_AndNoChair()
     {
         var messages = new[]
         {
-            StatisticalAlertRules.ActivityDecline(Baseline(), Log(steps: 4199))!.Message,
-            StatisticalAlertRules.ElevatedHeartRate(Baseline(), Log(restingHr: 68))!.Message,
+            StatisticalAlertRules.ActivityDecline(Baseline(), Log(steps: 4199))!.Observation,
+            StatisticalAlertRules.ElevatedHeartRate(Baseline(), Log(restingHr: 68))!.Observation,
             StatisticalAlertRules.HeartRateVariabilityDrop(
                 HrvBaseline(),
                 HrvLog(new DateOnly(2026, 8, 10), 31m),
-                HrvLog(new DateOnly(2026, 8, 9), 33m))!.Message,
+                HrvLog(new DateOnly(2026, 8, 9), 33m))!.Observation,
             StatisticalAlertRules.ElevatedZoneWithoutMovement(
-                Baseline(), ZoneLog(steps: 1200, moderate: 30))!.Message,
-            StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(120), StretchLog(260))!.Message,
+                Baseline(), ZoneLog(steps: 1200, moderate: 30))!.Observation,
+            StatisticalAlertRules.DaytimeInactivityBlock(StretchBaseline(120), StretchLog(260))!.Observation,
         };
 
         Assert.All(messages, message =>

@@ -102,7 +102,6 @@ builder.Services.AddReportStorage(configuration);
 builder.Services.AddNumerics();
 builder.Services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
 builder.Services.AddScoped<IInactivityDetectionService, InactivityDetectionService>();
-builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();
 builder.Services.AddScoped<IMetricAlarmEngine, MetricAlarmEngine>();
 builder.Services.AddScoped<IQuietReassuranceService, QuietReassuranceService>();
 builder.Services.AddScoped<IDeviceAuthRecoveryService, DeviceAuthRecoveryService>();
@@ -145,7 +144,6 @@ builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(Base
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
 builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
 builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
-builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(StatisticalAlertWorker));
 builder.Services.AddWorker<MetricAlarmWorker>(configuration, nameof(MetricAlarmWorker));
 
 // Ages out questions nobody got to before the day they asked about ended. The read paths already

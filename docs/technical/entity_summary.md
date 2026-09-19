@@ -89,7 +89,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Added by migration `AddSyncCadenceProfileAndPullSchedule`
 
 #### 9. **Alert**
-- Health alerts — generation has **shipped**: `StatisticalAlertWorker` (statistical rules covering all five types), `InactivityDetectionWorker` (device silence), and the pipeline assessor (HeartRate alerts from MedGemma red/orange verdicts) all create rows
+- Health alerts — generation has **shipped**: `StatisticalAlertService` in the pipeline's assessor job (statistical rules covering all five types, findings judged by MedGemma since 2026-09-19), `InactivityDetectionWorker` (device silence), and the pipeline assessor (HeartRate alerts from MedGemma red/orange verdicts) all create rows
 - AlertType: Inactivity, HeartRate, Sleep, PatternBreak, Trend
 - AlertSeverity: Green, Yellow, Orange, Red (Green = 1, informational)
 - No stored AlertStatus column — lifecycle is tracked with `AcknowledgedDate`, `AcknowledgedByUserId`, and a boolean `IsResolved`; the `AlertStatus` enum (New/Acknowledged/Resolved) is a projection derived from those fields

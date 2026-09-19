@@ -225,6 +225,23 @@ public class MemberChatService : IMemberChatService
         + MedicalPromptBlocks.DataGapRule;
 
     /// <summary>
+    /// Appended to <see cref="InferenceClinicalInstructions"/> for the one re-ask a settled verdict
+    /// under a Yellow-or-worse hero gets. The first read was shown the same status and called
+    /// things settled anyway; this names that, and asks for the findings behind the tier to be
+    /// weighed by name. It does not tell the model what to conclude — a verdict that still reads
+    /// settled after this is withheld (<see cref="CouldNotAnswerReply"/>), never rewritten.
+    /// </summary>
+    private const string InferenceReaskAddendum = """
+
+
+        Your first read of this data called things settled beneath the status the family is
+        already looking at, without addressing what that status rests on. Weigh each item listed
+        under "Rests on" in the current status by name, against the readings, and give the verdict
+        again. Do not call things settled without saying which of those items you weighed and why
+        they do not carry the day.
+        """;
+
+    /// <summary>
     /// The two date fields every clinical read answers, so the reply can be dated in code.
     /// </summary>
     /// <remarks>
@@ -284,11 +301,12 @@ public class MemberChatService : IMemberChatService
         whether anything mattered.
 
         The data may carry the current dashboard status: the tier the family is already being
-        shown for this member, and the line beneath it. Your verdict may not read as more settled
-        than that tier. At Yellow or above, lead with what the tier rests on — the alert, the
-        assessment or the digest behind it — and do not call things settled beneath it: a chat
-        answer calmer than the screen it is read under is a contradiction the family is left to
-        resolve alone.
+        shown for this member, the line beneath it, and what the tier rests on — the open alerts,
+        the last hour's assessment, today's summary. Those are earlier verdicts over this same
+        person, and your verdict may not read as more settled than that tier without addressing
+        them. At Yellow or above, lead with what the tier rests on and weigh it before anything
+        else: a chat answer calmer than the screen it is read under is a contradiction the family
+        is left to resolve alone.
 
         Every figure below describes a period that has already finished. Never state what the
         person is doing at this moment. If the data below cannot support a verdict either way,
@@ -789,11 +807,51 @@ public class MemberChatService : IMemberChatService
             rewrite.Result, clinical.Result.Analysis, voice, clinical.Result.ReadingsFrom, clinical.Result.ReadingsTo,
             fetched.RecentActivityWindow, today);
 
-        // The brief above told the clinical read not to be calmer than the hero. This is the
-        // guard behind that rule, applied to what the caregiver actually reads: a settled verdict
-        // under a Yellow-or-worse hero gets the status line in front of it.
-        if (dashboard is { } shown)
-            reply = MemberChatReplies.ReconcileWithStatusTier(reply, shown.Tier, shown.Line);
+        var calls = new List<AiCallRecord>
+        {
+            new(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
+            new(AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
+            new(AiCallStep.ClinicalAnalysis, AiProviderSlot.Private, clinical.Usage),
+            new(AiCallStep.Rewrite, AiProviderSlot.Rewrite, rewrite.Usage),
+        };
+
+        // The brief told the clinical read not to be calmer than the hero, and showed it what the
+        // hero rests on. A verdict that still reads settled beneath a Yellow-or-worse tier is
+        // asked once more, with the disagreement named — the model writes the verdict, never
+        // code — and a second settled verdict is withheld rather than corrected. Until 2026-09-19
+        // this prepended a code-written "I wouldn't call things settled" in front of the model's
+        // sentence, which put two opposite verdicts in one bubble.
+        if (dashboard is { Tier: >= AlertSeverity.Yellow } && MemberChatReplies.ClaimsSettled(reply))
+        {
+            var reaskPrompt = BuildClinicalPrompt(
+                flattened, clinicalOnly, history.QuestionsOnly, InferenceClinicalInstructions + InferenceReaskAddendum);
+            var reasked = await _medicalAi.GenerateStructuredWithUsageAsync<InferenceClinicalAiResponse>(reaskPrompt, ct);
+            var reaskRewrite = await _rewriteAi.GenerateWithUsageAsync(
+                BuildRewritePrompt(flattened, new DeidentifiedFindings(reasked.Result.Analysis)), ct);
+            calls.Add(new AiCallRecord(AiCallStep.ClinicalAnalysis, AiProviderSlot.Private, reasked.Usage));
+            calls.Add(new AiCallRecord(AiCallStep.Rewrite, AiProviderSlot.Rewrite, reaskRewrite.Usage));
+
+            var secondReply = ComposeReply(
+                reaskRewrite.Result, reasked.Result.Analysis, voice, reasked.Result.ReadingsFrom,
+                reasked.Result.ReadingsTo, fetched.RecentActivityWindow, today);
+
+            if (MemberChatReplies.ClaimsSettled(secondReply))
+            {
+                _logger.LogWarning(
+                    "Inference verdict for CardiMember {CardiMemberId} read as settled twice beneath a {Tier} hero; withheld.",
+                    cardiMemberId, dashboard.Tier);
+                return new MemberChatWorkflowResult
+                {
+                    Workflow = MemberChatWorkflow.Inference,
+                    Reply = CouldNotAnswerReply,
+                    Charts = BuildCharts(fetched, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
+                    Calls = calls,
+                };
+            }
+
+            reply = secondReply;
+            clinical = reasked;
+        }
 
         // The authorities behind the verdict, quoted at the end of the reply. The model named
         // which of the prompt's published ranges it drew on; the citation text is the registry's
@@ -815,13 +873,7 @@ public class MemberChatService : IMemberChatService
             Workflow = MemberChatWorkflow.Inference,
             Reply = reply,
             Charts = BuildCharts(fetched, plan.Result.ChartMetrics, member?.DateOfBirth.ToAgeInYears(today)),
-            Calls =
-            [
-                new AiCallRecord(AiCallStep.MaliciousCheck, AiProviderSlot.Rewrite, triageUsage),
-                new AiCallRecord(AiCallStep.QueryPlan, AiProviderSlot.Rewrite, plan.Usage),
-                new AiCallRecord(AiCallStep.ClinicalAnalysis, AiProviderSlot.Private, clinical.Usage),
-                new AiCallRecord(AiCallStep.Rewrite, AiProviderSlot.Rewrite, rewrite.Usage),
-            ],
+            Calls = calls,
         };
     }
 
@@ -1380,7 +1432,8 @@ public class MemberChatService : IMemberChatService
     /// two of them — today's family digest urgency and the fresh hour assessment — are outside
     /// that vocabulary altogether, while the third, unresolved alerts, reaches the prompt only
     /// when the planner thought to ask. So a verdict could say "settled" beneath a Yellow hero
-    /// with nothing in its prompt to say otherwise, and on 2026-09-07 it did.
+    /// with nothing in its prompt to say otherwise, and on 2026-09-07 it did. The basis rendered
+    /// alongside the tier is the fix: the read sees the verdicts the colour rests on.
     /// </para>
     /// <para>
     /// Same inputs, same resolver, same local day as
@@ -1412,11 +1465,30 @@ public class MemberChatService : IMemberChatService
         var tier = StatusDisplayTier.Resolve(highestAlert, latestAssessment, latestDigest, utcNow);
         var line = await ReadServableStatusLineAsync(cardiMemberId, member, utcNow);
 
-        return new DashboardStatus(tier, line);
+        // What the tier rests on, as the verdicts they are: the resolver's three inputs, each
+        // named with its own severity so the read can weigh them rather than only see a colour.
+        // Two of the three were never in the planner's vocabulary, which is how a verdict could
+        // read settled beneath a Yellow hero with nothing in its prompt to say otherwise.
+        var basis = new List<string>();
+        foreach (var alert in unresolvedAlerts.Where(a => a.Severity >= AlertSeverity.Yellow).OrderByDescending(a => a.Severity))
+            basis.Add($"Open alert ({alert.Severity}): {MedicalPromptBlocks.Flatten(alert.Title)}");
+        if (latestAssessment is { Severity: >= AlertSeverity.Yellow } fresh
+            && utcNow - fresh.WindowStartUtc < StatusDisplayTier.AssessmentFreshness)
+        {
+            basis.Add($"Last hour's heart-rate assessment ({fresh.Severity}): "
+                      + MedicalPromptBlocks.Flatten(MedicalPromptBlocks.CutTo(fresh.ModelOutput, 300)));
+        }
+        if (latestDigest is { Urgency: > DigestUrgency.Watch } digest)
+        {
+            basis.Add($"Today's family summary ({digest.Urgency}): "
+                      + MedicalPromptBlocks.Flatten(MedicalPromptBlocks.CutTo(digest.Headline ?? digest.Text, 300)));
+        }
+
+        return new DashboardStatus(tier, line, basis);
     }
 
-    /// <summary>The hero as the family sees it: its tier and the line beneath.</summary>
-    private sealed record DashboardStatus(AlertSeverity Tier, MemberStatusLine? Line);
+    /// <summary>The hero as the family sees it: its tier, the line beneath, and what the tier rests on.</summary>
+    private sealed record DashboardStatus(AlertSeverity Tier, MemberStatusLine? Line, IReadOnlyList<string> Basis);
 
     /// <summary>
     /// The dashboard status as a prompt section for the inference read — the tier named and
@@ -1437,9 +1509,12 @@ public class MemberChatService : IMemberChatService
             _ => "settled — nothing pressing",
         };
 
-        return "--- Current status (dashboard) ---\n"
+        var rendered = "--- Current status (dashboard) ---\n"
             + $"  Tier: {status.Tier} ({gloss}); the colour the family is already looking at for this member\n"
             + $"  Line: {(status.Line is { } line ? line.Message.Trim() : "none current")}";
+        if (status.Basis.Count > 0)
+            rendered += "\n  Rests on:\n" + string.Join("\n", status.Basis.Select(b => $"  - {b}"));
+        return rendered;
     }
 
     /// <summary>

@@ -17,9 +17,11 @@ CardiTrack computes every number in-process. MedGemma only interprets numbers it
 
 Mean and sample σ (n−1) are computed in `BaselineCalculator` (package-free Application). Median and unscaled MAD are computed via `IDescriptiveStatistics` (Math.NET in Infrastructure) and **persisted on the same `PatternBaseline` row**. Live R1 rules still threshold on the mean / σ. Median/MAD exist so G2 (MAD/IQR fences for steps and sleep) can be shadow-evaluated without retuning production.
 
-## 2. Statistical rules (R1) — Worker, every 15 minutes
+## 2. Statistical rules (R1) — AI pipeline `assess` job, every five minutes
 
-| Rule | Fires when | Severity | Constant |
+> **Since 2026-09-19 the rules produce findings, not alerts.** Each rule below says *when it fires* and *the constant it fires on*; the severity a family sees, the headline and the message are MedGemma's verdict on that finding (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`, one call per member per pass, matched to each finding by rule, mapped strictly, fail closed). The **Severity** column records the constant each rule carried until then — the yardstick's former default, kept for lineage and for the V2 comparison in [art22_alerting_analysis.md](art22_alerting_analysis.md) §5 — not what the alert row now holds.
+
+| Rule | Fires when | Severity (former constant) | Constant |
 |---|---|---|---|
 | Activity decline | Yesterday’s steps &lt; 70% of the 30-day mean (`AvgSteps`) | Yellow | 30% of mean |
 | Irregular sleep | Last night’s sleep minutes more than 30% above or below `AvgSleepMinutes`, either direction | Yellow | 30% of mean |
@@ -87,4 +89,4 @@ No granular reading for &gt;2 hours during the member’s local waking hours (de
 
 ## 6. Change control
 
-A change to a threshold, a baseline formula (mean/σ vs robust location), the SSA engine string, a `CARDITRACK_*` prompt, or the model tag is an Art. 22 V4 event and a DPIA §13 review trigger. So is a change to **§2a's evaluator arithmetic, its threshold bounds, or its suggested defaults** — a caregiver choosing the number does not make the machinery that acts on it unreviewable. Record it in [art22_alerting_analysis.md](art22_alerting_analysis.md) §5 before mixing pre/post rows in a V2 claim.
+A change to a threshold, a baseline formula (mean/σ vs robust location), the SSA engine string, a `CARDITRACK_*` prompt, or the model tag is an Art. 22 V4 event and a DPIA §13 review trigger. **The 2026-09-19 move of §2's severities and copy from rule constants to the model's verdict is one such event**, recorded in art22 §5. So is a change to **§2a's evaluator arithmetic, its threshold bounds, or its suggested defaults** — a caregiver choosing the number does not make the machinery that acts on it unreviewable. Record it in [art22_alerting_analysis.md](art22_alerting_analysis.md) §5 before mixing pre/post rows in a V2 claim.

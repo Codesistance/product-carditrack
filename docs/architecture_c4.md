@@ -147,7 +147,7 @@ C4Component
     Component(base, "BaselineCalculationWorker", "daily 02:30", "30/60/90-day PatternBaselines + provisional 7/14-day windows (provisional never alerts)")
     Component(part, "PartitionMaintenanceWorker", "hourly", "Creates partitions ahead; retention = partition drop: granular 90d, rollups 13mo, digests 7mo, assessments 90d, environmental 90d. Never drops what it did not name")
     Component(inact, "InactivityDetectionWorker", "15-min", "Silence = no granular readings >2h in waking hours on the anchor clock; one yellow device-check alert, resolve to re-arm")
-    Component(stat, "StatisticalAlertWorker", "15-min offset", "R1 engine: 5 rules vs established 30-day baseline; null is never zero; remedy-scoped cooldowns (HeartRate type-scoped across producers)")
+    Component(stat, "StatisticalAlertService (pipeline assess job)", "every 5 min", "R1 rules vs established 30-day baseline produce findings; MedGemma returns each finding's severity and copy (2026-09-19); null is never zero; remedy-scoped cooldowns (HeartRate type-scoped across producers)")
     Component(audit, "DeviceSyncAuditWorker", "weekly", "Sampled sync-integrity audit")
     Component(authrec, "DeviceAuthRecoveryWorker", "15-min pass", "Retries provider-refused refresh tokens; per-connection widening backoff, so a pass mostly finds nothing due")
     Component(complete, "DataCompletenessWorker", "daily 06:00", "Diffs what each account supplies vs what CardiTrack needs; idempotent per-user nudge reconciliation under an advisory lock; runs after baselines")

@@ -284,7 +284,7 @@ public partial class DashboardPage : ContentPage
 
     /// <summary>
     /// The banner is about one particular Sleep alert — the real one
-    /// <c>StatisticalAlertWorker</c> raised, which is where <see cref="_currentSleepAlertId"/>
+    /// <c>StatisticalAlertService</c> raised, which is where <see cref="_currentSleepAlertId"/>
     /// comes from — so "Tap to view" opens that alert, not the list it is one of. Landing on the
     /// list made the caregiver find again the thing the banner had just handed them, and on a
     /// screen where the banner names the concern in words, an alert list is a step backwards.
@@ -641,8 +641,8 @@ public partial class DashboardPage : ContentPage
         FreshnessBlock.IsVisible = freshnessRelevant
             && (LastUpdatedFooterLabel.IsVisible || LearningProgress.IsVisible);
 
-        // Poor-sleep nudge: points at the real, unacknowledged Sleep alert StatisticalAlertWorker
-        // already raises, rather than a second judgement derived from today's metric alone.
+        // Poor-sleep nudge: points at the real, unacknowledged Sleep alert the statistical pass
+        // already raised, rather than a second judgement derived from today's metric alone.
         var sleepAlert = data.RecentAlerts.FirstOrDefault(a => a.Type == "Sleep" && a.Status == "new");
         var dismissedId = Preferences.Default.Get(DismissedSleepAlertKey, string.Empty);
         _currentSleepAlertId = sleepAlert?.AlertId;

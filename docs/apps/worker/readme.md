@@ -18,7 +18,6 @@ The 19 workers registered today (crons from `appsettings.json`):
 | `PartitionMaintenanceWorker` | `0 15 * * * *` (hourly; `RunOnStartup: true`) | Pre-creates partitions for the partitioned time-series tables and drops the ones past retention — granular 90 d, hourly rollups 13 mo, **digests 7 mo, real-time assessments 90 d, environmental readings 90 d** |
 | `DeviceSyncAuditWorker` | `0 0 4 * * 0` (Sunday 04:00) | Re-fetches a small random sample over a 14-day window to measure how far back each provider revises data |
 | `InactivityDetectionWorker` | `0 */15 * * * *` (every 15 min) | Device-silence failsafe — one yellow `Inactivity` alert when a member has no granular readings for >2 h in waking hours |
-| `StatisticalAlertWorker` | `0 7-59/15 * * * *` (every 15 min, offset) | R1 statistical alert engine — nine deterministic rules vs the established 30-day baseline |
 | `MetricAlarmWorker` | `0 4-59/5 * * * *` (every 5 min, offset) | Caregiver-defined alarms — threshold arithmetic on numbers a caregiver set themselves |
 | `QuestionnaireExpiryWorker` | `0 12-59/20 * * * *` (every 20 min, offset) | Retires family questions that outlived the day they asked about |
 | `QuestionnaireAlertWorker` | `0 */5 * * * *` (every 5 min) | Raises the alert that carries a pending family question to the caregiver |
@@ -53,7 +52,6 @@ src/Worker/CardiTrack.Worker/
 │   ├── PartitionMaintenanceWorker.cs        # Creates/drops time-series partitions (retention)
 │   ├── DeviceSyncAuditWorker.cs             # Wide-window re-fetch over a sample, to measure revisions
 │   ├── InactivityDetectionWorker.cs         # Device-silence failsafe (yellow Inactivity alert)
-│   ├── StatisticalAlertWorker.cs            # R1 statistical alert engine (nine rules)
 │   ├── MetricAlarmWorker.cs                 # Caregiver-defined alarms (R2)
 │   ├── QuestionnaireExpiryWorker.cs         # Retires family questions past the day they asked about
 │   ├── DeviceAuthRecoveryWorker.cs          # Retries provider-refused refresh tokens (backoff)
@@ -359,18 +357,13 @@ The device-silence failsafe (llm_design's `InactivityDetector` — placed here a
 - Candidates are members with data in the last two days (the same filter as digest/assessment): longer-silent members have aged out *and* already carry their standing alert.
 - **Cooldown**: one unresolved `Inactivity` alert per member; resolving it re-arms the check. Config (`Workers:InactivityDetectionWorker`): `SilenceThresholdMinutes` (default **120**), `WakingStartHour` (**7**), `WakingEndHour` (**22**); invalid values skip the run loudly rather than misfire.
 
-### StatisticalAlertWorker
+### Statistical alerts — not here any more
 
-The R1 statistical alert engine: nine deterministic rules (`docs/execution/backend/api/alerts.md` taxonomy — activity decline, irregular sleep, elevated resting HR, no morning activity, long-term trend, and from 2026-08-22 HRV drop, overnight breathing up, elevated zone without movement, long daytime rest) evaluated against each member's **established 30-day baseline** — fetching only that baseline is how "provisional baselines never alert" is enforced. Pure rules in `StatisticalAlertRules` (Application, I/O-free, boundary-tested); orchestration in `StatisticalAlertService`.
-
-- Runs **every 15 minutes**, offset from the inactivity worker (`0 7-59/15 * * * *`) — the cadence exists for the one intraday rule (`no_morning_activity`, red: measured-zero steps past typical wake + 2 h while the device reports); daily-grain rules are held to once per local day by the same-day dedup.
-- Thresholds are the hard-coded **medium** sensitivity profile (>30% deviation; HR margin max(2σ, 5 bpm); trend ≥5%/week × 4 weeks; HRV max(2σ, 15% of mean) on two consecutive nights; overnight breathing max(2σ, 1/min); raised-zone minutes max(their usual, 25) on a day the decline rule already calls quiet; unbroken still stretch max(3 h, usual + 50%)). Low/high profiles wait on wiring `CardiMember.AlertSensitivity`. Per-rule on/off is gated by `AlertPreference` (default on).
-- **Null-vs-zero discipline holds**: a null reading (not measured) never fires anything — most critically in `no_morning_activity`, where an HR-only device's absent steps field must never page a family red.
-- **Cooldowns follow the family's remedy** (`AlertRuleMarkers`): rule-scoped everywhere except `HeartRate`, which is type-scoped across this engine and the AI assessor.
+The R1 statistical rules (`StatisticalAlertRules`, nine rules against the established 30-day baseline) used to run here as `StatisticalAlertWorker`, writing each rule's own hard-coded severity and copy into the alert row. Since 2026-09-19 they are an **input provider** to MedGemma: `StatisticalAlertService` runs inside the pipeline's `assess` job, hands every finding to the model, and writes the model's severity, headline and message. A job that calls the medical model is AI pipeline work per CLAUDE.md, so it cannot live in this host — see `docs/llm_design.md` (`StatisticalJudgement`) and `docs/execution/backend/api/alerts.md`.
 
 ### MetricAlarmWorker
 
-The caregiver-defined alarm engine (R2). Where `StatisticalAlertWorker` runs CardiTrack's own nine rules, this one runs thresholds a caregiver set themselves — metric, statistic, comparison, threshold, window, M-of-N datapoints, missing-data treatment and severity, in the grammar cloud monitoring made standard. Pure evaluation in `MetricAlarmEvaluator` and `MetricAlarmWindowing` (Application, I/O-free, boundary-tested); orchestration in `MetricAlarmEngine`. Non-AI polling, so the Worker per CLAUDE.md.
+The caregiver-defined alarm engine (R2). Where the pipeline's statistical judgement runs CardiTrack's own nine rules through MedGemma, this one runs thresholds a caregiver set themselves — metric, statistic, comparison, threshold, window, M-of-N datapoints, missing-data treatment and severity, in the grammar cloud monitoring made standard. Pure evaluation in `MetricAlarmEvaluator` and `MetricAlarmWindowing` (Application, I/O-free, boundary-tested); orchestration in `MetricAlarmEngine`. Non-AI polling, so the Worker per CLAUDE.md.
 
 - Runs **every 5 minutes**, offset from both quarter-hour jobs (`0 4-59/5 * * * *`). Five rather than fifteen because the shortest period the catalogue offers is five minutes, and a cadence slower than the period would quietly make a "tell me within five minutes" alarm mean something else. Deliberately no faster: ingestion polls every ten, so a tighter loop would only re-read the same data.
 - **Two reads per member, not two per alarm.** Every sub-daily alarm the member has is served from one minute-series fetch sized to the longest of them, and every daily alarm from one activity-log fetch. A member with eight alarms costs the same queries as a member with one. The outer filter is organizations with at least one enabled alarm, and the member query is scoped to those organizations, so a fleet where nobody has defined one costs a single query per pass and a fleet where one organization has costs that organization's members only. State rows are written on a transition and otherwise re-stamped hourly, not every tick.
@@ -477,7 +470,6 @@ builder.Services.AddWorker<BaselineCalculationWorker>(configuration, nameof(Base
 builder.Services.AddWorker<DeviceSyncAuditWorker>(configuration, nameof(DeviceSyncAuditWorker));
 builder.Services.AddWorker<PartitionMaintenanceWorker>(configuration, nameof(PartitionMaintenanceWorker));
 builder.Services.AddWorker<InactivityDetectionWorker>(configuration, nameof(InactivityDetectionWorker));
-builder.Services.AddWorker<StatisticalAlertWorker>(configuration, nameof(StatisticalAlertWorker));
 builder.Services.AddWorker<QuestionnaireExpiryWorker>(configuration, nameof(QuestionnaireExpiryWorker));
 builder.Services.AddWorker<DeviceAuthRecoveryWorker>(configuration, nameof(DeviceAuthRecoveryWorker));
 builder.Services.AddWorker<DataCompletenessWorker>(configuration, nameof(DataCompletenessWorker));
@@ -558,9 +550,6 @@ Cron schedules bind per worker class name under the `Workers` section, consumed 
       "SilenceThresholdMinutes": 120,
       "WakingStartHour": 7,
       "WakingEndHour": 22
-    },
-    "StatisticalAlertWorker": {
-      "CronExpression": "0 7-59/15 * * * *"
     },
     "QuestionnaireExpiryWorker": {
       "CronExpression": "0 12-59/20 * * * *"

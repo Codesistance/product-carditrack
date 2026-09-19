@@ -104,6 +104,9 @@ builder.Services.AddMedicalAiServices(configuration);
 builder.Services.AddNumerics();
 builder.Services.AddScoped<IDigestGenerationService, DigestGenerationService>();
 builder.Services.AddScoped<IRealtimeAssessmentService, RealtimeAssessmentService>();
+// The R1 statistical findings judgement — the nine rules compute, MedGemma decides. Here rather
+// than the Worker because it calls the medical model (CLAUDE.md: AI inference is pipeline work).
+builder.Services.AddScoped<IStatisticalAlertService, StatisticalAlertService>();
 // The chat theming pass — Rewrite slot only, which AddMedicalAiServices above already carries.
 builder.Services.AddScoped<IChatThemeService, ChatThemeService>();
 
@@ -217,6 +220,14 @@ try
         case "assess":
             var assessments = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentService>();
             var assessed = await assessments.AssessDueMembersAsync(DateTime.UtcNow);
+            // The daily statistical findings ride the same pass: the nine R1 rules produce
+            // findings against the 30-day baseline, and MedGemma — already warm from the
+            // assessor — returns the severity, headline and message for each. Runs before the
+            // digest pass below so a summary written on this execution already sees the alerts.
+            // Bounded by the same-day dedup: a member with findings costs one call per rule-day,
+            // not one per pass, and a member with nothing off costs nothing.
+            var judgements = scope.ServiceProvider.GetRequiredService<IStatisticalAlertService>();
+            var judged = await judgements.EvaluateAsync(DateTime.UtcNow);
             // The digest job still runs at :00/:30; this pass runs every 5 minutes, two minutes
             // after the aggregator. An hour the assessor has just called a problem would otherwise
             // sit behind a summary written on the half-hour until the next digest tick. Generation
@@ -227,8 +238,9 @@ try
             var digestAfterAssess = scope.ServiceProvider.GetRequiredService<IDigestGenerationService>();
             var generatedAfterAssess = await digestAfterAssess.GenerateDueDigestsAsync(DateTime.UtcNow);
             Log.Information(
-                "PipelineJobs run finished. Assessments written: {Assessed}, summaries written: {Generated}.",
-                assessed, generatedAfterAssess);
+                "PipelineJobs run finished. Assessments written: {Assessed}, statistical alerts raised: "
+                + "{Judged}, summaries written: {Generated}.",
+                assessed, judged, generatedAfterAssess);
             return 0;
 
         case "enrich":

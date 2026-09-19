@@ -5,21 +5,35 @@ using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
-/// <summary>One rule's verdict: everything the orchestrator needs to write the alert.
-/// <see cref="NightOf"/> is set by rules that judge one specific night (the civil day the
-/// night ended on) rather than the firing day's data — the orchestrator dedups those per
-/// night, because late-arriving data can put the same night in front of the rule on two
-/// calendar days.</summary>
-public sealed record StatisticalAlertCandidate(
-    string Rule, AlertType Type, AlertSeverity Severity, string Title, string Message, string MetricValues,
-    DateOnly? NightOf = null);
+/// <summary>
+/// One rule's finding: what was measured, what is usual for this member, and the yardstick
+/// that made the reading worth a judgement. Not a verdict — the severity a family is shown and
+/// the words they read come from the medical model, which is handed these findings as its
+/// input (<c>StatisticalAlertService</c>). <see cref="Observation"/> is written for that model,
+/// in figures, and reaches no caregiver.
+/// <para>
+/// <see cref="NightOf"/> is set by rules that judge one specific night (the civil day the night
+/// ended on) rather than the firing day's data — the orchestrator dedups those per night,
+/// because late-arriving data can put the same night in front of the rule on two calendar days.
+/// </para>
+/// </summary>
+public sealed record StatisticalFinding(
+    string Rule, AlertType Type, string Observation, string MetricValues, DateOnly? NightOf = null);
 
 /// <summary>
-/// The R1 statistical alert rules (docs/execution/backend/api/alerts.md taxonomy) — pure
-/// functions from baseline + daily readings to an alert candidate or null, deliberately free of
-/// I/O so every threshold is unit-testable to its boundary. Thresholds are the hard-coded
-/// "medium" sensitivity profile (deviation &gt; 30%); the low/high profiles wait on wiring
-/// <c>CardiMember.AlertSensitivity</c>. Per-rule on/off lives in <c>AlertPreference</c>.
+/// The R1 statistical rules (docs/execution/backend/api/alerts.md taxonomy) — pure functions
+/// from baseline + daily readings to a <see cref="StatisticalFinding"/> or null, deliberately
+/// free of I/O so every threshold is unit-testable to its boundary. Thresholds are the
+/// hard-coded "medium" sensitivity profile (deviation &gt; 30%); the low/high profiles wait on
+/// wiring <c>CardiMember.AlertSensitivity</c>. Per-rule on/off lives in <c>AlertPreference</c>.
+/// <para>
+/// <b>These rules are an input provider, not the inference.</b> A rule says a reading crossed a
+/// yardstick and states the figures; whether that is worth the family's attention, how much, and
+/// in what words is the medical model's to decide (docs/llm_design.md: deterministic code
+/// computes every number, MedGemma only ever interprets them). Until 2026-09-19 each rule
+/// carried its own severity, title and message straight into the alert row, so a threshold
+/// constant was paging families with no model in the loop; that is the breach this shape closes.
+/// </para>
 /// <para>
 /// Every rule takes the <b>established 30-day</b> baseline only — provisional 7/14-day
 /// baselines never alert (a statistically thin window would trade the &lt;5% false-positive
@@ -100,7 +114,7 @@ public static class StatisticalAlertRules
     public const double SedentaryStretchMarginFraction = 0.5;
 
     /// <summary>Yesterday's steps more than 30% below the baseline average.</summary>
-    public static StatisticalAlertCandidate? ActivityDecline(PatternBaseline baseline, ActivityLog? yesterday)
+    public static StatisticalFinding? ActivityDecline(PatternBaseline baseline, ActivityLog? yesterday)
     {
         if (baseline.AvgSteps is not > 0 || yesterday?.Steps is not { } steps)
             return null;
@@ -109,11 +123,10 @@ public static class StatisticalAlertRules
         if (steps >= average * (1 - DeviationFraction))
             return null;
 
-        return new StatisticalAlertCandidate(
-            ActivityDeclineRule, AlertType.Inactivity, AlertSeverity.Yellow,
-            "Activity was well below the usual",
-            $"About {steps:N0} steps against a usual {average:N0} — a quieter day than normal. "
-            + "Worth a gentle check-in.",
+        return new StatisticalFinding(
+            ActivityDeclineRule, AlertType.Inactivity,
+            $"Steps on {Day(yesterday.Date)}: {steps:N0}, against a usual {average:N0} a day. "
+            + $"The yardstick is a day more than {DeviationFraction:P0} below their usual.",
             Serialize(new
             {
                 rule = ActivityDeclineRule,
@@ -142,8 +155,8 @@ public static class StatisticalAlertRules
     /// The most recent night's sleep more than 30% off the baseline average, in either direction.
     /// Sleep sessions are attributed to the civil day they <b>ended</b> on, so last night lives on
     /// <em>today's</em> log — the same row the dashboard's sleep card rates — and the orchestrator
-    /// passes the freshest log that carries a sleep reading. The candidate names the night it
-    /// judged (<see cref="StatisticalAlertCandidate.NightOf"/>) so one night alerts at most once
+    /// passes the freshest log that carries a sleep reading. The finding names the night it
+    /// judged (<see cref="StatisticalFinding.NightOf"/>) so one night alerts at most once
     /// however late its data arrived.
     /// <para>
     /// The trigger is symmetric; <b>what it alerts on is not</b>. A departure from the member's
@@ -155,11 +168,10 @@ public static class StatisticalAlertRules
     /// is nothing a caregiver can do in the morning about sleep that has already happened. So a
     /// longer night that has not overshot the recommended band now raises <b>no alert at all</b>:
     /// the fact belongs in the daybook entry, which describes the finished day, rather than on a
-    /// screen whose job is to say what needs attention now. It stays an alert in the one
+    /// screen whose job is to say what needs attention now. It stays a finding in the one
     /// direction where more sleep is worth flagging — past the recommended ceiling at their age.
-    /// A shorter night keeps its
-    /// <see cref="AlertSeverity.Yellow"/> whatever the absolute figure, because a sudden loss of a
-    /// third of someone's sleep is a pattern break in its own right.
+    /// A shorter night is always a finding whatever the absolute figure, because a sudden loss of
+    /// a third of someone's sleep is a pattern break in its own right.
     /// </para>
     /// </summary>
     /// <param name="ageYears">
@@ -168,7 +180,7 @@ public static class StatisticalAlertRules
     /// is exactly what decides whether a longer night is a concern, so a default here would quietly
     /// grant every older adult an hour of oversleep the recommendation does not give them.
     /// </param>
-    public static StatisticalAlertCandidate? IrregularSleep(
+    public static StatisticalFinding? IrregularSleep(
         PatternBaseline baseline, ActivityLog? lastNight, int ageYears)
     {
         if (lastNight?.SleepMinutes is not { } sleep
@@ -194,21 +206,19 @@ public static class StatisticalAlertRules
         if (longer && !overshot)
             return null;
 
-        // The clause that says where the night landed against the recommendation, which is the
-        // fact the deviation from their own usual leaves the caregiver to infer. Past the guard
-        // above, a longer night is necessarily one that overshot the ceiling, so the two benign
-        // sub-cases this expression used to carry went with the alert they described.
-        var tail = longer
-            ? $"and past the {recommended.High:0.#} hours recommended at their age. One night is "
-              + "rarely a worry, but it may be worth mentioning."
-            : "one night is rarely a worry, but it may be worth mentioning.";
+        // Where the night landed against the recommendation, which is the fact the deviation
+        // from their own usual leaves the model to weigh. Past the guard above, a longer night is
+        // necessarily one that overshot the ceiling.
+        var band = longer
+            ? $" and past the {recommended.High:0.#}-hour ceiling recommended at their age"
+            : $"; the recommended range at their age is {recommended.Low:0.#} to {recommended.High:0.#} hours";
 
-        return new StatisticalAlertCandidate(
+        return new StatisticalFinding(
             IrregularSleepRule, AlertType.Sleep,
-            AlertSeverity.Yellow,
-            "Sleep was well off the usual",
-            $"Around {hours:0.#} hours of sleep, noticeably {(longer ? "more" : "less")} "
-            + $"than the usual {usualHours:0.#} — {tail}",
+            $"Sleep on the night ending {Day(lastNight.Date)}: {hours:0.#} hours, "
+            + $"{(longer ? "more" : "less")} than the usual {usualHours:0.#}{band}. "
+            + $"The yardstick is a night more than {DeviationFraction:P0} off their usual; a longer "
+            + "night counts only past the recommended ceiling.",
             Serialize(new
             {
                 rule = IrregularSleepRule,
@@ -225,7 +235,7 @@ public static class StatisticalAlertRules
     }
 
     /// <summary>Yesterday's resting heart rate above baseline average + max(2σ, 5 bpm).</summary>
-    public static StatisticalAlertCandidate? ElevatedHeartRate(PatternBaseline baseline, ActivityLog? yesterday)
+    public static StatisticalFinding? ElevatedHeartRate(PatternBaseline baseline, ActivityLog? yesterday)
     {
         if (baseline.AvgRestingHeartRate is not > 0 || yesterday?.RestingHeartRate is not { } restingHr)
             return null;
@@ -236,11 +246,11 @@ public static class StatisticalAlertRules
         if (restingHr <= average + margin)
             return null;
 
-        return new StatisticalAlertCandidate(
-            ElevatedHeartRateRule, AlertType.HeartRate, AlertSeverity.Orange,
-            "Resting heart rate is running high",
-            $"Resting heart rate was {restingHr} bpm, clearly above the usual "
-            + $"{average} bpm. Worth checking in.",
+        return new StatisticalFinding(
+            ElevatedHeartRateRule, AlertType.HeartRate,
+            $"Resting heart rate on {Day(yesterday.Date)}: {restingHr} bpm, against a usual {average} bpm. "
+            + $"The yardstick is their usual plus {margin:0.#} bpm (the larger of two standard "
+            + $"deviations and {HrMarginFloorBpm} bpm).",
             Serialize(new
             {
                 rule = ElevatedHeartRateRule,
@@ -256,7 +266,7 @@ public static class StatisticalAlertRules
     /// steps — yet the member's typical wake time passed more than the grace period ago.
     /// A null steps value never fires: not measured is not the same as not moving.
     /// </summary>
-    public static StatisticalAlertCandidate? NoMorningActivity(
+    public static StatisticalFinding? NoMorningActivity(
         PatternBaseline baseline, ActivityLog? today, DateTime localNow)
     {
         if (baseline.TypicalWakeTime is not { } wake || today?.Steps is not 0)
@@ -266,11 +276,11 @@ public static class StatisticalAlertRules
         if (localNow.TimeOfDay < earliest)
             return null;
 
-        return new StatisticalAlertCandidate(
-            NoMorningActivityRule, AlertType.PatternBreak, AlertSeverity.Red,
-            "No movement since waking time",
-            $"The device is reporting, but no steps have been recorded today — well past the "
-            + $"usual waking time of {wake:HH\\:mm}. Please check in.",
+        return new StatisticalFinding(
+            NoMorningActivityRule, AlertType.PatternBreak,
+            $"Steps recorded so far today: a measured zero, with the device reporting. The time is "
+            + $"{localNow:HH\\:mm} local against a typical waking time of {wake:HH\\:mm}. The yardstick "
+            + $"is {MorningGraceHours} hours past their usual waking time with no movement recorded.",
             Serialize(new { rule = NoMorningActivityRule, typicalWakeTime = wake.ToString("HH:mm") }));
     }
 
@@ -278,7 +288,7 @@ public static class StatisticalAlertRules
     /// Weekly step averages declining ≥5% week-over-week for 4 consecutive weeks (ending
     /// yesterday). Each week needs enough measured days for its average to mean anything.
     /// </summary>
-    public static StatisticalAlertCandidate? LongTermTrend(
+    public static StatisticalFinding? LongTermTrend(
         IReadOnlyDictionary<DateOnly, ActivityLog> logsByDate, DateOnly yesterday)
     {
         var weeklyAverages = new double[TrendWeeks];
@@ -304,12 +314,13 @@ public static class StatisticalAlertRules
         }
 
         var totalDecline = 1 - weeklyAverages[0] / weeklyAverages[^1];
-        return new StatisticalAlertCandidate(
-            LongTermTrendRule, AlertType.Trend, AlertSeverity.Orange,
-            "Activity has been declining for weeks",
-            $"Daily steps have fallen steadily for {TrendWeeks} weeks — about "
-            + $"{totalDecline:P0} lower than a month ago. A pattern like this is worth a "
-            + "conversation, and perhaps a mention to a doctor.",
+        var oldestFirst = string.Join(", ", weeklyAverages.Reverse().Select(a => Math.Round(a).ToString("N0", CultureInfo.InvariantCulture)));
+        return new StatisticalFinding(
+            LongTermTrendRule, AlertType.Trend,
+            $"Average daily steps over the last {TrendWeeks} weeks ending {Day(yesterday)}, oldest week "
+            + $"first: {oldestFirst}. Each week sat at least {WeeklyDeclineFraction:P0} below the one "
+            + $"before it, about {totalDecline:P0} lower over the whole stretch. The yardstick is that "
+            + "many consecutive weeks of decline.",
             Serialize(new
             {
                 rule = LongTermTrendRule,
@@ -336,7 +347,7 @@ public static class StatisticalAlertRules
     /// resting rate has risen, and the family needs one "check on them", not two.
     /// </para>
     /// </remarks>
-    public static StatisticalAlertCandidate? HeartRateVariabilityDrop(
+    public static StatisticalFinding? HeartRateVariabilityDrop(
         PatternBaseline baseline, ActivityLog? lastNight, ActivityLog? previousNight)
     {
         if (baseline.AvgHeartRateVariabilityMs is not > 0
@@ -355,12 +366,12 @@ public static class StatisticalAlertRules
         if (latest >= threshold || previous >= threshold)
             return null;
 
-        return new StatisticalAlertCandidate(
-            HeartRateVariabilityDropRule, AlertType.HeartRate, AlertSeverity.Orange,
-            "Their heart rate variability has dropped",
-            $"Overnight heart rate variability has been low two nights running — {latest:0.#} ms "
-            + $"against a usual {average:0.#} ms. On its own it often just means a "
-            + "poor night or a cold coming on, but it is worth a check-in.",
+        return new StatisticalFinding(
+            HeartRateVariabilityDropRule, AlertType.HeartRate,
+            $"Overnight heart rate variability on the nights ending {Day(previousNight.Date)} and "
+            + $"{Day(lastNight.Date)}: {previous:0.#} ms and {latest:0.#} ms, against a usual "
+            + $"{average:0.#} ms. The yardstick is two consecutive nights below their usual minus "
+            + $"{margin:0.#} ms.",
             Serialize(new
             {
                 rule = HeartRateVariabilityDropRule,
@@ -393,7 +404,7 @@ public static class StatisticalAlertRules
     /// what fires the rule is their own night-to-night usual.
     /// </para>
     /// </remarks>
-    public static StatisticalAlertCandidate? OvernightBreathingUp(
+    public static StatisticalFinding? OvernightBreathingUp(
         PatternBaseline baseline, ActivityLog? lastNight)
     {
         if (baseline.AvgOvernightBreathingRate is not > 0
@@ -410,12 +421,11 @@ public static class StatisticalAlertRules
             return null;
 
         var band = HealthReferenceRanges.BreathingRate;
-        return new StatisticalAlertCandidate(
-            OvernightBreathingUpRule, AlertType.PatternBreak, AlertSeverity.Orange,
-            "They were breathing faster than usual overnight",
-            $"Breathing averaged {breathing:0.#} a minute while they slept, against a usual "
-            + $"{average:0.#}. A rise like this is often the first sign of a cold or chest "
-            + "infection coming on — worth a check-in, and worth watching over the next night or two.",
+        return new StatisticalFinding(
+            OvernightBreathingUpRule, AlertType.PatternBreak,
+            $"Breathing rate asleep on the night ending {Day(lastNight.Date)}: {breathing:0.#} a minute, "
+            + $"against a usual {average:0.#}. The yardstick is their usual plus {margin:0.#} a minute. "
+            + $"The published typical adult range asleep is {band.Low:0.#} to {band.High:0.#} a minute.",
             Serialize(new
             {
                 rule = OvernightBreathingUpRule,
@@ -446,7 +456,7 @@ public static class StatisticalAlertRules
     /// records no elevated minutes at all is not alerted by ten minutes of gardening.
     /// </para>
     /// </remarks>
-    public static StatisticalAlertCandidate? ElevatedZoneWithoutMovement(
+    public static StatisticalFinding? ElevatedZoneWithoutMovement(
         PatternBaseline baseline, ActivityLog? yesterday)
     {
         if (yesterday is null || ActivityDecline(baseline, yesterday) is null)
@@ -460,16 +470,15 @@ public static class StatisticalAlertRules
             return null;
 
         var zoneFloor = yesterday.ModerateZoneFloorBpm is { } floor
-            ? $" — above {floor} bpm, where their watch puts the start of real effort"
+            ? $" (above {floor} bpm, where their watch puts the start of real effort)"
             : string.Empty;
 
-        return new StatisticalAlertCandidate(
-            ElevatedZoneWithoutMovementRule, AlertType.HeartRate, AlertSeverity.Orange,
-            "Their heart worked hard on a quiet day",
-            $"Their heart spent about {elevated} minutes in a raised zone{zoneFloor}, "
-            + $"on a day of only {yesterday.Steps:N0} steps against a usual "
-            + $"{baseline.AvgSteps:N0}. Effort without movement is worth a check-in — how are they "
-            + "feeling, and have they been warm or short of breath?",
+        return new StatisticalFinding(
+            ElevatedZoneWithoutMovementRule, AlertType.HeartRate,
+            $"On {Day(yesterday.Date)}: {elevated} minutes above the light heart-rate zone{zoneFloor}, "
+            + $"on {yesterday.Steps:N0} steps against a usual {baseline.AvgSteps:N0}. The yardstick "
+            + $"is more than {threshold} raised minutes on a day the steps already count as a decline "
+            + "— the pairing is the finding, not either half.",
             Serialize(new
             {
                 rule = ElevatedZoneWithoutMovementRule,
@@ -501,7 +510,7 @@ public static class StatisticalAlertRules
     /// keeps a member who habitually sits for three hours from being alerted every afternoon.
     /// </para>
     /// </remarks>
-    public static StatisticalAlertCandidate? DaytimeInactivityBlock(
+    public static StatisticalFinding? DaytimeInactivityBlock(
         PatternBaseline baseline, ActivityLog? yesterday)
     {
         if (yesterday?.LongestSedentaryStretchMinutes is not { } stretch)
@@ -515,19 +524,15 @@ public static class StatisticalAlertRules
             return null;
 
         var usualClause = usual is > 0
-            ? $" — their usual longest is about {Hours(usual.Value)}"
+            ? $", against a usual longest of about {Hours(usual.Value)}"
             : string.Empty;
 
-        return new StatisticalAlertCandidate(
-            DaytimeInactivityBlockRule, AlertType.Inactivity, AlertSeverity.Yellow,
-            "A long stretch without moving",
-            // No clock time and no relative day in this copy. The instant and the civil day live
-            // in the metrics; the detail screen localises both. Baking "yesterday" or a clock
-            // here would be right on the morning the rule fires and wrong the next time the
-            // caregiver opens the card.
-            $"They went about {Hours(stretch)} without moving at all"
-            + $"{usualClause}. A long unbroken rest is not the same as a quiet day — worth asking "
-            + "whether they were comfortable.",
+        return new StatisticalFinding(
+            DaytimeInactivityBlockRule, AlertType.Inactivity,
+            // No clock time here: the rules layer has no timezone, so any time it named would be
+            // UTC. The instant stays in the metrics for the detail screen to localise.
+            $"Longest unbroken still stretch in waking hours on {Day(yesterday.Date)}: {Hours(stretch)}"
+            + $"{usualClause}. The yardstick is more than {Hours(threshold)}.",
             Serialize(new
             {
                 rule = DaytimeInactivityBlockRule,
@@ -541,9 +546,16 @@ public static class StatisticalAlertRules
             NightOf: yesterday.Date);
     }
 
-    /// <summary>Minutes as a plain-language span — "3.5 hours" — for the copy above.</summary>
+    /// <summary>Minutes as a plain-language span — "3.5 hours" — for the observations above.</summary>
     private static string Hours(int minutes) =>
         string.Create(CultureInfo.InvariantCulture, $"{minutes / 60m:0.#} hours");
+
+    /// <summary>
+    /// The civil day an observation is about, as an ISO date. Never a relative word: the model
+    /// is told the date so it can weigh the finding, and told separately not to carry a
+    /// "yesterday" into copy that will be read on other days.
+    /// </summary>
+    private static string Day(DateOnly date) => date.ToString("O", CultureInfo.InvariantCulture);
 
     private static string Serialize(object metrics) => JsonSerializer.Serialize(metrics);
 }

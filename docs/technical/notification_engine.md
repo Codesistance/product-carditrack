@@ -62,7 +62,7 @@ renderer that gets woken, plus a full-sync-on-foreground safety net (§6.4) for 
 ```
         ┌─ CardiTrack.Worker ────────────┐
         │  DataCompletenessWorker  (6am) │  gap detection, non-AI DB polling
-        │  StatisticalAlertWorker  (#118)│  statistical alerts off baselines
+        │  StatisticalAlertService (#118)│  statistical findings judged by MedGemma (pipeline assess job since 2026-09-19)
         │  InactivityDetectionWorker     │  device silence, 2h
         │  NotificationDispatchWorker    │  outbox retry + escalation timer
         │  PushCanaryWorker        (15m) │  end-to-end delivery canary
