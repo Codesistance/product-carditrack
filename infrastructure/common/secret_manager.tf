@@ -3,6 +3,7 @@
 #   echo -n "your_value" | gcloud secrets versions add carditrack-common-<name> --data-file=-
 #
 # Store distribution secrets are consumed by .github/workflows/deploy-apps-dev.yml.
+# slack-bot-token is consumed by .github/workflows/post-digest.yml.
 # Binary payloads (.p12, provisioning profile, keystore) are stored base64-encoded.
 
 
@@ -23,6 +24,10 @@ locals {
     "android-keystore",                 # Android upload keystore (.jks, base64, key alias: carditrack)
     "android-keystore-password",        # Password for the upload keystore and key
     "play-service-account-key",         # Google Play service account key (JSON)
+    "slack-bot-token",                  # Slack bot token (xoxb-..., chat:write) for post-digest.yml —
+    # not a store-distribution secret, grouped here to share this
+    # set's carditrack-deploy accessor grant instead of a second
+    # identity (no separate carditrack-digest account; see SETUP.md)
   ])
 
   # Operator-only secrets: not read by any deploy workflow, so carditrack-deploy
@@ -32,13 +37,6 @@ locals {
     "apns-auth-key-p8", # APNs auth key for push notifications (.p8 contents, PEM text)
     "apns-key-id",      # APNs auth key ID
     "apple-team-id",    # Apple Developer Team ID
-  ])
-
-  # Read by .github/workflows/post-digest.yml, which posts the digest routine's
-  # committed digests/*.json to Slack. The routine itself never sees this — it
-  # ingests untrusted web content, so it holds no Slack credential.
-  digest_secrets = toset([
-    "slack-bot-token", # Slack bot token (xoxb-...) with chat:write
   ])
 }
 
@@ -89,37 +87,4 @@ resource "google_secret_manager_secret_version" "operator_only" {
   lifecycle {
     ignore_changes = [secret_data]
   }
-}
-
-resource "google_secret_manager_secret" "digest" {
-  for_each  = local.digest_secrets
-  secret_id = "${var.project_name}-common-${each.key}"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [google_project_service.common_secretmanager]
-}
-
-resource "google_secret_manager_secret_version" "digest" {
-  for_each    = local.digest_secrets
-  secret      = google_secret_manager_secret.digest[each.key].id
-  secret_data = "REPLACE_ME"
-
-  lifecycle {
-    ignore_changes = [secret_data]
-  }
-}
-
-# Granted to carditrack-digest, not carditrack-deploy. The deploy account holds
-# project-level roles/secretmanager.admin (scripts/setup-gcp-auth.sh), so a grant
-# to it would isolate nothing. carditrack-digest holds no project-level role at
-# all: this binding is its only read access, which caps what the posting workflow
-# can reach at the Slack token.
-resource "google_secret_manager_secret_iam_member" "digest_accessor" {
-  for_each  = local.digest_secrets
-  secret_id = google_secret_manager_secret.digest[each.key].id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:carditrack-digest@${var.project_id}.iam.gserviceaccount.com"
 }
