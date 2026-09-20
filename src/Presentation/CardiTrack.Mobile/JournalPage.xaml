@@ -268,6 +268,31 @@
             <ScrollView>
                 <VerticalStackLayout>
                 <controls:SavedDataBanner x:Name="SavedBanner" Margin="20,20,20,0"/>
+
+                <!-- The longer view, above the books rather than inside any of them. Each book is
+                     a reassessment of its own finished period and never reads another narrative;
+                     pasting a current trend onto an entry about last March would date it wrongly.
+                     Here it reads as what it is — where things have been going lately, beside the
+                     account of each period. -->
+                <Border x:Name="TrendCard"
+                        Style="{StaticResource ElevatedCard}"
+                        Margin="20,20,20,0"
+                        IsVisible="False">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="The longer view"
+                               Style="{StaticResource DashboardSectionTitle}"/>
+                        <Label x:Name="TrendNarrativeLabel"
+                               Style="{StaticResource Body2}"
+                               LineBreakMode="WordWrap"/>
+                        <Label x:Name="TrendFindingsLabel"
+                               Style="{StaticResource Caption}"
+                               IsVisible="False"
+                               LineBreakMode="WordWrap"/>
+                        <Label x:Name="TrendGeneratedLabel"
+                               Style="{StaticResource Caption}"
+                               IsVisible="False"/>
+                    </VerticalStackLayout>
+                </Border>
                 <Grid Padding="20,20,20,24">
 
                     <!-- Loading: three quiet placeholder cards rather than a spinner, so the
