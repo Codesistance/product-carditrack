@@ -139,8 +139,9 @@ The full implemented surface is 68 endpoints across 13 controllers:
 | `POST /api/v1/oauth/callback/{provider}` | Complete OAuth, store connection (201) | [devices.md](devices.md) |
 | `POST /api/v1/chat` | Retired (410 Gone) — use member chat | — |
 | `POST /api/v1/member-chat/members/{cardiMemberId}/messages` | Caregiver conversation about one CardiMember; also manages the CardiJournal — show, list, delete or rewrite a book, the last two confirmed on the next turn (primary caregiver only) | — |
-| `GET /api/v1/insights/alerts/{alertId}` | MedGemma analysis of an alert | [alerts.md](alerts.md) |
-| `GET /api/v1/insights/members/{id}/baseline` | MedGemma narrative baseline analysis | [health-data.md](health-data.md) |
+| `GET /api/v1/insights/alerts/{alertId}` | The stored explanation of an alert — written by the pass that raised it, served from a row, never a model call on this path. Empty text means the pass has not reached it yet | [alerts.md](alerts.md) |
+| `GET /api/v1/insights/members/{id}/baseline` | The stored reading against the member's own baseline, with the learning/provisional state | [health-data.md](health-data.md) |
+| `GET /api/v1/insights/members/{id}/trend` | The stored trend narrative — the longer view, written by the daily trend pass. Empty text means under a month of readings, which is the learning state | [health-data.md](health-data.md) |
 | `GET /api/v1/insights/members/{id}/status` | Short AI status line for the dashboard hero card | [health-data.md](health-data.md) |
 | `GET /api/v1/insights/members/{id}/digest` | The member's current family digest | [health-data.md](health-data.md) |
 | `GET /api/v1/insights/members/{id}/digests` | Digest history, newest first | [health-data.md](health-data.md) |
