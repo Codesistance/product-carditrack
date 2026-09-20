@@ -1,0 +1,78 @@
+{
+  "date": "2026-09-20",
+  "summary": "*CardiTrack digest — 2026-09-20* · 8 items · 1 CRITICAL, 4 HIGH, 3 FYI",
+  "items": [
+    {
+      "slug": "ollama-ssrf-status-conflict",
+      "title": "Ollama SSRF (CVE-2026-85180): GHSA still shows unpatched, third-party trackers claim otherwise",
+      "url": "https://github.com/advisories/GHSA-57p7-34ff-7w3w",
+      "severity": "CRITICAL",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-20-ollama-ssrf-status-conflict.md",
+      "text": "*CRITICAL* — Ollama SSRF (CVE-2026-85180): GHSA still shows unpatched, third-party trackers claim otherwise\nGHSA-57p7-34ff-7w3w still lists \"Patched versions: Unknown\" as of today (re-checked directly), unchanged since 2026-09-03. But independent trackers (VulnCheck, Strix.ai) now claim the redirect-validation fix actually landed in Ollama 0.33.3+ — distinct from the already-known GGUF overflow fix — and current stable is 0.34.2/0.34.3. Ollama itself has published zero advisories on its own GitHub Security Advisories page for either CVE.\nCardiTrack's MedGemma image (`src/Infrastructure/MedGemma/Dockerfile`) still pulls `FROM ollama/ollama:latest` unpinned — so whichever claim is right, the deployed image's actual patch status is unverifiable without pinning to a specific tag and checking the redirect-validation code path directly.\nhttps://github.com/advisories/GHSA-57p7-34ff-7w3w\n\nclaude \"work through @research/queue/2026-09-20-ollama-ssrf-status-conflict.md\""
+    },
+    {
+      "slug": "llamacpp-gguf-reader-assertion-dos",
+      "title": "New CVE-2026-52131: llama.cpp reachable-assertion DoS in GGUF parser — Ollama's dependency, unpatched",
+      "url": "https://github.com/advisories/GHSA-jfjx-j76r-xrpf",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-20-llamacpp-gguf-reader-assertion-dos.md",
+      "text": "*HIGH* — llama.cpp GGUF-parser reachable-assertion DoS (CVE-2026-52131), unpatched\nA crafted GGUF file can trigger a reachable assertion in llama.cpp's `gguf_reader::read`, crashing the process — remote, unauthenticated, CVSS 7.5. Affects llama.cpp b5693 and earlier; no patched version listed yet (GHSA-jfjx-j76r-xrpf, published 2026-09-01).\nOllama vendors llama.cpp for GGUF model loading — the same code path the already-tracked GGUF integer-overflow CVE hit. Not yet verified whether the commit baked into `ollama/ollama:latest` carries the vulnerable code; if it does, a malformed model artifact (including via the still-open SSRF blob-pull path) could crash the shared MedGemma Cloud Run service.\nhttps://github.com/advisories/GHSA-jfjx-j76r-xrpf\n\nclaude \"work through @research/queue/2026-09-20-llamacpp-gguf-reader-assertion-dos.md\""
+    },
+    {
+      "slug": "auth0-third-party-app-oauth21-eol",
+      "title": "Auth0 enhanced security controls for third-party apps — EOL 2026-10-23 (33 days)",
+      "url": "https://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations",
+      "severity": "HIGH",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-20-auth0-third-party-app-oauth21-eol.md",
+      "text": "*HIGH* — Auth0 third-party-application OAuth 2.1 security controls, EOL 2026-10-23\nAuth0 will auto-apply strict OAuth 2.1 controls (mandatory PKCE, explicit API authorization) to any newly-created third-party application after 2026-10-23, for tenants that had third-party apps configured before 2026-04-23. Existing third-party apps are unaffected.\nCardiTrack's Auth0 tenant almost certainly only holds first-party applications, which this wouldn't touch — but that hasn't been confirmed against the actual tenant config. Smallest next action: check the Auth0 dashboard for any third-party application registrations before 2026-10-23.\nhttps://auth0.com/docs/troubleshoot/product-lifecycle/deprecations-and-migrations\n\nclaude \"work through @research/queue/2026-09-20-auth0-third-party-app-oauth21-eol.md\""
+    },
+    {
+      "slug": "garmin-health-connect-bridge-workaround",
+      "title": "Garmin already syncs into Google Health Connect directly — possible zero-engineering path around the closed developer program",
+      "url": "https://support.garmin.com/en-US/?faq=JToBEy0jfe6pIygark2Ui5",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-20-garmin-health-connect-bridge-workaround.md",
+      "text": "*HIGH* — Garmin devices already sync into Google Health Connect, independent of the closed developer API\nGarmin's own support docs confirm the Garmin Connect Android app can sync activity, heart rate, sleep and wellness data into Google Health Connect once a wearer opts in — the same \"wearer shares into a phone-side health hub\" pattern already used for Apple Watch and Samsung Galaxy Watch (`via_google_health`). Works independently of Garmin's frozen developer program (reported closed 2026-09-19).\nIf this bridge carries Garmin's cardiac-relevant metrics through to the Google Health API with good fidelity, CardiTrack could reach Garmin wearers with a picker-label change alone, rather than waiting on Garmin's developer program or pivoting the R2 slot to Withings. Unverified: nobody has field-tested Garmin data through this bridge into CardiTrack's pipeline yet.\nhttps://support.garmin.com/en-US/?faq=JToBEy0jfe6pIygark2Ui5\n\nclaude \"work through @research/queue/2026-09-20-garmin-health-connect-bridge-workaround.md\""
+    },
+    {
+      "slug": "apple-watch-series-12-health-sensing-system",
+      "title": "Apple Watch Series 12 ships a new Health Sensing System — raises the stakes of CardiTrack's unverified Apple Watch bridge",
+      "url": "https://www.apple.com/newsroom/2026/09/introducing-apple-watch-series-12-with-the-all-new-health-sensing-system/",
+      "severity": "HIGH",
+      "category": "devices",
+      "brief": "research/queue/2026-09-20-apple-watch-series-12-health-sensing-system.md",
+      "text": "*HIGH* — Apple Watch Series 12's new Health Sensing System raises the stakes on an open CardiTrack verification gap\nApple Watch Series 12 (announced 2026-09-09, shipped 2026-09-18) adds a \"Health Sensing System\" — 5-second heart-rate sampling, more frequent HRV, ECG-based AFib detection, and a daily Readiness Score.\nCardiTrack has no dedicated Apple Watch integration by design (2026-09-05 decision) — it relies entirely on wearers bridging Apple Health into the Google Health app. Whether that bridge carries the richer Series 12 signal set through with good fidelity is still an open, unverified question (`docs/execution/backend/api/devices.md`, \"Open verification\"). More caregiver households now carrying this hardware makes that field test a higher-priority next step, not a new engineering ask.\nhttps://www.apple.com/newsroom/2026/09/introducing-apple-watch-series-12-with-the-all-new-health-sensing-system/\n\nclaude \"work through @research/queue/2026-09-20-apple-watch-series-12-health-sensing-system.md\""
+    },
+    {
+      "slug": "ollama-gguf-overflow-fix-confirmed-ga",
+      "title": "Ollama GGUF integer-overflow fix (CVE-2026-86289) confirmed GA in stable 0.31.2, not just rc1",
+      "url": "https://github.com/advisories/GHSA-c2q9-58w2-gjg4",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-20-ollama-gguf-overflow-fix-confirmed-ga.md",
+      "text": "*FYI* — Ollama GGUF integer-overflow fix confirmed generally available, not just release-candidate\nUpdate to yesterday's item: the fix for CVE-2026-86289 shipped in the stable, generally-available Ollama 0.31.2 release (2026-07-06), not merely the 0.31.2-rc1 build previously reported. Many further stable releases have since shipped (current stable 0.34.2, 2026-09-15).\nDowngraded from HIGH to FYI — resolved upstream, contingent only on CardiTrack's unpinned `ollama/ollama:latest` image having been rebuilt since 2026-07-06, which is the same open question as today's SSRF entry.\nhttps://github.com/advisories/GHSA-c2q9-58w2-gjg4\n\nclaude \"work through @research/queue/2026-09-20-ollama-gguf-overflow-fix-confirmed-ga.md\""
+    },
+    {
+      "slug": "medgemma-1-5-technical-report",
+      "title": "MedGemma 1.5 Technical Report published — no cardiovascular/ECG benchmarks anywhere in it",
+      "url": "https://arxiv.org/abs/2604.05081",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-20-medgemma-1-5-technical-report.md",
+      "text": "*FYI* — MedGemma 1.5 Technical Report contains zero cardiovascular/ECG benchmarks\nGoogle's own MedGemma 1.5 technical report (arXiv:2604.05081) covers MedQA, EHR-QA and chest-X-ray gains — nowhere does it claim any cardiac, ECG, or vitals-time-series reasoning capability.\nVendor evidence, not just an independent benchmark, that MedGemma isn't positioned for primary cardiac signal work — reinforces CardiTrack's existing architecture (deterministic SSA computes every number, MedGemma only narrates against a pinned reference-range table) rather than changing anything.\nhttps://arxiv.org/abs/2604.05081\n\nclaude \"work through @research/queue/2026-09-20-medgemma-1-5-technical-report.md\""
+    },
+    {
+      "slug": "fda-generative-ai-medical-device-discussion-paper",
+      "title": "FDA discussion paper proposes a \"competency assessment\" framework for generative-AI medical devices — comments open to 2026-10-19",
+      "url": "https://www.fda.gov/medical-devices/digital-health-center-excellence/considerations-regulation-generative-ai-enabled-medical-devices-discussion-paper-and-request",
+      "severity": "FYI",
+      "category": "regulation",
+      "brief": "research/queue/2026-09-20-fda-generative-ai-medical-device-discussion-paper.md",
+      "text": "*FYI* — FDA discussion paper on generative-AI-enabled medical devices, comments open to 2026-10-19\nFDA's Digital Health Center of Excellence published a discussion paper (2026-08-18) proposing a \"competency assessment\" premarket concept for generative-AI medical devices, plus postmarket-monitoring ideas. Request for feedback, not binding guidance; comment period closes 2026-10-19.\nNo UK/EU regulator has published anything new since 2026-09-15 moving CardiTrack's SaMD-boundary question (checked directly). This FDA paper is the first framework proposal aimed specifically at a generative-AI narration layer — exactly what MedGemma is here — rather than SaMD software generally. US-side and non-binding, worth tracking.\nhttps://www.fda.gov/medical-devices/digital-health-center-excellence/considerations-regulation-generative-ai-enabled-medical-devices-discussion-paper-and-request\n\nclaude \"work through @research/queue/2026-09-20-fda-generative-ai-medical-device-discussion-paper.md\""
+    }
+  ]
+}
