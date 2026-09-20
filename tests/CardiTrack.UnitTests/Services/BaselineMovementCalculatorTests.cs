@@ -98,10 +98,55 @@ public class BaselineMovementCalculatorTests
         var unmeasured = BaselineMovementCalculator.Compute([], Baseline(avgSteps: 5000), Through)!;
 
         Assert.False(steady.HasAnythingToSay);
-        Assert.True(steady.JudgedAnything);
+        Assert.True(steady.ShowsNothingIsOff);
 
         Assert.False(unmeasured.HasAnythingToSay);
-        Assert.False(unmeasured.JudgedAnything);
+        Assert.False(unmeasured.ShowsNothingIsOff);
+        Assert.Contains("Steps", unmeasured.Unjudged);
+    }
+
+    /// <summary>
+    /// Half a week's readings is not evidence that the other half is fine.
+    /// </summary>
+    /// <remarks>
+    /// A watch reporting heart rate but no steps has judged something and said nothing whatever
+    /// about steps. Treating that as "we looked and all is well" would let a partial sync outage
+    /// retract a standing card about this member's steps on evidence that never addressed them.
+    /// </remarks>
+    [Fact]
+    public void AMetricThatWentUnreadIsNotEvidenceThatItIsFine()
+    {
+        var movements = Compute(
+            Baseline(avgSteps: 5000, avgRestingHeartRate: 66), restingHr: 66)!;
+
+        // Heart rate was judged and held; steps has a usual and no readings at all.
+        Assert.Contains("Resting heart rate", movements.Steady);
+        Assert.Contains("Steps", movements.Unjudged);
+
+        Assert.False(movements.HasAnythingToSay);
+        Assert.False(movements.ShowsNothingIsOff);
+    }
+
+    [Fact]
+    public void AMetricThisMemberHasNoUsualForIsNotAGap()
+    {
+        // Never learned means never measured for them, so waiting on it would mean never being
+        // able to say all is well about anybody.
+        var movements = Compute(Baseline(avgSteps: 5000), steps: 5000)!;
+
+        Assert.Empty(movements.Unjudged);
+        Assert.True(movements.ShowsNothingIsOff);
+    }
+
+    [Fact]
+    public void TheRenderedBlockSaysWhichMetricsWentUnread()
+    {
+        // Unread is not steady. A metric in neither list would be a silence the model fills in.
+        var rendered = BaselineMovementCalculator.Render(
+            Compute(Baseline(avgSteps: 5000, avgRestingHeartRate: 66), steps: 3000)!);
+
+        Assert.Contains("Too few readings this week to judge: Resting heart rate.", rendered);
+        Assert.Contains("Say nothing about these.", rendered);
     }
 
     [Fact]

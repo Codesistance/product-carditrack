@@ -28,26 +28,41 @@ public sealed record MetricMovement(
 /// <param name="BaselinePeriodDays">The window the "usual" figures were learned over.</param>
 /// <param name="Notable">Only the metrics that cleared the bar, widest departure first.</param>
 /// <param name="Steady">The metrics that were measured and did not clear it, by name.</param>
+/// <param name="Unjudged">
+/// Metrics this member has a usual for, but too few readings this week to judge against it.
+/// </param>
 public sealed record BaselineMovements(
     DateOnly Through,
     int BaselinePeriodDays,
     IReadOnlyList<MetricMovement> Notable,
-    IReadOnlyList<string> Steady)
+    IReadOnlyList<string> Steady,
+    IReadOnlyList<string> Unjudged)
 {
     /// <summary>Whether there is anything here worth spending a model call on.</summary>
     public bool HasAnythingToSay => Notable.Count > 0;
 
     /// <summary>
-    /// Whether any metric could be judged at all this week.
+    /// Whether this week is positive evidence that nothing is off: every metric this member has a
+    /// usual for was judged, and not one of them had moved.
     /// </summary>
     /// <remarks>
-    /// Distinct from <see cref="HasAnythingToSay"/>, and the distinction matters: both are false
-    /// for a member who is fine and for a member whose watch stopped reporting, and those two
-    /// deserve opposite treatment. Nothing to say is a reason to take a standing concern down;
-    /// nothing measured is a reason to leave it exactly where it is until there is data to judge
-    /// it against again.
+    /// <para>
+    /// The property a standing concern may be retracted on, and deliberately stricter than "we
+    /// looked and saw nothing". A week with four heart-rate readings and no step readings has
+    /// judged something, but it has said nothing at all about steps — so taking down a card about
+    /// this member's steps on the strength of it would be retracting a concern on evidence that
+    /// never addressed it. A partial sync outage should leave the card exactly where it is.
+    /// </para>
+    /// <para>
+    /// A metric the baseline never learned a usual for is not part of this: it is not measured for
+    /// this member at all, and waiting for it would mean never retracting anything. Where a metric
+    /// does have a usual and then stops being reported for good — a change of watch — this stays
+    /// false and the row is left to age out of <c>InsightServability</c> instead, which is the
+    /// behaviour that existed before it could be removed at all.
+    /// </para>
     /// </remarks>
-    public bool JudgedAnything => Notable.Count > 0 || Steady.Count > 0;
+    public bool ShowsNothingIsOff =>
+        Notable.Count == 0 && Unjudged.Count == 0 && Steady.Count > 0;
 }
 
 /// <summary>
@@ -177,15 +192,22 @@ public static class BaselineMovementCalculator
 
         var notable = new List<MetricMovement>();
         var steady = new List<string>();
+        var unjudged = new List<string>();
 
         foreach (var metric in Metrics)
         {
-            var readings = days.Select(metric.Read).OfType<decimal>().ToList();
-            if (readings.Count < MinimumMeasuredDays)
-                continue;
-
+            // No learned usual means this metric is not measured for this member at all, so it is
+            // not part of the picture and its absence says nothing. That is a different thing from
+            // a metric they do have a usual for going unread this week, which is a gap.
             if (metric.Usual(baseline) is not > 0 || metric.Usual(baseline) is not { } usual)
                 continue;
+
+            var readings = days.Select(metric.Read).OfType<decimal>().ToList();
+            if (readings.Count < MinimumMeasuredDays)
+            {
+                unjudged.Add(metric.Label);
+                continue;
+            }
 
             var recent = Math.Round(readings.Average(), 1);
             var margin = MarginFor(metric, baseline, usual);
@@ -215,7 +237,8 @@ public static class BaselineMovementCalculator
             // should land on the one that moved furthest rather than on whichever metric this
             // file happens to list first.
             [.. notable.OrderByDescending(m => Math.Abs(m.DeviationPercent))],
-            steady);
+            steady,
+            unjudged);
     }
 
     /// <summary>
@@ -262,9 +285,17 @@ public static class BaselineMovementCalculator
 
         // Named rather than left out, so the model can say the rest is steady without counting
         // anything itself — and cannot imply a metric moved by failing to mention it.
-        lines.Add(movements.Steady.Count > 0
-            ? "Measured and steady, nothing to report: " + string.Join(", ", movements.Steady) + "."
-            : "Nothing else carried enough readings this week to judge.");
+        if (movements.Steady.Count > 0)
+            lines.Add("Measured and steady, nothing to report: " + string.Join(", ", movements.Steady) + ".");
+
+        // And the gaps said out loud, for the same reason in reverse: unread is not steady, and a
+        // metric missing from both lists would otherwise be a silence the model fills in.
+        if (movements.Unjudged.Count > 0)
+        {
+            lines.Add(
+                "Too few readings this week to judge: " + string.Join(", ", movements.Unjudged)
+                + ". Say nothing about these.");
+        }
 
         return string.Join(Environment.NewLine, lines);
     }
@@ -291,8 +322,9 @@ public static class BaselineMovementCalculator
     /// Sleep is carried in hours here where the trend features carry minutes, and deliberately:
     /// these two figures are printed beside each other for a person to read, and 432 is not a
     /// night's sleep to anyone but a database. <c>ReportComparison</c> converts it for the same
-    /// reason. Only the last two of these have a learned spread in the baseline; the rest fall
-    /// back to the fraction.
+    /// reason. Four of the six have a learned spread on the baseline — steps, resting heart rate,
+    /// heart rate variability and breathing asleep — so only sleep and active minutes are judged
+    /// on their floor alone.
     /// </remarks>
     private static readonly Metric[] Metrics =
     [

@@ -230,6 +230,47 @@ public class HealthInsightServicePromptTests
         Assert.Empty(_medicalAi.ReceivedCalls());
     }
 
+    /// <summary>
+    /// A partial sync outage must not retract a concern it never spoke to.
+    /// </summary>
+    /// <remarks>
+    /// The watch is reporting heart rate and no steps. That judges something, so a "did we look at
+    /// anything" test would let the row go — but it has said nothing at all about steps, which is
+    /// what the standing card is about.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_KeepsTheStandingRow_WhenOnlySomeMetricsCouldBeJudged()
+    {
+        SetupBaseline();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(1, 7)
+                .Select(offset => new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today.AddDays(-offset),
+                    // Sitting on their usual, and no steps or sleep read at all this week.
+                    RestingHeartRate = 68,
+                })
+                .ToList());
+
+        var standing = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Their steps were well down last week.",
+            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
+            PromptVersion = HealthInsightService.BaselinePromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(standing);
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        _insights.DidNotReceive().Remove(Arg.Any<MemberInsight>());
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
     /// <summary>A week whose every metric sits on the member's own usual.</summary>
     private void SetupSteadyWeek()
     {

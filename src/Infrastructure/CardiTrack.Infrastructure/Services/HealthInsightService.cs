@@ -476,11 +476,13 @@ public class HealthInsightService : IHealthInsightService
             // your attention", and InsightServability would go on serving the last thing that did
             // for three more days after it stopped being true.
             //
-            // Only where something was actually measured, though. A week too sparse to judge
-            // reaches here looking identical to a week where all is well, and they deserve
-            // opposite treatment — deleting on the first would let a sync outage quietly retract
-            // a standing concern about someone nobody has readings for.
-            if (movements.JudgedAnything && existing is not null)
+            // Only on positive evidence that nothing is off, which is stricter than having
+            // looked. A week with heart-rate readings and no step readings has judged something
+            // and said nothing whatever about steps, so retracting a standing card about this
+            // member's steps on the strength of it would be answering a question it never asked.
+            // Where the evidence is partial the row stays and ages out of InsightServability as
+            // it did before it could be removed at all.
+            if (movements.ShowsNothingIsOff && existing is not null)
             {
                 _unitOfWork.MemberInsights.Remove(existing);
                 await _unitOfWork.SaveChangesAsync();
