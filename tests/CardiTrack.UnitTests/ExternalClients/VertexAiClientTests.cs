@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Http.Headers;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.ExternalClients.Vertex;
 using CardiTrack.Shared.Telemetry;
@@ -38,6 +39,18 @@ public class VertexAiClientTests
         """
         {"candidates":[{"content":{"role":"model","parts":[{"text":"Trends look stable."}]},"finishReason":"STOP"}],
          "usageMetadata":{"promptTokenCount":412,"candidatesTokenCount":120,"thoughtsTokenCount":8,"totalTokenCount":540},
+         "modelVersion":"gemini-2.5-flash-lite-001"}
+        """;
+
+    /// <summary>
+    /// A structured reply that ran to the ceiling and stopped mid-string, with the counts the
+    /// live failures carried: 8100 candidate + 76 thought tokens against 8192.
+    /// </summary>
+    private const string TruncatedStructuredPayload =
+        """
+        {"candidates":[{"content":{"role":"model","parts":[{"text":"{\"sources\":[\"Digest\"],\"note\":\"chest pain at nig"}]},
+         "finishReason":"MAX_TOKENS"}],
+         "usageMetadata":{"promptTokenCount":1770,"candidatesTokenCount":8100,"thoughtsTokenCount":76},
          "modelVersion":"gemini-2.5-flash-lite-001"}
         """;
 
@@ -299,6 +312,122 @@ public class VertexAiClientTests
         var span = Assert.Single(capture.Stopped);
         foreach (var (_, value) in span.TagObjects)
             Assert.DoesNotContain("chest pain", value?.ToString() ?? string.Empty);
+    }
+
+    /// <summary>
+    /// A reply that stopped at maxOutputTokens is a cut-off document, and handing it to the
+    /// deserializer reported it as content that "could not be parsed" at whatever byte the cut
+    /// landed on — the shape a live digest rewrite failed in (2026-09-16 and 2026-09-20: 8176
+    /// output tokens against the 8192 ceiling, reported as a JSON error at '$.suggestion'). It is
+    /// neither unparseable nor nonsense; it is unfinished, so the error says so and names the
+    /// numbers, the same contract <see cref="MedGemmaClientTests"/> pins on the other slot.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_ReportsTruncation_RatherThanBlamingTheJson()
+    {
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, TruncatedStructuredPayload);
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
+            () => client.GenerateStructuredAsync<TestPlanShape>(Prompt));
+
+        Assert.Contains("token budget", ex.Message);
+        Assert.DoesNotContain("could not be parsed", ex.Message);
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains("token budget", error.Message);
+        Assert.Contains("8192", error.Message);
+        Assert.Contains("did not stop", error.Message);
+        // The trail that tells a loop from a reply needing more room is elapsed time, finish
+        // reason and counts together, and this client writes them on one debug line — so the
+        // truncation is reported after it, not instead of it.
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Debug && e.Message.Contains("MAX_TOKENS"));
+    }
+
+    /// <summary>
+    /// The exception is typed and carries the counts because a caller has a decision the message
+    /// alone cannot support: whether asking again is worth the inference. Nothing of the cut-off
+    /// reply may travel with them — the DPIA invariant does not relax because the reply is broken.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_TruncationCarriesTheCounts_WithoutTheReply()
+    {
+        using var capture = new SpanCapture();
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, TruncatedStructuredPayload);
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
+            () => client.GenerateStructuredAsync<TestPlanShape>(Prompt));
+
+        // Thoughts are generated output and count against the same ceiling: 8100 + 76.
+        Assert.Equal(8176, ex.OutputTokens);
+        Assert.Equal(8192, ex.MaxOutputTokens);
+        Assert.Equal(1770, ex.InputTokens);
+        Assert.Equal(nameof(TestPlanShape), ex.ReplySchema);
+        // No client-set window on this provider — there is no ContextTokens here to raise.
+        Assert.Null(ex.ContextTokens);
+        // Every existing catch of a model-call failure keeps working: the digest pass logs the
+        // rewrite failure and keeps the previous summary, as it did when this was a parse error.
+        Assert.IsAssignableFrom<HttpRequestException>(ex);
+
+        Assert.DoesNotContain("chest pain", ex.Message);
+        Assert.All(logger.Entries, e => Assert.DoesNotContain("chest pain", e.Message));
+        var span = Assert.Single(capture.Stopped);
+        Assert.Equal("truncated", span.GetTagItem("error.type"));
+        foreach (var (_, value) in span.TagObjects)
+            Assert.DoesNotContain("chest pain", value?.ToString() ?? string.Empty);
+    }
+
+    /// <summary>
+    /// MAX_TOKENS means the ceiling was reached, so a response that omits the token counts still
+    /// reports the ceiling as the count — never zero, which would read as a reply that produced
+    /// nothing, the opposite of what happened.
+    /// </summary>
+    [Fact]
+    public async Task GenerateStructuredAsync_Truncation_ReportsTheCeiling_WhenTheResponseOmitsTheCounts()
+    {
+        var payload =
+            """
+            {"candidates":[{"content":{"role":"model","parts":[{"text":"{\"sources\":[\"Dig"}]},
+             "finishReason":"MAX_TOKENS"}]}
+            """;
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, payload);
+        var client = CreateClient(handler, out var logger);
+
+        var ex = await Assert.ThrowsAsync<AiReplyTruncatedException>(
+            () => client.GenerateStructuredAsync<TestPlanShape>(Prompt));
+
+        Assert.Equal(8192, ex.OutputTokens);
+        Assert.Null(ex.InputTokens);
+        Assert.Contains("8192 output token(s)", ex.Message);
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains("8192 output token(s)", error.Message);
+    }
+
+    /// <summary>
+    /// Free text keeps what it got — a caregiver reading a reply that stops mid-sentence is worse
+    /// than one cut short, but better than an error where an answer was nearly complete. The cut
+    /// still goes on the record, or it is indistinguishable from a model that chose to stop.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_ReturnsTheCutReply_AndLogsTheCut_WhenItStopsAtTheCeiling()
+    {
+        var payload =
+            """
+            {"candidates":[{"content":{"role":"model","parts":[{"text":"Trends look sta"}]},
+             "finishReason":"MAX_TOKENS"}],
+             "usageMetadata":{"promptTokenCount":412,"candidatesTokenCount":8192}}
+            """;
+        var handler = new FakeHttpMessageHandler().Enqueue(HttpStatusCode.OK, payload);
+        var client = CreateClient(handler, out var logger);
+
+        var result = await client.GenerateAsync(Prompt);
+
+        Assert.Equal("Trends look sta", result);
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("cut short", warning.Message);
+        Assert.Contains("8192", warning.Message);
+        Assert.DoesNotContain("Trends look sta", warning.Message);
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Error);
     }
 
     [Fact]
