@@ -30,6 +30,12 @@ public class TrendInterpretationServiceTests
     private static readonly DateTime Now = new(2026, 9, 20, 4, 0, 0, DateTimeKind.Utc);
     private static readonly DateOnly Today = DateOnly.FromDateTime(Now);
 
+    /// <summary>
+    /// The last completed day, which is where the window ends — today's row holds only however
+    /// far through the day the job has run.
+    /// </summary>
+    private static readonly DateOnly Through = Today.AddDays(-1);
+
     public TrendInterpretationServiceTests()
     {
         _unitOfWork.CardiMembers.Returns(_members);
@@ -163,6 +169,30 @@ public class TrendInterpretationServiceTests
         Assert.False(await CreateSut().InterpretMemberAsync(_memberId, Now));
     }
 
+    /// <summary>
+    /// The window stops at the last completed local day. Today's row is a part-day — a morning's
+    /// steps and nothing else — and it is the newest point in every moving average and the last
+    /// point the slope is fitted through, so including it reads as a decline that is only the
+    /// clock. BaselineCalculationWorker ends a day back for the same reason, and these deviations
+    /// are measured against those baselines.
+    /// </summary>
+    [Fact]
+    public async Task TheWindowEndsOnTheLastCompletedDay_NotTodaysPartOfADay()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var range = _activityLogs.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name
+                == nameof(IActivityLogRepository.GetByCardiMemberAndDateRangeAsync))
+            .GetArguments();
+
+        var from = (DateOnly)range[1]!;
+        var through = (DateOnly)range[2]!;
+
+        Assert.Equal(Today.AddDays(-1), through);
+        Assert.Equal(through.AddDays(-(TrendInterpretationService.TrendWindowDays - 1)), from);
+    }
+
     private TrendInterpretationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
             NullLogger<TrendInterpretationService>.Instance);
@@ -173,7 +203,7 @@ public class TrendInterpretationServiceTests
             .Select(offset => new ActivityLog
             {
                 CardiMemberId = _memberId,
-                Date = Today.AddDays(-(days - 1 - offset)),
+                Date = Through.AddDays(-(days - 1 - offset)),
                 Steps = 4000,
                 RestingHeartRate = 62,
             })

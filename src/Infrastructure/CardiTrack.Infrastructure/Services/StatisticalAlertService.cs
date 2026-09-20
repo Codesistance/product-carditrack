@@ -162,7 +162,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         // nothing off right now is exactly the one whose standing alert from an earlier pass is
         // waiting on an explanation. Hanging the backfill off the end of the alert-raising path
         // would have meant it only ever ran for members who had something wrong a second time.
-        await BackfillExplanationsAsync(memberId, ct);
+        await BackfillExplanationsAsync(memberId, utcNow, ct);
 
         // Established baseline only: no 30-day baseline means every rule stays silent, exactly
         // as the provisional-never-alerts principle demands.
@@ -460,31 +460,59 @@ public class StatisticalAlertService : IStatisticalAlertService
     /// lookup and no model call. The cap bounds the other case — an alert whose reply keeps
     /// failing the guards would otherwise be retried on every pass, of which there are 288 a day.
     /// </para>
+    /// <para>
+    /// The candidates are rotated rather than taken from the front, because the cap and a stable
+    /// order together starve the tail. An alert the model will never produce a servable reply for
+    /// — a guard rejection that repeats — stays unexplained, so it is a candidate on every pass,
+    /// and taking the first two would spend the whole budget on the same two rows forever while a
+    /// third standing alert behind them was never once attempted. Rotating by the pass clock
+    /// reaches every candidate within a few passes without persisting any retry state.
+    /// </para>
     /// </remarks>
-    private async Task BackfillExplanationsAsync(Guid memberId, CancellationToken ct)
+    private async Task BackfillExplanationsAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
     {
         if (_insights is null)
             return;
 
         var standing = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(memberId);
-        var attempted = 0;
-        foreach (var alert in standing)
+
+        // Whether one needs a model call is decided here rather than read off the result, because
+        // "already explained" and "spent a call and failed" both come back false. Counting
+        // results would let an alert whose reply keeps failing the guards be retried on every
+        // pass, which is the cost the cap exists to bound. The whole list is walked rather than
+        // stopped at the cap — there is no rotating fairly over a set you have not counted — and
+        // that is one lookup on a unique index per standing alert, of which a member has a few.
+        var candidates = new List<Guid>();
+        foreach (var alert in standing.OrderBy(a => a.CreatedDate).ThenBy(a => a.Id))
         {
-            if (attempted >= MaxExplanationRetriesPerPass)
-                break;
-
-            // Whether this one needs a model call is decided here rather than read off the
-            // result, because "already explained" and "spent a call and failed" both come back
-            // false. Counting results would let an alert whose reply keeps failing the guards be
-            // retried on every pass, which is the cost this cap exists to bound.
             var stored = await _unitOfWork.MemberInsights.GetForAlertAsync(alert.Id);
-            if (stored is not null && stored.PromptVersion >= HealthInsightService.AlertPromptVersion)
-                continue;
-
-            attempted++;
-            await ExplainOneAsync(alert.Id, ct);
+            if (stored is null || stored.PromptVersion < HealthInsightService.AlertPromptVersion)
+                candidates.Add(alert.Id);
         }
+
+        if (candidates.Count == 0)
+            return;
+
+        var start = RotationOffset(utcNow, candidates.Count);
+        var take = Math.Min(MaxExplanationRetriesPerPass, candidates.Count);
+        for (var i = 0; i < take; i++)
+            await ExplainOneAsync(candidates[(start + i) % candidates.Count], ct);
     }
+
+    /// <summary>
+    /// Where in the candidate list this pass starts, advancing one pass at a time so consecutive
+    /// passes take consecutive slices. Derived from the clock rather than persisted: the pass
+    /// cadence is fixed, so the slot number alone rotates, and a missed or repeated pass costs at
+    /// most one candidate's turn.
+    /// </summary>
+    internal static int RotationOffset(DateTime utcNow, int candidateCount) =>
+        candidateCount <= 0
+            ? 0
+            : (int)(Math.Abs(utcNow.Ticks / TimeSpan.TicksPerMinute / PassCadenceMinutes)
+                    * MaxExplanationRetriesPerPass % candidateCount);
+
+    /// <summary>How often the judgement pass runs, which is what the rotation advances by.</summary>
+    private const int PassCadenceMinutes = 5;
 
     /// <summary>
     /// How many standing alerts one pass will try to backfill an explanation for. Small on

@@ -130,6 +130,56 @@ public class StatisticalAlertExplanationTests
             Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// The cap plus a stable order starves the tail. Two alerts whose replies keep failing the
+    /// guards stay candidates forever, and taking the first two every pass would spend the whole
+    /// budget on them while a third standing alert behind them was never once attempted.
+    /// </summary>
+    [Fact]
+    public async Task APermanentlyFailingAlertDoesNotStarveTheOnesBehindIt()
+    {
+        var standing = Enumerable.Range(0, 3)
+            .Select(i => Standing(createdAt: UtcNow.AddHours(-(3 - i))))
+            .ToList();
+        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(standing);
+
+        // Nothing is ever written, so all three are candidates on every pass — the shape of a
+        // reply the guards keep rejecting.
+        _insights.GetForAlertAsync(Arg.Any<Guid>()).Returns((MemberInsight?)null);
+        _insightService.RegenerateAlertInsightAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        var attempted = new HashSet<Guid>();
+        _insightService
+            .When(s => s.RegenerateAlertInsightAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()))
+            .Do(call => attempted.Add(call.Arg<Guid>()));
+
+        // Three consecutive passes at the pass cadence. Two attempts each is more than the three
+        // candidates, so every one of them has had a turn well inside this.
+        var sut = CreateSut();
+        for (var pass = 0; pass < 3; pass++)
+            await sut.EvaluateAsync(UtcNow.AddMinutes(5 * pass));
+
+        Assert.Equal(standing.Select(a => a.Id).ToHashSet(), attempted);
+    }
+
+    /// <summary>Consecutive passes take consecutive slices, so the rotation walks rather than jumps.</summary>
+    [Fact]
+    public void TheRotationAdvancesOnePassAtATime()
+    {
+        var offsets = Enumerable.Range(0, 5)
+            .Select(pass => StatisticalAlertService.RotationOffset(UtcNow.AddMinutes(5 * pass), 5))
+            .ToList();
+
+        Assert.Equal(5, offsets.Distinct().Count());
+    }
+
+    [Fact]
+    public void TheRotationHoldsAtZeroWithNothingToRotate()
+    {
+        Assert.Equal(0, StatisticalAlertService.RotationOffset(UtcNow, candidateCount: 0));
+    }
+
     [Fact]
     public async Task AFailedExplanationDoesNotFailTheMembersPass()
     {
@@ -150,9 +200,10 @@ public class StatisticalAlertExplanationTests
             InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance,
             alertEnqueue: null, insights: _insightService);
 
-    private Alert Standing() => new()
+    private Alert Standing(DateTime? createdAt = null) => new()
     {
         Id = Guid.NewGuid(),
+        CreatedDate = createdAt ?? UtcNow.AddHours(-3),
         CardiMemberId = _memberId,
         AlertType = AlertType.Inactivity,
         Severity = AlertSeverity.Yellow,

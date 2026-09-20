@@ -91,19 +91,26 @@ public static class TrendFeatureCalculator
         IReadOnlyList<PatternBaseline> baselines,
         DateOnly through)
     {
+        // One row per date before anything is counted or averaged. Ingestion upserts per
+        // (DeviceConnection, Date), so a member wearing two devices has two rows for the same
+        // day, and every figure below is a per-day one: a moving average over raw rows weights
+        // the days they wore both watches double, the slope bends toward them, and the weekday
+        // shape counts those days twice over. The most recently written row per date is the rule
+        // BaselineCalculator uses, so the deviations here are measured against a usual drawn the
+        // same way.
+        var ordered = logs
+            .GroupBy(l => l.Date)
+            .Select(g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First())
+            .OrderBy(l => l.Date)
+            .ToList();
+
         // Days carrying a metric this calculator actually reads, not days with a row. A member
         // whose logs hold only distance and SpO2 has thirty rows and nothing to compute from; the
         // count alone would clear the gate, every feature would come back empty, and the pass
         // would spend a model call asking for a narrative of no figures at all.
-        var measuredDays = logs
-            .Where(HasTrendMetric)
-            .Select(l => l.Date)
-            .Distinct()
-            .Count();
+        var measuredDays = ordered.Count(HasTrendMetric);
         if (measuredDays < MinimumDaysForTrend)
             return null;
-
-        var ordered = logs.OrderBy(l => l.Date).ToList();
 
         var features = new List<TrendFeature>
         {

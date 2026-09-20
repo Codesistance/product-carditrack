@@ -144,6 +144,66 @@ public class TrendFeatureCalculatorTests
         Assert.Contains("20% below their 30-day usual", rendered);
     }
 
+    /// <summary>
+    /// Ingestion upserts per (DeviceConnection, Date), so a member wearing two watches has two
+    /// rows a day. Every figure here is a per-day one, and a second row must change none of them.
+    /// </summary>
+    [Fact]
+    public void ASecondDeviceRowForTheSameDayChangesNothing()
+    {
+        var days = Days(40, _ => 8_000);
+        var baselines = new List<PatternBaseline> { Baseline(30, 8_000) };
+
+        var single = TrendFeatureCalculator.Compute(days, baselines, Through)!;
+
+        // The same days again, written later, with a figure a straight average would be dragged
+        // toward. The newer row per date is the one that counts, exactly as the baseline reads it.
+        var doubled = days
+            .Select(day => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = day.Date,
+                Steps = 2_000,
+                CreatedDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            })
+            .Concat(days.Select(day => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = day.Date,
+                Steps = day.Steps,
+                CreatedDate = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            }))
+            .ToList();
+
+        var collapsed = TrendFeatureCalculator.Compute(doubled, baselines, Through)!;
+
+        Assert.Equal(single.DaysOfHistory, collapsed.DaysOfHistory);
+        Assert.Equal(
+            single.Features.Single(f => f.Metric == "Steps").RecentAverage,
+            collapsed.Features.Single(f => f.Metric == "Steps").RecentAverage);
+    }
+
+    /// <summary>
+    /// The cold-start gate counts dates, so a fortnight on two watches must not clear a month.
+    /// </summary>
+    [Fact]
+    public void AFortnightOnTwoDevicesIsStillAFortnight()
+    {
+        var days = Days(20, _ => 8_000);
+        var doubled = days
+            .Concat(days.Select(day => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = day.Date,
+                Steps = 8_000,
+                CreatedDate = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            }))
+            .ToList();
+
+        Assert.Equal(40, doubled.Count);
+        Assert.Null(TrendFeatureCalculator.Compute(doubled, [], Through));
+    }
+
     private TrendFeature Feature(
         IReadOnlyList<ActivityLog> logs, IReadOnlyList<PatternBaseline> baselines, string metric) =>
         TrendFeatureCalculator.Compute(logs, baselines, Through)!.Features.Single(f => f.Metric == metric);

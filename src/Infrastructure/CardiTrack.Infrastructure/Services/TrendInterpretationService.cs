@@ -165,7 +165,15 @@ public class TrendInterpretationService
         // around local midnight it would drop the day they are currently living and pull in one
         // they are not. The alert and digest passes resolve the same way.
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
-        var through = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
+        var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
+
+        // Ending on the last completed local day, not today. Today's row holds however far
+        // through the day the job has run — a morning's steps, a night's sleep and nothing else —
+        // and it is the newest point in every moving average and the last point the slope is
+        // fitted through, so including it drags the recent end of each series down and reads as a
+        // decline that is only the clock. BaselineCalculationWorker ends its window a day back
+        // for the same reason, and these deviations are measured against those baselines.
+        var through = localToday.AddDays(-1);
         var from = through.AddDays(-(TrendWindowDays - 1));
         var logs = (await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, from, through)).ToList();

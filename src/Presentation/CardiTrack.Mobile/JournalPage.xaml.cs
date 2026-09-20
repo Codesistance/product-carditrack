@@ -338,11 +338,19 @@ public partial class JournalPage : ContentPage
         {
             trend = await _api.GetTrendAsync(memberId);
         }
+        catch (ApiException ex) when (ex.IsNetworkFailure)
+        {
+            // Transport failure only, which is what IsNetworkFailure is for. A tab opened without
+            // a connection still shows the last longer view rather than dropping it.
+            trend = await PeekTrendSafelyAsync(memberId);
+        }
         catch (Exception)
         {
-            // The cached copy where there is one, so a tab opened without a connection still
-            // shows the last longer view rather than dropping it.
-            trend = await PeekTrendSafelyAsync(memberId);
+            // Every HTTP answer the server actually gave — a 403 after the caregiver's access to
+            // this member was withdrawn among them — leaves the card out rather than reaching for
+            // the copy on disk. Serving a cached narrative past a withheld answer would undo the
+            // server's decision from the device; the client evicts it on a 403 besides.
+            trend = null;
         }
 
         // Checked after the awaits, not before: the whole risk is a slower call for the member the

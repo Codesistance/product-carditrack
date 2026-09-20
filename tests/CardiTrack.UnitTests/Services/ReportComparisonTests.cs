@@ -100,6 +100,45 @@ public class ReportComparisonTests
         Assert.Contains("their own usual is 5000, so 20% below it", rendered);
     }
 
+    /// <summary>
+    /// A member wearing two watches has two rows a day, and an export is a per-day document: the
+    /// average must be over days, and the measured-day count must be a count of days.
+    /// </summary>
+    [Fact]
+    public void ASecondDeviceRowForTheSameDayNeitherSkewsTheAverageNorInflatesTheDayCount()
+    {
+        var member = Member(Baseline(avgSteps: 5_000), steps: 4_000);
+        var dayCount = member.ActivityLogs.Count;
+
+        var older = member.ActivityLogs
+            .Select(log => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = log.Date,
+                Steps = 10_000,
+                CreatedDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+            });
+        var newer = member.ActivityLogs
+            .Select(log => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = log.Date,
+                Steps = log.Steps,
+                CreatedDate = new DateTime(2026, 9, 2, 0, 0, 0, DateTimeKind.Utc),
+            });
+
+        var twoDevices = new ReportMemberData(
+            member.Member, older.Concat(newer).ToList(), [], [], [], [])
+        {
+            Baseline = member.Baseline,
+        };
+
+        var row = ReportComparison.For(twoDevices, ageYears: 78).Single(r => r.Metric == "Steps");
+
+        Assert.Equal(dayCount, row.MeasuredDays);
+        Assert.Equal(4_000m, row.PeriodAverage);
+    }
+
     private ReportMemberData Member(
         PatternBaseline? baseline,
         int? steps = null,

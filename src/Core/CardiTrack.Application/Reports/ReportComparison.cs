@@ -55,6 +55,16 @@ public static class ReportComparison
         if (member.Baseline is not { } baseline)
             return [];
 
+        // Ingestion upserts per (DeviceConnection, Date), so a member wearing two devices has two
+        // rows for the same day. Collapsed to the most recently written row per date — the rule
+        // BaselineCalculator applies, so the period average and the usual it is compared against
+        // are drawn the same way. Without it a two-device member's export averaged every row, and
+        // MeasuredDays reported a fortnight as twenty-eight days.
+        var days = member.ActivityLogs
+            .GroupBy(log => log.Date)
+            .Select(g => g.OrderByDescending(log => log.UpdatedDate ?? log.CreatedDate).First())
+            .ToList();
+
         var sleepBand = HealthReferenceRanges.Sleep(ageYears);
         var heartBand = HealthReferenceRanges.RestingHeartRate;
         var oxygenBand = HealthReferenceRanges.SpO2;
@@ -62,21 +72,21 @@ public static class ReportComparison
 
         var rows = new List<ReportComparisonRow?>
         {
-            Row("Steps", "a day", member, log => log.Steps, baseline.AvgSteps, null, null, null),
-            Row("Resting heart rate", "bpm", member, log => log.RestingHeartRate,
+            Row("Steps", "a day", days, log => log.Steps, baseline.AvgSteps, null, null, null),
+            Row("Resting heart rate", "bpm", days, log => log.RestingHeartRate,
                 baseline.AvgRestingHeartRate, heartBand.Low, heartBand.High, heartBand.Source),
             // Hours, not minutes: a report is read by people, and 432 is not a night's sleep to
             // anyone but a database.
-            Row("Sleep", "hours a night", member, log => Hours(log.SleepMinutes),
+            Row("Sleep", "hours a night", days, log => Hours(log.SleepMinutes),
                 Hours(baseline.AvgSleepMinutes), sleepBand.Low, sleepBand.High, sleepBand.Source),
-            Row("Active minutes", "a day", member, log => log.ActiveMinutes,
+            Row("Active minutes", "a day", days, log => log.ActiveMinutes,
                 baseline.AvgActiveMinutes, null, null, null),
-            Row("Overnight heart rate variability", "ms", member, log => log.HeartRateVariabilityMs,
+            Row("Overnight heart rate variability", "ms", days, log => log.HeartRateVariabilityMs,
                 baseline.AvgHeartRateVariabilityMs, null, null, null),
-            Row("Breathing rate asleep", "breaths a minute", member,
+            Row("Breathing rate asleep", "breaths a minute", days,
                 log => log.OvernightBreathingRate, baseline.AvgOvernightBreathingRate,
                 breathingBand.Low, breathingBand.High, breathingBand.Source),
-            Row("Blood oxygen", "%", member, log => log.SpO2Average, null,
+            Row("Blood oxygen", "%", days, log => log.SpO2Average, null,
                 oxygenBand.Low, oxygenBand.High, oxygenBand.Source),
         };
 
@@ -125,14 +135,14 @@ public static class ReportComparison
     private static ReportComparisonRow? Row(
         string metric,
         string unit,
-        ReportMemberData member,
+        IReadOnlyList<ActivityLog> days,
         Func<ActivityLog, decimal?> read,
         decimal? usual,
         decimal? bandLow,
         decimal? bandHigh,
         string? bandSource)
     {
-        var measured = member.ActivityLogs.Select(read).OfType<decimal>().ToList();
+        var measured = days.Select(read).OfType<decimal>().ToList();
         if (measured.Count == 0)
             return null;
 

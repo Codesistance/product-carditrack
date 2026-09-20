@@ -256,8 +256,25 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<AdviseResponse?> PeekAdviseAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         PeekAsync<AdviseResponse>(ApiPaths.Advise(cardiMemberId), ct);
 
-    public Task<TrendInsightResponse> GetTrendAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        GetAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
+    /// <summary>
+    /// The stored trend narrative. A 403 evicts the cached copy on the way out: the caregiver's
+    /// access to this member has been withdrawn, and the narrative is health content about
+    /// someone they may no longer see. Leaving it in the cache would let the next open without a
+    /// connection render it from disk, which is the withdrawal undone by the offline path.
+    /// </summary>
+    public async Task<TrendInsightResponse> GetTrendAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await GetAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            await EvictAsync(ApiPaths.Trend(cardiMemberId));
+            throw;
+        }
+    }
 
     public Task<TrendInsightResponse?> PeekTrendAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         PeekAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
