@@ -236,8 +236,13 @@ public class HealthInsightService : IHealthInsightService
 
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(alert.CardiMemberId);
 
-        var baseline = await _unitOfWork.PatternBaselines
-            .GetLatestByCardiMemberAsync(alert.CardiMemberId, PrimaryBaselinePeriodDays);
+        // As of the alert, for the reason the window above is. The backfill can reach an alert
+        // weeks after it fired, and by then the member's usual has moved — explaining their
+        // stamped readings against a newer normal describes a departure that may no longer be
+        // one, or misses one that was. The readings and the usual they are judged against have
+        // to come from the same moment or the narrative is about neither.
+        var baseline = await _unitOfWork.PatternBaselines.GetAsOfByCardiMemberAsync(
+            alert.CardiMemberId, PrimaryBaselinePeriodDays, AsUtc(alert.TriggeredDate));
 
         var memberContext = await ComposeMemberContextAsync(
             member, alert.CardiMemberId, to, PromptPurpose.AlertInsight, ct);

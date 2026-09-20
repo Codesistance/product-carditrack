@@ -533,6 +533,37 @@ public class HealthInsightServicePromptTests
             _memberId, firedOn.AddDays(-7), firedOn);
     }
 
+    /// <summary>
+    /// The readings and the usual they are judged against have to come from the same moment. The
+    /// window above is anchored to the alert; the baseline used to come from `GetLatest`, so a
+    /// backfill weeks later explained the alert's stamped readings against a normal that had
+    /// moved since — describing a departure that may no longer be one, or missing one that was.
+    /// </summary>
+    [Fact]
+    public async Task AlertPrompt_ReadsTheUsualAsOfTheAlert_NotTheUsualNow()
+    {
+        SetupAlert();
+        var firedOn = new DateOnly(2026, 8, 3);
+        var firedAt = firedOn.ToDateTime(new TimeOnly(9, 0), DateTimeKind.Utc);
+        _alerts.GetByIdWithCardiMemberAsync(_alertId).Returns(new Alert
+        {
+            Id = _alertId,
+            CardiMemberId = _memberId,
+            AlertType = AlertType.Inactivity,
+            Severity = AlertSeverity.Yellow,
+            Title = "Quieter than usual",
+            Message = "They moved less than they normally do.",
+            TriggeredDate = firedAt,
+            MetricValues = """{"rule":"activity_decline"}""",
+            IsActive = true,
+        });
+
+        await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        await _baselines.Received().GetAsOfByCardiMemberAsync(_memberId, 30, firedAt);
+        await _baselines.DidNotReceive().GetLatestByCardiMemberAsync(_memberId, 30);
+    }
+
     [Fact]
     public async Task AlertInsight_WithholdsAWhitespaceOnlyReply()
     {
