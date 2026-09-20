@@ -1,9 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Reports;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using Hl7.Fhir.Model;
 using Hl7.Fhir.Serialization;
 // Both namespaces define these; the FHIR meaning is the one this file is about.
@@ -75,14 +78,22 @@ public class FhirR4ReportRenderer : IReportRenderer
     /// One entry per metric we can code honestly. The unit is UCUM: portals convert on these, so a
     /// wrong unit code is worse than a missing observation.
     /// </summary>
-    private static readonly (Func<ActivityLog, decimal?> Value, string Loinc, string Display, string Unit, string UnitCode, string Category)[] DailyMetrics =
+    /// <summary>
+    /// <c>Usual</c> reads this member's own learned figure for the metric, where the baseline holds
+    /// one; <c>Band</c> the published range, where a body publishes one. Both feed
+    /// <c>Observation.referenceRange</c> — FHIR's own field for "what counts as normal here" — so a
+    /// receiving portal charts a reading against something rather than against nothing.
+    /// </summary>
+    private static readonly (Func<ActivityLog, decimal?> Value, string Loinc, string Display, string Unit, string UnitCode, string Category, Func<PatternBaseline, decimal?>? Usual, Func<int, MetricReference>? Band)[] DailyMetrics =
     [
-        (l => l.Steps, "55423-8", "Number of steps in unspecified time Pedometer", "steps", "{steps}", ActivityCategory),
-        (l => l.RestingHeartRate, "40443-4", "Heart rate --resting", "beats/minute", "/min", VitalSignsCategory),
-        (l => l.AvgHeartRate, "8867-4", "Heart rate", "beats/minute", "/min", VitalSignsCategory),
-        (l => l.SpO2Average, "59408-5", "Oxygen saturation in Arterial blood by Pulse oximetry", "%", "%", VitalSignsCategory),
-        (l => l.SleepMinutes, "93832-4", "Sleep duration", "minutes", "min", ActivityCategory),
-        (l => l.BreathingRate, "9279-1", "Respiratory rate", "breaths/minute", "/min", VitalSignsCategory)
+        (l => l.Steps, "55423-8", "Number of steps in unspecified time Pedometer", "steps", "{steps}", ActivityCategory, b => b.AvgSteps, null),
+        (l => l.RestingHeartRate, "40443-4", "Heart rate --resting", "beats/minute", "/min", VitalSignsCategory, b => b.AvgRestingHeartRate, _ => HealthReferenceRanges.RestingHeartRate),
+        (l => l.AvgHeartRate, "8867-4", "Heart rate", "beats/minute", "/min", VitalSignsCategory, null, null),
+        (l => l.SpO2Average, "59408-5", "Oxygen saturation in Arterial blood by Pulse oximetry", "%", "%", VitalSignsCategory, null, _ => HealthReferenceRanges.SpO2),
+        // Minutes here, not the hours the PDF prints: this document is read by software, and the
+        // UCUM unit on the quantity is what makes it unambiguous either way.
+        (l => l.SleepMinutes, "93832-4", "Sleep duration", "minutes", "min", ActivityCategory, b => b.AvgSleepMinutes, null),
+        (l => l.BreathingRate, "9279-1", "Respiratory rate", "breaths/minute", "/min", VitalSignsCategory, null, _ => HealthReferenceRanges.BreathingRate)
     ];
 
     public ReportFormat Format => ReportFormat.FhirR4;
@@ -116,9 +127,10 @@ public class FhirR4ReportRenderer : IReportRenderer
 
             if (sections.IncludeMetrics)
             {
+                var ageYears = member.Member.DateOfBirth.ToAgeInYears(data.To);
                 foreach (var log in member.ActivityLogs)
                 {
-                    foreach (var observation in BuildDailyObservations(log, patientId))
+                    foreach (var observation in BuildDailyObservations(log, patientId, member.Baseline, ageYears))
                         AddEntry(bundle, Guid.NewGuid(), observation);
                 }
             }
@@ -189,9 +201,10 @@ public class FhirR4ReportRenderer : IReportRenderer
         Patient = new ResourceReference(ToUrn(patientId))
     };
 
-    private static IEnumerable<Observation> BuildDailyObservations(ActivityLog log, Guid patientId)
+    private static IEnumerable<Observation> BuildDailyObservations(
+        ActivityLog log, Guid patientId, PatternBaseline? baseline, int ageYears)
     {
-        foreach (var (value, loinc, display, unit, unitCode, category) in DailyMetrics)
+        foreach (var (value, loinc, display, unit, unitCode, category, usual, band) in DailyMetrics)
         {
             if (value(log) is not { } reading)
                 continue; // A metric the device did not report is absent, not zero.
@@ -216,10 +229,73 @@ public class FhirR4ReportRenderer : IReportRenderer
                     Unit = unit,
                     System = UcumSystem,
                     Code = unitCode
-                }
+                },
+                ReferenceRange = ReferenceRanges(baseline, ageYears, usual, band, unit, unitCode),
             };
         }
     }
+
+    /// <summary>
+    /// What counts as normal for this reading: the published range where one exists, and this
+    /// member's own learned figure where the baseline holds one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both go in <c>Observation.referenceRange</c> rather than into extensions or a second
+    /// resource, because that is the field FHIR has for exactly this and a portal already knows
+    /// how to chart it. They are distinguished by <c>type.text</c>, and the published one names
+    /// its publisher: an unattributed range in a clinical document reads as ours, and ours is the
+    /// one thing it is not.
+    /// </para>
+    /// <para>
+    /// The member's own usual is sent as a single point rather than a span — <c>low</c> and
+    /// <c>high</c> equal — because that is what it is: one learned average, not a range anybody
+    /// published. Inventing a spread around it would be inventing a tolerance no one has set.
+    /// </para>
+    /// </remarks>
+    private static List<Observation.ReferenceRangeComponent> ReferenceRanges(
+        PatternBaseline? baseline,
+        int ageYears,
+        Func<PatternBaseline, decimal?>? usual,
+        Func<int, MetricReference>? band,
+        string unit,
+        string unitCode)
+    {
+        var ranges = new List<Observation.ReferenceRangeComponent>();
+
+        if (band?.Invoke(ageYears) is { } published)
+        {
+            ranges.Add(new Observation.ReferenceRangeComponent
+            {
+                Low = Point(published.Low, unit, unitCode),
+                High = Point(published.High, unit, unitCode),
+                Type = new CodeableConcept { Text = $"Published typical range ({published.Source})" },
+            });
+        }
+
+        if (baseline is not null && usual?.Invoke(baseline) is { } learned)
+        {
+            ranges.Add(new Observation.ReferenceRangeComponent
+            {
+                Low = Point(learned, unit, unitCode),
+                High = Point(learned, unit, unitCode),
+                Type = new CodeableConcept
+                {
+                    Text = $"This person's own usual over {baseline.PeriodDays} days",
+                },
+            });
+        }
+
+        return ranges;
+    }
+
+    private static Quantity Point(decimal value, string unit, string unitCode) => new()
+    {
+        Value = Math.Round(value, 1),
+        Unit = unit,
+        System = UcumSystem,
+        Code = unitCode,
+    };
 
     private static string DisplayFor(string category) =>
         category == VitalSignsCategory ? "Vital Signs" : "Activity";

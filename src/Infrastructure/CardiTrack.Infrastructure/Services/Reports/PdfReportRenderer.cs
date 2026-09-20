@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Extensions;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -180,6 +181,14 @@ public class PdfReportRenderer : IReportRenderer
                     else
                         Section(column, prefix + "Daily readings", e => EmptyState(e, "No readings were recorded in this period."));
                 }
+
+                // Before the alerts, because it is the frame they should be read in: an alert
+                // says one day was unusual, and this says what usual is for this person.
+                var comparison = ReportComparison.For(
+                    member with { ActivityLogs = data.PeriodReadings(member) },
+                    member.Member.DateOfBirth.ToAgeInYears(data.To));
+                if (sections.IncludeMetrics && comparison.Count > 0)
+                    Section(column, prefix + "How this compares", e => ComparisonTable(e, comparison));
 
                 if (sections.IncludeAlerts && member.Alerts.Count > 0)
                     Section(column, prefix + "Alerts", e => AlertsTable(e, member));
@@ -551,6 +560,71 @@ public class PdfReportRenderer : IReportRenderer
                 BodyCell(table.Cell(), Figure(log.SpO2Average, "%"), shade, quiet: quiet);
             }
         });
+
+    /// <summary>
+    /// Each metric over the period against this member's own usual and the published band.
+    /// </summary>
+    /// <remarks>
+    /// Drawn by the renderer from computed rows, not written by the model. The narrative above is
+    /// given the same figures, but a model call can fail, time out or hedge, and a document whose
+    /// only comparison was a sentence would then carry a column of numbers and nothing to read
+    /// them against. The band names its publisher in the cell rather than in a footnote, because
+    /// an unattributed range in a document a caregiver may hand to a clinician reads as ours.
+    /// </remarks>
+    private static void ComparisonTable(
+        IContainer container, IReadOnlyList<ReportComparisonRow> rows) =>
+        container.PaddingTop(6).Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.RelativeColumn(5);
+                columns.RelativeColumn(3);
+                columns.RelativeColumn(3);
+                columns.RelativeColumn(3);
+                columns.RelativeColumn(5);
+            });
+
+            table.Header(header =>
+            {
+                HeaderCell(header.Cell(), "Metric", right: false);
+                HeaderCell(header.Cell(), "This period", right: true);
+                HeaderCell(header.Cell(), "Their usual", right: true);
+                HeaderCell(header.Cell(), "Change", right: true);
+                HeaderCell(header.Cell(), "Published range", right: false);
+            });
+
+            var index = 0;
+            foreach (var row in rows)
+            {
+                var shade = index++ % 2 == 1 ? Zebra : White;
+                BodyCell(table.Cell(), $"{row.Metric} ({row.Unit})", shade, right: false);
+                BodyCell(table.Cell(), Figure(row.PeriodAverage), shade, right: true);
+                BodyCell(table.Cell(), row.Usual is { } usual ? Figure(usual) : "—", shade, right: true);
+                BodyCell(table.Cell(), ChangeText(row.ChangePercent), shade, right: true);
+                BodyCell(table.Cell(), BandText(row), shade, right: false);
+            }
+        });
+
+    /// <summary>Trailing zeros dropped: 7.0 hours is 7, and 6.4 stays 6.4.</summary>
+    private static string Figure(decimal value) =>
+        value.ToString("0.#", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The change in words as well as sign. An arrow or a bare minus leaves the reader to decide
+    /// whether down is good, and for sleep and steps it is not the same answer as for heart rate.
+    /// </summary>
+    private static string ChangeText(decimal? changePercent) => changePercent switch
+    {
+        null => "—",
+        0 => "level",
+        < 0 => $"{Math.Abs(changePercent.Value):0}% below",
+        _ => $"{changePercent.Value:0}% above",
+    };
+
+    private static string BandText(ReportComparisonRow row) =>
+        row is { BandLow: { } low, BandHigh: { } high, BandSource: { } source }
+            ? $"{Figure(low)}-{Figure(high)} ({source})"
+            : "no published range";
 
     private static void AlertsTable(IContainer container, ReportMemberData member) =>
         container.PaddingTop(6).Table(table =>

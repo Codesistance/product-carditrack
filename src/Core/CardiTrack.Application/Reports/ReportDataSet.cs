@@ -82,7 +82,27 @@ public record ReportMemberData(
     IReadOnlyList<Alert> Alerts,
     IReadOnlyList<DeviceConnection> Devices,
     IReadOnlyList<DigestEntry> Journals,
-    IReadOnlyList<Notification> Notices);
+    IReadOnlyList<Notification> Notices)
+{
+    /// <summary>
+    /// The member's established 30-day baseline, where they have one. Init-only rather than
+    /// another positional parameter, following <see cref="ReportDataSet.Transcript"/>: every
+    /// existing caller builds a set without it, and a document that cannot reach one is a document
+    /// without a comparison section rather than a broken one.
+    /// </summary>
+    /// <remarks>
+    /// Present so an export can say what a figure <em>means</em>. A column of resting heart rates
+    /// with nothing beside it asks whoever reads the document — often the person least equipped to
+    /// answer — whether 78 is high for this person.
+    /// </remarks>
+    public PatternBaseline? Baseline { get; init; }
+
+    /// <summary>The stored reading against that baseline, where the pipeline has written one.</summary>
+    public MemberInsight? BaselineInsight { get; init; }
+
+    /// <summary>The stored trend narrative, where the member has a month of readings behind them.</summary>
+    public MemberInsight? TrendInsight { get; init; }
+}
 
 /// <summary>
 /// Which parts of the record the caregiver ticked on M1-17. Mirrors the request flags, so a

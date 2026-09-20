@@ -6,6 +6,8 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Extensions;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -353,7 +355,22 @@ public class ReportGenerationService : IReportGenerationService
                     unitOfWork, ownerUserId, memberId, request.DateRangeFrom, request.DateRangeTo)
                 : [];
 
-            members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices));
+            // The comparison material. Sequential, like every other read in this loop: they share
+            // the gather's DbContext. A member with none of it exports without a comparison
+            // section, which is the honest outcome for someone still being learned.
+            var baseline = await unitOfWork.PatternBaselines
+                .GetLatestByCardiMemberAsync(memberId, BaselineProgress.PeriodDays);
+            var baselineInsight = await unitOfWork.MemberInsights
+                .GetByScopeAsync(memberId, InsightScope.Baseline);
+            var trendInsight = await unitOfWork.MemberInsights
+                .GetByScopeAsync(memberId, InsightScope.Trend);
+
+            members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices)
+            {
+                Baseline = baseline,
+                BaselineInsight = baselineInsight,
+                TrendInsight = trendInsight,
+            });
         }
 
         return new ReportDataSet(
@@ -560,6 +577,16 @@ public class ReportGenerationService : IReportGenerationService
                         + MedicalPromptBlocks.Flatten(alert.Title));
             }
 
+            // The comparison the narrative was writing without. Until this, the prompt carried a
+            // column of raw figures and nothing to read them against, so a report could describe a
+            // fortnight of resting heart rates without once saying what this person's own resting
+            // heart rate is. The rows are computed, and the model is told to state them as given —
+            // the same arrangement the journal books use.
+            var comparison = ReportComparison.Render(
+                ReportComparison.For(member, member.Member.DateOfBirth.ToAgeInYears(data.To)));
+            if (comparison.Length > 0)
+                sb.AppendLine(comparison);
+
             sections.Add(sb.ToString());
         }
 
@@ -573,7 +600,8 @@ public class ReportGenerationService : IReportGenerationService
             Summarise the data above in a clear, structured report: say what the readings show and
             where they moved, and refer to each person by the exact label given above. Do not quote
             a figure that is not above, and where a reading was not measured, say so rather than
-            leaving it to read as an ordinary one.
+            leaving it to read as an ordinary one. Where a comparison is given, state it as it is
+            written — never work one out, and never turn a range into a verdict about the person.
             """;
 
         return new ReportPrompt(text, pseudonyms);
