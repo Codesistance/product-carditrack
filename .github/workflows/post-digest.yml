@@ -77,11 +77,12 @@ jobs:
         with:
           secrets: |
             bot_token:${{ needs.env.outputs.gcp_project_id }}/carditrack-common-slack-bot-token
+            channel_id:${{ needs.env.outputs.gcp_project_id }}/carditrack-common-slack-channel-id
 
       - name: Post
         if: steps.find.outputs.count != '0'
         env:
-          SLACK_CHANNEL: ${{ vars.SLACK_CHANNEL }}
+          SLACK_CHANNEL: ${{ steps.slack.outputs.channel_id }}
           SLACK_BOT_TOKEN: ${{ steps.slack.outputs.bot_token }}
         run: |
           set -euo pipefail

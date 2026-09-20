@@ -50,6 +50,11 @@ locals {
     # not a store-distribution secret, grouped here to share this
     # set's carditrack-deploy accessor grant instead of a second
     # identity (no separate carditrack-digest account; see SETUP.md)
+    "slack-channel-id", # Digest channel ID (C0XXXXXXX, not "#name") for post-digest.yml —
+    # a GCP secret rather than a GitHub Actions repo variable because
+    # the value still needs setting by hand either way, and this keeps
+    # every post-digest.yml input on one loading path (gcloud secrets
+    # versions add), not two
   ])
 
   # Operator-only secrets: not read by any deploy workflow, so carditrack-deploy

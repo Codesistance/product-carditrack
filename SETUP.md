@@ -38,19 +38,30 @@ no project IDs to fill in anywhere.
    this the post fails with `not_in_channel`, which `post-digest.sh` surfaces
    verbatim.
 
-## 2. Secret into Secret Manager
+## 2. Secrets into Secret Manager
 
-`slack-bot-token` is declared in `infrastructure/common/secret_manager.tf`,
-inside `store_distribution_secrets` — the same set and the same
-`carditrack-deploy` accessor grant every other common secret in that file
-uses, not a bespoke resource block. Created with a `REPLACE_ME` placeholder
-that Terraform then ignores. Apply the common stack, then load the real value:
+`slack-bot-token` and `slack-channel-id` are both declared in
+`infrastructure/common/secret_manager.tf`, inside `store_distribution_secrets`
+— the same set and the same `carditrack-deploy` accessor grant every other
+common secret in that file uses, not a bespoke resource block each. Both are
+created with a `REPLACE_ME` placeholder that Terraform then ignores. The
+channel ID is a GCP secret rather than a GitHub Actions repo variable
+on purpose: it still has to be set by hand either way, and this keeps every
+`post-digest.yml` input — token and channel alike — on the one loading path.
+Apply the common stack, then load the real values:
 
 ```bash
 echo -n 'xoxb-your-token' | \
   gcloud secrets versions add carditrack-common-slack-bot-token \
     --project=carditrack-490120 --data-file=-
+
+echo -n 'C0XXXXXXX' | \
+  gcloud secrets versions add carditrack-common-slack-channel-id \
+    --project=carditrack-490120 --data-file=-
 ```
+
+The channel value is the **ID**, e.g. `C0XXXXXXX` — not `#name`. Slack's API
+accepts a name inconsistently and the failure is confusing.
 
 The accessor grant goes to `carditrack-deploy` — the same account every deploy
 workflow already authenticates as, and the one `post-digest.yml` now uses too.
@@ -61,9 +72,6 @@ what that costs.
 
 ## 3. Repo settings
 
-- **Variable** `SLACK_CHANNEL` (Settings → Secrets and variables → Actions →
-  Variables) = the channel **ID**, e.g. `C0XXXXXXX`. Not `#name` — the API
-  accepts a name inconsistently and the failure is confusing.
 - **Label** `research`, which the issue button applies. Create it before the
   first post; GitHub silently drops a label that does not exist, and the issue
   opens unlabelled.
