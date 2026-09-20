@@ -105,6 +105,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.MetricRollupsHourly.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberQuestionnaires.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Set<MemberAdvise>().CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.Set<MemberInsight>().CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberAiHolds.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.DeviceHistoryRepulls.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.ExportConsents.CountAsync(x => x.CardiMemberIds.Contains(memberId)));
@@ -253,6 +254,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "MemberChatTurns",
             "MemberChatSessions",
             "MemberAdvises",
+            "MemberInsights",
             "MetricAlarmStates",
             "MetricAlarms",
             "MemberStatusLines",
@@ -515,6 +517,16 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         {
             CardiMemberId = member.Id,
             Summary = "A short walk after lunch.",
+        });
+        // Model-written prose about this member, at one of the three scopes. Seeded because the
+        // assertion below proves deletion rather than emptiness, and an unseeded table would let
+        // the cascade pass by never having had anything to remove.
+        db.Set<MemberInsight>().Add(new MemberInsight
+        {
+            CardiMemberId = member.Id,
+            Scope = InsightScope.Baseline,
+            Summary = "Steadier than last week.",
+            GeneratedAtUtc = DateTime.UtcNow,
         });
         db.MemberAiHolds.Add(new MemberAiHold
         {
