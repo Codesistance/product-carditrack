@@ -73,7 +73,16 @@ internal sealed class MonitoringContextSource : IMemberContextSource
     // Not the daybook: this source is anchored on "the last 24 hours from now", which is the
     // wrong day for an account of yesterday — the daybook builds its own day-scoped monitoring
     // section from the alerts and assessments of the reviewed day itself (DaybookPrompt).
-    public PromptPurpose Purposes => PromptPurpose.Digest;
+    // Widened beyond the digest on 2026-09-20. Advise and the trend narrative both describe a
+    // member whose alerts and assessments are part of what is going on with them, and both were
+    // reasoning without that: a suggestion written while an unresolved alert sits on the screen
+    // beside it, or a month's narrative that cannot mention the week something was flagged.
+    //
+    // Still not the journal books. Each of those builds its own monitoring section scoped to the
+    // period it accounts for (DaybookPrompt.MonitoringSection), and this source's last-24-hours
+    // window would sit beside it saying something different about a different stretch of time.
+    public PromptPurpose Purposes =>
+        PromptPurpose.Digest | PromptPurpose.Advise | PromptPurpose.Trend;
 
     public int Order => 20;
 

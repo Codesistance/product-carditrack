@@ -1657,6 +1657,76 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.ToTable("MemberChatTurnUsages", (string)null);
                 });
 
+            modelBuilder.Entity("CardiTrack.Domain.Entities.MemberInsight", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AlertId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("BaselinePeriodDays")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("CardiMemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("NOW()");
+
+                    b.Property<DateTime>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsLearning")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsProvisional")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("KeyFindings")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("PromptVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecommendedAction")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("UpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AlertId")
+                        .IsUnique()
+                        .HasFilter("\"AlertId\" IS NOT NULL");
+
+                    b.HasIndex("CardiMemberId");
+
+                    b.HasIndex("GeneratedAtUtc");
+
+                    b.HasIndex("CardiMemberId", "Scope")
+                        .IsUnique()
+                        .HasFilter("\"AlertId\" IS NULL");
+
+                    b.ToTable("MemberInsights", (string)null);
+                });
+
             modelBuilder.Entity("CardiTrack.Domain.Entities.MemberQuestionnaire", b =>
                 {
                     b.Property<Guid>("Id")

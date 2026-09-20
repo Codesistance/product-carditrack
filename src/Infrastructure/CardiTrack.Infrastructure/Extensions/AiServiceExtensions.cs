@@ -1,5 +1,6 @@
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.ExternalClients.General;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.ExternalClients.Vertex;
@@ -124,7 +125,6 @@ public static class AiServiceExtensions
         services.AddMedicalAiServices(configuration);
 
         services.AddScoped<IGenerativeAiService, GenerativeAiService>();
-        services.AddScoped<IHealthInsightService, HealthInsightService>();
         services.AddScoped<IReportGenerationService, ReportGenerationService>();
         // Registered beside the report service rather than with the chat pipeline: reading a
         // stored conversation back is what an export needs, and it depends on nothing the chat
@@ -205,6 +205,25 @@ public static class AiServiceExtensions
         // Advise's batch generator — same reasoning as the status line above: the digest pass is
         // its only caller today, and any host that can run the digest can regenerate Advise.
         services.AddScoped<AdviseGenerationService>();
+
+        // The trend pass — same reasoning again. It has a job of its own (--job trend) rather than
+        // riding the digest, because it reads a quarter of a year per member and is worth running
+        // once a day rather than on every half-hourly tick.
+        services.AddScoped<TrendInterpretationService>();
+
+        // The insight service, which is both a read surface for the API and the writer of the
+        // alert and baseline insights. It belongs here rather than in AddAiServices — which is
+        // where it used to sit — because the *writers* run on the pipeline, and that host takes
+        // only this method. Registered there it was never resolved at all: the optional
+        // dependencies on StatisticalAlertService and DigestGenerationService stayed null, both
+        // passes skipped their generation step without a word, and every insight endpoint would
+        // have served empty text forever while looking perfectly healthy.
+        //
+        // Its access checker rides along for the same reason the composer does: the type is one
+        // class serving both halves, so a host that writes insights has to be able to construct
+        // the half that reads them, even though it never calls it.
+        services.AddScoped<ICardiMemberAccessService, CardiMemberAccessService>();
+        services.AddScoped<IHealthInsightService, HealthInsightService>();
 
         // Rewrite slot — the non-clinical member-chat steps (docs/llm_design.md), selected by
         // RewriteAiSettings.Kind: self-hosted Ollama locally, Gemini via Vertex AI in deployed

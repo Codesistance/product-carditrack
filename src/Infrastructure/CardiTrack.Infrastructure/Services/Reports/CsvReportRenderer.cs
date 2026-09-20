@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
+using CardiTrack.Domain.Extensions;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CsvHelper;
@@ -80,6 +81,19 @@ public class CsvReportRenderer : IReportRenderer
     {
         if (sections.IncludeMetrics)
             WriteDailyMetrics(csv, data);
+
+        // The frame the daily rows should be read in. A spreadsheet of resting heart rates with
+        // nothing beside it leaves whoever opens it — often the person least equipped to answer —
+        // deciding for themselves whether 78 is high for this person.
+        // On at least one computed row, not on the baseline existing: a member with a baseline
+        // but nothing measured in the period produces no rows, and a header with nothing under it
+        // tells whoever opens the file that a comparison was available when none was. The PDF
+        // already gates on the rows themselves.
+        if (sections.IncludeMetrics && ComparisonRows(data).Count > 0)
+        {
+            csv.NextRecord();
+            WriteComparison(csv, data);
+        }
 
         if (sections.IncludeAlerts && data.Members.Any(m => m.Alerts.Count > 0))
         {
@@ -240,6 +254,58 @@ public class CsvReportRenderer : IReportRenderer
                 csv.WriteField(log.DataSource.ToString());
                 csv.NextRecord();
             }
+        }
+    }
+
+    /// <summary>
+    /// One row per metric per member: the period's average against their own learned usual and
+    /// the published range, with the publishing body named in its own column.
+    /// </summary>
+    /// <remarks>
+    /// The same computed rows the PDF prints and the narrative is grounded on
+    /// (<see cref="ReportComparison"/>), so a caregiver who exports both formats cannot be shown
+    /// two different comparisons of the same fortnight. The band's source is a column rather than
+    /// a note, because an unattributed range in a spreadsheet reads as ours.
+    /// </remarks>
+    /// <summary>
+    /// Every member's comparison rows, computed once so the decision to write the section and the
+    /// section's contents cannot disagree about whether there is anything to say.
+    /// </summary>
+    private static List<(string Member, ReportComparisonRow Row)> ComparisonRows(ReportDataSet data) =>
+        data.Members
+            .SelectMany(member => ReportComparison
+                .For(
+                    member with { ActivityLogs = data.PeriodReadings(member) },
+                    member.Member.DateOfBirth.ToAgeInYears(data.To))
+                .Select(row => (member.Member.Name, row)))
+            .ToList();
+
+    private static void WriteComparison(CsvWriter csv, ReportDataSet data)
+    {
+        foreach (var header in new[]
+                 {
+                     "Member", "Metric", "Unit", "PeriodAverage", "TheirUsual", "ChangePercent",
+                     "PublishedLow", "PublishedHigh", "PublishedSource", "MeasuredDays",
+                 })
+        {
+            csv.WriteField(header);
+        }
+
+        csv.NextRecord();
+
+        foreach (var (memberName, row) in ComparisonRows(data))
+        {
+            WriteText(csv, memberName);
+            WriteText(csv, row.Metric);
+            WriteText(csv, row.Unit);
+            csv.WriteField(row.PeriodAverage.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.Usual?.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.ChangePercent?.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.BandLow?.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.BandHigh?.ToString(CultureInfo.InvariantCulture));
+            WriteText(csv, row.BandSource);
+            csv.WriteField(row.MeasuredDays.ToString(CultureInfo.InvariantCulture));
+            csv.NextRecord();
         }
     }
 

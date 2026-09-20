@@ -112,22 +112,30 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Exists so an alert is written on the **transition** into alarm rather than while it stands — without it a five-minute cron would re-raise the same finding twelve times an hour
 - Unique on (MetricAlarmId, CardiMemberId). Not soft-deletable: a stale standing state is worse than a missing one
 
+#### 13. **MemberInsight** *(2026-09-20)*
+- One stored interpretation per member per `InsightScope` — `Baseline` (how they read against their own learned normal) and `Trend` (where that has been going) — plus one per alert (`Alert` scope, keyed by `AlertId`)
+- Written by pipeline passes, served read-only by the API, so no screen waits on a model. The alert explanation rides the pass that raised the alert; the baseline reading rides the digest pass; the trend narrative is the daily `--job trend`
+- Contains: CardiMemberId, Scope, AlertId (nullable), Summary, RecommendedAction, KeyFindings (newline-joined), IsLearning, IsProvisional, BaselinePeriodDays, GeneratedAtUtc, PromptVersion
+- **Two partial unique indexes rather than one composite.** Postgres counts nulls as distinct, so a single index over (member, scope, alert) would let a member collect any number of baseline rows with a null `AlertId`, none of them in conflict. Instead: unique on (CardiMemberId, Scope) `WHERE "AlertId" IS NULL`, and unique on AlertId `WHERE "AlertId" IS NOT NULL`
+- Scope persists as its **name** (`HasConversion<string>`), like the rest of the schema
+- Retention **90 days for the member-scoped rows**, swept by the Worker (`InsightRetention`) rather than dropped with a partition — this table is ordinary EF-tracked. **Alert explanations are exempt**: the read path serves one however old it is, so sweeping it would leave an alert in the history that the product declines to explain. Erasure reaches every scope by CardiMemberId, which is why the member index is unfiltered as well as filtered
+
 ### Business Entities
 
-#### 13. **Subscription**
+#### 14. **Subscription**
 - Trial/subscription state per organization — **no billing integration and no Stripe fields**
 - Contains: Tier (Basic, Complete, Plus), Status, StartDate, EndDate, `TrialEndDate` (30-day trial), BillingCycle, Price, Currency (default USD), PaymentMethod (JSON), Features (JSON)
 - MaxCardiMembers and MaxUsers are **organization-type driven**, not tier driven: Family 5 members / 1 user; Business 50 / 20
 - Unique index on OrganizationId; **FK to Organizations with cascade delete** (the one FK in the schema)
 
-#### 14. **Device** (Catalog)
+#### 15. **Device** (Catalog)
 - Reference data for supported wearable devices
 - Contains: DeviceType, Manufacturer, ModelName, DisplayName, Capabilities (JSON), ApiEndpoint, OAuthConfig (JSON), SortOrder, IconUrl
 - Used for UI display and capability checking; catalog `DisplayName` takes precedence over the enum display name
 
 ### Compliance Entities
 
-#### 15. **AuditLog**
+#### 16. **AuditLog**
 - HIPAA compliance audit trail for PHI access
 - Contains: UserId, CardiMemberId, Action, EntityType, Timestamp, IP address, user agent, request details, DataAccessed/ChangedFields (JSON)
 - **Retention policy is 6 years**; infrastructure currently implements **30 days dev / 90 days prod** (tfvars) — closing that gap is tracked follow-up infra work

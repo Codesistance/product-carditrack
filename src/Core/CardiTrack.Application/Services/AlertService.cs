@@ -160,9 +160,25 @@ public class AlertService : IAlertService
             ? await _photoStorage.GetReadUrlAsync(photoObjectName, ct)
             : null;
 
-        return AlertDetailComposer.Compose(
+        // The stored explanation, if the pass that raised this alert got to it. One indexed
+        // lookup — never a model call on the request path, which is the whole reason it is stored.
+        var narrative = await _unitOfWork.MemberInsights.GetForAlertAsync(alertId);
+
+        var detail = AlertDetailComposer.Compose(
             alert, member, acknowledger, logs, today, granular, baseline, elapsedSteps, firedOn,
             photoUrl, zone);
+
+        if (InsightServability.IsServable(narrative, utcNow))
+        {
+            detail.Narrative = new AlertNarrativeResponse
+            {
+                Explanation = narrative.Summary,
+                RecommendedAction = narrative.RecommendedAction,
+                GeneratedAt = narrative.GeneratedAtUtc,
+            };
+        }
+
+        return detail;
     }
 
     /// <summary>

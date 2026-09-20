@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using NSubstitute;
 
@@ -20,6 +21,8 @@ public class HealthInsightServiceAccessTests
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
+    private readonly IMemberInsightRepository _insights = Substitute.For<IMemberInsightRepository>();
+    private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _outsiderId = Guid.NewGuid();
@@ -32,6 +35,19 @@ public class HealthInsightServiceAccessTests
         _unitOfWork.Alerts.Returns(_alerts);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
+        _unitOfWork.MemberInsights.Returns(_insights);
+        _unitOfWork.CardiMembers.Returns(_members);
+
+        // Actively monitored unless a case says otherwise — the member-scoped reads now check,
+        // and a substitute returning null would make every one of them decline for the wrong
+        // reason.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+        });
 
         _links.GetByUserIdAsync(_userId).Returns([
             new UserCardiMember
@@ -82,12 +98,39 @@ public class HealthInsightServiceAccessTests
     // ── AnalyzeAlertAsync ───────────────────────────────────────────────────────
 
     [Fact]
-    public async Task AnalyzeAlert_Succeeds_ForALinkedUser()
+    public async Task AnalyzeAlert_ServesTheStoredExplanation_ForALinkedUser()
     {
+        _insights.GetForAlertAsync(_alertId).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Alert,
+            AlertId = _alertId,
+            Summary = "Analysis body.",
+            RecommendedAction = "Call them today.",
+            GeneratedAtUtc = DateTime.UtcNow,
+        });
+
         var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
 
         Assert.Equal(_alertId, result.AlertId);
         Assert.Equal("Analysis body.", result.Explanation);
+        Assert.Equal("Call them today.", result.RecommendedAction);
+
+        // The whole point of the batch move: opening an alert costs a lookup, never a model call.
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AnalyzeAlert_ComesBackEmpty_WhenThePassHasNotExplainedItYet()
+    {
+        // An alert raised seconds ago, or one whose explanation the guards withheld. Empty text
+        // rather than an error: there is nothing wrong, there is just nothing to say yet.
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal(_alertId, result.AlertId);
+        Assert.Equal(string.Empty, result.Explanation);
+        Assert.Equal(string.Empty, result.RecommendedAction);
     }
 
     [Fact]
@@ -156,7 +199,7 @@ public class HealthInsightServiceAccessTests
         _baselines.GetLatestByCardiMemberAsync(_memberId, Arg.Any<int>())
             .Returns(_ => TrackedLookupAsync());
 
-        await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
 
         Assert.True(
             Volatile.Read(ref overlapped) == 0,
@@ -181,9 +224,9 @@ public class HealthInsightServiceAccessTests
         });
         _baselines.GetLatestByCardiMemberAsync(_memberId, 90).Returns((PatternBaseline?)null);
 
-        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+        var written = await CreateSut().RegenerateBaselineInsightAsync(_memberId);
 
-        Assert.NotNull(result);
+        Assert.True(written);
         await _medicalAi.Received(1).GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
             Arg.Is<string>(p => p != null && p.Contains("not yet enough history")), Arg.Any<CancellationToken>());
     }
@@ -202,12 +245,138 @@ public class HealthInsightServiceAccessTests
     // ── AnalyzeBaselineAsync ────────────────────────────────────────────────────
 
     [Fact]
-    public async Task AnalyzeBaseline_Succeeds_ForALinkedUser()
+    public async Task AnalyzeBaseline_ServesTheStoredReading_ForALinkedUser()
     {
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Analysis body.",
+            KeyFindings = "Steps are down.\nSleep is steady.",
+            BaselinePeriodDays = 30,
+            GeneratedAtUtc = DateTime.UtcNow,
+        });
+
         var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
 
         Assert.Equal(_memberId, result.CardiMemberId);
         Assert.Equal("Analysis body.", result.Summary);
+        Assert.Equal(["Steps are down.", "Sleep is steady."], result.KeyFindings);
+        Assert.Equal(30, result.BaselinePeriodDays);
+
+        await _medicalAi.DidNotReceive().GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AnalyzeBaseline_ReadsAsLearning_BeforeThePassHasWrittenAnything()
+    {
+        // The honest answer before the first digest pass reaches this member, and the same state
+        // the dashboard calls "getting to know you" — so the two surfaces agree from day one.
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.Equal(_memberId, result.CardiMemberId);
+        Assert.True(result.IsLearning);
+        Assert.Empty(result.Summary);
+    }
+
+    [Fact]
+    public async Task AnalyzeBaseline_WithholdsTheReading_WhileMonitoringIsPaused()
+    {
+        // The dashboard and member-detail paths already suppress this block for a paused member.
+        // The dedicated endpoint has to agree with them, or the app and the API tell a caregiver
+        // two different things about monitoring that has stopped.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddDays(3),
+        });
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Written before the pause.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.Empty(result.Summary);
+    }
+
+    [Fact]
+    public async Task GetTrend_WithholdsTheNarrative_WhileMonitoringIsPaused()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddDays(3),
+        });
+        _insights.GetByScopeAsync(_memberId, InsightScope.Trend).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Trend,
+            Summary = "Activity eased off over the month.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+
+        var result = await CreateSut().GetTrendAsync(_userId, _memberId);
+
+        Assert.Empty(result.Narrative);
+    }
+
+    [Fact]
+    public async Task AnalyzeAlert_StillExplains_WhileMonitoringIsPaused()
+    {
+        // Deliberately not guarded. An alert raised before the pause is still listed and still
+        // opens; hiding only the reason it fired would leave a caregiver looking at an alert the
+        // product refuses to explain.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddDays(3),
+        });
+        _insights.GetForAlertAsync(_alertId).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Alert,
+            AlertId = _alertId,
+            Summary = "Their steps dropped well below usual.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal("Their steps dropped well below usual.", result.Explanation);
+    }
+
+    [Fact]
+    public async Task AnalyzeBaseline_WithholdsAStaleReading()
+    {
+        // Past the staleness ceiling the row describes a picture that has moved on. A member-scoped
+        // insight goes quiet rather than claiming to be current — unlike an alert explanation,
+        // which is about one fixed moment and never goes out of date.
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Analysis body.",
+            GeneratedAtUtc = DateTime.UtcNow - InsightServability.MaxAge - TimeSpan.FromHours(1),
+        });
+
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.Empty(result.Summary);
+        Assert.True(result.IsLearning);
     }
 
     [Fact]

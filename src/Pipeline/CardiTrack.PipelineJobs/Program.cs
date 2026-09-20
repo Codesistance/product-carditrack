@@ -90,6 +90,7 @@ builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
 builder.Services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreationKeyRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
+builder.Services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
 builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
 builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
 builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
@@ -251,6 +252,17 @@ try
             Log.Information("PipelineJobs run finished. Environmental readings written: {Enriched}.", enriched);
             return 0;
 
+        case "trend":
+            // The daily trend narrative (docs/llm_design.md — "Trend interpretation pipeline"),
+            // and what replaced the dropped per-user LSTM. Every figure it reads was computed in
+            // .NET from the member's own readings; the model's only job is to say what they say,
+            // against the pinned reference table. One call per member with a month of history
+            // whose narrative is older than the day, and none at all for a member still learning.
+            var trends = scope.ServiceProvider.GetRequiredService<TrendInterpretationService>();
+            var narrated = await trends.InterpretDueMembersAsync();
+            Log.Information("PipelineJobs run finished. Trend narratives written: {Narrated}.", narrated);
+            return 0;
+
         case "theme":
             // Labels completed member-chat conversations for the history list — one Rewrite-slot
             // call per unthemed conversation, batch-capped; see ChatThemeService.
@@ -260,7 +272,7 @@ try
             return 0;
 
         default:
-            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess, enrich, theme.", jobName);
+            Log.Fatal("Unknown job '{Job}'. Known jobs: digest, aggregate, assess, enrich, trend, theme.", jobName);
             return 1;
     }
 }

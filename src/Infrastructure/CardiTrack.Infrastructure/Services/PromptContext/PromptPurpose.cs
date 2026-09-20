@@ -73,7 +73,16 @@ public enum PromptPurpose
     /// </summary>
     StatisticalJudgement = 1024,
 
+    /// <summary>
+    /// The daily trend narrative: deterministic features computed in .NET, read against the pinned
+    /// reference ranges. Its own purpose rather than riding <see cref="BaselineInsight"/> because
+    /// the two answer different questions at different altitudes — one is where this member sits
+    /// against their own normal now, the other is which way they have been going for a month — and
+    /// a source that belongs in one may not belong in the other.
+    /// </summary>
+    Trend = 2048,
+
     /// <summary>Everything a member-context source could contribute to.</summary>
     All = Digest | RealtimeAssessment | AlertInsight | BaselineInsight | CurrentStatus | Daybook
-        | Weekbook | Monthbook | MemberChat | Advise | StatisticalJudgement,
+        | Weekbook | Monthbook | MemberChat | Advise | StatisticalJudgement | Trend,
 }

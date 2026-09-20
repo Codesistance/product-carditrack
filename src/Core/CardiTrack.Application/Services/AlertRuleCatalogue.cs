@@ -15,6 +15,14 @@ public static class AlertRuleCatalogue
     public const string NoMorningActivity = StatisticalAlertRules.NoMorningActivityRule;
     public const string LongTermTrend = StatisticalAlertRules.LongTermTrendRule;
     public const string DeviceSilence = "device_silence";
+
+    /// <summary>
+    /// What a caregiver-defined alarm stamps its <c>rule</c> marker with, ahead of its own id
+    /// (<c>custom:3f2a…</c>). It lives here beside the built-in ids rather than with the producer,
+    /// because the read side has to tell "an alarm this caregiver set" from "a rule we ship" before
+    /// it can look anything up — and a second copy of the prefix is a second thing to get wrong.
+    /// </summary>
+    public const string CustomRulePrefix = "custom:";
     public const string RealtimeHeartRate = "realtime_hr";
     public const string HeartRateVariabilityDrop = StatisticalAlertRules.HeartRateVariabilityDropRule;
     public const string OvernightBreathingUp = StatisticalAlertRules.OvernightBreathingUpRule;

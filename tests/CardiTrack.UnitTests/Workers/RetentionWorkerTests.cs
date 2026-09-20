@@ -2,6 +2,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Worker;
 using CardiTrack.Worker.Workers;
@@ -33,16 +34,19 @@ public class RetentionWorkerTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IAccountErasureService _accounts = Substitute.For<IAccountErasureService>();
     private readonly IChatRetentionService _chat = Substitute.For<IChatRetentionService>();
+    private readonly IMemberInsightRepository _insights = Substitute.For<IMemberInsightRepository>();
     private readonly IServiceProvider _provider = Substitute.For<IServiceProvider>();
 
     public RetentionWorkerTests()
     {
         _unitOfWork.Users.Returns(_users);
+        _unitOfWork.MemberInsights.Returns(_insights);
 
         // Nothing due and nothing expired by default — each test stages only what it is about.
         _users.GetAccountsDueForErasureAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns([]);
         _chat.FindExpiredSessionsAsync(Arg.Any<DateTime>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns([]);
+        _insights.GetGeneratedBeforeAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns([]);
 
         _provider.GetService(typeof(IUnitOfWork)).Returns(_unitOfWork);
         _provider.GetService(typeof(IAccountErasureService)).Returns(_accounts);
@@ -243,6 +247,87 @@ public class RetentionWorkerTests
                 Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
             .Returns(new ChatRetentionReport(sessionIds.Length, 0, 0));
     }
+
+    // ── Stored insights ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The period is a constant rather than a configured dial — it is the figure the DPIA records
+    /// — so the assertion is on the exact cutoff. If someone changes one without the other, this
+    /// is what says so.
+    /// </summary>
+    [Fact]
+    public async Task Sweep_AsksForInsightsPastTheRetentionPeriod()
+    {
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _insights.Received(1).GetGeneratedBeforeAsync(
+            Now.UtcDateTime - InsightRetention.MaxAge, InsightRetention.SweepBatchSize);
+    }
+
+    [Fact]
+    public async Task Sweep_DeletesExpiredInsights_RestatingTheCutoff()
+    {
+        var expired = Expired(2);
+        _insights.GetGeneratedBeforeAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns(expired);
+        _insights.DeleteGeneratedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>()).Returns(2);
+
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        // The ids *and* the cutoff: a row the digest or trend pass rewrote between the select and
+        // the delete must stop matching rather than be removed by key.
+        await _insights.Received(1).DeleteGeneratedBeforeAsync(
+            Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2
+                && ids.Contains(expired[0].Id)
+                && ids.Contains(expired[1].Id)),
+            Now.UtcDateTime - InsightRetention.MaxAge);
+    }
+
+    [Fact]
+    public async Task Sweep_DeletesNoInsights_OnADryRun()
+    {
+        _insights.GetGeneratedBeforeAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns(Expired(1));
+
+        await CreateWorker(dryRun: true).RunSweepAsync(CancellationToken.None);
+
+        await _insights.DidNotReceive().DeleteGeneratedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
+    }
+
+    [Fact]
+    public async Task Sweep_AsksToDeleteNothing_WhenNoInsightHasExpired()
+    {
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _insights.DidNotReceive().DeleteGeneratedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
+    }
+
+    [Fact]
+    public async Task Sweep_LeavesAlertExplanationsToTheRepository()
+    {
+        // The exemption lives in the query — alert-scoped rows are never selected, because the
+        // read path serves an explanation however old it is. Asserted here as the contract the
+        // worker relies on, so a later change to either side has to face the other.
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _insights.Received(1).GetGeneratedBeforeAsync(
+            Arg.Any<DateTime>(), InsightRetention.SweepBatchSize);
+        await _insights.DidNotReceive().DeleteGeneratedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
+    }
+
+    private static List<MemberInsight> Expired(int count) =>
+        Enumerable.Range(0, count)
+            .Select(_ => new MemberInsight
+            {
+                Id = Guid.NewGuid(),
+                CardiMemberId = Guid.NewGuid(),
+                Scope = InsightScope.Baseline,
+                Summary = "Written a long time ago.",
+                GeneratedAtUtc = Now.UtcDateTime - InsightRetention.MaxAge - TimeSpan.FromDays(1),
+            })
+            .ToList();
 
     private TestableWorker CreateWorker(
         bool dryRun = false, int chatRetentionDays = 90, int batchSize = 100,

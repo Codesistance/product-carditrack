@@ -289,10 +289,7 @@ public static class AlertDetailComposer
     {
         var rule = ReadRule(alert.MetricValues);
         TryParse(alert.MetricValues, out var metrics);
-        var raisedOn = firedOn ?? DateOnly.FromDateTime(
-            alert.TriggeredDate.Kind == DateTimeKind.Local
-                ? alert.TriggeredDate.ToUniversalTime()
-                : DateTime.SpecifyKind(alert.TriggeredDate, DateTimeKind.Utc));
+        var raisedOn = firedOn ?? DateOnly.FromDateTime(AsUtc(alert.TriggeredDate));
         var aboutDate = AboutDate(rule, alert.MetricValues, raisedOn);
         var stretchStartedAt = ReadDateTime(metrics, "startedAtUtc");
         var bedtime = LocalizedBedtime(baseline?.TypicalBedtime, stretchStartedAt, timeZone);
@@ -321,7 +318,8 @@ public static class AlertDetailComposer
             AcknowledgedAt = alert.AcknowledgedDate,
             AcknowledgedByUserId = alert.AcknowledgedByUserId,
             AcknowledgedByName = acknowledger?.Name,
-            Comparison = Comparison(rule, metrics, baseline, today, aboutDate),
+            Comparison = Comparison(rule, metrics, baseline, today, aboutDate, alert.TriggeredDate),
+            Evidence = AlertEvidenceComposer.Compose(rule, metrics, baseline),
             Chart = Chart(rule, logs, today, granular, baseline, metrics, member, elapsedSteps, aboutDate),
             LastActivityOn = LastMeasuredStepsDay(logs),
             TypicalWakeTime = ReadString(metrics, "typicalWakeTime")
@@ -389,8 +387,16 @@ public static class AlertDetailComposer
     };
 
     private static AlertComparisonResponse? Comparison(
-        string? rule, JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
+        string? rule,
+        JsonElement metrics,
+        PatternBaseline? baseline,
+        DateOnly today,
+        DateOnly aboutDate,
+        DateTime triggeredAt)
     {
+        if (rule is not null && rule.StartsWith(AlertRuleCatalogue.CustomRulePrefix, StringComparison.Ordinal))
+            return CustomAlarmComparison(metrics);
+
         return rule switch
         {
             StatisticalAlertRules.ActivityDeclineRule => StepsComparison(metrics, baseline, today, aboutDate),
@@ -407,9 +413,95 @@ public static class AlertDetailComposer
                 => ElevatedZoneComparison(metrics, baseline, today, aboutDate),
             StatisticalAlertRules.DaytimeInactivityBlockRule
                 => SedentaryStretchComparison(metrics, baseline, today, aboutDate),
+            DeviceSilenceRule => DeviceSilenceComparison(metrics, triggeredAt),
             _ => null,
         };
     }
+
+    /// <summary>
+    /// How long the watch has been quiet, against the stretch that raises the alert. There is no
+    /// baseline here and there should not be one: the card answers "how far past the line is this"
+    /// for a rule that is about the device, and putting a health figure in a silence card would
+    /// suggest a reading exists for the hours whose whole point is that none does.
+    /// </summary>
+    private static AlertComparisonResponse? DeviceSilenceComparison(JsonElement metrics, DateTime triggeredAt)
+    {
+        var lastData = ReadDateTime(metrics, "lastDataUtc");
+        var threshold = ReadDecimal(metrics, "thresholdMinutes");
+        if (lastData is null && threshold is null)
+            return null;
+
+        // Measured to the firing instant rather than to now: a caregiver opening this alert two
+        // days later is reading about the silence that raised it, not about a gap that has been
+        // growing on the detail screen ever since.
+        decimal? quiet = lastData is { } last && AsUtc(triggeredAt) > last
+            ? (decimal)(AsUtc(triggeredAt) - last).TotalMinutes
+            : null;
+
+        static string Span(decimal? minutes) =>
+            minutes is { } m ? $"{m / 60m:0.#} h" : "—";
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = "Quiet for",
+            CurrentValue = Span(quiet),
+            NormalLabel = "Alerts after",
+            NormalValue = Span(threshold),
+            ChangeLabel = ChangeLabel(quiet, threshold, "the quiet limit"),
+            ChangePercent = ChangePercent(quiet, threshold),
+        };
+    }
+
+    /// <summary>
+    /// A caregiver-defined alarm against the level that caregiver set. <c>effectiveThreshold</c>
+    /// in preference to the configured one: a baseline-relative alarm is configured as a percentage
+    /// and fires on whatever figure that resolved to on the day, and the resolved figure is the one
+    /// the reading beside it can be checked against.
+    /// </summary>
+    private static AlertComparisonResponse? CustomAlarmComparison(JsonElement metrics)
+    {
+        var observed = ReadDecimal(metrics, "observedValue");
+        var threshold = ReadDecimal(metrics, "effectiveThreshold") ?? ReadDecimal(metrics, "configuredThreshold");
+        if (observed is null && threshold is null)
+            return null;
+
+        var unit = AlarmUnit(metrics);
+
+        string Level(decimal? value) => value is { } v
+            ? (unit is null ? $"{v:0.#}" : $"{v:0.#} {unit}")
+            : "—";
+
+        return new AlertComparisonResponse
+        {
+            CurrentLabel = "Measured",
+            CurrentValue = Level(observed),
+            NormalLabel = "Your level",
+            NormalValue = Level(threshold),
+            ChangeLabel = ChangeLabel(observed, threshold, "the level you set"),
+            ChangePercent = ChangePercent(observed, threshold),
+        };
+    }
+
+    /// <summary>
+    /// The unit an alarm's metric is quoted in, from the same catalogue the builder offered it
+    /// from. Null when the stamp names a metric this build does not know — a figure with no unit
+    /// beats a figure with the wrong one.
+    /// </summary>
+    internal static string? AlarmUnit(JsonElement metrics) =>
+        Enum.TryParse<AlarmMetric>(ReadString(metrics, "metric"), out var metric)
+            ? AlarmMetricCatalogue.Find(metric)?.Unit
+            : null;
+
+    /// <summary>
+    /// An instant as UTC, whatever kind it arrived as. Rows read back from Postgres come through
+    /// unspecified, and a fixture may hand this a local one.
+    /// </summary>
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Utc => value,
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+    };
 
     private static AlertComparisonResponse? HeartRateVariabilityComparison(
         JsonElement metrics, PatternBaseline? baseline, DateOnly today, DateOnly aboutDate)
@@ -994,7 +1086,7 @@ public static class AlertDetailComposer
         }
     }
 
-    private static decimal? ReadDecimal(JsonElement obj, string name) =>
+    internal static decimal? ReadDecimal(JsonElement obj, string name) =>
         obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out var p)
             ? ReadDecimal(p)
             : null;
@@ -1008,7 +1100,7 @@ public static class AlertDetailComposer
         _ => null,
     };
 
-    private static string? ReadString(JsonElement obj, string name) =>
+    internal static string? ReadString(JsonElement obj, string name) =>
         obj.ValueKind == JsonValueKind.Object
         && obj.TryGetProperty(name, out var p)
         && p.ValueKind == JsonValueKind.String

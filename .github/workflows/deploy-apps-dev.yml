@@ -1477,7 +1477,8 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v3
       # jobs update, not run deploy: the job resources are Terraform-owned (VPC, Cloud SQL,
       # secrets, args) and only their image is CI-owned; Cloud Scheduler drives executions.
-      # All four jobs share the image and differ by container args.
+      # All five jobs share the image and differ by container args — so a job left out here
+      # does not fail, it runs the bootstrap image on schedule and quietly does nothing.
       - run: |
           gcloud run jobs update carditrack-dev-pipeline-jobs \
             --image ${{ needs.push-pipeline-image.outputs.image }} \
@@ -1507,6 +1508,16 @@ jobs:
               --quiet
           else
             echo "themer job not created yet (Terraform apply pending) — skipping its image update"
+          fi
+          # Same conditional shape, and the same reason: Terraform owns the resource, so the
+          # first deploy after this branch lands may run before the apply that creates it.
+          # Without this the trend job keeps the bootstrap image the Terraform variable
+          # defaults to — Cloud Run's `hello` container — and the scheduler would run it daily,
+          # succeed, and never write a narrative.
+          if gcloud run jobs describe carditrack-dev-pipeline-jobs-trend             --region ${{ needs.changes.outputs.gcp_region }}             --project ${{ needs.changes.outputs.gcp_project_id }} >/dev/null 2>&1; then
+            gcloud run jobs update carditrack-dev-pipeline-jobs-trend               --image ${{ needs.push-pipeline-image.outputs.image }}               --region ${{ needs.changes.outputs.gcp_region }}               --project ${{ needs.changes.outputs.gcp_project_id }}               --quiet
+          else
+            echo "trend job not created yet (Terraform apply pending) — skipping its image update"
           fi
 
   patch-tag:

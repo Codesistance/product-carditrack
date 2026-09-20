@@ -79,6 +79,27 @@ public class AlertDetailResponse
     public AlertComparisonResponse? Comparison { get; set; }
 
     /// <summary>
+    /// Why this alert fired — the producer's own yardstick, in the caregiver's register. Null on a
+    /// row this build cannot explain honestly (a markerless legacy alert, or a rule it does not
+    /// know), because a card that shrugs still reads as a claim.
+    /// </summary>
+    public AlertEvidenceResponse? Evidence { get; set; }
+
+    /// <summary>
+    /// What this alert means in the recent readings, and one thing the caregiver can do now —
+    /// MedGemma's explanation, written by the pass that raised the alert and stored against it.
+    /// Null when that pass has not reached this alert, or its reply did not survive the register
+    /// guards.
+    /// </summary>
+    /// <remarks>
+    /// Carried on the detail response rather than fetched separately by the screen. The same
+    /// content is available at <c>GET /api/v1/insights/alerts/{alertId}</c> for an API consumer
+    /// that wants only this, but the app opening an alert should not pay a second round trip — and
+    /// a second call is a second thing to fail, to cache, and to leave the screen half-drawn.
+    /// </remarks>
+    public AlertNarrativeResponse? Narrative { get; set; }
+
+    /// <summary>
     /// The one series this alert is about. Null when the rule has no health graph
     /// (<c>device_silence</c>) or there is nothing to plot.
     /// </summary>
@@ -200,4 +221,68 @@ public class AlertChartResponse
     /// either stretch — an unfair comparison is worse than none.
     /// </remarks>
     public string? PartialDayLabel { get; set; }
+}
+
+/// <summary>
+/// The model's reading of one alert: what it means in the readings, and one thing to do now.
+/// </summary>
+/// <remarks>
+/// Distinct from <see cref="AlertEvidenceResponse"/> beside it, and the distinction is the point.
+/// The evidence is arithmetic this codebase can stand behind; this is an interpretation. A screen
+/// that ran them together would let the second borrow the first's authority.
+/// </remarks>
+public class AlertNarrativeResponse
+{
+    /// <summary>What this alert means in the recent readings.</summary>
+    public string Explanation { get; set; } = string.Empty;
+
+    /// <summary>
+    /// One specific thing the caregiver can do now that answers this alert. Never a medication
+    /// change, never a diagnosis, never a fix — see the brief in <c>HealthInsightService</c>.
+    /// Empty when the model offered none that survived the guards.
+    /// </summary>
+    public string? RecommendedAction { get; set; }
+
+    /// <summary>When the pass wrote it.</summary>
+    public DateTime GeneratedAt { get; set; }
+}
+
+/// <summary>
+/// The evidence behind one alert: what the rule watched, and where its line sat. Composed in .NET
+/// from the figures the producer stamped — never a model call, so there is nothing here that was
+/// not either measured or written by hand.
+/// </summary>
+/// <seealso cref="CardiTrack.Application.Services.AlertEvidenceComposer"/>
+public class AlertEvidenceResponse
+{
+    /// <summary>
+    /// The rule's name on the alert-settings screen ("Heart rate variability has dropped"), or the
+    /// caregiver's own name for their alarm. The card a caregiver is reading and the toggle that
+    /// would turn it off have to be visibly the same thing.
+    /// </summary>
+    public string RuleLabel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// One or two sentences saying what it took to raise this — the yardstick, and why the rule is
+    /// shaped that way where the shape is the surprising part (both halves of a pairing, two nights
+    /// rather than one, a measured zero rather than a missing reading).
+    /// </summary>
+    public string WhyLine { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The line this reading crossed, as a short phrase for a chip beside the comparison — "Below
+    /// 47.6 ms, two nights running". Null when the producer stamped no margin and the rule's
+    /// constant alone cannot name a figure this member's reading was actually judged against.
+    /// </summary>
+    public string? ThresholdLabel { get; set; }
+
+    /// <summary>
+    /// The window the "usual" in <see cref="WhyLine"/> was learned over, in days. Null in two
+    /// cases, and a client must not fill either in: when the rule measures against no learned
+    /// usual at all (the long-term trend is week-over-week, the pairing rules and device silence
+    /// quote fixed thresholds, a caregiver's own alarm quotes their own level), and when a rule
+    /// that would have read a baseline got none back — the figures then came from the alert's own
+    /// stamp, and naming a window we did not look at would be an invention either way.
+    /// </summary>
+    public int? BaselinePeriodDays { get; set; }
 }

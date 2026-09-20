@@ -130,6 +130,16 @@ public class DashboardService : IDashboardService
             : AdvisePicker.PickDefault(
                 await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId), now);
 
+        // The two stored interpretations, on the same terms as Advise above: a paused member is
+        // not being watched, so a reading of how they are doing describes a monitoring state that
+        // no longer exists. Sequential lookups — these share the request's DbContext.
+        var baselineInsight = isPaused
+            ? null
+            : await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Baseline);
+        var trendInsight = isPaused
+            ? null
+            : await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Trend);
+
         // The newest family entry only — its generation instant is all the card wants, to tell
         // whether the caregiver has read this far. The Journal tab reads the history itself.
         var latestJournalEntry = await _unitOfWork.Digests.GetLatestAsync(
@@ -167,6 +177,7 @@ public class DashboardService : IDashboardService
             HasAdvise = advise is not null,
             AdviseGeneratedAt = advise?.GeneratedAtUtc,
             LatestJournalEntryAt = latestJournalEntry?.GeneratedAtUtc,
+            Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now),
             Device = new DashboardDeviceState
             {
                 HasActiveConnection = connections.Count > 0,

@@ -38,6 +38,7 @@ public class UnitOfWork : IUnitOfWork
     public IMemberChatTurnUsageRepository MemberChatTurnUsages { get; }
     public IMemberStatusLineRepository MemberStatusLines { get; }
     public IMemberAdviseRepository MemberAdvises { get; }
+    public IMemberInsightRepository MemberInsights { get; }
     public IReportRepository Reports { get; }
     public IExportConsentRepository ExportConsents { get; }
     public ICardiMemberCreationKeyRepository CardiMemberCreationKeys { get; }
@@ -76,6 +77,7 @@ public class UnitOfWork : IUnitOfWork
         IMemberChatTurnUsageRepository memberChatTurnUsages,
         IMemberStatusLineRepository memberStatusLines,
         IMemberAdviseRepository memberAdvises,
+        IMemberInsightRepository memberInsights,
         IReportRepository reports,
         IExportConsentRepository exportConsents,
         IMemberAiHoldRepository memberAiHolds,
@@ -113,6 +115,7 @@ public class UnitOfWork : IUnitOfWork
         MemberChatTurnUsages = memberChatTurnUsages;
         MemberStatusLines = memberStatusLines;
         MemberAdvises = memberAdvises;
+        MemberInsights = memberInsights;
         Reports = reports;
         ExportConsents = exportConsents;
         MemberAiHolds = memberAiHolds;

@@ -1,3 +1,4 @@
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 
@@ -16,7 +17,7 @@ internal static class AlertRuleMarkers
     internal const string RealtimeHeartRateRule = "realtime_hr";
 
     /// <summary>The prefix a caregiver-defined alarm's marker carries: <c>custom:{alarmId}</c>.</summary>
-    internal const string CustomRulePrefix = "custom:";
+    internal const string CustomRulePrefix = AlertRuleCatalogue.CustomRulePrefix;
 
     /// <summary>Whether the alert carries this rule marker in its MetricValues JSON.</summary>
     internal static bool HasRule(Alert alert, string rule) =>

@@ -6,6 +6,8 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Reports;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Extensions;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -353,7 +355,24 @@ public class ReportGenerationService : IReportGenerationService
                     unitOfWork, ownerUserId, memberId, request.DateRangeFrom, request.DateRangeTo)
                 : [];
 
-            members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices));
+            // The comparison material, and only when the document will carry a comparison: a
+            // report that excluded its readings has nothing to compare, and the query would be
+            // paid per member for a section that is never rendered.
+            //
+            // As of the end of the exported period, not as of now. The validator permits a range
+            // in the past, and the unbounded lookup would compare last March against months of
+            // subsequent knowledge — presenting what we learned since as what was usual then.
+            var baseline = request.IncludeMetrics
+                ? await unitOfWork.PatternBaselines.GetAsOfByCardiMemberAsync(
+                    memberId,
+                    BaselineProgress.PeriodDays,
+                    request.DateRangeTo.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc))
+                : null;
+
+            members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices)
+            {
+                Baseline = baseline,
+            });
         }
 
         return new ReportDataSet(
@@ -560,6 +579,27 @@ public class ReportGenerationService : IReportGenerationService
                         + MedicalPromptBlocks.Flatten(alert.Title));
             }
 
+            // The comparison the narrative was writing without. Until this, the prompt carried a
+            // column of raw figures and nothing to read them against, so a report could describe a
+            // fortnight of resting heart rates without once saying what this person's own resting
+            // heart rate is. The rows are computed, and the model is told to state them as given —
+            // the same arrangement the journal books use.
+            //
+            // Gated on includeMetrics and computed from the exported period, both for the same
+            // reason: this prompt goes to the *general* provider. A caregiver who excluded their
+            // readings must not have them averaged and sent anyway, and a pinned-journal export
+            // still loads the wider chart window, so `member.ActivityLogs` here would summarise
+            // days outside the range the document covers.
+            if (includeMetrics)
+            {
+                var comparison = ReportComparison.Render(
+                    ReportComparison.For(
+                        member with { ActivityLogs = periodLogs },
+                        member.Member.DateOfBirth.ToAgeInYears(data.To)));
+                if (comparison.Length > 0)
+                    sb.AppendLine(comparison);
+            }
+
             sections.Add(sb.ToString());
         }
 
@@ -573,7 +613,8 @@ public class ReportGenerationService : IReportGenerationService
             Summarise the data above in a clear, structured report: say what the readings show and
             where they moved, and refer to each person by the exact label given above. Do not quote
             a figure that is not above, and where a reading was not measured, say so rather than
-            leaving it to read as an ordinary one.
+            leaving it to read as an ordinary one. Where a comparison is given, state it as it is
+            written — never work one out, and never turn a range into a verdict about the person.
             """;
 
         return new ReportPrompt(text, pseudonyms);

@@ -543,16 +543,40 @@ public class StatisticalAlertRulesTests
             BreathingBaseline(stdDev: 1.5m), BreathingLog(16.4m)));
     }
 
-    // A rise inside the published band is still this member's own change — the whole reason the
-    // rule is baseline-relative rather than band-relative.
+    // A rise well inside WHO's waking 12-20 is still this member's own change — the whole reason
+    // the rule is baseline-relative rather than band-relative.
     [Fact]
-    public void OvernightBreathingUp_Fires_EvenWhereTheReadingSitsInsideThePublishedBand()
+    public void OvernightBreathingUp_Fires_EvenWhereTheReadingWouldSitInsideAWakingBand()
     {
         var candidate = StatisticalAlertRules.OvernightBreathingUp(
             BreathingBaseline(average: 13m), BreathingLog(17m));
 
         Assert.NotNull(candidate);
-        Assert.Contains("\"recommendedHighPerMinute\":20", candidate.MetricValues);
+        Assert.Contains("\"baselineAvgOvernightBreathingRate\":13", candidate.MetricValues);
+    }
+
+    /// <summary>
+    /// Nothing in this finding may carry a published range. The observation text is the prompt
+    /// MedGemma judges on, and the only adult band this codebase holds is WHO's rate at rest — it
+    /// used to be stamped here and described in prose as "the published typical adult range
+    /// asleep", which is a claim no body makes.
+    /// </summary>
+    [Fact]
+    public void OvernightBreathingUp_QuotesNoPublishedRange_BecauseNoneDescribesSleep()
+    {
+        var candidate = StatisticalAlertRules.OvernightBreathingUp(
+            BreathingBaseline(average: 13m), BreathingLog(17m));
+
+        Assert.NotNull(candidate);
+        Assert.DoesNotContain("recommendedLowPerMinute", candidate.MetricValues);
+        Assert.DoesNotContain("recommendedHighPerMinute", candidate.MetricValues);
+
+        Assert.DoesNotContain("published typical adult range", candidate.Observation);
+        Assert.DoesNotContain("12", candidate.Observation);
+        Assert.Contains("no published adult range", candidate.Observation);
+
+        // Their own usual is still the comparison, and still stated.
+        Assert.Contains("against a usual 13", candidate.Observation);
     }
 
     [Fact]

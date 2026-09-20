@@ -19,4 +19,16 @@ public class PatternBaselineRepository : Repository<PatternBaseline>, IPatternBa
             .OrderByDescending(pb => pb.CalculatedDate)
             .FirstOrDefaultAsync();
     }
+
+    public async Task<PatternBaseline?> GetAsOfByCardiMemberAsync(
+        Guid cardiMemberId, int periodDays, DateTime asOfUtc)
+    {
+        return await _dbSet
+            .AsNoTracking()
+            .Where(pb => pb.CardiMemberId == cardiMemberId
+                && pb.PeriodDays == periodDays
+                && pb.CalculatedDate <= asOfUtc)
+            .OrderByDescending(pb => pb.CalculatedDate)
+            .FirstOrDefaultAsync();
+    }
 }

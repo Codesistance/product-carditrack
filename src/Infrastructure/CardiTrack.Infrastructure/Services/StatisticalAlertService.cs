@@ -92,13 +92,22 @@ public class StatisticalAlertService : IStatisticalAlertService
     private readonly ILogger<StatisticalAlertService> _logger;
     private readonly IAlertNotificationEnqueue? _alertEnqueue;
 
+    /// <summary>
+    /// Optional so the many tests that exercise the judgement path need not stand one up, and so
+    /// a host that has not registered the insight service still raises alerts. A missing
+    /// explanation costs the detail screen one card; a missing alert costs a caregiver the thing
+    /// they bought the product for.
+    /// </summary>
+    private readonly IHealthInsightService? _insights;
+
     public StatisticalAlertService(
         IUnitOfWork unitOfWork,
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
         StatusLineGenerationService statusLine,
         ILogger<StatisticalAlertService> logger,
-        IAlertNotificationEnqueue? alertEnqueue = null)
+        IAlertNotificationEnqueue? alertEnqueue = null,
+        IHealthInsightService? insights = null)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
@@ -106,6 +115,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         _statusLine = statusLine;
         _logger = logger;
         _alertEnqueue = alertEnqueue;
+        _insights = insights;
     }
 
     public async Task<int> EvaluateAsync(DateTime utcNow, CancellationToken ct = default)
@@ -135,10 +145,64 @@ public class StatisticalAlertService : IStatisticalAlertService
             }
         }
 
+        await BackfillPassAsync(utcNow, ct);
+
         _logger.LogInformation(
             "Statistical judgement pass complete. Members evaluated: {MembersEvaluated}, alerts raised: {Raised}.",
             memberIds.Count, raised);
         return raised;
+    }
+
+    /// <summary>
+    /// The explanation sweep, over everyone with an alert a caregiver could still open.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Its own pass rather than a step inside the member loop, because the two candidate sets are
+    /// not the same one. The rules are driven by members with readings in the last two days, which
+    /// is right for judging today's data and wrong for this: an alert goes on being readable long
+    /// after the readings stop, and <c>device_silence</c> stays unresolved precisely
+    /// <em>because</em> they have stopped. Riding the rule pass's filter meant the member whose
+    /// watch had been quiet for three days — the one most likely to be holding an unexplained
+    /// alert — was the first one the sweep could no longer see.
+    /// </para>
+    /// <para>
+    /// Every member here is re-checked for being active and unpaused, the same gate the rule pass
+    /// applies: an explanation is a thing said about someone being watched, and monitoring being
+    /// paused is them asking us to stop.
+    /// </para>
+    /// </remarks>
+    private async Task BackfillPassAsync(DateTime utcNow, CancellationToken ct)
+    {
+        if (_insights is null)
+            return;
+
+        var memberIds = await _unitOfWork.Alerts.GetCardiMemberIdsWithServableAlertsAsync(
+            utcNow - ExplanationBackfillWindow);
+
+        foreach (var memberId in memberIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
+                if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+                    continue;
+
+                await BackfillExplanationsAsync(memberId, utcNow, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // One member's failure must not cost the rest the sweep, the same stance the rule
+                // loop above takes.
+                _logger.LogError(
+                    ex, "Explanation backfill failed for CardiMember {CardiMemberId}.", memberId);
+            }
+        }
     }
 
     private async Task<int> EvaluateMemberAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
@@ -400,7 +464,156 @@ public class StatisticalAlertService : IStatisticalAlertService
             }
         }
 
+        await ExplainAsync(created, ct);
+
         return created.Count;
+    }
+
+    /// <summary>
+    /// Writes each new alert's caregiver-facing explanation, here rather than on the request path.
+    /// This pass has already woken MedGemma to judge the findings, so the explanations ride a
+    /// service that is warm; generating them when a caregiver taps the alert instead meant paying
+    /// a cold start, or a 503, in front of someone who had just been told something was wrong.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort with a log, the same stance as the status line and the push enqueue above: the
+    /// alerts are already stored, and an explanation that did not get written is a card the detail
+    /// screen leaves out, not a reason to unwind the member's pass. Sequential rather than
+    /// concurrent — these share the pass's DbContext, and EF Core refuses a second operation on a
+    /// context while one is still running.
+    /// </remarks>
+    private async Task ExplainAsync(IReadOnlyList<Alert> created, CancellationToken ct)
+    {
+        if (_insights is null)
+            return;
+
+        foreach (var alert in created)
+            await ExplainOneAsync(alert.Id, ct);
+    }
+
+    /// <summary>
+    /// A bounded retry over the alerts a caregiver can still open, for explanations that never got
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without it, an explanation lost to a model timeout or a guard rejection was lost for good:
+    /// this pass is the only thing that writes one, it only ever sees <em>new</em> alerts, and the
+    /// same finding on a later pass dedups against the alert already stored. The detail screen
+    /// would then show that alert with no explanation for as long as it remained readable — which
+    /// outlasts the episode, since resolving one does not hide it — and a later brief version
+    /// would never reach it either.
+    /// </para>
+    /// <para>
+    /// Cheap by construction: an alert already explained by the current brief costs one indexed
+    /// lookup and no model call. The cap bounds the other case — an alert whose reply keeps
+    /// failing the guards would otherwise be retried on every pass, of which there are 288 a day.
+    /// </para>
+    /// <para>
+    /// The candidates are rotated rather than taken from the front, because the cap and a stable
+    /// order together starve the tail. An alert the model will never produce a servable reply for
+    /// — a guard rejection that repeats — stays unexplained, so it is a candidate on every pass,
+    /// and taking the first two would spend the whole budget on the same two rows forever while a
+    /// third candidate behind them was never once attempted. Rotating by the pass clock
+    /// reaches every candidate within a few passes without persisting any retry state.
+    /// </para>
+    /// </remarks>
+    private async Task BackfillExplanationsAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        if (_insights is null)
+            return;
+
+        // Everything the detail screen will still serve, not just what is still unresolved.
+        // AlertService.GetByIdAsync gates on IsActive alone, and AlertResolution sets IsResolved
+        // without touching it — deliberately, so a closed episode stays readable in the archive.
+        // Reading the unresolved set here meant a producer that resolved an alert before this
+        // pass reached it (device silence re-arms the moment the watch reports again) left it
+        // unexplained for good, on a card a caregiver can still open months later.
+        var servable = await _unitOfWork.Alerts.GetServableByCardiMemberAsync(
+            memberId, utcNow - ExplanationBackfillWindow);
+
+        // Whether one needs a model call is decided here rather than read off the result, because
+        // "already explained" and "spent a call and failed" both come back false. Counting
+        // results would let an alert whose reply keeps failing the guards be retried on every
+        // pass, which is the cost the cap exists to bound. The whole list is walked rather than
+        // stopped at the cap — there is no rotating fairly over a set you have not counted — and
+        // that is one lookup on a unique index per servable alert, which the window above bounds.
+        var candidates = new List<Guid>();
+        foreach (var alert in servable.OrderBy(a => a.CreatedDate).ThenBy(a => a.Id))
+        {
+            var stored = await _unitOfWork.MemberInsights.GetForAlertAsync(alert.Id);
+            if (stored is null || stored.PromptVersion < HealthInsightService.AlertPromptVersion)
+                candidates.Add(alert.Id);
+        }
+
+        if (candidates.Count == 0)
+            return;
+
+        var start = RotationOffset(utcNow, candidates.Count);
+        var take = Math.Min(MaxExplanationRetriesPerPass, candidates.Count);
+        for (var i = 0; i < take; i++)
+            await ExplainOneAsync(candidates[(start + i) % candidates.Count], ct);
+    }
+
+    /// <summary>
+    /// Where in the candidate list this pass starts, advancing one pass at a time so consecutive
+    /// passes take consecutive slices. Derived from the clock rather than persisted: the pass
+    /// cadence is fixed, so the slot number alone rotates, and a missed or repeated pass costs at
+    /// most one candidate's turn.
+    /// </summary>
+    internal static int RotationOffset(DateTime utcNow, int candidateCount) =>
+        candidateCount <= 0
+            ? 0
+            : (int)(Math.Abs(utcNow.Ticks / TimeSpan.TicksPerMinute / PassCadenceMinutes)
+                    * MaxExplanationRetriesPerPass % candidateCount);
+
+    /// <summary>How often the judgement pass runs, which is what the rotation advances by.</summary>
+    private const int PassCadenceMinutes = 5;
+
+    /// <summary>
+    /// How far back a <em>resolved</em> alert stays a candidate for a missing explanation.
+    /// Unresolved ones are candidates however old they are, as before — this only widens the set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A fortnight is the retry horizon, not a statement about how long the alert matters: the
+    /// explanation is served for the life of the alert (<see cref="InsightRetention"/> exempts
+    /// these rows from the sweep for exactly that reason), but a reply that has failed every
+    /// attempt for two weeks is failing for a reason another pass will not fix.
+    /// </para>
+    /// <para>
+    /// The bound is what keeps the walk cheap. Every candidate costs one indexed lookup per pass
+    /// and there are 288 passes a day, so an unbounded set would have this growing with the
+    /// member's whole alert history forever. Live episodes plus a fortnight does not grow.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan ExplanationBackfillWindow = TimeSpan.FromDays(14);
+
+    /// <summary>
+    /// How many alerts one pass will try to backfill an explanation for. Small on
+    /// purpose: this runs every five minutes, and a member with a backlog catches up over a few
+    /// passes rather than paying for all of it at once.
+    /// </summary>
+    private const int MaxExplanationRetriesPerPass = 2;
+
+    /// <summary>
+    /// One alert's explanation, best-effort: the alert is already stored, and an explanation that
+    /// did not get written is a card the detail screen leaves out rather than a reason to unwind
+    /// the member's pass.
+    /// </summary>
+    private async Task ExplainOneAsync(Guid alertId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            await _insights!.RegenerateAlertInsightAsync(alertId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex,
+                "Insight generation failed for Alert {AlertId}; the alert was stored.",
+                alertId);
+        }
     }
 
     /// <summary>

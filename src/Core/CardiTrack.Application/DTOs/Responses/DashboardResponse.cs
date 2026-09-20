@@ -117,6 +117,14 @@ public class DashboardResponse
     /// </remarks>
     public ReassuranceResponse? Reassurance { get; set; }
 
+    /// <summary>
+    /// How this member reads against their own learned normal, and — once they have a month of
+    /// history — which way they have been going. Null while nothing has been written for them yet,
+    /// or while what was written has gone stale; the card renders nothing rather than a heading
+    /// over an empty body.
+    /// </summary>
+    public MemberInsightResponse? Insight { get; set; }
+
     public DateTime GeneratedAt { get; set; }
 }
 
@@ -369,4 +377,47 @@ public class DashboardAlertSummary
     /// so a client never has to infer the lifecycle from the strip it happens to be reading.
     /// </remarks>
     public string Status { get; set; } = "new";
+}
+
+/// <summary>
+/// The stored interpretations a caregiver sees beside the numbers: the reading against their own
+/// baseline, and the longer trend narrative where one exists.
+/// </summary>
+/// <remarks>
+/// Both are written by pipeline passes and served from rows, never generated on the request — see
+/// <c>MemberInsight</c>. They are carried together because a caregiver reads them together: the
+/// baseline half answers "how are they now", the trend half "where has this been going", and
+/// either alone invites the reader to supply the other from imagination.
+/// </remarks>
+public class MemberInsightResponse
+{
+    /// <summary>The reading against their own baseline. Null when none is stored or it is stale.</summary>
+    public string? Summary { get; set; }
+
+    /// <summary>The supporting points behind <see cref="Summary"/>, in order.</summary>
+    public IReadOnlyList<string> KeyFindings { get; set; } = [];
+
+    /// <summary>
+    /// The trend narrative. Null while the member has under a month of readings — that is the
+    /// learning state, and there is no trajectory to describe yet.
+    /// </summary>
+    public string? Trend { get; set; }
+
+    /// <summary>The supporting points behind <see cref="Trend"/>, in order.</summary>
+    public IReadOnlyList<string> TrendFindings { get; set; } = [];
+
+    /// <summary>
+    /// True while no baseline exists at all — the state the dashboard already calls "getting to
+    /// know you". Served from the stored row so the two surfaces cannot disagree.
+    /// </summary>
+    public bool IsLearning { get; set; }
+
+    /// <summary>True when the only baseline behind <see cref="Summary"/> was a short window.</summary>
+    public bool IsProvisional { get; set; }
+
+    /// <summary>The window the baseline behind <see cref="Summary"/> covered, in days.</summary>
+    public int? BaselinePeriodDays { get; set; }
+
+    /// <summary>When the newer of the two rows was written.</summary>
+    public DateTime? GeneratedAt { get; set; }
 }
