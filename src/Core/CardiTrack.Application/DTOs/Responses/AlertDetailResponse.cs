@@ -86,6 +86,20 @@ public class AlertDetailResponse
     public AlertEvidenceResponse? Evidence { get; set; }
 
     /// <summary>
+    /// What this alert means in the recent readings, and one thing the caregiver can do now —
+    /// MedGemma's explanation, written by the pass that raised the alert and stored against it.
+    /// Null when that pass has not reached this alert, or its reply did not survive the register
+    /// guards.
+    /// </summary>
+    /// <remarks>
+    /// Carried on the detail response rather than fetched separately by the screen. The same
+    /// content is available at <c>GET /api/v1/insights/alerts/{alertId}</c> for an API consumer
+    /// that wants only this, but the app opening an alert should not pay a second round trip — and
+    /// a second call is a second thing to fail, to cache, and to leave the screen half-drawn.
+    /// </remarks>
+    public AlertNarrativeResponse? Narrative { get; set; }
+
+    /// <summary>
     /// The one series this alert is about. Null when the rule has no health graph
     /// (<c>device_silence</c>) or there is nothing to plot.
     /// </summary>
@@ -207,6 +221,30 @@ public class AlertChartResponse
     /// either stretch — an unfair comparison is worse than none.
     /// </remarks>
     public string? PartialDayLabel { get; set; }
+}
+
+/// <summary>
+/// The model's reading of one alert: what it means in the readings, and one thing to do now.
+/// </summary>
+/// <remarks>
+/// Distinct from <see cref="AlertEvidenceResponse"/> beside it, and the distinction is the point.
+/// The evidence is arithmetic this codebase can stand behind; this is an interpretation. A screen
+/// that ran them together would let the second borrow the first's authority.
+/// </remarks>
+public class AlertNarrativeResponse
+{
+    /// <summary>What this alert means in the recent readings.</summary>
+    public string Explanation { get; set; } = string.Empty;
+
+    /// <summary>
+    /// One specific thing the caregiver can do now that answers this alert. Never a medication
+    /// change, never a diagnosis, never a fix — see the brief in <c>HealthInsightService</c>.
+    /// Empty when the model offered none that survived the guards.
+    /// </summary>
+    public string? RecommendedAction { get; set; }
+
+    /// <summary>When the pass wrote it.</summary>
+    public DateTime GeneratedAt { get; set; }
 }
 
 /// <summary>

@@ -330,6 +330,59 @@ public partial class JournalPage : ContentPage
     /// Supersedes a load already in flight rather than skipping — for anything the caregiver
     /// asked for by hand. Unattended loads wait their turn.
     /// </param>
+    /// <summary>
+    /// The current trend narrative, above the books. Best-effort: a member with under a month of
+    /// readings has none to show, and a failure here leaves the card hidden rather than saying
+    /// anything about it — the tab's job is the books.
+    /// </summary>
+    private async Task LoadTrendAsync(Guid memberId)
+    {
+        TrendInsightResponse? trend;
+        try
+        {
+            trend = await _api.GetTrendAsync(memberId);
+        }
+        catch (Exception)
+        {
+            // The cached copy where there is one, so a tab opened without a connection still
+            // shows the last longer view rather than dropping it.
+            trend = await PeekTrendSafelyAsync(memberId);
+        }
+
+        RenderTrend(trend);
+    }
+
+    private async Task<TrendInsightResponse?> PeekTrendSafelyAsync(Guid memberId)
+    {
+        try
+        {
+            return await _api.PeekTrendAsync(memberId);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private void RenderTrend(TrendInsightResponse? trend)
+    {
+        var hasNarrative = trend is not null && !string.IsNullOrWhiteSpace(trend.Narrative);
+        TrendCard.IsVisible = hasNarrative;
+        if (!hasNarrative)
+            return;
+
+        TrendNarrativeLabel.Text = trend!.Narrative;
+
+        TrendFindingsLabel.IsVisible = trend.KeyFindings.Count > 0;
+        TrendFindingsLabel.Text = string.Join(
+            Environment.NewLine, trend.KeyFindings.Select(finding => $"• {finding}"));
+
+        // Dated, because a narrative about "the last few weeks" with no date on it invites a
+        // caregiver to read a fortnight-old picture as this morning's.
+        TrendGeneratedLabel.IsVisible = true;
+        TrendGeneratedLabel.Text = RelativeTime.Format(trend.GeneratedAt.UtcDateTime);
+    }
+
     private async Task LoadAsync(bool silent = false, bool force = false)
     {
         if (_gate.IsLoading && !force)
@@ -425,6 +478,10 @@ public partial class JournalPage : ContentPage
                     SetState(error: true);
                     return;
             }
+
+            // The longer view rides the same load but never gates it: the books are what this tab
+            // is for, and a trend lookup that fails should cost the card, not the list.
+            await LoadTrendAsync(memberId);
 
             if (outcome.IsFresh)
                 _lastLoadedUtc = DateTime.UtcNow;

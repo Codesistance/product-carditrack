@@ -15,6 +15,13 @@ public class CardiMemberDetailResponse
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// How this member reads against their own learned normal, and which way it has been going.
+    /// Null while nothing servable has been written for them — the screen renders nothing rather
+    /// than a heading over an empty body. Same block, same composer, as the dashboard's.
+    /// </summary>
+    public MemberInsightResponse? Insight { get; set; }
     public DateOnly DateOfBirth { get; set; }
     public int Age { get; set; }
     public Gender Gender { get; set; }

@@ -141,6 +141,13 @@ public interface ICardiTrackApiClient
     Task<AdviseResponse> GetAdviseAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
+    /// The longer view of this member — where their readings have been going over the weeks. A
+    /// blank narrative means there is not yet a month of readings to describe a trajectory from,
+    /// which is the learning state rather than a failure.
+    /// </summary>
+    Task<TrendInsightResponse> GetTrendAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// The member's daybook entries, newest first — one per finished day, which is what the Summaries
     /// tab lists. An empty list rather than a 404 when none has been written yet: "this member has
     /// no reviews yet" is an ordinary answer to a history question, and the first two days of a new
@@ -523,6 +530,9 @@ public interface ICardiTrackApiClient
     Task<AlertDetailResponse?> PeekAlertAsync(Guid alertId, CancellationToken ct = default);
     Task<DigestResponse?> PeekDigestAsync(Guid cardiMemberId, CancellationToken ct = default);
     Task<AdviseResponse?> PeekAdviseAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>The cached longer view, without a network call. Null when nothing is cached.</summary>
+    Task<TrendInsightResponse?> PeekTrendAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     Task<IReadOnlyList<DigestResponse>?> PeekJournalEntriesAsync(
         Guid cardiMemberId,

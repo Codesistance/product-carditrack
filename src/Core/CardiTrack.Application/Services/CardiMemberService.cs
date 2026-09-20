@@ -619,10 +619,21 @@ public class CardiMemberService : ICardiMemberService
             ? await _unitOfWork.EnvironmentalReadings.GetLatestAsync(member.Id, ct)
             : null;
 
+        // The two stored interpretations, withheld while monitoring is paused for the same reason
+        // the dashboard withholds them: a reading of how someone is doing describes a monitoring
+        // state that has stopped. Sequential — they share the request's DbContext.
+        var baselineInsight = pause.MonitoringPaused
+            ? null
+            : await _unitOfWork.MemberInsights.GetByScopeAsync(member.Id, InsightScope.Baseline);
+        var trendInsight = pause.MonitoringPaused
+            ? null
+            : await _unitOfWork.MemberInsights.GetByScopeAsync(member.Id, InsightScope.Trend);
+
         return new CardiMemberDetailResponse
         {
             Id = member.Id,
             Name = member.Name,
+            Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now),
             DateOfBirth = member.DateOfBirth,
             Age = age,
             Gender = member.Gender,

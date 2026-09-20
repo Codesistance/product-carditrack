@@ -131,6 +131,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             ApiPaths.CurrentStatus(cardiMemberId),
             ApiPaths.Digest(cardiMemberId),
             ApiPaths.Advise(cardiMemberId),
+            ApiPaths.Trend(cardiMemberId),
             ApiPaths.Questionnaires(cardiMemberId, null, DefaultQuestionnairePage, DefaultQuestionnairePageSize),
             ApiPaths.Alerts(null, null, null, null, null, cardiMemberId),
             ApiPaths.CardiMembers,
@@ -254,6 +255,12 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     public Task<AdviseResponse?> PeekAdviseAsync(Guid cardiMemberId, CancellationToken ct = default) =>
         PeekAsync<AdviseResponse>(ApiPaths.Advise(cardiMemberId), ct);
+
+    public Task<TrendInsightResponse> GetTrendAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
+
+    public Task<TrendInsightResponse?> PeekTrendAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
 
     /// <summary>
     /// The first page of a member's questions as every screen asks for it — the detail screen's
