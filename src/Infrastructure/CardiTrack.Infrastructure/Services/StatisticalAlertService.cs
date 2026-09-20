@@ -92,13 +92,22 @@ public class StatisticalAlertService : IStatisticalAlertService
     private readonly ILogger<StatisticalAlertService> _logger;
     private readonly IAlertNotificationEnqueue? _alertEnqueue;
 
+    /// <summary>
+    /// Optional so the many tests that exercise the judgement path need not stand one up, and so
+    /// a host that has not registered the insight service still raises alerts. A missing
+    /// explanation costs the detail screen one card; a missing alert costs a caregiver the thing
+    /// they bought the product for.
+    /// </summary>
+    private readonly IHealthInsightService? _insights;
+
     public StatisticalAlertService(
         IUnitOfWork unitOfWork,
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
         StatusLineGenerationService statusLine,
         ILogger<StatisticalAlertService> logger,
-        IAlertNotificationEnqueue? alertEnqueue = null)
+        IAlertNotificationEnqueue? alertEnqueue = null,
+        IHealthInsightService? insights = null)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
@@ -106,6 +115,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         _statusLine = statusLine;
         _logger = logger;
         _alertEnqueue = alertEnqueue;
+        _insights = insights;
     }
 
     public async Task<int> EvaluateAsync(DateTime utcNow, CancellationToken ct = default)
@@ -400,7 +410,43 @@ public class StatisticalAlertService : IStatisticalAlertService
             }
         }
 
+        await ExplainAsync(created, ct);
+
         return created.Count;
+    }
+
+    /// <summary>
+    /// Writes each new alert's caregiver-facing explanation, here rather than on the request path.
+    /// This pass has already woken MedGemma to judge the findings, so the explanations ride a
+    /// service that is warm; generating them when a caregiver taps the alert instead meant paying
+    /// a cold start, or a 503, in front of someone who had just been told something was wrong.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort with a log, the same stance as the status line and the push enqueue above: the
+    /// alerts are already stored, and an explanation that did not get written is a card the detail
+    /// screen leaves out, not a reason to unwind the member's pass. Sequential rather than
+    /// concurrent — these share the pass's DbContext, and EF Core refuses a second operation on a
+    /// context while one is still running.
+    /// </remarks>
+    private async Task ExplainAsync(IReadOnlyList<Alert> created, CancellationToken ct)
+    {
+        if (_insights is null)
+            return;
+
+        foreach (var alert in created)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                await _insights.RegenerateAlertInsightAsync(alert.Id, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex,
+                    "Insight generation failed for Alert {AlertId}; the alert was stored.",
+                    alert.Id);
+            }
+        }
     }
 
     /// <summary>

@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services.PromptContext;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -14,6 +15,28 @@ public class HealthInsightService : IHealthInsightService
     /// being learned, so the same period decides which prompt this service sends.
     /// </summary>
     private const int PrimaryBaselinePeriodDays = 30;
+
+    /// <summary>
+    /// Which version of the alert brief wrote a stored explanation. Bumped when
+    /// <see cref="AlertInstructions"/> changes in a way that should reach alerts already explained
+    /// — the only thing that earns an alert a second model call.
+    /// </summary>
+    internal const int AlertPromptVersion = 1;
+
+    /// <summary>
+    /// The same, for the three baseline briefs. They move together because which one is sent is
+    /// decided by the member's baseline state rather than by the caller, and versioning them apart
+    /// would leave a member's row claiming a version whose brief it was not written by.
+    /// </summary>
+    internal const int BaselinePromptVersion = 1;
+
+    /// <summary>
+    /// How recently a baseline insight has to have been written before a pass skips it. An hour,
+    /// matching the digest's own regeneration floor: the two ride the same pass, and a floor that
+    /// disagreed with the digest's would either regenerate a member the digest skipped or leave
+    /// this one behind for a whole pass.
+    /// </summary>
+    internal static readonly TimeSpan BaselineRegenerationFloor = TimeSpan.FromHours(1);
 
     /// <summary>Baseline windows compared in a trend analysis, shortest first.</summary>
     private static readonly int[] BaselinePeriodDays = [PrimaryBaselinePeriodDays, 60, 90];
@@ -139,6 +162,24 @@ public class HealthInsightService : IHealthInsightService
         _memberContext.ComposeAsync(
             new MemberContextRequest(member, cardiMemberId, today, DateTime.UtcNow, purpose), ct);
 
+    /// <summary>"Not explained yet" — the shape every declining path returns, so a client never
+    /// has to tell an absent explanation from a failed one.</summary>
+    private static AlertInsightResponse NoAlertInsight(Guid alertId, AlertSeverity severity) => new()
+    {
+        AlertId = alertId,
+        Explanation = string.Empty,
+        Severity = severity,
+        RecommendedAction = string.Empty,
+    };
+
+    /// <summary>
+    /// Read-only since the batch move, for the same reason as <see cref="GetAdviseAsync"/>: the
+    /// explanation is written by the pass that raised the alert
+    /// (<see cref="RegenerateAlertInsightAsync"/>) and persisted against it, so opening an alert
+    /// costs one indexed lookup. It used to build a prompt and call MedGemma inline, which meant a
+    /// caregiver tapping an alert paid a cold start — or, when the shared service was catching up,
+    /// a 503 — for text the pipeline could have written in a pass it was already running.
+    /// </summary>
     public async Task<AlertInsightResponse> AnalyzeAlertAsync(
         Guid requestingUserId, Guid alertId, CancellationToken ct = default)
     {
@@ -147,6 +188,41 @@ public class HealthInsightService : IHealthInsightService
         var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId);
         if (alert is null || !await _access.HasViewAccessAsync(requestingUserId, alert.CardiMemberId, ct))
             throw new KeyNotFoundException($"Alert {alertId} not found.");
+
+        var stored = await _unitOfWork.MemberInsights.GetForAlertAsync(alertId);
+        if (!InsightServability.IsServable(stored, DateTime.UtcNow))
+            return NoAlertInsight(alertId, alert.Severity);
+
+        return new AlertInsightResponse
+        {
+            AlertId = alertId,
+            Explanation = stored.Summary,
+            // From the alert rather than the stored row: severity is the alert's own fact, and an
+            // insight written before a re-judgement must not report the older word for it.
+            Severity = alert.Severity,
+            RecommendedAction = stored.RecommendedAction ?? string.Empty,
+        };
+    }
+
+    /// <summary>
+    /// Writes the explanation for one alert, in the pipeline pass that raised it. Returns whether
+    /// a row was written.
+    /// </summary>
+    /// <remarks>
+    /// Never regenerated once written by the current brief: the alert it explains describes a
+    /// fixed moment and does not change afterwards, so a second pass over the same row would spend
+    /// a model call to say the same thing. A brief change does earn a rewrite — that is what
+    /// <see cref="AlertPromptVersion"/> is for.
+    /// </remarks>
+    public async Task<bool> RegenerateAlertInsightAsync(Guid alertId, CancellationToken ct = default)
+    {
+        var alert = await _unitOfWork.Alerts.GetByIdWithCardiMemberAsync(alertId);
+        if (alert is null)
+            return false;
+
+        var existing = await _unitOfWork.MemberInsights.GetForAlertAsync(alertId);
+        if (existing is not null && existing.PromptVersion >= AlertPromptVersion)
+            return false;
 
         var to = DateOnly.FromDateTime(DateTime.UtcNow);
         var from = to.AddDays(-7);
@@ -165,13 +241,32 @@ public class HealthInsightService : IHealthInsightService
         var aiResponse = await _medicalAi.GenerateStructuredAsync<AlertAiResponse>(prompt, ct);
 
         var name = NamePlaceholder.FirstName(member?.Name);
-        return new AlertInsightResponse
+        var explanation = CaregiverFacingInsight(aiResponse.Explanation, name);
+
+        // An explanation the guards emptied is not an explanation, and storing it would leave the
+        // screen showing a heading over nothing. Withheld entirely, the same stance
+        // AdviseGenerationService takes on a suggestion with no grounding.
+        if (explanation.Length == 0)
+            return false;
+
+        var row = existing ?? new MemberInsight
         {
+            CardiMemberId = alert.CardiMemberId,
+            Scope = InsightScope.Alert,
             AlertId = alertId,
-            Explanation = CaregiverFacingInsight(aiResponse.Explanation, name),
-            Severity = alert.Severity,
-            RecommendedAction = CaregiverFacingInsight(aiResponse.RecommendedAction, name),
         };
+
+        row.Summary = explanation;
+        row.RecommendedAction = CaregiverFacingInsight(aiResponse.RecommendedAction, name);
+        row.BaselinePeriodDays = baseline?.PeriodDays;
+        row.GeneratedAtUtc = DateTime.UtcNow;
+        row.PromptVersion = AlertPromptVersion;
+
+        if (existing is null)
+            await _unitOfWork.MemberInsights.AddAsync(row);
+
+        await _unitOfWork.SaveChangesAsync();
+        return true;
     }
 
     /// <summary>
@@ -192,10 +287,72 @@ public class HealthInsightService : IHealthInsightService
         return JournalRegisterGuards.NamesACondition(resolved) is null ? resolved : string.Empty;
     }
 
+    /// <summary>"Nothing read yet" — the learning state, which is also the honest answer before
+    /// the first pass has run for this member.</summary>
+    private static BaselineInsightResponse NoBaselineInsight(Guid cardiMemberId) => new()
+    {
+        CardiMemberId = cardiMemberId,
+        Summary = string.Empty,
+        KeyFindings = [],
+        IsLearning = true,
+        GeneratedAt = DateTimeOffset.UtcNow,
+    };
+
+    /// <summary>
+    /// Read-only since the batch move. The reading of the member against their own baseline is
+    /// written by the digest pass (<see cref="RegenerateBaselineInsightAsync"/>) and persisted per
+    /// member; this serves the latest row and never calls the model.
+    /// </summary>
     public async Task<BaselineInsightResponse> AnalyzeBaselineAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
+
+        var stored = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Baseline);
+        if (!InsightServability.IsServable(stored, DateTime.UtcNow))
+            return NoBaselineInsight(cardiMemberId);
+
+        return new BaselineInsightResponse
+        {
+            CardiMemberId = cardiMemberId,
+            Summary = stored.Summary,
+            KeyFindings = SplitFindings(stored.KeyFindings),
+            IsLearning = stored.IsLearning,
+            IsProvisional = stored.IsProvisional,
+            BaselinePeriodDays = stored.BaselinePeriodDays,
+            GeneratedAt = new DateTimeOffset(DateTime.SpecifyKind(stored.GeneratedAtUtc, DateTimeKind.Utc)),
+        };
+    }
+
+    /// <summary>
+    /// The stored findings back as a list. Newline-joined on the way in, so a finding that somehow
+    /// carried a blank line does not come back as an empty bullet.
+    /// </summary>
+    private static IReadOnlyList<string> SplitFindings(string? stored) =>
+        string.IsNullOrWhiteSpace(stored)
+            ? []
+            : stored.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>
+    /// Writes the member's reading against their own baseline, in the digest pass. Returns whether
+    /// a row was written.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the alert scope this is rewritten as the picture moves, so it is gated on age and
+    /// brief version rather than on existence: a member whose readings have not moved since the
+    /// last pass is skipped before any model call, the same two gates
+    /// <c>DigestGenerationService</c> applies for the same reason.
+    /// </remarks>
+    public async Task<bool> RegenerateBaselineInsightAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var existing = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Baseline);
+        if (existing is not null
+            && existing.PromptVersion >= BaselinePromptVersion
+            && DateTime.UtcNow - existing.GeneratedAtUtc < BaselineRegenerationFloor)
+        {
+            return false;
+        }
 
         // Sequential, not Task.WhenAll. These lookups all run against the request's DbContext,
         // and EF Core refuses a second operation on a context while one is still running —
@@ -275,20 +432,34 @@ public class HealthInsightService : IHealthInsightService
         // CardiTrackCardiMember — only the alert one does — so a token that reaches a caregiver
         // unresolved is worse than an empty field wherever it happens.
         var name = NamePlaceholder.FirstName(member?.Name);
+        var summary = ResolvedOrEmpty(aiResponse.Summary, name);
+        if (summary.Length == 0)
+            return false;
 
-        return new BaselineInsightResponse
+        var findings = aiResponse.KeyFindings
+            .Select(finding => ResolvedOrEmpty(finding, name))
+            .Where(finding => finding.Length > 0)
+            .ToList();
+
+        var row = existing ?? new MemberInsight
         {
             CardiMemberId = cardiMemberId,
-            Summary = ResolvedOrEmpty(aiResponse.Summary, name),
-            KeyFindings = aiResponse.KeyFindings
-                .Select(finding => ResolvedOrEmpty(finding, name))
-                .Where(finding => finding.Length > 0)
-                .ToList(),
-            IsLearning = isLearning,
-            IsProvisional = provisionalBaseline is not null,
-            BaselinePeriodDays = (primaryBaseline ?? provisionalBaseline)?.PeriodDays,
-            GeneratedAt = DateTimeOffset.UtcNow
+            Scope = InsightScope.Baseline,
         };
+
+        row.Summary = summary;
+        row.KeyFindings = findings.Count > 0 ? string.Join('\n', findings) : null;
+        row.IsLearning = isLearning;
+        row.IsProvisional = provisionalBaseline is not null;
+        row.BaselinePeriodDays = (primaryBaseline ?? provisionalBaseline)?.PeriodDays;
+        row.GeneratedAtUtc = DateTime.UtcNow;
+        row.PromptVersion = BaselinePromptVersion;
+
+        if (existing is null)
+            await _unitOfWork.MemberInsights.AddAsync(row);
+
+        await _unitOfWork.SaveChangesAsync();
+        return true;
     }
 
     /// <summary>"Nothing to say yet" — the contract's own way of saying it, so every path that

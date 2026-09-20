@@ -5,19 +5,38 @@ namespace CardiTrack.Application.Interfaces.Services;
 public interface IHealthInsightService
 {
     /// <summary>
-    /// Analyses an alert for a CardiMember the requesting user is linked to.
-    /// Throws <see cref="KeyNotFoundException"/> when the alert does not exist or the user
-    /// may not view its CardiMember's health data — the two are indistinguishable by design.
+    /// The stored explanation of one alert, for a CardiMember the requesting user is linked to.
+    /// Read-only: the explanation is written by the pipeline pass that raised the alert and
+    /// persisted against it, so this never calls the model. An alert the pass has not reached
+    /// comes back with empty text rather than an error. Throws
+    /// <see cref="KeyNotFoundException"/> when the alert does not exist or the user may not view
+    /// its CardiMember's health data — the two are indistinguishable by design.
     /// </summary>
     Task<AlertInsightResponse> AnalyzeAlertAsync(
         Guid requestingUserId, Guid alertId, CancellationToken ct = default);
 
     /// <summary>
-    /// Analyses baseline trends for a CardiMember the requesting user is linked to.
+    /// The stored reading of a CardiMember against their own baseline, with the learning and
+    /// provisional states the dashboard shows. Read-only, as above — written by the digest pass.
     /// Throws <see cref="KeyNotFoundException"/> when the user may not view that member's health data.
     /// </summary>
     Task<BaselineInsightResponse> AnalyzeBaselineAsync(
         Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Writes the explanation for one alert. Called by the pipeline pass that raised it, never
+    /// from a request — there is no requesting user because there is no caregiver waiting.
+    /// Returns whether a row was written; an alert already explained by the current brief, or one
+    /// whose reply the register guards emptied, writes nothing.
+    /// </summary>
+    Task<bool> RegenerateAlertInsightAsync(Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Writes a CardiMember's reading against their own baseline, in the digest pass. Returns
+    /// whether a row was written; a member whose insight is recent and written by the current
+    /// brief is skipped before any model call.
+    /// </summary>
+    Task<bool> RegenerateBaselineInsightAsync(Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>
     /// A general wellness suggestion for a CardiMember, grounded in their own readings and a fixed

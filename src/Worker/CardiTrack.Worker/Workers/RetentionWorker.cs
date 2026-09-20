@@ -131,7 +131,71 @@ public class RetentionWorker : CronBackgroundService
 
         await EraseDueAccountsAsync(options, utcNow, stoppingToken);
         await DeleteExpiredChatSessionsAsync(options, utcNow, stoppingToken);
+        await DeleteExpiredInsightsAsync(options, utcNow, stoppingToken);
         await DeleteFinishedDeviceInvitesAsync(options, utcNow, stoppingToken);
+    }
+
+    /// <summary>
+    /// Deletes stored insights — the alert explanations, baseline readings and trend narratives in
+    /// <c>MemberInsights</c> — past <see cref="InsightRetention.MaxAge"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Model-written prose about a named person, so it is persisted AI content in the sense the
+    /// DPIA §6.3 means and carries a period of its own. It is swept here rather than dropped with a
+    /// partition because this table is ordinary EF-tracked, like <c>MemberChatSessions</c> — the
+    /// mechanism the partitioned AI stores use does not reach it.
+    /// </para>
+    /// <para>
+    /// Nothing is lost that cannot be rebuilt: the readings behind an insight are kept far longer
+    /// (hourly rollups 13 months, raw daily activity 25), so a member whose row is swept gets a
+    /// fresh one on the next pass that finds their data has moved. The period is a constant rather
+    /// than a configured dial precisely because it is the policy the DPIA records, not a tuning
+    /// knob — see <see cref="InsightRetention"/>.
+    /// </para>
+    /// </remarks>
+    private async Task DeleteExpiredInsightsAsync(
+        RetentionWorkerOptions options, DateTime utcNow, CancellationToken ct)
+    {
+        var cutoff = utcNow - InsightRetention.MaxAge;
+
+        using var scope = _scopeFactory.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        var expired = await unitOfWork.MemberInsights.GetGeneratedBeforeAsync(
+            cutoff, InsightRetention.SweepBatchSize);
+
+        if (expired.Count == 0)
+        {
+            _logger.LogInformation(
+                "Retention found no stored insights older than {Days} days.",
+                InsightRetention.MaxAge.TotalDays);
+            return;
+        }
+
+        if (options.DryRun)
+        {
+            // Ids and scopes only — never the text. A rehearsal an operator reviews must not put
+            // the very prose this pass exists to remove into a log that outlives it.
+            foreach (var insight in expired)
+            {
+                _logger.LogInformation(
+                    "Retention would delete {Scope} insight {InsightId} for CardiMember " +
+                    "{CardiMemberId}, generated {GeneratedAt}, which predates {Cutoff}.",
+                    insight.Scope, insight.Id, insight.CardiMemberId, insight.GeneratedAtUtc, cutoff);
+            }
+
+            _logger.LogInformation(
+                "Retention would delete {Count} stored insight(s) in total.", expired.Count);
+            return;
+        }
+
+        unitOfWork.MemberInsights.RemoveRange(expired);
+        await unitOfWork.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Retention insight pass complete. Insights deleted: {Count}, older than {Days} days.",
+            expired.Count, InsightRetention.MaxAge.TotalDays);
     }
 
     /// <summary>
