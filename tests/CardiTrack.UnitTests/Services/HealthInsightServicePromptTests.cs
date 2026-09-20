@@ -77,6 +77,79 @@ public class HealthInsightServicePromptTests
     /// move, so what used to be read off the response is read off the insight it persisted — the
     /// text still has to survive the same placeholder and register guards on the way in.
     /// </summary>
+    // ── The quiet member ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A member sitting where they always sit costs nothing and says nothing.
+    /// </summary>
+    /// <remarks>
+    /// This is the case the card was built wrong for. Asked to describe seven days of readings it
+    /// produced a line per metric — "resting heart rate remained relatively stable" reported as a
+    /// key finding — so the caregiver was handed the data restated and left to do the judging
+    /// themselves. Nothing has moved, so there is nothing to say, and the call is not made at all
+    /// rather than made and thrown away.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_SpendsNoModelCall_WhenNothingHasMovedFromTheirUsual()
+    {
+        SetupSteadyWeek();
+
+        var written = await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        Assert.False(written);
+        Assert.True(NothingStored());
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    /// <summary>
+    /// And the last thing that did need attention is taken down, not left to age out.
+    /// </summary>
+    /// <remarks>
+    /// The card is read as "something wants your attention". <see cref="InsightServability"/>
+    /// serves a member-scoped row for three days, so without this a concern that passed on Monday
+    /// would go on being shown until Thursday — the card still claiming something is off about
+    /// someone who is fine.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_RemovesTheStandingRow_OnceNothingIsOffAnyMore()
+    {
+        SetupSteadyWeek();
+
+        var standing = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Their steps were well down last week.",
+            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
+            PromptVersion = HealthInsightService.BaselinePromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(standing);
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        _insights.Received(1).Remove(standing);
+        await _unitOfWork.Received().SaveChangesAsync();
+    }
+
+    /// <summary>A week whose every metric sits on the member's own usual.</summary>
+    private void SetupSteadyWeek()
+    {
+        SetupBaseline();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(0, 7)
+                .Select(offset => new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today.AddDays(-offset),
+                    Steps = 5_200,
+                    RestingHeartRate = 68,
+                    SleepMinutes = 412,
+                })
+                .ToList());
+    }
+
     private MemberInsight StoredInsight() =>
         _insights.ReceivedCalls()
             .Where(call => call.GetMethodInfo().Name == nameof(IMemberInsightRepository.AddAsync))
@@ -115,6 +188,25 @@ public class HealthInsightServicePromptTests
                 StdDevHeartRate = 3.2m,
                 AvgSleepMinutes = 412,
             });
+
+        // A week with something in it. The established path only builds a prompt when a metric
+        // has actually departed from their usual — a member sitting where they always sit is the
+        // quiet case and costs no model call at all — so a fixture of no readings would leave
+        // every prompt assertion below with nothing to assert against.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(0, 7)
+                .Select(offset => new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today.AddDays(-offset),
+                    // Well below the 5,200 usual, so steps are the departure.
+                    Steps = 3_000,
+                    // Both sitting on their usual, so they come through as steady.
+                    RestingHeartRate = 68,
+                    SleepMinutes = 412,
+                })
+                .ToList());
     }
 
     private string CapturedPrompt() =>
@@ -379,6 +471,9 @@ public class HealthInsightServicePromptTests
             PeriodDays = 30,
             TypicalBedtime = new TimeOnly(22, 40),
             TypicalWakeTime = new TimeOnly(6, 15),
+            // A usual for the seeded week to depart from: without one nothing has moved, and the
+            // established path spends no model call at all, so there is no prompt to read.
+            AvgSteps = 5_200,
         });
 
         await CreateSut().RegenerateBaselineInsightAsync(_memberId);
