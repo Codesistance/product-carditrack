@@ -79,6 +79,13 @@ public class AlertDetailResponse
     public AlertComparisonResponse? Comparison { get; set; }
 
     /// <summary>
+    /// Why this alert fired — the producer's own yardstick, in the caregiver's register. Null on a
+    /// row this build cannot explain honestly (a markerless legacy alert, or a rule it does not
+    /// know), because a card that shrugs still reads as a claim.
+    /// </summary>
+    public AlertEvidenceResponse? Evidence { get; set; }
+
+    /// <summary>
     /// The one series this alert is about. Null when the rule has no health graph
     /// (<c>device_silence</c>) or there is nothing to plot.
     /// </summary>
@@ -200,4 +207,41 @@ public class AlertChartResponse
     /// either stretch — an unfair comparison is worse than none.
     /// </remarks>
     public string? PartialDayLabel { get; set; }
+}
+
+/// <summary>
+/// The evidence behind one alert: what the rule watched, and where its line sat. Composed in .NET
+/// from the figures the producer stamped — never a model call, so there is nothing here that was
+/// not either measured or written by hand.
+/// </summary>
+/// <seealso cref="CardiTrack.Application.Services.AlertEvidenceComposer"/>
+public class AlertEvidenceResponse
+{
+    /// <summary>
+    /// The rule's name on the alert-settings screen ("Heart rate variability has dropped"), or the
+    /// caregiver's own name for their alarm. The card a caregiver is reading and the toggle that
+    /// would turn it off have to be visibly the same thing.
+    /// </summary>
+    public string RuleLabel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// One or two sentences saying what it took to raise this — the yardstick, and why the rule is
+    /// shaped that way where the shape is the surprising part (both halves of a pairing, two nights
+    /// rather than one, a measured zero rather than a missing reading).
+    /// </summary>
+    public string WhyLine { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The line this reading crossed, as a short phrase for a chip beside the comparison — "Below
+    /// 47.6 ms, two nights running". Null when the producer stamped no margin and the rule's
+    /// constant alone cannot name a figure this member's reading was actually judged against.
+    /// </summary>
+    public string? ThresholdLabel { get; set; }
+
+    /// <summary>
+    /// The window the "usual" in <see cref="WhyLine"/> was learned over, in days. Null when no
+    /// baseline was read — the figures then came from the alert's own stamp, and naming a window
+    /// we did not look at would be an invention.
+    /// </summary>
+    public int? BaselinePeriodDays { get; set; }
 }

@@ -340,8 +340,15 @@ public class AlertDetailComposerTests
         var detail = AlertDetailComposer.Compose(
             alert, Member(), null, [Log(_today, steps: 4000)], _today, null, null);
 
+        // No health graph: there is no series to draw for hours whose whole point is that nothing
+        // was measured in them. The comparison, though, is about the silence itself — how long the
+        // watch has been quiet against the stretch that raises the alert — so it is not empty here.
         Assert.Null(detail.Chart);
-        Assert.Null(detail.Comparison);
+        Assert.Equal("Quiet for", detail.Comparison!.CurrentLabel);
+        Assert.Equal("4.4 h", detail.Comparison.CurrentValue);
+        // This row stamped no threshold, so there is no limit to report it against.
+        Assert.Equal("—", detail.Comparison.NormalValue);
+        Assert.Null(detail.Comparison.ChangeLabel);
         Assert.Equal(new DateTime(2026, 8, 14, 8, 0, 0, DateTimeKind.Utc), detail.LastDataAt);
     }
 
