@@ -118,6 +118,35 @@ public class InsightsController : BaseApiController
     }
 
     /// <summary>
+    /// The longer view of a CardiMember — where their readings have been going over the weeks —
+    /// written by the daily trend pass and persisted per member; read-only here, no model call on
+    /// this path. A blank <c>narrative</c> means there is not yet a month of readings to describe
+    /// a trajectory from, which is the learning state rather than a failure.
+    /// </summary>
+    [HttpGet("members/{cardiMemberId:guid}/trend")]
+    [ProducesResponseType(typeof(ApiResponse<TrendInsightResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<TrendInsightResponse>>> GetTrend(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _insightService.GetTrendAsync(UserContext.UserId, cardiMemberId, ct);
+            return Success(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
     /// A wellness suggestion for a CardiMember, generated from their readings by the pipeline's
     /// batch pass and persisted per member; read-only here, no model call on this path.
     /// A blank <c>suggestion</c> means there's nothing to say yet.

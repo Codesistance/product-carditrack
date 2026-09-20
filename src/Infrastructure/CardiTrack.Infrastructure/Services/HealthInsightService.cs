@@ -462,6 +462,42 @@ public class HealthInsightService : IHealthInsightService
         return true;
     }
 
+    /// <summary>
+    /// Read-only, like the alert and baseline reads: the narrative is written by the daily
+    /// <c>--job trend</c> pass and persisted per member.
+    /// </summary>
+    public async Task<TrendInsightResponse> GetTrendAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
+
+        var stored = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Trend);
+        if (!InsightServability.IsServable(stored, DateTime.UtcNow))
+            return NoTrend(cardiMemberId);
+
+        return new TrendInsightResponse
+        {
+            CardiMemberId = cardiMemberId,
+            Narrative = stored.Summary,
+            KeyFindings = MemberInsightComposer.Findings(stored),
+            BaselinePeriodDays = stored.BaselinePeriodDays,
+            GeneratedAt = new DateTimeOffset(DateTime.SpecifyKind(stored.GeneratedAtUtc, DateTimeKind.Utc)),
+        };
+    }
+
+    /// <summary>
+    /// "No trajectory yet" — a member under a month of readings, or one whose narrative has gone
+    /// stale. Empty text rather than an error: there is nothing wrong, there is just nothing this
+    /// can honestly say.
+    /// </summary>
+    private static TrendInsightResponse NoTrend(Guid cardiMemberId) => new()
+    {
+        CardiMemberId = cardiMemberId,
+        Narrative = string.Empty,
+        KeyFindings = [],
+        GeneratedAt = DateTimeOffset.UtcNow,
+    };
+
     /// <summary>"Nothing to say yet" — the contract's own way of saying it, so every path that
     /// declines to answer does so in the shape the dashboard already handles.</summary>
     private static CurrentStatusMessageResponse NoStatusMessage() =>

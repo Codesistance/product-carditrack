@@ -1562,6 +1562,15 @@ public partial class DigestGenerationService : IDigestGenerationService
                 memberId);
         }
 
+        // The trend narrative, where one has been written. Routing it into the family summary is
+        // what docs/llm_design.md's trend pipeline calls for — the day's readings say how today
+        // went, and only the month behind them says whether today is part of something.
+        //
+        // Deliberately *only* the family summary. The journal books are raw reassessments of their
+        // own period and never read another narrative (release_matrix.md pins that with a test),
+        // so nothing here reaches them.
+        var trendSection = await TrendSectionAsync(memberId, utcNow, ct);
+
         var prompt = $"""
             {FamilyDigestClinicalInstructions}
 
@@ -1569,6 +1578,7 @@ public partial class DigestGenerationService : IDigestGenerationService
             {memberContext}
             {UsualPatternSection(baseline, logs, describedDate)}
             {DigestInterpretationSignals.Section(baseline, today, yesterday, localNow)}
+            {trendSection}
             [INPUT DATA]
             oldest first; the summary is about today
             {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.FamilyDigestDailyReadingsJson(logs, describedDate, progress))}
@@ -1790,6 +1800,40 @@ public partial class DigestGenerationService : IDigestGenerationService
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The member's stored trend narrative as a prompt section, or empty when there is none worth
+    /// carrying.
+    /// </summary>
+    /// <remarks>
+    /// Labelled as the longer view and marked as already written, so the model treats it as
+    /// context rather than as a draft to rewrite: the summary it is producing describes today, and
+    /// a month's narrative pasted into it would drown the day it is about.
+    /// </remarks>
+    private async Task<string> TrendSectionAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
+    {
+        try
+        {
+            var trend = await _unitOfWork.MemberInsights.GetByScopeAsync(memberId, InsightScope.Trend);
+            if (!InsightServability.IsServable(trend, utcNow))
+                return string.Empty;
+
+            return $"""
+                --- The longer view (already written, for context only) ---
+                {trend.Summary}
+                """;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Context, not content: a summary without it is a summary about today, which is what
+            // it is for. Never a reason to fail the member's pass.
+            _logger.LogWarning(ex,
+                "Could not read the trend narrative for CardiMember {CardiMemberId}; the summary is "
+                + "written without it.",
+                memberId);
+            return string.Empty;
+        }
     }
 
     /// <summary>
