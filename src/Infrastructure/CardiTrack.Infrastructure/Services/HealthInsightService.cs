@@ -224,7 +224,12 @@ public class HealthInsightService : IHealthInsightService
         if (existing is not null && existing.PromptVersion >= AlertPromptVersion)
             return false;
 
-        var to = DateOnly.FromDateTime(DateTime.UtcNow);
+        // Anchored to the alert, not to now. The backfill in StatisticalAlertService can reach a
+        // standing alert weeks after it fired, and a window taken from today would explain that
+        // alert with readings from a fortnight it had nothing to do with — an explanation of one
+        // event written from another week's data is worse than no explanation at all. For an alert
+        // raised moments ago, which is the common case, this is the same window as before.
+        var to = DateOnly.FromDateTime(AsUtc(alert.TriggeredDate));
         var from = to.AddDays(-7);
         var recentLogs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(alert.CardiMemberId, from, to);
@@ -504,6 +509,17 @@ public class HealthInsightService : IHealthInsightService
         Narrative = string.Empty,
         KeyFindings = [],
         GeneratedAt = DateTimeOffset.UtcNow,
+    };
+
+    /// <summary>
+    /// An instant as UTC, whatever kind it arrived as — rows read back from Postgres come through
+    /// unspecified, and a fixture may hand this a local one.
+    /// </summary>
+    private static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Utc => value,
+        _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
     };
 
     /// <summary>"Nothing to say yet" — the contract's own way of saying it, so every path that

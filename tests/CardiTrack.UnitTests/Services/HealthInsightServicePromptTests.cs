@@ -508,6 +508,32 @@ public class HealthInsightServicePromptTests
     }
 
     [Fact]
+    public async Task AlertPrompt_ReadsTheWeekAroundTheAlert_NotTheWeekAroundNow()
+    {
+        // The backfill can reach a standing alert weeks after it fired. A window taken from today
+        // would explain that alert with readings from a fortnight it had nothing to do with.
+        SetupAlert();
+        var firedOn = new DateOnly(2026, 8, 3);
+        _alerts.GetByIdWithCardiMemberAsync(_alertId).Returns(new Alert
+        {
+            Id = _alertId,
+            CardiMemberId = _memberId,
+            AlertType = AlertType.Inactivity,
+            Severity = AlertSeverity.Yellow,
+            Title = "Quieter than usual",
+            Message = "They moved less than they normally do.",
+            TriggeredDate = firedOn.ToDateTime(new TimeOnly(9, 0), DateTimeKind.Utc),
+            MetricValues = """{"rule":"activity_decline"}""",
+            IsActive = true,
+        });
+
+        await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        await _activityLogs.Received().GetByCardiMemberAndDateRangeAsync(
+            _memberId, firedOn.AddDays(-7), firedOn);
+    }
+
+    [Fact]
     public async Task AlertInsight_WithholdsAWhitespaceOnlyReply()
     {
         SetupAlert();
