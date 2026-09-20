@@ -131,7 +131,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             ApiPaths.CurrentStatus(cardiMemberId),
             ApiPaths.Digest(cardiMemberId),
             ApiPaths.Advise(cardiMemberId),
-            ApiPaths.Trend(cardiMemberId),
             ApiPaths.Questionnaires(cardiMemberId, null, DefaultQuestionnairePage, DefaultQuestionnairePageSize),
             ApiPaths.Alerts(null, null, null, null, null, cardiMemberId),
             ApiPaths.CardiMembers,
@@ -257,29 +256,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         PeekAsync<AdviseResponse>(ApiPaths.Advise(cardiMemberId), ct);
 
     /// <summary>
-    /// The stored trend narrative. A 403 evicts the cached copy on the way out: the caregiver's
-    /// access to this member has been withdrawn, and the narrative is health content about
-    /// someone they may no longer see. Leaving it in the cache would let the next open without a
-    /// connection render it from disk, which is the withdrawal undone by the offline path.
-    /// </summary>
-    public async Task<TrendInsightResponse> GetTrendAsync(
-        Guid cardiMemberId, CancellationToken ct = default)
-    {
-        try
-        {
-            return await GetAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
-        }
-        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
-        {
-            await EvictAsync(ApiPaths.Trend(cardiMemberId));
-            throw;
-        }
-    }
-
-    public Task<TrendInsightResponse?> PeekTrendAsync(Guid cardiMemberId, CancellationToken ct = default) =>
-        PeekAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
-
-    /// <summary>
     /// The first page of a member's questions as every screen asks for it — the detail screen's
     /// call takes the defaults, and the questionnaires screen's own constant matches them.
     /// </summary>
@@ -292,11 +268,6 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         ApiPaths.CardiMember(cardiMemberId),
         ApiPaths.Dashboard(cardiMemberId),
         ApiPaths.CardiMembers,
-        // The stored interpretations, because pausing monitoring is exactly when they stop being
-        // true. The server withholds them for a paused member, but the Journal tab falls back to
-        // its cached copy when a request fails, and a cached pre-pause narrative would then be
-        // rendered for monitoring that has stopped — the suppression undone by the cache.
-        ApiPaths.Trend(cardiMemberId),
     ];
 
     /// <summary>

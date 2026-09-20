@@ -622,8 +622,6 @@ public partial class CardiMemberDetailPage : ContentPage
         NameLabel.Text = member.Name;
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";
 
-        ApplyInsight(member.Insight);
-
         WeatherChip.IsVisible = member.Weather is not null;
         if (member.Weather is { } weather)
         {
@@ -850,70 +848,6 @@ public partial class CardiMemberDetailPage : ContentPage
             // No suggestion yet — the card stays hidden, same as Apply()'s placeholder stance.
         }
     }
-
-    /// <summary>
-    /// How this member reads against their own normal, and the longer view where there is one.
-    /// </summary>
-    /// <remarks>
-    /// Every label hides on its own rather than the card rendering an empty line: a member with a
-    /// baseline reading and no trend yet is the normal case for the first month, and a heading
-    /// over nothing reads as something that failed to load. The whole card hides when the server
-    /// sent no block at all — which it does while monitoring is paused, because a reading of how
-    /// someone is doing describes watching that has stopped.
-    /// </remarks>
-    private void ApplyInsight(MemberInsightResponse? insight)
-    {
-        InsightCard.IsVisible = insight is not null;
-        if (insight is null)
-            return;
-
-        InsightSummaryLabel.IsVisible = !string.IsNullOrWhiteSpace(insight.Summary);
-        InsightSummaryLabel.Text = insight.Summary ?? string.Empty;
-
-        InsightFindingsLabel.IsVisible = insight.KeyFindings.Count > 0;
-        InsightFindingsLabel.Text = Bulleted(insight.KeyFindings);
-
-        var hasTrend = !string.IsNullOrWhiteSpace(insight.Trend);
-        InsightTrendTitleLabel.IsVisible = hasTrend;
-        InsightTrendLabel.IsVisible = hasTrend;
-        InsightTrendLabel.Text = insight.Trend ?? string.Empty;
-
-        // Only between two halves that are both present — a rule under the last line of a card is
-        // a rule with nothing to separate.
-        InsightDivider.IsVisible = hasTrend && InsightSummaryLabel.IsVisible;
-
-        InsightGeneratedLabel.IsVisible = insight.GeneratedAt is not null;
-        InsightGeneratedLabel.Text = InsightFooter(insight);
-    }
-
-    /// <summary>
-    /// The window the comparison is against, and when it was written. Both, because either alone
-    /// leaves a caregiver to assume the other: a reading with no date invites them to treat last
-    /// week's picture as this morning's, and one with no window does not say how much of their
-    /// life it is measured against.
-    /// </summary>
-    private static string InsightFooter(MemberInsightResponse insight)
-    {
-        if (insight.GeneratedAt is not { } generated)
-            return string.Empty;
-
-        var written = RelativeTime.Format(generated);
-
-        if (insight.IsLearning)
-            return $"Still getting to know them · {written}";
-
-        var window = insight.BaselinePeriodDays is { } days
-            ? insight.IsProvisional
-                ? $"Against an early {days}-day picture"
-                : $"Against their last {days} days"
-            : "Against their own usual";
-
-        return $"{window} · {written}";
-    }
-
-    /// <summary>One point per line, bulleted in the text — at most a handful, never a repeater.</summary>
-    private static string Bulleted(IReadOnlyList<string> points) =>
-        string.Join(Environment.NewLine, points.Select(point => $"• {point}"));
 
     /// <summary>
     /// Shows the "Something to try" (Advise) card, or hides it when there is nothing to suggest right now

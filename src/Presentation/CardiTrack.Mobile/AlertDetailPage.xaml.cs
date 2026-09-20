@@ -185,8 +185,6 @@ public partial class AlertDetailPage : ContentPage
         ApplyChart(alert);
         ApplyComparison(alert.Comparison, alert.Severity);
         ApplyContext(alert, firstName);
-        ApplyEvidence(alert);
-        ApplyNarrative(alert);
         ApplyAcknowledgement(alert);
 
         QuickActions.Apply(
@@ -375,56 +373,6 @@ public partial class AlertDetailPage : ContentPage
 
         ContextCard.IsVisible = copy is not null;
         ContextLabel.Text = copy ?? string.Empty;
-    }
-
-    /// <summary>
-    /// Why this alert came through: the rule's own yardstick, and the line the reading crossed.
-    /// </summary>
-    /// <remarks>
-    /// Rendered from the server's composed sentences rather than assembled here. The wording has
-    /// to match what the API tells an integrator and what the compliance record claims the product
-    /// tells a caregiver, and three copies of a sentence is three chances for one of them to drift.
-    /// The whole card hides when the server sent none — an alert this build cannot explain
-    /// honestly shows nothing, because a card that shrugs still reads as a claim.
-    /// </remarks>
-    private void ApplyEvidence(AlertDetailResponse alert)
-    {
-        var evidence = alert.Evidence;
-        EvidenceCard.IsVisible = evidence is not null;
-        if (evidence is null)
-            return;
-
-        // The rule's name on the alert-settings screen, with the window its "usual" was learned
-        // over where there is one: the caregiver can then find the toggle that silences this, and
-        // knows how much history is behind the comparison.
-        EvidenceRuleLabel.Text = evidence.BaselinePeriodDays is { } days
-            ? $"{evidence.RuleLabel} · measured against their last {days} days"
-            : evidence.RuleLabel;
-        EvidenceRuleLabel.IsVisible = !string.IsNullOrWhiteSpace(EvidenceRuleLabel.Text);
-
-        EvidenceWhyLabel.Text = evidence.WhyLine;
-
-        EvidenceThresholdChip.IsVisible = !string.IsNullOrWhiteSpace(evidence.ThresholdLabel);
-        EvidenceThresholdLabel.Text = evidence.ThresholdLabel ?? string.Empty;
-    }
-
-    /// <summary>
-    /// The model's reading of the alert, written by the pass that raised it. Absent until that
-    /// pass has run, which for an alert opened seconds after it arrived is the normal case — the
-    /// card appears on the next refresh rather than the screen waiting for it.
-    /// </summary>
-    private void ApplyNarrative(AlertDetailResponse alert)
-    {
-        var narrative = alert.Narrative;
-        NarrativeCard.IsVisible = narrative is not null
-            && !string.IsNullOrWhiteSpace(narrative.Explanation);
-        if (!NarrativeCard.IsVisible)
-            return;
-
-        NarrativeLabel.Text = narrative!.Explanation;
-
-        NarrativeActionLabel.IsVisible = !string.IsNullOrWhiteSpace(narrative.RecommendedAction);
-        NarrativeActionLabel.Text = narrative.RecommendedAction ?? string.Empty;
     }
 
     private static string StillStretchLine(

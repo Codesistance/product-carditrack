@@ -183,7 +183,6 @@ public sealed class OfflineCacheWarmer : IOfflineCacheWarmer
         ct => _api.GetCurrentStatusAsync(memberId, ct),
         ct => _api.GetDigestAsync(memberId, ct),
         ct => _api.GetAdviseAsync(memberId, ct),
-        ct => _api.GetTrendAsync(memberId, ct),
         ct => _api.GetDevicesAsync(memberId, ct),
         ct => _api.GetAlertPreferencesAsync(memberId, ct),
         ct => _api.GetMemberAlarmsAsync(memberId, ct),

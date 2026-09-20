@@ -303,60 +303,6 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- Why this fired: the rule's own yardstick, composed in .NET from the
-                             figures the producer stamped. Sits after the comparison because it
-                             explains the two columns above it, and before the model's reading
-                             because arithmetic earns the first word. -->
-                        <Border x:Name="EvidenceCard"
-                                Style="{StaticResource ElevatedCard}"
-                                IsVisible="False">
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="Why this came through"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                                <Label x:Name="EvidenceRuleLabel"
-                                       Style="{StaticResource Caption}"
-                                       LineBreakMode="WordWrap"/>
-                                <Label x:Name="EvidenceWhyLabel"
-                                       Style="{StaticResource Body2}"
-                                       LineBreakMode="WordWrap"/>
-                                <!-- The line the reading crossed, as a chip so it reads as a
-                                     figure rather than as another sentence. -->
-                                <Border x:Name="EvidenceThresholdChip"
-                                        IsVisible="False"
-                                        Padding="10,5"
-                                        HorizontalOptions="Start"
-                                        StrokeThickness="0"
-                                        BackgroundColor="{StaticResource InputBackground}">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="12"/>
-                                    </Border.StrokeShape>
-                                    <Label x:Name="EvidenceThresholdLabel"
-                                           Style="{StaticResource Caption}"
-                                           LineBreakMode="WordWrap"/>
-                                </Border>
-                            </VerticalStackLayout>
-                        </Border>
-
-                        <!-- The model's reading of the same alert, kept in its own card rather
-                             than run together with the evidence above: one is arithmetic this
-                             product can stand behind, the other is an interpretation, and a
-                             single card would let the second borrow the first's authority. -->
-                        <Border x:Name="NarrativeCard"
-                                Style="{StaticResource ElevatedCard}"
-                                IsVisible="False">
-                            <VerticalStackLayout Spacing="6">
-                                <Label Text="What this means"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                                <Label x:Name="NarrativeLabel"
-                                       Style="{StaticResource Body2}"
-                                       LineBreakMode="WordWrap"/>
-                                <Label x:Name="NarrativeActionLabel"
-                                       Style="{StaticResource Body2Dark}"
-                                       IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
-                            </VerticalStackLayout>
-                        </Border>
-
                         <!-- The same four actions the Dashboard's CardiMember card offers, and the
                              same control — this screen used to carry its own pair of full-width
                              Call/Message buttons, worded differently and with their own

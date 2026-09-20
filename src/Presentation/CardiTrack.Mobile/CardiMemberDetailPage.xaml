@@ -376,56 +376,6 @@
                             </VerticalStackLayout>
                         </Border>
 
-                        <!-- How this member reads against their own learned normal, and — once
-                             there is a month behind them — which way it has been going. Both
-                             halves in one card because a caregiver reads them together: either
-                             alone invites them to supply the other from imagination. Written by
-                             the pipeline, served from a row, so opening this page never waits on
-                             a model. -->
-                        <Border x:Name="InsightCard"
-                                Style="{StaticResource ElevatedCard}"
-                                IsVisible="False">
-                            <VerticalStackLayout Spacing="10">
-                                <Label Text="How they are doing"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-
-                                <Label x:Name="InsightSummaryLabel"
-                                       Style="{StaticResource Body2}"
-                                       IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
-
-                                <!-- The supporting points, one per line. Bullets are drawn in the
-                                     text rather than by a repeater: there are at most a handful,
-                                     and a BindableLayout here would be machinery for three
-                                     sentences. -->
-                                <Label x:Name="InsightFindingsLabel"
-                                       Style="{StaticResource Caption}"
-                                       IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
-
-                                <BoxView x:Name="InsightDivider"
-                                         HeightRequest="1"
-                                         Color="{StaticResource Divider}"
-                                         IsVisible="False"/>
-
-                                <Label x:Name="InsightTrendTitleLabel"
-                                       Text="The longer view"
-                                       Style="{StaticResource Body2Dark}"
-                                       IsVisible="False"/>
-                                <Label x:Name="InsightTrendLabel"
-                                       Style="{StaticResource Body2}"
-                                       IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
-
-                                <!-- Says which window the comparison is against, and when it was
-                                     written. A reading with no date on it invites a caregiver to
-                                     treat last week's picture as this morning's. -->
-                                <Label x:Name="InsightGeneratedLabel"
-                                       Style="{StaticResource Caption}"
-                                       IsVisible="False"/>
-                            </VerticalStackLayout>
-                        </Border>
-
                         <!-- A question the service is asking the family, when there is one waiting.
                              Sits with the summary and the suggestions because it comes from the
                              same reading of the same day — and inline, never as a popup: a
