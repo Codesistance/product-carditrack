@@ -21,8 +21,7 @@ is reused here as-is:
 |---|---|
 | Project | `carditrack-490120` (number `206164751924`) |
 | Pool / provider | `carditrack-pool` / `github` |
-| Service account | `carditrack-deploy@carditrack-490120.iam.gserviceaccount.com` (deploys) |
-| Digest identity | `carditrack-digest@carditrack-490120.iam.gserviceaccount.com` (this workflow; no project roles) |
+| Service account | `carditrack-deploy@carditrack-490120.iam.gserviceaccount.com` (deploys; also posts the digest — no separate identity) |
 | Attribute condition | `assertion.repository=='Codesistance/product-carditrack'` |
 
 That condition is the thing that stops any repo on GitHub assuming the service
@@ -41,24 +40,11 @@ no project IDs to fill in anywhere.
 
 ## 2. Secret into Secret Manager
 
-**Rerun the bootstrap first.** `carditrack-digest` is created by
-`scripts/setup-gcp-auth.sh`, not by Terraform, and this project has already run
-an older copy of that script — which skips anything that exists and so will not
-add the account on its own:
-
-```bash
-bash scripts/setup-gcp-auth.sh
-```
-
-That run also adds `attribute.job_workflow_ref` to the OIDC provider and binds
-the account to the posting workflow. Until it has happened, the Terraform
-binding below refers to a principal that does not exist and the workflow cannot
-authenticate.
-
-The secret and its IAM binding are declared in
-`infrastructure/common/secret_manager.tf` (`carditrack-common-slack-bot-token`),
-created with a `REPLACE_ME` placeholder that Terraform then ignores. Then apply
-the common stack and load the real value:
+`slack-bot-token` is declared in `infrastructure/common/secret_manager.tf`,
+inside `store_distribution_secrets` — the same set and the same
+`carditrack-deploy` accessor grant every other common secret in that file
+uses, not a bespoke resource block. Created with a `REPLACE_ME` placeholder
+that Terraform then ignores. Apply the common stack, then load the real value:
 
 ```bash
 echo -n 'xoxb-your-token' | \
@@ -66,13 +52,12 @@ echo -n 'xoxb-your-token' | \
     --project=carditrack-490120 --data-file=-
 ```
 
-The accessor grant is **per secret**, to `carditrack-digest` — an identity with
-no project-level roles, so this binding is the whole of its read access, and the
-bootstrap now fails closed if that account is ever found holding one. It is
-deliberately not `carditrack-deploy`, which holds project-level
-`roles/secretmanager.admin` and could read every secret regardless of any
-per-secret binding. See *Hardening still required* for what this does and does
-not protect against.
+The accessor grant goes to `carditrack-deploy` — the same account every deploy
+workflow already authenticates as, and the one `post-digest.yml` now uses too.
+It already holds project-level `roles/secretmanager.admin`, so this per-secret
+binding adds nothing it didn't already have; it's there only for consistency
+with the rest of the file, not for isolation. See *Accepted tradeoff* below for
+what that costs.
 
 ## 3. Repo settings
 
@@ -133,9 +118,6 @@ workflow only posts files a push adds, so a later delete cannot re-trigger it.
   `HEAD^ HEAD`, so a push carrying several commits posts every digest in it. It
   filters to added files only, so editing a digest after the fact does not
   re-post it.
-- Grant `secretAccessor` per secret, never at project level — and grant it to
-  `carditrack-digest`, not `carditrack-deploy`: a per-secret grant to an account
-  that already holds project-level `secretmanager.admin` isolates nothing.
 
 ## Hardening still required
 
@@ -160,45 +142,36 @@ Close it with one of:
   routine pushing to a side branch — with no `main` write at all — cannot alter
   what runs.
 
-**2. The posting identity is over-privileged.** Closed. Posting now assumes
-`carditrack-digest`, created by `scripts/setup-gcp-auth.sh` with **no
-project-level roles**; its only grant is `secretAccessor` on
-`carditrack-common-slack-bot-token`. A legitimate run of this workflow can reach
-the Slack token and nothing else — previously it assumed `carditrack-deploy`,
-which holds project-level `roles/secretmanager.admin` and can read every secret
-in the project.
+**2. The posting identity is `carditrack-deploy` — project-level
+`secretmanager.admin`, not scoped to this one secret.** Accepted, not closed.
 
-`carditrack-digest` is also bound to the posting workflow rather than to the
-repository, via `attribute.workflow_ref`, so no other workflow authenticating on
-its own can assume it — every deploy workflow already requests `id-token: write`,
-so a repository-wide binding would have made "scoped identity" untrue. The
-bootstrap asserts that binding is the only one on the account, across every role
-rather than just `workloadIdentityUser`, and fails naming anything else.
+An earlier revision ran posting as a separate `carditrack-digest` account:
+created by `scripts/setup-gcp-auth.sh` with no project-level roles at all, its
+only grant `secretAccessor` on `carditrack-common-slack-bot-token`, and bound
+to the posting workflow specifically via `attribute.workflow_ref` rather than
+to the repository — a real narrowing over `carditrack-deploy`, which is bound
+repository-wide and holds project-level `secretmanager.admin`.
 
-One more limit, stated because the obvious reading of the above is wrong:
-`carditrack-deploy` holds **project-level** `serviceAccountTokenCreator` and
-`serviceAccountUser`, granted by `scripts/setup-gcp-auth.sh` because the deploy
-workflows need them. Project-level roles reach every service account in the
-project, so anything holding the deploy account can mint a token for
-`carditrack-digest`. It gains nothing by doing so — the deploy account already
-holds `secretmanager.admin` — but the accurate claim is about *reach*, not
-*access*: the digest identity cannot be used to read more than the Slack token,
-and assuming it requires either being the posting workflow or already holding a
-strictly more powerful account. The bootstrap prints these holders on every run
-so the claim cannot quietly drift again.
+It was reverted on 2026-09-20. That second bootstrapped identity lived outside
+Terraform, and `setup-gcp-auth.sh` skips anything that already exists — so when
+`carditrack-digest` was added to the script after the pool and `carditrack-deploy`
+were already bootstrapped, a rerun on this project silently skipped creating
+it. The account never existed in GCP. Posting failed for at least three runs
+running up to 2026-09-20 (a 404 on the secret, then "Gaia id not found" for the
+account itself) before anyone noticed the digest had never reached Slack. One
+fewer moving part — reusing `carditrack-deploy`, the account every deploy
+workflow already authenticates as and that this project actually keeps
+provisioned — was judged worth the wider grant.
 
-The first real run is what proves the claim matches: if the binding is wrong,
-`post-digest.yml` fails at the auth step and posts nothing, which is the
-direction you want it to fail in. Check the run before assuming the digest is
-live.
-
-Be clear about the limit, because it is easy to overrate: this does **not**
-defend against gap 1. `carditrack-deploy` is still bound repository-wide, so a
-tampered workflow can simply ask for that account instead and read everything.
-Narrowing the deploy account the same way would touch every deploy workflow and
-is not attempted here. What the scoped identity buys is a correct blast radius
-for the workflow as written, and a real reduction once gap 1 is closed. Gap 1
-remains the load-bearing fix; this is defence in depth behind it.
+What this costs: a legitimate run of `post-digest.yml` can now read every
+secret in the project, not just the Slack token. What it does not change:
+`carditrack-deploy` was already bound repository-wide and already the account
+gap 1 describes a tampered workflow reaching for, so this does not widen gap 1
+— there is just no narrower fallback identity behind it anymore. Re-introduce
+a scoped `carditrack-digest`-style identity (and fix the bootstrap script's
+skip-if-exists check so an account added to the script after the fact actually
+gets created) if that blast-radius reduction is worth the operational cost
+again.
 
 ## Deferred
 
