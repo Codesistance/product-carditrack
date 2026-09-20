@@ -3,7 +3,10 @@
 #   echo -n "your_value" | gcloud secrets versions add carditrack-common-<name> --data-file=-
 #
 # Store distribution secrets are consumed by .github/workflows/deploy-apps-dev.yml.
-# slack-bot-token is consumed by .github/workflows/post-digest.yml.
+# slack-bot-token and slack-channel-id are consumed by .github/workflows/post-digest.yml —
+# grouped into this same set to share its carditrack-deploy accessor grant rather than a
+# second identity, and slack-channel-id lives here as a secret rather than a GitHub Actions
+# repo variable so every post-digest.yml input loads the same way. See SETUP.md.
 # Binary payloads (.p12, provisioning profile, keystore) are stored base64-encoded.
 
 
@@ -46,15 +49,8 @@ locals {
     "android-keystore",                 # Android upload keystore (.jks, base64, key alias: carditrack)
     "android-keystore-password",        # Password for the upload keystore and key
     "play-service-account-key",         # Google Play service account key (JSON)
-    "slack-bot-token",                  # Slack bot token (xoxb-..., chat:write) for post-digest.yml —
-    # not a store-distribution secret, grouped here to share this
-    # set's carditrack-deploy accessor grant instead of a second
-    # identity (no separate carditrack-digest account; see SETUP.md)
-    "slack-channel-id", # Digest channel ID (C0XXXXXXX, not "#name") for post-digest.yml —
-    # a GCP secret rather than a GitHub Actions repo variable because
-    # the value still needs setting by hand either way, and this keeps
-    # every post-digest.yml input on one loading path (gcloud secrets
-    # versions add), not two
+    "slack-bot-token",                  # Slack bot token (xoxb-..., chat:write scope)
+    "slack-channel-id",                 # Digest channel ID (C0XXXXXXX, not "#name")
   ])
 
   # Operator-only secrets: not read by any deploy workflow, so carditrack-deploy
