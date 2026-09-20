@@ -1,3 +1,4 @@
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -45,11 +46,12 @@ public class MemberInsightConfiguration : IEntityTypeConfiguration<MemberInsight
             .HasMaxLength(20)
             .IsRequired();
 
-        // Generous ceilings, not the prompts' asked-for lengths: the writer already caps what the
-        // model returns, and the column guards against a runaway value, not style.
-        builder.Property(i => i.Summary).IsRequired().HasMaxLength(2000);
-        builder.Property(i => i.RecommendedAction).HasMaxLength(1000);
-        builder.Property(i => i.KeyFindings).HasMaxLength(2000);
+        // Generous ceilings, not the prompts' asked-for lengths: the column guards against a
+        // runaway value, not style. Taken from InsightLimits, which the writers fit their text to
+        // before saving — the numbers have to agree, and a literal here is how they stop agreeing.
+        builder.Property(i => i.Summary).IsRequired().HasMaxLength(InsightLimits.Summary);
+        builder.Property(i => i.RecommendedAction).HasMaxLength(InsightLimits.RecommendedAction);
+        builder.Property(i => i.KeyFindings).HasMaxLength(InsightLimits.KeyFindings);
 
         builder.Property(i => i.CreatedDate).HasDefaultValueSql("NOW()");
     }

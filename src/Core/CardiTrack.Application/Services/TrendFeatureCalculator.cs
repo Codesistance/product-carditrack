@@ -292,8 +292,15 @@ public static class TrendFeatureCalculator
 
             foreach (var (window, deviation) in feature.DeviationPercent.OrderBy(d => d.Key))
             {
-                parts.Add($"{Math.Abs(deviation):0}% {(deviation < 0 ? "below" : "above")} "
-                    + $"their {window}-day usual");
+                // Zero is its own case, not the positive one. A recent average that lands exactly
+                // on a baseline used to reach the model as "0% above their 30-day usual", which
+                // reads as a direction and is the opposite of what a flat metric means — in a
+                // prompt whose whole premise is that the model may not work a comparison out for
+                // itself and must state what it is given.
+                parts.Add(deviation == 0
+                    ? $"level with their {window}-day usual"
+                    : $"{Math.Abs(deviation):0}% {(deviation < 0 ? "below" : "above")} "
+                      + $"their {window}-day usual");
             }
 
             lines.Add($"- {feature.Metric}: {string.Join("; ", parts)}.");

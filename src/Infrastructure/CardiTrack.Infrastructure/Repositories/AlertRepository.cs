@@ -48,6 +48,16 @@ public class AlertRepository : Repository<Alert>, IAlertRepository
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<Guid>> GetCardiMemberIdsWithServableAlertsAsync(
+        DateTime resolvedSince)
+    {
+        return await _dbSet.AsNoTracking()
+            .Where(a => a.IsActive && (!a.IsResolved || a.TriggeredDate >= resolvedSince))
+            .Select(a => a.CardiMemberId)
+            .Distinct()
+            .ToListAsync();
+    }
+
     public async Task<DateTime?> GetLastTriggeredDateAsync(
         Guid cardiMemberId, CancellationToken ct = default)
     {

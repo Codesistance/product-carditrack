@@ -32,13 +32,29 @@ namespace CardiTrack.Infrastructure.Services;
 /// </remarks>
 public class TrendInterpretationService
 {
+    /// <summary>The version of the brief below, independent of the table it carries.</summary>
+    internal const int BriefVersion = 1;
+
     /// <summary>
-    /// The version of the brief below plus the pinned table it carries, stamped on every row.
-    /// A row written by an older version is due now, whatever its age — a change to either the
-    /// wording or the published figures must reach every member rather than hiding behind the
-    /// daily cadence.
+    /// The brief and the pinned table it carries, as one stamped number. A row written by an older
+    /// version is due now, whatever its age — a change to either the wording or the published
+    /// figures must reach every member rather than hiding behind the daily cadence.
     /// </summary>
-    internal static int CurrentPromptVersion => 1 + PinnedReferenceTable.Version;
+    /// <remarks>
+    /// Packed rather than summed. A sum cannot tell the two apart: brief 1 with table 3 and brief
+    /// 2 with table 2 both come to 4, so moving between them would leave every stored narrative
+    /// looking current and skip the regeneration the version exists to force. Multiplying the
+    /// brief by a stride larger than the table will ever reach keeps each combination its own
+    /// number, and keeps the stamp monotonic in both so an older row always compares as older.
+    /// </remarks>
+    internal static int CurrentPromptVersion => (BriefVersion * VersionStride) + PinnedReferenceTable.Version;
+
+    /// <summary>
+    /// The room reserved for <see cref="PinnedReferenceTable.Version"/> inside the packed stamp.
+    /// A hundred revisions of a table assembled from published guidance is not a near limit; it is
+    /// checked rather than assumed all the same, because the failure is silent.
+    /// </summary>
+    private const int VersionStride = 100;
 
     /// <summary>
     /// How recently a trend can have been written before the pass skips the member. A day, because
@@ -245,8 +261,11 @@ public class TrendInterpretationService
             Scope = InsightScope.Trend,
         };
 
-        row.Summary = summary;
-        row.KeyFindings = findings.Count > 0 ? string.Join('\n', findings) : null;
+        // Fitted to the column, not trusted to the brief's asked-for length: the completion budget
+        // is larger than the column, so a verbose but otherwise valid reply would fail the save
+        // and be retried at the same length on every pass.
+        row.Summary = InsightLimits.Fit(summary, InsightLimits.Summary)!;
+        row.KeyFindings = InsightLimits.JoinFindings(findings);
         row.IsLearning = false;
         row.IsProvisional = false;
         row.BaselinePeriodDays = baselines.Count > 0 ? baselines.Max(b => b.PeriodDays) : null;

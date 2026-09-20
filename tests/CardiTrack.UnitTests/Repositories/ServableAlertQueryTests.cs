@@ -81,6 +81,50 @@ public class ServableAlertQueryTests(TestDatabaseFixture fixture)
         Assert.Empty(await alerts.GetServableByCardiMemberAsync(memberId, Cutoff));
     }
 
+    /// <summary>
+    /// The member-level counterpart, and the predicate that decides who the sweep can see at all.
+    /// It has to agree with the per-member one exactly: a member the walk would find alerts for
+    /// but this query omits is a member the sweep never reaches.
+    /// </summary>
+    [Fact]
+    public async Task AMemberIsListedOnTheSameTermsTheirAlertsAre()
+    {
+        using var scope = fixture.CreateScope();
+        var (alerts, memberId) = await SeedAsync(
+            scope, Alert("closed yesterday", Now.AddDays(-1), resolved: true));
+
+        var ids = await alerts.GetCardiMemberIdsWithServableAlertsAsync(Cutoff);
+
+        Assert.Contains(memberId, ids);
+    }
+
+    [Fact]
+    public async Task AMemberWhoseOnlyAlertsFallOutsideTheSetIsNotListed()
+    {
+        using var scope = fixture.CreateScope();
+        var (alerts, memberId) = await SeedAsync(
+            scope,
+            Alert("closed last month", Now.AddDays(-40), resolved: true),
+            Alert("swiped away", Now.AddDays(-1), resolved: false, active: false));
+
+        Assert.DoesNotContain(memberId, await alerts.GetCardiMemberIdsWithServableAlertsAsync(Cutoff));
+    }
+
+    [Fact]
+    public async Task AMemberIsListedOnce_HoweverManyAlertsTheyHold()
+    {
+        using var scope = fixture.CreateScope();
+        var (alerts, memberId) = await SeedAsync(
+            scope,
+            Alert("one", Now.AddDays(-1), resolved: false),
+            Alert("two", Now.AddDays(-2), resolved: false),
+            Alert("three", Now.AddDays(-3), resolved: true));
+
+        var ids = await alerts.GetCardiMemberIdsWithServableAlertsAsync(Cutoff);
+
+        Assert.Single(ids, id => id == memberId);
+    }
+
     private static Alert Alert(string title, DateTime triggeredDate, bool resolved, bool active = true) =>
         new()
         {

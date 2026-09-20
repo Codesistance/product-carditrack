@@ -261,8 +261,11 @@ public class HealthInsightService : IHealthInsightService
             AlertId = alertId,
         };
 
-        row.Summary = explanation;
-        row.RecommendedAction = CaregiverFacingInsight(aiResponse.RecommendedAction, name);
+        // Fitted to the columns for the reason InsightLimits gives: a save that fails on length
+        // costs the member the explanation and makes the row a permanent backfill candidate.
+        row.Summary = InsightLimits.Fit(explanation, InsightLimits.Summary)!;
+        row.RecommendedAction = InsightLimits.Fit(
+            CaregiverFacingInsight(aiResponse.RecommendedAction, name), InsightLimits.RecommendedAction);
         row.BaselinePeriodDays = baseline?.PeriodDays;
         row.GeneratedAtUtc = DateTime.UtcNow;
         row.PromptVersion = AlertPromptVersion;
@@ -466,8 +469,8 @@ public class HealthInsightService : IHealthInsightService
             Scope = InsightScope.Baseline,
         };
 
-        row.Summary = summary;
-        row.KeyFindings = findings.Count > 0 ? string.Join('\n', findings) : null;
+        row.Summary = InsightLimits.Fit(summary, InsightLimits.Summary)!;
+        row.KeyFindings = InsightLimits.JoinFindings(findings);
         row.IsLearning = isLearning;
         row.IsProvisional = provisionalBaseline is not null;
         row.BaselinePeriodDays = (primaryBaseline ?? provisionalBaseline)?.PeriodDays;

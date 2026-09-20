@@ -131,6 +131,25 @@ public class TrendFeatureCalculatorTests
         Assert.Empty(steps.DeviationPercent);
     }
 
+    /// <summary>
+    /// Zero is its own answer. A recent average landing exactly on a baseline used to reach the
+    /// model as "0% above their 30-day usual", which states a direction for a metric that has not
+    /// moved — in a prompt whose premise is that the model may not work a comparison out for
+    /// itself and must repeat what it is given.
+    /// </summary>
+    [Fact]
+    public void AMetricLevelWithItsBaselineIsNotRenderedAsAboveIt()
+    {
+        var features = TrendFeatureCalculator.Compute(
+            Days(60, _ => 5000), [Baseline(30, avgSteps: 5000)], Through)!;
+
+        var rendered = TrendFeatureCalculator.Render(features);
+
+        Assert.Contains("level with their 30-day usual", rendered);
+        Assert.DoesNotContain("0% above", rendered);
+        Assert.DoesNotContain("0% below", rendered);
+    }
+
     [Fact]
     public void TheRenderedBlockQuotesOnlyComputedFigures()
     {

@@ -40,6 +40,20 @@ public interface IAlertRepository : IRepository<Alert>
         Guid cardiMemberId, DateTime resolvedSince);
 
     /// <summary>
+    /// The members who have at least one alert <see cref="GetServableByCardiMemberAsync"/> would
+    /// return — the candidate set for anything that has to act on readable alerts rather than on
+    /// recent readings.
+    /// </summary>
+    /// <remarks>
+    /// Needed because the two candidate sets are not the same and diverge in exactly the case
+    /// that matters. A pass driven by recent activity cannot reach a member whose watch has gone
+    /// quiet, and <c>device_silence</c> raises an alert that stays unresolved <em>because</em> the
+    /// watch is quiet — so the member with the longest-standing unexplained alert is the first one
+    /// an activity-driven sweep drops.
+    /// </remarks>
+    Task<IReadOnlyList<Guid>> GetCardiMemberIdsWithServableAlertsAsync(DateTime resolvedSince);
+
+    /// <summary>
     /// When this member's most recent alert was raised, or null when nothing has ever been raised
     /// about them. The anchor for <see cref="Services.QuietStretch"/>.
     /// </summary>

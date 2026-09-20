@@ -145,10 +145,64 @@ public class StatisticalAlertService : IStatisticalAlertService
             }
         }
 
+        await BackfillPassAsync(utcNow, ct);
+
         _logger.LogInformation(
             "Statistical judgement pass complete. Members evaluated: {MembersEvaluated}, alerts raised: {Raised}.",
             memberIds.Count, raised);
         return raised;
+    }
+
+    /// <summary>
+    /// The explanation sweep, over everyone with an alert a caregiver could still open.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Its own pass rather than a step inside the member loop, because the two candidate sets are
+    /// not the same one. The rules are driven by members with readings in the last two days, which
+    /// is right for judging today's data and wrong for this: an alert goes on being readable long
+    /// after the readings stop, and <c>device_silence</c> stays unresolved precisely
+    /// <em>because</em> they have stopped. Riding the rule pass's filter meant the member whose
+    /// watch had been quiet for three days — the one most likely to be holding an unexplained
+    /// alert — was the first one the sweep could no longer see.
+    /// </para>
+    /// <para>
+    /// Every member here is re-checked for being active and unpaused, the same gate the rule pass
+    /// applies: an explanation is a thing said about someone being watched, and monitoring being
+    /// paused is them asking us to stop.
+    /// </para>
+    /// </remarks>
+    private async Task BackfillPassAsync(DateTime utcNow, CancellationToken ct)
+    {
+        if (_insights is null)
+            return;
+
+        var memberIds = await _unitOfWork.Alerts.GetCardiMemberIdsWithServableAlertsAsync(
+            utcNow - ExplanationBackfillWindow);
+
+        foreach (var memberId in memberIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
+                if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+                    continue;
+
+                await BackfillExplanationsAsync(memberId, utcNow, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // One member's failure must not cost the rest the sweep, the same stance the rule
+                // loop above takes.
+                _logger.LogError(
+                    ex, "Explanation backfill failed for CardiMember {CardiMemberId}.", memberId);
+            }
+        }
     }
 
     private async Task<int> EvaluateMemberAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
@@ -156,13 +210,6 @@ public class StatisticalAlertService : IStatisticalAlertService
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return 0;
-
-        // Before the rules, not after them. Every path below this can return without raising
-        // anything — no baseline, every rule switched off, no finding today — and a member with
-        // nothing off right now is exactly the one whose standing alert from an earlier pass is
-        // waiting on an explanation. Hanging the backfill off the end of the alert-raising path
-        // would have meant it only ever ran for members who had something wrong a second time.
-        await BackfillExplanationsAsync(memberId, utcNow, ct);
 
         // Established baseline only: no 30-day baseline means every rule stays silent, exactly
         // as the provisional-never-alerts principle demands.

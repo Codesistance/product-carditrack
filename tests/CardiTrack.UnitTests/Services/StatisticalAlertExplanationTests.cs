@@ -54,6 +54,10 @@ public class StatisticalAlertExplanationTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([]);
+
+        // The backfill sweep has its own candidate set now — who holds a readable alert, not who
+        // has recent readings.
+        _alerts.GetCardiMemberIdsWithServableAlertsAsync(Arg.Any<DateTime>()).Returns([_memberId]);
         _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([]);
         _links.GetByCardiMemberIdAsync(_memberId).Returns([]);
     }
@@ -245,6 +249,53 @@ public class StatisticalAlertExplanationTests
 
         await _insightService.Received(1).RegenerateAlertInsightAsync(
             resolved.Id, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The sweep must not ride the rule pass's candidate filter. Those members are the ones with
+    /// readings in the last two days, which is right for judging today's data and wrong here: an
+    /// alert stays readable long after the readings stop, and `device_silence` stays unresolved
+    /// precisely because they have stopped. The member whose watch has been quiet for three days
+    /// is the most likely to be holding an unexplained alert and was the first one dropped.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWithNoRecentReadingsIsStillSwept()
+    {
+        // Out of the rule pass entirely — no activity in the window it asks for.
+        _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([]);
+
+        var alert = Standing();
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([alert]);
+        _insights.GetForAlertAsync(alert.Id).Returns((MemberInsight?)null);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _insightService.Received(1).RegenerateAlertInsightAsync(
+            alert.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TheSweepStillStopsAtAPausedMember()
+    {
+        // An explanation is something said about someone being watched, and pausing monitoring is
+        // them asking us to stop. The rule pass applies that gate; decoupling must not lose it.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+            MonitoringPausedUntil = UtcNow.AddDays(3),
+        });
+
+        var alert = Standing();
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([alert]);
+        _insights.GetForAlertAsync(alert.Id).Returns((MemberInsight?)null);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _insightService.DidNotReceive().RegenerateAlertInsightAsync(
+            alert.Id, Arg.Any<CancellationToken>());
     }
 
     private Alert Standing(DateTime? createdAt = null) => new()

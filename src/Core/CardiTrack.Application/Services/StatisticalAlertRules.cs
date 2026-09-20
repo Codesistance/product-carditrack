@@ -420,12 +420,20 @@ public static class StatisticalAlertRules
         if (breathing <= average + margin)
             return null;
 
-        var band = HealthReferenceRanges.BreathingRate;
+        // No published band in the observation and none in the stamp. The only adult range this
+        // codebase holds is WHO's respiratory rate at rest, and this reading is measured across
+        // hours of sleep — the sentence here used to call it "the published typical adult range
+        // asleep", which is a claim no body makes. Saying it in the prompt was the worst place to
+        // say it: this text is what MedGemma judges the finding on, so the model was handed a
+        // yardstick for a measurement it was not looking at and told it was published. Their own
+        // usual plus their own margin is the whole comparison, and it is enough — see
+        // HealthReferenceRanges.NoOvernightBreathingBand.
         return new StatisticalFinding(
             OvernightBreathingUpRule, AlertType.PatternBreak,
             $"Breathing rate asleep on the night ending {Day(lastNight.Date)}: {breathing:0.#} a minute, "
             + $"against a usual {average:0.#}. The yardstick is their usual plus {margin:0.#} a minute. "
-            + $"The published typical adult range asleep is {band.Low:0.#} to {band.High:0.#} a minute.",
+            + "There is no published adult range for breathing measured asleep, so this is judged "
+            + "against their own usual alone.",
             Serialize(new
             {
                 rule = OvernightBreathingUpRule,
@@ -434,8 +442,6 @@ public static class StatisticalAlertRules
                 overnightBreathingRate = breathing,
                 baselineAvgOvernightBreathingRate = average,
                 marginPerMinute = Math.Round(margin, 1),
-                recommendedLowPerMinute = band.Low,
-                recommendedHighPerMinute = band.High,
             }),
             NightOf: lastNight.Date);
     }
