@@ -12,6 +12,28 @@ resource "google_project_service" "common_secretmanager" {
   disable_on_destroy = false
 }
 
+# slack-bot-token used to be its own resource block (google_secret_manager_secret.digest
+# et al.) before it was folded into store_distribution_secrets above. Without these, a
+# state that already has the old addresses would plan a destroy-then-recreate of the
+# secret, its version, and its accessor binding — losing any operator-loaded token and
+# risking a same-secret_id conflict before the old object is gone. A no-op if the old
+# addresses were never in state (e.g. this secret's create never actually applied — see
+# the 404 that prompted this change, SETUP.md "Accepted tradeoff").
+moved {
+  from = google_secret_manager_secret.digest["slack-bot-token"]
+  to   = google_secret_manager_secret.store_distribution["slack-bot-token"]
+}
+
+moved {
+  from = google_secret_manager_secret_version.digest["slack-bot-token"]
+  to   = google_secret_manager_secret_version.store_distribution["slack-bot-token"]
+}
+
+moved {
+  from = google_secret_manager_secret_iam_member.digest_accessor["slack-bot-token"]
+  to   = google_secret_manager_secret_iam_member.store_distribution_accessor["slack-bot-token"]
+}
+
 locals {
   # Secret id becomes "${var.project_name}-common-<suffix>"
   store_distribution_secrets = toset([
