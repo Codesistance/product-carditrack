@@ -28,7 +28,7 @@ public class HealthInsightService : IHealthInsightService
     /// decided by the member's baseline state rather than by the caller, and versioning them apart
     /// would leave a member's row claiming a version whose brief it was not written by.
     /// </summary>
-    internal const int BaselinePromptVersion = 1;
+    internal const int BaselinePromptVersion = 2;
 
     /// <summary>
     /// How recently a baseline insight has to have been written before a pass skips it. An hour,
@@ -83,13 +83,26 @@ public class HealthInsightService : IHealthInsightService
     /// </summary>
     private const string BaselineInstructions =
         MedicalPromptBlocks.Tone + """
-        Describe this person's health trends against the established baseline.
+        You are telling one family whether anything about the person they watch over needs their
+        attention this week.
+
+        Everything below was worked out from this person's own measurements against their
+        established baseline before you saw it, and only the metrics that moved away from their
+        usual by more than their own normal variation are listed as having moved. Say what the figures say. Never work out a comparison, a
+        percentage or a direction yourself, and never introduce a number that is not in front of
+        you. Do not call a metric unchanged unless it is named as steady below.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
-        - summary: this person's overall health trends, including any patterns that warrant
-          caregiver attention.
-        - keyFindings: short strings, one per key finding.
+        - summary: two or three sentences answering whether this is something to pay attention to.
+          Lead with the movement that matters most, say which way it went and roughly how far in
+          the words the figures use, and say plainly where the rest has held steady.
+        - keyFindings: up to three short lines, each naming one movement worth noticing. One line
+          per movement, never one per metric — a metric that has not moved is not a finding.
+
+        Never name a condition, a diagnosis or a treatment. Never give a score, a probability, a
+        risk level or a prediction of what will happen next. Do not pad the list to three, and do
+        not look for something to report where the figures show nothing.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
@@ -108,7 +121,7 @@ public class HealthInsightService : IHealthInsightService
         Respond with:
         - summary: the daily rhythm shown so far, and what is still needed for a reliable
           picture of this member.
-        - keyFindings: short strings, one per key observation.
+        - keyFindings: up to three short strings, one per key observation.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     /// <summary>
@@ -129,7 +142,7 @@ public class HealthInsightService : IHealthInsightService
         Respond with:
         - summary: what the early data suggests, and what will become clearer once the full
           30-day baseline is established.
-        - keyFindings: short strings, one per key observation.
+        - keyFindings: up to three short strings, one per key observation.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     // The current-status prompt, its budget and the generation path moved to
@@ -445,9 +458,43 @@ public class HealthInsightService : IHealthInsightService
             ? null
             : await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
 
+        // What has actually moved, decided here rather than by the model. Only the established
+        // path gets this: the other two are honest readouts of a picture still forming, and there
+        // is no settled usual to measure a departure against.
+        //
+        // Through yesterday, not today. Today's ActivityLog row holds however far through the day
+        // the sync has got — a morning's steps and no active minutes yet — and it is one of seven
+        // in the average, so including it reports a departure that is only the clock.
+        // TrendInterpretationService ends its window a day back for the same reason.
+        var movements = BaselineMovementCalculator.Compute(
+            recentLogs, primaryBaseline, to.AddDays(-1));
+
+        if (primaryBaseline is not null && movements is { HasAnythingToSay: false })
+        {
+            // Nothing has moved, so there is nothing to say and no call worth paying for. The row
+            // comes down rather than being left to age out: this card is read as "something wants
+            // your attention", and InsightServability would go on serving the last thing that did
+            // for three more days after it stopped being true.
+            //
+            // Only on positive evidence that nothing is off, which is stricter than having
+            // looked. A week with heart-rate readings and no step readings has judged something
+            // and said nothing whatever about steps, so retracting a standing card about this
+            // member's steps on the strength of it would be answering a question it never asked.
+            // Where the evidence is partial the row stays and ages out of InsightServability as
+            // it did before it could be removed at all.
+            if (movements.ShowsNothingIsOff && existing is not null)
+            {
+                _unitOfWork.MemberInsights.Remove(existing);
+                await _unitOfWork.SaveChangesAsync();
+            }
+
+            return false;
+        }
+
         var prompt = (primaryBaseline, provisionalBaseline) switch
         {
-            (not null, _) => BuildBaselinePrompt(memberContext, baselines, recentLogs, to, timeZone),
+            (not null, _) => BuildBaselinePrompt(
+                memberContext, baselines, movements!, to, timeZone),
             (null, not null) => BuildProvisionalPrompt(
                 memberContext, provisionalBaseline, recentLogs, to, timeZone),
             _ => BuildLearningPrompt(memberContext, recentLogs, to),
@@ -466,6 +513,7 @@ public class HealthInsightService : IHealthInsightService
         var findings = aiResponse.KeyFindings
             .Select(finding => ResolvedOrEmpty(finding, name))
             .Where(finding => finding.Length > 0)
+            .Take(InsightLimits.MaxFindings)
             .ToList();
 
         var row = existing ?? new MemberInsight
@@ -702,10 +750,31 @@ public class HealthInsightService : IHealthInsightService
     private static string AlertFieldOrNone(string? value) =>
         AlertField(value) is { Length: > 0 } text ? text : "none";
 
+    /// <summary>
+    /// The established-baseline prompt: their learned normal, and which parts of it this week has
+    /// departed from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The seven-day JSON fence of every reading is deliberately gone. Handed a table of readings
+    /// and asked to describe it, the model described it — a line per metric, in which "resting
+    /// heart rate remained relatively stable" was reported as a key finding. Which metrics have
+    /// actually departed is <see cref="BaselineMovementCalculator"/>'s judgement now, made in .NET
+    /// where it can be reproduced, so what arrives here is already the answer to "is anything
+    /// off" and the model's job is to say it in a family's words.
+    /// </para>
+    /// <para>
+    /// The baselines and the sleep window stay. They are what the departures are measured from
+    /// rather than a second table to narrate, and the window is the one piece of the picture the
+    /// movements cannot carry — it is a time of day, not a figure that moved. It keeps the local
+    /// clock it was given: a household's bedtime read off Greenwich is the failure
+    /// <see cref="MemberAnchorTimeZone"/> exists to prevent.
+    /// </para>
+    /// </remarks>
     private static string BuildBaselinePrompt(
         string memberContext,
         IEnumerable<PatternBaseline> baselines,
-        IEnumerable<ActivityLog> recentLogs,
+        BaselineMovements movements,
         DateOnly today,
         TimeZoneInfo? timeZone)
     {
@@ -721,8 +790,8 @@ public class HealthInsightService : IHealthInsightService
             --- Baselines ---
             {string.Join("\n", baselineLines)}
 
-            [INPUT DATA]
-            {MedicalPromptBlocks.JsonFence(MedicalPromptBlocks.DailyReadingsJson(recentLogs, take: 7, today))}
+            --- What has moved this week ---
+            {BaselineMovementCalculator.Render(movements)}
             """;
     }
 

@@ -252,7 +252,7 @@ public class TrendInterpretationService
         var findings = reply.KeyFindings
             .Select(finding => CaregiverFacingTrend(finding, name))
             .OfType<string>()
-            .Take(MaxFindings)
+            .Take(InsightLimits.MaxFindings)
             .ToList();
 
         var row = existing ?? new MemberInsight
@@ -281,9 +281,6 @@ public class TrendInterpretationService
 
     /// <summary>How many days of readings the features are computed over.</summary>
     internal const int TrendWindowDays = 90;
-
-    /// <summary>The brief asks for up to three; this is the ceiling the store enforces.</summary>
-    private const int MaxFindings = 3;
 
     /// <summary>
     /// The model's sentence as a caregiver may read it, or null when they may not. The same two

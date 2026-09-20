@@ -30,6 +30,18 @@ public static class InsightLimits
     public const int KeyFindings = 2000;
 
     /// <summary>
+    /// How many findings any insight may carry, whichever pass wrote it.
+    /// </summary>
+    /// <remarks>
+    /// Three, and here rather than in one writer, because the two disagreed: the trend pass capped
+    /// itself and the baseline pass did not, so a member's card rendered seven bulleted lines and
+    /// ran past a full screen on a phone. The cap is not a layout tweak — a list that long is the
+    /// symptom of a brief being answered metric by metric rather than finding by finding — but the
+    /// store should not hold more than the product ever means to show either way.
+    /// </remarks>
+    public const int MaxFindings = 3;
+
+    /// <summary>
     /// <paramref name="text"/> cut to <paramref name="limit"/>, at a sentence end where there is
     /// one.
     /// </summary>

@@ -77,6 +77,219 @@ public class HealthInsightServicePromptTests
     /// move, so what used to be read off the response is read off the insight it persisted — the
     /// text still has to survive the same placeholder and register guards on the way in.
     /// </summary>
+    // ── The quiet member ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A member sitting where they always sit costs nothing and says nothing.
+    /// </summary>
+    /// <remarks>
+    /// This is the case the card was built wrong for. Asked to describe seven days of readings it
+    /// produced a line per metric — "resting heart rate remained relatively stable" reported as a
+    /// key finding — so the caregiver was handed the data restated and left to do the judging
+    /// themselves. Nothing has moved, so there is nothing to say, and the call is not made at all
+    /// rather than made and thrown away.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_SpendsNoModelCall_WhenNothingHasMovedFromTheirUsual()
+    {
+        SetupSteadyWeek();
+
+        var written = await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        Assert.False(written);
+        Assert.True(NothingStored());
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    /// <summary>
+    /// And the last thing that did need attention is taken down, not left to age out.
+    /// </summary>
+    /// <remarks>
+    /// The card is read as "something wants your attention". <see cref="InsightServability"/>
+    /// serves a member-scoped row for three days, so without this a concern that passed on Monday
+    /// would go on being shown until Thursday — the card still claiming something is off about
+    /// someone who is fine.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_RemovesTheStandingRow_OnceNothingIsOffAnyMore()
+    {
+        SetupSteadyWeek();
+
+        var standing = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Their steps were well down last week.",
+            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
+            PromptVersion = HealthInsightService.BaselinePromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(standing);
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        _insights.Received(1).Remove(standing);
+        await _unitOfWork.Received().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The cap is enforced where the row is written, not only asked for in the brief.
+    /// </summary>
+    /// <remarks>
+    /// This is the user-visible regression the change exists for — a card that rendered seven
+    /// bulleted lines and ran past a full screen on a phone. A model that returns four findings
+    /// despite being asked for three must not put four in the store, and without this test
+    /// deleting the <c>Take</c> would leave every other test passing.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_StoresNoMoreFindingsThanTheSharedCap()
+    {
+        SetupBaseline();
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.BaselineAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.BaselineAiResponse
+            {
+                Summary = "Their steps are well down on their usual.",
+                KeyFindings = ["First.", "Second.", "Third.", "Fourth."],
+            });
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        var findings = StoredInsight().KeyFindings!.Split('\n');
+        Assert.Equal(InsightLimits.MaxFindings, findings.Length);
+        Assert.DoesNotContain("Fourth.", findings);
+    }
+
+    /// <summary>
+    /// A sync outage must not retract a standing concern.
+    /// </summary>
+    /// <remarks>
+    /// An unmeasured week and a week where all is well both come back with nothing to say. Only
+    /// the second is a reason to take the card down — deleting on the first would quietly
+    /// withdraw the last thing that did need attention about a member nobody has readings for.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_KeepsTheStandingRow_WhenTheWeekIsTooSparseToJudge()
+    {
+        SetupBaseline();
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns([]);
+
+        var standing = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Their steps were well down last week.",
+            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
+            PromptVersion = HealthInsightService.BaselinePromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(standing);
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        _insights.DidNotReceive().Remove(Arg.Any<MemberInsight>());
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    /// <summary>
+    /// Today's row is half a day, so it is left out of the week the movement is judged over.
+    /// </summary>
+    /// <remarks>
+    /// An ActivityLog for today holds however far through it the sync has got. It is one of seven
+    /// in the average, so a morning's steps read as a departure that is only the clock — the same
+    /// trap <c>TrendInterpretationService</c> ends its window a day back to avoid.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_IgnoresTodaysPartialRow_WhenJudgingTheWeek()
+    {
+        SetupBaseline();
+
+        // A full week sitting on their usual, plus a part-done today that would drag the average
+        // well below it if it were counted.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(1, 7)
+                .Select(offset => new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today.AddDays(-offset),
+                    Steps = 5_200,
+                    RestingHeartRate = 68,
+                    SleepMinutes = 412,
+                })
+                .Append(new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today,
+                    Steps = 400,
+                })
+                .ToList());
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        // Steady all week, so nothing is said at all. Counting today would have reported a fall.
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    /// <summary>
+    /// A partial sync outage must not retract a concern it never spoke to.
+    /// </summary>
+    /// <remarks>
+    /// The watch is reporting heart rate and no steps. That judges something, so a "did we look at
+    /// anything" test would let the row go — but it has said nothing at all about steps, which is
+    /// what the standing card is about.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_KeepsTheStandingRow_WhenOnlySomeMetricsCouldBeJudged()
+    {
+        SetupBaseline();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(1, 7)
+                .Select(offset => new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today.AddDays(-offset),
+                    // Sitting on their usual, and no steps or sleep read at all this week.
+                    RestingHeartRate = 68,
+                })
+                .ToList());
+
+        var standing = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Their steps were well down last week.",
+            GeneratedAtUtc = DateTime.UtcNow.AddDays(-2),
+            PromptVersion = HealthInsightService.BaselinePromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(standing);
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        _insights.DidNotReceive().Remove(Arg.Any<MemberInsight>());
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    /// <summary>A week whose every metric sits on the member's own usual.</summary>
+    private void SetupSteadyWeek()
+    {
+        SetupBaseline();
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(0, 7)
+                .Select(offset => new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today.AddDays(-offset),
+                    Steps = 5_200,
+                    RestingHeartRate = 68,
+                    SleepMinutes = 412,
+                })
+                .ToList());
+    }
+
     private MemberInsight StoredInsight() =>
         _insights.ReceivedCalls()
             .Where(call => call.GetMethodInfo().Name == nameof(IMemberInsightRepository.AddAsync))
@@ -115,6 +328,25 @@ public class HealthInsightServicePromptTests
                 StdDevHeartRate = 3.2m,
                 AvgSleepMinutes = 412,
             });
+
+        // A week with something in it. The established path only builds a prompt when a metric
+        // has actually departed from their usual — a member sitting where they always sit is the
+        // quiet case and costs no model call at all — so a fixture of no readings would leave
+        // every prompt assertion below with nothing to assert against.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(Enumerable.Range(0, 7)
+                .Select(offset => new ActivityLog
+                {
+                    CardiMemberId = _memberId,
+                    Date = today.AddDays(-offset),
+                    // Well below the 5,200 usual, so steps are the departure.
+                    Steps = 3_000,
+                    // Both sitting on their usual, so they come through as steady.
+                    RestingHeartRate = 68,
+                    SleepMinutes = 412,
+                })
+                .ToList());
     }
 
     private string CapturedPrompt() =>
@@ -379,6 +611,9 @@ public class HealthInsightServicePromptTests
             PeriodDays = 30,
             TypicalBedtime = new TimeOnly(22, 40),
             TypicalWakeTime = new TimeOnly(6, 15),
+            // A usual for the seeded week to depart from: without one nothing has moved, and the
+            // established path spends no model call at all, so there is no prompt to read.
+            AvgSteps = 5_200,
         });
 
         await CreateSut().RegenerateBaselineInsightAsync(_memberId);
