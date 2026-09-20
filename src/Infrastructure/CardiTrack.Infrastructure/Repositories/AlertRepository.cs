@@ -35,6 +35,19 @@ public class AlertRepository : Repository<Alert>, IAlertRepository
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<Alert>> GetServableByCardiMemberAsync(
+        Guid cardiMemberId, DateTime resolvedSince)
+    {
+        return await _dbSet.AsNoTracking()
+            .Where(a => a.CardiMemberId == cardiMemberId
+                        && a.IsActive
+                        && (!a.IsResolved || a.TriggeredDate >= resolvedSince))
+            .OrderByDescending(a => a.TriggeredDate)
+            // Ties broken the same way as above, for the same reason.
+            .ThenByDescending(a => a.Id)
+            .ToListAsync();
+    }
+
     public async Task<DateTime?> GetLastTriggeredDateAsync(
         Guid cardiMemberId, CancellationToken ct = default)
     {

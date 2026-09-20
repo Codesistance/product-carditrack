@@ -19,6 +19,27 @@ public interface IAlertRepository : IRepository<Alert>
     Task<IReadOnlyList<Alert>> GetUnresolvedByCardiMemberAsync(Guid cardiMemberId);
 
     /// <summary>
+    /// Active alerts a caregiver can still open: every unresolved one, plus resolved ones raised
+    /// since <paramref name="resolvedSince"/>. Newest first, read-only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The set <see cref="GetUnresolvedByCardiMemberAsync"/> returns is the set that is still
+    /// <em>happening</em>. This is the set that can still be <em>read</em>, which is a different
+    /// and larger thing: resolving an alert closes the episode without hiding the row, and the
+    /// detail screen serves it for as long as it is active. Anything that has to act on what a
+    /// caregiver may open — backfilling a missing explanation, most of all — needs this one, or a
+    /// producer resolving an alert minutes after it fired silently ends the work.
+    /// </para>
+    /// <para>
+    /// Bounded by a date rather than open-ended because the caller walks what comes back: the
+    /// archive grows without limit, the set of episodes that are still live does not.
+    /// </para>
+    /// </remarks>
+    Task<IReadOnlyList<Alert>> GetServableByCardiMemberAsync(
+        Guid cardiMemberId, DateTime resolvedSince);
+
+    /// <summary>
     /// When this member's most recent alert was raised, or null when nothing has ever been raised
     /// about them. The anchor for <see cref="Services.QuietStretch"/>.
     /// </summary>

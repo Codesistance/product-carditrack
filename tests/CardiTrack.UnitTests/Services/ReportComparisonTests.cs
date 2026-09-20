@@ -139,12 +139,58 @@ public class ReportComparisonTests
         Assert.Equal(4_000m, row.PeriodAverage);
     }
 
+    /// <summary>
+    /// The band beside a row has to describe the row's own measurement. The adult respiratory rate
+    /// this codebase holds is WHO's figure at rest, and this row is measured across a night's
+    /// sleep — a different measurement, printed in a PDF a caregiver may hand to a clinician, who
+    /// is exactly the reader who would take a published range at its word.
+    /// </summary>
+    [Fact]
+    public void BreathingAsleepIsComparedAgainstTheirOwnUsualAndNoPublishedBand()
+    {
+        var member = Member(Baseline(avgOvernightBreathingRate: 15m), overnightBreathing: 17m);
+
+        var row = ReportComparison.For(member, 78).Single(r => r.Metric == "Breathing rate asleep");
+
+        // Their own usual still carries the row — dropping the band is not dropping the comparison.
+        Assert.Equal(17m, row.PeriodAverage);
+        Assert.Equal(15m, row.Usual);
+        Assert.Equal(13m, row.ChangePercent);
+
+        Assert.Null(row.BandLow);
+        Assert.Null(row.BandHigh);
+        Assert.Null(row.BandSource);
+
+        // And the prompt the narrative is written from says nothing about a published range for it
+        // either, since that is the half a caregiver never sees.
+        var rendered = ReportComparison.Render(ReportComparison.For(member, 78));
+        var line = rendered.Split(Environment.NewLine).Single(l => l.Contains("Breathing rate asleep"));
+        Assert.DoesNotContain("published range", line);
+    }
+
+    [Fact]
+    public void TheWakingBandStillCarriesTheRowsItDescribes()
+    {
+        // The counterpart: dropping the overnight band must not quietly drop the ones that are
+        // measured the way their publisher measured them.
+        var rows = ReportComparison.For(Member(Baseline(avgRestingHeartRate: 70), restingHr: 74, spO2: 96m), 78);
+
+        var heart = rows.Single(r => r.Metric == "Resting heart rate");
+        Assert.Equal(60m, heart.BandLow);
+        Assert.Equal(100m, heart.BandHigh);
+        Assert.Equal("AHA", heart.BandSource);
+
+        var oxygen = rows.Single(r => r.Metric == "Blood oxygen");
+        Assert.Equal("WHO", oxygen.BandSource);
+    }
+
     private ReportMemberData Member(
         PatternBaseline? baseline,
         int? steps = null,
         int? restingHr = null,
         int? sleepMinutes = null,
-        decimal? spO2 = null)
+        decimal? spO2 = null,
+        decimal? overnightBreathing = null)
     {
         var logs = Enumerable.Range(0, To.DayNumber - From.DayNumber + 1)
             .Select(offset => new ActivityLog
@@ -155,6 +201,7 @@ public class ReportComparisonTests
                 RestingHeartRate = restingHr,
                 SleepMinutes = sleepMinutes,
                 SpO2Average = spO2,
+                OvernightBreathingRate = overnightBreathing,
             })
             .ToList();
 
@@ -169,12 +216,14 @@ public class ReportComparisonTests
     private PatternBaseline Baseline(
         int? avgSteps = null,
         int? avgRestingHeartRate = null,
-        int? avgSleepMinutes = null) => new()
+        int? avgSleepMinutes = null,
+        decimal? avgOvernightBreathingRate = null) => new()
     {
         CardiMemberId = _memberId,
         PeriodDays = 30,
         AvgSteps = avgSteps,
         AvgRestingHeartRate = avgRestingHeartRate,
         AvgSleepMinutes = avgSleepMinutes,
+        AvgOvernightBreathingRate = avgOvernightBreathingRate,
     };
 }

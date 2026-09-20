@@ -148,6 +148,60 @@ public class AlertEvidenceComposerTests
         Assert.Null(Compose("""{"rule":"activity_decline","steps":1900}""").Evidence!.BaselinePeriodDays);
     }
 
+    /// <summary>
+    /// The window is a claim about the sentence beside it, not about the member. Six rules measure
+    /// against a learned usual and five do not — the trend is week-over-week, both pairing rules
+    /// and device silence quote fixed thresholds, the realtime rule judges an hour against itself
+    /// — and the card appends "measured against their last 30 days" to whatever this carries. A
+    /// baseline being available for the member says nothing about whether their line used one.
+    /// </summary>
+    [Theory]
+    [InlineData(StatisticalAlertRules.LongTermTrendRule)]
+    [InlineData(StatisticalAlertRules.ElevatedZoneWithoutMovementRule)]
+    [InlineData(StatisticalAlertRules.DaytimeInactivityBlockRule)]
+    [InlineData(AlertDetailComposer.RealtimeHeartRateRule)]
+    [InlineData(AlertDetailComposer.DeviceSilenceRule)]
+    public void ARuleThatMeasuresAgainstNoUsualClaimsNoWindow(string rule)
+    {
+        var detail = Compose($$"""{"rule":"{{rule}}"}""", Baseline());
+
+        Assert.NotNull(detail.Evidence);
+        Assert.NotEmpty(detail.Evidence!.WhyLine);
+        Assert.Null(detail.Evidence.BaselinePeriodDays);
+    }
+
+    [Theory]
+    [InlineData(StatisticalAlertRules.ActivityDeclineRule)]
+    [InlineData(StatisticalAlertRules.IrregularSleepRule)]
+    [InlineData(StatisticalAlertRules.ElevatedHeartRateRule)]
+    [InlineData(StatisticalAlertRules.NoMorningActivityRule)]
+    [InlineData(StatisticalAlertRules.HeartRateVariabilityDropRule)]
+    [InlineData(StatisticalAlertRules.OvernightBreathingUpRule)]
+    public void ARuleThatMeasuresAgainstTheirUsualNamesTheWindow(string rule)
+    {
+        var detail = Compose($$"""{"rule":"{{rule}}"}""", Baseline());
+
+        Assert.Equal(30, detail.Evidence!.BaselinePeriodDays);
+    }
+
+    [Fact]
+    public void ACaregiversOwnAlarmClaimsNoWindowEither()
+    {
+        // Their level, their window. A baseline read for the member is beside the point.
+        var detail = Compose(
+            """
+            {"rule":"custom:3f2a5b1c-0000-4000-8000-000000000001","alarmName":"Nan's resting rate",
+             "configuredThreshold":110,"effectiveThreshold":110,
+             "condition":"Average heart rate is above 110 bpm."}
+            """,
+            Baseline());
+
+        Assert.Null(detail.Evidence!.BaselinePeriodDays);
+    }
+
+    private static PatternBaseline Baseline() =>
+        new() { CardiMemberId = Guid.NewGuid(), PeriodDays = 30, AvgSteps = 5000 };
+
     [Fact]
     public void ACaregiversOwnAlarmIsReadBackToThem()
     {

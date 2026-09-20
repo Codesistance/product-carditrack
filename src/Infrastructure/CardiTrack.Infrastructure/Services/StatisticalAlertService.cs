@@ -445,15 +445,17 @@ public class StatisticalAlertService : IStatisticalAlertService
     }
 
     /// <summary>
-    /// A bounded retry over the member's standing alerts, for explanations that never got written.
+    /// A bounded retry over the alerts a caregiver can still open, for explanations that never got
+    /// written.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Without it, an explanation lost to a model timeout or a guard rejection was lost for good:
     /// this pass is the only thing that writes one, it only ever sees <em>new</em> alerts, and the
     /// same finding on a later pass dedups against the alert already stored. The detail screen
-    /// would then show that alert with no explanation for as long as it stood, and a later brief
-    /// version would never reach it either.
+    /// would then show that alert with no explanation for as long as it remained readable — which
+    /// outlasts the episode, since resolving one does not hide it — and a later brief version
+    /// would never reach it either.
     /// </para>
     /// <para>
     /// Cheap by construction: an alert already explained by the current brief costs one indexed
@@ -465,7 +467,7 @@ public class StatisticalAlertService : IStatisticalAlertService
     /// order together starve the tail. An alert the model will never produce a servable reply for
     /// — a guard rejection that repeats — stays unexplained, so it is a candidate on every pass,
     /// and taking the first two would spend the whole budget on the same two rows forever while a
-    /// third standing alert behind them was never once attempted. Rotating by the pass clock
+    /// third candidate behind them was never once attempted. Rotating by the pass clock
     /// reaches every candidate within a few passes without persisting any retry state.
     /// </para>
     /// </remarks>
@@ -474,16 +476,23 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (_insights is null)
             return;
 
-        var standing = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(memberId);
+        // Everything the detail screen will still serve, not just what is still unresolved.
+        // AlertService.GetByIdAsync gates on IsActive alone, and AlertResolution sets IsResolved
+        // without touching it — deliberately, so a closed episode stays readable in the archive.
+        // Reading the unresolved set here meant a producer that resolved an alert before this
+        // pass reached it (device silence re-arms the moment the watch reports again) left it
+        // unexplained for good, on a card a caregiver can still open months later.
+        var servable = await _unitOfWork.Alerts.GetServableByCardiMemberAsync(
+            memberId, utcNow - ExplanationBackfillWindow);
 
         // Whether one needs a model call is decided here rather than read off the result, because
         // "already explained" and "spent a call and failed" both come back false. Counting
         // results would let an alert whose reply keeps failing the guards be retried on every
         // pass, which is the cost the cap exists to bound. The whole list is walked rather than
         // stopped at the cap — there is no rotating fairly over a set you have not counted — and
-        // that is one lookup on a unique index per standing alert, of which a member has a few.
+        // that is one lookup on a unique index per servable alert, which the window above bounds.
         var candidates = new List<Guid>();
-        foreach (var alert in standing.OrderBy(a => a.CreatedDate).ThenBy(a => a.Id))
+        foreach (var alert in servable.OrderBy(a => a.CreatedDate).ThenBy(a => a.Id))
         {
             var stored = await _unitOfWork.MemberInsights.GetForAlertAsync(alert.Id);
             if (stored is null || stored.PromptVersion < HealthInsightService.AlertPromptVersion)
@@ -515,7 +524,26 @@ public class StatisticalAlertService : IStatisticalAlertService
     private const int PassCadenceMinutes = 5;
 
     /// <summary>
-    /// How many standing alerts one pass will try to backfill an explanation for. Small on
+    /// How far back a <em>resolved</em> alert stays a candidate for a missing explanation.
+    /// Unresolved ones are candidates however old they are, as before — this only widens the set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A fortnight is the retry horizon, not a statement about how long the alert matters: the
+    /// explanation is served for the life of the alert (<see cref="InsightRetention"/> exempts
+    /// these rows from the sweep for exactly that reason), but a reply that has failed every
+    /// attempt for two weeks is failing for a reason another pass will not fix.
+    /// </para>
+    /// <para>
+    /// The bound is what keeps the walk cheap. Every candidate costs one indexed lookup per pass
+    /// and there are 288 passes a day, so an unbounded set would have this growing with the
+    /// member's whole alert history forever. Live episodes plus a fortnight does not grow.
+    /// </para>
+    /// </remarks>
+    private static readonly TimeSpan ExplanationBackfillWindow = TimeSpan.FromDays(14);
+
+    /// <summary>
+    /// How many alerts one pass will try to backfill an explanation for. Small on
     /// purpose: this runs every five minutes, and a member with a backlog catches up over a few
     /// passes rather than paying for all of it at once.
     /// </summary>

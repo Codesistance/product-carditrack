@@ -277,9 +277,12 @@ public class AlertEvidenceResponse
     public string? ThresholdLabel { get; set; }
 
     /// <summary>
-    /// The window the "usual" in <see cref="WhyLine"/> was learned over, in days. Null when no
-    /// baseline was read — the figures then came from the alert's own stamp, and naming a window
-    /// we did not look at would be an invention.
+    /// The window the "usual" in <see cref="WhyLine"/> was learned over, in days. Null in two
+    /// cases, and a client must not fill either in: when the rule measures against no learned
+    /// usual at all (the long-term trend is week-over-week, the pairing rules and device silence
+    /// quote fixed thresholds, a caregiver's own alarm quotes their own level), and when a rule
+    /// that would have read a baseline got none back — the figures then came from the alert's own
+    /// stamp, and naming a window we did not look at would be an invention either way.
     /// </summary>
     public int? BaselinePeriodDays { get; set; }
 }

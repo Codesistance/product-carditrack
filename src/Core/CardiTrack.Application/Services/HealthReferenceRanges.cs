@@ -79,10 +79,36 @@ public static class HealthReferenceRanges
     public static MetricReference SpO2 => new() { Low = 94m, High = 100m, Source = "WHO" };
 
     /// <summary>
-    /// Normal adult respiratory rate, 12–20 breaths per minute (WHO Basic Emergency Care). WHO's
-    /// age-dependent thresholds for this one are paediatric, and a CardiMember is an adult.
+    /// Normal adult respiratory rate <em>at rest</em>, 12–20 breaths per minute (WHO Basic
+    /// Emergency Care). WHO's age-dependent thresholds for this one are paediatric, and a
+    /// CardiMember is an adult.
     /// </summary>
+    /// <remarks>
+    /// At rest is part of the definition rather than a gloss on it, so this band belongs to the
+    /// waking figure (<c>ActivityLog.BreathingRate</c>) alone. The overnight reading measured
+    /// across hours of stillness is a different measurement context and gets no band — see
+    /// <see cref="NoOvernightBreathingBand"/>.
+    /// </remarks>
     public static MetricReference BreathingRate => new() { Low = 12m, High = 20m, Source = "WHO" };
+
+    /// <summary>
+    /// There is deliberately no published band for overnight breathing rate
+    /// (<c>ActivityLog.OvernightBreathingRate</c>). The adult range this codebase cites is WHO's
+    /// respiratory rate <em>at rest</em>, and a rate measured across hours of sleep is not that
+    /// measurement — breathing slows in sleep and moves with its stages — so a waking band printed
+    /// beside an overnight figure grades it against the wrong thing while carrying WHO's name. No
+    /// body publishes a sleep-specific adult range to put there instead, so the overnight figure is
+    /// drawn against the member's own baseline alone: the same stance
+    /// <see cref="NoHeartRateVariabilityBand"/> and skin temperature take, for the same reason.
+    /// </summary>
+    /// <remarks>
+    /// This absence is the one that reaches furthest. The overnight row is printed in the exported
+    /// PDF a caregiver may hand to a clinician, and a published range beside it is read as
+    /// authoritative by exactly the reader best placed to act on it.
+    /// </remarks>
+    public const string NoOvernightBreathingBand =
+        "Breathing asleep is compared against the member's own baseline; the published adult range "
+        + "is measured at rest and does not describe an overnight figure.";
 
     /// <summary>
     /// There is deliberately no heart-rate-variability range here. Overnight RMSSD spans an order

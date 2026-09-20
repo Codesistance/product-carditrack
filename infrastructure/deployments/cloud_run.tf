@@ -734,6 +734,12 @@ resource "google_cloud_run_v2_job" "pipeline_jobs" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
+    # Every one of these jobs takes AI__Private__BaseUrl from the shared secret env map, which
+    # names the secret as a string rather than referencing the resource — so Terraform infers no
+    # ordering from it, and the barrier below reaches the grant on the secret but not the version
+    # holding the URL. The containers mount version = "latest", which resolves to nothing at all
+    # until that version exists.
+    google_secret_manager_secret_version.medgemma_service_url,
     # See the barrier's comment in service_accounts.tf.
     time_sleep.pipeline_iam_propagation,
   ]
@@ -1166,6 +1172,12 @@ resource "google_cloud_run_v2_job" "pipeline_assessor" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
+    # Every one of these jobs takes AI__Private__BaseUrl from the shared secret env map, which
+    # names the secret as a string rather than referencing the resource — so Terraform infers no
+    # ordering from it, and the barrier below reaches the grant on the secret but not the version
+    # holding the URL. The containers mount version = "latest", which resolves to nothing at all
+    # until that version exists.
+    google_secret_manager_secret_version.medgemma_service_url,
     # See the barrier's comment in service_accounts.tf.
     time_sleep.pipeline_iam_propagation,
   ]
@@ -1298,6 +1310,12 @@ resource "google_cloud_run_v2_job" "pipeline_themer" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
+    # Every one of these jobs takes AI__Private__BaseUrl from the shared secret env map, which
+    # names the secret as a string rather than referencing the resource — so Terraform infers no
+    # ordering from it, and the barrier below reaches the grant on the secret but not the version
+    # holding the URL. The containers mount version = "latest", which resolves to nothing at all
+    # until that version exists.
+    google_secret_manager_secret_version.medgemma_service_url,
     # See the barrier's comment in service_accounts.tf.
     time_sleep.pipeline_iam_propagation,
   ]
@@ -1431,6 +1449,12 @@ resource "google_cloud_run_v2_job" "pipeline_trend" {
   depends_on = [
     google_project_service.run,
     google_secret_manager_secret_version.db_connection_string,
+    # Every one of these jobs takes AI__Private__BaseUrl from the shared secret env map, which
+    # names the secret as a string rather than referencing the resource — so Terraform infers no
+    # ordering from it, and the barrier below reaches the grant on the secret but not the version
+    # holding the URL. The containers mount version = "latest", which resolves to nothing at all
+    # until that version exists.
+    google_secret_manager_secret_version.medgemma_service_url,
     # See the barrier's comment in service_accounts.tf.
     time_sleep.pipeline_iam_propagation,
   ]

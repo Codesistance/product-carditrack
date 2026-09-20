@@ -54,7 +54,7 @@ public class StatisticalAlertExplanationTests
         _activityLogs.GetByCardiMemberAndDateRangeAsync(_memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
             .Returns([]);
         _alerts.GetByCardiMemberAsync(_memberId, activeOnly: false).Returns([]);
-        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([]);
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([]);
         _links.GetByCardiMemberIdAsync(_memberId).Returns([]);
     }
 
@@ -65,7 +65,7 @@ public class StatisticalAlertExplanationTests
         // same finding on a later pass dedups against the alert already stored. Without this
         // sweep the detail screen would show it unexplained for as long as it stood.
         var alert = Standing();
-        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([alert]);
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([alert]);
         _insights.GetForAlertAsync(alert.Id).Returns((MemberInsight?)null);
 
         await CreateSut().EvaluateAsync(UtcNow);
@@ -77,7 +77,7 @@ public class StatisticalAlertExplanationTests
     public async Task AnAlertAlreadyExplainedByTheCurrentBriefCostsNothing()
     {
         var alert = Standing();
-        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([alert]);
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([alert]);
         _insights.GetForAlertAsync(alert.Id).Returns(new MemberInsight
         {
             CardiMemberId = _memberId,
@@ -98,7 +98,7 @@ public class StatisticalAlertExplanationTests
     public async Task AnAlertExplainedByAnOlderBriefIsRewritten()
     {
         var alert = Standing();
-        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([alert]);
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([alert]);
         _insights.GetForAlertAsync(alert.Id).Returns(new MemberInsight
         {
             CardiMemberId = _memberId,
@@ -121,7 +121,7 @@ public class StatisticalAlertExplanationTests
         // at once — and an alert whose reply keeps failing the guards cannot drag every other
         // standing alert into a model call on all 288 passes a day.
         var standing = Enumerable.Range(0, 6).Select(_ => Standing()).ToList();
-        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(standing);
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns(standing);
         _insights.GetForAlertAsync(Arg.Any<Guid>()).Returns((MemberInsight?)null);
 
         await CreateSut().EvaluateAsync(UtcNow);
@@ -141,7 +141,7 @@ public class StatisticalAlertExplanationTests
         var standing = Enumerable.Range(0, 3)
             .Select(i => Standing(createdAt: UtcNow.AddHours(-(3 - i))))
             .ToList();
-        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns(standing);
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns(standing);
 
         // Nothing is ever written, so all three are candidates on every pass — the shape of a
         // reply the guards keep rejecting.
@@ -184,7 +184,7 @@ public class StatisticalAlertExplanationTests
     public async Task AFailedExplanationDoesNotFailTheMembersPass()
     {
         var alert = Standing();
-        _alerts.GetUnresolvedByCardiMemberAsync(_memberId).Returns([alert]);
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([alert]);
         _insights.GetForAlertAsync(alert.Id).Returns((MemberInsight?)null);
         _insightService.RegenerateAlertInsightAsync(alert.Id, Arg.Any<CancellationToken>())
             .Returns<Task<bool>>(_ => throw new HttpRequestException("MedGemma is catching up."));
@@ -199,6 +199,53 @@ public class StatisticalAlertExplanationTests
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
             InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance,
             alertEnqueue: null, insights: _insightService);
+
+    /// <summary>
+    /// Resolving an alert closes the episode; it does not close the card. AlertService.GetByIdAsync
+    /// gates on IsActive alone and AlertResolution never touches it, so a caregiver can still open
+    /// a resolved alert months later — and device silence resolves the moment the watch reports
+    /// again, often within one pass of firing. Asking only for unresolved alerts here meant an
+    /// explanation that failed just before that could never be retried, on a card that goes on
+    /// being served for good.
+    /// </summary>
+    [Fact]
+    public async Task TheSweepAsksForWhatACaregiverCanStillOpen_NotOnlyWhatIsUnresolved()
+    {
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _alerts.Received(1).GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>());
+        await _alerts.DidNotReceive().GetUnresolvedByCardiMemberAsync(_memberId);
+    }
+
+    [Fact]
+    public async Task TheWindowIsBoundedSoTheWalkCannotGrowWithTheArchive()
+    {
+        // Every candidate costs an indexed lookup on every one of the 288 passes a day, so the
+        // cutoff is what stops this scaling with a member's whole alert history. A fortnight back
+        // from the pass clock, not from nothing.
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _alerts.Received(1).GetServableByCardiMemberAsync(
+            _memberId,
+            Arg.Is<DateTime>(cutoff =>
+                cutoff > UtcNow.AddDays(-15) && cutoff < UtcNow.AddDays(-13)));
+    }
+
+    [Fact]
+    public async Task ARecentlyResolvedAlertStillGetsItsExplanationBackfilled()
+    {
+        // The case that was lost for good: raised, its explanation failed, then the producer
+        // resolved it before the next pass reached it.
+        var resolved = Standing();
+        resolved.IsResolved = true;
+        _alerts.GetServableByCardiMemberAsync(_memberId, Arg.Any<DateTime>()).Returns([resolved]);
+        _insights.GetForAlertAsync(resolved.Id).Returns((MemberInsight?)null);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _insightService.Received(1).RegenerateAlertInsightAsync(
+            resolved.Id, Arg.Any<CancellationToken>());
+    }
 
     private Alert Standing(DateTime? createdAt = null) => new()
     {

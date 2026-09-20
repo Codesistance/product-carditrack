@@ -10,7 +10,12 @@ namespace CardiTrack.Application.Reports;
 /// <param name="PeriodAverage">The mean over the days the export covers that carried a reading.</param>
 /// <param name="Usual">The member's own learned figure, or null where none was learned.</param>
 /// <param name="ChangePercent">Signed whole percent against <paramref name="Usual"/>, null without one.</param>
-/// <param name="BandLow">Published band floor, null for a metric no body publishes one for.</param>
+/// <param name="BandLow">
+/// Published band floor, null for a metric no body publishes one <em>for this measurement</em> —
+/// steps and overnight HRV, where no adult band exists at all, and breathing asleep, where the
+/// band this codebase holds is WHO's rate at rest and describes a different measurement
+/// (<see cref="HealthReferenceRanges.NoOvernightBreathingBand"/>).
+/// </param>
 /// <param name="BandHigh">Published band ceiling.</param>
 /// <param name="BandSource">Who publishes the band — printed beside it, never implied.</param>
 /// <param name="MeasuredDays">How many days in the period carried a reading for this metric.</param>
@@ -68,7 +73,6 @@ public static class ReportComparison
         var sleepBand = HealthReferenceRanges.Sleep(ageYears);
         var heartBand = HealthReferenceRanges.RestingHeartRate;
         var oxygenBand = HealthReferenceRanges.SpO2;
-        var breathingBand = HealthReferenceRanges.BreathingRate;
 
         var rows = new List<ReportComparisonRow?>
         {
@@ -83,9 +87,12 @@ public static class ReportComparison
                 baseline.AvgActiveMinutes, null, null, null),
             Row("Overnight heart rate variability", "ms", days, log => log.HeartRateVariabilityMs,
                 baseline.AvgHeartRateVariabilityMs, null, null, null),
+            // No band, for the reason HealthReferenceRanges.NoOvernightBreathingBand gives: the
+            // published adult rate is measured at rest, and this row is measured asleep. Their
+            // own usual is the honest comparison, which is the row above's position too.
             Row("Breathing rate asleep", "breaths a minute", days,
                 log => log.OvernightBreathingRate, baseline.AvgOvernightBreathingRate,
-                breathingBand.Low, breathingBand.High, breathingBand.Source),
+                null, null, null),
             Row("Blood oxygen", "%", days, log => log.SpO2Average, null,
                 oxygenBand.Low, oxygenBand.High, oxygenBand.Source),
         };

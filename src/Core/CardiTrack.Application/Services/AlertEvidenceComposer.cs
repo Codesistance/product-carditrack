@@ -59,10 +59,15 @@ public static class AlertEvidenceComposer
             RuleLabel = found.Label,
             WhyLine = found.Why,
             ThresholdLabel = found.Threshold,
-            // The window the "usual" in that sentence was learned over. Null rather than 30 when no
-            // baseline came back: the figures in the line then came from the stamp alone, and
-            // naming a window we did not read would be the invention this class exists to avoid.
-            BaselinePeriodDays = baseline?.PeriodDays,
+            // The window the "usual" in that sentence was learned over — and only where there is
+            // such a usual in it. Two ways this stays null. A rule that never reads a baseline
+            // (the trend, both pairing rules, device silence, a caregiver's own alarm) has no
+            // "usual" in its line at all, and the card would otherwise append "measured against
+            // their last 30 days" to a sentence that is purely week-over-week or a fixed
+            // threshold. And a rule that would have read one but got nothing back took its
+            // figures from the stamp alone, where naming a window we did not read is the same
+            // invention. Both are the thing this class exists to avoid.
+            BaselinePeriodDays = found.AgainstUsual ? baseline?.PeriodDays : null,
         };
     }
 
@@ -75,7 +80,13 @@ public static class AlertEvidenceComposer
     private const decimal BelowUsual = 1m - (decimal)StatisticalAlertRules.DeviationFraction;
 
     /// <summary>One rule's evidence: the settings-screen name, the sentence, and the line it crossed.</summary>
-    private readonly record struct Evidence(string Label, string Why, string? Threshold);
+    /// <param name="AgainstUsual">
+    /// Whether the sentence measures against the member's own learned usual. Carried per rule
+    /// rather than inferred from the presence of a baseline, because the two differ: a baseline is
+    /// read for the member, and whether a given rule's line quotes one is a property of the rule.
+    /// </param>
+    private readonly record struct Evidence(
+        string Label, string Why, string? Threshold, bool AgainstUsual);
 
     private static Evidence? BuiltIn(string rule, JsonElement metrics, PatternBaseline? baseline)
     {
@@ -84,7 +95,7 @@ public static class AlertEvidenceComposer
         if (AlertRuleCatalogue.Find(rule) is not { } definition)
             return null;
 
-        var (why, threshold) = rule switch
+        var (why, threshold, againstUsual) = rule switch
         {
             StatisticalAlertRules.ActivityDeclineRule => Steps(metrics, baseline),
             StatisticalAlertRules.IrregularSleepRule => Sleep(metrics, baseline),
@@ -99,22 +110,22 @@ public static class AlertEvidenceComposer
             AlertDetailComposer.DeviceSilenceRule => DeviceSilence(metrics),
             // A catalogue entry whose producer has not shipped cannot have raised this alert. If
             // one ever does, it arrives here unexplained rather than explained wrongly.
-            _ => (null, null),
+            _ => (null, null, false),
         };
 
-        return why is null ? null : new Evidence(definition.Title, why, threshold);
+        return why is null ? null : new Evidence(definition.Title, why, threshold, againstUsual);
     }
 
-    private static (string?, string?) Steps(JsonElement metrics, PatternBaseline? baseline)
+    private static (string? Why, string? Threshold, bool AgainstUsual) Steps(JsonElement metrics, PatternBaseline? baseline)
     {
         var usual = Read(metrics, "baselineAvgSteps") ?? baseline?.AvgSteps;
         var why = $"This is raised when a day's steps land more than {StatisticalAlertRules.DeviationFraction:P0} "
             + "below their own usual, measured against the days before it rather than against anyone else's day.";
 
-        return (why, usual is > 0 ? $"Below {usual.Value * BelowUsual:N0} steps" : null);
+        return (why, usual is > 0 ? $"Below {usual.Value * BelowUsual:N0} steps" : null, true);
     }
 
-    private static (string?, string?) Sleep(JsonElement metrics, PatternBaseline? baseline)
+    private static (string? Why, string? Threshold, bool AgainstUsual) Sleep(JsonElement metrics, PatternBaseline? baseline)
     {
         var usual = Read(metrics, "baselineAvgSleepMinutes") ?? baseline?.AvgSleepMinutes;
         var why = $"This is raised when a night sits more than {StatisticalAlertRules.DeviationFraction:P0} "
@@ -133,13 +144,13 @@ public static class AlertEvidenceComposer
         {
             return (why, Read(metrics, "recommendedHighHours") is { } ceiling
                 ? $"Longer than {ceiling:0.#} h, their recommended ceiling"
-                : null);
+                : null, true);
         }
 
-        return (why, usual is > 0 ? $"Shorter than {Hours(usual.Value * BelowUsual)} h" : null);
+        return (why, usual is > 0 ? $"Shorter than {Hours(usual.Value * BelowUsual)} h" : null, true);
     }
 
-    private static (string?, string?) HeartRate(JsonElement metrics, PatternBaseline? baseline)
+    private static (string? Why, string? Threshold, bool AgainstUsual) HeartRate(JsonElement metrics, PatternBaseline? baseline)
     {
         var usual = Read(metrics, "baselineAvgRestingHeartRate") ?? baseline?.AvgRestingHeartRate;
         var margin = Read(metrics, "marginBpm");
@@ -150,10 +161,10 @@ public static class AlertEvidenceComposer
             : "This is raised when a resting heart rate sits above their own usual by the larger of "
               + $"two standard deviations of their own variation and {StatisticalAlertRules.HrMarginFloorBpm} bpm.";
 
-        return (why, usual is > 0 && margin is { } bpm ? $"Above {usual.Value + bpm:0} bpm" : null);
+        return (why, usual is > 0 && margin is { } bpm ? $"Above {usual.Value + bpm:0} bpm" : null, true);
     }
 
-    private static (string?, string?) NoMorning(JsonElement metrics, PatternBaseline? baseline)
+    private static (string? Why, string? Threshold, bool AgainstUsual) NoMorning(JsonElement metrics, PatternBaseline? baseline)
     {
         var wake = ReadText(metrics, "typicalWakeTime")
             ?? baseline?.TypicalWakeTime?.ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -162,16 +173,20 @@ public static class AlertEvidenceComposer
             + "time. A watch that has simply stopped sending is a different alert, because not measured "
             + "and did not move are not the same thing.";
 
-        return (why, DeadlineFrom(wake) is { } deadline ? $"No steps by {deadline}" : null);
+        return (why, DeadlineFrom(wake) is { } deadline ? $"No steps by {deadline}" : null, true);
     }
 
-    private static (string?, string?) Trend() =>
+    private static (string? Why, string? Threshold, bool AgainstUsual) Trend() =>
         ($"This is raised when each of {StatisticalAlertRules.TrendWeeks} weeks running averaged at least "
          + $"{StatisticalAlertRules.WeeklyDeclineFraction:P0} fewer steps a day than the week before it. "
          + "One quiet week never raises it — the finding is the direction, held for a month.",
-         $"{StatisticalAlertRules.TrendWeeks} weeks, each at least {StatisticalAlertRules.WeeklyDeclineFraction:P0} below the last");
+         $"{StatisticalAlertRules.TrendWeeks} weeks, each at least {StatisticalAlertRules.WeeklyDeclineFraction:P0} below the last",
+         // Each week is measured against the week before it, never against a learned baseline —
+         // this composer takes none and reads none. The card appending "measured against their
+         // last 30 days" here named a window nothing in the line came from.
+         false);
 
-    private static (string?, string?) HeartRateVariability(JsonElement metrics, PatternBaseline? baseline)
+    private static (string? Why, string? Threshold, bool AgainstUsual) HeartRateVariability(JsonElement metrics, PatternBaseline? baseline)
     {
         var usual = Read(metrics, "baselineAvgHeartRateVariabilityMs") ?? baseline?.AvgHeartRateVariabilityMs;
         var margin = Read(metrics, "marginMs");
@@ -184,10 +199,10 @@ public static class AlertEvidenceComposer
 
         return (why, usual is > 0 && margin is { } ms
             ? $"Below {usual.Value - ms:0.#} ms, two nights running"
-            : null);
+            : null, true);
     }
 
-    private static (string?, string?) OvernightBreathing(JsonElement metrics, PatternBaseline? baseline)
+    private static (string? Why, string? Threshold, bool AgainstUsual) OvernightBreathing(JsonElement metrics, PatternBaseline? baseline)
     {
         var usual = Read(metrics, "baselineAvgOvernightBreathingRate") ?? baseline?.AvgOvernightBreathingRate;
         var margin = Read(metrics, "marginPerMinute");
@@ -198,10 +213,10 @@ public static class AlertEvidenceComposer
             : "This is raised when breathing while asleep runs above their own usual by the larger of two "
               + $"standard deviations and {StatisticalAlertRules.BreathingMarginFloorPerMinute:0.#} a minute.";
 
-        return (why, usual is > 0 && margin is { } rate ? $"Above {usual.Value + rate:0.#} a minute" : null);
+        return (why, usual is > 0 && margin is { } rate ? $"Above {usual.Value + rate:0.#} a minute" : null, true);
     }
 
-    private static (string?, string?) ElevatedZone(JsonElement metrics)
+    private static (string? Why, string? Threshold, bool AgainstUsual) ElevatedZone(JsonElement metrics)
     {
         var threshold = Read(metrics, "thresholdMinutes");
         var why = "This is raised only when both halves are true at once: a day whose steps already count "
@@ -209,12 +224,17 @@ public static class AlertEvidenceComposer
             + "pairing is the finding — raised minutes after a walk are exercise, and the same minutes on "
             + "a day they barely moved are not.";
 
+        // False despite "already count as a decline": the producer judged that half against a
+        // baseline, but this composer reads none, and the figure the line actually quotes is a
+        // minutes threshold. Naming a window we did not look at is the invention to avoid, and
+        // attaching it to the raised-minutes half would put it on the wrong one besides.
         return (why, threshold is { } minutes
             ? $"More than {minutes:0} raised minutes on a quiet day"
-            : $"More than {StatisticalAlertRules.ElevatedZoneFloorMinutes} raised minutes on a quiet day");
+            : $"More than {StatisticalAlertRules.ElevatedZoneFloorMinutes} raised minutes on a quiet day",
+            false);
     }
 
-    private static (string?, string?) SedentaryStretch(JsonElement metrics)
+    private static (string? Why, string? Threshold, bool AgainstUsual) SedentaryStretch(JsonElement metrics)
     {
         var threshold = Read(metrics, "thresholdMinutes");
         var why = "This is raised when one unbroken still stretch in waking hours runs past the longer of "
@@ -223,23 +243,29 @@ public static class AlertEvidenceComposer
             + "minutes from being flagged at an hour, and the margin keeps someone who habitually sits for "
             + "three hours from being flagged every afternoon.";
 
-        return (why, threshold is { } minutes ? $"Longer than {Hours(minutes)} h" : null);
+        // Same as the pairing rule above: "half again their own usual longest" is a personal
+        // figure the producer worked out and stamped, not one of this baseline's columns, so the
+        // baseline's window does not describe where it came from.
+        return (why, threshold is { } minutes ? $"Longer than {Hours(minutes)} h" : null, false);
     }
 
-    private static (string?, string?) RealtimeHeartRate() =>
+    private static (string? Why, string? Threshold, bool AgainstUsual) RealtimeHeartRate() =>
         ("This is raised when the last hour of heart-rate readings changes shape — a jump at least "
          + $"{DigestRefreshRules.SampleJumpScore:0} times their own typical minute-to-minute jitter away from "
          + "that hour's trend. It is a change in pattern, not a reading crossing a fixed rate.",
-         $"A deviation of {DigestRefreshRules.SampleJumpScore:0} typical jitters or more from the hour's trend");
+         $"A deviation of {DigestRefreshRules.SampleJumpScore:0} typical jitters or more from the hour's trend",
+         // Their own typical jitter, measured within the hour it is judging — not a baseline.
+         false);
 
-    private static (string?, string?) DeviceSilence(JsonElement metrics)
+    private static (string? Why, string? Threshold, bool AgainstUsual) DeviceSilence(JsonElement metrics)
     {
         var threshold = Read(metrics, "thresholdMinutes");
         var why = "This is about the watch, not about them: no readings have arrived for a stretch of their "
             + "waking hours. It usually means the watch needs charging or is not being worn, and it is "
             + "deliberately never read as stillness — nothing was measured, so nothing can be concluded.";
 
-        return (why, threshold is { } minutes ? $"No readings for {Hours(minutes)} h of waking time" : null);
+        // About the watch, not about them: nothing here is measured against a usual at all.
+        return (why, threshold is { } minutes ? $"No readings for {Hours(minutes)} h of waking time" : null, false);
     }
 
     /// <summary>
@@ -258,7 +284,8 @@ public static class AlertEvidenceComposer
             + "CardiTrack's rules — the level, the window and how urgent it is were all set by you, and "
             + "changing them changes when this arrives.";
 
-        return new Evidence(label, why, ThresholdOf(metrics));
+        // Their own level, their own window. Nothing about a learned usual enters this.
+        return new Evidence(label, why, ThresholdOf(metrics), AgainstUsual: false);
     }
 
     /// <summary>

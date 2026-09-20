@@ -33,7 +33,7 @@ public static class PinnedReferenceTable
     /// <summary>
     /// Bumped whenever a figure, a band or a citation below changes. Not bumped for wording.
     /// </summary>
-    public const int Version = 1;
+    public const int Version = 2;
 
     /// <summary>
     /// The block as the prompt carries it. Ages are resolved against the member so the sleep band
@@ -44,7 +44,6 @@ public static class PinnedReferenceTable
         var sleep = HealthReferenceRanges.Sleep(ageYears);
         var heart = HealthReferenceRanges.RestingHeartRate;
         var oxygen = HealthReferenceRanges.SpO2;
-        var breathing = HealthReferenceRanges.BreathingRate;
 
         var lines = new List<string>
         {
@@ -52,11 +51,21 @@ public static class PinnedReferenceTable
             + "may treat as authoritative. Do not recall others.",
             $"- Resting heart rate: {heart.Low:0}-{heart.High:0} bpm typical for an adult at rest "
             + $"({heart.Source}).",
+            // Stated both ways, for the reason the activity line below is. The published figure is
+            // in hours; the sleep trend feature reports minutes a night, and the brief forbids the
+            // model converting anything for itself — so hours alone left it a band it was not
+            // allowed to compare its own figure to. The minutes are named as the same figure so
+            // the two cannot read as two recommendations.
             $"- Sleep: {sleep.Low:0.#}-{sleep.High:0.#} hours a night recommended at this member's "
-            + $"age ({sleep.Source}).",
+            + $"age ({sleep.Source}) — which is {sleep.Low * MinutesPerHour:0}-"
+            + $"{sleep.High * MinutesPerHour:0} minutes a night, the same recommendation in the "
+            + "units the sleep figures are reported in, not a second one.",
             $"- Blood oxygen: {oxygen.Low:0}-{oxygen.High:0}% normal at sea level ({oxygen.Source}).",
-            $"- Breathing at rest: {breathing.Low:0}-{breathing.High:0} breaths a minute "
-            + $"({breathing.Source}).",
+            // No published band for breathing asleep, which is the only breathing figure the trend
+            // features carry. HealthReferenceRanges.BreathingRate is WHO's rate at rest and is a
+            // different measurement — quoting it here would hand the model a yardstick for a
+            // metric it does not measure.
+            $"- Breathing asleep: {HealthReferenceRanges.NoOvernightBreathingBand}",
             // Stated both ways on purpose. The published figure is weekly; the trend features
             // report active minutes per day, and the brief forbids the model from converting
             // anything for itself — so a weekly band beside a daily figure would be two numbers it
@@ -80,6 +89,13 @@ public static class PinnedReferenceTable
             Environment.NewLine,
             WellnessGuidelines.All.Select(reference =>
                 $"- {reference.Citation} ({reference.Url})"));
+
+    /// <summary>
+    /// Minutes in an hour, named because the sleep line converts with it. The conversion is done
+    /// here, once, in .NET — which is the whole point of the line: the model is told never to
+    /// convert a unit, so anything it needs in two units has to arrive in two units.
+    /// </summary>
+    private const decimal MinutesPerHour = 60m;
 
     /// <summary>The version as prompt-safe text, for the stamp a stored narrative carries.</summary>
     public static string VersionLabel =>
