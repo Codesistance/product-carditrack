@@ -10,7 +10,10 @@ output "builds_bucket_name" {
 
 output "store_distribution_secret_ids" {
   description = "Secret Manager IDs for mobile store distribution secrets (Apple / Google Play)"
-  value       = [for s in google_secret_manager_secret.store_distribution : s.secret_id]
+  # slack-bot-token and slack-channel-id live in the same store_distribution_secrets set
+  # (secret_manager.tf) to share its carditrack-deploy accessor grant, but they aren't
+  # store-distribution secrets — excluded here so this output matches its description.
+  value = [for k, s in google_secret_manager_secret.store_distribution : s.secret_id if !startswith(k, "slack-")]
 }
 
 # The service's own address, read from the resource rather than constructed.
