@@ -190,12 +190,25 @@ public class RetentionWorker : CronBackgroundService
             return;
         }
 
-        unitOfWork.MemberInsights.RemoveRange(expired);
-        await unitOfWork.SaveChangesAsync();
+        // Deleted with the cutoff restated, not by key: a baseline or trend pass can rewrite one of
+        // these rows in place between the select above and this statement, and a delete by key
+        // alone would then throw away an insight generated seconds ago.
+        var deleted = await unitOfWork.MemberInsights.DeleteGeneratedBeforeAsync(
+            expired.Select(i => i.Id).ToList(), cutoff);
+
+        if (deleted < expired.Count)
+        {
+            // Worth a line rather than letting the counts silently disagree — the same courtesy
+            // the chat pass extends when a conversation gains a turn mid-sweep.
+            _logger.LogInformation(
+                "Retention left {Count} of {Found} stored insight(s): they were regenerated after "
+                + "being selected, so they are no longer expired.",
+                expired.Count - deleted, expired.Count);
+        }
 
         _logger.LogInformation(
             "Retention insight pass complete. Insights deleted: {Count}, older than {Days} days.",
-            expired.Count, InsightRetention.MaxAge.TotalDays);
+            deleted, InsightRetention.MaxAge.TotalDays);
     }
 
     /// <summary>

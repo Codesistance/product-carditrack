@@ -278,7 +278,15 @@ public class HealthInsightService : IHealthInsightService
     private static string ResolvedOrEmpty(string? text, string? name)
     {
         var resolved = NamePlaceholder.Resolve(text, name) ?? string.Empty;
-        return NamePlaceholder.IsPresentIn(resolved) ? string.Empty : resolved;
+        if (NamePlaceholder.IsPresentIn(resolved))
+            return string.Empty;
+
+        // Trimmed, and whitespace treated as nothing at all. A reply of three spaces passes the
+        // register guard (there is no condition in it to name) and would otherwise be stored as a
+        // blank row stamped with the current prompt version — which every later pass then skips as
+        // already done, while the read path hides it for having no text. The alert would never be
+        // explained again.
+        return string.IsNullOrWhiteSpace(resolved) ? string.Empty : resolved.Trim();
     }
 
     private static string CaregiverFacingInsight(string? text, string? name)

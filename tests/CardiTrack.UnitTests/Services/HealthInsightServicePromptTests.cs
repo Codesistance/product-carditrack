@@ -508,6 +508,47 @@ public class HealthInsightServicePromptTests
     }
 
     [Fact]
+    public async Task AlertInsight_WithholdsAWhitespaceOnlyReply()
+    {
+        SetupAlert();
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "   ",
+                RecommendedAction = "   ",
+            });
+
+        var written = await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        // Three spaces name no condition, so the register guard passes them. Stored, they would
+        // become a blank row stamped with the current prompt version — skipped by every later
+        // pass as already done, and hidden by the read path for having no text. The alert would
+        // never be explained again.
+        Assert.False(written);
+        Assert.True(NothingStored());
+    }
+
+    [Fact]
+    public async Task AlertInsight_TrimsTheTextItStores()
+    {
+        SetupAlert();
+        _medicalAi.GenerateStructuredAsync<HealthInsightService.AlertAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new HealthInsightService.AlertAiResponse
+            {
+                Explanation = "  Their steps dropped well below usual.  ",
+                RecommendedAction = "  Call them today.  ",
+            });
+
+        await CreateSut().RegenerateAlertInsightAsync(_alertId);
+
+        var stored = StoredInsight();
+        Assert.Equal("Their steps dropped well below usual.", stored.Summary);
+        Assert.Equal("Call them today.", stored.RecommendedAction);
+    }
+
+    [Fact]
     public async Task AlertInsight_DropsUnresolvedNamePlaceholders_WhenNoNameIsOnFile()
     {
         SetupAlert();

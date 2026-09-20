@@ -19,4 +19,17 @@ public interface IMemberInsightRepository : IRepository<MemberInsight>
     /// <paramref name="take"/> so one pass cannot load an unbounded set into memory.
     /// </summary>
     Task<IReadOnlyList<MemberInsight>> GetGeneratedBeforeAsync(DateTime cutoffUtc, int take);
+
+    /// <summary>
+    /// Deletes the named rows, but only those still written before <paramref name="cutoffUtc"/>.
+    /// Returns how many were removed.
+    /// </summary>
+    /// <remarks>
+    /// The cutoff is repeated on the delete rather than trusted from the select. A row is selected
+    /// for its age and removed by its key, and between those two statements the digest or trend
+    /// pass can rewrite that same row in place — at which point deleting by key alone would throw
+    /// away an insight generated seconds ago. Re-stating the predicate makes the database decide,
+    /// so a row that has just been refreshed is left where it is.
+    /// </remarks>
+    Task<int> DeleteGeneratedBeforeAsync(IReadOnlyCollection<Guid> ids, DateTime cutoffUtc);
 }

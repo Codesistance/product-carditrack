@@ -28,4 +28,15 @@ public class MemberInsightRepository : Repository<MemberInsight>, IMemberInsight
             .OrderBy(i => i.GeneratedAtUtc)
             .Take(take)
             .ToListAsync();
+
+    // Both halves of the predicate, in one server-side statement: the ids the sweep selected *and*
+    // the age it selected them for. A row the digest or trend pass refreshed between the two
+    // simply stops matching, so the delete leaves it alone instead of discarding a fresh insight.
+    public async Task<int> DeleteGeneratedBeforeAsync(
+        IReadOnlyCollection<Guid> ids, DateTime cutoffUtc) =>
+        ids.Count == 0
+            ? 0
+            : await _dbSet
+                .Where(i => ids.Contains(i.Id) && i.GeneratedAtUtc < cutoffUtc)
+                .ExecuteDeleteAsync();
 }

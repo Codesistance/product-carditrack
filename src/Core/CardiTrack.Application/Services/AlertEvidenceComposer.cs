@@ -122,6 +122,20 @@ public static class AlertEvidenceComposer
             + "also runs past the hours recommended at their age, because more sleep than usual is "
             + "not on its own something to be told about.";
 
+        // Which side the night fell on decides which line to name. The rule is symmetric on the
+        // way in but not on the way out — a longer night only counts once it passes the ceiling
+        // recommended at their age — so a long-sleep alert quoting "shorter than" would print the
+        // opposite of the thing that raised it.
+        var slept = Read(metrics, "sleepMinutes");
+        var longer = slept is { } minutes && usual is { } average && minutes > average;
+
+        if (longer)
+        {
+            return (why, Read(metrics, "recommendedHighHours") is { } ceiling
+                ? $"Longer than {ceiling:0.#} h, their recommended ceiling"
+                : null);
+        }
+
         return (why, usual is > 0 ? $"Shorter than {Hours(usual.Value * BelowUsual)} h" : null);
     }
 

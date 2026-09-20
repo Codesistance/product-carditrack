@@ -582,10 +582,21 @@ public class ReportGenerationService : IReportGenerationService
             // fortnight of resting heart rates without once saying what this person's own resting
             // heart rate is. The rows are computed, and the model is told to state them as given —
             // the same arrangement the journal books use.
-            var comparison = ReportComparison.Render(
-                ReportComparison.For(member, member.Member.DateOfBirth.ToAgeInYears(data.To)));
-            if (comparison.Length > 0)
-                sb.AppendLine(comparison);
+            //
+            // Gated on includeMetrics and computed from the exported period, both for the same
+            // reason: this prompt goes to the *general* provider. A caregiver who excluded their
+            // readings must not have them averaged and sent anyway, and a pinned-journal export
+            // still loads the wider chart window, so `member.ActivityLogs` here would summarise
+            // days outside the range the document covers.
+            if (includeMetrics)
+            {
+                var comparison = ReportComparison.Render(
+                    ReportComparison.For(
+                        member with { ActivityLogs = periodLogs },
+                        member.Member.DateOfBirth.ToAgeInYears(data.To)));
+                if (comparison.Length > 0)
+                    sb.AppendLine(comparison);
+            }
 
             sections.Add(sb.ToString());
         }

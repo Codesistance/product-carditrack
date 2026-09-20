@@ -335,7 +335,7 @@ public partial class JournalPage : ContentPage
     /// readings has none to show, and a failure here leaves the card hidden rather than saying
     /// anything about it — the tab's job is the books.
     /// </summary>
-    private async Task LoadTrendAsync(Guid memberId)
+    private async Task LoadTrendAsync(Guid memberId, LoadTicket ticket)
     {
         TrendInsightResponse? trend;
         try
@@ -348,6 +348,11 @@ public partial class JournalPage : ContentPage
             // shows the last longer view rather than dropping it.
             trend = await PeekTrendSafelyAsync(memberId);
         }
+
+        // Checked after the awaits, not before: the whole risk is a slower call for the member the
+        // caregiver has already navigated away from landing on the one they are looking at now.
+        if (!_gate.IsCurrent(ticket))
+            return;
 
         RenderTrend(trend);
     }
@@ -480,8 +485,10 @@ public partial class JournalPage : ContentPage
             }
 
             // The longer view rides the same load but never gates it: the books are what this tab
-            // is for, and a trend lookup that fails should cost the card, not the list.
-            await LoadTrendAsync(memberId);
+            // is for, and a trend lookup that fails should cost the card, not the list. It carries
+            // the load's ticket, though — a caregiver who switches member mid-flight must not have
+            // the previous member's narrative land on the new one's tab.
+            await LoadTrendAsync(memberId, ticket);
 
             if (outcome.IsFresh)
                 _lastLoadedUtc = DateTime.UtcNow;

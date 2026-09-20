@@ -91,8 +91,10 @@ public class FhirR4ReportRenderer : IReportRenderer
         (l => l.AvgHeartRate, "8867-4", "Heart rate", "beats/minute", "/min", VitalSignsCategory, null, null),
         (l => l.SpO2Average, "59408-5", "Oxygen saturation in Arterial blood by Pulse oximetry", "%", "%", VitalSignsCategory, null, _ => HealthReferenceRanges.SpO2),
         // Minutes here, not the hours the PDF prints: this document is read by software, and the
-        // UCUM unit on the quantity is what makes it unambiguous either way.
-        (l => l.SleepMinutes, "93832-4", "Sleep duration", "minutes", "min", ActivityCategory, b => b.AvgSleepMinutes, null),
+        // UCUM unit on the quantity is what makes it unambiguous either way. The band converts
+        // with it — NSF publishes hours, this observation is in minutes, and a range carried in
+        // the wrong unit is worse than none at all.
+        (l => l.SleepMinutes, "93832-4", "Sleep duration", "minutes", "min", ActivityCategory, b => b.AvgSleepMinutes, SleepBandInMinutes),
         (l => l.BreathingRate, "9279-1", "Respiratory rate", "breaths/minute", "/min", VitalSignsCategory, null, _ => HealthReferenceRanges.BreathingRate)
     ];
 
@@ -287,6 +289,22 @@ public class FhirR4ReportRenderer : IReportRenderer
         }
 
         return ranges;
+    }
+
+    /// <summary>
+    /// The age-appropriate sleep band, converted from the hours NSF publishes to the minutes this
+    /// observation is measured in. The one band in <see cref="HealthReferenceRanges"/> that moves
+    /// with age, and the one whose unit does not already match its observation.
+    /// </summary>
+    private static MetricReference SleepBandInMinutes(int ageYears)
+    {
+        var hours = HealthReferenceRanges.Sleep(ageYears);
+        return new MetricReference
+        {
+            Low = hours.Low * 60m,
+            High = hours.High * 60m,
+            Source = hours.Source,
+        };
     }
 
     private static Quantity Point(decimal value, string unit, string unitCode) => new()

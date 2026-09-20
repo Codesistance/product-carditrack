@@ -78,6 +78,33 @@ public class AlertEvidenceComposerTests
     }
 
     [Fact]
+    public void AShortNightNamesTheFloorItFellBelow()
+    {
+        var detail = Compose(
+            """
+            {"rule":"irregular_sleep","night":"2026-09-19","sleepMinutes":260,
+             "baselineAvgSleepMinutes":450,"recommendedLowHours":7,"recommendedHighHours":8}
+            """);
+
+        Assert.Equal("Shorter than 5.3 h", detail.Evidence!.ThresholdLabel);
+    }
+
+    [Fact]
+    public void ALongNightNamesTheCeilingItPassed_NotAFloorItNeverApproached()
+    {
+        // The rule is symmetric going in but not coming out: a longer night counts only once it
+        // passes the ceiling recommended at their age. Quoting "shorter than" here would print
+        // the opposite of the thing that raised the alert.
+        var detail = Compose(
+            """
+            {"rule":"irregular_sleep","night":"2026-09-19","sleepMinutes":620,
+             "baselineAvgSleepMinutes":450,"recommendedLowHours":7,"recommendedHighHours":8}
+            """);
+
+        Assert.Equal("Longer than 8 h, their recommended ceiling", detail.Evidence!.ThresholdLabel);
+    }
+
+    [Fact]
     public void NoMorningActivityNamesTheHourTheGraceRunsOut()
     {
         var detail = Compose("""{"rule":"no_morning_activity","typicalWakeTime":"07:00"}""");

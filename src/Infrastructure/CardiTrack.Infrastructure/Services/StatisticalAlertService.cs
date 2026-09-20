@@ -157,6 +157,13 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return 0;
 
+        // Before the rules, not after them. Every path below this can return without raising
+        // anything — no baseline, every rule switched off, no finding today — and a member with
+        // nothing off right now is exactly the one whose standing alert from an earlier pass is
+        // waiting on an explanation. Hanging the backfill off the end of the alert-raising path
+        // would have meant it only ever ran for members who had something wrong a second time.
+        await BackfillExplanationsAsync(memberId, ct);
+
         // Established baseline only: no 30-day baseline means every rule stays silent, exactly
         // as the provisional-never-alerts principle demands.
         var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(memberId, periodDays: 30);
@@ -434,18 +441,75 @@ public class StatisticalAlertService : IStatisticalAlertService
             return;
 
         foreach (var alert in created)
+            await ExplainOneAsync(alert.Id, ct);
+    }
+
+    /// <summary>
+    /// A bounded retry over the member's standing alerts, for explanations that never got written.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without it, an explanation lost to a model timeout or a guard rejection was lost for good:
+    /// this pass is the only thing that writes one, it only ever sees <em>new</em> alerts, and the
+    /// same finding on a later pass dedups against the alert already stored. The detail screen
+    /// would then show that alert with no explanation for as long as it stood, and a later brief
+    /// version would never reach it either.
+    /// </para>
+    /// <para>
+    /// Cheap by construction: an alert already explained by the current brief costs one indexed
+    /// lookup and no model call. The cap bounds the other case — an alert whose reply keeps
+    /// failing the guards would otherwise be retried on every pass, of which there are 288 a day.
+    /// </para>
+    /// </remarks>
+    private async Task BackfillExplanationsAsync(Guid memberId, CancellationToken ct)
+    {
+        if (_insights is null)
+            return;
+
+        var standing = await _unitOfWork.Alerts.GetUnresolvedByCardiMemberAsync(memberId);
+        var attempted = 0;
+        foreach (var alert in standing)
         {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                await _insights.RegenerateAlertInsightAsync(alert.Id, ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogError(ex,
-                    "Insight generation failed for Alert {AlertId}; the alert was stored.",
-                    alert.Id);
-            }
+            if (attempted >= MaxExplanationRetriesPerPass)
+                break;
+
+            // Whether this one needs a model call is decided here rather than read off the
+            // result, because "already explained" and "spent a call and failed" both come back
+            // false. Counting results would let an alert whose reply keeps failing the guards be
+            // retried on every pass, which is the cost this cap exists to bound.
+            var stored = await _unitOfWork.MemberInsights.GetForAlertAsync(alert.Id);
+            if (stored is not null && stored.PromptVersion >= HealthInsightService.AlertPromptVersion)
+                continue;
+
+            attempted++;
+            await ExplainOneAsync(alert.Id, ct);
+        }
+    }
+
+    /// <summary>
+    /// How many standing alerts one pass will try to backfill an explanation for. Small on
+    /// purpose: this runs every five minutes, and a member with a backlog catches up over a few
+    /// passes rather than paying for all of it at once.
+    /// </summary>
+    private const int MaxExplanationRetriesPerPass = 2;
+
+    /// <summary>
+    /// One alert's explanation, best-effort: the alert is already stored, and an explanation that
+    /// did not get written is a card the detail screen leaves out rather than a reason to unwind
+    /// the member's pass.
+    /// </summary>
+    private async Task ExplainOneAsync(Guid alertId, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        try
+        {
+            await _insights!.RegenerateAlertInsightAsync(alertId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex,
+                "Insight generation failed for Alert {AlertId}; the alert was stored.",
+                alertId);
         }
     }
 
