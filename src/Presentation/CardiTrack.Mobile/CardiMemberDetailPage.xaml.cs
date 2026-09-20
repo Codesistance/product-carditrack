@@ -852,10 +852,6 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Shows the "Something to try" (Advise) card, or hides it when there is nothing to suggest right now
-    /// — a blank <see cref="AdviseResponse.Suggestion"/> means exactly that, not a failed call.
-    /// </summary>
-    /// <summary>
     /// How this member reads against their own normal, and the longer view where there is one.
     /// </summary>
     /// <remarks>
@@ -919,6 +915,10 @@ public partial class CardiMemberDetailPage : ContentPage
     private static string Bulleted(IReadOnlyList<string> points) =>
         string.Join(Environment.NewLine, points.Select(point => $"• {point}"));
 
+    /// <summary>
+    /// Shows the "Something to try" (Advise) card, or hides it when there is nothing to suggest right now
+    /// — a blank <see cref="AdviseResponse.Suggestion"/> means exactly that, not a failed call.
+    /// </summary>
     private void ApplyAdvise(AdviseResponse advise)
     {
         if (string.IsNullOrWhiteSpace(advise.Suggestion))

@@ -321,6 +321,12 @@ public class HealthInsightService : IHealthInsightService
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
+        // The same guard the dashboard and member-detail paths apply before showing this block,
+        // and GetAdviseAsync before serving its row. Without it the dedicated endpoint disagreed
+        // with the screens: a reading of how someone is doing, for monitoring that has stopped.
+        if (!await IsBeingWatchedAsync(cardiMemberId))
+            return NoBaselineInsight(cardiMemberId);
+
         var stored = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Baseline);
         if (!InsightServability.IsServable(stored, DateTime.UtcNow))
             return NoBaselineInsight(cardiMemberId);
@@ -484,6 +490,9 @@ public class HealthInsightService : IHealthInsightService
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
+        if (!await IsBeingWatchedAsync(cardiMemberId))
+            return NoTrend(cardiMemberId);
+
         var stored = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Trend);
         if (!InsightServability.IsServable(stored, DateTime.UtcNow))
             return NoTrend(cardiMemberId);
@@ -510,6 +519,22 @@ public class HealthInsightService : IHealthInsightService
         KeyFindings = [],
         GeneratedAt = DateTimeOffset.UtcNow,
     };
+
+    /// <summary>
+    /// Whether this member is actually being watched right now — active, and not paused.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not applied to the alert explanation. An alert raised before a pause is still
+    /// listed and still opens, and hiding only the reason it fired would leave a caregiver looking
+    /// at an alert the product refuses to explain. The two member-scoped reads are different: they
+    /// describe how someone is doing *now*, which is precisely what a pause says is no longer
+    /// being observed.
+    /// </remarks>
+    private async Task<bool> IsBeingWatchedAsync(Guid cardiMemberId)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        return member is not null && member.IsActive && !member.IsMonitoringPaused(DateTime.UtcNow);
+    }
 
     /// <summary>
     /// An instant as UTC, whatever kind it arrived as — rows read back from Postgres come through

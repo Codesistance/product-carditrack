@@ -57,8 +57,13 @@ public static class PinnedReferenceTable
             $"- Blood oxygen: {oxygen.Low:0}-{oxygen.High:0}% normal at sea level ({oxygen.Source}).",
             $"- Breathing at rest: {breathing.Low:0}-{breathing.High:0} breaths a minute "
             + $"({breathing.Source}).",
+            // Stated both ways on purpose. The published figure is weekly; the trend features
+            // report active minutes per day, and the brief forbids the model from converting
+            // anything for itself — so a weekly band beside a daily figure would be two numbers it
+            // is not allowed to compare. The daily equivalent is given here, and named as derived.
             "- Physical activity: at least 150-300 minutes a week of moderate aerobic activity for "
-            + "an adult (World Health Organization).",
+            + "an adult (World Health Organization) — about 21-43 minutes a day, which is that "
+            + "same published figure divided across the week, not a separate recommendation.",
             $"- Heart rate variability: {HealthReferenceRanges.NoHeartRateVariabilityBand}",
         };
 

@@ -275,6 +275,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         ApiPaths.CardiMember(cardiMemberId),
         ApiPaths.Dashboard(cardiMemberId),
         ApiPaths.CardiMembers,
+        // The stored interpretations, because pausing monitoring is exactly when they stop being
+        // true. The server withholds them for a paused member, but the Journal tab falls back to
+        // its cached copy when a request fails, and a cached pre-pause narrative would then be
+        // rendered for monitoring that has stopped — the suppression undone by the cache.
+        ApiPaths.Trend(cardiMemberId),
     ];
 
     /// <summary>

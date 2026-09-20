@@ -118,7 +118,7 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Contains: CardiMemberId, Scope, AlertId (nullable), Summary, RecommendedAction, KeyFindings (newline-joined), IsLearning, IsProvisional, BaselinePeriodDays, GeneratedAtUtc, PromptVersion
 - **Two partial unique indexes rather than one composite.** Postgres counts nulls as distinct, so a single index over (member, scope, alert) would let a member collect any number of baseline rows with a null `AlertId`, none of them in conflict. Instead: unique on (CardiMemberId, Scope) `WHERE "AlertId" IS NULL`, and unique on AlertId `WHERE "AlertId" IS NOT NULL`
 - Scope persists as its **name** (`HasConversion<string>`), like the rest of the schema
-- Retention **90 days**, swept by the Worker (`InsightRetention`) rather than dropped with a partition — this table is ordinary EF-tracked. Erasure reaches it by CardiMemberId
+- Retention **90 days for the member-scoped rows**, swept by the Worker (`InsightRetention`) rather than dropped with a partition — this table is ordinary EF-tracked. **Alert explanations are exempt**: the read path serves one however old it is, so sweeping it would leave an alert in the history that the product declines to explain. Erasure reaches every scope by CardiMemberId, which is why the member index is unfiltered as well as filtered
 
 ### Business Entities
 

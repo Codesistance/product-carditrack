@@ -303,6 +303,20 @@ public class RetentionWorkerTests
             Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
     }
 
+    [Fact]
+    public async Task Sweep_LeavesAlertExplanationsToTheRepository()
+    {
+        // The exemption lives in the query — alert-scoped rows are never selected, because the
+        // read path serves an explanation however old it is. Asserted here as the contract the
+        // worker relies on, so a later change to either side has to face the other.
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _insights.Received(1).GetGeneratedBeforeAsync(
+            Arg.Any<DateTime>(), InsightRetention.SweepBatchSize);
+        await _insights.DidNotReceive().DeleteGeneratedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
+    }
+
     private static List<MemberInsight> Expired(int count) =>
         Enumerable.Range(0, count)
             .Select(_ => new MemberInsight

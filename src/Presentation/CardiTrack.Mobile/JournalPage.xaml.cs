@@ -326,10 +326,6 @@ public partial class JournalPage : ContentPage
         return LoadAsync(force: true);
     }
 
-    /// <param name="force">
-    /// Supersedes a load already in flight rather than skipping — for anything the caregiver
-    /// asked for by hand. Unattended loads wait their turn.
-    /// </param>
     /// <summary>
     /// The current trend narrative, above the books. Best-effort: a member with under a month of
     /// readings has none to show, and a failure here leaves the card hidden rather than saying
@@ -388,6 +384,10 @@ public partial class JournalPage : ContentPage
         TrendGeneratedLabel.Text = RelativeTime.Format(trend.GeneratedAt.UtcDateTime);
     }
 
+    /// <param name="force">
+    /// Supersedes a load already in flight rather than skipping — for anything the caregiver
+    /// asked for by hand. Unattended loads wait their turn.
+    /// </param>
     private async Task LoadAsync(bool silent = false, bool force = false)
     {
         if (_gate.IsLoading && !force)

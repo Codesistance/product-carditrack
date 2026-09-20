@@ -22,6 +22,7 @@ public class HealthInsightServiceAccessTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IMemberInsightRepository _insights = Substitute.For<IMemberInsightRepository>();
+    private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _outsiderId = Guid.NewGuid();
@@ -35,6 +36,18 @@ public class HealthInsightServiceAccessTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.MemberInsights.Returns(_insights);
+        _unitOfWork.CardiMembers.Returns(_members);
+
+        // Actively monitored unless a case says otherwise — the member-scoped reads now check,
+        // and a substitute returning null would make every one of them decline for the wrong
+        // reason.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+        });
 
         _links.GetByUserIdAsync(_userId).Returns([
             new UserCardiMember
@@ -265,6 +278,85 @@ public class HealthInsightServiceAccessTests
         Assert.Equal(_memberId, result.CardiMemberId);
         Assert.True(result.IsLearning);
         Assert.Empty(result.Summary);
+    }
+
+    [Fact]
+    public async Task AnalyzeBaseline_WithholdsTheReading_WhileMonitoringIsPaused()
+    {
+        // The dashboard and member-detail paths already suppress this block for a paused member.
+        // The dedicated endpoint has to agree with them, or the app and the API tell a caregiver
+        // two different things about monitoring that has stopped.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddDays(3),
+        });
+        _insights.GetByScopeAsync(_memberId, InsightScope.Baseline).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Baseline,
+            Summary = "Written before the pause.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+
+        var result = await CreateSut().AnalyzeBaselineAsync(_userId, _memberId);
+
+        Assert.Empty(result.Summary);
+    }
+
+    [Fact]
+    public async Task GetTrend_WithholdsTheNarrative_WhileMonitoringIsPaused()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddDays(3),
+        });
+        _insights.GetByScopeAsync(_memberId, InsightScope.Trend).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Trend,
+            Summary = "Activity eased off over the month.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+
+        var result = await CreateSut().GetTrendAsync(_userId, _memberId);
+
+        Assert.Empty(result.Narrative);
+    }
+
+    [Fact]
+    public async Task AnalyzeAlert_StillExplains_WhileMonitoringIsPaused()
+    {
+        // Deliberately not guarded. An alert raised before the pause is still listed and still
+        // opens; hiding only the reason it fired would leave a caregiver looking at an alert the
+        // product refuses to explain.
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "Margaret Doe",
+            DateOfBirth = new DateOnly(1948, 3, 15),
+            IsActive = true,
+            MonitoringPausedUntil = DateTime.UtcNow.AddDays(3),
+        });
+        _insights.GetForAlertAsync(_alertId).Returns(new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.Alert,
+            AlertId = _alertId,
+            Summary = "Their steps dropped well below usual.",
+            GeneratedAtUtc = DateTime.UtcNow.AddHours(-1),
+        });
+
+        var result = await CreateSut().AnalyzeAlertAsync(_userId, _alertId);
+
+        Assert.Equal("Their steps dropped well below usual.", result.Explanation);
     }
 
     [Fact]

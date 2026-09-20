@@ -31,6 +31,13 @@ public class MemberInsightConfiguration : IEntityTypeConfiguration<MemberInsight
         // than walking the member one.
         builder.HasIndex(i => i.GeneratedAtUtc);
 
+        // And an unfiltered member index, because the two above do not cover erasure. The member
+        // one is filtered to the rows with no alert, so the alert-scoped rows — which are the ones
+        // that accumulate, one per alert for the life of the history — are reachable only through
+        // AlertId. Deleting a member would therefore scan the whole table, and the privacy path is
+        // the last one that should degrade as the product is used.
+        builder.HasIndex(i => i.CardiMemberId);
+
         // By name, following MemberAdviseConfiguration.Topic: this column keys which insight
         // answers which question, and a renumbering must not silently re-scope stored rows.
         builder.Property(i => i.Scope)

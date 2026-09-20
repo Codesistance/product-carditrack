@@ -85,7 +85,11 @@ public class CsvReportRenderer : IReportRenderer
         // The frame the daily rows should be read in. A spreadsheet of resting heart rates with
         // nothing beside it leaves whoever opens it — often the person least equipped to answer —
         // deciding for themselves whether 78 is high for this person.
-        if (sections.IncludeMetrics && data.Members.Any(m => m.Baseline is not null))
+        // On at least one computed row, not on the baseline existing: a member with a baseline
+        // but nothing measured in the period produces no rows, and a header with nothing under it
+        // tells whoever opens the file that a comparison was available when none was. The PDF
+        // already gates on the rows themselves.
+        if (sections.IncludeMetrics && ComparisonRows(data).Count > 0)
         {
             csv.NextRecord();
             WriteComparison(csv, data);
@@ -263,6 +267,19 @@ public class CsvReportRenderer : IReportRenderer
     /// two different comparisons of the same fortnight. The band's source is a column rather than
     /// a note, because an unattributed range in a spreadsheet reads as ours.
     /// </remarks>
+    /// <summary>
+    /// Every member's comparison rows, computed once so the decision to write the section and the
+    /// section's contents cannot disagree about whether there is anything to say.
+    /// </summary>
+    private static List<(string Member, ReportComparisonRow Row)> ComparisonRows(ReportDataSet data) =>
+        data.Members
+            .SelectMany(member => ReportComparison
+                .For(
+                    member with { ActivityLogs = data.PeriodReadings(member) },
+                    member.Member.DateOfBirth.ToAgeInYears(data.To))
+                .Select(row => (member.Member.Name, row)))
+            .ToList();
+
     private static void WriteComparison(CsvWriter csv, ReportDataSet data)
     {
         foreach (var header in new[]
@@ -276,26 +293,19 @@ public class CsvReportRenderer : IReportRenderer
 
         csv.NextRecord();
 
-        foreach (var member in data.Members)
+        foreach (var (memberName, row) in ComparisonRows(data))
         {
-            var rows = ReportComparison.For(
-                member with { ActivityLogs = data.PeriodReadings(member) },
-                member.Member.DateOfBirth.ToAgeInYears(data.To));
-
-            foreach (var row in rows)
-            {
-                WriteText(csv, member.Member.Name);
-                WriteText(csv, row.Metric);
-                WriteText(csv, row.Unit);
-                csv.WriteField(row.PeriodAverage.ToString(CultureInfo.InvariantCulture));
-                csv.WriteField(row.Usual?.ToString(CultureInfo.InvariantCulture));
-                csv.WriteField(row.ChangePercent?.ToString(CultureInfo.InvariantCulture));
-                csv.WriteField(row.BandLow?.ToString(CultureInfo.InvariantCulture));
-                csv.WriteField(row.BandHigh?.ToString(CultureInfo.InvariantCulture));
-                WriteText(csv, row.BandSource);
-                csv.WriteField(row.MeasuredDays.ToString(CultureInfo.InvariantCulture));
-                csv.NextRecord();
-            }
+            WriteText(csv, memberName);
+            WriteText(csv, row.Metric);
+            WriteText(csv, row.Unit);
+            csv.WriteField(row.PeriodAverage.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.Usual?.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.ChangePercent?.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.BandLow?.ToString(CultureInfo.InvariantCulture));
+            csv.WriteField(row.BandHigh?.ToString(CultureInfo.InvariantCulture));
+            WriteText(csv, row.BandSource);
+            csv.WriteField(row.MeasuredDays.ToString(CultureInfo.InvariantCulture));
+            csv.NextRecord();
         }
     }
 

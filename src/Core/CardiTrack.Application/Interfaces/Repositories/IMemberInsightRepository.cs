@@ -18,6 +18,12 @@ public interface IMemberInsightRepository : IRepository<MemberInsight>
     /// Rows written before <paramref name="cutoffUtc"/>, for the retention sweep. Capped by
     /// <paramref name="take"/> so one pass cannot load an unbounded set into memory.
     /// </summary>
+    /// <remarks>
+    /// Alert-scoped rows are excluded. <see cref="CardiTrack.Application.Services.InsightServability"/>
+    /// promises that an explanation of one past event never goes stale, and a sweep that removed
+    /// them at ninety days would quietly break that promise for exactly the caregiver who opens an
+    /// old alert from their history. They go with the alert itself, on erasure.
+    /// </remarks>
     Task<IReadOnlyList<MemberInsight>> GetGeneratedBeforeAsync(DateTime cutoffUtc, int take);
 
     /// <summary>

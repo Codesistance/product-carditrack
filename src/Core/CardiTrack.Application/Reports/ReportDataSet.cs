@@ -96,12 +96,6 @@ public record ReportMemberData(
     /// answer — whether 78 is high for this person.
     /// </remarks>
     public PatternBaseline? Baseline { get; init; }
-
-    /// <summary>The stored reading against that baseline, where the pipeline has written one.</summary>
-    public MemberInsight? BaselineInsight { get; init; }
-
-    /// <summary>The stored trend narrative, where the member has a month of readings behind them.</summary>
-    public MemberInsight? TrendInsight { get; init; }
 }
 
 /// <summary>

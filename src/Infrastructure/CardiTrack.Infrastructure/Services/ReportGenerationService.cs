@@ -355,21 +355,23 @@ public class ReportGenerationService : IReportGenerationService
                     unitOfWork, ownerUserId, memberId, request.DateRangeFrom, request.DateRangeTo)
                 : [];
 
-            // The comparison material. Sequential, like every other read in this loop: they share
-            // the gather's DbContext. A member with none of it exports without a comparison
-            // section, which is the honest outcome for someone still being learned.
-            var baseline = await unitOfWork.PatternBaselines
-                .GetLatestByCardiMemberAsync(memberId, BaselineProgress.PeriodDays);
-            var baselineInsight = await unitOfWork.MemberInsights
-                .GetByScopeAsync(memberId, InsightScope.Baseline);
-            var trendInsight = await unitOfWork.MemberInsights
-                .GetByScopeAsync(memberId, InsightScope.Trend);
+            // The comparison material, and only when the document will carry a comparison: a
+            // report that excluded its readings has nothing to compare, and the query would be
+            // paid per member for a section that is never rendered.
+            //
+            // As of the end of the exported period, not as of now. The validator permits a range
+            // in the past, and the unbounded lookup would compare last March against months of
+            // subsequent knowledge — presenting what we learned since as what was usual then.
+            var baseline = request.IncludeMetrics
+                ? await unitOfWork.PatternBaselines.GetAsOfByCardiMemberAsync(
+                    memberId,
+                    BaselineProgress.PeriodDays,
+                    request.DateRangeTo.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc))
+                : null;
 
             members.Add(new ReportMemberData(member, logs, alerts, devices, journals, notices)
             {
                 Baseline = baseline,
-                BaselineInsight = baselineInsight,
-                TrendInsight = trendInsight,
             });
         }
 

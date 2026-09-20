@@ -22,6 +22,14 @@ namespace CardiTrack.Application.Services;
 /// </remarks>
 public static class InsightRetention
 {
+    /// <remarks>
+    /// Applies to the <em>member-scoped</em> rows — the baseline reading and the trend narrative,
+    /// both of which describe a picture that has moved on by then. Alert explanations are not
+    /// swept: <see cref="InsightServability"/> serves one however old it is, because the alert it
+    /// explains happened at a fixed moment, and a caregiver opening a six-month-old alert from
+    /// their history is exactly who most needs to know why it fired. Those rows leave with the
+    /// member, on erasure, and with the alert's own retention.
+    /// </remarks>
     public static readonly TimeSpan MaxAge = TimeSpan.FromDays(90);
 
     /// <summary>

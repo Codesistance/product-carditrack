@@ -36,6 +36,35 @@ public class TrendFeatureCalculatorTests
     }
 
     [Fact]
+    public void DaysCarryingNoTrendMetricDoNotCountTowardsTheColdStart()
+    {
+        // Sixty rows holding only distance and blood oxygen — neither of which this calculator
+        // reads. Counting rows would clear the gate, every feature would come back empty, and the
+        // pass would spend a model call asking for a narrative of no figures at all.
+        var logs = Enumerable.Range(0, 60)
+            .Select(offset => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = Through.AddDays(-(59 - offset)),
+                Distance = 3.2m,
+                SpO2Average = 96,
+            })
+            .ToList();
+
+        Assert.Null(TrendFeatureCalculator.Compute(logs, [], Through));
+    }
+
+    [Fact]
+    public void AHistoryWithNothingInTheLastWeekIsDeclined()
+    {
+        // Plenty of history, but the recent window is entirely unmeasured: there is a header and
+        // nothing to put under it, which is not a trajectory.
+        var logs = Days(60, day => day < 40 ? 4000 : null);
+
+        Assert.Null(TrendFeatureCalculator.Compute(logs, [], Through));
+    }
+
+    [Fact]
     public void TheRecentAverageIsTheLastSevenMeasuredDays_NotTheWholeWindow()
     {
         // 2,000 steps for weeks, then a week at 6,000. "Recently" has to mean the week, or a

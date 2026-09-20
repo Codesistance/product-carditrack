@@ -91,7 +91,15 @@ public static class TrendFeatureCalculator
         IReadOnlyList<PatternBaseline> baselines,
         DateOnly through)
     {
-        var measuredDays = logs.Select(l => l.Date).Distinct().Count();
+        // Days carrying a metric this calculator actually reads, not days with a row. A member
+        // whose logs hold only distance and SpO2 has thirty rows and nothing to compute from; the
+        // count alone would clear the gate, every feature would come back empty, and the pass
+        // would spend a model call asking for a narrative of no figures at all.
+        var measuredDays = logs
+            .Where(HasTrendMetric)
+            .Select(l => l.Date)
+            .Distinct()
+            .Count();
         if (measuredDays < MinimumDaysForTrend)
             return null;
 
@@ -113,12 +121,25 @@ public static class TrendFeatureCalculator
                 l => l.OvernightBreathingRate, b => b.AvgOvernightBreathingRate),
         };
 
-        return new TrendFeatures(
-            through,
-            measuredDays,
-            features.Where(f => f.RecentAverage is not null).ToList(),
-            WeekdayShapeOf(ordered));
+        var populated = features.Where(f => f.RecentAverage is not null).ToList();
+
+        // And nothing recent to say is the same answer as nothing at all: a member with a long
+        // history whose last week is entirely unmeasured would otherwise reach the model with a
+        // window header and no rows under it.
+        if (populated.Count == 0)
+            return null;
+
+        return new TrendFeatures(through, measuredDays, populated, WeekdayShapeOf(ordered));
     }
+
+    /// <summary>Whether a day carries any of the readings the features are computed from.</summary>
+    private static bool HasTrendMetric(ActivityLog log) =>
+        log.RestingHeartRate is not null
+        || log.Steps is not null
+        || log.SleepMinutes is not null
+        || log.ActiveMinutes is not null
+        || log.HeartRateVariabilityMs is not null
+        || log.OvernightBreathingRate is not null;
 
     private static TrendFeature Feature(
         string metric,

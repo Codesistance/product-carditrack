@@ -22,9 +22,12 @@ public class MemberInsightRepository : Repository<MemberInsight>, IMemberInsight
     public async Task<MemberInsight?> GetForAlertAsync(Guid alertId) =>
         await _dbSet.FirstOrDefaultAsync(i => i.AlertId == alertId);
 
+    // Member-scoped rows only. An alert explanation describes one fixed past event, the read path
+    // serves it however old it is, and sweeping it at ninety days would leave an alert in the
+    // caregiver's history that the product declines to explain.
     public async Task<IReadOnlyList<MemberInsight>> GetGeneratedBeforeAsync(DateTime cutoffUtc, int take) =>
         await _dbSet
-            .Where(i => i.GeneratedAtUtc < cutoffUtc)
+            .Where(i => i.AlertId == null && i.GeneratedAtUtc < cutoffUtc)
             .OrderBy(i => i.GeneratedAtUtc)
             .Take(take)
             .ToListAsync();

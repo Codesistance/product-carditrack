@@ -160,7 +160,12 @@ public class TrendInterpretationService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return false;
 
-        var through = DateOnly.FromDateTime(utcNow);
+        // The member's own civil day, not the host's. ActivityLog.Date is the wearer's day, and
+        // anchoring to UTC shifts the whole 90-day window for anyone east or west of Greenwich —
+        // around local midnight it would drop the day they are currently living and pull in one
+        // they are not. The alert and digest passes resolve the same way.
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var through = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone));
         var from = through.AddDays(-(TrendWindowDays - 1));
         var logs = (await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, from, through)).ToList();
