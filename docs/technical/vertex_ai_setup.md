@@ -174,3 +174,27 @@ evaluator compares candidates on the real prompts).
   model = the SA lacks `aiplatform.user`; 429 = per-minute quota (the client backs off 15 s/30 s
   and honours `Retry-After` — sustained 429s mean the quota needs raising in the console, not a
   code change).
+
+## 6. `finishReason` outcomes — what each one means for the caller
+
+An HTTP 200 does not mean an answer came back. The client sorts the finish reasons into three
+different things, because they want three different responses:
+
+| `finishReason` | What the client does |
+|---|---|
+| `STOP` | Normal. Content is parsed and returned. |
+| `SAFETY`, `PROHIBITED_CONTENT`, `RECITATION`, `BLOCKLIST`, `SPII` | The platform refused. Fails with the enum value only — never the partial content, which is health-derived. |
+| `MAX_TOKENS` | The reply stopped at `MaxOutputTokens` rather than finishing. A structured read fails as `AiReplyTruncatedException` (span `error.type` = `truncated`) carrying the token counts; free text returns what was produced and logs the cut at Warning. |
+
+**A `MAX_TOKENS` on a structured read is usually a runaway, not a small ceiling.** Dev saw two
+(2026-09-16 and 2026-09-20), both `DigestAiResponse` on the rewrite slot, both exactly 8176 output
+tokens against the 8192 ceiling and ~30 k characters, where the same read normally produces 150–220
+tokens. Before raising `rewrite_ai_max_output_tokens`, split `gen_ai.client.token.usage` by
+`carditrack.ai.reply_schema` to see what that read normally costs — the ceiling is shared with every
+other read on the slot, and no ceiling ends a model that is repeating itself. A truncated rewrite is
+not silent data loss: the digest pass keeps the previous summary and retries on the next pass.
+
+Until this was sorted out, a cut-off reply reached the deserializer and was reported as content that
+"could not be parsed into `DigestAiResponse`: error at `$.suggestion`" — which reads as a schema or
+model-format fault and says nothing about the ceiling that caused it. The same fix on the Ollama side
+is MS-9/MS-10 in [medgemma_serving_architecture.md](medgemma_serving_architecture.md) §6.

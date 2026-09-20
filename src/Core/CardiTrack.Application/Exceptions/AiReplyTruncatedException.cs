@@ -30,7 +30,7 @@ public class AiReplyTruncatedException : HttpRequestException
         int outputTokens,
         int maxOutputTokens,
         int? inputTokens,
-        int contextTokens,
+        int? contextTokens,
         string? replySchema = null)
         : base(message)
     {
@@ -50,8 +50,13 @@ public class AiReplyTruncatedException : HttpRequestException
     /// <summary>Prompt tokens, when the server reported them.</summary>
     public int? InputTokens { get; }
 
-    /// <summary>The context window the prompt and the reply shared (<c>num_ctx</c>).</summary>
-    public int ContextTokens { get; }
+    /// <summary>
+    /// The context window the prompt and the reply shared (<c>num_ctx</c>), when the caller set
+    /// one. Null on a hosted provider that takes an output ceiling and nothing else — Vertex has
+    /// no <c>num_ctx</c> equivalent to send, and the model's own window is not ours to report as
+    /// though it were configuration someone can go and change.
+    /// </summary>
+    public int? ContextTokens { get; }
 
     /// <summary>
     /// The reply the call asked for, by response type name (e.g. <c>DigestClinicalAiResponse</c>) —

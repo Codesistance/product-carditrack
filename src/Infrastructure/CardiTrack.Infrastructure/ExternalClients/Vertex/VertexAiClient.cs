@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Shared.Json;
@@ -49,6 +50,14 @@ public class VertexAiClient : IExternalAiClient
     /// error, just a few seconds later.
     /// </summary>
     private const int MaxAttempts = 3;
+
+    /// <summary>
+    /// Vertex's <c>finishReason</c> for a generation that stopped at
+    /// <c>generationConfig.maxOutputTokens</c> rather than because the model had finished. Its own
+    /// outcome, handled apart from the safety-class reasons: nothing was refused, the reply is
+    /// simply missing its tail.
+    /// </summary>
+    private const string MaxTokensFinishReason = "MAX_TOKENS";
 
     /// <summary>Backoff step for a rejection that clears on its own within seconds.</summary>
     private const int TransientBackoffSeconds = 2;
@@ -151,6 +160,9 @@ public class VertexAiClient : IExternalAiClient
             request: BuildRequest(SingleUserTurn(fullPrompt), schemaText),
             parseContent: content => DeserializeStructured<T>(content, "generate_structured"),
             ct,
+            // A structured read is all-or-nothing: a JSON document cut off at the ceiling is not a
+            // smaller answer, it is no answer. Free text keeps what it got.
+            requireCompleteContent: true,
             // Same reason as MedGemma's: the operation name is the API shape, shared by every
             // structured read, and the reads behind it differ in what a normal reply costs. A
             // reply schema on both providers is what keeps one query able to answer "what does
@@ -237,6 +249,11 @@ public class VertexAiClient : IExternalAiClient
     /// value only, because an empty string handed to member chat would read as the model having
     /// nothing to say rather than the platform having refused to say it.
     /// </summary>
+    /// <param name="requireCompleteContent">
+    /// Whether a reply that stopped at the output ceiling is a failure rather than a short answer.
+    /// True for a structured read, whose caller cannot use half a document; false for free text,
+    /// where the cut is logged and what was produced is returned.
+    /// </param>
     /// <param name="replySchema">
     /// The response type a structured call asked for, by name — see
     /// <see cref="AiTelemetry.ReplySchemaTag"/>. Null for a free-text call.
@@ -246,6 +263,7 @@ public class VertexAiClient : IExternalAiClient
         VertexRequest request,
         Func<string, TResult> parseContent,
         CancellationToken ct,
+        bool requireCompleteContent = false,
         string? replySchema = null)
     {
         using var activity = AiTelemetry.Source.StartActivity(
@@ -338,6 +356,65 @@ public class VertexAiClient : IExternalAiClient
                 usageMeta?.PromptTokenCount, outputTokens, usageMeta?.ThoughtsTokenCount,
                 candidate?.FinishReason, (activity ?? Activity.Current)?.TraceId.ToString());
 
+            // MAX_TOKENS means generation ran out of budget rather than finishing, and what follows
+            // is the same either way — the reply is missing its tail. Decided here, once, before
+            // any caller's parse gets to mistake a cut-off reply for a malformed one: a truncated
+            // structured reply used to surface as "could not be parsed into DigestAiResponse: error
+            // at '$.suggestion'", which reads as a schema or model-format fault and says nothing
+            // about the ceiling that actually caused it.
+            //
+            // After the debug line above rather than before it (MedGemma throws first): elapsed,
+            // finish_reason and the token counts together are what tell a model that looped from a
+            // reply that wanted a little more room, and on this provider that line is the only
+            // place they appear side by side.
+            if (string.Equals(candidate?.FinishReason, MaxTokensFinishReason, StringComparison.Ordinal))
+            {
+                // Generation reached the ceiling by definition, so when usageMetadata leaves the
+                // count out the ceiling is the count — not zero, which would read as a reply that
+                // produced nothing.
+                var producedTokens = outputTokens ?? _options.MaxOutputTokens;
+                if (requireCompleteContent)
+                {
+                    // Two different faults arrive here wearing the same finish_reason, and the
+                    // numbers are what tells them apart — the reasoning MedGemmaClient sets out at
+                    // its own truncation branch, which this mirrors so one query answers both
+                    // slots.
+                    errorType = "truncated";
+                    _logger.LogError(
+                        "Vertex {Operation} of {ReplySchema} stopped at the token budget rather than "
+                        + "finishing (finish_reason {FinishReason}): {OutputTokens} output token(s), "
+                        + "thoughts included, against a {MaxOutputTokens} ceiling, {InputTokens} "
+                        + "prompt token(s). The reply is incomplete. A structured reply that fills "
+                        + "the whole ceiling is usually a model that did not stop, not one that "
+                        + "needed more room: compare OutputTokens with what this reply schema "
+                        + "normally produces (gen_ai.client.token.usage, split by "
+                        + "carditrack.ai.reply_schema) before raising MaxOutputTokens for this model "
+                        + "slot — the ceiling is shared with every other read on it.",
+                        operationName, replySchema ?? "an unnamed reply", candidate?.FinishReason,
+                        producedTokens, _options.MaxOutputTokens, usageMeta?.PromptTokenCount);
+                    throw new AiReplyTruncatedException(
+                        $"Vertex {operationName} of {replySchema ?? "an unnamed reply"} stopped at "
+                        + $"the token budget rather than finishing ({producedTokens} output token(s) "
+                        + $"against a {_options.MaxOutputTokens} ceiling), so the reply is incomplete.",
+                        outputTokens: producedTokens,
+                        maxOutputTokens: _options.MaxOutputTokens,
+                        inputTokens: usageMeta?.PromptTokenCount,
+                        // Nothing to report: this provider is sent an output ceiling and no window,
+                        // so there is no configured ContextTokens here to raise or blame.
+                        contextTokens: null,
+                        replySchema: replySchema);
+                }
+
+                // Free text: the caller gets what was produced, as before, but the cut is on the
+                // record — otherwise a reply that stops mid-sentence is indistinguishable from one
+                // the model chose to end there.
+                _logger.LogWarning(
+                    "Vertex {Operation} stopped at the token budget rather than finishing "
+                    + "(finish_reason {FinishReason}): {OutputTokens} output token(s) against a "
+                    + "{MaxOutputTokens} ceiling. The reply is cut short.",
+                    operationName, candidate?.FinishReason, producedTokens, _options.MaxOutputTokens);
+            }
+
             var usage = new AiUsage
             {
                 ModelName = parsed.ModelVersion ?? _options.Model,
@@ -372,6 +449,9 @@ public class VertexAiClient : IExternalAiClient
     /// the prompt itself blocked (<c>promptFeedback.blockReason</c>, no candidates at all), and a
     /// generation stopped for a safety-class reason (<c>finishReason</c> beyond STOP/MAX_TOKENS).
     /// The enum values are Google's fixed vocabulary, not content, so they are safe to log and tag.
+    /// <c>MAX_TOKENS</c> is deliberately not one of them and is handled in
+    /// <see cref="SendInstrumentedCoreAsync"/> instead: a reply cut off at the ceiling was not
+    /// refused, and the counts that say which kind of overrun it was only exist back there.
     /// </summary>
     private void ThrowIfBlocked(VertexGenerateContentResponse response, string operationName, ref string? errorType)
     {
