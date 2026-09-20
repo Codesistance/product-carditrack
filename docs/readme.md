@@ -147,6 +147,9 @@ HIPAA/GDPR data architecture (ADR): identifier/clinical schema separation, Safe 
 #### [alarm_catalogue.md](./technical/alarm_catalogue.md)
 **Caregiver-defined alarms — suggested defaults and their sources.** What CardiTrack can and cannot alarm on (no blood pressure, weight or rhythm flag is ingested), the published guidance behind each suggested threshold with organisation and URL, why the controls rather than the numbers are the design, the FDA framing that governs how a threshold may be presented, and an explicit list of where sources disagree or a figure is ours. Carries a verification-status caveat: the numbers are cross-corroborated, the wording is not.
 
+#### [fitbit_identifiable_patterns.md](./technical/fitbit_identifiable_patterns.md)
+**Established cardiovascular and neurological patterns a Fitbit can actually see.** Three layers (hardware / Google Health API / what CardiTrack stores), the viable clusters, the AFib IRN/ECG ingestion gap, and what wrist data cannot identify. Condition names are for internal use only — never product copy.
+
 #### [enum_extensions_guide.md](./technical/enum_extensions_guide.md)
 Guide to enum extensions and helper methods used throughout the solution.
 

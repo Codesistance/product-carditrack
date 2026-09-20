@@ -36,6 +36,10 @@ An alarm can only watch a metric CardiTrack stores. The evaluable set is declare
 Adding any of these is an ingestion change, not an alarm change. Until then, an alarm catalogue that
 listed them would be describing a product we do not have.
 
+Which established cardiovascular and neurological *patterns* a Fitbit can see at all — including
+the ones we already ingest and the IRN/ECG gap above — is catalogued in
+[fitbit_identifiable_patterns.md](fitbit_identifiable_patterns.md).
+
 ---
 
 ## 2. The suggested alarms
@@ -304,6 +308,7 @@ mixing pre- and post-change rows in any comparison.
 **Related:** [alerting_algorithm_card.md](../compliance/alerting_algorithm_card.md) ·
 [art22_alerting_analysis.md](../compliance/art22_alerting_analysis.md) ·
 [alerts.md](../execution/backend/api/alerts.md) ·
-[entity_summary.md](./entity_summary.md)
+[entity_summary.md](./entity_summary.md) ·
+[fitbit_identifiable_patterns.md](fitbit_identifiable_patterns.md)
 
 **Last Updated:** September 6, 2026

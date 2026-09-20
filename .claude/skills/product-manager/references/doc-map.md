@@ -93,6 +93,7 @@ Anything in [docs/archive/](../../../../docs/archive/) is **superseded and never
 | [technical/production_setup_runbook.md](../../../../docs/technical/production_setup_runbook.md) | Manual ops ledger outside Terraform/CI |
 | [technical/claude_cloud_environment_setup.md](../../../../docs/technical/claude_cloud_environment_setup.md) | Cursor/Claude cloud environment config for `CardiTrack.Server.slnf` |
 | [technical/enum_extensions_guide.md](../../../../docs/technical/enum_extensions_guide.md) | Enum conventions — when a spec introduces a new status/type value |
+| [technical/fitbit_identifiable_patterns.md](../../../../docs/technical/fitbit_identifiable_patterns.md) | Established CV/neuro patterns Fitbit data can support vs what we ingest vs what we already rule on — **any "can the wearable see this?" or new-alert-type question** |
 
 ## Compliance
 
