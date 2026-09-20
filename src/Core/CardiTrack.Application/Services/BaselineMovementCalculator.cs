@@ -36,6 +36,18 @@ public sealed record BaselineMovements(
 {
     /// <summary>Whether there is anything here worth spending a model call on.</summary>
     public bool HasAnythingToSay => Notable.Count > 0;
+
+    /// <summary>
+    /// Whether any metric could be judged at all this week.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="HasAnythingToSay"/>, and the distinction matters: both are false
+    /// for a member who is fine and for a member whose watch stopped reporting, and those two
+    /// deserve opposite treatment. Nothing to say is a reason to take a standing concern down;
+    /// nothing measured is a reason to leave it exactly where it is until there is data to judge
+    /// it against again.
+    /// </remarks>
+    public bool JudgedAnything => Notable.Count > 0 || Steady.Count > 0;
 }
 
 /// <summary>
@@ -178,7 +190,10 @@ public static class BaselineMovementCalculator
             var recent = Math.Round(readings.Average(), 1);
             var margin = MarginFor(metric, baseline, usual);
 
-            if (Math.Abs(recent - usual) < margin)
+            // At exactly the margin the metric is steady, not notable: the bar is what a movement
+            // has to pass, and StatisticalAlertRules draws the boundary the same way
+            // (`restingHr <= average + margin` returns no finding).
+            if (Math.Abs(recent - usual) <= margin)
             {
                 steady.Add(metric.Label);
                 continue;

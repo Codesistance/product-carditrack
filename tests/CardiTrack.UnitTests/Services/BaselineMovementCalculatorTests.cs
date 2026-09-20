@@ -68,6 +68,42 @@ public class BaselineMovementCalculatorTests
         Assert.Empty(movements.Notable);
     }
 
+    /// <summary>
+    /// Exactly at the bar is steady. The bar is what a movement has to pass, and
+    /// <c>StatisticalAlertRules</c> draws the same boundary — <c>restingHr &lt;= average + margin</c>
+    /// raises nothing — so a reading landing precisely on it must not be reported here either.
+    /// </summary>
+    [Fact]
+    public void AMovementExactlyOnTheBarIsSteady()
+    {
+        // Usual 5,000, no learned spread, so the bar is the 15% fraction: 750 steps exactly.
+        var onTheBar = Compute(Baseline(avgSteps: 5000), steps: 4250)!;
+        var justPast = Compute(Baseline(avgSteps: 5000), steps: 4249)!;
+
+        Assert.Contains("Steps", onTheBar.Steady);
+        Assert.Empty(onTheBar.Notable);
+
+        Assert.Contains(justPast.Notable, m => m.Metric == "Steps");
+    }
+
+    /// <summary>
+    /// A week nothing could be judged in is not a week where all is well. Both come back with
+    /// nothing to say, and the service treats them oppositely — one takes a standing concern down,
+    /// the other leaves it alone — so the two have to be distinguishable here.
+    /// </summary>
+    [Fact]
+    public void AnUnmeasuredWeekIsDistinguishableFromASteadyOne()
+    {
+        var steady = Compute(Baseline(avgSteps: 5000), steps: 5000)!;
+        var unmeasured = BaselineMovementCalculator.Compute([], Baseline(avgSteps: 5000), Through)!;
+
+        Assert.False(steady.HasAnythingToSay);
+        Assert.True(steady.JudgedAnything);
+
+        Assert.False(unmeasured.HasAnythingToSay);
+        Assert.False(unmeasured.JudgedAnything);
+    }
+
     [Fact]
     public void AMetricWithNoLearnedSpreadFallsBackToTheFraction()
     {

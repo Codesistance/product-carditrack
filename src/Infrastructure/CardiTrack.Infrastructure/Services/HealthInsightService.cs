@@ -461,15 +461,26 @@ public class HealthInsightService : IHealthInsightService
         // What has actually moved, decided here rather than by the model. Only the established
         // path gets this: the other two are honest readouts of a picture still forming, and there
         // is no settled usual to measure a departure against.
-        var movements = BaselineMovementCalculator.Compute(recentLogs, primaryBaseline, to);
+        //
+        // Through yesterday, not today. Today's ActivityLog row holds however far through the day
+        // the sync has got — a morning's steps and no active minutes yet — and it is one of seven
+        // in the average, so including it reports a departure that is only the clock.
+        // TrendInterpretationService ends its window a day back for the same reason.
+        var movements = BaselineMovementCalculator.Compute(
+            recentLogs, primaryBaseline, to.AddDays(-1));
 
-        // Nothing has moved, so there is nothing to say and no call worth paying for. The row is
-        // removed rather than left to age out: this card is read as "something wants your
-        // attention", and InsightServability would go on serving the last thing that did for
-        // three more days after it stopped being true.
         if (primaryBaseline is not null && movements is { HasAnythingToSay: false })
         {
-            if (existing is not null)
+            // Nothing has moved, so there is nothing to say and no call worth paying for. The row
+            // comes down rather than being left to age out: this card is read as "something wants
+            // your attention", and InsightServability would go on serving the last thing that did
+            // for three more days after it stopped being true.
+            //
+            // Only where something was actually measured, though. A week too sparse to judge
+            // reaches here looking identical to a week where all is well, and they deserve
+            // opposite treatment — deleting on the first would let a sync outage quietly retract
+            // a standing concern about someone nobody has readings for.
+            if (movements.JudgedAnything && existing is not null)
             {
                 _unitOfWork.MemberInsights.Remove(existing);
                 await _unitOfWork.SaveChangesAsync();
