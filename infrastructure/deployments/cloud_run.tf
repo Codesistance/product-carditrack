@@ -1333,3 +1333,136 @@ resource "google_cloud_scheduler_job" "pipeline_themer_15min" {
     google_cloud_run_v2_job.pipeline_themer,
   ]
 }
+
+# ── Pipeline job: trend interpreter ───────────────────────────────────────────
+#
+# The daily trend narrative (docs/llm_design.md — "Trend interpretation pipeline"), and what
+# replaced the per-user LSTM dropped on 2026-08-10. TrendFeatureCalculator computes every figure
+# in .NET from the member's own readings and baselines; MedGemma reads those against the pinned
+# reference table and writes the family-facing narrative. Its own Cloud Run job, like the
+# aggregator, assessor and themer, so its cadence and its failures are its own — and on this host
+# rather than the Worker because it is AI background work, which CLAUDE.md bars from there.
+variable "pipeline_trend_schedule" {
+  description = "Cloud Scheduler cron for the trend job — once a day, early UTC and well clear of the :00/:30 digest ticks and the five-minute assessor grid. Daily rather than hourly because it narrates a quarter of a year: a month's trajectory does not move between breakfast and lunch, and the service's own 20-hour floor means a second run the same day would find nothing to write anyway."
+  type        = string
+  default     = "23 3 * * *"
+}
+
+resource "google_cloud_run_v2_job" "pipeline_trend" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = "${var.pipeline_jobs_name}-trend"
+  location = var.cloud_run_location
+  client   = "terraform"
+
+  template {
+    template {
+      max_retries = 1
+
+      # MedGemma-bound and one call per eligible member, so it budgets like the digest job rather
+      # than the themer: a pass that finds work pays a cold start on the shared GPU service before
+      # the first narrative comes back.
+      timeout = "3600s"
+
+      service_account = google_service_account.pipeline[0].email
+
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.main.id
+          subnetwork = google_compute_subnetwork.main.id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.main.connection_name]
+        }
+      }
+
+      containers {
+        image = var.pipeline_jobs_container_image
+        args  = ["--job", "trend"]
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_env_vars
+          iterator = item
+          content {
+            name  = item.key
+            value = item.value
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.pipeline_jobs_secret_env_vars
+          iterator = item
+          content {
+            name = item.key
+            value_source {
+              secret_key_ref {
+                secret  = item.value
+                version = "latest"
+              }
+            }
+          }
+        }
+
+        # No Api__BaseUrl / Pipeline__Audience: the trend pass writes one stored insight and
+        # raises nothing, so it has no business holding the enqueue endpoint's address.
+
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "1Gi"
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+  depends_on = [
+    google_project_service.run,
+    google_secret_manager_secret_version.db_connection_string,
+    # See the barrier's comment in service_accounts.tf.
+    time_sleep.pipeline_iam_propagation,
+  ]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "pipeline_trend_invoker" {
+  count    = var.enable_pipeline_jobs ? 1 : 0
+  name     = google_cloud_run_v2_job.pipeline_trend[0].name
+  location = google_cloud_run_v2_job.pipeline_trend[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.pipeline_scheduler[0].email}"
+}
+
+resource "google_cloud_scheduler_job" "pipeline_trend_daily" {
+  count            = var.enable_pipeline_jobs ? 1 : 0
+  name             = "${var.pipeline_jobs_name}-trend-daily"
+  region           = var.cloud_run_location
+  schedule         = var.pipeline_trend_schedule
+  time_zone        = "Etc/UTC"
+  attempt_deadline = "320s"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.cloud_run_location}/jobs/${var.pipeline_jobs_name}-trend:run"
+
+    oauth_token {
+      service_account_email = google_service_account.pipeline_scheduler[0].email
+    }
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloud_run_v2_job.pipeline_trend,
+  ]
+}

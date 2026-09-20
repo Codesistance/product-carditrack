@@ -206,6 +206,11 @@ public static class AiServiceExtensions
         // its only caller today, and any host that can run the digest can regenerate Advise.
         services.AddScoped<AdviseGenerationService>();
 
+        // The trend pass — same reasoning again. It has a job of its own (--job trend) rather than
+        // riding the digest, because it reads a quarter of a year per member and is worth running
+        // once a day rather than on every half-hourly tick.
+        services.AddScoped<TrendInterpretationService>();
+
         // Rewrite slot — the non-clinical member-chat steps (docs/llm_design.md), selected by
         // RewriteAiSettings.Kind: self-hosted Ollama locally, Gemini via Vertex AI in deployed
         // environments (DPIA row A20 records that posture). Registered here, not AddAiServices,

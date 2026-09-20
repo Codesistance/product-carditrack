@@ -69,8 +69,11 @@ internal sealed class EnvironmentalContextSource : IMemberContextSource
     // The daybook fetches the reviewed day's own sessions instead
     // (DaybookPrompt.ConditionsSection); the weekbook asks nothing of the weather at all, and a
     // single session from today would be context its brief never mentions and cannot place.
+    // The trend narrative is excluded for the same reason as the books, and more so: it accounts
+    // for a month of trajectory, and one current-conditions reading cannot speak for any of it.
     public PromptPurpose Purposes =>
-        PromptPurpose.All & ~PromptPurpose.Daybook & ~PromptPurpose.Weekbook & ~PromptPurpose.Monthbook;
+        PromptPurpose.All & ~PromptPurpose.Daybook & ~PromptPurpose.Weekbook
+        & ~PromptPurpose.Monthbook & ~PromptPurpose.Trend;
 
     public int Order => 10;
 
