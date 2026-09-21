@@ -28,7 +28,13 @@ public class HealthInsightService : IHealthInsightService
     /// decided by the member's baseline state rather than by the caller, and versioning them apart
     /// would leave a member's row claiming a version whose brief it was not written by.
     /// </summary>
-    internal const int BaselinePromptVersion = 2;
+    /// <remarks>
+    /// 3: the summary and the findings were given the same job — "lead with the movement that
+    /// matters most" and "each naming one movement" — so for a member with one movement the card
+    /// printed the same sentence twice, once as prose and once as a bullet under it. They are
+    /// told apart now: the findings are the list, the summary is what to make of it.
+    /// </remarks>
+    internal const int BaselinePromptVersion = 3;
 
     /// <summary>
     /// How recently a baseline insight has to have been written before a pass skips it. An hour,
@@ -88,17 +94,25 @@ public class HealthInsightService : IHealthInsightService
 
         Everything below was worked out from this person's own measurements against their
         established baseline before you saw it, and only the metrics that moved away from their
-        usual by more than their own normal variation are listed as having moved. Say what the figures say. Never work out a comparison, a
-        percentage or a direction yourself, and never introduce a number that is not in front of
-        you. Do not call a metric unchanged unless it is named as steady below.
+        usual by more than their own normal variation are listed as having moved. Say what the
+        figures say. Never work out a comparison, a percentage or a direction yourself, and never
+        introduce a number that is not in front of you. Do not call a metric unchanged unless it
+        is named as steady below.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
+        The two fields below have different jobs and must not carry the same sentence twice. The
+        findings are the list of what moved. The summary is what a caregiver should make of it.
+
         Respond with:
         - summary: two or three sentences answering whether this is something to pay attention to.
-          Lead with the movement that matters most, say which way it went and roughly how far in
-          the words the figures use, and say plainly where the rest has held steady.
+          Do not walk the list — every movement is named below, and a summary that names them
+          again says everything twice. Say what they amount to instead: whether this is worth
+          their attention today, what has held steady alongside it, and anything the figures show
+          about how long it has been going on. Where one thing has moved, that is a short summary
+          rather than a reason to pad it.
         - keyFindings: up to three short lines, each naming one movement worth noticing. One line
-          per movement, never one per metric — a metric that has not moved is not a finding.
+          per movement, never one per metric — a metric that has not moved is not a finding. These
+          are the list; the summary above must not repeat them.
 
         Never name a condition, a diagnosis or a treatment. Never give a score, a probability, a
         risk level or a prediction of what will happen next. Do not pad the list to three, and do

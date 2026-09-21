@@ -77,6 +77,52 @@ public class HealthInsightServicePromptTests
     /// move, so what used to be read off the response is read off the insight it persisted — the
     /// text still has to survive the same placeholder and register guards on the way in.
     /// </summary>
+    /// <summary>
+    /// The summary and the findings are given different jobs, and told so.
+    /// </summary>
+    /// <remarks>
+    /// They used to share one: "lead with the movement that matters most" for the summary and
+    /// "each naming one movement" for the findings. For a member with a single movement the card
+    /// therefore printed the same fact twice — "Active minutes are down significantly compared to
+    /// his usual activity level" as prose, and "Active minutes are lower than usual" as the bullet
+    /// directly beneath it. Three lines of card for one thing.
+    /// </remarks>
+    [Fact]
+    public async Task Baseline_TellsTheSummaryAndTheFindingsApart()
+    {
+        SetupBaseline();
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("must not carry the same sentence twice", prompt);
+        Assert.Contains("Do not walk the list", prompt);
+        Assert.Contains("the summary above must not repeat them", prompt);
+
+        // And what the summary is for instead, so the instruction is not only a prohibition.
+        Assert.Contains("Say what they amount to instead", prompt);
+    }
+
+    [Fact]
+    public async Task Baseline_DoesNotAskForPaddingWhenOneThingMoved()
+    {
+        // The single-movement case is the one that produced the duplication: with nothing else to
+        // say, restating the finding was the only way to fill a summary that asked to lead with it.
+        SetupBaseline();
+
+        await CreateSut().RegenerateBaselineInsightAsync(_memberId);
+
+        Assert.Contains("that is a short summary", CapturedPrompt());
+    }
+
+    [Fact]
+    public void ChangingTheBriefRetiresTheInsightsWrittenBeforeIt()
+    {
+        // A stored row whose summary is a restatement must not outlive the brief that stopped
+        // asking for one.
+        Assert.Equal(3, HealthInsightService.BaselinePromptVersion);
+    }
+
     // ── The quiet member ────────────────────────────────────────────────────────
 
     /// <summary>
