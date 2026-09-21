@@ -380,6 +380,68 @@ public class DashboardAlertSummary
 }
 
 /// <summary>
+/// One metric that moved, graded, with everything a client needs to draw it and to offer an alarm
+/// on it.
+/// </summary>
+/// <remarks>
+/// <see cref="Headline"/> and <see cref="Basis"/> are rendered server-side on purpose. The figures
+/// are rounded and worded in one place — <c>BaselineMovementCalculator</c> — so the block the
+/// model was given and the card a caregiver reads cannot describe the same movement two ways, and
+/// the grounds a grade was given on travel with the grade rather than being reconstructed by
+/// whichever client is drawing it.
+/// </remarks>
+public class MemberMovementResponse
+{
+    /// <summary>The metric's stable key, for a client deciding something about it.</summary>
+    public string Metric { get; set; } = string.Empty;
+
+    /// <summary>The label a caregiver reads.</summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>The sentence: where it sits now, against what is usual for them.</summary>
+    public string Headline { get; set; } = string.Empty;
+
+    /// <summary>
+    /// How to draw it: "favourable", "neutral" or "attention". About the movement, never about
+    /// the person — see <c>MovementValence</c>.
+    /// </summary>
+    public string Valence { get; set; } = string.Empty;
+
+    /// <summary>
+    /// What the grade was given on, in a caregiver's words — a published range and the body that
+    /// publishes it, or a plain statement that this is their own usual and why no published range
+    /// applies. Never empty: a grade with no stated grounds is an opinion wearing a tick.
+    /// </summary>
+    public string Basis { get; set; } = string.Empty;
+
+    /// <summary>What the two figures are in.</summary>
+    public string Unit { get; set; } = string.Empty;
+
+    /// <summary>The recent average.</summary>
+    public decimal Recent { get; set; }
+
+    /// <summary>Their own learned usual.</summary>
+    public decimal Usual { get; set; }
+
+    /// <summary>Signed whole percent, negative below their usual.</summary>
+    public decimal DeviationPercent { get; set; }
+
+    /// <summary>
+    /// The alarm metric that watches this reading, or null where none does — active minutes has
+    /// no alarm, and offering the nearest one would set a caregiver watching a different figure
+    /// from the one they were shown.
+    /// </summary>
+    public string? AlarmMetric { get; set; }
+
+    /// <summary>
+    /// A starting share of their usual for an alarm on this, or null where there is no alarm to
+    /// offer. A suggestion to be edited before saving, derived from this member's own departure
+    /// rather than from any clinical level.
+    /// </summary>
+    public decimal? SuggestedThresholdPercent { get; set; }
+}
+
+/// <summary>
 /// The stored interpretations a caregiver sees beside the numbers: the reading against their own
 /// baseline, and the longer trend narrative where one exists.
 /// </summary>
@@ -396,6 +458,17 @@ public class MemberInsightResponse
 
     /// <summary>The supporting points behind <see cref="Summary"/>, in order.</summary>
     public IReadOnlyList<string> KeyFindings { get; set; } = [];
+
+    /// <summary>
+    /// The measured movements behind <see cref="KeyFindings"/>, widest departure first — what a
+    /// client draws one card per, and offers an alarm on. Empty where nothing moved.
+    /// </summary>
+    /// <remarks>
+    /// Carried beside the sentences rather than instead of them. The figures here are the same
+    /// ones the model was given to write <see cref="Summary"/> from, so a client showing both is
+    /// showing one set of numbers described two ways, not two readings.
+    /// </remarks>
+    public IReadOnlyList<MemberMovementResponse> Movements { get; set; } = [];
 
     /// <summary>
     /// The trend narrative. Null while the member has under a month of readings — that is the

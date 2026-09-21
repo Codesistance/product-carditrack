@@ -4,9 +4,30 @@ using CardiTrack.Domain.Entities;
 namespace CardiTrack.Application.Services;
 
 /// <summary>
+/// Which of the six a movement is about, independently of what it is called.
+/// </summary>
+/// <remarks>
+/// The label beside it is presentational — "Breathing rate asleep" is wording a caregiver reads,
+/// and wording gets revised. Anything that has to decide something about a metric
+/// (<see cref="MetricValence"/> grading it, a client pre-selecting the alarm that watches it)
+/// keys off this instead, so a copy edit cannot quietly change which metric a decision was made
+/// about.
+/// </remarks>
+public enum TrackedMetric
+{
+    Steps = 1,
+    RestingHeartRate = 2,
+    Sleep = 3,
+    ActiveMinutes = 4,
+    OvernightHeartRateVariability = 5,
+    BreathingAsleep = 6,
+}
+
+/// <summary>
 /// One metric that has actually moved: where it sits now, what is usual for this member, and how
 /// far apart those are.
 /// </summary>
+/// <param name="Kind">Which metric this is, for anything that has to decide something about it.</param>
 /// <param name="Metric">The label a caregiver reads — plain words, not a column name.</param>
 /// <param name="Unit">What the two figures are in.</param>
 /// <param name="Recent">Mean over the last <see cref="BaselineMovementCalculator.RecentDays"/> measured days.</param>
@@ -14,6 +35,7 @@ namespace CardiTrack.Application.Services;
 /// <param name="DeviationPercent">Signed whole percent, negative below their usual.</param>
 /// <param name="MeasuredDays">How many of the recent days carried a reading for this metric.</param>
 public sealed record MetricMovement(
+    TrackedMetric Kind,
     string Metric,
     string Unit,
     decimal Recent,
@@ -222,6 +244,7 @@ public static class BaselineMovementCalculator
             }
 
             notable.Add(new MetricMovement(
+                metric.Kind,
                 metric.Label,
                 metric.Unit,
                 recent,
@@ -300,6 +323,18 @@ public static class BaselineMovementCalculator
         return string.Join(Environment.NewLine, lines);
     }
 
+    /// <summary>
+    /// The sentence a caregiver reads for one movement, in the wording the prompt already uses.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than on the client for the reason <see cref="Render"/> is here: these figures
+    /// are rounded and worded in one place, so the block the model is given and the card a
+    /// caregiver reads cannot describe the same movement two ways.
+    /// </remarks>
+    public static string Headline(MetricMovement movement) =>
+        $"{movement.Metric}: {Figure(movement.Recent)} {movement.Unit}, "
+        + $"against a usual {Figure(movement.Usual)}.";
+
     /// <summary>Trailing zeros dropped, so 7.0 hours prints as 7 and 6.4 stays 6.4.</summary>
     private static string Figure(decimal value) =>
         value.ToString("0.#", CultureInfo.InvariantCulture);
@@ -307,6 +342,7 @@ public static class BaselineMovementCalculator
     /// <summary>One metric: how to read it from a day, from a baseline, and what to call it.</summary>
     /// <param name="Floor">The least movement worth reporting, given what is usual for them.</param>
     private readonly record struct Metric(
+        TrackedMetric Kind,
         string Label,
         string Unit,
         Func<ActivityLog, decimal?> Read,
@@ -328,21 +364,21 @@ public static class BaselineMovementCalculator
     /// </remarks>
     private static readonly Metric[] Metrics =
     [
-        new("Steps", "steps a day",
+        new(TrackedMetric.Steps, "Steps", "steps a day",
             l => l.Steps, b => b.AvgSteps, b => b.StdDevSteps, Fraction),
-        new("Resting heart rate", "bpm",
+        new(TrackedMetric.RestingHeartRate, "Resting heart rate", "bpm",
             l => l.RestingHeartRate, b => b.AvgRestingHeartRate, b => b.StdDevHeartRate,
             _ => HeartRateFloorBpm),
-        new("Sleep", "hours a night",
+        new(TrackedMetric.Sleep, "Sleep", "hours a night",
             l => Hours(l.SleepMinutes), b => Hours(b.AvgSleepMinutes), _ => null, Fraction),
-        new("Active minutes", "minutes a day",
+        new(TrackedMetric.ActiveMinutes, "Active minutes", "minutes a day",
             l => l.ActiveMinutes, b => b.AvgActiveMinutes, _ => null, Fraction),
-        new("Overnight heart rate variability", "ms",
+        new(TrackedMetric.OvernightHeartRateVariability, "Overnight heart rate variability", "ms",
             l => l.HeartRateVariabilityMs,
             b => b.AvgHeartRateVariabilityMs,
             b => b.StdDevHeartRateVariability,
             usual => usual * HeartRateVariabilityFraction),
-        new("Breathing rate asleep", "breaths a minute",
+        new(TrackedMetric.BreathingAsleep, "Breathing rate asleep", "breaths a minute",
             l => l.OvernightBreathingRate,
             b => b.AvgOvernightBreathingRate,
             b => b.StdDevOvernightBreathingRate,
