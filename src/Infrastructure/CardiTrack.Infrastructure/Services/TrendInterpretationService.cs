@@ -33,7 +33,14 @@ namespace CardiTrack.Infrastructure.Services;
 public class TrendInterpretationService
 {
     /// <summary>The version of the brief below, independent of the table it carries.</summary>
-    internal const int BriefVersion = 1;
+    /// <remarks>
+    /// 2: the brief now asks for each figure against the published range as well as against their
+    /// own usual. The ranges were always in the prompt and nothing told the model to use them, so
+    /// a narrative would report five hours of sleep a night without mentioning that seven to nine
+    /// is what the NSF recommends at that age — three findings that all said "lower than usual"
+    /// and nothing a family could act on.
+    /// </remarks>
+    internal const int BriefVersion = 2;
 
     /// <summary>
     /// The brief and the pinned table it carries, as one stamped number. A row written by an older
@@ -80,19 +87,44 @@ public class TrendInterpretationService
         You are reading a month of one person's wearable readings for their family.
 
         Every figure below was computed from their own measurements before you saw it. Say what the
-        figures say. Never work out a comparison, a percentage or a direction yourself, and never
-        introduce a number that is not in front of you.
+        figures say. Never work out a percentage, a difference or a direction yourself, and never
+        introduce a number that is not in front of you. The one comparison you may make is placing
+        a figure against a range printed below it — below it, inside it, or above it — because that
+        is reading two given numbers against each other rather than calculating a third.
+
+        You are given two things to measure against, and they answer different questions. Their own
+        usual says whether this is a change for them. The published ranges say whether it sits
+        where the bodies that publish guidance say it should. Use both: a reading can be down on
+        their usual and still comfortably inside the published range, and one can be steady for
+        them and outside it. Both are worth a family knowing, and either alone leaves them to
+        guess the other.
+
+        Where the published block gives a range for a metric, say where their figure sits against
+        it and name the body it comes from. Where the block gives no range for a metric, say
+        nothing about a range for it — that absence is deliberate, and there is no figure you may
+        supply in its place.
 
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: what has been happening over this stretch, in three or four sentences. Where a
-          metric has moved, say which way and roughly how far, in the words the figures use.
-        - keyFindings: up to three short lines, each naming one movement worth noticing. Leave the
-          list empty when nothing has moved.
+          metric has moved, say which way and roughly how far, in the words the figures use. Where
+          a metric has a published range, say where it sits against it — whether or not it has
+          moved, because sitting outside guidance while holding perfectly steady is exactly the
+          thing a family would otherwise never be told.
+        - keyFindings: up to three short lines. Each names one thing worth noticing — a movement
+          against their usual, or where a figure sits against published guidance, or both in one
+          line where they are the same metric. "Lower than usual" on its own says very little to a
+          family; "sleeping about 5 hours a night, below the 7 to 9 recommended at their age" is
+          the same finding said usefully. Leave the list empty when nothing has moved and every
+          metric that has a published range sits inside it. Metrics with no published range are
+          judged on movement alone, since there is nothing for them to sit inside or outside of.
 
         Never name a condition, a diagnosis or a treatment. Never give a score, a probability, a
-        risk level or a prediction of what will happen next. Where the readings have been steady,
-        say so plainly rather than looking for something to report.
+        risk level or a prediction of what will happen next. Saying a figure sits outside a
+        published range is a fact about the figure and is wanted; saying what it might lead to,
+        how likely that is, or what it puts them at risk of is none of those things and must not
+        appear. Where the readings have been steady, say so plainly rather than looking for
+        something to report.
         """ + MedicalPromptBlocks.ContextGuardrail;
 
     private readonly IUnitOfWork _unitOfWork;

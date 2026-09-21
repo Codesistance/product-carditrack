@@ -132,6 +132,136 @@ public class TrendInterpretationServiceTests
         await _insights.DidNotReceive().AddAsync(Arg.Any<MemberInsight>());
     }
 
+    /// <summary>
+    /// The one comparison the brief allows, said in the same breath as the refusal it sits beside.
+    /// </summary>
+    /// <remarks>
+    /// Asking for a figure against a published range while also saying "never work out a
+    /// comparison" left the model two instructions that cannot both be followed, and the likely
+    /// casualty is the new one. Placing a given number against a given range is reading two
+    /// figures against each other; the refusal is about calculating a third.
+    /// </remarks>
+    [Fact]
+    public async Task ThePromptAllowsTheRangeComparisonItAsksFor()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("The one comparison you may make is placing", prompt);
+        Assert.Contains("rather than calculating a third", prompt);
+
+        // The refusal itself is narrowed, not dropped.
+        Assert.Contains("Never work out a percentage, a difference or a direction yourself", prompt);
+        Assert.Contains("introduce a number that is not in front of you", prompt);
+    }
+
+    /// <summary>
+    /// Steady and outside guidance is the case the whole change exists for, so the summary must
+    /// not reach for the published range only when something has moved.
+    /// </summary>
+    [Fact]
+    public async Task ThePromptAsksForTheRangeWhetherOrNotTheMetricMoved()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("whether or not it has", prompt);
+        Assert.Contains("sitting outside guidance while holding perfectly steady", prompt);
+    }
+
+    /// <summary>
+    /// Two metrics have no published range on purpose, so the rule for an empty list cannot ask
+    /// whether they sit inside one.
+    /// </summary>
+    [Fact]
+    public async Task TheEmptyListRuleOnlyAsksAboutMetricsThatHaveARange()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("metric that has a published range sits inside it", prompt);
+        Assert.Contains("judged on movement alone", prompt);
+    }
+
+    /// <summary>
+    /// The brief asks for each figure against the published ranges, not only against their own
+    /// usual.
+    /// </summary>
+    /// <remarks>
+    /// The ranges were always in the prompt and nothing told the model to use them, so a
+    /// narrative reported five hours of sleep a night without mentioning that seven to nine is
+    /// what the NSF recommends at that age — three findings that all read "lower than usual" and
+    /// gave a family nothing to act on.
+    /// </remarks>
+    [Fact]
+    public async Task ThePromptAsksForTheFigureAgainstThePublishedRange()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("say where their figure sits against", prompt);
+        Assert.Contains("name the body it comes from", prompt);
+
+        // Both yardsticks, and what each one answers: a reading can be down on their usual and
+        // still inside the published range, or steady for them and outside it.
+        Assert.Contains("usual says whether this is a change for them", prompt);
+        Assert.Contains("published ranges say whether it sits", prompt);
+    }
+
+    /// <summary>
+    /// Where the table carries no range, the model is told to say nothing rather than reach for
+    /// one. Two metrics have none on purpose — overnight HRV, which no body publishes an adult
+    /// band for, and breathing asleep, whose only published figure is measured at rest.
+    /// </summary>
+    [Fact]
+    public async Task ThePromptForbidsSupplyingARangeTheTableWithheld()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("that absence is deliberate", prompt);
+        Assert.Contains("supply in its place", prompt);
+
+        // And the table really does withhold those two, so the instruction is not hypothetical.
+        Assert.Contains(HealthReferenceRanges.NoHeartRateVariabilityBand, prompt);
+        Assert.Contains(HealthReferenceRanges.NoOvernightBreathingBand, prompt);
+    }
+
+    /// <summary>
+    /// The line this change had to stay on the right side of.
+    /// </summary>
+    /// <remarks>
+    /// Saying a figure sits outside a published range is a fact about the figure. Saying what it
+    /// might lead to, how likely that is, or what it puts someone at risk of is prognosis — which
+    /// <c>docs/llm_design.md</c> excludes from this pass ("no risk scores"), and which the DPIA
+    /// flags as the thing that can make software a regulated device under EU MDR Rule 11 even
+    /// without diagnosing (open item OI-2). Asking for the comparison must not have loosened it.
+    /// </remarks>
+    [Fact]
+    public async Task ThePromptStillRefusesRiskAndPrognosis()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("Never name a condition, a diagnosis or a treatment", prompt);
+        Assert.Contains("risk level or a prediction of what will happen next", prompt);
+
+        // And the boundary spelled out, because the new instruction sits right beside it.
+        Assert.Contains("is a fact about the figure and is wanted", prompt);
+        Assert.Contains("what it puts them at risk of is none of those things", prompt);
+    }
+
+    [Fact]
+    public void ChangingTheBriefRetiresTheNarrativesWrittenBeforeIt()
+    {
+        // A stored narrative that never mentioned a published range must not outlive the brief
+        // that now asks for one.
+        Assert.Equal(2, TrendInterpretationService.BriefVersion);
+        Assert.True(
+            TrendInterpretationService.CurrentPromptVersion > 100 + PinnedReferenceTable.Version,
+            "the stamp must exceed everything written under brief 1, whatever the table version.");
+    }
+
     [Fact]
     public async Task ThePromptCarriesTheComputedFiguresAndThePinnedRanges_AndForbidsScores()
     {
@@ -150,8 +280,10 @@ public class TrendInterpretationServiceTests
         Assert.Contains("risk level or a prediction of what will happen next", prompt);
         Assert.Contains("Never name a condition", prompt);
 
-        // And the instruction that keeps the model reading arithmetic rather than doing any.
-        Assert.Contains("Never work out a comparison, a percentage or a direction", prompt);
+        // And the instruction that keeps the model reading arithmetic rather than doing any. It
+        // no longer forbids comparisons outright: placing a figure against a range printed beside
+        // it is reading two given numbers, and the brief now asks for exactly that.
+        Assert.Contains("Never work out a percentage, a difference or a direction yourself", prompt);
     }
 
     [Fact]
