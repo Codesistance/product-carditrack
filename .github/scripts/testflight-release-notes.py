@@ -17,6 +17,11 @@ backs off past it: build 20329 (2026-09-21) took over thirteen minutes to be
 listed at all, and the action's fifth poll was refused with a 401 — a delivered
 binary reported as a failed step. Here the token is re-minted as it ages, and
 the deadline is one the app's processing time actually fits inside.
+
+Without ``--notes-file`` the script only waits: the workflow runs it that way
+first, as a step that fails the job when the build never becomes VALID, and
+then again with the notes as a best-effort step. A build that fails processing
+is a failed deploy; a build without its notes is not.
 """
 
 from __future__ import annotations
@@ -49,6 +54,10 @@ WHATS_NEW_LIMIT = 4000
 # Linux-runner time, which is cheap; the step is continue-on-error besides.
 PROCESSING_WAIT_MINUTES = 30
 POLL_DELAY_SECONDS = 30
+
+# Per request. The deadline above is only checked between calls, so a call that
+# could hang would let the wait outlive it; this keeps every call bounded.
+REQUEST_TIMEOUT_SECONDS = 30
 
 # Used only when the app has no beta app localization to borrow a locale from —
 # i.e. Test Information is still empty. Apple accepts the note either way.
@@ -103,12 +112,14 @@ def call(
         },
     )
     try:
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             body = response.read()
             return json.loads(body) if body else {}
     except urllib.error.HTTPError as error:
         detail = error.read().decode(errors="replace")
         raise AppStoreError(f"{method} {path} failed ({error.code}): {detail}") from error
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise AppStoreError(f"{method} {path} failed: {error}") from error
 
 
 def find_app(bundle_id: str, bearer: Bearer) -> str:
@@ -215,7 +226,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle-id", required=True)
     parser.add_argument("--build", required=True, help="CFBundleVersion of the upload")
-    parser.add_argument("--notes-file", required=True)
+    parser.add_argument(
+        "--notes-file",
+        help="the changelog to attach; without it the script only waits for processing",
+    )
     parser.add_argument("--issuer-id", required=True)
     parser.add_argument("--key-id", required=True)
     parser.add_argument(
@@ -229,11 +243,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    with open(args.notes_file, encoding="utf-8") as handle:
-        notes = handle.read().strip()[:WHATS_NEW_LIMIT]
-    if not notes:
-        print("No release notes to attach.")
-        return 0
+    notes = None
+    if args.notes_file:
+        with open(args.notes_file, encoding="utf-8") as handle:
+            notes = handle.read().strip()[:WHATS_NEW_LIMIT]
+        if not notes:
+            print("No release notes to attach.")
+            return 0
 
     with open(args.private_key_file, encoding="utf-8") as handle:
         private_key = handle.read()
@@ -242,7 +258,9 @@ def main() -> int:
         bearer = Bearer(args.issuer_id, args.key_id, private_key)
         app_id = find_app(args.bundle_id, bearer)
         build_id = wait_for_build(app_id, args.build, bearer, args.wait_minutes)
-        attach(build_id, app_id, notes, bearer)
+        print(f"Build {args.build} is VALID on App Store Connect ({build_id}).")
+        if notes is not None:
+            attach(build_id, app_id, notes, bearer)
     except AppStoreError as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1

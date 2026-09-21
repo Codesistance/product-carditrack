@@ -27,8 +27,12 @@ that build as well as the high-water mark::
     holds=<true|false>
 
 ``holds`` is what a re-run meets: an earlier run delivered the build, so there
-is nothing to upload and nothing to fail. The number that can never land is one
-the store has *not* seen sitting below one it has, and only that is a clash.
+is nothing to upload and nothing to fail. It is asked for by number, not read
+off the high-water page, and on App Store Connect only a build that is VALID or
+still PROCESSING counts — one that FAILED or is INVALID never reaches TestFlight,
+yet its number is spent all the same, so it shows in ``highest`` and not in
+``holds``: a clash, to be rebuilt under a new tag. The other number that can
+never land is one the store has not seen sitting below one it has.
 """
 
 from __future__ import annotations
@@ -51,10 +55,15 @@ PLAY_SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 APPSTORE_TOKEN_TTL_SECONDS = 15 * 60
 PLAY_ASSERTION_TTL_SECONDS = 10 * 60
 
-# One page of the most recently uploaded builds. The highest build number is in
-# practice among the newest, and this is a pre-flight guard rather than an
-# accounting record — the upload itself remains the authority on duplicates.
+# One page of the most recently uploaded builds, for the high-water mark. The
+# highest build number is in practice among the newest, and this is a pre-flight
+# guard rather than an accounting record — the upload itself remains the
+# authority on duplicates. Whether a *given* build is held is asked separately,
+# by number, so it does not depend on being inside this page.
 APPSTORE_BUILD_PAGE = 200
+
+# Processing states under which a build is, or will be, on TestFlight.
+APPSTORE_LIVE_STATES = frozenset({"VALID", "PROCESSING"})
 
 TIMEOUT_SECONDS = 30
 
@@ -102,9 +111,13 @@ def _numbers(values: list) -> list[int]:
 
 
 def appstore_builds(
-    bundle_id: str, issuer_id: str, key_id: str, private_key: str
-) -> list[int]:
-    """Every build number App Store Connect lists for the app, newest first."""
+    bundle_id: str, issuer_id: str, key_id: str, private_key: str, build: int | None
+) -> tuple[list[int], list[int]]:
+    """(numbers App Store Connect has seen, numbers that are or will be on TestFlight).
+
+    The first is a page of the newest builds, plus ``build`` itself when asked
+    for; the second is the subset of those in a live processing state.
+    """
     import jwt  # Imported late so a missing dependency is a store we cannot ask.
 
     now = int(time.time())
@@ -126,19 +139,31 @@ def appstore_builds(
     if not apps:
         # A bundle id App Store Connect has never seen holds no builds, which is
         # a real answer: the first upload can use any number.
-        return []
+        return [], []
     app_id = apps[0]["id"]
 
-    query = urllib.parse.urlencode(
-        {
-            "filter[app]": app_id,
-            "sort": "-uploadedDate",
-            "limit": APPSTORE_BUILD_PAGE,
-            "fields[builds]": "version",
-        }
-    )
-    builds = _call("GET", f"{APPSTORE_API}/builds?{query}", headers).get("data") or []
-    return _numbers([(build.get("attributes") or {}).get("version") for build in builds])
+    def builds(filters: dict) -> list:
+        query = urllib.parse.urlencode(
+            {
+                "filter[app]": app_id,
+                "fields[builds]": "version,processingState",
+                **filters,
+            }
+        )
+        return _call("GET", f"{APPSTORE_API}/builds?{query}", headers).get("data") or []
+
+    listed = builds({"sort": "-uploadedDate", "limit": APPSTORE_BUILD_PAGE})
+    if build is not None:
+        # By number, so an old build past the page above is still found.
+        listed = listed + builds({"filter[version]": str(build), "limit": 10})
+
+    seen, live = [], []
+    for entry in listed:
+        attributes = entry.get("attributes") or {}
+        seen.append(attributes.get("version"))
+        if attributes.get("processingState") in APPSTORE_LIVE_STATES:
+            live.append(attributes.get("version"))
+    return _numbers(seen), _numbers(live)
 
 
 # ── Play Console ────────────────────────────────────────────────────────────
@@ -177,8 +202,8 @@ def _play_token(service_account: dict) -> str:
     return token
 
 
-def play_version_codes(package_name: str, service_account: dict) -> list[int]:
-    """Every versionCode Play Console still lists for the app."""
+def play_version_codes(package_name: str, service_account: dict) -> tuple[list[int], list[int]]:
+    """(versionCodes Play Console lists, the same list): Play keeps only accepted uploads."""
     token = _play_token(service_account)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     base = f"{PLAY_API}/applications/{urllib.parse.quote(package_name)}/edits"
@@ -197,7 +222,8 @@ def play_version_codes(package_name: str, service_account: dict) -> list[int]:
         for kind, key in (("bundles", "bundles"), ("apks", "apks")):
             listing = _call("GET", f"{base}/{edit_id}/{kind}", headers)
             version_codes += [item.get("versionCode") for item in listing.get(key) or []]
-        return _numbers(version_codes)
+        accepted = _numbers(version_codes)
+        return accepted, accepted
     finally:
         try:
             _call("DELETE", f"{base}/{edit_id}", headers)
@@ -206,13 +232,13 @@ def play_version_codes(package_name: str, service_account: dict) -> list[int]:
             print(f"::warning::Could not discard the Play edit: {error}", file=sys.stderr)
 
 
-def report(held: list[int], build: int | None) -> None:
-    highest = max(held, default=0)
+def report(seen: list[int], live: list[int], build: int | None) -> None:
+    highest = max(seen, default=0)
     if build is None:
         print(highest)
         return
     print(f"highest={highest}")
-    print(f"holds={'true' if build in held else 'false'}")
+    print(f"holds={'true' if build in live else 'false'}")
 
 
 def main() -> int:
@@ -243,12 +269,14 @@ def main() -> int:
         if args.platform == "android":
             with open(args.play_key_file, encoding="utf-8") as handle:
                 service_account = json.load(handle)
-            held = play_version_codes(args.package_name, service_account)
+            seen, live = play_version_codes(args.package_name, service_account)
         else:
             with open(args.private_key_file, encoding="utf-8") as handle:
                 private_key = handle.read()
-            held = appstore_builds(args.bundle_id, args.issuer_id, args.key_id, private_key)
-        report(held, args.build)
+            seen, live = appstore_builds(
+                args.bundle_id, args.issuer_id, args.key_id, private_key, args.build
+            )
+        report(seen, live, args.build)
     except StoreUnavailable as error:
         print(f"::warning::{error}", file=sys.stderr)
         return 2
