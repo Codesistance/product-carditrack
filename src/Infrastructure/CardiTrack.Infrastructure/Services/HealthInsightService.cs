@@ -561,18 +561,28 @@ public class HealthInsightService : IHealthInsightService
     }
 
     /// <summary>
-    /// Read-only, like the alert and baseline reads: the narrative is written by the daily
-    /// <c>--job trend</c> pass and persisted per member.
+    /// Read-only, like the alert and baseline reads: the narrative is written by a trend pass and
+    /// persisted per member per horizon.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="horizon"/> selects which of the three stored reads is returned, and
+    /// defaults to <see cref="TrendHorizon.Rolling"/> — what this method served before the other
+    /// two existed, so a caller passing nothing gets exactly what it always got. Each horizon
+    /// carries its own staleness ceiling; see <see cref="InsightServability.MaxAgeFor"/>.
+    /// </remarks>
     public async Task<TrendInsightResponse> GetTrendAsync(
-        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
+        Guid requestingUserId,
+        Guid cardiMemberId,
+        TrendHorizon horizon = TrendHorizon.Rolling,
+        CancellationToken ct = default)
     {
         await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
 
         if (!await IsBeingWatchedAsync(cardiMemberId))
             return NoTrend(cardiMemberId);
 
-        var stored = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, InsightScope.Trend);
+        var stored = await _unitOfWork.MemberInsights
+            .GetByScopeAsync(cardiMemberId, TrendInterpretationService.ScopeFor(horizon));
         if (!InsightServability.IsServable(stored, DateTime.UtcNow))
             return NoTrend(cardiMemberId);
 

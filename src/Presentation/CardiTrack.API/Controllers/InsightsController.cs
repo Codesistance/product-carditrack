@@ -3,6 +3,7 @@ using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -118,26 +119,50 @@ public class InsightsController : BaseApiController
     }
 
     /// <summary>
-    /// The longer view of a CardiMember — where their readings have been going over the weeks —
-    /// written by the daily trend pass and persisted per member; read-only here, no model call on
-    /// this path. A blank <c>narrative</c> means there is not yet a month of readings to describe
-    /// a trajectory from, which is the learning state rather than a failure.
+    /// The longer view of a CardiMember — where their readings have been going — written by a
+    /// trend pass and persisted per member per horizon; read-only here, no model call on this
+    /// path. A blank <c>narrative</c> means there is not yet a month of readings to describe a
+    /// trajectory from, which is the learning state rather than a failure.
     /// </summary>
+    /// <param name="cardiMemberId">The member to read.</param>
+    /// <param name="horizon">
+    /// Which stretch to read: <c>rolling</c> (the default — the daily pass's unaligned read),
+    /// <c>weekly</c> (the week ending the evening before the member's own week start) or
+    /// <c>monthly</c> (the month just gone). Omitting it returns what this endpoint returned
+    /// before the journal-aligned horizons existed, so existing callers are unaffected — the same
+    /// defaulting <c>?audience=</c> does on the digest endpoints.
+    /// </param>
+    /// <param name="ct">Cancellation.</param>
     [HttpGet("members/{cardiMemberId:guid}/trend")]
     [ProducesResponseType(typeof(ApiResponse<TrendInsightResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<TrendInsightResponse>>> GetTrend(
-        Guid cardiMemberId, CancellationToken ct)
+        Guid cardiMemberId, [FromQuery] string? horizon, CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
+        // Parsed rather than bound straight to the enum. Model binding turns an unrecognised value
+        // into the zero member, which is not a defined TrendHorizon — so "?horizon=yearly" would
+        // silently serve the rolling read instead of saying it is not a horizon. Enum.TryParse
+        // also accepts the numeric form, which Enum.IsDefined is what rejects.
+        var requested = TrendHorizon.Rolling;
+        if (!string.IsNullOrWhiteSpace(horizon)
+            && (!Enum.TryParse(horizon, ignoreCase: true, out requested) || !Enum.IsDefined(requested)))
+        {
+            return Error(
+                "That isn't a trend horizon — use rolling, weekly or monthly.",
+                StatusCodes.Status400BadRequest);
+        }
+
         try
         {
-            var result = await _insightService.GetTrendAsync(UserContext.UserId, cardiMemberId, ct);
+            var result = await _insightService.GetTrendAsync(
+                UserContext.UserId, cardiMemberId, requested, ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)

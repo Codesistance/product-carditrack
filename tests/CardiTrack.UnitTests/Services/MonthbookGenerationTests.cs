@@ -190,7 +190,7 @@ public class MonthbookGenerationTests
     {
         var utc = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
 
-        Assert.True(DigestGenerationService.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
+        Assert.True(JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
     }
 
     [Theory]
@@ -202,7 +202,7 @@ public class MonthbookGenerationTests
     {
         var utc = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
 
-        Assert.False(DigestGenerationService.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
+        Assert.False(JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
     }
 
     [Fact]

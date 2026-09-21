@@ -63,7 +63,7 @@ C4Container
 
     Container_Boundary(pipe, "AI pipeline (the sanctioned exception to the Worker rule)") {
       Container(rcv, "HealthWebhookReceiver", "Cloud Run service, public", "Authenticates Subscriber secret, drops verification probes, forwards raw to Pub/Sub")
-      Container(jobs, "PipelineJobs", "Cloud Run jobs x3, one image", "--job digest (half-hourly, */30) | aggregate (5-min) | assess (5-min, :02 offset, SSA-gated); --job enrich exists in the image but has no Cloud Run job or scheduler provisioned yet")
+      Container(jobs, "PipelineJobs", "Cloud Run jobs x5, one image", "--job digest (half-hourly, */30; also writes the weekly + monthly trend narratives) | aggregate (5-min) | assess (5-min, :02 offset, SSA-gated) | trend (daily, 23 3, the rolling narrative) | theme (chat conversation labels); --job enrich exists in the image but has no Cloud Run job or scheduler provisioned yet")
       Container(medgemma, "MedGemma", "Ollama on Cloud Run, NVIDIA L4, europe-west1, IAM-authorised", "Private medical model, Q4_K_M; one shared instance for all environments; scales to zero")
     }
 
@@ -116,6 +116,7 @@ C4Component
     Component(assess, "RealtimeAssessmentService", "--job assess, every 5 min (:02 offset)", "Latest 60-min HR window (>=45 min covered); SSA jump (>=3) is the MedGemma gate — ordinary windows are not stored; dedup by (member, windowStart); orange/red POST internal enqueue; then DigestGenerationService so a concerning window rewrites the family summary on this execution")
     Component(ssa, "SsaDecomposition", "Infrastructure, Math.NET EVD", "BK lag-covariance + MathNet.Numerics.Evd: trend + oscillation + noise residual; deviation in noise-RMS units")
     Component(parser, "AssessmentSeverityParser", "Application", "Strict closing 'Severity:' line only; critical/high/medium/low -> red/orange/yellow/green; unparseable NEVER alerts")
+    Component(trend, "TrendInterpretationService", "--job trend daily (Rolling); --job digest (Weekly, Monthly)", "TrendFeatureCalculator computes every figure, PinnedReferenceTable supplies every published one, MedGemma only reads the first against the second. Journal horizons ride the digest pass because they fall due on the member's own local weekday and hour, which a daily job cannot see; due rule shared with the books via JournalDueCheck. No score, probability or prediction")
     Component(blocks, "MedicalPromptBlocks", "Shared prompt hygiene", "Age/sex/notes - never name or id; injection-framed caregiver notes")
   }
 

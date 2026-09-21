@@ -29,4 +29,23 @@ public enum InsightScope
     /// to narrate yet, and saying so is the learning state, not a trend.
     /// </summary>
     Trend = 3,
+
+    /// <summary>
+    /// The same read at <see cref="TrendHorizon.Weekly"/>: the seven days ending the evening before
+    /// the member's own week start, written once their Weekbook hour passes.
+    /// </summary>
+    /// <remarks>
+    /// Its own scope rather than a horizon column on <see cref="Trend"/>, because the unique index
+    /// this table already carries is (member, scope) filtered to the rows with no alert — so a new
+    /// scope is one row per member for free, where a horizon column would mean altering that index
+    /// and the partial one beside it. The three trend scopes share every other property the type
+    /// remarks list, which is the condition for sharing the table at all.
+    /// </remarks>
+    TrendWeekly = 4,
+
+    /// <summary>
+    /// The same read at <see cref="TrendHorizon.Monthly"/>: the month just gone, written on the
+    /// first of the next once the member's Monthbook hour passes.
+    /// </summary>
+    TrendMonthly = 5,
 }

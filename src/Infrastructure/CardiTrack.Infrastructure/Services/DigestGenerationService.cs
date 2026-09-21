@@ -670,31 +670,6 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </remarks>
     private const int MonthbookMinimumDaysWithData = 14;
 
-    /// <summary>
-    /// Whether any timezone on earth could put a member's local calendar on
-    /// <paramref name="dayOfMonth"/> at this instant.
-    /// </summary>
-    /// <remarks>
-    /// Real UTC offsets run from -12:00 to +14:00, so the fleet's local clocks span 26 hours and
-    /// touch at most three calendar dates at once. Deliberately generous at both ends rather than
-    /// enumerating the timezone database: being wrong towards "possible" costs one pass that
-    /// declines every member individually, while being wrong towards "impossible" would lose a
-    /// member their book for good.
-    /// </remarks>
-    internal static bool AnyTimeZoneCouldBeOnDayOfMonth(DateTime utcNow, int dayOfMonth)
-    {
-        var earliest = DateOnly.FromDateTime(utcNow.AddHours(-12));
-        var latest = DateOnly.FromDateTime(utcNow.AddHours(14));
-
-        for (var date = earliest; date <= latest; date = date.AddDays(1))
-        {
-            if (date.Day == dayOfMonth)
-                return true;
-        }
-
-        return false;
-    }
-
     public async Task<int> GenerateDueMonthbooksAsync(DateTime utcNow, CancellationToken ct = default)
     {
         // On roughly twenty-nine days in thirty, no timezone on earth is on the first of a month,
@@ -702,7 +677,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // Worth the guard: this runs 48 times a day, and without it every one of those passes
         // reads the candidate list and then a member row and a timezone per candidate, only to
         // decline all of them on a date comparison.
-        if (!AnyTimeZoneCouldBeOnDayOfMonth(utcNow, 1))
+        if (!JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utcNow, 1))
             return 0;
 
         // Wide enough to catch a member whose readings stopped partway through the month just
@@ -764,20 +739,19 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
-        var localToday = DateOnly.FromDateTime(localNow);
 
         // Due on the first, and only once their chosen hour has passed. A member whose own local
         // date is not the first stops here — before any month-scoped read, though their row and
         // timezone have already been fetched above. The pass as a whole is spared entirely by the
         // offset-span guard in the caller on the days when nobody can be due.
-        if (localToday.Day != 1)
+        //
+        // Shared with the trend-interpretation pass through JournalDueCheck, so a month's note
+        // and that month's Monthbook can never disagree about which month just ended.
+        if (JournalDueCheck.Monthly(member, localNow) is not { } month)
             return false;
 
-        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.MonthbookLocalTime))
-            return false;
-
-        var monthEnd = localToday.AddDays(-1);
-        var monthStart = new DateOnly(monthEnd.Year, monthEnd.Month, 1);
+        var monthEnd = month.End;
+        var monthStart = month.Start;
 
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, monthEnd, DigestAudience.Monthbook, ct);
@@ -852,20 +826,19 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
-        var localToday = DateOnly.FromDateTime(localNow);
 
         // Due on the day the member's week starts, and only once their chosen hour has passed.
-        if (localToday.DayOfWeek != JournalSchedule.EffectiveWeekStart(member.JournalWeekStartsOn))
-            return false;
-
-        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.WeekbookLocalTime))
-            return false;
-
         // The week that ended last night: seven days back from yesterday inclusive. Dated by its
         // last day, so one LocalDate identifies one week and the partial unique index can hold
         // written-once on (member, date) alone.
-        var weekEnd = localToday.AddDays(-1);
-        var weekStart = weekEnd.AddDays(-6);
+        //
+        // Shared with the trend-interpretation pass through JournalDueCheck, so a week's note and
+        // that week's Weekbook can never disagree about which seven days they describe.
+        if (JournalDueCheck.Weekly(member, localNow) is not { } week)
+            return false;
+
+        var weekEnd = week.End;
+        var weekStart = week.Start;
 
         // The same fast-path-then-index contract the Daybook uses: this probe is cheap and runs on
         // every pass of the due day, and IX_DigestEntries_OneWeekbookPerWeek is what actually holds

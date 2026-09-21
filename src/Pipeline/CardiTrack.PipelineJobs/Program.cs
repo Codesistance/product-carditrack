@@ -203,10 +203,21 @@ try
             // anything at all.
             var monthbooks = await digests.GenerateDueMonthbooksAsync(DateTime.UtcNow);
 
+            // The weekly and monthly trend narratives ride this pass too, and for the reason the
+            // books do rather than one of their own: they fall due on the member's own local
+            // weekday and hour, and `--job trend` — which still owns the rolling narrative — runs
+            // once a day, so it would see each member at a single local instant and miss anyone
+            // whose chosen hour had not passed at it. Same due check as the books, shared through
+            // JournalDueCheck, so a week's narrative and that week's Weekbook always describe the
+            // same seven days.
+            var journalTrends = scope.ServiceProvider.GetRequiredService<TrendInterpretationService>();
+            var narratives = await journalTrends.InterpretDueJournalHorizonsAsync(DateTime.UtcNow);
+
             Log.Information(
                 "PipelineJobs run finished. Digests generated: {Generated}, daybook entries written: "
-                + "{Reviews}, weekbooks written: {Weekbooks}, monthbooks written: {Monthbooks}.",
-                generated, reviews, weekbooks, monthbooks);
+                + "{Reviews}, weekbooks written: {Weekbooks}, monthbooks written: {Monthbooks}, "
+                + "journal trend narratives written: {Narratives}.",
+                generated, reviews, weekbooks, monthbooks, narratives);
             return 0;
 
         case "aggregate":

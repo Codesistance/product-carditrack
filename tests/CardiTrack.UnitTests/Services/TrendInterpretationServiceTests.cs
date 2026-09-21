@@ -255,11 +255,14 @@ public class TrendInterpretationServiceTests
     public void ChangingTheBriefRetiresTheNarrativesWrittenBeforeIt()
     {
         // A stored narrative that never mentioned a published range must not outlive the brief
-        // that now asks for one.
-        Assert.Equal(2, TrendInterpretationService.BriefVersion);
+        // that now asks for one; nor may one written before the opening named its own stretch
+        // outlive the brief that does. Brief 3's rolling wording is byte-for-byte brief 2's, so
+        // this is the case the stamp exists for — nothing in the text would give the staleness
+        // away, and only the number retires the row.
+        Assert.Equal(3, TrendInterpretationService.BriefVersion);
         Assert.True(
-            TrendInterpretationService.CurrentPromptVersion > 100 + PinnedReferenceTable.Version,
-            "the stamp must exceed everything written under brief 1, whatever the table version.");
+            TrendInterpretationService.CurrentPromptVersion > 200 + PinnedReferenceTable.Version,
+            "the stamp must exceed everything written under brief 2, whatever the table version.");
     }
 
     [Fact]

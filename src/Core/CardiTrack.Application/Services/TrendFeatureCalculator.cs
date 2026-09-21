@@ -1,5 +1,6 @@
 using System.Globalization;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
@@ -30,12 +31,76 @@ public sealed record TrendFeature(
 /// <summary>Average steps on each weekday over the window — the seasonality the design names.</summary>
 public sealed record WeekdayShape(DayOfWeek Day, decimal AverageSteps, int MeasuredDays);
 
+/// <summary>
+/// How far back each figure of a trend reads. One preset per <see cref="TrendHorizon"/>, so that a
+/// narrative headed "the week just gone" is written from the week just gone rather than from a
+/// month-long slope that happens to end in it.
+/// </summary>
+/// <param name="MinimumDaysOfHistory">
+/// Days of readings the member needs before any trend is narrated. The same value at every
+/// horizon: it is about whether a learned normal exists to measure against, which does not change
+/// because the question got shorter.
+/// </param>
+/// <param name="AverageDays">How many days back <see cref="TrendFeature.RecentAverage"/> means.</param>
+/// <param name="SlopeDays">How far back the least-squares line is fitted.</param>
+/// <param name="MinimumDaysForSlope">Days inside <paramref name="SlopeDays"/> that must carry a
+/// reading before a line is fitted at all.</param>
+public sealed record TrendWindow(
+    int MinimumDaysOfHistory,
+    int AverageDays,
+    int SlopeDays,
+    int MinimumDaysForSlope)
+{
+    /// <summary>
+    /// The rolling read the daily pass has always used: a week's average, a four-week slope.
+    /// Unchanged from when these were constants, so the daily narrative is the same narrative.
+    /// </summary>
+    public static readonly TrendWindow Rolling = new(
+        TrendFeatureCalculator.MinimumDaysForTrend,
+        TrendFeatureCalculator.MovingAverageDays,
+        TrendFeatureCalculator.SlopeWindowDays,
+        TrendFeatureCalculator.MinimumDaysForSlope);
+
+    /// <summary>
+    /// The week just gone, end to end. Both the average and the slope span exactly the seven days
+    /// the note is about, and four of them must carry a reading — the same four-of-seven the
+    /// Weekbook refuses to write below, because a week measured on three days is an unmeasured
+    /// week whichever surface is describing it.
+    /// </summary>
+    public static readonly TrendWindow Weekly = new(
+        TrendFeatureCalculator.MinimumDaysForTrend, 7, 7, 4);
+
+    /// <summary>
+    /// The month just gone. Thirty days rather than a calendar count: the window is cut from the
+    /// series' own end, so every month's figures are drawn over the same span and a February does
+    /// not read as a quieter month than a March for being shorter — the reasoning
+    /// <c>TrendAwareness.MonthWindowDays</c> gives for drawing its chart the same way. Fourteen
+    /// days must carry a reading, matching the Monthbook's own guard.
+    /// </summary>
+    public static readonly TrendWindow Monthly = new(
+        TrendFeatureCalculator.MinimumDaysForTrend, 30, 30, 14);
+
+    /// <summary>The preset for one horizon.</summary>
+    public static TrendWindow For(TrendHorizon horizon) => horizon switch
+    {
+        TrendHorizon.Weekly => Weekly,
+        TrendHorizon.Monthly => Monthly,
+        _ => Rolling,
+    };
+}
+
 /// <summary>Everything the trend narrative is written from. Every number here was computed in .NET.</summary>
+/// <param name="Window">
+/// The spans these figures were drawn over. Carried on the result rather than read back off the
+/// calculator's constants, so <see cref="TrendFeatureCalculator.Render"/> cannot label a weekly
+/// average as a monthly one — the label and the arithmetic come from the same object.
+/// </param>
 public sealed record TrendFeatures(
     DateOnly Through,
     int DaysOfHistory,
     IReadOnlyList<TrendFeature> Features,
-    IReadOnlyList<WeekdayShape> WeekdayShape);
+    IReadOnlyList<WeekdayShape> WeekdayShape,
+    TrendWindow Window);
 
 /// <summary>
 /// The deterministic half of trend interpretation (<c>docs/llm_design.md</c> — "Deterministic trend
@@ -83,14 +148,34 @@ public static class TrendFeatureCalculator
     public const int MinimumDaysForSlope = 10;
 
     /// <summary>
-    /// The features for one member, or null when they have too little history for any of it to
-    /// mean anything — the cold-start case, which is the learning state rather than a trend.
+    /// The features for one member over the rolling window the daily pass reads.
     /// </summary>
     public static TrendFeatures? Compute(
         IReadOnlyList<ActivityLog> logs,
         IReadOnlyList<PatternBaseline> baselines,
         DateOnly through)
+        => Compute(logs, baselines, through, TrendWindow.Rolling);
+
+    /// <summary>
+    /// The features for one member over <paramref name="window"/>, or null when they have too
+    /// little history for any of it to mean anything — the cold-start case, which is the learning
+    /// state rather than a trend.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="logs"/> is expected to cover well more than the window: the history gate
+    /// and the baseline deviations both read the whole span supplied, and only the average and the
+    /// slope are cut to the window. A weekly narrative is still refused to a member with three
+    /// weeks of readings, which is the point — the horizon changes what is described, never how
+    /// much history it takes before anything is.
+    /// </remarks>
+    public static TrendFeatures? Compute(
+        IReadOnlyList<ActivityLog> logs,
+        IReadOnlyList<PatternBaseline> baselines,
+        DateOnly through,
+        TrendWindow window)
     {
+        ArgumentNullException.ThrowIfNull(window);
+
         // One row per date before anything is counted or averaged. Ingestion upserts per
         // (DeviceConnection, Date), so a member wearing two devices has two rows for the same
         // day, and every figure below is a per-day one: a moving average over raw rows weights
@@ -109,22 +194,22 @@ public static class TrendFeatureCalculator
         // count alone would clear the gate, every feature would come back empty, and the pass
         // would spend a model call asking for a narrative of no figures at all.
         var measuredDays = ordered.Count(HasTrendMetric);
-        if (measuredDays < MinimumDaysForTrend)
+        if (measuredDays < window.MinimumDaysOfHistory)
             return null;
 
         var features = new List<TrendFeature>
         {
-            Feature("Resting heart rate", "bpm", ordered, baselines, through,
+            Feature("Resting heart rate", "bpm", ordered, baselines, through, window,
                 l => l.RestingHeartRate, b => b.AvgRestingHeartRate),
-            Feature("Steps", "steps a day", ordered, baselines, through,
+            Feature("Steps", "steps a day", ordered, baselines, through, window,
                 l => l.Steps, b => b.AvgSteps),
-            Feature("Sleep", "minutes a night", ordered, baselines, through,
+            Feature("Sleep", "minutes a night", ordered, baselines, through, window,
                 l => l.SleepMinutes, b => b.AvgSleepMinutes),
-            Feature("Active minutes", "minutes a day", ordered, baselines, through,
+            Feature("Active minutes", "minutes a day", ordered, baselines, through, window,
                 l => l.ActiveMinutes, b => b.AvgActiveMinutes),
-            Feature("Overnight heart rate variability", "ms", ordered, baselines, through,
+            Feature("Overnight heart rate variability", "ms", ordered, baselines, through, window,
                 l => l.HeartRateVariabilityMs, b => b.AvgHeartRateVariabilityMs),
-            Feature("Breathing rate asleep", "breaths a minute", ordered, baselines, through,
+            Feature("Breathing rate asleep", "breaths a minute", ordered, baselines, through, window,
                 l => l.OvernightBreathingRate, b => b.AvgOvernightBreathingRate),
         };
 
@@ -136,7 +221,23 @@ public static class TrendFeatureCalculator
         if (populated.Count == 0)
             return null;
 
-        return new TrendFeatures(through, measuredDays, populated, WeekdayShapeOf(ordered));
+        return new TrendFeatures(through, measuredDays, populated, WeekdayShapeOf(ordered), window);
+    }
+
+    /// <summary>
+    /// How many distinct days in <paramref name="logs"/> carry a reading these features are
+    /// computed from — the coverage a caller checks a period against before spending a model call
+    /// on it.
+    /// </summary>
+    /// <remarks>
+    /// Distinct days, not rows, and for the reason <see cref="Compute"/> gives at more length: a
+    /// member wearing two watches has two rows for the same day, and counting rows would let four
+    /// days of two-device readings clear a bar meant to mean seven.
+    /// </remarks>
+    public static int CountMeasuredDays(IEnumerable<ActivityLog> logs)
+    {
+        ArgumentNullException.ThrowIfNull(logs);
+        return logs.Where(HasTrendMetric).Select(l => l.Date).Distinct().Count();
     }
 
     /// <summary>Whether a day carries any of the readings the features are computed from.</summary>
@@ -154,17 +255,18 @@ public static class TrendFeatureCalculator
         IReadOnlyList<ActivityLog> ordered,
         IReadOnlyList<PatternBaseline> baselines,
         DateOnly through,
+        TrendWindow window,
         Func<ActivityLog, decimal?> read,
         Func<PatternBaseline, decimal?> readBaseline)
     {
-        var recentFrom = through.AddDays(-(MovingAverageDays - 1));
+        var recentFrom = through.AddDays(-(window.AverageDays - 1));
         var recent = ordered
             .Where(l => l.Date >= recentFrom && l.Date <= through)
             .Select(read)
             .OfType<decimal>()
             .ToList();
 
-        var slopeFrom = through.AddDays(-(SlopeWindowDays - 1));
+        var slopeFrom = through.AddDays(-(window.SlopeDays - 1));
         var slopePoints = ordered
             .Where(l => l.Date >= slopeFrom && l.Date <= through)
             .Select(l => (Day: (decimal)l.Date.DayNumber, Value: read(l)))
@@ -178,7 +280,7 @@ public static class TrendFeatureCalculator
             metric,
             unit,
             recentAverage,
-            Slope(slopePoints),
+            Slope(slopePoints, window.MinimumDaysForSlope),
             Deviations(recentAverage, baselines, readBaseline),
             recent.Count);
     }
@@ -224,9 +326,9 @@ public static class TrendFeatureCalculator
     /// all landed on one day (a backfill) gives every point the same x and no line at all. That
     /// divides by zero rather than failing a count check.
     /// </remarks>
-    private static decimal? Slope(IReadOnlyList<(decimal Day, decimal Value)> points)
+    private static decimal? Slope(IReadOnlyList<(decimal Day, decimal Value)> points, int minimumDays)
     {
-        if (points.Count < MinimumDaysForSlope)
+        if (points.Count < minimumDays)
             return null;
 
         var meanDay = points.Average(p => p.Day);
@@ -275,7 +377,7 @@ public static class TrendFeatureCalculator
         {
             var parts = new List<string>
             {
-                $"last {MovingAverageDays} days averaged {feature.RecentAverage:0.#} {feature.Unit}",
+                $"last {features.Window.AverageDays} days averaged {feature.RecentAverage:0.#} {feature.Unit}",
             };
 
             if (feature.ChangePerDay is { } slope)
@@ -287,7 +389,7 @@ public static class TrendFeatureCalculator
                     _ => "flat",
                 };
                 parts.Add($"{direction} about {Math.Abs(slope):0.##} {feature.Unit} a day "
-                    + $"over the last {SlopeWindowDays} days");
+                    + $"over the last {features.Window.SlopeDays} days");
             }
 
             foreach (var (window, deviation) in feature.DeviationPercent.OrderBy(d => d.Key))

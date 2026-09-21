@@ -41,6 +41,54 @@ public class InsightServabilityTests
     }
 
     [Fact]
+    public void AHorizonsCeilingOutlastsItsOwnCadence()
+    {
+        // The bug this exists to prevent: at the flat three days a weekly narrative would be
+        // withheld on four days in seven and a monthly one on twenty-seven in thirty, which reads
+        // to a caregiver as the feature not existing rather than as a row that aged out. Each
+        // ceiling must therefore clear the longest gap between two of its own passes — seven days
+        // for a week, and thirty-one for January into February.
+        Assert.True(InsightServability.WeeklyMaxAge > TimeSpan.FromDays(7));
+        Assert.True(InsightServability.MonthlyMaxAge > TimeSpan.FromDays(31));
+
+        Assert.True(InsightServability.IsServable(
+            Insight(InsightScope.TrendWeekly, Now.AddDays(-7)), Now));
+        Assert.True(InsightServability.IsServable(
+            Insight(InsightScope.TrendMonthly, Now.AddDays(-31)), Now));
+    }
+
+    [Fact]
+    public void AHorizonsCeilingStillCatchesGenerationHavingStopped()
+    {
+        // Each horizon keeps its own cadence plus slack rather than every scope taking the widest,
+        // so a pass that has silently stopped is still noticed at each of them.
+        Assert.False(InsightServability.IsServable(
+            Insight(InsightScope.TrendWeekly, Now - InsightServability.WeeklyMaxAge - TimeSpan.FromMinutes(1)),
+            Now));
+        Assert.False(InsightServability.IsServable(
+            Insight(InsightScope.TrendMonthly, Now - InsightServability.MonthlyMaxAge - TimeSpan.FromMinutes(1)),
+            Now));
+    }
+
+    [Fact]
+    public void TheRollingReadKeepsItsOwnThreeDays()
+    {
+        // The wider ceilings belong to the horizons whose cadence earned them. Widening the daily
+        // pass's would make a stopped job invisible for five weeks instead of three days.
+        Assert.Equal(TimeSpan.FromDays(3), InsightServability.MaxAgeFor(InsightScope.Trend));
+        Assert.Equal(TimeSpan.FromDays(3), InsightServability.MaxAgeFor(InsightScope.Baseline));
+    }
+
+    [Fact]
+    public void ARowIsNeverSweptWhileItIsStillTheCurrentOne()
+    {
+        // The two retention rules have to agree, and they are in different files: a ceiling that
+        // outlived InsightRetention.MaxAge would serve rows the Worker's sweep had already taken.
+        Assert.True(InsightServability.MonthlyMaxAge < InsightRetention.MaxAge);
+        Assert.True(InsightServability.WeeklyMaxAge < InsightRetention.MaxAge);
+    }
+
+    [Fact]
     public void NothingIsServedWithoutText()
     {
         Assert.False(InsightServability.IsServable(null, Now));

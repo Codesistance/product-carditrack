@@ -206,9 +206,12 @@ public static class AiServiceExtensions
         // its only caller today, and any host that can run the digest can regenerate Advise.
         services.AddScoped<AdviseGenerationService>();
 
-        // The trend pass — same reasoning again. It has a job of its own (--job trend) rather than
-        // riding the digest, because it reads a quarter of a year per member and is worth running
-        // once a day rather than on every half-hourly tick.
+        // The trend pass — same reasoning again, and answered by two hosts now. The rolling
+        // narrative has a job of its own (--job trend) because it reads a quarter of a year per
+        // member and is worth running once a day rather than on every half-hourly tick. The
+        // weekly and monthly horizons ride the digest pass instead, because they fall due on the
+        // member's own local weekday and hour and a daily job cannot see that — see
+        // TrendInterpretationService.InterpretDueJournalHorizonsAsync.
         services.AddScoped<TrendInterpretationService>();
 
         // The insight service, which is both a read surface for the API and the writer of the
