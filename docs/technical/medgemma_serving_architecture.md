@@ -10,7 +10,7 @@
 
 *(Historical snapshot: this section describes the per-environment CPU service as it ran before the §9 GPU move. That service and its Terraform sources — `medgemma_min_instances`, the `deployments/cloud_run.tf` service block, the dev.tfvars entries — were removed on 2026-08-27; the live shape is §9's `carditrack-common-medgemma`.)*
 
-`carditrack-dev-medgemma` serves `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` (4-bit quantised, ~3 GB) on **stock Ollama** — `ollama/ollama:latest`, `ENTRYPOINT ["ollama", "serve"]` ([Dockerfile](../../src/Infrastructure/MedGemma/Dockerfile)). Not vLLM; vLLM appears in this repo only as a future option in `llm_design.md`.
+`carditrack-dev-medgemma` serves `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` (4-bit quantised, ~3 GB) on **stock Ollama** — `ollama/ollama:latest` as it then ran, `ENTRYPOINT ["ollama", "serve"]` ([Dockerfile](../../src/Infrastructure/MedGemma/Dockerfile)). Not vLLM; vLLM appears in this repo only as a future option in `llm_design.md`. (That base image is pinned by digest as of 2026-09-21 — see §9.6.)
 
 Read off the live service on 2026-08-19:
 
@@ -304,3 +304,22 @@ Three things this deliberately is not.
 **It does not make anything wait, and is allowed to fail.** The endpoint answers before the load starts; the app never reads the answer; a failed warm-up logs a warning and starts the same five-minute clock a successful one does, so a model host that is down is dialled every few minutes rather than on every launch. If none of it happens, the first chat question pays the load exactly as it did before.
 
 What is **not** covered: resuming the app from the background. `App.Resumed` is the other moment a caregiver arrives after a quiet spell, and it is the same one line to add — left out here because it multiplies how much of the day the instance is up, and that is a call to make against MS-1's numbers rather than ahead of them.
+
+### 9.6 Pinning what a rebuild ships (2026-09-21)
+
+The service has always deployed a specific image, and the weights are baked into it, so the *running* revision never drifted. A **rebuild** could, and nothing in the repo said otherwise.
+
+Two floating inputs, closed the same way:
+
+| Input | Was | Is |
+|---|---|---|
+| Base image | `ollama/ollama:latest` — two builds of one Dockerfile could ship two Ollama versions | `ollama/ollama:0.34.2` pinned by digest. Also the first version this repo can state carries the CVE-2026-85180 redirect fix (`research/queue/2026-09-20-ollama-ssrf-status-conflict.md`) |
+| Model weights | Whatever the mutable model tag resolved to at build time | Asserted against `src/Infrastructure/MedGemma/.model-digest` |
+
+**Why the model needs its own mechanism.** A container base image pins by digest; an Ollama model tag cannot. Verified against both registries on 2026-09-21: `registry.ollama.ai` returns **404** for a digest-addressed manifest, and `ollama pull medgemma1.5@sha256:…` fails outright with `invalid model name`. There is no pull-time pin to use.
+
+So the pin is on the result. Ollama writes the manifest it pulled to disk verbatim, so its sha256 is a stable identity for *these* weights — and because the manifest lists every layer by digest, the one hash covers the weights, the prompt template and the sampler params together. A tag repointed at a different quantisation, a re-uploaded GGUF, or a changed default temperature all move it. The build hashes that file after pulling and fails if it is not the recorded value, printing both, so a drifted upstream stops at the build instead of reaching caregivers.
+
+`MedGemmaModelPinTests` (unit suite) keeps the wiring honest — the digest recorded and well-formed, the Dockerfile still asserting it, every `FROM` pinned, and CI still passing the build-arg. It does not execute the shell block; that logic was verified against four fixtures (match, drift, no manifest, two manifests) when written, and a change to it needs them re-run.
+
+**The sampler moved the same way.** `temperature` reached every clinical generation at 0.1 because the third-party model tag carries that value in its params and the client sent none — an inherited default, not a stated one, and one that becomes Ollama's 0.8 on any tag declaring nothing. It is `AI:Private:Temperature` / `AI:Rewrite:Temperature` now, sent on every request. Same value, now this codebase's to answer for; see `llm_design.md`'s model table.

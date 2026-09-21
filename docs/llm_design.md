@@ -82,7 +82,10 @@ MedGemma runs as **one shared Cloud Run service**, `carditrack-common-medgemma`,
 |----------|-------|
 | Platform | Cloud Run, **one NVIDIA L4 GPU**, `europe-west1` (Cloud Run offers no L4 in `europe-west2`) — measured ~4,000 tok/s prompt evaluation against ~25 on the CPU service it replaced; see [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md) §9 |
 | Serving engine | **Ollama** (`ollama/ollama` base image; model baked in at build time) |
-| Model tag | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` — pinned in `src/Infrastructure/MedGemma/.model-version`, and the value `docker-compose.yml` and `AI__Private__Model` must both match |
+| Model tag | `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` — named in `src/Infrastructure/MedGemma/.model-version`, and the value `docker-compose.yml` and `AI__Private__Model` must both match |
+| Model pin | `src/Infrastructure/MedGemma/.model-digest` — the sha256 of the manifest that tag resolved to. Ollama cannot pull by digest, so the build asserts this after pulling and fails on drift; a tag repointed at a different quantisation, a re-uploaded GGUF or a changed default temperature all move it |
+| Base image | `ollama/ollama:0.34.2`, pinned by digest — the version tag is there to be readable, the digest is what pins |
+| Sampling | `temperature` 0.1, sent as a request option (`AI:Private:Temperature`). Not inherited from the tag: a tag's params are its uploader's choice, and a tag that declares none gets Ollama's 0.8 |
 | Resources | 4 vCPU / 16 Gi, `cpu_idle = false`, startup CPU boost |
 | Scaling | Max **1 instance** (Ollama cannot safely multi-instance) |
 | Ingress | `INGRESS_TRAFFIC_ALL`; port 8080 — IAM (`roles/run.invoker` on named identities) is the only boundary, and `common/alerting.tf` watches for a public grant; see [medgemma_serving_architecture.md](./technical/medgemma_serving_architecture.md) §9.1a |
