@@ -68,8 +68,11 @@ jobs:
         run: |
           echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
           # Names the image also answers to during a rename (see the file's own comment). Comment
-          # and blank lines dropped, the rest joined with spaces for the build arg.
-          echo "aliases=$(grep -v '^[[:space:]]*#' src/Infrastructure/MedGemma/.model-aliases | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')" >> $GITHUB_OUTPUT
+          # and blank lines dropped, the rest joined with spaces for the build arg. sed, not
+          # `grep -v`: the file is comments-only whenever no rename is in flight, and grep exits 1
+          # when nothing survives its filter — harmless inside this `echo "$(…)"`, but one
+          # refactor to `aliases=$(…)` away from failing every build under `set -e`. sed exits 0.
+          echo "aliases=$(sed '/^[[:space:]]*#/d' src/Infrastructure/MedGemma/.model-aliases | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')" >> $GITHUB_OUTPUT
 
       # The weights come from our own bucket, by content-addressed path, and never from a
       # registry: Ollama's CVE-2026-85180 fix refuses the redirect the old Hugging Face tag pulled

@@ -7,7 +7,3 @@
 #
 # Ollama stores a tag lowercased and matches names case-insensitively, so a line may carry the
 # historical spelling callers were given; the build checks it the way Ollama resolves it.
-#
-# In flight since 2026-09-21: the image built 2026-08-10 served this name, and every deployed
-# environment still asks for it.
-hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M

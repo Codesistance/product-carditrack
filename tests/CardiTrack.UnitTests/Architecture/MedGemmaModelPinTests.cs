@@ -214,6 +214,13 @@ public class MedGemmaModelPinTests
         Assert.Contains("ollama cp \"${MODEL_TAG}\" \"${ALIAS}\"", dockerfile, StringComparison.Ordinal);
         Assert.Contains(".model-aliases", workflow, StringComparison.Ordinal);
         Assert.Contains("--build-arg \"MODEL_ALIASES=", workflow, StringComparison.Ordinal);
+
+        // The file is comments-only whenever no rename is in flight — its normal state — and the
+        // workflow's filter has to succeed on it. `grep -v` exits 1 when nothing survives, which
+        // `set -e` turns into a failed build the moment the pipeline stops being an `echo`
+        // argument; `sed` exits 0 with empty output.
+        Assert.Contains("sed '/^[[:space:]]*#/d' src/Infrastructure/MedGemma/.model-aliases", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("grep -v '^[[:space:]]*#' src/Infrastructure/MedGemma/.model-aliases", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
