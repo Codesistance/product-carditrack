@@ -40,6 +40,7 @@ public class TrendJournalHorizonTests
     public TrendJournalHorizonTests()
     {
         _unitOfWork.CardiMembers.Returns(_members);
+        GenerationLeaseStub.GrantAll(_unitOfWork);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.MemberInsights.Returns(_insights);
@@ -117,6 +118,50 @@ public class TrendJournalHorizonTests
 
         Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
         Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    [Fact]
+    public async Task AMemberAnotherExecutionIsAlreadyGeneratingIsLeftToIt()
+    {
+        // The overlapping-execution case. The digest job is scheduled every half hour against an
+        // hour's Cloud Run timeout, so both executions can pass the already-written probe before
+        // either writes. The claim is what stops the second paying for the same generation, and
+        // the point of this test is that it is refused *before* the model call, not after.
+        _unitOfWork.GenerationLeases
+            .TryClaimAsync(
+                Arg.Any<Guid>(), Arg.Any<GenerationWork>(), Arg.Any<DateOnly>(),
+                Arg.Any<DateTime>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    [Fact]
+    public async Task TheClaimIsTakenForTheHorizonAndPeriodBeingWritten()
+    {
+        await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning);
+
+        // The week that ended last night, under its own work kind — so a member's Weekbook and
+        // their weekly trend, due on the same instant, do not block each other.
+        await _unitOfWork.GenerationLeases.Received(1).TryClaimAsync(
+            _memberId, GenerationWork.TrendWeekly, new DateOnly(2026, 9, 6),
+            MondayMorning, GenerationLeaseTerm.Default, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TheClaimIsGivenBackEvenWhenTheGenerationFails()
+    {
+        // Released in a finally rather than on success, so a member whose narrative failed is
+        // retried next pass instead of waiting out the lease.
+        _medicalAi.GenerateStructuredAsync<TrendInterpretationService.TrendAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<TrendInterpretationService.TrendAiResponse>(_ => throw new HttpRequestException("busy"));
+
+        Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
+
+        await _unitOfWork.GenerationLeases.Received(1).ReleaseAsync(
+            _memberId, GenerationWork.TrendWeekly, Arg.Any<CancellationToken>());
     }
 
     [Fact]

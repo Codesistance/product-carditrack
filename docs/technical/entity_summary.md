@@ -112,9 +112,10 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - Exists so an alert is written on the **transition** into alarm rather than while it stands — without it a five-minute cron would re-raise the same finding twelve times an hour
 - Unique on (MetricAlarmId, CardiMemberId). Not soft-deletable: a stale standing state is worse than a missing one
 
-#### 13. **MemberInsight** *(2026-09-20)*
-- One stored interpretation per member per `InsightScope` — `Baseline` (how they read against their own learned normal) and `Trend` (where that has been going) — plus one per alert (`Alert` scope, keyed by `AlertId`)
-- Written by pipeline passes, served read-only by the API, so no screen waits on a model. The alert explanation rides the pass that raised the alert; the baseline reading rides the digest pass; the trend narrative is the daily `--job trend`
+#### 13. **MemberInsight** *(2026-09-21)*
+- One stored interpretation per member per `InsightScope` — `Baseline` (how they read against their own learned normal) and three trend reads: `Trend` (the rolling view), `TrendWeekly` and `TrendMonthly` (the week and month just gone, aligned to the CardiJournal's books) — plus one per alert (`Alert` scope, keyed by `AlertId`)
+- Written by pipeline passes, served read-only by the API, so no screen waits on a model. The alert explanation rides the pass that raised the alert; the baseline reading rides the digest pass; the rolling trend narrative is the daily `--job trend`, while the weekly and monthly ones ride the half-hourly `--job digest` beside the books they share a date with — a horizon falling due on the member's own local weekday and hour cannot be served by a job that sees them once a day
+- Each trend scope carries its own staleness ceiling (`InsightServability.MaxAgeFor` — 3 / 10 / 40 days): the ceiling is a buffer on top of the cadence that writes the row, so a flat three days would have withheld a weekly narrative on four days in seven
 - Contains: CardiMemberId, Scope, AlertId (nullable), Summary, RecommendedAction, KeyFindings (newline-joined), IsLearning, IsProvisional, BaselinePeriodDays, GeneratedAtUtc, PromptVersion
 - **Two partial unique indexes rather than one composite.** Postgres counts nulls as distinct, so a single index over (member, scope, alert) would let a member collect any number of baseline rows with a null `AlertId`, none of them in conflict. Instead: unique on (CardiMemberId, Scope) `WHERE "AlertId" IS NULL`, and unique on AlertId `WHERE "AlertId" IS NOT NULL`
 - Scope persists as its **name** (`HasConversion<string>`), like the rest of the schema

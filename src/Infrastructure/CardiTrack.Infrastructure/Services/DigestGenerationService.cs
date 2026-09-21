@@ -758,12 +758,15 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (existing is not null)
             return false;
 
-        var composed = await ComposeMonthbookAsync(member, timeZone, monthStart, monthEnd, utcNow, ct);
-        if (composed.Entry is null)
-            return false;
+        return await UnderClaimAsync(memberId, GenerationWork.Monthbook, monthEnd, utcNow, ct, async () =>
+        {
+            var composed = await ComposeMonthbookAsync(member, timeZone, monthStart, monthEnd, utcNow, ct);
+            if (composed.Entry is null)
+                return false;
 
-        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-        return true;
+            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
+            return true;
+        });
     }
 
     public async Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default)
@@ -848,12 +851,15 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (existing is not null)
             return false;
 
-        var composed = await ComposeWeekbookAsync(member, timeZone, weekStart, weekEnd, utcNow, ct);
-        if (composed.Entry is null)
-            return false;
+        return await UnderClaimAsync(memberId, GenerationWork.Weekbook, weekEnd, utcNow, ct, async () =>
+        {
+            var composed = await ComposeWeekbookAsync(member, timeZone, weekStart, weekEnd, utcNow, ct);
+            if (composed.Entry is null)
+                return false;
 
-        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-        return true;
+            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
+            return true;
+        });
     }
 
 
@@ -1338,16 +1344,70 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (existing is not null)
             return false;
 
-        var composed = await ComposeDaybookAsync(member, timeZone, reviewedDate, utcNow, ct);
-        if (composed.Entry is null)
+        return await UnderClaimAsync(memberId, GenerationWork.Daybook, reviewedDate, utcNow, ct, async () =>
+        {
+            var composed = await ComposeDaybookAsync(member, timeZone, reviewedDate, utcNow, ct);
+            if (composed.Entry is null)
+                return false;
+
+            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
+
+            // No question is asked off a daybook entry. Questions exist to explain readings while
+            // they still matter, and the answer would arrive a day after the day it was about —
+            // the same reasoning that stops a time-scoped answer being carried forward.
+            return true;
+        });
+    }
+
+    /// <summary>
+    /// Runs <paramref name="write"/> holding this member's claim on one period's generation, or
+    /// returns false without running it when another execution already holds a live one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The probe above this — "is there already a book for this period?" — is a fast path, not a
+    /// guarantee. The digest job is scheduled every thirty minutes against a Cloud Run timeout of
+    /// an hour, so a slow pass is still running when the next execution starts, and both can read
+    /// the same member before either writes. The unique indexes keep the stored data right either
+    /// way; what they cannot do is stop the second execution paying for the model call first, and
+    /// on a service whose cost tracks inference cadence that is the part worth keeping.
+    /// </para>
+    /// <para>
+    /// Released in a <c>finally</c> rather than only on success, so a member whose generation
+    /// failed is retried on the next pass instead of waiting out the lease. An execution that
+    /// never reaches the release — killed by a deploy or the job's own timeout — is covered by
+    /// the expiry instead, which is the reason this is a lease and not a lock.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> UnderClaimAsync(
+        Guid memberId,
+        GenerationWork work,
+        DateOnly periodEnd,
+        DateTime utcNow,
+        CancellationToken ct,
+        Func<Task<bool>> write)
+    {
+        if (!await _unitOfWork.GenerationLeases.TryClaimAsync(
+                memberId, work, periodEnd, utcNow, GenerationLeaseTerm.Default, ct))
+        {
+            _logger.LogInformation(
+                "Another execution is already generating the {Work} for CardiMember {CardiMemberId} "
+                + "for the period ending {PeriodEnd}; leaving it to them.",
+                work, memberId, periodEnd);
             return false;
+        }
 
-        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-
-        // No question is asked off a daybook entry. Questions exist to explain readings while they
-        // still matter, and the answer would arrive a day after the day it was about — the same
-        // reasoning that stops a time-scoped answer being carried forward.
-        return true;
+        try
+        {
+            return await write();
+        }
+        finally
+        {
+            // CancellationToken.None, for AdvisoryLock's reason: a cancelled pass still has to
+            // hand the claim back, and the token that cancelled the work would cancel this too —
+            // leaving the period held until the lease expires for no reason.
+            await _unitOfWork.GenerationLeases.ReleaseAsync(memberId, work, CancellationToken.None);
+        }
     }
 
     private async Task<bool> GenerateForMemberAsync(Guid memberId, DateTime utcNow, CancellationToken ct)

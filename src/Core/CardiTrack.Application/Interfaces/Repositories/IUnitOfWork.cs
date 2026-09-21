@@ -37,6 +37,9 @@ public interface IUnitOfWork : IDisposable
     IExportConsentRepository ExportConsents { get; }
     ICardiMemberCreationKeyRepository CardiMemberCreationKeys { get; }
     IMemberAiHoldRepository MemberAiHolds { get; }
+
+    /// <summary>The once-per-period claim a generator takes before it pays for a model call.</summary>
+    IGenerationLeaseRepository GenerationLeases { get; }
     IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
     IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
 

@@ -114,6 +114,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemberAdviseObservationRepository, CardiTrack.Infrastructure.Repositories.MemberAdviseObservationRepository>();
         services.AddScoped<IMemberInsightRepository, CardiTrack.Infrastructure.Repositories.MemberInsightRepository>();
         services.AddScoped<IMemberAiHoldRepository, CardiTrack.Infrastructure.Repositories.MemberAiHoldRepository>();
+        services.AddScoped<IGenerationLeaseRepository, CardiTrack.Infrastructure.Repositories.GenerationLeaseRepository>();
         services.AddScoped<IDeviceHistoryRepullRepository, CardiTrack.Infrastructure.Repositories.DeviceHistoryRepullRepository>();
         services.AddScoped<IDeviceConnectionInviteRepository, CardiTrack.Infrastructure.Repositories.DeviceConnectionInviteRepository>();
 

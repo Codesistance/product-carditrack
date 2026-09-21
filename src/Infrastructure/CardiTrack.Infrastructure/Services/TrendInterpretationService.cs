@@ -452,7 +452,37 @@ public class TrendInterpretationService
             return false;
         }
 
-        return await WriteAsync(member, timeZone, horizon, window, due.End, existing, utcNow, ct);
+        // Claimed before the model call, not after the probe above it. That probe is a fast path:
+        // the digest job is scheduled every thirty minutes against a Cloud Run timeout of an
+        // hour, so a slow pass is still running when the next execution starts and both can read
+        // the same member before either writes. The unique index keeps the stored row right
+        // either way; what it cannot do is stop the second execution paying for the generation
+        // first. Same claim the three books take, on the same pass — see
+        // DigestGenerationService.UnderClaimAsync.
+        var work = horizon == TrendHorizon.Monthly
+            ? GenerationWork.TrendMonthly
+            : GenerationWork.TrendWeekly;
+
+        if (!await _unitOfWork.GenerationLeases.TryClaimAsync(
+                cardiMemberId, work, due.End, utcNow, GenerationLeaseTerm.Default, ct))
+        {
+            _logger.LogInformation(
+                "Another execution is already writing the {Horizon} trend narrative for CardiMember "
+                + "{CardiMemberId} for the period ending {PeriodEnd}; leaving it to them.",
+                horizon, cardiMemberId, due.End);
+            return false;
+        }
+
+        try
+        {
+            return await WriteAsync(member, timeZone, horizon, window, due.End, existing, utcNow, ct);
+        }
+        finally
+        {
+            // CancellationToken.None: a cancelled pass still has to hand the claim back, or the
+            // period stays held until the lease expires for no reason.
+            await _unitOfWork.GenerationLeases.ReleaseAsync(cardiMemberId, work, CancellationToken.None);
+        }
     }
 
     /// <summary>

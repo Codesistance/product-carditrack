@@ -108,6 +108,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.MemberAdviseObservations.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Set<MemberInsight>().CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberAiHolds.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.GenerationLeases.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.DeviceHistoryRepulls.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.ExportConsents.CountAsync(x => x.CardiMemberIds.Contains(memberId)));
         Assert.Equal(0, await db.Reports.CountAsync(x => x.CardiMemberIds.Contains(memberId)));
@@ -261,6 +262,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "MetricAlarms",
             "MemberStatusLines",
             "MemberAiHolds",
+            "GenerationLeases",
             "DeviceHistoryRepulls",
             "ExportConsents",
             "Reports",
@@ -544,6 +546,14 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             CardiMemberId = member.Id,
             HeldUntilUtc = DateTime.UtcNow.AddHours(1),
             LastFailedAtUtc = DateTime.UtcNow,
+        });
+        db.GenerationLeases.Add(new GenerationLease
+        {
+            CardiMemberId = member.Id,
+            Work = GenerationWork.Weekbook,
+            PeriodEnd = new DateOnly(2026, 9, 6),
+            HeldUntilUtc = DateTime.UtcNow.AddMinutes(20),
+            ClaimedAtUtc = DateTime.UtcNow,
         });
 
         // These carry DeviceConnectionId, so they wait until the connection above has an id.
