@@ -198,8 +198,6 @@ public class ReportGenerationService : IReportGenerationService
         var generativeAi = scope.ServiceProvider.GetRequiredService<IGenerativeAiService>();
         var renderers = scope.ServiceProvider.GetServices<IReportRenderer>();
 
-        var guard = scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>();
-
         var report = await unitOfWork.Reports.GetByIdAsync(reportId);
         if (report is null)
         {
@@ -210,6 +208,13 @@ public class ReportGenerationService : IReportGenerationService
 
         try
         {
+            // Resolved inside the try, unlike the services above. Everything from here runs
+            // fire-and-forget, so a resolution failure out there does not surface anywhere: the
+            // task faults, nothing awaits it, and the report sits Pending until the stale sweep
+            // fails it out hours later with no cause recorded. In here it is logged and the row
+            // is marked Failed like any other generation failure.
+            var guard = scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>();
+
             var renderer = renderers.FirstOrDefault(r => r.Format == report.Format)
                 ?? throw new NotSupportedException(
                     $"No renderer is registered for report format {report.Format}.");

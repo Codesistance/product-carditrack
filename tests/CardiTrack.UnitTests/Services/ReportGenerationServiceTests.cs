@@ -72,7 +72,8 @@ public class ReportGenerationServiceTests
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
             [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer, _csvRenderer },
-            [typeof(IChatTranscriptSource)] = _transcripts
+            [typeof(IChatTranscriptSource)] = _transcripts,
+            [typeof(IMemberWriteGuard)] = new PassThroughWriteGuard()
         });
 
         var scope = Substitute.For<IServiceScope>();
@@ -1346,7 +1347,8 @@ public class ReportGenerationServiceTests
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
             [typeof(IEnumerable<IReportRenderer>)] = new[] { renderer },
-            [typeof(IChatTranscriptSource)] = _transcripts
+            [typeof(IChatTranscriptSource)] = _transcripts,
+            [typeof(IMemberWriteGuard)] = new PassThroughWriteGuard()
         });
 
         var scope = Substitute.For<IServiceScope>();
