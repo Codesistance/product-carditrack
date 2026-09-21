@@ -296,8 +296,9 @@
                             <Label Text="Where things have been heading over recent weeks"
                                    Style="{StaticResource Compact}"/>
                         </VerticalStackLayout>
+                        <!-- Message ink: prose read for its content, not a caption on something. -->
                         <Label x:Name="TrendNarrativeLabel"
-                               Style="{StaticResource Body2}"
+                               Style="{StaticResource Body2Dark}"
                                LineBreakMode="WordWrap"/>
                         <!-- The points a caregiver reads first, so not the smallest, palest
                              thing on the card: they used to share the timestamp's caption grey

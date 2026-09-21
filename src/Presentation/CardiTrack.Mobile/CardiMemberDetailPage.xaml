@@ -319,10 +319,14 @@
                                         IsVisible="False">
                                     <controls:AccordionSection.Body>
                                         <VerticalStackLayout Spacing="10">
-                                            <Label Text="How they compare to their own normal"
-                                                   Style="{StaticResource Compact}"/>
+                                            <!-- No line explaining what the section is. The header
+                                                 names it and now says how much is in it, and a
+                                                 caregiver who has opened it knows what they
+                                                 opened — "How they compare to their own normal"
+                                                 above one sentence was a third line saying what
+                                                 the two below it already said. -->
                                             <Label x:Name="InsightSummaryLabel"
-                                                   Style="{StaticResource Body2}"
+                                                   Style="{StaticResource Body2Dark}"
                                                    IsVisible="False"
                                                    LineBreakMode="WordWrap"/>
                                             <controls:FindingsList x:Name="InsightFindings"
@@ -435,8 +439,13 @@
                                            Style="{StaticResource Compact}"/>
                                 </VerticalStackLayout>
 
+                                <!-- Message ink, like the day's account in the card above. Both
+                                     are prose a caregiver reads for its content; Body2's grey is
+                                     for copy that annotates something else, and it made the two
+                                     paragraphs that are the point of this screen the palest thing
+                                     on it — which is the note Body2Dark already carries. -->
                                 <Label x:Name="InsightTrendLabel"
-                                       Style="{StaticResource Body2}"
+                                       Style="{StaticResource Body2Dark}"
                                        IsVisible="False"
                                        LineBreakMode="WordWrap"/>
 

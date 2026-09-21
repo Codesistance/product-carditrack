@@ -879,6 +879,7 @@ public partial class CardiMemberDetailPage : ContentPage
         InsightSummaryLabel.IsVisible = hasSummary;
         InsightSummaryLabel.Text = insight.Summary ?? string.Empty;
         InsightFindings.Apply(insight.KeyFindings);
+        InsightAccordion.HeaderText = InsightHeader(insight.KeyFindings.Count);
 
         // The body was measured when it was empty, so an open accordion filled by a later load
         // would be sliced off at whatever it was worth then.
@@ -895,6 +896,22 @@ public partial class CardiMemberDetailPage : ContentPage
         InsightGeneratedLabel.IsVisible = hasTrend && insight.GeneratedAt is not null;
         InsightGeneratedLabel.Text = InsightFooter(insight);
     }
+
+    /// <summary>
+    /// The accordion's header, saying how much is folded behind it.
+    /// </summary>
+    /// <remarks>
+    /// The weakness of putting anything behind a chevron is that the chevron says nothing about
+    /// whether opening it is worth doing. A caregiver checking on someone should not have to open
+    /// a section to find out whether it has anything in it — and with the card now appearing only
+    /// when something has actually moved, the count is the answer to the question they came with.
+    /// </remarks>
+    private static string InsightHeader(int findings) => findings switch
+    {
+        0 => "How they are doing",
+        1 => "How they are doing · 1 thing to look at",
+        _ => $"How they are doing · {findings} things to look at",
+    };
 
     /// <summary>
     /// The window the comparison is against, and when it was written. Both, because either alone
