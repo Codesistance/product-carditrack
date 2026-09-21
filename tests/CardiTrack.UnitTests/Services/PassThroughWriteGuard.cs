@@ -26,4 +26,11 @@ internal sealed class PassThroughWriteGuard : IMemberWriteGuard
         await write(ct);
         return true;
     }
+
+    // No transaction requirement here, unlike the real guard: these tests reach the callers that
+    // take a hold without opening one, and throwing would fail them for the absence of a lock they
+    // have no database to take.
+    public Task<bool> HoldMembersAsync(
+        IReadOnlyCollection<Guid> cardiMemberIds, CancellationToken ct = default) =>
+        Task.FromResult(true);
 }

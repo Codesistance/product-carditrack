@@ -44,7 +44,7 @@ internal static class PromptContextFactory
     internal static JournalChatActions JournalActions(
         IRewriteAiService rewriteAi, IUnitOfWork unitOfWork, ICardiMemberAccessService access) =>
         new(rewriteAi, unitOfWork, access, Substitute.For<IDigestGenerationService>(),
-            NullLogger<JournalChatActions>.Instance);
+            new PassThroughWriteGuard(), NullLogger<JournalChatActions>.Instance);
 
     internal static MemberContextComposer Composer(IUnitOfWork unitOfWork, IEncryptionService encryption) =>
         new(

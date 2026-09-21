@@ -123,7 +123,7 @@ public class StatisticalAlertServiceTests
 
     private StatisticalAlertService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance, _enqueue);
+            InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance, new PassThroughWriteGuard(), _enqueue);
 
     // ── The verdict is the model's ────────────────────────────────────────────────────────
 

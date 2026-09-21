@@ -170,16 +170,47 @@ public class DigestRepository : IDigestRepository
         // had. The guard is what opens it, and joins the unit of work's transaction when one is
         // already open rather than nesting; the member's row lock is taken before the delete, so a
         // rewrite racing an erasure neither removes the old book nor writes the new one.
-        var removed = 0;
-        var inserted = false;
-        await _guard.WriteIfMemberLivesAsync(entry.CardiMemberId, async inner =>
+        // The transaction is opened here and not left to the guard, although the guard would have
+        // opened one. What it protects is this method's own promise — that a failure between the
+        // delete and the insert leaves the caregiver the book they had — and that promise must not
+        // become conditional on a collaborator choosing to open a transaction. The guard joins
+        // this one and takes the member's lock inside it, so the rewrite is still refused whole
+        // when an erasure is racing it.
+        var owns = _context.Database.CurrentTransaction is null;
+        var transaction = owns ? await _context.Database.BeginTransactionAsync(ct) : null;
+        try
         {
-            removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, inner);
+            // The member lock first, before the delete — not around the pair. Erasure locks
+            // CardiMembers and then deletes DigestEntries, so a transaction holding this member's
+            // digest rows and waiting on the member row is half of a deadlock. Held here, this
+            // transaction locks in erasure's own order and erasure waits for it instead.
+            if (!await _guard.HoldMemberAsync(entry.CardiMemberId, ct))
+            {
+                if (transaction is not null)
+                    await transaction.RollbackAsync(CancellationToken.None);
+                return (0, false);
+            }
+
+            var removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, ct);
             // InsertAsync, not AddAsync: the lock this needs is already held, and going back
             // through AddAsync would take it a second time for nothing.
-            inserted = await InsertAsync(entry, inner);
-        }, ct);
-        return (removed, inserted);
+            var inserted = await InsertAsync(entry, ct);
+
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            return (removed, inserted);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
     }
 
     /// <summary>

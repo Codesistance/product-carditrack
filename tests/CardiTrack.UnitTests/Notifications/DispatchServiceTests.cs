@@ -44,7 +44,8 @@ public class DispatchServiceTests
     }
 
     private DispatchService CreateSut() =>
-        new(_unitOfWork, _channel, _preferences, _gapResolver, _timeProvider);
+        new(_unitOfWork, _channel, _preferences, _gapResolver,
+            new CardiTrack.UnitTests.Services.PassThroughWriteGuard(), _timeProvider);
 
     private static NotificationDelivery SentDelivery(Guid tokenId, DateTime originalSentDate) => new()
     {

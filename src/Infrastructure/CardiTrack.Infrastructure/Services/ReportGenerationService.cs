@@ -43,6 +43,7 @@ public class ReportGenerationService : IReportGenerationService
     private readonly IChatTranscriptSource _transcripts;
     private readonly ReportStorageOptions _options;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IMemberWriteGuard _guard;
     private readonly ILogger<ReportGenerationService> _logger;
 
     public ReportGenerationService(
@@ -53,6 +54,7 @@ public class ReportGenerationService : IReportGenerationService
         IChatTranscriptSource transcripts,
         ReportStorageOptions options,
         IServiceScopeFactory scopeFactory,
+        IMemberWriteGuard guard,
         ILogger<ReportGenerationService> logger)
     {
         _unitOfWork = unitOfWork;
@@ -62,6 +64,7 @@ public class ReportGenerationService : IReportGenerationService
         _transcripts = transcripts;
         _options = options;
         _scopeFactory = scopeFactory;
+        _guard = guard;
         _logger = logger;
     }
 
@@ -104,7 +107,16 @@ public class ReportGenerationService : IReportGenerationService
         await _consent.ConsumeAsync(requestingUserId, request.ConsentToken ?? "", request, report.Id);
 
         await _unitOfWork.Reports.AddAsync(report);
-        await _unitOfWork.SaveChangesAsync();
+
+        // Guarded although no model has run yet: the window here is small, not absent. Access was
+        // validated and the consent consumed above, and an erasure committing in between would
+        // leave a Pending report naming a member who no longer exists until the stale sweep
+        // reaped it. Refused is reported as "not found", which is what it is.
+        if (!await _guard.WriteIfMembersLiveAsync(
+                request.CardiMemberIds, _ => _unitOfWork.SaveChangesAsync()))
+        {
+            throw new KeyNotFoundException("We couldn't find what you were looking for.");
+        }
 
         var reportId = FormatId(report.Id);
         _ = Task.Run(() => GenerateInBackground(report.Id, request));
@@ -198,8 +210,6 @@ public class ReportGenerationService : IReportGenerationService
         var generativeAi = scope.ServiceProvider.GetRequiredService<IGenerativeAiService>();
         var renderers = scope.ServiceProvider.GetServices<IReportRenderer>();
 
-        var guard = scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>();
-
         var report = await unitOfWork.Reports.GetByIdAsync(reportId);
         if (report is null)
         {
@@ -210,6 +220,13 @@ public class ReportGenerationService : IReportGenerationService
 
         try
         {
+            // Resolved inside the try, unlike the services above. Everything from here runs
+            // fire-and-forget, so a resolution failure out there does not surface anywhere: the
+            // task faults, nothing awaits it, and the report sits Pending until the stale sweep
+            // fails it out hours later with no cause recorded. In here it is logged and the row
+            // is marked Failed like any other generation failure.
+            var guard = scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>();
+
             var renderer = renderers.FirstOrDefault(r => r.Format == report.Format)
                 ?? throw new NotSupportedException(
                     $"No renderer is registered for report format {report.Format}.");

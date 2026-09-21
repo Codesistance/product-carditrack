@@ -90,6 +90,7 @@ public sealed class JournalChatActions
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly IDigestGenerationService _books;
+    private readonly IMemberWriteGuard _guard;
     private readonly ILogger<JournalChatActions> _logger;
 
     public JournalChatActions(
@@ -97,13 +98,30 @@ public sealed class JournalChatActions
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
         IDigestGenerationService books,
+        IMemberWriteGuard guard,
         ILogger<JournalChatActions> logger)
     {
         _rewriteAi = rewriteAi;
         _unitOfWork = unitOfWork;
         _access = access;
         _books = books;
+        _guard = guard;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Holds the member row for the rest of the open transaction, or ends the turn.
+    /// </summary>
+    /// <remarks>
+    /// Throws rather than returning a reply: every caller is already inside a transaction that has
+    /// to be abandoned, <c>MemberChatService.SendMessageAsync</c> rolls it back and rethrows, and a
+    /// 404 is what a caregiver asking about a member the product no longer holds should get. A
+    /// cheerful reply with nothing saved behind it would be a lie about a health record.
+    /// </remarks>
+    private async Task RequireMemberAsync(Guid cardiMemberId, CancellationToken ct)
+    {
+        if (!await _guard.HoldMemberAsync(cardiMemberId, ct))
+            throw new KeyNotFoundException("We couldn't find what you were looking for.");
     }
 
     /// <summary>
@@ -209,6 +227,14 @@ public sealed class JournalChatActions
         // SendMessageAsync commits both after the turns are saved, and a failure rolls the offer
         // back rather than leaving one on the row that no reply ever showed.
         await _unitOfWork.BeginTransactionAsync();
+
+        // First statement in the transaction, before the session row is touched. Not defensive
+        // tidying: erasure locks CardiMembers and then deletes MemberChatSessions, so a
+        // transaction holding the session and waiting on the member is half of a deadlock, and
+        // PostgreSQL ends it by killing one of the two. Locking the member first puts this
+        // transaction in the same order erasure uses, and erasure waits for it instead.
+        await RequireMemberAsync(cardiMemberId, ct);
+
         if (!await _unitOfWork.MemberChatSessions.TryOfferPendingActionAsync(
                 session, request.Serialize(), utcNow + ConfirmationWindow, ct))
         {
@@ -315,6 +341,10 @@ public sealed class JournalChatActions
             : [];
 
         await _unitOfWork.BeginTransactionAsync();
+
+        // Before the session row, for the reason given on the offer path above.
+        await RequireMemberAsync(cardiMemberId, ct);
+
         var consumed = await _unitOfWork.MemberChatSessions.TryConsumePendingActionAsync(session, confirming: true, ct);
         if (consumed is null)
         {

@@ -510,6 +510,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     private readonly StatusLineGenerationService _statusLine;
     private readonly AdviseGenerationService _advise;
     private readonly ILogger<DigestGenerationService> _logger;
+    private readonly IMemberWriteGuard _guard;
 
     /// <summary>
     /// Optional for the same reason the alert pass keeps it optional: a host that has not
@@ -527,6 +528,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         StatusLineGenerationService statusLine,
         AdviseGenerationService advise,
         ILogger<DigestGenerationService> logger,
+        IMemberWriteGuard guard,
         IHealthInsightService? insights = null)
     {
         _unitOfWork = unitOfWork;
@@ -537,6 +539,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         _statusLine = statusLine;
         _advise = advise;
         _logger = logger;
+        _guard = guard;
         _insights = insights;
     }
 
@@ -2088,8 +2091,12 @@ public partial class DigestGenerationService : IDigestGenerationService
         });
 
         // The base repository stages rather than executes, unlike the digest's own raw-SQL insert
-        // above — without this the question would be dropped when the scope ended.
-        await _unitOfWork.SaveChangesAsync();
+        // above — without this the question would be dropped when the scope ended. Guarded for the
+        // same reason the digest itself is: this is decided by the digest's own model call, so it
+        // is written minutes after the member was read, and an unanswerable question about an
+        // erased member is a row describing them like any other.
+        if (!await _guard.WriteIfMemberLivesAsync(memberId, _ => _unitOfWork.SaveChangesAsync(), ct))
+            return;
 
         QuestionnaireTelemetry.RecordAsked(scope);
         _logger.LogInformation(

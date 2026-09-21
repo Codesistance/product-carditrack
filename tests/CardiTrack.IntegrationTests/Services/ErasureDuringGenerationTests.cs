@@ -1,3 +1,4 @@
+using System.Data.Common;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
@@ -8,6 +9,7 @@ using CardiTrack.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using NSubstitute;
 using Testcontainers.PostgreSql;
 
@@ -190,6 +192,16 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
                 Message = "Doing well today.",
                 GeneratedAtUtc = DateTime.UtcNow,
             });
+            // The question the digest decides to ask the family — written after the same model
+            // call the digest itself comes from, so it races exactly as the digest does.
+            db.MemberQuestionnaires.Add(new MemberQuestionnaire
+            {
+                CardiMemberId = memberId,
+                QuestionText = "How has she been sleeping?",
+                Status = QuestionnaireStatus.Pending,
+                GeneratedAtUtc = DateTime.UtcNow,
+                Scope = QuestionnaireScope.Permanent,
+            });
             db.Alerts.Add(new Alert
             {
                 CardiMemberId = memberId,
@@ -204,6 +216,36 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
         });
 
         Assert.False(stored, "every staged row described a member who no longer exists");
+        await AssertNothingGeneratedSurvivesAsync(memberId);
+    }
+
+    /// <summary>
+    /// The hold the digest writes when the model does not finish. A failure path, but it still
+    /// writes a member-scoped row minutes after the member was read.
+    /// </summary>
+    [Fact]
+    public async Task AnAiHoldWrittenAcrossAnErasure_IsNotStored()
+    {
+        var memberId = await SeedMemberAsync();
+
+        await RaceAgainstErasureAsync(memberId, async (scope, ct) =>
+        {
+            var holds = new MemberAiHoldRepository(
+                scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>(),
+                scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>());
+
+            await holds.UpsertAsync(new MemberAiHold
+            {
+                CardiMemberId = memberId,
+                Purpose = AiHoldPurpose.FamilyDigest,
+                HeldUntilUtc = DateTime.UtcNow.AddHours(1),
+                LastFailedAtUtc = DateTime.UtcNow,
+                ConsecutiveFailures = 1,
+                Reason = "truncated",
+            }, ct);
+            return false;
+        });
+
         await AssertNothingGeneratedSurvivesAsync(memberId);
     }
 
@@ -261,6 +303,80 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
         await AssertNothingGeneratedSurvivesAsync(memberId);
     }
 
+    /// <summary>
+    /// The interleaving the lock exists for, and the only one a plain existence check would fail:
+    /// the erasure has locked the member and deleted its rows but has <em>not committed</em>, and
+    /// the write arrives in the middle of that.
+    /// </summary>
+    /// <remarks>
+    /// The other cases in this file await the erasure to completion before writing, so a
+    /// non-locking <c>WHERE EXISTS</c> would pass them — by the time the write runs there is
+    /// genuinely no member row to find. This one is different: under READ COMMITTED an unlocked
+    /// reader still sees the member, because the delete that removed it has not committed. A check
+    /// says yes, the row inserts, the erasure commits on top of it, and the product is left
+    /// holding health data for an erased member. Measured that way before this guard existed:
+    /// one orphaned digest, zero members.
+    /// <para>
+    /// The erasure side is driven by hand rather than through <see cref="MemberErasureService"/>,
+    /// because the service has no pause point and none is worth adding to production code for a
+    /// test. What is driven is exactly what the service does, in its order: lock the member first,
+    /// then delete. That the real service does take that lock first is what
+    /// <see cref="AWriteThatWinsTheRace_IsStoredAndThenSweptByTheErasureItDelayed"/> proves — it
+    /// could not block on a writer's <c>FOR KEY SHARE</c> otherwise.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AWriteArrivingWhileAnErasureIsUncommitted_WaitsForItAndThenRefuses()
+    {
+        var memberId = await SeedMemberAsync();
+
+        await using var erasing = new NpgsqlConnection(_container.GetConnectionString());
+        await erasing.OpenAsync();
+        await using var erasure = await erasing.BeginTransactionAsync();
+
+        await ExecuteAsync(erasing, erasure,
+            $"""SELECT 1 FROM "CardiMembers" WHERE "Id" = '{memberId}' FOR UPDATE""");
+        await ExecuteAsync(erasing, erasure,
+            $"""DELETE FROM "DigestEntries" WHERE "CardiMemberId" = '{memberId}'""");
+        await ExecuteAsync(erasing, erasure,
+            $"""DELETE FROM "CardiMembers" WHERE "Id" = '{memberId}'""");
+
+        // Uncommitted at this point, and that is the whole test.
+        using var scope = _services.CreateScope();
+        var digests = new DigestRepository(
+            scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>(),
+            scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>());
+
+        var writing = digests.AddAsync(new DigestEntry
+        {
+            CardiMemberId = memberId,
+            LocalDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            Audience = DigestAudience.Daybook,
+            Headline = "A steady day",
+            Text = "Nothing stood out today.",
+            GeneratedAtUtc = DateTime.UtcNow,
+            PromptVersion = 1,
+        });
+
+        // It must block rather than decide. A guard that answered here — either way — would be
+        // answering from a snapshot that still shows a member who is already gone.
+        var decidedEarly = await Task.WhenAny(writing, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.NotSame(writing, decidedEarly);
+
+        await erasure.CommitAsync();
+
+        Assert.False(await writing, "the erasure it waited for had already removed the member");
+        await AssertNothingGeneratedSurvivesAsync(memberId);
+    }
+
+    private static async Task ExecuteAsync(NpgsqlConnection connection, DbTransaction transaction, string sql)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.Transaction = (NpgsqlTransaction)transaction;
+        await command.ExecuteNonQueryAsync();
+    }
+
     // ── Harness ────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -305,6 +421,9 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
         Assert.Equal(0, await db.Set<MemberAdvise>().CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberAdviseObservations.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberStatusLines.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MemberQuestionnaires.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MemberAiHolds.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.NotificationDeliveries.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Alerts.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberChatSessions.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Reports.CountAsync(x => x.CardiMemberIds.Contains(memberId)));

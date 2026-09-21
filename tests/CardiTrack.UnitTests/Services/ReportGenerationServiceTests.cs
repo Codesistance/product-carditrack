@@ -72,7 +72,8 @@ public class ReportGenerationServiceTests
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
             [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer, _csvRenderer },
-            [typeof(IChatTranscriptSource)] = _transcripts
+            [typeof(IChatTranscriptSource)] = _transcripts,
+            [typeof(IMemberWriteGuard)] = new PassThroughWriteGuard()
         });
 
         var scope = Substitute.For<IServiceScope>();
@@ -85,7 +86,7 @@ public class ReportGenerationServiceTests
 
     private ReportGenerationService CreateSut() =>
         new(_unitOfWork, _storage, _access, _consent, _transcripts, _options, BuildScopeFactory(),
-            Substitute.For<ILogger<ReportGenerationService>>());
+            new PassThroughWriteGuard(), Substitute.For<ILogger<ReportGenerationService>>());
 
     /// <summary>Makes the access service refuse the given member, as it does for an unlinked user.</summary>
     private void DenyAccessTo(Guid memberId)
@@ -519,7 +520,8 @@ public class ReportGenerationServiceTests
         var renderer = new RecordingRenderer(format);
         var sut = new ReportGenerationService(
             _unitOfWork, _storage, _access, _consent, _transcripts, _options,
-            BuildScopeFactoryFor(renderer), Substitute.For<ILogger<ReportGenerationService>>());
+            BuildScopeFactoryFor(renderer), new PassThroughWriteGuard(),
+            Substitute.For<ILogger<ReportGenerationService>>());
 
         var queued = await sut.GenerateAsync(_userId, BuildRequest(format));
         var status = await WaitForTerminalStatusAsync(sut, queued.ReportId);
@@ -1346,7 +1348,8 @@ public class ReportGenerationServiceTests
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
             [typeof(IEnumerable<IReportRenderer>)] = new[] { renderer },
-            [typeof(IChatTranscriptSource)] = _transcripts
+            [typeof(IChatTranscriptSource)] = _transcripts,
+            [typeof(IMemberWriteGuard)] = new PassThroughWriteGuard()
         });
 
         var scope = Substitute.For<IServiceScope>();

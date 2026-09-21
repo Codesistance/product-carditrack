@@ -54,15 +54,6 @@ public class MemberErasureService : IMemberErasureService
 
     public async Task<MemberErasureReport> EraseAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
-        // Read before deleting: these name files outside Postgres, and once the rows are gone
-        // nothing remembers which. Collected first, removed after the commit. The photo is the
-        // exception — it is found by prefix rather than by name, because the row names only the
-        // object it last pointed at (see IProfilePhotoStorage.DeleteAllForMemberAsync).
-        var reportObjects = await _db.Reports
-            .Where(r => r.CardiMemberIds.Contains(cardiMemberId) && r.ObjectName != null)
-            .Select(r => r.ObjectName!)
-            .ToListAsync(ct);
-
         // Before the rows, not after: the runbook's "revoke upstream before deleting" step, which
         // until now was a thing an operator had to remember. Once DeviceConnections is deleted the
         // refresh token is gone and nothing can ever end that grant — the wearer would be left
@@ -89,6 +80,7 @@ public class MemberErasureService : IMemberErasureService
         }
 
         var rows = new List<(string Table, int Rows)>();
+        var reportObjects = new List<string>();
 
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         try
@@ -108,6 +100,21 @@ public class MemberErasureService : IMemberErasureService
             // is what collects them. That is today's behaviour and it stays.
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"""SELECT 1 FROM "CardiMembers" WHERE "Id" = {cardiMemberId} FOR UPDATE""", ct);
+
+            // These name files outside Postgres, and once the rows are gone nothing remembers
+            // which. Read here — under the lock, inside the transaction — and not before it: a
+            // report generator that wins the race uploads its export and writes ObjectName after
+            // this method starts, and a list gathered before the lock would not contain it. The
+            // row would then be deleted below and the rendered health export left in the bucket
+            // with nothing left that could ever name it, not even the orphan list this report
+            // hands the operator. Under the lock, the only writes that can still land are ones
+            // this transaction is already waiting for.
+            // The photo is the exception — found by prefix rather than by name, because the row
+            // names only the object it last pointed at (see IProfilePhotoStorage.DeleteAllForMemberAsync).
+            reportObjects = await _db.Reports
+                .Where(r => r.CardiMemberIds.Contains(cardiMemberId) && r.ObjectName != null)
+                .Select(r => r.ObjectName!)
+                .ToListAsync(ct);
 
             // The runbook's order, and it is the order for a reason: children before parents, and
             // the two tables that are easy to miss (DeviceActivityLogs before ActivityLogs, the

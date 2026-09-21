@@ -160,7 +160,7 @@ public class MemberChatJournalRungTests
             Substitute.For<IAlertChangePlanner>(), Substitute.For<IAlertPreferenceService>(),
             Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
-            new JournalChatActions(_rewriteAi, _unitOfWork, _access, _books, NullLogger<JournalChatActions>.Instance),
+            new JournalChatActions(_rewriteAi, _unitOfWork, _access, _books, new PassThroughWriteGuard(), NullLogger<JournalChatActions>.Instance),
             new PassThroughWriteGuard(),
             NullLogger<MemberChatService>.Instance);
 

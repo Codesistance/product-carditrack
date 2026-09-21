@@ -10,6 +10,7 @@ using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace CardiTrack.Infrastructure.Extensions;
@@ -138,6 +139,11 @@ public static class AiServiceExtensions
         // The chat's journal rung writes a book the way the pipeline pass does — same service,
         // same prompt, same guards — so the API carries the generator too. Alongside the pipeline
         // host's own registration, not instead of it: the schedule stays where CLAUDE.md puts it.
+        // Every generator below writes through this, so it is registered beside them rather
+        // than left to each host: a host that composed the generators and forgot the guard
+        // would fail at resolution, but only once something tried to generate. TryAdd so a
+        // host that registers it alongside its repositories still wins.
+        services.TryAddScoped<IMemberWriteGuard, MemberWriteGuard>();
         services.AddScoped<IDigestGenerationService, DigestGenerationService>();
         services.AddScoped<JournalChatActions>();
 
@@ -212,6 +218,9 @@ public static class AiServiceExtensions
         // weekly and monthly horizons ride the digest pass instead, because they fall due on the
         // member's own local weekday and hour and a daily job cannot see that — see
         // TrendInterpretationService.InterpretDueJournalHorizonsAsync.
+        // Beside the writers here too, not only in AddAiServices: the pipeline host takes this
+        // method alone, and every writer below reaches its table through the guard.
+        services.TryAddScoped<IMemberWriteGuard, MemberWriteGuard>();
         services.AddScoped<TrendInterpretationService>();
 
         // The insight service, which is both a read surface for the API and the writer of the

@@ -94,6 +94,35 @@ public class MemberWriteGuard : IMemberWriteGuard
         }
     }
 
+    public async Task<bool> HoldMembersAsync(
+        IReadOnlyCollection<Guid> cardiMemberIds, CancellationToken ct = default)
+    {
+        if (cardiMemberIds.Count == 0)
+            throw new ArgumentException("A hold must name the member it protects.", nameof(cardiMemberIds));
+
+        if (_context.Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException(
+                "HoldMembersAsync needs a transaction already open: the lock lives for the length of "
+                + "one, and taken outside it would be released before the work it was protecting "
+                + "ran. Open the transaction first, then call this as its first statement.");
+        }
+
+        foreach (var cardiMemberId in cardiMemberIds.Distinct().OrderBy(id => id))
+        {
+            if (await LockAsync(cardiMemberId, ct))
+                continue;
+
+            _logger.LogWarning(
+                "Refused to continue a transaction for CardiMember {CardiMemberId}: the member was "
+                + "erased. The caller is expected to roll back.",
+                cardiMemberId);
+            return false;
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// Takes <c>FOR KEY SHARE</c> on one member row. False when the row is not there — either it
     /// never was, or an erasure that this call waited on has just committed.

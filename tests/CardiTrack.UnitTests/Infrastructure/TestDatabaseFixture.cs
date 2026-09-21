@@ -39,6 +39,11 @@ public class TestDatabaseFixture : IAsyncLifetime
         services.AddScoped<IAlertRepository, AlertRepository>();
         services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
         services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
+        // The repositories below take IMemberWriteGuard. The pass-through stands in for it: the
+        // real guard takes a row lock on CardiMembers, and these tests deliberately write for
+        // member ids they never seeded — a real guard would refuse every one of them. What the
+        // guard actually does is proven in ErasureDuringGenerationTests against a real Postgres.
+        services.AddScoped<IMemberWriteGuard, CardiTrack.UnitTests.Services.PassThroughWriteGuard>();
         services.AddScoped<IDigestRepository, DigestRepository>();
         services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
         services.AddScoped<IMemberQuestionnaireRepository, MemberQuestionnaireRepository>();
