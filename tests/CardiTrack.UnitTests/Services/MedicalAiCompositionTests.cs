@@ -67,6 +67,10 @@ public class MedicalAiCompositionTests
         // test is whether the graph closes, not what the rows say.
         services.AddScoped(_ => Substitute.For<IUnitOfWork>());
         services.AddScoped(_ => Substitute.For<CardiTrack.Application.Interfaces.Security.IEncryptionService>());
+        // A third port since #1186: every batch writer takes the member write guard, and each host
+        // registers it itself (API, Web and PipelineJobs Program.cs), so it belongs with the two
+        // above. A substitute is safe here — nothing is written, only constructed.
+        services.AddScoped(_ => Substitute.For<CardiTrack.Application.Interfaces.Services.IMemberWriteGuard>());
 
         return services.BuildServiceProvider(new ServiceProviderOptions
         {

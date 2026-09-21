@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Repositories;
+using CardiTrack.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
@@ -65,6 +66,10 @@ public class TestDatabaseFixture : IAsyncLifetime
         services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
         services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
         services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreationKeyRepository>();
+        // The repositories take the write guard since #1186 (a row lock on the member for the
+        // write's transaction). The real one, because this fixture runs against a real Postgres
+        // and the lock is part of what these tests exercise; AddLogging below covers its logger.
+        services.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
         services.AddLogging();

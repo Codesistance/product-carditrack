@@ -23,6 +23,20 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         await scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>()
             .EnsureUpcomingPartitionsAsync(daysAhead: 7);
 
+    /// <summary>
+    /// A member row for the digest to name. <c>DigestRepository</c> writes under
+    /// <see cref="IMemberWriteGuard"/> since #1186, and the guard takes <c>FOR KEY SHARE</c> on the
+    /// CardiMembers row before letting the write through — a random Guid has no row to lock, so
+    /// the write is refused and nothing lands. That refusal is proven in
+    /// <c>ErasureDuringGenerationTests</c>; what these tests are about is the column list, which
+    /// needs the write to happen.
+    /// </summary>
+    private static async Task<Guid> SeedMemberAsync(IServiceScope scope)
+    {
+        var organization = await TestDataSeeder.SeedOrganizationAsync(scope);
+        return (await TestDataSeeder.SeedCardiMemberAsync(scope, organization.Id)).Id;
+    }
+
     private static DigestEntry Entry(Guid memberId, string? suggestion, DigestUrgency? urgency = null) => new()
     {
         CardiMemberId = memberId,
@@ -41,7 +55,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
 
         const string suggestion = "Ask how they slept when you call tonight";
         await repo.AddAsync(Entry(memberId, suggestion));
@@ -62,7 +76,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
 
         await repo.AddAsync(Entry(memberId, suggestion: null));
 
@@ -82,7 +96,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
         var entry = Entry(memberId, "a", DigestUrgency.CheckIn);
 
         await repo.AddAsync(entry);
@@ -110,7 +124,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
 
         await repo.AddAsync(Entry(memberId, "a", urgency: null));
 
@@ -130,7 +144,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var entry = Entry(Guid.NewGuid(), "a");
+        var entry = Entry(await SeedMemberAsync(scope), "a");
 
         Assert.True(await repo.AddAsync(entry));
         Assert.False(await repo.AddAsync(entry));
@@ -158,7 +172,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
         Assert.True(await repo.AddAsync(Daybook(memberId, "The first account")));
 
         var (removed, inserted) = await repo.ReplaceBookAsync(Daybook(memberId, "The second account"));
@@ -181,7 +195,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
         Assert.True(await repo.AddAsync(Daybook(memberId, "The account that must survive")));
 
         await Assert.ThrowsAnyAsync<Exception>(() =>
@@ -198,7 +212,7 @@ public class DigestRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IDigestRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         Assert.True(await repo.AddAsync(Daybook(memberId, "To be deleted")));
         Assert.True(await repo.AddAsync(Entry(memberId, suggestion: null)));

@@ -24,6 +24,19 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         await scope.ServiceProvider.GetRequiredService<ITimeSeriesPartitionService>()
             .EnsureUpcomingPartitionsAsync(daysAhead: 7);
 
+    /// <summary>
+    /// A member row for the assessment to name. The repository writes under
+    /// <see cref="IMemberWriteGuard"/> since #1186, which takes <c>FOR KEY SHARE</c> on the
+    /// CardiMembers row first and refuses the write when there is none — so a random Guid stores
+    /// nothing. The "someone else" rows are seeded the same way: a write the guard refused would
+    /// leave the per-member filters below passing without ever being exercised.
+    /// </summary>
+    private static async Task<Guid> SeedMemberAsync(IServiceScope scope)
+    {
+        var organization = await TestDataSeeder.SeedOrganizationAsync(scope);
+        return (await TestDataSeeder.SeedCardiMemberAsync(scope, organization.Id)).Id;
+    }
+
     private static RealtimeAssessment Assessment(
         Guid memberId, DateTime windowStartUtc, AlertSeverity? severity = AlertSeverity.Green,
         string output = "A steady hour.") => new()
@@ -58,7 +71,7 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
 
         var first = await repo.UpsertAsync(Assessment(memberId, RecentHour, AlertSeverity.Green, "First pass."));
         var second = await repo.UpsertAsync(Assessment(memberId, RecentHour, AlertSeverity.Orange, "Second pass."));
@@ -81,7 +94,7 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
 
         await repo.UpsertAsync(Assessment(memberId, RecentHour, severity: null, "No label."));
 
@@ -97,7 +110,7 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
 
         await repo.UpsertAsync(Assessment(memberId, RecentHour));
 
@@ -112,11 +125,11 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
 
         await repo.UpsertAsync(Assessment(memberId, RecentHour.AddHours(-1), output: "Older."));
         await repo.UpsertAsync(Assessment(memberId, RecentHour, output: "Newer."));
-        await repo.UpsertAsync(Assessment(Guid.NewGuid(), RecentHour.AddMinutes(30), output: "Someone else."));
+        await repo.UpsertAsync(Assessment(await SeedMemberAsync(scope), RecentHour.AddMinutes(30), output: "Someone else."));
 
         var latest = await repo.GetLatestAsync(memberId);
         Assert.NotNull(latest);
@@ -139,13 +152,13 @@ public class RealtimeAssessmentRepositoryTests(TestDatabaseFixture fixture)
         using var scope = fixture.CreateScope();
         await EnsurePartitionsAsync(scope);
         var repo = scope.ServiceProvider.GetRequiredService<IRealtimeAssessmentRepository>();
-        var memberId = Guid.NewGuid();
+        var memberId = await SeedMemberAsync(scope);
         var since = RecentHour;
 
         await repo.UpsertAsync(Assessment(memberId, since.AddHours(-1), output: "Before the boundary."));
         await repo.UpsertAsync(Assessment(memberId, since, output: "On the boundary."));
         await repo.UpsertAsync(Assessment(memberId, since.AddHours(3), output: "Newest."));
-        await repo.UpsertAsync(Assessment(Guid.NewGuid(), since.AddHours(3), output: "Someone else."));
+        await repo.UpsertAsync(Assessment(await SeedMemberAsync(scope), since.AddHours(3), output: "Someone else."));
 
         var recent = await repo.GetSinceAsync(memberId, since);
 

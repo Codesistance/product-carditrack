@@ -72,7 +72,12 @@ public class ReportGenerationServiceTests
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
             [typeof(IEnumerable<IReportRenderer>)] = new IReportRenderer[] { _renderer, _csvRenderer },
-            [typeof(IChatTranscriptSource)] = _transcripts
+            [typeof(IChatTranscriptSource)] = _transcripts,
+            // Resolved by the background generation before it enters its try block (#1186), so a
+            // scope without it faults the task before any terminal status is written and every
+            // test here waits out the 60s Pending timeout. Pass-through, not a substitute — see
+            // PassThroughWriteGuard's remarks for why a substitute would fail the same way.
+            [typeof(IMemberWriteGuard)] = new PassThroughWriteGuard()
         });
 
         var scope = Substitute.For<IServiceScope>();
@@ -1346,7 +1351,9 @@ public class ReportGenerationServiceTests
             [typeof(IUnitOfWork)] = _unitOfWork,
             [typeof(IGenerativeAiService)] = _generativeAi,
             [typeof(IEnumerable<IReportRenderer>)] = new[] { renderer },
-            [typeof(IChatTranscriptSource)] = _transcripts
+            [typeof(IChatTranscriptSource)] = _transcripts,
+            // Same reason as the shared provider above: the guard is resolved before the try.
+            [typeof(IMemberWriteGuard)] = new PassThroughWriteGuard()
         });
 
         var scope = Substitute.For<IServiceScope>();
