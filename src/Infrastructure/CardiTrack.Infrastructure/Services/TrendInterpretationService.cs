@@ -417,10 +417,20 @@ public class TrendInterpretationService
             return false;
         }
 
-        // The period's own coverage, checked before any model call and on the same bar its book
-        // uses — four of seven, fourteen of a month. A period measured on fewer days than that is
-        // an unmeasured period, and a narrative of it would have to speak for the days that are
-        // missing. The history gate inside the calculator is a different question: that one asks
+        // The period's own coverage, checked before any model call, at its book's threshold —
+        // four of seven, fourteen of a month. A period measured on fewer days than that is an
+        // unmeasured period, and a narrative of it would have to speak for the days that are
+        // missing.
+        //
+        // The threshold is the book's; what counts toward it is not. A book describes whatever
+        // the period recorded, so a day carrying only distance or SpO2 counts for it; a trend
+        // reads six series and can plot none of those, so CountMeasuredDays asks for a day
+        // carrying something it can draw a line through. That divergence is correct rather than a
+        // drift: a member with four distance-only days gets their Weekbook and no weekly trend,
+        // because there was nothing to trend. (The rows cannot double up — ActivityLogs is unique
+        // on (CardiMemberId, Date); the per-device rows live in DeviceActivityLogs.)
+        //
+        // The history gate inside the calculator is a different question again: that one asks
         // whether the member has a learned normal at all.
         // A month is 28, 29, 30 or 31 days and the window has to be its own length: the narrative
         // says "the month that has just ended", and a fixed thirty ending on the last of February

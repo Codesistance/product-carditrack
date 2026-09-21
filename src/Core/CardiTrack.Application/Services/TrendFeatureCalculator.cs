@@ -63,10 +63,19 @@ public sealed record TrendWindow(
 
     /// <summary>
     /// The week just gone, end to end. Both the average and the slope span exactly the seven days
-    /// the note is about, and four of them must carry a reading — the same four-of-seven the
-    /// Weekbook refuses to write below, because a week measured on three days is an unmeasured
-    /// week whichever surface is describing it.
+    /// the note is about, and four of them must carry a reading — the Weekbook's four-of-seven,
+    /// because a week measured on three days is an unmeasured week whichever surface is
+    /// describing it.
     /// </summary>
+    /// <remarks>
+    /// The <em>threshold</em> is the Weekbook's; what counts toward it is not, and deliberately.
+    /// The book describes whatever the week recorded, so a day carrying only distance or SpO2 is
+    /// a day that carried readings to it. A trend reads six series and can plot none of those, so
+    /// <see cref="TrendFeatureCalculator.CountMeasuredDays"/> asks for a day carrying something it
+    /// can actually draw a line through. Each guard is the right bar for the read it gates, and a
+    /// member can therefore get a Weekbook and no weekly trend — correctly, because there was
+    /// nothing to trend.
+    /// </remarks>
     public static readonly TrendWindow Weekly = new(
         TrendFeatureCalculator.MinimumDaysForTrend, 7, 7, 4);
 

@@ -95,13 +95,38 @@ public class TrendWindowTests
     }
 
     [Fact]
-    public void EachJournalHorizonAsksForTheCoverageItsBookAsksFor()
+    public void EachJournalHorizonTakesItsBooksThreshold()
     {
-        // Four of seven and fourteen of a month — the Weekbook's and Monthbook's own guards. A
+        // Four of seven and fourteen of a month — the Weekbook's and Monthbook's own numbers. A
         // period measured on fewer days than that is an unmeasured period whichever surface is
         // describing it.
         Assert.Equal(4, TrendWindow.For(TrendHorizon.Weekly).MinimumDaysForSlope);
         Assert.Equal(14, TrendWindow.For(TrendHorizon.Monthly).MinimumDaysForSlope);
+    }
+
+    [Fact]
+    public void ADayIsMeasuredOnlyWhenItCarriesSomethingATrendCanPlot()
+    {
+        // The threshold is the book's; what counts toward it is not. A Weekbook describes whatever
+        // the week recorded, so a distance-only day is a day that carried readings to it. A trend
+        // reads six series and can plot none of those, so such a day is not a measured day here —
+        // and a member with four distance-only days correctly gets their Weekbook and no weekly
+        // trend, because there was nothing to trend.
+        var distanceOnly = Enumerable.Range(0, 7)
+            .Select(offset => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = Through.AddDays(-offset),
+                Distance = 3.1m,
+                SpO2Average = 97m,
+            })
+            .ToList();
+
+        Assert.Equal(0, TrendFeatureCalculator.CountMeasuredDays(distanceOnly));
+
+        // The same seven days carrying steps are seven measured days.
+        var withSteps = Days(7, _ => 4_000);
+        Assert.Equal(7, TrendFeatureCalculator.CountMeasuredDays(withSteps));
     }
 
     [Fact]
