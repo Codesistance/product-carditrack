@@ -1,9 +1,11 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
 using CardiTrack.Infrastructure.Repositories;
+using CardiTrack.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -47,6 +49,12 @@ public class AccountDeletionStateTests : IAsyncLifetime
                 t.IsClass && !t.IsAbstract && parameter.ParameterType.IsAssignableFrom(t));
             sc.AddScoped(parameter.ParameterType, implementation);
         }
+        // Not a UnitOfWork constructor parameter, so the reflection loop above never reaches it:
+        // the repositories it builds take the write guard themselves (see MemberWriteGuard), and
+        // without this every resolve of IUnitOfWork fails on DigestRepository.
+        sc.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+        // The guard logs, so it needs a logger factory to resolve at all.
+        sc.AddLogging();
         sc.AddScoped<IUnitOfWork, UnitOfWork>();
         _services = sc.BuildServiceProvider();
 

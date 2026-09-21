@@ -432,7 +432,7 @@ public class TrendJournalHorizonTests
 
     private TrendInterpretationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            NullLogger<TrendInterpretationService>.Instance);
+            NullLogger<TrendInterpretationService>.Instance, new PassThroughWriteGuard());
 
     /// <summary>A full quarter of readings, every day measured — the default for these tests.</summary>
     private void WithFullHistory() => WithHistory(90);
