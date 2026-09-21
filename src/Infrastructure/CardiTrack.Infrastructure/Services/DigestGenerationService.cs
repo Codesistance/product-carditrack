@@ -1387,8 +1387,9 @@ public partial class DigestGenerationService : IDigestGenerationService
         CancellationToken ct,
         Func<Task<bool>> write)
     {
-        if (!await _unitOfWork.GenerationLeases.TryClaimAsync(
-                memberId, work, periodEnd, utcNow, GenerationLeaseTerm.Default, ct))
+        var claim = await _unitOfWork.GenerationLeases.TryClaimAsync(
+            memberId, work, periodEnd, utcNow, GenerationLeaseTerm.Default, ct);
+        if (claim is not { } claimId)
         {
             _logger.LogInformation(
                 "Another execution is already generating the {Work} for CardiMember {CardiMemberId} "
@@ -1403,10 +1404,13 @@ public partial class DigestGenerationService : IDigestGenerationService
         }
         finally
         {
+            // By the claim this attempt took, so a generation that overran its lease and was
+            // taken over releases nothing rather than removing its successor's.
+            //
             // CancellationToken.None, for AdvisoryLock's reason: a cancelled pass still has to
             // hand the claim back, and the token that cancelled the work would cancel this too —
             // leaving the period held until the lease expires for no reason.
-            await _unitOfWork.GenerationLeases.ReleaseAsync(memberId, work, CancellationToken.None);
+            await _unitOfWork.GenerationLeases.ReleaseAsync(claimId, CancellationToken.None);
         }
     }
 

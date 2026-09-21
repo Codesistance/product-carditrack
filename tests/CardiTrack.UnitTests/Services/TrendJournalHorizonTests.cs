@@ -131,7 +131,7 @@ public class TrendJournalHorizonTests
             .TryClaimAsync(
                 Arg.Any<Guid>(), Arg.Any<GenerationWork>(), Arg.Any<DateOnly>(),
                 Arg.Any<DateTime>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
-            .Returns(false);
+            .Returns((Guid?)null);
 
         Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
         Assert.Empty(_medicalAi.ReceivedCalls());
@@ -153,15 +153,23 @@ public class TrendJournalHorizonTests
     public async Task TheClaimIsGivenBackEvenWhenTheGenerationFails()
     {
         // Released in a finally rather than on success, so a member whose narrative failed is
-        // retried next pass instead of waiting out the lease.
+        // retried next pass instead of waiting out the lease — and released by the claim this
+        // attempt took, so an overrunning holder cannot remove its successor's.
+        var claimId = Guid.NewGuid();
+        _unitOfWork.GenerationLeases
+            .TryClaimAsync(
+                Arg.Any<Guid>(), Arg.Any<GenerationWork>(), Arg.Any<DateOnly>(),
+                Arg.Any<DateTime>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(claimId);
+
         _medicalAi.GenerateStructuredAsync<TrendInterpretationService.TrendAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns<TrendInterpretationService.TrendAiResponse>(_ => throw new HttpRequestException("busy"));
 
         Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
 
-        await _unitOfWork.GenerationLeases.Received(1).ReleaseAsync(
-            _memberId, GenerationWork.TrendWeekly, Arg.Any<CancellationToken>());
+        await _unitOfWork.GenerationLeases.Received(1)
+            .ReleaseAsync(claimId, Arg.Any<CancellationToken>());
     }
 
     [Fact]

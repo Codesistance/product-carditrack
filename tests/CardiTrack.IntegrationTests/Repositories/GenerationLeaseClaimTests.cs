@@ -53,15 +53,12 @@ public class GenerationLeaseClaimTests : IAsyncLifetime
         using var firstScope = _services.CreateScope();
         using var secondScope = _services.CreateScope();
 
-        var first = Repository(firstScope);
-        var second = Repository(secondScope);
-
-        Assert.True(await first.TryClaimAsync(_memberId, GenerationWork.Weekbook, PeriodEnd, Now, Term));
-        Assert.False(await second.TryClaimAsync(_memberId, GenerationWork.Weekbook, PeriodEnd, Now, Term));
+        Assert.NotNull(await Claim(firstScope, GenerationWork.Weekbook, Now));
+        Assert.Null(await Claim(secondScope, GenerationWork.Weekbook, Now));
     }
 
     [Fact]
-    public async Task TwoExecutionsRacingTheSameClaimAtOnceProduceExactlyOneHolder()
+    public async Task TenExecutionsRacingTheSameClaimAtOnceProduceExactlyOneHolder()
     {
         // The same property under genuine concurrency rather than in sequence. Ten contenders on
         // their own connections, started together: whatever order Postgres serialises them in,
@@ -69,12 +66,13 @@ public class GenerationLeaseClaimTests : IAsyncLifetime
         var scopes = Enumerable.Range(0, 10).Select(_ => _services.CreateScope()).ToList();
         try
         {
-            var attempts = scopes.Select(scope => Task.Run(() =>
-                Repository(scope).TryClaimAsync(_memberId, GenerationWork.Daybook, PeriodEnd, Now, Term)));
+            var attempts = scopes.Select(scope =>
+                Task.Run(() => Claim(scope, GenerationWork.Daybook, Now)));
 
             var results = await Task.WhenAll(attempts);
 
-            Assert.Equal(1, results.Count(claimed => claimed));
+            var holders = results.Where(id => id is not null).ToList();
+            Assert.Single(holders);
         }
         finally
         {
@@ -87,13 +85,13 @@ public class GenerationLeaseClaimTests : IAsyncLifetime
     public async Task ReleasingLetsTheNextExecutionIn()
     {
         using var scope = _services.CreateScope();
-        var leases = Repository(scope);
 
-        Assert.True(await leases.TryClaimAsync(_memberId, GenerationWork.Monthbook, PeriodEnd, Now, Term));
-        await leases.ReleaseAsync(_memberId, GenerationWork.Monthbook);
+        var claim = await Claim(scope, GenerationWork.Monthbook, Now);
+        Assert.NotNull(claim);
+        await Repository(scope).ReleaseAsync(claim!.Value);
 
         // A failed generation is retried on the next pass rather than waiting out the lease.
-        Assert.True(await leases.TryClaimAsync(_memberId, GenerationWork.Monthbook, PeriodEnd, Now, Term));
+        Assert.NotNull(await Claim(scope, GenerationWork.Monthbook, Now));
     }
 
     [Fact]
@@ -102,14 +100,43 @@ public class GenerationLeaseClaimTests : IAsyncLifetime
         // The self-healing half. An execution killed by a deploy, an OOM or the job's own timeout
         // never reaches its release, and the period must not stay blocked for good.
         using var scope = _services.CreateScope();
+
+        Assert.NotNull(await Claim(scope, GenerationWork.TrendWeekly, Now));
+
+        Assert.Null(await Claim(scope, GenerationWork.TrendWeekly, Now.Add(Term).AddSeconds(-1)));
+        Assert.NotNull(await Claim(scope, GenerationWork.TrendWeekly, Now.Add(Term)));
+    }
+
+    [Fact]
+    public async Task AnOverrunningHolderCannotReleaseItsSuccessorsClaim()
+    {
+        // The fencing case. A generation that runs past its lease is taken over by a later
+        // execution, and then finishes and hits its own finally. Releasing by (member, work)
+        // would delete the successor's live row and let a third execution in while the second was
+        // still working — so the release is keyed on the claim, and a displaced holder's release
+        // matches nothing.
+        using var scope = _services.CreateScope();
         var leases = Repository(scope);
 
-        Assert.True(await leases.TryClaimAsync(_memberId, GenerationWork.TrendWeekly, PeriodEnd, Now, Term));
+        var overrunning = await Claim(scope, GenerationWork.Weekbook, Now);
+        Assert.NotNull(overrunning);
 
-        Assert.False(await leases.TryClaimAsync(
-            _memberId, GenerationWork.TrendWeekly, PeriodEnd, Now.Add(Term).AddSeconds(-1), Term));
-        Assert.True(await leases.TryClaimAsync(
-            _memberId, GenerationWork.TrendWeekly, PeriodEnd, Now.Add(Term), Term));
+        // Its lease lapses and a successor takes over, minting a new claim.
+        var successor = await Claim(scope, GenerationWork.Weekbook, Now.Add(Term));
+        Assert.NotNull(successor);
+        Assert.NotEqual(overrunning!.Value, successor!.Value);
+
+        // The first execution finally finishes and releases what it thinks it holds.
+        await leases.ReleaseAsync(overrunning.Value);
+
+        // The successor still holds the period: a third execution is kept out.
+        Assert.Null(await Claim(scope, GenerationWork.Weekbook, Now.Add(Term).AddMinutes(1)));
+
+        using var verify = _services.CreateScope();
+        var row = await verify.ServiceProvider.GetRequiredService<CardiTrackDbContext>()
+            .GenerationLeases
+            .SingleAsync(l => l.CardiMemberId == _memberId && l.Work == GenerationWork.Weekbook);
+        Assert.Equal(successor.Value, row.Id);
     }
 
     [Fact]
@@ -118,17 +145,13 @@ public class GenerationLeaseClaimTests : IAsyncLifetime
         // The row is keyed on (member, work) and carries the period, so next week's claim reuses
         // it. This is what keeps the table bounded at members x works with nothing to sweep.
         using var scope = _services.CreateScope();
-        var leases = Repository(scope);
 
-        Assert.True(await leases.TryClaimAsync(_memberId, GenerationWork.Weekbook, PeriodEnd, Now, Term));
-
-        var nextWeek = Now.AddDays(7);
-        Assert.True(await leases.TryClaimAsync(
-            _memberId, GenerationWork.Weekbook, PeriodEnd.AddDays(7), nextWeek, Term));
+        Assert.NotNull(await Claim(scope, GenerationWork.Weekbook, Now));
+        Assert.NotNull(await Claim(scope, GenerationWork.Weekbook, Now.AddDays(7), PeriodEnd.AddDays(7)));
 
         using var verify = _services.CreateScope();
-        var db = verify.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
-        var rows = await db.GenerationLeases
+        var rows = await verify.ServiceProvider.GetRequiredService<CardiTrackDbContext>()
+            .GenerationLeases
             .Where(l => l.CardiMemberId == _memberId && l.Work == GenerationWork.Weekbook)
             .ToListAsync();
 
@@ -142,13 +165,19 @@ public class GenerationLeaseClaimTests : IAsyncLifetime
         using var scope = _services.CreateScope();
         var leases = Repository(scope);
 
-        Assert.True(await leases.TryClaimAsync(_memberId, GenerationWork.Weekbook, PeriodEnd, Now, Term));
+        Assert.NotNull(await Claim(scope, GenerationWork.Weekbook, Now));
 
         // A member's Weekbook and their weekly trend are due on the same instant and must both run.
-        Assert.True(await leases.TryClaimAsync(_memberId, GenerationWork.TrendWeekly, PeriodEnd, Now, Term));
+        Assert.NotNull(await Claim(scope, GenerationWork.TrendWeekly, Now));
         // And one member's claim says nothing about another's.
-        Assert.True(await leases.TryClaimAsync(Guid.NewGuid(), GenerationWork.Weekbook, PeriodEnd, Now, Term));
+        Assert.NotNull(await leases.TryClaimAsync(
+            Guid.NewGuid(), GenerationWork.Weekbook, PeriodEnd, Now, Term));
     }
+
+    private Task<Guid?> Claim(
+        IServiceScope scope, GenerationWork work, DateTime utcNow, DateOnly? periodEnd = null) =>
+        Repository(scope).TryClaimAsync(
+            _memberId, work, periodEnd ?? PeriodEnd, utcNow, Term);
 
     private static GenerationLeaseRepository Repository(IServiceScope scope) =>
         new(scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>());

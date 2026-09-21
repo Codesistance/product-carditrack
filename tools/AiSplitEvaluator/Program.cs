@@ -82,9 +82,12 @@ builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteReposito
 builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
 builder.Services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
 builder.Services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
-// UnitOfWork takes this as a constructor dependency, so leaving it out does not degrade the
-// tool — resolving IUnitOfWork below throws and nothing runs at all.
+// UnitOfWork takes these as constructor dependencies, so leaving one out does not degrade the
+// tool — resolving IUnitOfWork below throws and nothing runs at all. This project is in neither
+// solution file, so a missing registration survives a clean build of everything the gates
+// compile and only shows up when the tool is run.
 builder.Services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
+builder.Services.AddScoped<IGenerationLeaseRepository, GenerationLeaseRepository>();
 builder.Services.AddPushRepositories();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 

@@ -23,5 +23,5 @@ internal static class GenerationLeaseStub
             .TryClaimAsync(
                 Arg.Any<Guid>(), Arg.Any<GenerationWork>(), Arg.Any<DateOnly>(),
                 Arg.Any<DateTime>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
-            .Returns(true);
+            .Returns(Guid.NewGuid());
 }

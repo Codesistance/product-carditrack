@@ -32,7 +32,15 @@ public interface IGenerationLeaseRepository
     /// realistic generation, short enough that an execution killed mid-flight costs the member
     /// one period's delay rather than the period itself.
     /// </param>
-    Task<bool> TryClaimAsync(
+    /// <returns>
+    /// The id of the claim taken, to hand back to <see cref="ReleaseAsync"/>, or null when
+    /// another execution holds a live one. An ownership token rather than a convenience: a
+    /// generation that overruns its lease is taken over by a later execution, and without a token
+    /// the overrunning holder's release would delete its successor's claim and let a third
+    /// execution in while the second was still working. A takeover mints a new id for exactly
+    /// that reason, so a displaced holder's release matches nothing.
+    /// </returns>
+    Task<Guid?> TryClaimAsync(
         Guid cardiMemberId,
         GenerationWork work,
         DateOnly periodEnd,
@@ -41,9 +49,14 @@ public interface IGenerationLeaseRepository
         CancellationToken ct = default);
 
     /// <summary>
-    /// Gives the claim back, whether the attempt wrote anything or not. Releasing early is what
-    /// lets the next pass retry a failed generation without waiting out the lease; a holder that
-    /// never gets here is covered by the expiry instead.
+    /// Gives back the claim <paramref name="claimId"/> identifies, whether the attempt wrote
+    /// anything or not. Releasing early is what lets the next pass retry a failed generation
+    /// without waiting out the lease; a holder that never gets here is covered by the expiry.
     /// </summary>
-    Task ReleaseAsync(Guid cardiMemberId, GenerationWork work, CancellationToken ct = default);
+    /// <remarks>
+    /// Keyed on the claim, not on (member, work), so a holder whose lease has already been taken
+    /// over releases nothing. Deleting by the pair would let a slow execution's <c>finally</c>
+    /// remove a successor's live claim — the fencing problem, and the reason this takes a token.
+    /// </remarks>
+    Task ReleaseAsync(Guid claimId, CancellationToken ct = default);
 }

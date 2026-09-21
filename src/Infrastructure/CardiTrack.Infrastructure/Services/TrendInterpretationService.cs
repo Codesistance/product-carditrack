@@ -463,8 +463,9 @@ public class TrendInterpretationService
             ? GenerationWork.TrendMonthly
             : GenerationWork.TrendWeekly;
 
-        if (!await _unitOfWork.GenerationLeases.TryClaimAsync(
-                cardiMemberId, work, due.End, utcNow, GenerationLeaseTerm.Default, ct))
+        var claim = await _unitOfWork.GenerationLeases.TryClaimAsync(
+            cardiMemberId, work, due.End, utcNow, GenerationLeaseTerm.Default, ct);
+        if (claim is not { } claimId)
         {
             _logger.LogInformation(
                 "Another execution is already writing the {Horizon} trend narrative for CardiMember "
@@ -479,9 +480,11 @@ public class TrendInterpretationService
         }
         finally
         {
-            // CancellationToken.None: a cancelled pass still has to hand the claim back, or the
-            // period stays held until the lease expires for no reason.
-            await _unitOfWork.GenerationLeases.ReleaseAsync(cardiMemberId, work, CancellationToken.None);
+            // By the claim this attempt took, so a narrative that overran its lease and was taken
+            // over releases nothing rather than removing its successor's. CancellationToken.None:
+            // a cancelled pass still has to hand the claim back, or the period stays held until
+            // the lease expires for no reason.
+            await _unitOfWork.GenerationLeases.ReleaseAsync(claimId, CancellationToken.None);
         }
     }
 
