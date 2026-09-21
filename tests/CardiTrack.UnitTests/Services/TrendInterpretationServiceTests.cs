@@ -133,6 +133,57 @@ public class TrendInterpretationServiceTests
     }
 
     /// <summary>
+    /// The one comparison the brief allows, said in the same breath as the refusal it sits beside.
+    /// </summary>
+    /// <remarks>
+    /// Asking for a figure against a published range while also saying "never work out a
+    /// comparison" left the model two instructions that cannot both be followed, and the likely
+    /// casualty is the new one. Placing a given number against a given range is reading two
+    /// figures against each other; the refusal is about calculating a third.
+    /// </remarks>
+    [Fact]
+    public async Task ThePromptAllowsTheRangeComparisonItAsksFor()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("The one comparison you may make is placing", prompt);
+        Assert.Contains("rather than calculating a third", prompt);
+
+        // The refusal itself is narrowed, not dropped.
+        Assert.Contains("Never work out a percentage, a difference or a direction yourself", prompt);
+        Assert.Contains("introduce a number that is not in front of you", prompt);
+    }
+
+    /// <summary>
+    /// Steady and outside guidance is the case the whole change exists for, so the summary must
+    /// not reach for the published range only when something has moved.
+    /// </summary>
+    [Fact]
+    public async Task ThePromptAsksForTheRangeWhetherOrNotTheMetricMoved()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("whether or not it has", prompt);
+        Assert.Contains("sitting outside guidance while holding perfectly steady", prompt);
+    }
+
+    /// <summary>
+    /// Two metrics have no published range on purpose, so the rule for an empty list cannot ask
+    /// whether they sit inside one.
+    /// </summary>
+    [Fact]
+    public async Task TheEmptyListRuleOnlyAsksAboutMetricsThatHaveARange()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("metric that has a published range sits inside it", prompt);
+        Assert.Contains("judged on movement alone", prompt);
+    }
+
+    /// <summary>
     /// The brief asks for each figure against the published ranges, not only against their own
     /// usual.
     /// </summary>
@@ -229,8 +280,10 @@ public class TrendInterpretationServiceTests
         Assert.Contains("risk level or a prediction of what will happen next", prompt);
         Assert.Contains("Never name a condition", prompt);
 
-        // And the instruction that keeps the model reading arithmetic rather than doing any.
-        Assert.Contains("Never work out a comparison, a percentage or a direction", prompt);
+        // And the instruction that keeps the model reading arithmetic rather than doing any. It
+        // no longer forbids comparisons outright: placing a figure against a range printed beside
+        // it is reading two given numbers, and the brief now asks for exactly that.
+        Assert.Contains("Never work out a percentage, a difference or a direction yourself", prompt);
     }
 
     [Fact]

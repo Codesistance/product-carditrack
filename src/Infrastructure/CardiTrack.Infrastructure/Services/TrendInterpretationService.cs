@@ -87,8 +87,10 @@ public class TrendInterpretationService
         You are reading a month of one person's wearable readings for their family.
 
         Every figure below was computed from their own measurements before you saw it. Say what the
-        figures say. Never work out a comparison, a percentage or a direction yourself, and never
-        introduce a number that is not in front of you.
+        figures say. Never work out a percentage, a difference or a direction yourself, and never
+        introduce a number that is not in front of you. The one comparison you may make is placing
+        a figure against a range printed below it — below it, inside it, or above it — because that
+        is reading two given numbers against each other rather than calculating a third.
 
         You are given two things to measure against, and they answer different questions. Their own
         usual says whether this is a change for them. The published ranges say whether it sits
@@ -105,14 +107,17 @@ public class TrendInterpretationService
         """ + MedicalPromptBlocks.CaregiverRegister + """
         Respond with:
         - summary: what has been happening over this stretch, in three or four sentences. Where a
-          metric has moved, say which way and roughly how far, in the words the figures use, and
-          where it sits against the published range if there is one for it.
+          metric has moved, say which way and roughly how far, in the words the figures use. Where
+          a metric has a published range, say where it sits against it — whether or not it has
+          moved, because sitting outside guidance while holding perfectly steady is exactly the
+          thing a family would otherwise never be told.
         - keyFindings: up to three short lines. Each names one thing worth noticing — a movement
           against their usual, or where a figure sits against published guidance, or both in one
           line where they are the same metric. "Lower than usual" on its own says very little to a
           family; "sleeping about 5 hours a night, below the 7 to 9 recommended at their age" is
-          the same finding said usefully. Leave the list empty when nothing has moved and
-          everything sits inside its published range.
+          the same finding said usefully. Leave the list empty when nothing has moved and every
+          metric that has a published range sits inside it. Metrics with no published range are
+          judged on movement alone, since there is nothing for them to sit inside or outside of.
 
         Never name a condition, a diagnosis or a treatment. Never give a score, a probability, a
         risk level or a prediction of what will happen next. Saying a figure sits outside a
