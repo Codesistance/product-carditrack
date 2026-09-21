@@ -261,7 +261,39 @@ public class TrendInterpretationService
         // for the same reason, and these deviations are measured against those baselines.
         var through = localToday.AddDays(-1);
 
-        return await WriteAsync(member, timeZone, TrendHorizon.Rolling, through, existing, utcNow, ct);
+        return await WriteAsync(member, timeZone, TrendHorizon.Rolling, TrendWindow.Rolling, through, existing, utcNow, ct);
+    }
+
+    /// <summary>
+    /// The UTC instant the member's current local day began — the anchor the once-per-period
+    /// check compares a stored row against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Converted through the timezone rather than by subtracting the local time of day, which is
+    /// the same arithmetic only while the offset has not moved since midnight. On a fall-back day
+    /// the wall clock reads 23:00 after twenty-four hours have passed, so subtracting would put
+    /// the day's start an hour late and a narrative written at 00:30 would read as belonging to
+    /// the day before — which is the duplicate this check exists to prevent, on exactly the day
+    /// the comment beside it claims to handle.
+    /// </para>
+    /// <para>
+    /// Midnight does not exist in every zone on every date: a few shift their clocks at midnight,
+    /// and spring-forward then skips the hour outright. <see cref="TimeZoneInfo.ConvertTimeToUtc"/>
+    /// throws on such a time, so the first hour that does exist is used instead. Erring late is
+    /// the safe direction — a day start too early would read a row from the previous evening as
+    /// today's and cost the member their narrative, where one slightly late costs at worst a
+    /// repeated read. Ambiguous midnights resolve to standard time, which is the later instant,
+    /// for the same reason.
+    /// </para>
+    /// </remarks>
+    internal static DateTime LocalDayStartUtc(DateTime localNow, TimeZoneInfo timeZone)
+    {
+        var midnight = DateTime.SpecifyKind(localNow.Date, DateTimeKind.Unspecified);
+        if (timeZone.IsInvalidTime(midnight))
+            midnight = midnight.AddHours(1);
+
+        return TimeZoneInfo.ConvertTimeToUtc(midnight, timeZone);
     }
 
     /// <summary>Which stored insight one horizon's narrative lands under.</summary>
@@ -378,10 +410,9 @@ public class TrendInterpretationService
         // call. Anchored to the start of the member's own local day rather than a fixed interval:
         // a 20-hour floor would let a second narrative through near the end of a 25-hour
         // fall-back day, and the period has not changed just because the clock did.
-        var localDayStartUtc = utcNow - localNow.TimeOfDay;
         if (existing is not null
             && existing.PromptVersion >= CurrentPromptVersion
-            && existing.GeneratedAtUtc >= localDayStartUtc)
+            && existing.GeneratedAtUtc >= LocalDayStartUtc(localNow, timeZone))
         {
             return false;
         }
@@ -391,7 +422,14 @@ public class TrendInterpretationService
         // an unmeasured period, and a narrative of it would have to speak for the days that are
         // missing. The history gate inside the calculator is a different question: that one asks
         // whether the member has a learned normal at all.
-        var window = TrendWindow.For(horizon);
+        // A month is 28, 29, 30 or 31 days and the window has to be its own length: the narrative
+        // says "the month that has just ended", and a fixed thirty ending on the last of February
+        // would be describing two days of January as well, while a thirty-one-day month would lose
+        // its first. A week is always seven, so it takes the preset.
+        var window = horizon == TrendHorizon.Monthly
+            ? TrendWindow.ForMonth(due.DayCount)
+            : TrendWindow.For(horizon);
+
         var periodLogs = await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, due.Start, due.End);
         var measured = TrendFeatureCalculator.CountMeasuredDays(periodLogs);
@@ -404,7 +442,7 @@ public class TrendInterpretationService
             return false;
         }
 
-        return await WriteAsync(member, timeZone, horizon, due.End, existing, utcNow, ct);
+        return await WriteAsync(member, timeZone, horizon, window, due.End, existing, utcNow, ct);
     }
 
     /// <summary>
@@ -416,6 +454,7 @@ public class TrendInterpretationService
         CardiMember member,
         TimeZoneInfo timeZone,
         TrendHorizon horizon,
+        TrendWindow window,
         DateOnly through,
         MemberInsight? existing,
         DateTime utcNow,
@@ -432,17 +471,17 @@ public class TrendInterpretationService
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, from, through)).ToList();
 
         var baselines = new List<PatternBaseline>();
-        foreach (var window in TrendBaselineWindows)
+        foreach (var baselineDays in TrendBaselineWindows)
         {
             // Sequential, not Task.WhenAll: these run against one DbContext, and EF Core refuses a
             // second operation on a context while one is still running.
             var baseline = await _unitOfWork.PatternBaselines
-                .GetLatestByCardiMemberAsync(cardiMemberId, window);
+                .GetLatestByCardiMemberAsync(cardiMemberId, baselineDays);
             if (baseline is not null)
                 baselines.Add(baseline);
         }
 
-        var features = TrendFeatureCalculator.Compute(logs, baselines, through, TrendWindow.For(horizon));
+        var features = TrendFeatureCalculator.Compute(logs, baselines, through, window);
         if (features is null)
         {
             // The cold start the design names: under a month of readings there is no trajectory to

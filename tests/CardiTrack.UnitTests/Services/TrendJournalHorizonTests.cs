@@ -120,6 +120,48 @@ public class TrendJournalHorizonTests
     }
 
     [Fact]
+    public void TheLocalDayStartSurvivesAFallBackDay()
+    {
+        // The bug the once-a-day check would otherwise carry. On 2026-10-25 UK clocks go back, so
+        // that local day runs 25 hours. At 23:00 local the wall clock has advanced 23 hours while
+        // 24 have passed — so subtracting the local time of day, which is the same arithmetic only
+        // while the offset has not moved, puts the day's start an hour late and a narrative
+        // written at 00:30 reads as belonging to the day before. That is the duplicate this check
+        // exists to prevent, on exactly the day it claimed to handle.
+        var london = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
+        var lateOnTheLongDay = new DateTime(2026, 10, 25, 23, 0, 0, DateTimeKind.Unspecified);
+
+        var dayStart = TrendInterpretationService.LocalDayStartUtc(lateOnTheLongDay, london);
+
+        // Local midnight on 25 October is 23:00 UTC on the 24th — BST is still in force at that
+        // instant, an hour ahead.
+        Assert.Equal(new DateTime(2026, 10, 24, 23, 0, 0, DateTimeKind.Utc), dayStart);
+
+        // And a narrative written just after that midnight falls inside the day, which is what
+        // stops it being written twice.
+        var justAfterMidnightUtc = new DateTime(2026, 10, 24, 23, 30, 0, DateTimeKind.Utc);
+        Assert.True(justAfterMidnightUtc >= dayStart);
+    }
+
+    [Fact]
+    public void TheLocalDayStartIsExactOnAnOrdinaryDay()
+    {
+        var london = TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
+
+        // Midwinter, GMT, no offset in play: local midnight is midnight UTC.
+        Assert.Equal(
+            new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc),
+            TrendInterpretationService.LocalDayStartUtc(
+                new DateTime(2026, 1, 15, 9, 0, 0, DateTimeKind.Unspecified), london));
+
+        // Midsummer, BST, an hour ahead.
+        Assert.Equal(
+            new DateTime(2026, 6, 14, 23, 0, 0, DateTimeKind.Utc),
+            TrendInterpretationService.LocalDayStartUtc(
+                new DateTime(2026, 6, 15, 9, 0, 0, DateTimeKind.Unspecified), london));
+    }
+
+    [Fact]
     public async Task LastWeeksNarrativeDoesNotStandInForThisWeeks()
     {
         // Seven days old and written by the current brief — but it is the previous period's, and

@@ -34,15 +34,64 @@ public class TrendWindowTests
     }
 
     [Fact]
-    public void EachJournalHorizonSpansExactlyThePeriodItIsAbout()
+    public void AWeekIsAlwaysSevenDays()
     {
         var weekly = TrendWindow.For(TrendHorizon.Weekly);
+
         Assert.Equal(7, weekly.AverageDays);
         Assert.Equal(7, weekly.SlopeDays);
+    }
 
-        var monthly = TrendWindow.For(TrendHorizon.Monthly);
-        Assert.Equal(30, monthly.AverageDays);
-        Assert.Equal(30, monthly.SlopeDays);
+    [Theory]
+    [InlineData(28)]
+    [InlineData(29)]
+    [InlineData(30)]
+    [InlineData(31)]
+    public void AMonthSpansItsOwnLength(int dayCount)
+    {
+        // The window ends on the month's last day, so its length is the only thing deciding
+        // whether it starts on the first. A fixed thirty would have had February describing two
+        // days of January, and a thirty-one-day month losing its first — while the narrative says
+        // "the month that has just ended" either way.
+        var monthly = TrendWindow.ForMonth(dayCount);
+
+        Assert.Equal(dayCount, monthly.AverageDays);
+        Assert.Equal(dayCount, monthly.SlopeDays);
+        // The coverage bar does not move with the month's length: fourteen days is half of any of
+        // them, and it is the Monthbook's own guard.
+        Assert.Equal(14, monthly.MinimumDaysForSlope);
+        Assert.Equal(TrendFeatureCalculator.MinimumDaysForTrend, monthly.MinimumDaysOfHistory);
+    }
+
+    [Fact]
+    public void AMonthOfNoDaysIsNotAMonth()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => TrendWindow.ForMonth(0));
+    }
+
+    [Fact]
+    public void AFebruaryWindowDoesNotReachBackIntoJanuary()
+    {
+        // 2026-02-28 is the last day of a 28-day February. At a fixed thirty the average would
+        // have taken in 30 and 31 January; at the month's own length it starts on the 1st.
+        var through = new DateOnly(2026, 2, 28);
+        var logs = Enumerable.Range(0, 60)
+            .Select(offset => new ActivityLog
+            {
+                CardiMemberId = _memberId,
+                Date = through.AddDays(-(59 - offset)),
+                // January days read 10,000; February days read 2,000. A window that reaches into
+                // January cannot average 2,000.
+                Steps = through.AddDays(-(59 - offset)).Month == 1 ? 10_000 : 2_000,
+            })
+            .ToList();
+
+        var february = TrendFeatureCalculator
+            .Compute(logs, [], through, TrendWindow.ForMonth(28))!
+            .Features.Single(f => f.Metric == "Steps");
+
+        Assert.Equal(2_000m, february.RecentAverage);
+        Assert.Equal(28, february.MeasuredDays);
     }
 
     [Fact]
@@ -137,6 +186,32 @@ public class TrendWindowTests
         };
 
         Assert.Equal(2, TrendFeatureCalculator.CountMeasuredDays(logs));
+    }
+
+    [Fact]
+    public void CountMeasuredDaysAsksTheSameRowTheFeaturesWillRead()
+    {
+        // Two devices reported the same day. The later row is the one Compute keeps, and it holds
+        // nothing this calculator reads — so the day is not a measured day. Counting it because
+        // the earlier row had steps would pass a period into a read that then finds nothing
+        // there, which is exactly the disagreement the coverage check exists to prevent.
+        var day = Through.AddDays(-1);
+        var logs = new List<ActivityLog>
+        {
+            new()
+            {
+                CardiMemberId = _memberId, Date = day, Steps = 4_000,
+                CreatedDate = new DateTime(2026, 9, 19, 1, 0, 0, DateTimeKind.Utc),
+            },
+            new()
+            {
+                CardiMemberId = _memberId, Date = day, Distance = 2.4m,
+                CreatedDate = new DateTime(2026, 9, 19, 9, 0, 0, DateTimeKind.Utc),
+            },
+        };
+
+        Assert.Equal(0, TrendFeatureCalculator.CountMeasuredDays(logs));
+        Assert.Null(TrendFeatureCalculator.Compute(logs, [], Through, TrendWindow.Weekly));
     }
 
     [Fact]

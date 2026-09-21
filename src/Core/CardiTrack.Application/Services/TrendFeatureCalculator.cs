@@ -71,16 +71,36 @@ public sealed record TrendWindow(
         TrendFeatureCalculator.MinimumDaysForTrend, 7, 7, 4);
 
     /// <summary>
-    /// The month just gone. Thirty days rather than a calendar count: the window is cut from the
-    /// series' own end, so every month's figures are drawn over the same span and a February does
-    /// not read as a quieter month than a March for being shorter — the reasoning
-    /// <c>TrendAwareness.MonthWindowDays</c> gives for drawing its chart the same way. Fourteen
-    /// days must carry a reading, matching the Monthbook's own guard.
+    /// A nominal month, for callers with no particular month in hand. Prefer
+    /// <see cref="ForMonth"/>, which takes the real length of the month being described.
+    /// Fourteen days must carry a reading, matching the Monthbook's own guard.
     /// </summary>
+    /// <remarks>
+    /// A fixed thirty is what <c>TrendAwareness.MonthWindowDays</c> draws its chart over, so that
+    /// every month's chart is the same width and a February does not read as a quieter month than
+    /// a March for being shorter. That reasoning is about a picture and does not carry to a
+    /// sentence: the narrative <em>says</em> "the month that has just ended", and a thirty-day
+    /// window ending on the last of February would be describing two days of January as well.
+    /// A chart makes no claim about which month it is; this does.
+    /// </remarks>
     public static readonly TrendWindow Monthly = new(
         TrendFeatureCalculator.MinimumDaysForTrend, 30, 30, 14);
 
-    /// <summary>The preset for one horizon.</summary>
+    /// <summary>
+    /// The month just gone, at its own length — 28, 29, 30 or 31 days, as
+    /// <c>JournalPeriod.DayCount</c> reports it. The window ends on the month's last day, so its
+    /// length is the only thing that decides whether it starts on the first.
+    /// </summary>
+    public static TrendWindow ForMonth(int dayCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(dayCount, 1);
+        return Monthly with { AverageDays = dayCount, SlopeDays = dayCount };
+    }
+
+    /// <summary>
+    /// The preset for one horizon. <see cref="TrendHorizon.Monthly"/> comes back nominal —
+    /// a caller that knows which month it is describing should use <see cref="ForMonth"/>.
+    /// </summary>
     public static TrendWindow For(TrendHorizon horizon) => horizon switch
     {
         TrendHorizon.Weekly => Weekly,
@@ -185,7 +205,7 @@ public static class TrendFeatureCalculator
         // same way.
         var ordered = logs
             .GroupBy(l => l.Date)
-            .Select(g => g.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First())
+            .Select(WinningRow)
             .OrderBy(l => l.Date)
             .ToList();
 
@@ -230,15 +250,35 @@ public static class TrendFeatureCalculator
     /// on it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Distinct days, not rows, and for the reason <see cref="Compute"/> gives at more length: a
     /// member wearing two watches has two rows for the same day, and counting rows would let four
     /// days of two-device readings clear a bar meant to mean seven.
+    /// </para>
+    /// <para>
+    /// It reduces to one row per date <em>the same way</em> <see cref="Compute"/> does — most
+    /// recently written wins — and then asks whether that row carries a reading. Counting a date
+    /// because any row for it did would let this disagree with the features: where the winning row
+    /// holds no trend metric, <see cref="Compute"/> has nothing for that day, and a coverage check
+    /// that said otherwise would pass a period straight into an empty read.
+    /// </para>
     /// </remarks>
     public static int CountMeasuredDays(IEnumerable<ActivityLog> logs)
     {
         ArgumentNullException.ThrowIfNull(logs);
-        return logs.Where(HasTrendMetric).Select(l => l.Date).Distinct().Count();
+        return logs
+            .GroupBy(l => l.Date)
+            .Select(WinningRow)
+            .Count(HasTrendMetric);
     }
+
+    /// <summary>
+    /// The row that speaks for a date when more than one device reported it: the most recently
+    /// written, which is the rule <c>BaselineCalculator</c> uses, so the deviations here are
+    /// measured against a usual drawn the same way.
+    /// </summary>
+    private static ActivityLog WinningRow(IGrouping<DateOnly, ActivityLog> day) =>
+        day.OrderByDescending(l => l.UpdatedDate ?? l.CreatedDate).First();
 
     /// <summary>Whether a day carries any of the readings the features are computed from.</summary>
     private static bool HasTrendMetric(ActivityLog log) =>

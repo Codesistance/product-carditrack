@@ -146,17 +146,29 @@ public class InsightsController : BaseApiController
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
-        // Parsed rather than bound straight to the enum. Model binding turns an unrecognised value
-        // into the zero member, which is not a defined TrendHorizon — so "?horizon=yearly" would
-        // silently serve the rolling read instead of saying it is not a horizon. Enum.TryParse
-        // also accepts the numeric form, which Enum.IsDefined is what rejects.
+        // Matched against the names rather than parsed. Model binding turns an unrecognised value
+        // into the zero member, which is not a defined TrendHorizon, so "?horizon=yearly" would
+        // silently serve the rolling read instead of saying it is not a horizon. Enum.TryParse is
+        // no better on its own: it accepts the underlying number, and Enum.IsDefined then agrees,
+        // so "?horizon=2" would quietly mean Weekly — a caller's typo picking a horizon for them.
+        // A name comparison admits exactly the three values the contract documents.
+        //
+        // Absent and empty are told apart on purpose. No parameter means the caller did not ask,
+        // and gets the rolling read this endpoint has always returned. "?horizon=" means they
+        // meant to ask and sent nothing, which is a malformed request rather than a default.
         var requested = TrendHorizon.Rolling;
-        if (!string.IsNullOrWhiteSpace(horizon)
-            && (!Enum.TryParse(horizon, ignoreCase: true, out requested) || !Enum.IsDefined(requested)))
+        if (horizon is not null)
         {
-            return Error(
-                "That isn't a trend horizon — use rolling, weekly or monthly.",
-                StatusCodes.Status400BadRequest);
+            var named = Enum.GetNames<TrendHorizon>()
+                .FirstOrDefault(name => name.Equals(horizon.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (named is null)
+            {
+                return Error(
+                    "That isn't a trend horizon — use rolling, weekly or monthly.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            requested = Enum.Parse<TrendHorizon>(named);
         }
 
         try
