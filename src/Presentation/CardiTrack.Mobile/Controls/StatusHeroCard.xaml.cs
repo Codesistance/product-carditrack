@@ -99,7 +99,7 @@ public partial class StatusHeroCard : ContentView
         else if (_liveMessage is { } live)
             line = (line.ColorKey, line.Icon, _liveHeadline ?? line.Headline, live);
 
-        SetStatusLine(line.ColorKey, line.Icon, line.Headline, line.Detail);
+        SetStatusLine(line.ColorKey, line.Headline, line.Detail);
         _cardiMemberId = data.CardiMemberId;
         _healthStatus = data.HealthStatus;
 
@@ -284,16 +284,16 @@ public partial class StatusHeroCard : ContentView
 
     /// <summary>
     /// Renders the status block, collapsing the headline row for a tier that has no headline to
-    /// show — <see cref="StatusDetailLabel"/> spans both columns, so what is left lines up with
-    /// the name above rather than sitting in the glyph's indent.
+    /// show, which leaves the sentence alone lining up with the name above it.
     /// </summary>
-    private void SetStatusLine(string colorKey, string? icon, string? headline, string detail)
+    /// <remarks>
+    /// <c>MemberStatusLine.Icon</c> is still served and deliberately not drawn: the per-tier glyph
+    /// in front of the headline cost the block its left edge, and the tier reaches the reader
+    /// through the headline's colour and its words regardless.
+    /// </remarks>
+    private void SetStatusLine(string colorKey, string? headline, string detail)
     {
         var hasHeadline = !string.IsNullOrWhiteSpace(headline);
-
-        StatusIcon.IsVisible = hasHeadline && icon is not null;
-        if (StatusIcon.IsVisible)
-            StatusIcon.Source = icon;
 
         StatusHeadlineLabel.IsVisible = hasHeadline;
         if (hasHeadline)

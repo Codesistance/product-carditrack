@@ -17,14 +17,18 @@
     <Grid x:Name="HeaderShell" Padding="0">
         <VerticalStackLayout x:Name="RootLayout" Spacing="10">
 
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="44">
+            <!-- 8 of spacing against a 20px icon, so the title starts 28 from the card's edge —
+                 the same offset the card headers above this one use. At 22 and 12 it started at
+                 34, and an accordion sitting inside a card next to a card header stepped its
+                 title 6px further in than the heading directly above it. -->
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" HeightRequest="44">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnHeaderTapped"/>
                 </Grid.GestureRecognizers>
 
                 <Image x:Name="HeaderIconImage"
                        Grid.Column="0"
-                       WidthRequest="22" HeightRequest="22"
+                       WidthRequest="20" HeightRequest="20"
                        VerticalOptions="Center"
                        IsVisible="False"/>
 
