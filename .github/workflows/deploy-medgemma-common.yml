@@ -60,11 +60,15 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v3
       - run: gcloud auth configure-docker ${{ env.GPU_REGION }}-docker.pkg.dev --quiet
 
-      # Same file the image build has always read. One number, one place — a literal here would
-      # hold only until someone bumped the file.
+      # The same files the image build reads. Each value in one place — a literal here would hold
+      # only until someone bumped the file. The digest rides with the tag because the tag says
+      # which model and the digest says which build of it: read together, a bump that moves one
+      # and not the other fails the image build rather than shipping weights nobody reviewed.
       - name: Read model version
         id: model
-        run: echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        run: |
+          echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+          echo "digest=$(cat src/Infrastructure/MedGemma/.model-digest | tr -d '[:space:]')" >> $GITHUB_OUTPUT
 
       - name: Build and push
         id: push
@@ -74,6 +78,7 @@ jobs:
         run: |
           docker build \
             --build-arg MODEL_TAG=${{ steps.model.outputs.tag }} \
+            --build-arg MODEL_DIGEST=${{ steps.model.outputs.digest }} \
             -t "$IMAGE:$TAG" \
             -f src/Infrastructure/MedGemma/Dockerfile .
           docker push "$IMAGE:$TAG"

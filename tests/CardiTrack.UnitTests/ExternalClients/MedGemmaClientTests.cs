@@ -50,6 +50,10 @@ public class MedGemmaClientTests
     /// <see cref="RepeatPenalty"/>.</summary>
     private const int RepeatLastN = 512;
 
+    /// <summary>The sampler temperature <see cref="CreateClient"/> configures — asserted against
+    /// rather than hard-coded at each call site, for the same reason as <see cref="ContextTokens"/>.</summary>
+    private const double Temperature = 0.1;
+
     /// <summary>Realistic non-streaming /api/generate payload; durations are nanoseconds.</summary>
     private const string GeneratePayload =
         """
@@ -705,6 +709,7 @@ public class MedGemmaClientTests
         Assert.Contains($"\"num_predict\":{MaxOutputTokens}", body);
         Assert.Contains($"\"repeat_penalty\":{RepeatPenalty.ToString(CultureInfo.InvariantCulture)}", body);
         Assert.Contains($"\"repeat_last_n\":{RepeatLastN}", body);
+        Assert.Contains($"\"temperature\":{Temperature.ToString(CultureInfo.InvariantCulture)}", body);
     }
 
     [Fact]
@@ -721,6 +726,7 @@ public class MedGemmaClientTests
         Assert.Contains($"\"num_predict\":{MaxOutputTokens}", body);
         Assert.Contains($"\"repeat_penalty\":{RepeatPenalty.ToString(CultureInfo.InvariantCulture)}", body);
         Assert.Contains($"\"repeat_last_n\":{RepeatLastN}", body);
+        Assert.Contains($"\"temperature\":{Temperature.ToString(CultureInfo.InvariantCulture)}", body);
     }
 
     /// <summary>
@@ -946,6 +952,7 @@ public class MedGemmaClientTests
             MaxOutputTokens = MaxOutputTokens,
             RepeatPenalty = RepeatPenalty,
             RepeatLastN = RepeatLastN,
+            Temperature = Temperature,
         };
         logger = new ListLogger();
         time = new InstantRetryTimeProvider();

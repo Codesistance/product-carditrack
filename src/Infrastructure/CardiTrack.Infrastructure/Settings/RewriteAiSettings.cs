@@ -82,6 +82,14 @@ public class RewriteAiSettings : IMedGemmaModelSettings
     public int RepeatLastN { get; set; } = 512;
 
     /// <summary>
+    /// <inheritdoc cref="IMedGemmaModelSettings.Temperature" path="/summary"/>
+    /// Ollama kind only — see <see cref="PrivateAiSettings.Temperature"/>. Same default for a
+    /// narrower reason: these steps are routing, rewriting and waiting sentences, where a
+    /// paraphrase that varies per run makes a failure impossible to reproduce from the log.
+    /// </summary>
+    public double Temperature { get; set; } = 0.1;
+
+    /// <summary>
     /// <inheritdoc cref="IMedGemmaModelSettings.LogClinicalOutput" path="/summary"/>
     /// </summary>
     /// <remarks>

@@ -631,6 +631,7 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
         NumPredict = _settings.MaxOutputTokens,
         RepeatPenalty = _settings.RepeatPenalty,
         RepeatLastN = _settings.RepeatLastN,
+        Temperature = _settings.Temperature,
     };
 
     /// <remarks>
@@ -699,12 +700,20 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     }
 
     /// <summary>
-    /// Ollama's per-request model parameters. Only the four that decide whether a reply can
-    /// finish are set — the window and ceiling that give it room, and the repetition penalty
-    /// that stops a small model restating itself until the ceiling ends it. Everything else
-    /// (temperature, top_p, the sampler) is left to the model tag. The tags this platform serves
-    /// are pulled straight from Hugging Face with no Modelfile of their own, which is why the
-    /// repetition guard is a request option here and not a line in one.
+    /// Ollama's per-request model parameters: the window and ceiling that give a reply room, the
+    /// repetition penalty that stops a small model restating itself until the ceiling ends it,
+    /// and the temperature that decides whether the same input reads the same way twice.
+    /// <para>
+    /// All of them are sent rather than left to the model tag, because "left to the tag" does not
+    /// mean the model's considered default — it means whatever the uploader put in their params,
+    /// or the server's own default where they put nothing. The tags this platform serves are
+    /// pulled straight from a registry with no Modelfile of our own, so a request option is the
+    /// only place this codebase can state a sampler and have it survive a tag bump.
+    /// </para>
+    /// <para>
+    /// <c>top_p</c> and the rest of the sampler are still unset: at this temperature they have
+    /// little left to decide, and a knob nothing measured is a knob nobody can justify later.
+    /// </para>
     /// </summary>
     private record OllamaOptions
     {
@@ -719,6 +728,9 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
 
         /// <summary>See <see cref="IMedGemmaModelSettings.RepeatLastN"/>.</summary>
         [JsonPropertyName("repeat_last_n")] public required int RepeatLastN { get; init; }
+
+        /// <summary>See <see cref="IMedGemmaModelSettings.Temperature"/>.</summary>
+        [JsonPropertyName("temperature")] public required double Temperature { get; init; }
     }
 
     private record OllamaMessage

@@ -10,7 +10,7 @@
 
 *(Historical snapshot: this section describes the per-environment CPU service as it ran before the §9 GPU move. That service and its Terraform sources — `medgemma_min_instances`, the `deployments/cloud_run.tf` service block, the dev.tfvars entries — were removed on 2026-08-27; the live shape is §9's `carditrack-common-medgemma`.)*
 
-`carditrack-dev-medgemma` serves `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` (4-bit quantised, ~3 GB) on **stock Ollama** — `ollama/ollama:latest`, `ENTRYPOINT ["ollama", "serve"]` ([Dockerfile](../../src/Infrastructure/MedGemma/Dockerfile)). Not vLLM; vLLM appears in this repo only as a future option in `llm_design.md`.
+`carditrack-dev-medgemma` serves `hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M` (4-bit quantised, ~3 GB) on **stock Ollama** — `ollama/ollama:0.34.2` pinned by digest, `ENTRYPOINT ["ollama", "serve"]` ([Dockerfile](../../src/Infrastructure/MedGemma/Dockerfile)). The base image floated on `:latest` until 2026-09-21; the weights are baked in and CI deploys by immutable tag, so the served revision never drifted, but two builds of the same Dockerfile could ship two Ollama versions. The model tag is held to its recorded manifest digest the same way (`.model-digest`). Not vLLM; vLLM appears in this repo only as a future option in `llm_design.md`.
 
 Read off the live service on 2026-08-19:
 

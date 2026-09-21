@@ -42,6 +42,17 @@ public interface IMedGemmaModelSettings
     double RepeatPenalty { get; }
 
     /// <summary>
+    /// Ollama's <c>temperature</c> — how much randomness the sampler is allowed. Sent explicitly
+    /// because the alternative is not "the model's own setting", it is whichever value the model
+    /// tag's params happen to carry, and a tag that carries none silently gets the server's 0.8.
+    /// That is the difference between a clinical read that says the same thing twice and one that
+    /// paraphrases itself, which is not a matter of taste here: an assessment has to be
+    /// reconstructable months later (docs/compliance/art22_alerting_analysis.md), and a sampler
+    /// inherited from a third party's Modelfile is not something this codebase can state.
+    /// </summary>
+    double Temperature { get; }
+
+    /// <summary>
     /// Ollama's <c>repeat_last_n</c> — how many recent tokens <see cref="RepeatPenalty"/> looks
     /// back over. 0 disables it; -1 means the whole context window. Sent explicitly because the
     /// server's default (64) is shorter than the block a looping clinical read repeats, so the
