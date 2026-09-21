@@ -52,6 +52,17 @@ public class VertexAiClient : IExternalAiClient
     private const int MaxAttempts = 3;
 
     /// <summary>
+    /// How many of those attempts a client-side timeout may consume, beyond the one that timed
+    /// out. MedGemma treats a timeout as terminal because re-asking adds load to a single shared
+    /// GPU that is already behind on the request it is still generating; Vertex is a managed
+    /// multi-tenant endpoint where an abandoned <c>generateContent</c> holds nothing of ours, so
+    /// the reasoning does not carry over. What does carry over is that a timeout is a poor signal
+    /// to hammer on: one retry, not the full <see cref="MaxAttempts"/> budget an HTTP failure
+    /// gets, which bounds a doomed call at roughly two client timeouts rather than three.
+    /// </summary>
+    private const int TimeoutRetries = 1;
+
+    /// <summary>
     /// Vertex's <c>finishReason</c> for a generation that stopped at
     /// <c>generationConfig.maxOutputTokens</c> rather than because the model had finished. Its own
     /// outcome, handled apart from the safety-class reasons: nothing was refused, the reply is
@@ -479,10 +490,11 @@ public class VertexAiClient : IExternalAiClient
     }
 
     /// <summary>
-    /// Same retry contract as <see cref="Medical.MedGemmaClient"/>, which documents the reasoning:
-    /// only the HTTP outcome is retried, a 200 with an unusable body is not, and a client-side
-    /// timeout is terminal. The error body of a failed attempt is never read — Vertex error
-    /// payloads can echo request fragments in their message field.
+    /// <see cref="Medical.MedGemmaClient"/>'s retry contract, with one deliberate divergence:
+    /// only the HTTP outcome is retried and a 200 with an unusable body is not, but a client-side
+    /// timeout is retried once here rather than being terminal — see <see cref="TimeoutRetries"/>.
+    /// The error body of a failed attempt is never read — Vertex error payloads can echo request
+    /// fragments in their message field.
     /// </summary>
     private async Task<string> SendWithRetryAsync(
         HttpClient client,
@@ -491,36 +503,76 @@ public class VertexAiClient : IExternalAiClient
         Stopwatch stopwatch,
         CancellationToken ct)
     {
+        var timeoutRetriesLeft = TimeoutRetries;
+
         for (var attempt = 1; ; attempt++)
         {
-            using var response = await SendOnceAsync(client, send, operationName, stopwatch, ct);
-            if (response.IsSuccessStatusCode)
+            HttpResponseMessage response;
+            var attemptStartedMs = stopwatch.ElapsedMilliseconds;
+            try
             {
-                if (attempt > 1)
+                response = await SendOnceAsync(client, send, operationName, ct);
+            }
+            catch (TimeoutException)
+            {
+                // Per-attempt elapsed, derived from the operation-wide stopwatch rather than read
+                // off it: what ran out of time is this one request against HttpClient.Timeout, and
+                // reporting the whole call's elapsed beside that limit read as a contradiction
+                // ("timed out after 139613 ms (HttpClient.Timeout is 60 s)") whenever an earlier
+                // attempt and its backoff came first. Both numbers are here, each named for what
+                // it actually measures.
+                var attemptMs = stopwatch.ElapsedMilliseconds - attemptStartedMs;
+                if (timeoutRetriesLeft <= 0 || attempt >= MaxAttempts)
                 {
-                    _logger.LogWarning(
-                        "Vertex {Operation} succeeded on attempt {Attempt} of {MaxAttempts} "
-                        + "after a transient failure.",
-                        operationName, attempt, MaxAttempts);
+                    _logger.LogError(
+                        "Vertex {Operation} timed out after {ElapsedMs} ms on attempt {Attempt} "
+                        + "of {MaxAttempts} (HttpClient.Timeout is {TimeoutSeconds} s; "
+                        + "{TotalElapsedMs} ms since the call began)",
+                        operationName, attemptMs, attempt, MaxAttempts, _options.TimeoutSeconds,
+                        stopwatch.ElapsedMilliseconds);
+                    throw;
                 }
-                return await response.Content.ReadAsStringAsync(ct);
+
+                _logger.LogWarning(
+                    "Vertex {Operation} timed out after {ElapsedMs} ms on attempt {Attempt} of "
+                    + "{MaxAttempts} (HttpClient.Timeout is {TimeoutSeconds} s); retrying once.",
+                    operationName, attemptMs, attempt, MaxAttempts, _options.TimeoutSeconds);
+                timeoutRetriesLeft--;
+                await Task.Delay(TimeSpan.FromSeconds(TransientBackoffSeconds), _timeProvider, ct);
+                continue;
             }
 
-            var statusCode = response.StatusCode;
-            if (attempt >= MaxAttempts)
+            TimeSpan backoff;
+
+            // Released before the wait below, not after it — see MedGemmaClient.SendWithRetryAsync.
+            using (response)
             {
-                _logger.LogError(
-                    "Vertex {Operation} failed: HTTP {StatusCode} after {ElapsedMs} ms ({Attempts} attempt(s))",
-                    operationName, (int)statusCode, stopwatch.ElapsedMilliseconds, attempt);
-                throw new HttpRequestException(
-                    $"Vertex {operationName} returned HTTP {(int)statusCode}.",
-                    inner: null, statusCode: statusCode);
+                if (response.IsSuccessStatusCode)
+                {
+                    if (attempt > 1)
+                    {
+                        _logger.LogWarning(
+                            "Vertex {Operation} succeeded on attempt {Attempt} of {MaxAttempts} "
+                            + "after a transient failure.",
+                            operationName, attempt, MaxAttempts);
+                    }
+                    return await response.Content.ReadAsStringAsync(ct);
+                }
+
+                var statusCode = response.StatusCode;
+                if (attempt >= MaxAttempts)
+                {
+                    _logger.LogError(
+                        "Vertex {Operation} failed: HTTP {StatusCode} after {ElapsedMs} ms ({Attempts} attempt(s))",
+                        operationName, (int)statusCode, stopwatch.ElapsedMilliseconds, attempt);
+                    throw new HttpRequestException(
+                        $"Vertex {operationName} returned HTTP {(int)statusCode}.",
+                        inner: null, statusCode: statusCode);
+                }
+
+                backoff = BackoffFor(statusCode, response.Headers.RetryAfter, attempt);
             }
 
-            var backoff = BackoffFor(statusCode, response.Headers.RetryAfter, attempt);
-
-            // Released before the wait, not after it — see MedGemmaClient.SendWithRetryAsync.
-            response.Dispose();
             await Task.Delay(backoff, _timeProvider, ct);
         }
     }
@@ -528,14 +580,14 @@ public class VertexAiClient : IExternalAiClient
     /// <summary>
     /// One attempt, with the client-side timeout separated from the caller giving up — both
     /// surface as <see cref="TaskCanceledException"/>, and the distinction is the diagnosis.
-    /// Terminal on purpose, same as the Ollama client: re-sending a request the far side is still
-    /// working on adds load to the thing that was already too slow.
+    /// The timeout is translated but not logged or decided on here: whether it is the end of the
+    /// call or one more thing to retry belongs to <see cref="SendWithRetryAsync"/>, which is the
+    /// only place that knows.
     /// </summary>
     private async Task<HttpResponseMessage> SendOnceAsync(
         HttpClient client,
         Func<HttpClient, CancellationToken, Task<HttpResponseMessage>> send,
         string operationName,
-        Stopwatch stopwatch,
         CancellationToken ct)
     {
         try
@@ -544,10 +596,6 @@ public class VertexAiClient : IExternalAiClient
         }
         catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
         {
-            _logger.LogError(
-                "Vertex {Operation} timed out after {ElapsedMs} ms "
-                + "(HttpClient.Timeout is {TimeoutSeconds} s)",
-                operationName, stopwatch.ElapsedMilliseconds, _options.TimeoutSeconds);
             throw new TimeoutException(
                 $"Vertex {operationName} timed out after {_options.TimeoutSeconds} s.", ex);
         }

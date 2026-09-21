@@ -542,14 +542,50 @@ public class VertexAiClientTests
     }
 
     [Fact]
-    public async Task GenerateAsync_TreatsATimeoutAsTerminal_NotRetried()
+    public async Task GenerateAsync_RetriesATimeoutOnce_ThenGivesUp()
     {
         var handler = new FakeHttpMessageHandler().Throws(new TaskCanceledException());
-        var client = CreateClient(handler, out _);
+        var client = CreateClient(handler, out _, out var time);
 
         await Assert.ThrowsAsync<TimeoutException>(() => client.GenerateAsync(Prompt));
 
-        Assert.Single(handler.Requests);
+        // One retry, not the three attempts an HTTP failure gets: a timeout is worth re-asking
+        // once, and a second one says the far side is not going to answer inside the budget.
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal(TimeSpan.FromSeconds(2), Assert.Single(time.Delays));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_RecoversFromASingleTimeout()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Throws(new TaskCanceledException())
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _);
+
+        Assert.Equal(ResponseText, await client.GenerateAsync(Prompt));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_LogsTheAttemptElapsed_NotTheWholeCallsElapsed_OnATimeout()
+    {
+        var handler = new FakeHttpMessageHandler().Throws(new TaskCanceledException());
+        var client = CreateClient(handler, out var logger);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => client.GenerateAsync(Prompt));
+
+        // The terminal line names the attempt it belongs to and separates the two elapsed
+        // figures, so "timed out after N ms (HttpClient.Timeout is 60 s)" can no longer read as
+        // a contradiction when an earlier attempt and its backoff are inside N.
+        var timedOut = Assert.Single(
+            logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("timed out"));
+        Assert.Contains("on attempt 2 of 3", timedOut.Message);
+        Assert.Contains("HttpClient.Timeout is 60 s", timedOut.Message);
+        Assert.Contains("since the call began", timedOut.Message);
+        Assert.Contains(
+            logger.Entries,
+            e => e.Level == LogLevel.Warning && e.Message.Contains("retrying once"));
     }
 
     [Fact]
