@@ -11,6 +11,7 @@ namespace CardiTrack.UnitTests.Observability;
 /// share only the TelemetryNames constant; if either side drifts from it, the funnel
 /// silently stops shipping — these tests make that drift a test failure instead.
 /// </summary>
+[Collection(QuestionnaireTelemetryCollection.Name)]
 public class QuestionnaireTelemetryNamesTests
 {
     [Fact]
@@ -33,7 +34,7 @@ public class QuestionnaireTelemetryNamesTests
     [Fact]
     public void RecordAsked_EmitsTheScopeTag_AsAClosedVocabulary()
     {
-        using var capture = new MetricCapture();
+        using var capture = new QuestionnaireMetricCapture();
 
         QuestionnaireTelemetry.RecordAsked(QuestionnaireScope.Permanent);
 
@@ -47,7 +48,7 @@ public class QuestionnaireTelemetryNamesTests
     [Fact]
     public void RecordAnswered_EmitsScopeAndOrigin_AsClosedVocabularies()
     {
-        using var capture = new MetricCapture();
+        using var capture = new QuestionnaireMetricCapture();
 
         QuestionnaireTelemetry.RecordAnswered(QuestionnaireScope.TimeScoped, QuestionnaireOrigin.Family);
 
@@ -61,7 +62,7 @@ public class QuestionnaireTelemetryNamesTests
     [Fact]
     public void RecordExpired_AddsTheCount_AndIgnoresAZeroPass()
     {
-        using var capture = new MetricCapture();
+        using var capture = new QuestionnaireMetricCapture();
 
         var expiredBefore = capture.Longs.Count(m => m.Instrument == "questionnaire.expired");
         QuestionnaireTelemetry.RecordExpired(0);
@@ -78,7 +79,7 @@ public class QuestionnaireTelemetryNamesTests
     [InlineData("questionnaire.digest.recited")]
     public void UntaggedHelpers_EachEmitOneCount(string instrument)
     {
-        using var capture = new MetricCapture();
+        using var capture = new QuestionnaireMetricCapture();
 
         var before = capture.Longs.Count(m => m.Instrument == instrument);
         switch (instrument)
@@ -99,37 +100,5 @@ public class QuestionnaireTelemetryNamesTests
 
         Assert.True(capture.Longs.Count(m => m.Instrument == instrument) >= before + 1);
         Assert.Contains(capture.Longs, m => m.Instrument == instrument && m.Value == 1 && m.Tags.Count == 0);
-    }
-
-    /// <summary>Captures measurements from the questionnaire meter only (BCL MeterListener).</summary>
-    private sealed class MetricCapture : IDisposable
-    {
-        private readonly MeterListener _listener = new();
-
-        public List<(string Instrument, long Value, Dictionary<string, object?> Tags)> Longs { get; } = [];
-
-        public MetricCapture()
-        {
-            _listener.InstrumentPublished = (instrument, listener) =>
-            {
-                if (instrument.Meter.Name == TelemetryNames.QuestionnaireSource)
-                    listener.EnableMeasurementEvents(instrument);
-            };
-            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-            {
-                lock (Longs) Longs.Add((instrument.Name, value, ToDictionary(tags)));
-            });
-            _listener.Start();
-        }
-
-        public void Dispose() => _listener.Dispose();
-
-        private static Dictionary<string, object?> ToDictionary(ReadOnlySpan<KeyValuePair<string, object?>> tags)
-        {
-            var dictionary = new Dictionary<string, object?>();
-            foreach (var tag in tags)
-                dictionary[tag.Key] = tag.Value;
-            return dictionary;
-        }
     }
 }
