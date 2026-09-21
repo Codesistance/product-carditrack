@@ -243,6 +243,8 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                         Id = member.Id,
                         CreatedDate = member.CreatedDate,
                         HasMedicalNotes = !string.IsNullOrWhiteSpace(member.MedicalNotes),
+                        HasEmergencyContact =
+                            !string.IsNullOrWhiteSpace(member.EmergencyContactPhone),
                         MedicalNotesReviewedAtUtc = member.MedicalNotesReviewedAtUtc,
                         MonitoringPausedUntil = member.MonitoringPausedUntil,
                         EverHadConnection = memberConnections.Count > 0,

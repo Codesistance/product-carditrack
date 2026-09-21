@@ -22,6 +22,7 @@ public sealed class NudgeContextBuilder
     private DateTime _userCreated = Now.AddDays(-90);
     private bool _includeMember = true;
     private bool _hasMedicalNotes = true;
+    private bool _hasEmergencyContact = true;
     private DateTime? _notesReviewedAt;
     private DateTime _memberCreated = Now.AddDays(-90);
     private DateTime? _pausedUntil;
@@ -82,6 +83,7 @@ public sealed class NudgeContextBuilder
     public NudgeContextBuilder TimeZone(string id) { _timeZoneId = id; return this; }
     public NudgeContextBuilder UserCreated(DateTime at) { _userCreated = at; return this; }
     public NudgeContextBuilder NoMedicalNotes() { _hasMedicalNotes = false; return this; }
+    public NudgeContextBuilder NoEmergencyContact() { _hasEmergencyContact = false; return this; }
     public NudgeContextBuilder NotesReviewedAt(DateTime? at) { _notesReviewedAt = at; return this; }
     public NudgeContextBuilder MemberCreated(DateTime at) { _memberCreated = at; return this; }
     public NudgeContextBuilder PausedUntil(DateTime? until) { _pausedUntil = until; return this; }
@@ -140,6 +142,7 @@ public sealed class NudgeContextBuilder
                 Id = _memberId,
                 CreatedDate = _memberCreated,
                 HasMedicalNotes = _hasMedicalNotes,
+                HasEmergencyContact = _hasEmergencyContact,
                 MedicalNotesReviewedAtUtc = _notesReviewedAt,
                 MonitoringPausedUntil = _pausedUntil,
                 EverHadConnection = _everHadConnection,
