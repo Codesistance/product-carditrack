@@ -302,25 +302,61 @@ public class TrendJournalHorizonTests
         // The write is not fenced by the claim, only the release is. A generation that outlives
         // its twenty-minute lease is taken over, and if the successor finishes first, saving the
         // row this attempt loaded before the claim would put an older narrative — and an older
-        // GeneratedAtUtc, which is what the staleness ceiling reads — over the newer one. So the
-        // row is re-read after the model call and the write abandoned if someone got there.
-        _insights.GetByScopeAsync(_memberId, InsightScope.TrendWeekly).Returns(
-            (MemberInsight?)null,
-            new MemberInsight
-            {
-                CardiMemberId = _memberId,
-                Scope = InsightScope.TrendWeekly,
-                Summary = "A successor's narrative, written while this one was generating.",
-                GeneratedAtUtc = MondayMorning.AddMinutes(5),
-                PromptVersion = TrendInterpretationService.CurrentPromptVersion,
-            });
+        // GeneratedAtUtc, which is what the staleness ceiling reads — over the newer one.
+        //
+        // The freshness question is asked of GetGeneratedAtUtcAsync and not of GetByScopeAsync,
+        // and this test is shaped to hold that apart: the tracked read keeps returning the stale
+        // instance an earlier probe loaded, exactly as EF would, while the scalar read reports
+        // what is actually stored. A test that asked the tracked read twice would pass against a
+        // fence that does not work.
+        var stale = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.TrendWeekly,
+            Summary = "Last week's, as the change tracker still holds it.",
+            GeneratedAtUtc = MondayMorning.AddDays(-7),
+            PromptVersion = TrendInterpretationService.CurrentPromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.TrendWeekly).Returns(stale);
+        _insights.GetGeneratedAtUtcAsync(
+                _memberId, InsightScope.TrendWeekly, Arg.Any<CancellationToken>())
+            .Returns(MondayMorning.AddMinutes(5));
 
         Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
 
         // The model still ran — this attempt held the claim when it started — but nothing was
-        // stored over the successor's work.
+        // stored over the successor's work, and the stale instance was not written back.
         Assert.NotEmpty(_medicalAi.ReceivedCalls());
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+        Assert.Equal("Last week's, as the change tracker still holds it.", stale.Summary);
+    }
+
+    [Fact]
+    public async Task AMemberWhoseReadingsStoppedStillHasTheirNarrativeWithdrawn()
+    {
+        // The candidate list is drawn from recent activity, and a member whose watch stopped more
+        // than nine days ago is not on it — yet they are exactly the one whose stored narrative is
+        // about to start describing a week it was not written from. The books can be listed on
+        // activity alone because a member with nothing to say simply gets no book; this pass also
+        // has to take down an account the new period could not replace.
+        _members.GetActiveIdsWithActivitySinceAsync(Arg.Any<DateOnly>()).Returns([]);
+        _insights.GetMemberIdsWithScopeAsync(InsightScope.TrendWeekly, Arg.Any<CancellationToken>())
+            .Returns([_memberId]);
+
+        var stranded = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.TrendWeekly,
+            Summary = "An account of a week whose readings have long stopped.",
+            GeneratedAtUtc = MondayMorning.AddDays(-7),
+            PromptVersion = TrendInterpretationService.CurrentPromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.TrendWeekly).Returns(stranded);
+        WithPeriodCoverage(measuredDays: 0);
+
+        Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
+
+        _insights.Received(1).Remove(stranded);
     }
 
     [Fact]

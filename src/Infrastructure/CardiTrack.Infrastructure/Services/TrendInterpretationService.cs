@@ -348,8 +348,18 @@ public class TrendInterpretationService
         // timezone — the same nine and thirty-five the two books use.
         var lookbackDays = horizon == TrendHorizon.Monthly ? 35 : 9;
         var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-lookbackDays);
-        var memberIds = (await _unitOfWork.CardiMembers
-            .GetActiveIdsWithActivitySinceAsync(windowStart)).ToList();
+        var active = await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart);
+
+        // Plus everyone already holding a narrative at this horizon, whatever their readings have
+        // done since. The books can be candidate-listed on recent activity alone because a member
+        // with nothing to say simply gets no book; this pass has a second job they do not — taking
+        // down an account the new period could not replace. A member whose watch stopped more than
+        // nine days ago is exactly the one whose stored narrative is about to start describing a
+        // week it was not written from, and a list drawn from activity cannot reach them.
+        var scope = ScopeFor(horizon);
+        var holding = await _unitOfWork.MemberInsights.GetMemberIdsWithScopeAsync(scope, ct);
+
+        var memberIds = active.Concat(holding).Distinct().ToList();
 
         var written = 0;
         foreach (var memberId in memberIds)
@@ -601,8 +611,8 @@ public class TrendInterpretationService
         // model call is the long part and it has already happened, so this costs one indexed read
         // on a path that has just spent seconds or minutes in inference.
         var scope = ScopeFor(horizon);
-        var current = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, scope);
-        if (current is not null && current.GeneratedAtUtc >= utcNow)
+        var storedAt = await _unitOfWork.MemberInsights.GetGeneratedAtUtcAsync(cardiMemberId, scope, ct);
+        if (storedAt is { } written && written >= utcNow)
         {
             _logger.LogInformation(
                 "Another execution wrote the {Horizon} narrative for CardiMember {CardiMemberId} "
@@ -611,11 +621,16 @@ public class TrendInterpretationService
             return false;
         }
 
-        var row = current ?? new MemberInsight
-        {
-            CardiMemberId = cardiMemberId,
-            Scope = scope,
-        };
+        // That scalar read, not this one, is what answers "has anyone written since?".
+        // GetByScopeAsync is deliberately tracked and may hand back the instance an earlier probe
+        // in this same scope already loaded, carrying the values it had then — which makes it the
+        // right thing to attach an update to and the wrong thing to ask about freshness.
+        var row = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, scope)
+            ?? new MemberInsight
+            {
+                CardiMemberId = cardiMemberId,
+                Scope = scope,
+            };
 
         // Fitted to the column, not trusted to the brief's asked-for length: the completion budget
         // is larger than the column, so a verbose but otherwise valid reply would fail the save
@@ -628,7 +643,9 @@ public class TrendInterpretationService
         row.GeneratedAtUtc = utcNow;
         row.PromptVersion = CurrentPromptVersion;
 
-        if (current is null)
+        // Off the scalar read rather than off the tracked entity: a row the tracker already holds
+        // is one the database already has, and a row it does not is new to both.
+        if (storedAt is null)
             await _unitOfWork.MemberInsights.AddAsync(row);
 
         await _unitOfWork.SaveChangesAsync();
