@@ -733,6 +733,15 @@ already up):
   behind the interval or fire at 03:00. Rows serve for at most 3 days (`AdviseStaleness.MaxAge`);
   the card shows its own "Updated N ago" so a day-old suggestion cannot masquerade as an
   answer to today.
+- **The record beside the card.** `MemberAdvises` is still current-only, because the Dashboard's
+  pulse badge is a bare "does a row exist" read against it. What a pass *noticed* is appended to
+  `MemberAdviseObservations` alongside it — and only when the summary differs from that topic's
+  last entry, so a generator reaching the same conclusion five times a day writes one line, not
+  five. Kept 365 days (`AdviseObservationRetention.Period`, swept by `RetentionWorker`), read
+  through `GET /api/v1/insights/members/{id}/advise/observations`. It exists because a caregiver
+  going into a review appointment had nothing to take: every observation the pipeline had ever
+  made about the member was discarded the moment the next one landed. Nothing new reaches a
+  model — this is the copy that already passed the rewrite guards, stored instead of dropped.
 - **Failure posture.** A blank clinical field, a failed rewrite call, or rejected copy keeps the
   previous row (a hiccup); clinical silence on a topic removes its row (deliberate); a guard-
   tripped clinical entry is withheld and its row withdrawn.

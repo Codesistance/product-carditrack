@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
@@ -35,18 +35,22 @@ public class RetentionWorkerTests
     private readonly IAccountErasureService _accounts = Substitute.For<IAccountErasureService>();
     private readonly IChatRetentionService _chat = Substitute.For<IChatRetentionService>();
     private readonly IMemberInsightRepository _insights = Substitute.For<IMemberInsightRepository>();
+    private readonly IMemberAdviseObservationRepository _observations =
+        Substitute.For<IMemberAdviseObservationRepository>();
     private readonly IServiceProvider _provider = Substitute.For<IServiceProvider>();
 
     public RetentionWorkerTests()
     {
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.MemberInsights.Returns(_insights);
+        _unitOfWork.MemberAdviseObservations.Returns(_observations);
 
         // Nothing due and nothing expired by default — each test stages only what it is about.
         _users.GetAccountsDueForErasureAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns([]);
         _chat.FindExpiredSessionsAsync(Arg.Any<DateTime>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns([]);
         _insights.GetGeneratedBeforeAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns([]);
+        _observations.GetObservedBeforeAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns([]);
 
         _provider.GetService(typeof(IUnitOfWork)).Returns(_unitOfWork);
         _provider.GetService(typeof(IAccountErasureService)).Returns(_accounts);
@@ -316,6 +320,74 @@ public class RetentionWorkerTests
         await _insights.DidNotReceive().DeleteGeneratedBeforeAsync(
             Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
     }
+
+    // ── Advise observations ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The exact cutoff, for the reason the insight pass asserts its own: the API clamps a
+    /// requested window to this same constant and then names the window it served, so the two
+    /// must not be changeable one at a time.
+    /// </summary>
+    [Fact]
+    public async Task Sweep_AsksForAdviseObservationsPastTheRetentionPeriod()
+    {
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _observations.Received(1).GetObservedBeforeAsync(
+            Now.UtcDateTime - AdviseObservationRetention.Period,
+            AdviseObservationRetention.SweepBatchSize);
+    }
+
+    [Fact]
+    public async Task Sweep_DeletesExpiredAdviseObservations_RestatingTheCutoff()
+    {
+        var expired = ExpiredObservations(2);
+        _observations.GetObservedBeforeAsync(Arg.Any<DateTime>(), Arg.Any<int>()).Returns(expired);
+        _observations.DeleteObservedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>()).Returns(2);
+
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _observations.Received(1).DeleteObservedBeforeAsync(
+            Arg.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2
+                && ids.Contains(expired[0].Id)
+                && ids.Contains(expired[1].Id)),
+            Now.UtcDateTime - AdviseObservationRetention.Period);
+    }
+
+    [Fact]
+    public async Task Sweep_DeletesNoAdviseObservations_OnADryRun()
+    {
+        _observations.GetObservedBeforeAsync(Arg.Any<DateTime>(), Arg.Any<int>())
+            .Returns(ExpiredObservations(1));
+
+        await CreateWorker(dryRun: true).RunSweepAsync(CancellationToken.None);
+
+        await _observations.DidNotReceive().DeleteObservedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
+    }
+
+    [Fact]
+    public async Task Sweep_AsksToDeleteNothing_WhenNoAdviseObservationHasExpired()
+    {
+        await CreateWorker().RunSweepAsync(CancellationToken.None);
+
+        await _observations.DidNotReceive().DeleteObservedBeforeAsync(
+            Arg.Any<IReadOnlyCollection<Guid>>(), Arg.Any<DateTime>());
+    }
+
+    private static List<MemberAdviseObservation> ExpiredObservations(int count) =>
+        Enumerable.Range(0, count)
+            .Select(_ => new MemberAdviseObservation
+            {
+                Id = Guid.NewGuid(),
+                CardiMemberId = Guid.NewGuid(),
+                Topic = AdviseTopic.Activity,
+                Summary = "Noticed a long time ago.",
+                Suggestion = "A short walk after lunch is worth trying.",
+                ObservedAtUtc = Now.UtcDateTime - AdviseObservationRetention.Period - TimeSpan.FromDays(1),
+            })
+            .ToList();
 
     private static List<MemberInsight> Expired(int count) =>
         Enumerable.Range(0, count)

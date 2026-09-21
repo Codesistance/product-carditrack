@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.Persistence;
@@ -58,6 +58,7 @@ public class TestDatabaseFixture : IAsyncLifetime
         services.AddScoped<IReportRepository, ReportRepository>();
         services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
         services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
+        services.AddScoped<IMemberAdviseObservationRepository, MemberAdviseObservationRepository>();
         services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
         services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
         services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
