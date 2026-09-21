@@ -35,9 +35,14 @@ public class QuestionnaireTelemetryCollection
 
 /// <summary>
 /// Captures <see cref="long"/> measurements from the questionnaire meter only (BCL
-/// <see cref="MeterListener"/>). Only sound from a class in
-/// <see cref="QuestionnaireTelemetryCollection"/> — see there for why.
+/// <see cref="MeterListener"/>).
 /// </summary>
+/// <remarks>
+/// Use this only from a test class that belongs to
+/// <see cref="QuestionnaireTelemetryCollection"/>. Outside that collection the capture also
+/// receives whatever a test class running in parallel records, which silently invalidates any
+/// assertion that counts measurements — see the collection for the full explanation.
+/// </remarks>
 public sealed class QuestionnaireMetricCapture : IDisposable
 {
     private readonly MeterListener _listener = new();
