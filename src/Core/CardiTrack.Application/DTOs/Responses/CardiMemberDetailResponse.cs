@@ -1,4 +1,4 @@
-using CardiTrack.Domain.Enums;
+﻿using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.DTOs.Responses;
 
@@ -33,6 +33,14 @@ public class CardiMemberDetailResponse
     public string? EmergencyContactName { get; set; }
     public string? EmergencyContactPhone { get; set; }
     public string? MedicalNotes { get; set; }
+
+    /// <summary>
+    /// When a caregiver last confirmed the medical notes are still current, or null when nobody
+    /// ever has — including every note written before the date was recorded. Clients say so
+    /// plainly rather than substituting the member's created or updated date, neither of which
+    /// is evidence anyone read the notes.
+    /// </summary>
+    public DateTime? MedicalNotesReviewedAtUtc { get; set; }
 
     /// <summary>
     /// Short-lived signed URL for the member's profile photo, or null when none is set or photo

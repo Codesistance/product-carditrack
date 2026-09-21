@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Requests;
+﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;
@@ -152,6 +152,24 @@ public class CardiMemberServiceTests
         Assert.True(savedLink.ReceiveAlerts);
 
         await _unitOfWork.Received(2).SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData("Pacemaker fitted 2019", true)]
+    [InlineData(null, false)]
+    [InlineData("   ", false)]
+    public async Task Create_DatesTheBackground_OnlyWhenTheFormSuppliedOne(string? notes, bool dated)
+    {
+        CardiMember? savedMember = null;
+        await _members.AddAsync(Arg.Do<CardiMember>(m => savedMember = m));
+
+        var request = BuildRequest();
+        request.MedicalNotes = notes;
+
+        await CreateSut().CreateCardiMemberAsync(_organizationId, _userId, request);
+
+        Assert.NotNull(savedMember);
+        Assert.Equal(dated, savedMember!.MedicalNotesReviewedAtUtc is not null);
     }
 
     [Fact]
@@ -530,6 +548,119 @@ public class CardiMemberServiceTests
         });
 
         Assert.Null(member.MedicalNotes);
+    }
+
+    // ── health background review date ───────────────────────────────────────────
+
+    [Fact]
+    public async Task Update_DatesTheBackground_WhenTheNotesActuallyChange()
+    {
+        var member = SeedMember();
+        member.MedicalNotesReviewedAtUtc = null;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Pacemaker fitted 2019. Now also on lisinopril",
+        });
+
+        Assert.NotNull(member.MedicalNotesReviewedAtUtc);
+    }
+
+    /// <summary>
+    /// The one this date exists for. Every client save carries the whole form, so a caregiver
+    /// editing an emergency contact resends the notes untouched — and a date that moved for that
+    /// would be certifying a background nobody had looked at since it was written.
+    /// </summary>
+    [Fact]
+    public async Task Update_LeavesTheDateAlone_WhenAnUnchangedFormEchoesTheNotesBack()
+    {
+        var member = SeedMember();
+        var reviewedLongAgo = DateTime.UtcNow.AddYears(-1);
+        member.MedicalNotesReviewedAtUtc = reviewedLongAgo;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            // Exactly what SeedMember has on file, the way a form that never showed the field
+            // sends it back.
+            MedicalNotes = "Pacemaker fitted 2019",
+            EmergencyContactName = "Someone Else",
+        });
+
+        Assert.Equal(reviewedLongAgo, member.MedicalNotesReviewedAtUtc);
+        Assert.Equal("Someone Else", member.EmergencyContactName);
+    }
+
+    /// <summary>
+    /// Legacy rows read back as their own stored plaintext (see <c>Reveal</c>), so the comparison
+    /// has to hold for them too — otherwise every unrelated edit to a pre-encryption member
+    /// re-dates a background nobody read.
+    /// </summary>
+    [Fact]
+    public async Task Update_LeavesTheDateAlone_WhenLegacyPlaintextNotesComeBackUnchanged()
+    {
+        var member = SeedMember(encryptedNotes: "Written before encryption");
+        var reviewedLongAgo = DateTime.UtcNow.AddYears(-1);
+        member.MedicalNotesReviewedAtUtc = reviewedLongAgo;
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "Written before encryption",
+        });
+
+        Assert.Equal(reviewedLongAgo, member.MedicalNotesReviewedAtUtc);
+        // Still re-stored encrypted, which is what every write to a legacy row does.
+        Assert.Equal("enc(Written before encryption)", member.MedicalNotes);
+    }
+
+    [Fact]
+    public async Task Update_ClearsTheDate_WhenTheNotesAreEmptied()
+    {
+        var member = SeedMember();
+        member.MedicalNotesReviewedAtUtc = DateTime.UtcNow.AddDays(-3);
+
+        await CreateSut().UpdateAsync(_userId, member.Id, new UpdateCardiMemberRequest
+        {
+            Name = member.Name,
+            DateOfBirth = member.DateOfBirth,
+            RelationshipType = RelationshipType.Parent,
+            MedicalNotes = "   ",
+        });
+
+        Assert.Null(member.MedicalNotesReviewedAtUtc);
+    }
+
+    [Fact]
+    public async Task ConfirmMedicalNotes_DatesTheBackgroundWithoutTouchingTheNotes()
+    {
+        var member = SeedMember();
+        member.MedicalNotesReviewedAtUtc = DateTime.UtcNow.AddYears(-1);
+
+        var detail = await CreateSut().ConfirmMedicalNotesAsync(_userId, member.Id);
+
+        Assert.Equal("enc(Pacemaker fitted 2019)", member.MedicalNotes);
+        Assert.NotNull(member.MedicalNotesReviewedAtUtc);
+        Assert.True(member.MedicalNotesReviewedAtUtc > DateTime.UtcNow.AddMinutes(-1));
+        Assert.Equal(member.MedicalNotesReviewedAtUtc, detail.MedicalNotesReviewedAtUtc);
+    }
+
+    [Fact]
+    public async Task ConfirmMedicalNotes_RefusesWhenThereIsNoBackgroundToConfirm()
+    {
+        var member = SeedMember(encryptedNotes: null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => CreateSut().ConfirmMedicalNotesAsync(_userId, member.Id));
+
+        Assert.Null(member.MedicalNotesReviewedAtUtc);
     }
 
     [Fact]

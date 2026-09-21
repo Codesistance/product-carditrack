@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Exceptions;
@@ -118,6 +118,11 @@ public class CardiMemberService : ICardiMemberService
             EmergencyContactName = request.EmergencyContactName,
             EmergencyContactPhone = request.EmergencyContactPhone,
             MedicalNotes = Protect(request.MedicalNotes),
+            // Notes typed on the create form were written just now, so they are current by
+            // construction. Left null when the form was blank: there is nothing to have reviewed.
+            MedicalNotesReviewedAtUtc = string.IsNullOrWhiteSpace(request.MedicalNotes)
+                ? null
+                : DateTime.UtcNow,
             IsActive = true
         };
 
@@ -412,7 +417,23 @@ public class CardiMemberService : ICardiMemberService
         member.Phone = request.Phone;
         member.EmergencyContactName = request.EmergencyContactName;
         member.EmergencyContactPhone = request.EmergencyContactPhone;
+
+        // Compared as plaintext and before the overwrite. Two reasons it cannot be done on the
+        // stored value: Protect re-encrypts under a fresh nonce every call, so the ciphertext
+        // differs on every save whether or not a word changed; and a legacy plaintext row would
+        // compare unequal to its own re-encrypted self.
+        var notesBefore = NotesOrNull(Reveal(member.MedicalNotes));
+        var notesAfter = NotesOrNull(request.MedicalNotes);
         member.MedicalNotes = Protect(request.MedicalNotes);
+
+        // Only a real change re-dates the background. This form is a full replacement, so a
+        // client editing anything else — an emergency contact, a photo — echoes the notes back
+        // untouched on every save; treating that echo as a review would have the date certify
+        // notes nobody has read for a year. Clearing them clears the date with them: there is
+        // nothing left to be current.
+        if (!string.Equals(notesBefore, notesAfter, StringComparison.Ordinal))
+            member.MedicalNotesReviewedAtUtc = notesAfter is null ? null : DateTime.UtcNow;
+
         member.AlertSensitivity = request.AlertSensitivity;
 
         // Only when supplied — see UpdateCardiMemberRequest.Gender. A client that does not show
@@ -499,6 +520,41 @@ public class CardiMemberService : ICardiMemberService
         // a removal as a success would flatter the comply rate the rule review depends on.
         await _gapResolver.WithdrawForCardiMemberAsync(
             cardiMemberId, NotificationResolutionReason.ScopeRemoved, ct);
+    }
+
+    /// <summary>
+    /// Records that a caregiver has read the medical notes and found them still current, without
+    /// changing a word of them.
+    /// </summary>
+    /// <remarks>
+    /// Its own endpoint rather than a flag on the edit form, because the form cannot express it.
+    /// <see cref="UpdateCardiMemberRequest"/> is a full replacement, so every save carries the
+    /// notes whether or not the caregiver was looking at them — "these notes arrived unchanged"
+    /// is what an emergency-contact edit looks like, and it is indistinguishable from a
+    /// deliberate confirmation. This call is the caregiver saying so on purpose.
+    /// </remarks>
+    public async Task<CardiMemberDetailResponse> ConfirmMedicalNotesAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default)
+    {
+        await _access.RequireManageAccessAsync(requestingUserId, cardiMemberId, ct);
+        var member = await RequireActiveMemberAsync(cardiMemberId);
+
+        // Nothing on file to confirm. Dating an empty background would be a date attached to no
+        // information, and would silence the rule that exists to ask for some.
+        if (string.IsNullOrWhiteSpace(member.MedicalNotes))
+            throw new InvalidOperationException("There are no medical notes to confirm yet.");
+
+        var now = DateTime.UtcNow;
+        member.MedicalNotesReviewedAtUtc = now;
+        member.UpdatedDate = now;
+        _unitOfWork.CardiMembers.Update(member);
+        await _unitOfWork.SaveChangesAsync();
+
+        // Confirming closes the staleness gap the same way editing does, so the card the
+        // caregiver just actioned is gone by the time the screen behind it repaints.
+        await _gapResolver.ResolveForCardiMemberAsync(cardiMemberId, ct);
+
+        return await BuildDetailAsync(requestingUserId, member, seriesEndsOn: null, ct);
     }
 
     public async Task<MonitoringPauseResponse> PauseMonitoringAsync(
@@ -644,6 +700,7 @@ public class CardiMemberService : ICardiMemberService
             EmergencyContactName = member.EmergencyContactName,
             EmergencyContactPhone = member.EmergencyContactPhone,
             MedicalNotes = Reveal(member.MedicalNotes),
+            MedicalNotesReviewedAtUtc = member.MedicalNotesReviewedAtUtc,
             PhotoUrl = await PhotoUrlOf(member, ct),
             AlertSensitivity = member.AlertSensitivity,
             MonitoringPaused = pause.MonitoringPaused,
@@ -712,6 +769,14 @@ public class CardiMemberService : ICardiMemberService
 
     private string? Protect(string? medicalNotes) =>
         string.IsNullOrWhiteSpace(medicalNotes) ? null : _encryption.Encrypt(medicalNotes);
+
+    /// <summary>
+    /// The notes as <see cref="Protect"/> would store them — blank in any form is null — so a
+    /// comparison between what is on file and what arrived cannot read an empty string against a
+    /// null as a change somebody made.
+    /// </summary>
+    private static string? NotesOrNull(string? medicalNotes) =>
+        string.IsNullOrWhiteSpace(medicalNotes) ? null : medicalNotes;
 
     /// <summary>
     /// Medical notes written before they were encrypted are still sitting in the database as

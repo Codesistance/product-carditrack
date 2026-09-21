@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Requests;
+﻿using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 
 namespace CardiTrack.Application.Interfaces.Services;
@@ -48,6 +48,13 @@ public interface ICardiMemberService
     /// Requires manage access. Health history is left in place for the retention window.
     /// </summary>
     Task RemoveAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Records that the medical notes were read and found still current, without changing them.
+    /// Requires manage access. Rejects a member with no notes on file.
+    /// </summary>
+    Task<CardiMemberDetailResponse> ConfirmMedicalNotesAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
 
     /// <summary>Pauses monitoring for a bounded window. Requires manage access.</summary>
     Task<MonitoringPauseResponse> PauseMonitoringAsync(

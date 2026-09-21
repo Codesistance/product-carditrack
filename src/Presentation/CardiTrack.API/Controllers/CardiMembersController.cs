@@ -1,4 +1,4 @@
-using CardiTrack.API.Infrastructure.Auditing;
+﻿using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
@@ -123,6 +123,43 @@ public class CardiMembersController : BaseApiController
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+    }
+
+    /// <summary>
+    /// Records that a caregiver has read this member's medical notes and found them still
+    /// current. Returns the member with the refreshed review date.
+    /// </summary>
+    /// <remarks>
+    /// A POST with no body: there is nothing to say beyond "I looked, and it still stands". The
+    /// edit form cannot carry this — it replaces every field on every save, so notes arriving
+    /// unchanged is what editing a phone number looks like, not a confirmation.
+    /// </remarks>
+    [HttpPost("cardimembers/{cardiMemberId:guid}/medical-notes/confirm")]
+    [ProducesResponseType(typeof(ApiResponse<CardiMemberDetailResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<CardiMemberDetailResponse>>> ConfirmMedicalNotes(
+        Guid cardiMemberId, CancellationToken ct)
+    {
+        if (NotSignedIn(out var error))
+            return error;
+
+        try
+        {
+            var member = await _cardiMembers.ConfirmMedicalNotesAsync(UserContext.UserId, cardiMemberId, ct);
+            // Not logged here — see Resume: AuditLoggingMiddleware already records user, member
+            // and timestamp for this request, which is the whole of what happened.
+            return Success(member, "Thanks — we'll take it as current.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status400BadRequest);
         }
     }
 
