@@ -60,20 +60,50 @@ layer**, reading "Last modified: November 15, 2024". That is a concrete, diffabl
 which is what `2026-09-04-haidef-terms-revision-unverified.md` says it needs; it does not settle
 what the live terms page now says.
 
+## Update, later the same day — two of these are now answered, and one was wrong
+
+**The Modelfile route does not work (answers Q2 below, in the negative).** Measured against
+`medgemma1.5:4b` on Ollama 0.34.2:
+
+- The thought block is `<unused94> thought … <unused95>`, with the real answer immediately after
+  the closing token.
+- Declaring those as thinking tokens in a Modelfile `TEMPLATE` **does** make `/api/show` report a
+  `thinking` capability — and changes nothing. Ollama still does not parse them, and the preamble
+  still lands in `response`/`message.content` on both `/api/generate` and `/api/chat` with
+  `"think": false`.
+- Prefilling an already-closed empty thought block removes `<unused94>` and the model simply
+  reasons in prose instead, marked with `<unused96>`/`<unused97>`.
+
+**The model reasons before answering, and suppressing particular tokens only relocates it.** The
+one thing that does work is grammar: with a `format` schema the reply is clean and reproducible
+(3/3 identical, `done_reason: stop`, no `<unused…>`). So the split is by call shape, not by
+prompt — every schema-constrained path (assessor, statistical judgement, digest, trend) would be
+safe on this tag, and the free-text ones (`ChatAsync`, `GenerateWithUsageAsync`) would not.
+
+**Correction to Q1: the stated reason was wrong.** The failed `hf.co/unsloth/…` pull was not the
+session's egress policy blocking `us.aws.cdn.hf.co`. It was Ollama's own CVE-2026-85180 fix
+rejecting the cross-host blob redirect — the same failure our CI reproduced later that day, with
+the explicit message `blocked redirect to a different host`. That also means the unsloth tag
+cannot be pulled by any patched Ollama, so **`.model-digest`'s recorded value is not confirmable
+by pulling** and Q3 is untestable anywhere, not just here. See
+`2026-09-21-ollama-ssrf-fix-blocks-medgemma-image-rebuild.md`, which now owns that thread.
+
+For the record, the official tag's own digest **is** confirmed: `medgemma1.5:4b` pulls cleanly,
+and its stored manifest hashes to
+`433252621ab154668b5d8be6aff6c1b771bacba045e46e6193da8d6ad1630f2c` — verified on disk twice.
+
+**Decision 2026-09-21: stay on the unsloth tag** until a better alternative exists. This note's
+conclusion therefore stands, but for a firmer reason than when it was written.
+
 ## Question to answer next
 
-1. **Confirm the recorded digest on the first CI build.** `.model-digest` holds
-   `c50f9c29d740f96ec94893ae6fe01db1d5cacd42621c569418355ebadd509950`, computed from the manifest
-   Hugging Face serves. It could not be confirmed against Ollama's on-disk copy in this session —
-   the session's egress policy blocks the HF blob CDN (`us.aws.cdn.hf.co`), so the pull never
-   completed. The mechanism is verified (the official tag's served manifest hashed byte-identical
-   to its stored one), but this specific value has not been. If the first build fails, the guard
-   prints the actual digest: check it is the tag we expect, then record it.
-2. Does baking our own Modelfile (template + params) at image build suppress the `<unused94>`
-   preamble? That is the gate on adopting the official tag, and it would also let the sampler be
-   pinned in the image rather than per request.
-3. Does the unsloth tag leak the same way under its own template? Untestable here for the same
-   egress reason. If it does, this is a live defect on the served model, not a reason to avoid
-   the official one — and it would explain `done_reason: "length"` occurrences in dev.
+1. ~~Confirm the recorded digest on the first CI build.~~ Superseded: the build cannot reach the
+   digest guard, because the pull fails first. Reopens only if the rebuild path is fixed.
+2. ~~Does baking our own Modelfile suppress the `<unused94>` preamble?~~ Answered: no, see above.
+3. ~~Does the unsloth tag leak the same way under its own template?~~ Untestable — no patched
+   Ollama can pull it. Would need a vendored copy of the weights to answer.
+4. **New.** If the official tag is ever adopted, the gate is no longer a Modelfile — it is whether
+   `ChatAsync` and `GenerateWithUsageAsync` can be moved onto schema-constrained replies without
+   damaging the behaviour `docs/technical/member_chat_routing.md` records.
 
 claude "work through @research/queue/2026-09-21-medgemma-official-ollama-tag-evaluated-not-adopted.md"

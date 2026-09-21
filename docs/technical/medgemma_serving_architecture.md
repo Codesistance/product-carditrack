@@ -323,3 +323,12 @@ So the pin is on the result. Ollama writes the manifest it pulled to disk verbat
 `MedGemmaModelPinTests` (unit suite) keeps the wiring honest — the digest recorded and well-formed, the Dockerfile still asserting it, every `FROM` pinned, and CI still passing the build-arg. It does not execute the shell block; that logic was verified against four fixtures (match, drift, no manifest, two manifests) when written, and a change to it needs them re-run.
 
 **The sampler moved the same way.** `temperature` reached every clinical generation at 0.1 because the third-party model tag carries that value in its params and the client sent none — an inherited default, not a stated one, and one that becomes Ollama's 0.8 on any tag declaring nothing. It is `AI:Private:Temperature` / `AI:Rewrite:Temperature` now, sent on every request. Same value, now this codebase's to answer for; see `llm_design.md`'s model table.
+
+> **Blocked since 2026-09-21: the image cannot currently be rebuilt.** Ollama's CVE-2026-85180
+> fix rejects cross-host blob redirects, and `hf.co/unsloth/…` redirects blobs to
+> `us.aws.cdn.hf.co`, so `ollama pull` fails and the build stops before the digest guard above is
+> ever reached. The deployed service is unaffected — weights are baked in and the failing run's
+> deploy step is skipped, so it keeps serving the image built 2026-08-10 — but no new image can be
+> produced until a rebuild path lands. Not caused by the base-image pin: `:latest` resolves to the
+> same 0.34.2 digest. Options and the decision to stay on the current tag for now are in
+> `research/queue/2026-09-21-ollama-ssrf-fix-blocks-medgemma-image-rebuild.md`.
