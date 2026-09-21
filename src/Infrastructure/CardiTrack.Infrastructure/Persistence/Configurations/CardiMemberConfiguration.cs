@@ -65,6 +65,12 @@ public class CardiMemberConfiguration : IEntityTypeConfiguration<CardiMember>
         // characters runs to roughly 10k — a 2000-char column would reject valid input.
         builder.Property(c => c.MedicalNotes);
 
+        // Nullable with no default: null means "never confirmed", which is exactly what every
+        // pre-existing row is. Backfilling it to the migration date would claim a review that
+        // never happened, and the staleness rule would then go quiet for six months over every
+        // member on the platform.
+        builder.Property(c => c.MedicalNotesReviewedAtUtc);
+
         builder.Property(c => c.LastSyncDate);
 
         builder.Property(c => c.MonitoringPausedUntil);

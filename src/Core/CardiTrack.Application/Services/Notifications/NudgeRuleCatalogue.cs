@@ -28,6 +28,9 @@ public static class NudgeRuleCatalogue
         // Unlock — supply this, get that.
         new SleepScopeMissingRule(),
         new MedicalNotesEmptyRule(),
+        // MedicalNotesStaleRule is deliberately not registered here yet. Its copy lives in the
+        // mobile string table, and a registered rule with no copy renders the fallback string to
+        // a caregiver. It goes live in the client change that brings its words.
 
         // Account lifecycle.
         new PauseLeftLongRule()

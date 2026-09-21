@@ -15,6 +15,26 @@ public class CardiMember : BaseEntity, ISoftDeletable
     public string? EmergencyContactName { get; set; }
     public string? EmergencyContactPhone { get; set; }
     public string? MedicalNotes { get; set; } // Encrypted at rest — see CardiMemberService
+
+    /// <summary>
+    /// When a caregiver last asserted that <see cref="MedicalNotes"/> is still current, or null
+    /// for notes written before this was recorded — which is most of them, and honestly so: we
+    /// do not know when those were last looked at, and a guessed date is worse than none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Last confirmed", not "last edited". A caregiver who reads the notes and finds nothing to
+    /// change has confirmed them just as much as one who retypes a line, and the staleness rule
+    /// this feeds should believe them both. Stamped by an edit that actually changes the text and
+    /// by an explicit confirmation; see <c>CardiMemberService</c>.
+    /// </para>
+    /// <para>
+    /// Deliberately not <see cref="Common.BaseEntity.UpdatedDate"/>, which moves on every profile
+    /// edit. A caregiver correcting a phone number has not reviewed anyone's conditions, and a
+    /// date that says otherwise would be certifying something nobody read.
+    /// </para>
+    /// </remarks>
+    public DateTime? MedicalNotesReviewedAtUtc { get; set; }
     public DateTime? LastSyncDate { get; set; }
     public bool IsActive { get; set; } = true;
 

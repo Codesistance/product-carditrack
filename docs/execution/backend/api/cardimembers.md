@@ -105,6 +105,7 @@ Full detail for one CardiMember — the payload behind mobile M1-13. Requires **
 - `healthStatus` is the same lowercase string, computed the same way, as the dashboard's — see [health-data.md](health-data.md).
 - `metrics` is the full `DashboardMetrics` block (each metric with its 30-day series) so the detail screen's trend cards need no second round-trip; it is **`null`** when the member has no activity history yet, the same condition the dashboard uses.
 - `medicalNotes` is stored AES-256-GCM encrypted and decrypted on read. Rows written before encryption was introduced are returned as-is rather than failing the request.
+- `medicalNotesReviewedAtUtc` is when a caregiver last said the notes are still current, or `null` when nobody ever has — which is every note written before the field existed. It is **not** `updatedDate`: that moves on any profile edit, and a caregiver correcting a phone number has not reviewed anyone's conditions. Clients say "not dated yet" rather than substituting another date; there is no honest stand-in for a review that did not happen.
 - `photoUrl` is a **short-lived V4 signed GCS URL** (15-minute TTL) minted per response — **not** a CDN URL and not stable: fetch it promptly, never cache or persist it. It is `null` when no photo is set or photo storage is unavailable (e.g. locally, where no bucket is configured); clients render an initials avatar. The underlying photo lives in a private bucket keyed by an opaque object name and is hard-deleted when replaced, removed, or when the member is removed.
 - `alertSensitivity` is an integer enum (Low=1, Medium=2, High=3). **Stored but not consumed** — statistical alerting uses the established 30-day baseline, not this field.
 
@@ -117,6 +118,16 @@ Body: `name`, `dateOfBirth`, `gender`, `relationshipType`, `email`, `phone`, `em
 `gender` is one of **two exceptions to full replacement**: it is nullable, and omitting it leaves the stored value alone rather than clearing it. This is what lets a caller that does not render the sex picker — an older build, or any edit to a phone number — save the form without silently discarding a stated sex and the reference range the prompt layer reads from it. Sending an explicit `0` is a client bug and is rejected; to say "not recorded", send `4`.
 
 The **photo** is the other exception, for the same reason: omitting `photoBase64` leaves the stored photo alone. `photoBase64` (same contract as on create: JPEG/PNG, ≤ 5 MB decoded, re-encoded with metadata stripped) replaces the photo — the new image is uploaded and saved first, then the old blob is deleted. `removePhoto: true` deletes the stored photo and its blob. Sending both together is rejected with a 400. A refused photo fails the whole edit with nothing applied.
+
+### POST `/api/v1/cardimembers/{id}/medical-notes/confirm`
+
+Records that a caregiver has read the medical notes and found them still current, without changing a word of them. Requires **manage** access. No body. Returns the updated detail object with a refreshed `medicalNotesReviewedAtUtc`, **400** when the member has no notes on file to confirm, **403**, or **404**.
+
+Its own endpoint because the PUT above cannot express it. That form is a full replacement, so every save carries `medicalNotes` whether or not the caregiver was looking at them — "the notes arrived unchanged" is exactly what an emergency-contact edit looks like. Stamping the review date on receipt would have it certify a background nobody had read since it was written, which is the one thing the date must never do. Accordingly:
+
+- The **PUT** re-dates the notes only when the decrypted text actually differs from what is on file, and clears the date when the notes are emptied.
+- This endpoint re-dates them on request, changing nothing else.
+- Both close any open `MEDICAL_NOTES_STALE` gap immediately rather than waiting for the nightly reconcile.
 
 ### DELETE `/api/v1/cardimembers/{id}`
 

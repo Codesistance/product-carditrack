@@ -49,6 +49,13 @@ public interface ICardiMemberService
     /// </summary>
     Task RemoveAsync(Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Records that the medical notes were read and found still current, without changing them.
+    /// Requires manage access. Rejects a member with no notes on file.
+    /// </summary>
+    Task<CardiMemberDetailResponse> ConfirmMedicalNotesAsync(
+        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+
     /// <summary>Pauses monitoring for a bounded window. Requires manage access.</summary>
     Task<MonitoringPauseResponse> PauseMonitoringAsync(
         Guid requestingUserId, Guid cardiMemberId, PauseMonitoringRequest request, CancellationToken ct = default);

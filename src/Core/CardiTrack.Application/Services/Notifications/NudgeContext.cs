@@ -74,6 +74,13 @@ public sealed record NudgeMemberSnapshot
     /// <summary>Presence only — the notes themselves are PHI and no rule needs to read them.</summary>
     public required bool HasMedicalNotes { get; init; }
 
+    /// <summary>
+    /// When a caregiver last confirmed the notes are current, or null when nobody ever has —
+    /// which covers every note written before the date existed. A date, not the notes: the same
+    /// PHI line <see cref="HasMedicalNotes"/> draws.
+    /// </summary>
+    public DateTime? MedicalNotesReviewedAtUtc { get; init; }
+
     public DateTime? MonitoringPausedUntil { get; init; }
 
     /// <summary>
