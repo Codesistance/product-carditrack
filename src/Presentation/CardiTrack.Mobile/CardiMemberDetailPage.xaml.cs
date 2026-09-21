@@ -864,16 +864,26 @@ public partial class CardiMemberDetailPage : ContentPage
     /// </remarks>
     private void ApplyInsight(MemberInsightResponse? insight)
     {
-        InsightCard.IsVisible = insight is not null;
+        // Two surfaces rather than one card with two halves: the working sits folded into the
+        // summary above, and the longer view keeps a card, so either can be absent without
+        // leaving the other under a heading with nothing beneath it.
+        var hasSummary = !string.IsNullOrWhiteSpace(insight?.Summary);
+        var hasTrend = !string.IsNullOrWhiteSpace(insight?.Trend);
+
+        InsightAccordion.IsVisible = hasSummary;
+        InsightCard.IsVisible = hasTrend;
+
         if (insight is null)
             return;
 
-        InsightSummaryLabel.IsVisible = !string.IsNullOrWhiteSpace(insight.Summary);
+        InsightSummaryLabel.IsVisible = hasSummary;
         InsightSummaryLabel.Text = insight.Summary ?? string.Empty;
-
         InsightFindings.Apply(insight.KeyFindings);
 
-        var hasTrend = !string.IsNullOrWhiteSpace(insight.Trend);
+        // The body was measured when it was empty, so an open accordion filled by a later load
+        // would be sliced off at whatever it was worth then.
+        InsightAccordion.RefreshHeight();
+
         InsightTrendHeader.IsVisible = hasTrend;
         InsightTrendLabel.IsVisible = hasTrend;
         InsightTrendLabel.Text = insight.Trend ?? string.Empty;
@@ -882,11 +892,7 @@ public partial class CardiMemberDetailPage : ContentPage
         // the trend half claiming more than it has.
         InsightTrendFindings.Apply(hasTrend ? insight.TrendFindings : []);
 
-        // Only between two halves that are both present — a rule under the last line of a card is
-        // a rule with nothing to separate.
-        InsightDivider.IsVisible = hasTrend && InsightSummaryLabel.IsVisible;
-
-        InsightGeneratedLabel.IsVisible = insight.GeneratedAt is not null;
+        InsightGeneratedLabel.IsVisible = hasTrend && insight.GeneratedAt is not null;
         InsightGeneratedLabel.Text = InsightFooter(insight);
     }
 

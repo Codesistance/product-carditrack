@@ -304,6 +304,32 @@
                                     <Label x:Name="UrgencyLabel"
                                            Style="{StaticResource Message}"/>
                                 </HorizontalStackLayout>
+
+                                <!-- The detail behind the summary, as the card's own last row.
+                                     It was a card of its own directly beneath this one, which
+                                     gave a metric-by-metric account the same standing as the
+                                     account of the day above it and pushed everything else off
+                                     the fold. As an accordion it is there for the caregiver who
+                                     wants the working, and out of the way of the one who does
+                                     not — which is what AccordionSection is for, and where it
+                                     already sits on the Dashboard's Key Metrics. -->
+                                <controls:AccordionSection x:Name="InsightAccordion"
+                                        HeaderText="How they are doing"
+                                        IconSource="icon_monitoring.svg"
+                                        IsVisible="False">
+                                    <controls:AccordionSection.Body>
+                                        <VerticalStackLayout Spacing="10">
+                                            <Label Text="How they compare to their own normal"
+                                                   Style="{StaticResource Compact}"/>
+                                            <Label x:Name="InsightSummaryLabel"
+                                                   Style="{StaticResource Body2}"
+                                                   IsVisible="False"
+                                                   LineBreakMode="WordWrap"/>
+                                            <controls:FindingsList x:Name="InsightFindings"
+                                                                   IsVisible="False"/>
+                                        </VerticalStackLayout>
+                                    </controls:AccordionSection.Body>
+                                </controls:AccordionSection>
                             </VerticalStackLayout>
                         </Border>
 
@@ -386,49 +412,11 @@
                                 Style="{StaticResource ElevatedCard}"
                                 IsVisible="False">
                             <VerticalStackLayout Spacing="10">
-                                <!-- Title, icon and the line saying what the section is, bound
-                                     together at Spacing 2 so they read as one header block rather
-                                     than as three things 10 apart. The icon is decorative and out
-                                     of the accessibility tree: the title beside it is the header,
-                                     the same arrangement the summary card above uses. -->
-                                <VerticalStackLayout Spacing="2">
-                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                        <Image Grid.Column="0"
-                                               Source="icon_monitoring.svg"
-                                               WidthRequest="20" HeightRequest="20"
-                                               VerticalOptions="Start"
-                                               Margin="0,2,0,0"
-                                               AutomationProperties.IsInAccessibleTree="False"/>
-                                        <Label Grid.Column="1"
-                                               Text="How they are doing"
-                                               Style="{StaticResource DashboardSectionTitle}"/>
-                                    </Grid>
-                                    <Label Text="How they compare to their own normal"
-                                           Style="{StaticResource Compact}"/>
-                                </VerticalStackLayout>
-
-                                <Label x:Name="InsightSummaryLabel"
-                                       Style="{StaticResource Body2}"
-                                       IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
-
-                                <!-- The supporting points, one row each. This was a single label
-                                     of newline-joined bullets, on the reasoning that a repeater
-                                     would be machinery for three sentences — which held until a
-                                     member came back with seven, wrapping, in the caption grey
-                                     and 12pt of a timestamp. FindingsList is the smaller piece
-                                     of machinery that buys a hanging wrap and its own spacing. -->
-                                <controls:FindingsList x:Name="InsightFindings" IsVisible="False"/>
-
-                                <BoxView x:Name="InsightDivider"
-                                         HeightRequest="1"
-                                         Color="{StaticResource Divider}"
-                                         IsVisible="False"/>
-
-                                <!-- The same header block as the section above, at the same
-                                     weight. This was one small dark label where that one is an
-                                     18pt title with an icon, which read as a footnote on the
-                                     first section rather than as the second half of the card. -->
+                                <!-- Icon, title and the line saying what the section is, bound at
+                                     Spacing 2 so they read as one header block rather than as
+                                     three things 10 apart. The icon is decorative and out of the
+                                     accessibility tree: the title beside it is the header, the
+                                     same arrangement the summary card above uses. -->
                                 <VerticalStackLayout x:Name="InsightTrendHeader"
                                                      Spacing="2"
                                                      IsVisible="False">
