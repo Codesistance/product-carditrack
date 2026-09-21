@@ -1,0 +1,15 @@
+{
+  "date": "2026-09-21",
+  "summary": "*CardiTrack digest — 2026-09-21* · 1 item · 1 HIGH",
+  "items": [
+    {
+      "slug": "nia-2027-deadline-six-days-no-status",
+      "title": "NHS Innovation Accelerator 2027 cohort closes in 6 days (2026-09-27) — application status still unconfirmed, no NHS deployment evidence found in repo",
+      "url": "https://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/",
+      "severity": "HIGH",
+      "category": "grants",
+      "brief": "research/queue/2026-09-21-nia-2027-deadline-six-days-no-status.md",
+      "text": "*HIGH* — NHS Innovation Accelerator 2027 cohort closes in 6 days (2026-09-27 23:59), application status still unconfirmed\nFirst flagged 2026-09-09 with an open question: does CardiTrack have NHS-side deployment or outcomes evidence to be competitive, given NIA funds *scaling* proven solutions, not early-stage product development. A repo-wide check today (docs/, research/, issues) found no NHS Trust pilot, deployment, or real-world-evidence record anywhere — so the fit condition from the original brief still isn't met, and there's no application-status tracking in this repo to confirm whether anyone applied anyway.\nSmallest next action: whoever owns the NIA relationship needs to say, before 2026-09-27 23:59, either \"submitted\" (confirm it went in) or \"not applying this cohort\" (then the 2028 cycle is the next window) — six days is not enough runway to build an evidence base from nothing.\nhttps://nhsaccelerator.com/about-the-nia-programme/apply-for-nia-fellowship/\n\nclaude \"work through @research/queue/2026-09-21-nia-2027-deadline-six-days-no-status.md\""
+    }
+  ]
+}
