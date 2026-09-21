@@ -201,7 +201,7 @@ public class StatisticalAlertExplanationTests
 
     private StatisticalAlertService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance,
+            InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance, new PassThroughWriteGuard(),
             alertEnqueue: null, insights: _insightService);
 
     /// <summary>

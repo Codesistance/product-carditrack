@@ -111,6 +111,7 @@ public sealed record EnqueueRequest(
 public class DispatchService : IDispatchService
 {
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IMemberWriteGuard _guard;
     private readonly INotificationChannel _channel;
     private readonly INotificationPreferenceService _preferences;
     private readonly INotificationGapResolver _gapResolver;
@@ -121,12 +122,14 @@ public class DispatchService : IDispatchService
         INotificationChannel channel,
         INotificationPreferenceService preferences,
         INotificationGapResolver gapResolver,
+        IMemberWriteGuard guard,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _channel = channel;
         _preferences = preferences;
         _gapResolver = gapResolver;
+        _guard = guard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -201,7 +204,27 @@ public class DispatchService : IDispatchService
         };
 
         await _unitOfWork.NotificationDeliveries.AddAsync(delivery);
-        await _unitOfWork.SaveChangesAsync();
+
+        // Guarded here rather than at each producer, because this is where every delivery is
+        // written — an alert's, a questionnaire's, a device-silence notice's. The producers hand
+        // this a member id and an already-committed source row, and the enqueue runs *after* the
+        // guarded write that raised it, with the member lock released in between: erasure can have
+        // deleted NotificationDeliveries and be waiting to delete the alert, and the source row
+        // this read is still visible to an unlocked reader. Without the lock a delivery inserted
+        // in that gap outlives the cascade and a family is paged about an erased member.
+        // Only when the delivery names a member. CardiMemberId is nullable because some notices
+        // are about the account rather than about anyone being cared for — a trial ending, a
+        // device the caregiver owns — and those have no member row to lock and no erasure to lose
+        // to. Guarding them would refuse a notice nothing was erasing.
+        if (request.CardiMemberId is { } subject)
+        {
+            if (!await _guard.WriteIfMemberLivesAsync(subject, _ => _unitOfWork.SaveChangesAsync(), ct))
+                return null;
+        }
+        else
+        {
+            await _unitOfWork.SaveChangesAsync();
+        }
 
         activity?.SetTag(PushDispatchTelemetry.DeliveryIdTag, delivery.Id.ToString());
         activity?.SetTag(PushDispatchTelemetry.ChannelTag, plan.Channel.ToString());

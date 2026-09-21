@@ -91,6 +91,7 @@ public class StatisticalAlertService : IStatisticalAlertService
     private readonly StatusLineGenerationService _statusLine;
     private readonly ILogger<StatisticalAlertService> _logger;
     private readonly IAlertNotificationEnqueue? _alertEnqueue;
+    private readonly IMemberWriteGuard _guard;
 
     /// <summary>
     /// Optional so the many tests that exercise the judgement path need not stand one up, and so
@@ -106,6 +107,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         MemberContextComposer memberContext,
         StatusLineGenerationService statusLine,
         ILogger<StatisticalAlertService> logger,
+        IMemberWriteGuard guard,
         IAlertNotificationEnqueue? alertEnqueue = null,
         IHealthInsightService? insights = null)
     {
@@ -114,6 +116,7 @@ public class StatisticalAlertService : IStatisticalAlertService
         _memberContext = memberContext;
         _statusLine = statusLine;
         _logger = logger;
+        _guard = guard;
         _alertEnqueue = alertEnqueue;
         _insights = insights;
     }
@@ -432,7 +435,13 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (created.Count == 0)
             return 0;
 
-        await _unitOfWork.SaveChangesAsync();
+        // Guarded like every other post-inference write: the judgement above is a MedGemma call
+        // that can run for minutes, and an alert raised for an erased member is both health data
+        // we may not hold and a page a family would receive about someone the product has
+        // forgotten. Refused means nothing was written, so this pass raised nothing and every
+        // step below — the status line, the explanations, the notification enqueue — is skipped.
+        if (!await _guard.WriteIfMemberLivesAsync(memberId, _ => _unitOfWork.SaveChangesAsync(), ct))
+            return 0;
 
         // A newly-raised alert moves the member's tier, and the persisted status line was
         // generated against whatever tier was current when the pipeline last wrote it. The model

@@ -209,7 +209,7 @@ public class DigestGenerationServiceTests
     private DigestGenerationService CreateSut() =>
         new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
-            InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance);
+            InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());
 
     /// <summary>
     /// The one integration pin on the batch hook: a stored digest regenerates the member's
@@ -243,7 +243,7 @@ public class DigestGenerationServiceTests
                 NullLogger<StatusLineGenerationService>.Instance,
                 new PassThroughWriteGuard()),
             InertAdviseGenerator.Create(),
-            NullLogger<DigestGenerationService>.Instance);
+            NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());
 
         var generated = await sut.GenerateDueDigestsAsync(UtcNow);
 

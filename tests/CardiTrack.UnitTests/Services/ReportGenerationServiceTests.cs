@@ -86,7 +86,7 @@ public class ReportGenerationServiceTests
 
     private ReportGenerationService CreateSut() =>
         new(_unitOfWork, _storage, _access, _consent, _transcripts, _options, BuildScopeFactory(),
-            Substitute.For<ILogger<ReportGenerationService>>());
+            new PassThroughWriteGuard(), Substitute.For<ILogger<ReportGenerationService>>());
 
     /// <summary>Makes the access service refuse the given member, as it does for an unlinked user.</summary>
     private void DenyAccessTo(Guid memberId)
@@ -520,7 +520,8 @@ public class ReportGenerationServiceTests
         var renderer = new RecordingRenderer(format);
         var sut = new ReportGenerationService(
             _unitOfWork, _storage, _access, _consent, _transcripts, _options,
-            BuildScopeFactoryFor(renderer), Substitute.For<ILogger<ReportGenerationService>>());
+            BuildScopeFactoryFor(renderer), new PassThroughWriteGuard(),
+            Substitute.For<ILogger<ReportGenerationService>>());
 
         var queued = await sut.GenerateAsync(_userId, BuildRequest(format));
         var status = await WaitForTerminalStatusAsync(sut, queued.ReportId);

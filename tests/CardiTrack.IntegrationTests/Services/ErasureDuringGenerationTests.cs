@@ -190,6 +190,16 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
                 Message = "Doing well today.",
                 GeneratedAtUtc = DateTime.UtcNow,
             });
+            // The question the digest decides to ask the family — written after the same model
+            // call the digest itself comes from, so it races exactly as the digest does.
+            db.MemberQuestionnaires.Add(new MemberQuestionnaire
+            {
+                CardiMemberId = memberId,
+                QuestionText = "How has she been sleeping?",
+                Status = QuestionnaireStatus.Pending,
+                GeneratedAtUtc = DateTime.UtcNow,
+                Scope = QuestionnaireScope.Permanent,
+            });
             db.Alerts.Add(new Alert
             {
                 CardiMemberId = memberId,
@@ -305,6 +315,8 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
         Assert.Equal(0, await db.Set<MemberAdvise>().CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberAdviseObservations.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberStatusLines.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MemberQuestionnaires.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.NotificationDeliveries.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Alerts.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberChatSessions.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Reports.CountAsync(x => x.CardiMemberIds.Contains(memberId)));

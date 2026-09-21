@@ -124,7 +124,7 @@ public class WeekbookGenerationTests
         new(_unitOfWork, _medicalAi, Substitute.For<IRewriteAiService>(),
             PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
-            InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance);
+            InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());
 
     private Task<int> NoWeekbookWritten() => CreateSut().GenerateDueWeekbooksAsync(UtcNow);
 

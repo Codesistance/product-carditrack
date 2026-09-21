@@ -3,6 +3,7 @@ using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Infrastructure.Extensions;
 using CardiTrack.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 
@@ -65,6 +66,13 @@ public class MedicalAiCompositionTests
 
         // The ports each host supplies. Substituted rather than wired to a database: what is under
         // test is whether the graph closes, not what the rows say.
+        //
+        // The DbContext is registered rather than substituted, because it cannot be: it is a
+        // class, not a port, and IMemberWriteGuard takes it directly — taking a row lock is not
+        // something a repository contract can express. No connection is opened here; the graph is
+        // validated at build, and nothing in this test resolves as far as a query.
+        services.AddDbContext<CardiTrack.Infrastructure.Persistence.CardiTrackDbContext>(
+            options => options.UseNpgsql("Host=localhost;Database=unused"));
         services.AddScoped(_ => Substitute.For<IUnitOfWork>());
         services.AddScoped(_ => Substitute.For<CardiTrack.Application.Interfaces.Security.IEncryptionService>());
 
