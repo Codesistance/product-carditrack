@@ -42,3 +42,8 @@ output "medgemma_registry" {
   description = "Artifact Registry base path in the GPU service's own region"
   value       = "${var.medgemma_location}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.common_euw1.repository_id}"
 }
+
+output "model_weights_bucket_name" {
+  description = "Name of the bucket holding the vendored MedGemma weights the image is built from"
+  value       = google_storage_bucket.common_model_weights.name
+}

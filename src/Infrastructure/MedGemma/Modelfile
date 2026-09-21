@@ -1,0 +1,30 @@
+# The MedGemma this platform serves, built from weights we vendor rather than a tag we pull.
+#
+# Every input is in this directory and pinned: the two GGUFs are listed by sha256 in
+# weights.sha256 (and fetched into weights/ by scripts/fetch-medgemma-weights.sh), and the
+# template and parameters below are the ones the upstream Ollama tag served on 2026-09-21,
+# byte for byte — the template hashes to e0a42594d802e…, the tag's own template layer. So a
+# build of this file is the model that has been running, with nothing left to a registry.
+#
+# The projector is what lets the model read images. No caller sends one today (the client has
+# no images field), but it ships in the image so the served model is the same artifact as
+# before, capability for capability, rather than a text-only cousin of it.
+FROM ./weights/medgemma-1.5-4b-it-Q4_K_M.gguf
+FROM ./weights/mmproj-F16.gguf
+
+TEMPLATE """{{- range $i, $_ := .Messages }}
+{{- $last := eq (len (slice $.Messages $i)) 1 }}
+{{- if or (eq .Role "user") (eq .Role "system") }}<start_of_turn>user
+{{ .Content }}<end_of_turn>
+{{ if $last }}<start_of_turn>model
+{{ end }}
+{{- else if eq .Role "assistant" }}<start_of_turn>model
+{{ .Content }}{{ if not $last }}<end_of_turn>
+{{ end }}
+{{- end }}
+{{- end }}"""
+
+# The tag carried these in its own params. The client now sends temperature on every request
+# as well (AI:Private:Temperature), so this is the floor for any other caller, not the source.
+PARAMETER stop "<end_of_turn>"
+PARAMETER temperature 0.1

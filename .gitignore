@@ -171,3 +171,7 @@ src/Presentation/CardiTrack.Mobile/Local.props
 # under research/queue/, both committed; nothing else from a run is kept.
 # (/items/ and /run-ts.txt belonged to the retired in-sandbox Slack poster.)
 /added.txt
+
+# MedGemma weights are vendored into GCS, never committed: scripts/fetch-medgemma-weights.sh fills this in.
+src/Infrastructure/MedGemma/weights/*.gguf
+src/Infrastructure/MedGemma/weights/*.part

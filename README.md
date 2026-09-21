@@ -203,7 +203,7 @@ Oura and Whoop were dropped from the roadmap on 2026-09-05 (their enum members a
 
 CardiTrack uses a two-provider LLM setup surfaced through the API's chat, insights, and reports endpoints:
 
-- **Medical provider — MedGemma 1.5 4B** (`hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M`) served by **Ollama on Cloud Run** (custom image in `src/Infrastructure/MedGemma/`): health-data interpretation and severity assessment
+- **Medical provider — MedGemma 1.5 4B** (`medgemma-1.5-4b-it:q4_k_m`, built from vendored Q4_K_M weights) served by **Ollama on Cloud Run** (custom image in `src/Infrastructure/MedGemma/`): health-data interpretation and severity assessment
 - **General provider — Gemini 2.0 Flash**: conversational and general-purpose responses
 
 Health data is ingested by the Worker's 10-minute polling sync (`WearableSyncWorker`) as the guaranteed fallback, and — **live in dev** — by the webhook-driven AI ingestion/inference pipeline on GCP (Pub/Sub + Cloud Run): webhook receiver, aggregator, real-time assessor, and family digests. See [docs/llm_design.md](docs/llm_design.md).

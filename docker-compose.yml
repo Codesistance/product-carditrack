@@ -42,10 +42,12 @@ services:
 
   ollama:
     # Pinned by digest (a multi-arch index — linux/amd64 + linux/arm64) rather than the floating
-    # :latest, so a `docker compose up` is reproducible and immune to a tag re-push. This digest is
-    # Ollama 0.32.6; bump it deliberately. The init services below reuse it via the *ollama_image
-    # anchor so the digest lives in exactly one place.
-    image: &ollama_image ollama/ollama@sha256:b88c73ace3e115f8ec53dc8761ae1c0aabfa675406e3681786b98757ce050f42
+    # :latest, so a `docker compose up` is reproducible and immune to a tag re-push. This is
+    # Ollama 0.34.2 — the same digest src/Infrastructure/MedGemma/Dockerfile builds the deployed
+    # image on, so the two-FROM Modelfile the init below registers runs on the Ollama it was
+    # verified on. Bump the two together; MedGemmaModelPinTests fails when they differ. The init
+    # services below reuse it via the *ollama_image anchor so the digest lives in exactly one place.
+    image: &ollama_image ollama/ollama@sha256:da6e0dc5651df159e45686fd663c4dbe1624a52c44d7280eeac1551d8f865532
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
@@ -61,9 +63,18 @@ services:
       retries: 10
     profiles: ["full"]
 
+  # Registers MedGemma from the vendored weights, the same way the deployed image is built —
+  # `ollama create` from src/Infrastructure/MedGemma/Modelfile, never a registry pull. Run
+  # scripts/fetch-medgemma-weights.sh once first: it fetches the pinned GGUFs into that
+  # directory's weights/ and refuses any bytes that do not match weights.sha256. The client
+  # reads the files and streams them to the server, so only this init container mounts them.
   medgemma-init:
     image: *ollama_image
-    entrypoint: ["/bin/sh", "-c", "OLLAMA_HOST=http://ollama:11434 ollama pull hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"]
+    volumes:
+      - ./src/Infrastructure/MedGemma:/medgemma:ro
+    # The name comes from .model-version, the same file the image build and Terraform read, and
+    # the bytes are checked against weights.sha256 first — the same two things the Dockerfile does.
+    entrypoint: ["/bin/sh", "-c", "cd /medgemma && (cd weights && sha256sum -c ../weights.sha256) && OLLAMA_HOST=http://ollama:11434 ollama create \"$$(tr -d '[:space:]' < .model-version)\" -f Modelfile"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -109,7 +120,7 @@ services:
       # network (not host.docker.internal), so it no longer depends on Ollama's port being
       # published to the host — which is now loopback-only.
       AI__Private__BaseUrl: "http://ollama:11434"
-      AI__Private__Model: "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"
+      AI__Private__Model: "medgemma-1.5-4b-it:q4_k_m"
       AI__Private__TimeoutSeconds: "120"
       # Rewrite provider — a plain non-medical model on the same local Ollama instance, used only
       # to rewrite MedGemma's clinical output into caregiver language. Same in-project guarantee

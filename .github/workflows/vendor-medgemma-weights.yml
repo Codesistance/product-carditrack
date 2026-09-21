@@ -1,0 +1,65 @@
+name: Vendor MedGemma weights
+
+# Fetches the pinned MedGemma GGUFs from Hugging Face and keeps our own copy in the model
+# weights bucket, so the image build never depends on a third-party registry again.
+#
+# The image used to `ollama pull` a Hugging Face tag at build time. Ollama's CVE-2026-85180 fix
+# refuses that tag's cross-host blob redirect, so the pull — and every rebuild — failed from
+# 2026-09-21. Plain curl follows the same redirect without complaint; what makes that safe is
+# that the bytes are checked against src/Infrastructure/MedGemma/weights.sha256 before anything
+# is uploaded, and checked again by the image build before Ollama sees them.
+#
+# Dispatch-only and idempotent: an object that already exists at its content-addressed path
+# (<model>/<sha256>/<file>) is left alone, so re-running costs a download and no writes. Run it
+# once after a weights.sha256 or weights.env change, before the next MedGemma deploy.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: vendor-medgemma-weights
+  cancel-in-progress: false
+
+jobs:
+  env:
+    name: Resolve config
+    uses: ./.github/workflows/_env.yml
+
+  vendor:
+    name: Fetch, verify, upload
+    needs: env
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
+          service_account: ${{ needs.env.outputs.gcp_service_account }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # The same script a developer runs for docker compose. It refuses to finish with bytes that
+      # do not match the pin, so nothing below can upload the wrong file.
+      - name: Fetch and verify the pinned weights
+        run: scripts/fetch-medgemma-weights.sh src/Infrastructure/MedGemma/weights
+
+      - name: Upload to the model weights bucket
+        run: |
+          set -euo pipefail
+          . src/Infrastructure/MedGemma/weights.env
+          while read -r sha name; do
+            [ -n "$name" ] || continue
+            dest="gs://${GCS_BUCKET}/${GCS_PREFIX}/${sha}/${name}"
+            if gcloud storage objects describe "$dest" >/dev/null 2>&1; then
+              echo "already vendored: $dest"
+              continue
+            fi
+            echo "uploading $name -> $dest"
+            gcloud storage cp "src/Infrastructure/MedGemma/weights/${name}" "$dest"
+          done < src/Infrastructure/MedGemma/weights.sha256
+          echo "Vendored under gs://${GCS_BUCKET}/${GCS_PREFIX}/:"
+          gcloud storage ls -r "gs://${GCS_BUCKET}/${GCS_PREFIX}/"

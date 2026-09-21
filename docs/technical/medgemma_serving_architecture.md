@@ -309,26 +309,26 @@ What is **not** covered: resuming the app from the background. `App.Resumed` is 
 
 The service has always deployed a specific image, and the weights are baked into it, so the *running* revision never drifted. A **rebuild** could, and nothing in the repo said otherwise.
 
-Two floating inputs, closed the same way:
+Two floating inputs, closed the same day — the second one twice, because the first fix found out the hard way that the build path was already broken.
 
 | Input | Was | Is |
 |---|---|---|
-| Base image | `ollama/ollama:latest` — two builds of one Dockerfile could ship two Ollama versions | `ollama/ollama:0.34.2` pinned by digest. Also the first version this repo can state carries the CVE-2026-85180 redirect fix (`research/queue/2026-09-20-ollama-ssrf-status-conflict.md`) |
-| Model weights | Whatever the mutable model tag resolved to at build time | Asserted against `src/Infrastructure/MedGemma/.model-digest` |
+| Base image | `ollama/ollama:latest` — two builds of one Dockerfile could ship two Ollama versions | `ollama/ollama:0.34.2` pinned by digest; carries the CVE-2026-85180 redirect fix (`research/queue/2026-09-20-ollama-ssrf-status-conflict.md`) |
+| Model weights | `ollama pull` of a Hugging Face tag at build time — a mutable third-party pointer | Vendored: fetched once from a pinned upstream commit, hash-checked, kept in our own bucket, and registered at build with `ollama create` from a Modelfile in git |
 
-**Why the model needs its own mechanism.** A container base image pins by digest; an Ollama model tag cannot. Verified against both registries on 2026-09-21: `registry.ollama.ai` returns **404** for a digest-addressed manifest, and `ollama pull medgemma1.5@sha256:…` fails outright with `invalid model name`. There is no pull-time pin to use.
+**Why not just pin the tag.** A container base image pins by digest; an Ollama model tag cannot. Verified against both registries on 2026-09-21: `registry.ollama.ai` returns **404** for a digest-addressed manifest, and `ollama pull medgemma1.5@sha256:…` fails outright with `invalid model name`. The first attempt (#1174) therefore pinned the *result* — the sha256 of the manifest Ollama stored after pulling. That guard was never reached: the same day, the first rebuild failed one step earlier, because Ollama's CVE-2026-85180 fix refuses the cross-host redirect the tag's blobs arrive by (`hf.co` → `us.aws.cdn.hf.co`). The tag could not be pulled by any patched Ollama at all. Not caused by the base-image pin — `:latest` resolved to the same 0.34.2 digest — just exposed by the first rebuild since the patched release.
 
-So the pin is on the result. Ollama writes the manifest it pulled to disk verbatim, so its sha256 is a stable identity for *these* weights — and because the manifest lists every layer by digest, the one hash covers the weights, the prompt template and the sampler params together. A tag repointed at a different quantisation, a re-uploaded GGUF, or a changed default temperature all move it. The build hashes that file after pulling and fails if it is not the recorded value, printing both, so a drifted upstream stops at the build instead of reaching caregivers.
+**So the weights are ours now.** Everything the model is made of lives in `src/Infrastructure/MedGemma/`:
 
-`MedGemmaModelPinTests` (unit suite) keeps the wiring honest — the digest recorded and well-formed, the Dockerfile still asserting it, every `FROM` pinned, and CI still passing the build-arg. It does not execute the shell block; that logic was verified against four fixtures (match, drift, no manifest, two manifests) when written, and a change to it needs them re-run.
+- `weights.sha256` — the pin: one sha256 per GGUF (`medgemma-1.5-4b-it-Q4_K_M.gguf`, `mmproj-F16.gguf`). Each hash was confirmed from two independent sources: the upstream LFS object at the pinned commit, and the layer digest of the Ollama manifest the tag served on 2026-09-21. The vendored files are byte-identical to what has been running.
+- `weights.env` — provenance: the upstream repo and commit (`unsloth/medgemma-1.5-4b-it-GGUF` @ `3855f948…`), and the bucket and prefix we keep our copy under.
+- `Modelfile` — template and params in git, byte-for-byte what the tag served (template layer `e0a42594…`; `stop <end_of_turn>`, `temperature 0.1`). Both `FROM` lines point into `weights/`; the projector ships so the served model keeps the same capabilities as before, even though no caller sends images today.
+- `.model-version` — the name `ollama create` registers, `medgemma-1.5-4b-it:q4_k_m`, which `main.tf` reads into `AI__Private__Model`.
 
-**The sampler moved the same way.** `temperature` reached every clinical generation at 0.1 because the third-party model tag carries that value in its params and the client sent none — an inherited default, not a stated one, and one that becomes Ollama's 0.8 on any tag declaring nothing. It is `AI:Private:Temperature` / `AI:Rewrite:Temperature` now, sent on every request. Same value, now this codebase's to answer for; see `llm_design.md`'s model table.
+The bytes are checked three times on the way to the image: `scripts/fetch-medgemma-weights.sh` after downloading from upstream (`vendor-medgemma-weights.yml` runs it, then uploads to `carditrack-common-model-weights` — its own bucket, versioned and never lifecycle-deleted, because the builds bucket deletes at ten days), `deploy-medgemma-common.yml` after downloading from that bucket, and the Dockerfile once more before `ollama create` sees them. The build then asserts `ollama list` shows the name the hosts will ask for — compared case-insensitively, as Ollama resolves it (it lowercases a stored tag). No stage talks to a registry. Locally, the same script fills `weights/` and `docker compose` registers the model the same way.
 
-> **Blocked since 2026-09-21: the image cannot currently be rebuilt.** Ollama's CVE-2026-85180
-> fix rejects cross-host blob redirects, and `hf.co/unsloth/…` redirects blobs to
-> `us.aws.cdn.hf.co`, so `ollama pull` fails and the build stops before the digest guard above is
-> ever reached. The deployed service is unaffected — weights are baked in and the failing run's
-> deploy step is skipped, so it keeps serving the image built 2026-08-10 — but no new image can be
-> produced until a rebuild path lands. Not caused by the base-image pin: `:latest` resolves to the
-> same 0.34.2 digest. Options and the decision to stay on the current tag for now are in
-> `research/queue/2026-09-21-ollama-ssrf-fix-blocks-medgemma-image-rebuild.md`.
+`MedGemmaModelPinTests` (unit suite) keeps the files agreeing with each other: every `FROM` names a file the manifest pins, every stage that touches the bytes runs `sha256sum -c`, no stage contains `ollama pull` or `hf.co`, every base image `FROM` is digest-pinned, the upstream revision is a commit rather than a branch, and the weights are gitignored. It does not run a build; the Dockerfile was exercised end to end against stand-in GGUFs when written, and a change to its shell needs that re-run.
+
+**Rolling a rename out without a 404 window.** Callers take the model name from the environment stack — Terraform reads `.model-version` into `AI__Private__Model` for the API, worker and pipeline — and the image is deployed separately, so no single step changes both. `.model-aliases` closes the gap: names listed there are registered on the built image as well (`ollama cp`, a second manifest over the same blobs), so the image answers to the old name and the new one. Order: deploy the image (old callers keep working) → apply the environment stack (callers move to the new name) → delete the alias line and rebuild. The 2026-09-21 rename from the Hugging Face tag name to `medgemma-1.5-4b-it:q4_k_m` is in flight this way.
+
+**The sampler moved the same way.** `temperature` reached every clinical generation at 0.1 because the third-party model tag carried that value in its params and the client sent none — an inherited default, not a stated one, and one that becomes Ollama's 0.8 on any tag declaring nothing. It is `AI:Private:Temperature` / `AI:Rewrite:Temperature` now, sent on every request, and pinned in the Modelfile besides. Same value, now this codebase's to answer for.

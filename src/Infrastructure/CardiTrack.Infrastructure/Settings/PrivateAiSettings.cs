@@ -64,14 +64,16 @@ public class PrivateAiSettings : IMedGemmaModelSettings
     /// <inheritdoc cref="IMedGemmaModelSettings.Temperature" path="/summary"/>
     /// </summary>
     /// <remarks>
-    /// 0.1, which is what this slot has always run at — but by inheritance rather than by
-    /// decision: the served tag (<c>hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M</c>) carries
-    /// <c>"temperature": 0.1</c> in its own params, and the client sent none, so the value came
-    /// from a third party's upload and would have changed without warning if they re-uploaded —
-    /// or vanished to the server's 0.8 on any tag that declares no temperature at all (Google's
-    /// own <c>medgemma1.5</c> declares none; measured 2026-09-21). Stated here it is ours: low
-    /// because these reads are narration of numbers already computed, where wording that varies
-    /// run to run is noise in an audit trail, not variety a caregiver wanted.
+    /// 0.1, which is what this slot has always run at — but until 2026-09-21 by inheritance
+    /// rather than by decision: the Hugging Face tag then served carried <c>"temperature": 0.1</c>
+    /// in its own params, and the client sent none, so the value came from a third party's
+    /// upload and would have changed without warning if they re-uploaded — or vanished to the
+    /// server's 0.8 on any tag that declares no temperature at all (Google's own
+    /// <c>medgemma1.5</c> declares none; measured). The model is now built from vendored weights
+    /// and a Modelfile in this repo (<c>src/Infrastructure/MedGemma/Modelfile</c>), which pins
+    /// the same 0.1 for any caller; this setting is what the client sends regardless. Low because
+    /// these reads are narration of numbers already computed, where wording that varies run to
+    /// run is noise in an audit trail, not variety a caregiver wanted.
     /// </remarks>
     public double Temperature { get; set; } = 0.1;
 
