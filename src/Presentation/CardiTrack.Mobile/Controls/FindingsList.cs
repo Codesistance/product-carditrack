@@ -18,9 +18,15 @@ namespace CardiTrack.Mobile.Controls;
 /// grey and 12pt of a timestamp.
 /// </para>
 /// <para>
-/// So: a bullet in its own column, the text in a column that wraps under itself, and body ink at
+/// So: a marker in its own column, the text in a column that wraps under itself, and body ink at
 /// body size. These are the points a caregiver reads first — the narrative above them is the
 /// detail — and they were the smallest, palest text on the card.
+/// </para>
+/// <para>
+/// The rows are the onboarding list's, down to the marker, the twenty-pixel box, the two-pixel
+/// drop and the twelve of spacing either way: <c>BaselineLearningPage</c> already sets out a
+/// short list of plain statements about a member, and two lists of the same thing in one app
+/// should not be two designs.
 /// </para>
 /// </remarks>
 public sealed class FindingsList : VerticalStackLayout
@@ -29,13 +35,19 @@ public sealed class FindingsList : VerticalStackLayout
     /// Between points, not inside them. A point that wraps stays one block while the list stays a
     /// list, which is the distinction the single label could not draw.
     /// </summary>
-    private const int BetweenPoints = 7;
+    /// <remarks>Twelve, the spacing the onboarding list these rows come from uses.</remarks>
+    private const int BetweenPoints = 12;
+
+    /// <summary>Between the marker and its text, matching the same list.</summary>
+    private const int AfterMarker = 12;
+
+    /// <summary>The marker's side, matching the same list.</summary>
+    private const int MarkerSize = 20;
 
     /// <summary>
-    /// Between the bullet and its text. Wide enough that the glyph reads as a marker rather than
-    /// as the first character of the sentence.
+    /// Nudges the marker down onto the first line's optical centre rather than its box top.
     /// </summary>
-    private const int AfterBullet = 9;
+    private const int MarkerDrop = 2;
 
     public FindingsList()
     {
@@ -66,19 +78,27 @@ public sealed class FindingsList : VerticalStackLayout
     private static Grid Row(string point)
     {
         // Its own column so the text beside it wraps under itself. Top-aligned rather than
-        // centred: against a point that runs to three lines, a vertically centred bullet floats
-        // in the middle of the sentence.
-        var bullet = new Label
+        // centred: against a point that runs to three lines, a marker on the vertical centre
+        // floats in the middle of the sentence.
+        //
+        // Decorative, and out of the accessibility tree: it marks a row rather than saying
+        // anything, and a screen reader announcing "check mark" before each point would put a
+        // word in front of every one of them that the list does not mean.
+        var marker = new Image
         {
-            Text = "•",
-            Style = NamedStyle("Body2Dark"),
+            Source = "icon_action_check.svg",
+            WidthRequest = MarkerSize,
+            HeightRequest = MarkerSize,
             VerticalOptions = LayoutOptions.Start,
+            Margin = new Thickness(0, MarkerDrop, 0, 0),
         };
+        AutomationProperties.SetIsInAccessibleTree(marker, false);
 
         var text = new Label
         {
             Text = point,
-            Style = NamedStyle("Body2Dark"),
+            Style = NamedStyle("Body2Medium"),
+            FontSize = 15,
             LineBreakMode = LineBreakMode.WordWrap,
         };
 
@@ -89,10 +109,10 @@ public sealed class FindingsList : VerticalStackLayout
                 new ColumnDefinition(GridLength.Auto),
                 new ColumnDefinition(GridLength.Star),
             ],
-            ColumnSpacing = AfterBullet,
+            ColumnSpacing = AfterMarker,
         };
 
-        row.Add(bullet);
+        row.Add(marker);
         row.Add(text, column: 1);
         return row;
     }

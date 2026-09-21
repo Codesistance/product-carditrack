@@ -49,6 +49,16 @@ public partial class DeviceManagementPage : ContentPage
         _popups = popups;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
         this.RefreshWhenAppResumes(RefreshOnResumeAsync);
+
+        // Filled once, then folded away: the list never changes, and FindingsList shows itself
+        // when it has rows, so the panel is hidden after rather than before.
+        HelpPanel.Apply(
+        [
+            "Make sure the device has synced with its own app recently.",
+            "Try \"Refresh Connection\" — it renews the link without reconnecting.",
+            "Still stuck? Remove the device and connect it again.",
+        ]);
+        HelpPanel.IsVisible = false;
     }
 
     /// <summary>
