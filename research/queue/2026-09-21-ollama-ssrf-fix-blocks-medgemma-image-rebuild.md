@@ -1,6 +1,6 @@
 # Ollama's CVE-2026-85180 fix blocks our model pull — the MedGemma image cannot currently be rebuilt
 
-**Severity:** CRITICAL
+**Severity:** CRITICAL — **resolved 2026-09-21** by vendoring the weights (see "Resolution" below)
 **Category:** dependencies
 
 ## Summary
@@ -60,7 +60,26 @@ is down today, so this will stay invisible until the moment someone *needs* a re
 the Ollama base, a model change, a config change baked into the image — and discovers the path is
 blocked under time pressure. It should be fixed while it is merely inconvenient.
 
-## Question to answer next
+## Resolution (2026-09-21)
+
+Option 1 below, implemented the same day. The image no longer pulls anything: the two GGUFs the
+tag was made of are fetched once from a pinned upstream commit by `vendor-medgemma-weights.yml`
+(through `scripts/fetch-medgemma-weights.sh`, which refuses bytes that do not match
+`src/Infrastructure/MedGemma/weights.sha256`), kept in `carditrack-common-model-weights` under a
+content-addressed path, downloaded and re-verified by `deploy-medgemma-common.yml`, verified a
+third time inside the Dockerfile, and registered with `ollama create` from a Modelfile in git that
+carries the tag's template and params byte for byte. Both hashes were confirmed against the
+upstream LFS objects *and* the layer digests of the manifest the tag served, so the vendored
+model is the model that has been running. The Dockerfile was exercised end to end against
+stand-in GGUFs (real model + projector files under the real names, matching manifest) before
+merging. `docs/technical/medgemma_serving_architecture.md` §9.6 has the shape.
+
+What this closed, beyond the rebuild: `.model-digest` — the manifest-hash guard from #1174 that
+could never be reached — is gone, replaced by a pin on bytes we hold. The Hugging Face mirror is
+out of the build path entirely, which also retires the third-party-registry leg of the SSRF
+exposure `2026-09-19-ollama-ssrf-blob-pull-redirect.md` described.
+
+## Question to answer next (as it stood before the resolution)
 
 Pick and implement a rebuild path. In rough order of preference:
 

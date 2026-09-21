@@ -60,15 +60,30 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v3
       - run: gcloud auth configure-docker ${{ env.GPU_REGION }}-docker.pkg.dev --quiet
 
-      # The same files the image build reads. Each value in one place — a literal here would hold
-      # only until someone bumped the file. The digest rides with the tag because the tag says
-      # which model and the digest says which build of it: read together, a bump that moves one
-      # and not the other fails the image build rather than shipping weights nobody reviewed.
+      # The same file the image build reads. One name, one place — a literal here would hold only
+      # until someone bumped the file. What the model is *made of* is pinned separately, by
+      # weights.sha256, and checked twice below.
       - name: Read model version
         id: model
+        run: echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+
+      # The weights come from our own bucket, by content-addressed path, and never from a
+      # registry: Ollama's CVE-2026-85180 fix refuses the redirect the old Hugging Face tag pulled
+      # through, and that tag was a mutable third-party pointer regardless. The vendor workflow
+      # put them there; sha256sum -c is the same check it ran before uploading, and the
+      # Dockerfile runs it a third time inside the build. A missing object means the vendor
+      # workflow has not been run for this weights.sha256 yet — run it, then this.
+      - name: Fetch the vendored weights
         run: |
-          echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-          echo "digest=$(cat src/Infrastructure/MedGemma/.model-digest | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          . src/Infrastructure/MedGemma/weights.env
+          mkdir -p src/Infrastructure/MedGemma/weights
+          while read -r sha name; do
+            [ -n "$name" ] || continue
+            gcloud storage cp "gs://${GCS_BUCKET}/${GCS_PREFIX}/${sha}/${name}" \
+              "src/Infrastructure/MedGemma/weights/${name}"
+          done < src/Infrastructure/MedGemma/weights.sha256
+          ( cd src/Infrastructure/MedGemma/weights && sha256sum -c ../weights.sha256 )
 
       - name: Build and push
         id: push
@@ -78,7 +93,6 @@ jobs:
         run: |
           docker build \
             --build-arg MODEL_TAG=${{ steps.model.outputs.tag }} \
-            --build-arg MODEL_DIGEST=${{ steps.model.outputs.digest }} \
             -t "$IMAGE:$TAG" \
             -f src/Infrastructure/MedGemma/Dockerfile .
           docker push "$IMAGE:$TAG"

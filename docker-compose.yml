@@ -61,9 +61,16 @@ services:
       retries: 10
     profiles: ["full"]
 
+  # Registers MedGemma from the vendored weights, the same way the deployed image is built —
+  # `ollama create` from src/Infrastructure/MedGemma/Modelfile, never a registry pull. Run
+  # scripts/fetch-medgemma-weights.sh once first: it fetches the pinned GGUFs into that
+  # directory's weights/ and refuses any bytes that do not match weights.sha256. The client
+  # reads the files and streams them to the server, so only this init container mounts them.
   medgemma-init:
     image: *ollama_image
-    entrypoint: ["/bin/sh", "-c", "OLLAMA_HOST=http://ollama:11434 ollama pull hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"]
+    volumes:
+      - ./src/Infrastructure/MedGemma:/medgemma:ro
+    entrypoint: ["/bin/sh", "-c", "cd /medgemma && OLLAMA_HOST=http://ollama:11434 ollama create medgemma-1.5-4b-it:q4_k_m -f Modelfile"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -109,7 +116,7 @@ services:
       # network (not host.docker.internal), so it no longer depends on Ollama's port being
       # published to the host — which is now loopback-only.
       AI__Private__BaseUrl: "http://ollama:11434"
-      AI__Private__Model: "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M"
+      AI__Private__Model: "medgemma-1.5-4b-it:q4_k_m"
       AI__Private__TimeoutSeconds: "120"
       # Rewrite provider — a plain non-medical model on the same local Ollama instance, used only
       # to rewrite MedGemma's clinical output into caregiver language. Same in-project guarantee

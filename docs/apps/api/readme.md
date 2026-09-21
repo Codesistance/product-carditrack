@@ -263,7 +263,7 @@ X-Rate-Limit-Reset: 2026-08-07T12:01:00.0000000Z
       "MaxOutputTokens": 16000
     },
     "Private": {
-      "Model": "hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M",
+      "Model": "medgemma-1.5-4b-it:q4_k_m",
       "BaseUrl": "http://localhost:11434",
       "TimeoutSeconds": 300,
       "UseIdentityToken": false

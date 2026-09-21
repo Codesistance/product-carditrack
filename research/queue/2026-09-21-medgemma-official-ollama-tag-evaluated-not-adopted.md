@@ -92,8 +92,9 @@ For the record, the official tag's own digest **is** confirmed: `medgemma1.5:4b`
 and its stored manifest hashes to
 `433252621ab154668b5d8be6aff6c1b771bacba045e46e6193da8d6ad1630f2c` — verified on disk twice.
 
-**Decision 2026-09-21: stay on the unsloth tag** until a better alternative exists. This note's
-conclusion therefore stands, but for a firmer reason than when it was written.
+**Decision 2026-09-21: stay on the unsloth weights** — now vendored rather than pulled, see
+`2026-09-21-ollama-ssrf-fix-blocks-medgemma-image-rebuild.md` — until a better alternative
+exists. This note's conclusion therefore stands, but for a firmer reason than when it was written.
 
 ## Question to answer next
 
