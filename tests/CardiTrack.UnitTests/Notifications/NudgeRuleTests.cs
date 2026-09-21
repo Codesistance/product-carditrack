@@ -499,6 +499,53 @@ public class NudgeRuleTests
         Assert.False(new SleepScopeMissingRule().Evaluate(context).HasGap);
     }
 
+    // ---------------------------------------------------------------- EMERGENCY_CONTACT_MISSING
+
+    [Fact]
+    public void EmergencyContactMissing_FiresWhenThereIsNoNumberForSosToDial()
+    {
+        var withNumber = new NudgeContextBuilder().Build();
+        Assert.False(new EmergencyContactMissingRule().Evaluate(withNumber).HasGap);
+
+        var without = new NudgeContextBuilder().NoEmergencyContact().Build();
+        Assert.True(new EmergencyContactMissingRule().Evaluate(without).HasGap);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(2, true)]
+    public void EmergencyContactMissing_LeavesANewMemberAloneForTheFirstDay(int ageDays, bool expected)
+    {
+        // Adding a member and connecting their watch is several screens. A nudge raised while
+        // somebody is still working through them asks for something they are on their way to.
+        var context = new NudgeContextBuilder()
+            .NoEmergencyContact()
+            .MemberCreated(NudgeContextBuilder.Now.AddDays(-ageDays))
+            .Build();
+
+        Assert.Equal(expected, new EmergencyContactMissingRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void EmergencyContactMissing_DoesNotWaitForABaselineTheWayTheNotesDo()
+    {
+        // The notes wait because nothing can read them until there is something to read them
+        // against. A phone number is worth having on day one, and the actions it unlocks are
+        // greyed out until it exists.
+        var learning = new NudgeContextBuilder().NoEmergencyContact().NoBaseline().Build();
+
+        Assert.True(new EmergencyContactMissingRule().Evaluate(learning).HasGap);
+    }
+
+    [Fact]
+    public void EmergencyContactMissing_SendsTheCaregiverToTheFieldItIsAbout()
+    {
+        var verdict = new EmergencyContactMissingRule()
+            .Evaluate(new NudgeContextBuilder().NoEmergencyContact().Build());
+
+        Assert.Contains("#emergencyContact", verdict.ActionDeepLink);
+    }
+
     // ---------------------------------------------------------------- MEDICAL_NOTES_EMPTY
 
     [Fact]
