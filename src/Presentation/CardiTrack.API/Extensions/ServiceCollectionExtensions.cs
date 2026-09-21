@@ -1,4 +1,4 @@
-﻿using AspNetCoreRateLimit;
+using AspNetCoreRateLimit;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.API.Validators;
 using CardiTrack.Application.DTOs.Requests;

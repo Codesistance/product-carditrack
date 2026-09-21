@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Application.DTOs.Responses;
 
 namespace CardiTrack.Application.Interfaces.Services;
 

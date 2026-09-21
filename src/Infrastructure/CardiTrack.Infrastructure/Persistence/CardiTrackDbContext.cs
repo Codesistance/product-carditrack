@@ -1,4 +1,4 @@
-﻿using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace CardiTrack.Infrastructure.Persistence;

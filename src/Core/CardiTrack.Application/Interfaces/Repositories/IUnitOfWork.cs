@@ -1,4 +1,4 @@
-﻿namespace CardiTrack.Application.Interfaces.Repositories;
+namespace CardiTrack.Application.Interfaces.Repositories;
 
 public interface IUnitOfWork : IDisposable
 {

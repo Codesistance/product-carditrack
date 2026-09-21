@@ -1,4 +1,4 @@
-﻿namespace CardiTrack.Application.Services;
+namespace CardiTrack.Application.Services;
 
 /// <summary>
 /// How long a member's Advise observation log is kept.
