@@ -279,8 +279,23 @@
                         Margin="20,20,20,0"
                         IsVisible="False">
                     <VerticalStackLayout Spacing="8">
-                        <Label Text="The longer view"
-                               Style="{StaticResource DashboardSectionTitle}"/>
+                        <!-- Same header block as the member card's two sections: icon, title, and
+                             the line saying what it is, bound at Spacing 2. -->
+                        <VerticalStackLayout Spacing="2">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <Image Grid.Column="0"
+                                       Source="icon_calendar.svg"
+                                       WidthRequest="20" HeightRequest="20"
+                                       VerticalOptions="Start"
+                                       Margin="0,2,0,0"
+                                       AutomationProperties.IsInAccessibleTree="False"/>
+                                <Label Grid.Column="1"
+                                       Text="The longer view"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                            </Grid>
+                            <Label Text="Where things have been heading over recent weeks"
+                                   Style="{StaticResource Compact}"/>
+                        </VerticalStackLayout>
                         <Label x:Name="TrendNarrativeLabel"
                                Style="{StaticResource Body2}"
                                LineBreakMode="WordWrap"/>

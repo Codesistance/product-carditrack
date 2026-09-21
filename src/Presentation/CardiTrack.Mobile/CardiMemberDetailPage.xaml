@@ -386,8 +386,26 @@
                                 Style="{StaticResource ElevatedCard}"
                                 IsVisible="False">
                             <VerticalStackLayout Spacing="10">
-                                <Label Text="How they are doing"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <!-- Title, icon and the line saying what the section is, bound
+                                     together at Spacing 2 so they read as one header block rather
+                                     than as three things 10 apart. The icon is decorative and out
+                                     of the accessibility tree: the title beside it is the header,
+                                     the same arrangement the summary card above uses. -->
+                                <VerticalStackLayout Spacing="2">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <Image Grid.Column="0"
+                                               Source="icon_monitoring.svg"
+                                               WidthRequest="20" HeightRequest="20"
+                                               VerticalOptions="Start"
+                                               Margin="0,2,0,0"
+                                               AutomationProperties.IsInAccessibleTree="False"/>
+                                        <Label Grid.Column="1"
+                                               Text="How they are doing"
+                                               Style="{StaticResource DashboardSectionTitle}"/>
+                                    </Grid>
+                                    <Label Text="How they compare to their own normal"
+                                           Style="{StaticResource Compact}"/>
+                                </VerticalStackLayout>
 
                                 <Label x:Name="InsightSummaryLabel"
                                        Style="{StaticResource Body2}"
@@ -407,14 +425,39 @@
                                          Color="{StaticResource Divider}"
                                          IsVisible="False"/>
 
-                                <Label x:Name="InsightTrendTitleLabel"
-                                       Text="The longer view"
-                                       Style="{StaticResource Body2Dark}"
-                                       IsVisible="False"/>
+                                <!-- The same header block as the section above, at the same
+                                     weight. This was one small dark label where that one is an
+                                     18pt title with an icon, which read as a footnote on the
+                                     first section rather than as the second half of the card. -->
+                                <VerticalStackLayout x:Name="InsightTrendHeader"
+                                                     Spacing="2"
+                                                     IsVisible="False">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <Image Grid.Column="0"
+                                               Source="icon_calendar.svg"
+                                               WidthRequest="20" HeightRequest="20"
+                                               VerticalOptions="Start"
+                                               Margin="0,2,0,0"
+                                               AutomationProperties.IsInAccessibleTree="False"/>
+                                        <Label Grid.Column="1"
+                                               Text="The longer view"
+                                               Style="{StaticResource DashboardSectionTitle}"/>
+                                    </Grid>
+                                    <Label Text="Where things have been heading over recent weeks"
+                                           Style="{StaticResource Compact}"/>
+                                </VerticalStackLayout>
+
                                 <Label x:Name="InsightTrendLabel"
                                        Style="{StaticResource Body2}"
                                        IsVisible="False"
                                        LineBreakMode="WordWrap"/>
+
+                                <!-- The trend's own points. The payload has carried these all
+                                     along (MemberInsightComposer sets TrendFindings from the
+                                     stored trend row) and the card simply never drew them, so
+                                     this half had prose where the half above it had takeaways. -->
+                                <controls:FindingsList x:Name="InsightTrendFindings"
+                                                       IsVisible="False"/>
 
                                 <!-- Says which window the comparison is against, and when it was
                                      written. A reading with no date on it invites a caregiver to

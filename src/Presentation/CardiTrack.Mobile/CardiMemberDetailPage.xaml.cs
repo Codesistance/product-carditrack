@@ -874,9 +874,13 @@ public partial class CardiMemberDetailPage : ContentPage
         InsightFindings.Apply(insight.KeyFindings);
 
         var hasTrend = !string.IsNullOrWhiteSpace(insight.Trend);
-        InsightTrendTitleLabel.IsVisible = hasTrend;
+        InsightTrendHeader.IsVisible = hasTrend;
         InsightTrendLabel.IsVisible = hasTrend;
         InsightTrendLabel.Text = insight.Trend ?? string.Empty;
+
+        // Only alongside a narrative: points under a heading with no account above them would be
+        // the trend half claiming more than it has.
+        InsightTrendFindings.Apply(hasTrend ? insight.TrendFindings : []);
 
         // Only between two halves that are both present — a rule under the last line of a card is
         // a rule with nothing to separate.
