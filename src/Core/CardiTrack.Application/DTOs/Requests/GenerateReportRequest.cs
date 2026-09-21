@@ -17,7 +17,6 @@ public class GenerateReportRequest
     public bool IncludeMetrics { get; init; } = true;
     public bool IncludeTrends { get; init; } = true;
     public bool IncludeAlerts { get; init; } = true;
-    public bool IncludeNotes { get; init; } = false;
     public bool IncludeDevices { get; init; } = false;
     public bool IncludeJournals { get; init; }
     public bool IncludeNotices { get; init; }
