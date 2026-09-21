@@ -17,7 +17,7 @@
     <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
 
         <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
 
                 <controls:SquareBorder x:Name="HeaderIcon"
                         Grid.Column="0"
@@ -58,18 +58,6 @@
                            LineBreakMode="TailTruncation"/>
                 </VerticalStackLayout>
 
-                <!-- The app's one export control (ExportAction), in its header tone. It was a
-                     clipboard glyph in a round button here: the only place in the app where
-                     taking a copy away was offered without a word, so it named itself to a
-                     screen reader and to nobody else — and it sat in the row where the other
-                     round buttons navigate, which is not what this one does. -->
-                <controls:ExportAction x:Name="ExportHit"
-                        Grid.Column="2"
-                        Text="Export"
-                        Tone="Header"
-                        VerticalOptions="Center"
-                        SemanticProperties.Hint="Saves or shares this one entry"
-                        Tapped="OnExportTapped"/>
             </Grid>
         </controls:HeaderBand>
 
@@ -125,7 +113,18 @@
                                 <RoundRectangle CornerRadius="20"/>
                             </Border.StrokeShape>
                             <VerticalStackLayout Spacing="10">
-                                <Grid ColumnDefinitions="*" ColumnSpacing="10">
+                                <!-- The day on one side, the one thing you can do with it on the
+                                     other. Export used to sit up in the header band wearing the
+                                     translucent tone the round navigation buttons use, which made
+                                     the app's single export control look like two different
+                                     controls depending on which screen you were on: the list
+                                     offers "Export Range" in the action gradient, and this offered
+                                     "Export" in header tint. Same control, one tone now.
+
+                                     Down here it also only exists once there is an entry to take
+                                     away — it lives inside ContentPanel, so it is not offered over
+                                     a skeleton or an error, which the header could not avoid. -->
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                                     <VerticalStackLayout Spacing="2">
                                         <Label x:Name="DayLabel"
                                                Style="{StaticResource Heading2}"/>
@@ -134,6 +133,17 @@
                                         <Label x:Name="HeadlineLabel"
                                                Style="{StaticResource Body2Dark}"/>
                                     </VerticalStackLayout>
+
+                                    <!-- No Tone: the page tone is the default, and naming it here
+                                         is how the two screens drifted apart in the first place.
+                                         Top-aligned with the day rather than centred on the whole
+                                         block, so a two-line headline does not drag it down. -->
+                                    <controls:ExportAction x:Name="ExportHit"
+                                            Grid.Column="1"
+                                            Text="Export"
+                                            VerticalOptions="Start"
+                                            SemanticProperties.Hint="Saves or shares this one entry"
+                                            Tapped="OnExportTapped"/>
                                 </Grid>
 
                                 <Label x:Name="TextLabel"
