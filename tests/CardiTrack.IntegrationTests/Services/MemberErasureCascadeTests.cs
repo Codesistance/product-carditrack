@@ -105,6 +105,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.MetricRollupsHourly.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberQuestionnaires.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Set<MemberAdvise>().CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.MemberAdviseObservations.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.Set<MemberInsight>().CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberAiHolds.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.DeviceHistoryRepulls.CountAsync(x => x.CardiMemberId == memberId));
@@ -254,6 +255,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "MemberChatTurns",
             "MemberChatSessions",
             "MemberAdvises",
+            "MemberAdviseObservations",
             "MemberInsights",
             "MetricAlarmStates",
             "MetricAlarms",
@@ -452,6 +454,15 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             CardiMemberId = member.Id,
             Message = "Nothing unusual today.",
             GeneratedAtUtc = DateTime.UtcNow,
+        });
+        db.MemberAdviseObservations.Add(new MemberAdviseObservation
+        {
+            CardiMemberId = member.Id,
+            Topic = AdviseTopic.Activity,
+            Summary = "Steps have been below her usual this week.",
+            Suggestion = "A short walk after lunch is worth trying.",
+            GuidelineCited = "WHO adult activity guidance",
+            ObservedAtUtc = DateTime.UtcNow.AddDays(-3),
         });
         db.MetricAlarms.Add(new MetricAlarm
         {
