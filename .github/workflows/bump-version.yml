@@ -56,11 +56,19 @@ jobs:
 
       - name: Create GitHub Release draft
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next }}
+          PREV_TAG: ${{ steps.version.outputs.current }}
+          RELEASE_NOTES: ${{ inputs.notes }}
         with:
           script: |
-            const tag = '${{ steps.version.outputs.next }}';
-            const prev = '${{ steps.version.outputs.current }}';
-            const notes = `${{ inputs.notes }}`;
+            // Read through env, never string-interpolate ${{ }} into the script
+            // body: inputs.notes is attacker-controlled by anyone who can dispatch
+            // this workflow, and a backtick or ${ in it would otherwise break out
+            // of the literal and execute as code with this job's contents:write token.
+            const tag = process.env.NEXT_TAG;
+            const prev = process.env.PREV_TAG;
+            const notes = process.env.RELEASE_NOTES || '';
 
             let changelog = '';
             if (prev !== 'v0.0.0') {
