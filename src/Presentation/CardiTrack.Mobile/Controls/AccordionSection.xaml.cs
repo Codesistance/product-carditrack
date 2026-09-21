@@ -1,4 +1,5 @@
-﻿namespace CardiTrack.Mobile.Controls;
+﻿using System.Globalization;
+namespace CardiTrack.Mobile.Controls;
 
 /// <summary>
 /// Generic collapsible section — header (title + chevron) toggling an arbitrary
@@ -30,6 +31,60 @@ public partial class AccordionSection : ContentView
     /// The header's type style, for pages whose section titles are not <c>Heading2</c> — the
     /// default this control carries for the dashboard card it was written for.
     /// </summary>
+    /// <summary>
+    /// How many things are folded behind the chevron, drawn as a superscript beside the title.
+    /// Null or zero draws nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The weakness of putting anything behind a chevron is that the chevron says nothing about
+    /// whether opening it is worth doing. A caregiver checking on someone should not have to open
+    /// a section to find out whether there is anything in it.
+    /// </para>
+    /// <para>
+    /// Announced as words rather than as a bare numeral, because a screen reader reading "Trends
+    /// to keep an eye on, 3" leaves the 3 to be guessed at.
+    /// </para>
+    /// </remarks>
+    public int? Count
+    {
+        set
+        {
+            var count = value.GetValueOrDefault();
+            CountBadge.IsVisible = count > 0;
+            CountLabel.Text = count > 0 ? count.ToString(CultureInfo.InvariantCulture) : string.Empty;
+
+            AutomationProperties.SetName(
+                HeaderShell,
+                count switch
+                {
+                    0 => HeaderLabel.Text,
+                    1 => $"{HeaderLabel.Text}, 1 to look at",
+                    _ => $"{HeaderLabel.Text}, {count} to look at",
+                });
+        }
+    }
+
+    /// <summary>
+    /// What colour the count badge takes. Defaults to the neutral ink where a caller sets a count
+    /// without saying what kind of thing it is counting.
+    /// </summary>
+    /// <remarks>
+    /// The caller's, not this control's: a section knows how many things are behind it, but only
+    /// the page filling it knows whether they are things to worry about. Passing the colour keeps
+    /// the badge and whatever the body draws from disagreeing about that.
+    /// </remarks>
+    public Color? CountTint
+    {
+        set => CountBadge.BackgroundColor =
+            value ?? NamedColor("CountBadgeNeutral") ?? Colors.Gray;
+    }
+
+    private static Color? NamedColor(string key) =>
+        Microsoft.Maui.Controls.Application.Current?.Resources.TryGetValue(key, out var found) == true
+            ? found as Color
+            : null;
+
     public Style HeaderStyle
     {
         set => HeaderLabel.Style = value;

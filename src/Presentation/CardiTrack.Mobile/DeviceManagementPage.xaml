@@ -145,14 +145,11 @@
                                            WidthRequest="20" HeightRequest="20"
                                            VerticalOptions="Center"/>
                                 </Grid>
-                                <VerticalStackLayout x:Name="HelpPanel" Spacing="8" IsVisible="False">
-                                    <Label Text="• Make sure the device has synced with its own app recently."
-                                           Style="{StaticResource Body2}"/>
-                                    <Label Text="• Try &quot;Refresh Connection&quot; — it renews the link without reconnecting."
-                                           Style="{StaticResource Body2}"/>
-                                    <Label Text="• Still stuck? Remove the device and connect it again."
-                                           Style="{StaticResource Body2}"/>
-                                </VerticalStackLayout>
+                                <!-- The app's one list of short statements (FindingsList), filled
+                                     from code-behind. Written as three bulleted labels before,
+                                     which is a fourth spelling of a list the onboarding page and
+                                     both insight cards already draw the same way. -->
+                                <controls:FindingsList x:Name="HelpPanel" IsVisible="False"/>
                             </VerticalStackLayout>
                         </Border>
 

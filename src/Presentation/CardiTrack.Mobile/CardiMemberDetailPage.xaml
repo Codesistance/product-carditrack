@@ -304,6 +304,47 @@
                                     <Label x:Name="UrgencyLabel"
                                            Style="{StaticResource Message}"/>
                                 </HorizontalStackLayout>
+
+                                <!-- The detail behind the summary, as the card's own last row.
+                                     It was a card of its own directly beneath this one, which
+                                     gave a metric-by-metric account the same standing as the
+                                     account of the day above it and pushed everything else off
+                                     the fold. As an accordion it is there for the caregiver who
+                                     wants the working, and out of the way of the one who does
+                                     not — which is what AccordionSection is for, and where it
+                                     already sits on the Dashboard's Key Metrics. -->
+                                <controls:AccordionSection x:Name="InsightAccordion"
+                                        HeaderText="Trends to keep an eye on"
+                                        IconSource="icon_trend_watch.svg"
+                                        IsVisible="False">
+                                    <controls:AccordionSection.Body>
+                                        <VerticalStackLayout Spacing="10">
+                                            <!-- No line explaining what the section is. The header
+                                                 names it and now says how much is in it, and a
+                                                 caregiver who has opened it knows what they
+                                                 opened — "How they compare to their own normal"
+                                                 above one sentence was a third line saying what
+                                                 the two below it already said. -->
+                                            <Label x:Name="InsightSummaryLabel"
+                                                   Style="{StaticResource Body2Dark}"
+                                                   IsVisible="False"
+                                                   LineBreakMode="WordWrap"/>
+                                            <!-- One card per metric that moved, each with the
+                                                 figures, what the grade was given on, and an
+                                                 alert on that reading. -->
+                                            <controls:MovementCards x:Name="InsightMovementCards"
+                                                                 IsVisible="False"/>
+
+                                            <!-- The same points as prose, for a row written
+                                                 before the movements were stored alongside them.
+                                                 Only ever one of these two is shown: the cards
+                                                 say what the bullets say, with the figures the
+                                                 bullets had to leave out. -->
+                                            <controls:FindingsList x:Name="InsightFindings"
+                                                                   IsVisible="False"/>
+                                        </VerticalStackLayout>
+                                    </controls:AccordionSection.Body>
+                                </controls:AccordionSection>
                             </VerticalStackLayout>
                         </Border>
 
@@ -373,6 +414,65 @@
                                        FontSize="12"
                                        TextColor="{StaticResource MutedText}"
                                        LineBreakMode="WordWrap"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- How this member reads against their own learned normal, and — once
+                             there is a month behind them — which way it has been going. Both
+                             halves in one card because a caregiver reads them together: either
+                             alone invites them to supply the other from imagination. Written by
+                             the pipeline, served from a row, so opening this page never waits on
+                             a model. -->
+                        <Border x:Name="InsightCard"
+                                Style="{StaticResource ElevatedCard}"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <!-- Icon, title and the line saying what the section is, bound at
+                                     Spacing 2 so they read as one header block rather than as
+                                     three things 10 apart. The icon is decorative and out of the
+                                     accessibility tree: the title beside it is the header, the
+                                     same arrangement the summary card above uses. -->
+                                <VerticalStackLayout x:Name="InsightTrendHeader"
+                                                     Spacing="2"
+                                                     IsVisible="False">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                        <Image Grid.Column="0"
+                                               Source="icon_monitoring.svg"
+                                               WidthRequest="20" HeightRequest="20"
+                                               VerticalOptions="Start"
+                                               Margin="0,2,0,0"
+                                               AutomationProperties.IsInAccessibleTree="False"/>
+                                        <Label Grid.Column="1"
+                                               Text="The longer view"
+                                               Style="{StaticResource DashboardSectionTitle}"/>
+                                    </Grid>
+                                    <Label Text="Where things have been heading over recent weeks"
+                                           Style="{StaticResource Compact}"/>
+                                </VerticalStackLayout>
+
+                                <!-- Message ink, like the day's account in the card above. Both
+                                     are prose a caregiver reads for its content; Body2's grey is
+                                     for copy that annotates something else, and it made the two
+                                     paragraphs that are the point of this screen the palest thing
+                                     on it — which is the note Body2Dark already carries. -->
+                                <Label x:Name="InsightTrendLabel"
+                                       Style="{StaticResource Body2Dark}"
+                                       IsVisible="False"
+                                       LineBreakMode="WordWrap"/>
+
+                                <!-- The trend's own points. The payload has carried these all
+                                     along (MemberInsightComposer sets TrendFindings from the
+                                     stored trend row) and the card simply never drew them, so
+                                     this half had prose where the half above it had takeaways. -->
+                                <controls:FindingsList x:Name="InsightTrendFindings"
+                                                       IsVisible="False"/>
+
+                                <!-- Says which window the comparison is against, and when it was
+                                     written. A reading with no date on it invites a caregiver to
+                                     treat last week's picture as this morning's. -->
+                                <Label x:Name="InsightGeneratedLabel"
+                                       Style="{StaticResource Caption}"
+                                       IsVisible="False"/>
                             </VerticalStackLayout>
                         </Border>
 

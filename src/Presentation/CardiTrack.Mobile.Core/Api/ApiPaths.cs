@@ -33,6 +33,12 @@ internal static class ApiPaths
     public static string CurrentStatus(Guid cardiMemberId) => $"api/v1/insights/members/{cardiMemberId}/status";
     public static string Digest(Guid cardiMemberId) => $"api/v1/insights/members/{cardiMemberId}/digest";
     public static string Advise(Guid cardiMemberId) => $"api/v1/insights/members/{cardiMemberId}/advise";
+
+    /// <summary>
+    /// The longer view — where this member's readings have been going over the weeks. Served from
+    /// a row the daily trend pass writes, so it costs a lookup rather than a model call.
+    /// </summary>
+    public static string Trend(Guid cardiMemberId) => $"api/v1/insights/members/{cardiMemberId}/trend";
     public static string Alert(Guid alertId) => $"api/v1/alerts/{alertId}";
 
     public static string CurrentMemberChatSession(Guid cardiMemberId) =>

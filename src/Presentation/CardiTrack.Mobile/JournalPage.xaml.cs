@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Export;
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
@@ -304,6 +305,8 @@ public partial class JournalPage : ContentPage
             return;
 
         _memberId = _members[index].Id;
+        // Before the reload, not during it: the card belongs to the member leaving the screen.
+        ClearTrend();
         _memberFirstName = NameFormatting.FirstName(_members[index].Name);
         ChatBot.MemberId = _memberId;
         ChatBot.MemberFirstName = _memberFirstName;
@@ -324,6 +327,109 @@ public partial class JournalPage : ContentPage
     {
         _lastReviews = null;
         return LoadAsync(force: true);
+    }
+
+    /// <summary>
+    /// The current trend narrative, above the books. Best-effort: a member with under a month of
+    /// readings has none to show, and a failure here leaves the card hidden rather than saying
+    /// anything about it — the tab's job is the books.
+    /// </summary>
+    /// <summary>Whose narrative the card is currently showing, if any.</summary>
+    private Guid _trendMemberId;
+
+    /// <summary>
+    /// Takes the card down, for when the selection moves off the member it belongs to.
+    /// </summary>
+    /// <remarks>
+    /// Called at the moment the member changes rather than at the start of the next trend load:
+    /// the journal load in between can return early — superseded, or nothing to show and a
+    /// failure — and never reach the trend call at all, leaving the previous member's card up
+    /// over the new member's books for as long as the tab is open.
+    /// </remarks>
+    private void ClearTrend()
+    {
+        _trendMemberId = Guid.Empty;
+        TrendCard.IsVisible = false;
+    }
+
+    private async Task LoadTrendAsync(Guid memberId, LoadTicket ticket)
+    {
+        TrendInsightResponse? trend;
+        try
+        {
+            // The ticket's token, like every other read this load makes. Without it a superseded
+            // trend request ran to completion, so flipping between members or cadences left a
+            // queue of network and database work nothing would ever read — which is the exact
+            // thing LoadGate hands out a token to prevent.
+            trend = await _api.GetTrendAsync(memberId, ticket.Token);
+        }
+        catch (ApiException ex) when (ex.IsNetworkFailure)
+        {
+            // Transport failure only, which is what IsNetworkFailure is for. A tab opened without
+            // a connection still shows the last longer view rather than dropping it.
+            trend = await PeekTrendSafelyAsync(memberId, ticket.Token);
+        }
+        catch (Exception)
+        {
+            // Every HTTP answer the server actually gave — a 403 after the caregiver's access to
+            // this member was withdrawn among them — leaves the card out rather than reaching for
+            // the copy on disk. Serving a cached narrative past a withheld answer would undo the
+            // server's decision from the device; the client evicts it on a 403 besides.
+            trend = null;
+        }
+
+        // Checked after the awaits, not before: the whole risk is a slower call for the member the
+        // caregiver has already navigated away from landing on the one they are looking at now.
+        // The member is checked as well as the ticket, because the two can disagree — a load can
+        // still be current while the selection underneath it has moved on.
+        if (!_gate.IsCurrent(ticket) || memberId != _memberId)
+            return;
+
+        RenderTrend(memberId, trend);
+    }
+
+    private async Task<TrendInsightResponse?> PeekTrendSafelyAsync(Guid memberId, CancellationToken ct)
+    {
+        try
+        {
+            return await _api.PeekTrendAsync(memberId, ct);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Shows <paramref name="trend"/> as belonging to <paramref name="memberId"/>, and remembers
+    /// whose it is.
+    /// </summary>
+    /// <remarks>
+    /// The card is one surface above a list that changes member underneath it, so what is on it
+    /// has to be attributable. Without that, selecting a second member while the first's card was
+    /// up left the first's narrative sitting above the second's books until something replaced it
+    /// — and if the new load was superseded or failed before reaching the trend call, nothing ever
+    /// did. One person's readings under another person's name is the worst thing this screen can
+    /// do, so the card is cleared the moment the selection moves and only ever rendered for the
+    /// member it was fetched for.
+    /// </remarks>
+    private void RenderTrend(Guid memberId, TrendInsightResponse? trend)
+    {
+        _trendMemberId = memberId;
+
+        var hasNarrative = trend is not null && !string.IsNullOrWhiteSpace(trend.Narrative);
+        TrendCard.IsVisible = hasNarrative;
+        if (!hasNarrative)
+            return;
+
+        TrendNarrativeLabel.Text = trend!.Narrative;
+
+        TrendFindings.Apply(trend.KeyFindings);
+
+        // Dated, because a narrative about "the last few weeks" with no date on it invites a
+        // caregiver to read a fortnight-old picture as this morning's.
+        TrendGeneratedLabel.IsVisible = true;
+        TrendGeneratedLabel.Text = RelativeTime.Format(trend.GeneratedAt.UtcDateTime);
     }
 
     /// <param name="force">
@@ -425,6 +531,12 @@ public partial class JournalPage : ContentPage
                     SetState(error: true);
                     return;
             }
+
+            // The longer view rides the same load but never gates it: the books are what this tab
+            // is for, and a trend lookup that fails should cost the card, not the list. It carries
+            // the load's ticket, though — a caregiver who switches member mid-flight must not have
+            // the previous member's narrative land on the new one's tab.
+            await LoadTrendAsync(memberId, ticket);
 
             if (outcome.IsFresh)
                 _lastLoadedUtc = DateTime.UtcNow;

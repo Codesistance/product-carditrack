@@ -695,6 +695,120 @@ public class CardiTrackApiClientTests
         Assert.True(ex.IsSessionExpired);
     }
 
+    /// <summary>
+    /// A read already in flight when a mutation evicts its key must not put the answer back.
+    /// </summary>
+    /// <remarks>
+    /// Pausing monitoring evicts this member's stored interpretations, because they stop being
+    /// true the moment the watching stops. A trend GET already in flight when the pause lands
+    /// would otherwise return afterwards and save the pre-pause narrative straight back into the
+    /// key the pause had just cleared — and the Journal, which falls back to the cache, would then
+    /// show a reading of monitoring that is no longer running. The request was never cancelled, so
+    /// checking the token at save time cannot catch it: it simply began in a world the mutation
+    /// has since left.
+    /// </remarks>
+    [Fact]
+    public async Task Get_DoesNotRepopulateAKeyEvictedWhileItWasInFlight()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        var memberId = Guid.NewGuid();
+
+        // The trend GET is held open inside its response factory, so the pause below lands while
+        // it is still outstanding — the race as it happens on a device, made deterministic.
+        // Started on a pool thread: the fake handler has nothing to await before the factory, so
+        // blocking in it would otherwise block the caller and the pause would never run.
+        var started = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        http.Enqueue(_ =>
+        {
+            started.TrySetResult();
+            release.Task.GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {"success":true,"message":"ok","data":{"cardiMemberId":"11111111-1111-1111-1111-111111111111",
+                     "narrative":"Written before the pause.","keyFindings":[],
+                     "generatedAt":"2026-08-01T00:00:00Z"},"timestamp":"2026-08-01T00:00:00Z"}
+                    """,
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+        });
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"isPaused":true},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+
+        var inFlight = Task.Run(() => client.GetTrendAsync(memberId));
+        await started.Task;
+
+        await client.PauseMonitoringAsync(memberId, new PauseMonitoringRequest());
+        release.SetResult();
+        await inFlight;
+
+        // The caller still gets its answer — the read is not cancelled, only barred from caching.
+        Assert.False(cache.Items.ContainsKey($"api/v1/insights/members/{memberId}/trend"));
+    }
+
+    /// <summary>
+    /// One key's eviction must not stop a different key caching.
+    /// </summary>
+    /// <remarks>
+    /// The first cut of the in-flight guard counted evictions for the whole client, which looked
+    /// equivalent and was not. A 404 evicts the path that returned it, and the cache warmer
+    /// fetches a member's screens together — so a member with no digest yet produced one expected
+    /// miss that barred every other read in the batch from saving, and the warm silently did
+    /// nothing. `OfflineCacheWarmerTests.OneFailedRead_DoesNotStopTheOthers` caught it.
+    /// </remarks>
+    [Fact]
+    public async Task Get_StillCachesWhenADifferentKeyWasEvictedMeanwhile()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        var memberId = Guid.NewGuid();
+
+        // A 404 on one path evicts that path.
+        http.Enqueue(HttpStatusCode.NotFound, """
+            {"success":false,"message":"none","timestamp":"2026-08-01T00:00:00Z"}
+            """);
+        await Assert.ThrowsAsync<ApiException>(() => client.GetDigestAsync(memberId));
+
+        // A different path, read afterwards, is untouched by it.
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"cardiMemberId":"11111111-1111-1111-1111-111111111111",
+             "narrative":"Still cacheable.","keyFindings":[],"generatedAt":"2026-08-01T00:00:00Z"},
+             "timestamp":"2026-08-01T00:00:00Z"}
+            """);
+        await client.GetTrendAsync(memberId);
+
+        Assert.True(cache.Items.ContainsKey($"api/v1/insights/members/{memberId}/trend"));
+    }
+
+    [Fact]
+    public async Task Get_StillCachesAReadThatBeganAfterTheEviction()
+    {
+        // The counterpart: barring the racing read must not bar every later one, or pausing once
+        // would leave this member uncacheable for the life of the client.
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        var memberId = Guid.NewGuid();
+
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"isPaused":true},"timestamp":"2026-08-01T00:00:00Z"}
+            """);
+        await client.PauseMonitoringAsync(memberId, new PauseMonitoringRequest());
+
+        http.Enqueue(HttpStatusCode.OK, """
+            {"success":true,"message":"ok","data":{"cardiMemberId":"11111111-1111-1111-1111-111111111111",
+             "narrative":"Written after.","keyFindings":[],"generatedAt":"2026-08-01T00:00:00Z"},
+             "timestamp":"2026-08-01T00:00:00Z"}
+            """);
+        await client.GetTrendAsync(memberId);
+
+        Assert.True(cache.Items.ContainsKey($"api/v1/insights/members/{memberId}/trend"));
+    }
+
     [Fact]
     public async Task Get_WritesTheEnvelopeToTheOfflineCache()
     {

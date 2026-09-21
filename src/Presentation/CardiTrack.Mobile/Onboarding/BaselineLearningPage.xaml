@@ -52,16 +52,16 @@
 
                 <VerticalStackLayout Spacing="12" Margin="0,18,0,0">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                        <Image Source="icon_action_check.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
-                        <Label Grid.Column="1" Text="When they usually wake up and go to sleep" Style="{StaticResource Body2Medium}" FontSize="15"/>
+                        <Image Source="icon_check_disc.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
+                        <Label Grid.Column="1" Text="When they usually wake up and go to sleep" Style="{StaticResource Body2Medium}"/>
                     </Grid>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                        <Image Source="icon_action_check.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
-                        <Label Grid.Column="1" Text="How active they are day to day" Style="{StaticResource Body2Medium}" FontSize="15"/>
+                        <Image Source="icon_check_disc.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
+                        <Label Grid.Column="1" Text="How active they are day to day" Style="{StaticResource Body2Medium}"/>
                     </Grid>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                        <Image Source="icon_action_check.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
-                        <Label Grid.Column="1" Text="What their resting heart rate looks like" Style="{StaticResource Body2Medium}" FontSize="15"/>
+                        <Image Source="icon_check_disc.svg" WidthRequest="20" HeightRequest="20" VerticalOptions="Start" Margin="0,2,0,0"/>
+                        <Label Grid.Column="1" Text="What their resting heart rate looks like" Style="{StaticResource Body2Medium}"/>
                     </Grid>
                 </VerticalStackLayout>
 

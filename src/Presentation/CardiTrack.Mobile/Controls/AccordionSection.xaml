@@ -28,10 +28,42 @@
                        VerticalOptions="Center"
                        IsVisible="False"/>
 
-                <Label x:Name="HeaderLabel"
-                       Grid.Column="1"
-                       Style="{StaticResource Body1SemiBoldDark}"
-                       VerticalTextAlignment="Center"/>
+                <!-- Title and count in one stack so the count hangs off the end of the words
+                     rather than off the end of the column: the label takes only the width it
+                     needs, and the count follows it. CountLabel is top-aligned against a
+                     centred title, which is what makes it read as a superscript — MAUI spans
+                     carry no baseline offset, so the raise has to come from layout. -->
+                <HorizontalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                    <Label x:Name="HeaderLabel"
+                           Style="{StaticResource Body1SemiBoldDark}"
+                           VerticalOptions="Center"
+                           VerticalTextAlignment="Center"/>
+
+                    <!-- A filled disc rather than a raised numeral. As a bare superscript it
+                         was 11px of colour against a 16px semibold title and had to be looked
+                         for; on a disc it is read at a glance, which is the whole point of
+                         putting a count on a collapsed section. Centred on the title's line,
+                         because a circle hanging above the text reads as a misalignment rather
+                         than as a superscript. -->
+                    <Border x:Name="CountBadge"
+                            WidthRequest="20"
+                            HeightRequest="20"
+                            Margin="5,0,4,0"
+                            Padding="0"
+                            StrokeThickness="0"
+                            VerticalOptions="Center"
+                            IsVisible="False">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="10"/>
+                        </Border.StrokeShape>
+                        <Label x:Name="CountLabel"
+                               FontFamily="QuicksandSemiBold"
+                               FontSize="11"
+                               TextColor="{StaticResource White}"
+                               HorizontalTextAlignment="Center"
+                               VerticalTextAlignment="Center"/>
+                    </Border>
+                </HorizontalStackLayout>
 
                 <Image x:Name="ChevronIcon"
                        Grid.Column="2"

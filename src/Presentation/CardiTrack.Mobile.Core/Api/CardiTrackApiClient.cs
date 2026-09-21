@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
@@ -142,6 +143,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
             ApiPaths.CurrentStatus(cardiMemberId),
             ApiPaths.Digest(cardiMemberId),
             ApiPaths.Advise(cardiMemberId),
+            ApiPaths.Trend(cardiMemberId),
             ApiPaths.Questionnaires(cardiMemberId, null, DefaultQuestionnairePage, DefaultQuestionnairePageSize),
             ApiPaths.Alerts(null, null, null, null, null, cardiMemberId),
             ApiPaths.CardiMembers,
@@ -267,6 +269,29 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         PeekAsync<AdviseResponse>(ApiPaths.Advise(cardiMemberId), ct);
 
     /// <summary>
+    /// The stored trend narrative. A 403 evicts the cached copy on the way out: the caregiver's
+    /// access to this member has been withdrawn, and the narrative is health content about
+    /// someone they may no longer see. Leaving it in the cache would let the next open without a
+    /// connection render it from disk, which is the withdrawal undone by the offline path.
+    /// </summary>
+    public async Task<TrendInsightResponse> GetTrendAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        try
+        {
+            return await GetAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            await EvictAsync(ApiPaths.Trend(cardiMemberId));
+            throw;
+        }
+    }
+
+    public Task<TrendInsightResponse?> PeekTrendAsync(Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<TrendInsightResponse>(ApiPaths.Trend(cardiMemberId), ct);
+
+    /// <summary>
     /// The first page of a member's questions as every screen asks for it — the detail screen's
     /// call takes the defaults, and the questionnaires screen's own constant matches them.
     /// </summary>
@@ -274,11 +299,37 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     private const int DefaultQuestionnairePageSize = OfflineReadDefaults.QuestionnairePageSize;
 
     /// <summary>The keys a change to one member's profile or monitoring state makes stale.</summary>
+    /// <summary>
+    /// How many times each key has been evicted in this client's lifetime.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Per key rather than one count for the client, and the difference is not academic: a 404
+    /// evicts the path that returned it, and <c>OfflineCacheWarmer</c> fetches a member's screens
+    /// together. A single expected miss in that batch — a member with no digest yet — would bar
+    /// every other read running beside it from caching, and the warm would silently do nothing.
+    /// A test caught exactly that.
+    /// </para>
+    /// <para>
+    /// Concurrent because a GET and a mutation reach this from different threads by design. It
+    /// grows with the distinct keys evicted in one client's life, which is bounded by the paths
+    /// the app can spell.
+    /// </para>
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, int> _evictions = new(StringComparer.Ordinal);
+
+    private int EvictionsOf(string path) => _evictions.TryGetValue(path, out var count) ? count : 0;
+
     private static string[] MemberProfileKeys(Guid cardiMemberId) =>
     [
         ApiPaths.CardiMember(cardiMemberId),
         ApiPaths.Dashboard(cardiMemberId),
         ApiPaths.CardiMembers,
+        // The stored interpretations, because pausing monitoring is exactly when they stop being
+        // true. The server withholds them for a paused member, but the Journal tab falls back to
+        // its cached copy when a request fails, and a cached pre-pause narrative would then be
+        // rendered for monitoring that has stopped — the suppression undone by the cache.
+        ApiPaths.Trend(cardiMemberId),
     ];
 
     /// <summary>
@@ -870,6 +921,18 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         // land in the next caregiver's cache. A non-null token at save time is not enough —
         // the next session may already be signed in.
         var generation = _session?.Current ?? 0;
+
+        // And the same guard against a mutation rather than a sign-out. Pausing monitoring evicts
+        // this member's stored interpretations because they stop being true; a read that started
+        // before the pause and returns after it would put the pre-pause narrative straight back,
+        // and the Journal would show it for monitoring that has stopped. Checking the token at
+        // save time cannot catch this — the request was never cancelled, it simply began in a
+        // world the mutation has since left.
+        //
+        // Per key, not a count of all evictions. A 404 evicts the path it was asked for, and the
+        // warmer fetches a member's screens together — so one expected miss among them would
+        // otherwise bar every other read in the batch from caching and quietly undo the warm.
+        var evictions = EvictionsOf(path);
         HttpResponseMessage response;
         try
         {
@@ -902,7 +965,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
         // A null-data success is an answer, but not one worth caching: TryReadCacheAsync would
         // only reject the entry as unreadable on the way back out, one warning per offline read.
-        if (value is not null && cache)
+        if (value is not null && cache && EvictionsOf(path) == evictions)
             await TrySaveCacheAsync(path, body, generation, ct);
         return value;
     }
@@ -1080,6 +1143,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// </summary>
     private async Task EvictAsync(params string[] keys)
     {
+        // Counted per key, before the removals: a read that returns while this is still deleting
+        // has also raced the mutation and must not be allowed to save either.
+        foreach (var key in keys)
+            _evictions.AddOrUpdate(key, 1, static (_, count) => count + 1);
+
         if (_cache is null)
             return;
 

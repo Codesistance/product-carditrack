@@ -323,6 +323,23 @@
         <Setter Property="Padding" Value="24,0"/>
     </Style>
 
+    <!-- The action on a card that is one of several. An outlined blue pill was the first try
+         and it was wrong twice over: at 52 high with 16px type it outweighed the sentence it
+         belonged to, and repeated down a stack of cards the border made every card look like a
+         form. This is the quick-action tint the dashboard already uses for a quiet blue action,
+         with no border at all — the tint is the affordance — at a corner that matches the card
+         around it rather than a page-footer pill. -->
+    <Style x:Key="CardActionButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource QuickActionTint}"/>
+        <Setter Property="TextColor" Value="{StaticResource PrimaryDark}"/>
+        <Setter Property="FontFamily" Value="QuicksandSemiBold"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="CornerRadius" Value="10"/>
+        <Setter Property="HeightRequest" Value="34"/>
+        <Setter Property="BorderWidth" Value="0"/>
+        <Setter Property="Padding" Value="14,0"/>
+    </Style>
+
     <!-- The secondary button for an action that stops something: leaving, disconnecting,
          ending. Same shape and weight as SecondaryOutlineButton — it is still the quieter of
          two choices — but in the red of the banner that follows it, so the button and its
