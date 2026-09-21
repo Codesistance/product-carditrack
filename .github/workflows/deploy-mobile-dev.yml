@@ -83,19 +83,19 @@ jobs:
           echo "android=$ANDROID" >> "$GITHUB_OUTPUT"
           echo "ios=$IOS"         >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
       - run: python -m pip install 'pyjwt[crypto]==2.13.0'
 
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ needs.env.outputs.gcp_wif_provider }}
           service_account: ${{ needs.env.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       # An explicit tag must carry every requested platform's build. With no tag
       # given, the newest v* tag that does is used — CI / Deploy Apps → Dev tags
@@ -297,11 +297,11 @@ jobs:
     outputs:
       pushed: ${{ steps.upload.outcome == 'success' }}
     steps:
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ needs.resolve.outputs.gcp_wif_provider }}
           service_account: ${{ needs.resolve.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Check Play Console secrets
         id: gate
@@ -319,7 +319,7 @@ jobs:
             echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: google-github-actions/get-secretmanager-secrets@v3
+      - uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3
         if: steps.gate.outputs.available == 'true'
         id: secrets
         with:
@@ -356,7 +356,7 @@ jobs:
       - name: Upload to Play Console (internal track)
         id: upload
         if: steps.gate.outputs.available == 'true'
-        uses: r0adkll/upload-google-play@v1
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
         with:
           serviceAccountJsonPlainText: ${{ steps.secrets.outputs.play_key }}
           packageName: com.codesistance.carditrack.mobile
@@ -393,19 +393,19 @@ jobs:
       # Only here for .github/scripts/testflight-release-notes.py and the bundle
       # id it reads from the csproj — at the tag being pushed, since an older
       # tag's project may not match today's main.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ needs.resolve.outputs.tag }}
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.13'
       - run: python -m pip install 'pyjwt[crypto]==2.13.0'
 
-      - uses: google-github-actions/auth@v3
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ needs.resolve.outputs.gcp_wif_provider }}
           service_account: ${{ needs.resolve.outputs.gcp_service_account }}
-      - uses: google-github-actions/setup-gcloud@v3
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
 
       - name: Check App Store Connect API secrets
         id: gate
@@ -426,7 +426,7 @@ jobs:
             echo "available=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: google-github-actions/get-secretmanager-secrets@v3
+      - uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3
         if: steps.gate.outputs.available == 'true'
         id: secrets
         with:
@@ -461,7 +461,7 @@ jobs:
       - name: Upload to TestFlight
         id: upload
         if: steps.gate.outputs.available == 'true'
-        uses: apple-actions/upload-testflight-build@v5
+        uses: apple-actions/upload-testflight-build@1fc69ca369a60b813eaaa2d936eda22794b52e17 # v5
         with:
           app-path: ${{ steps.ipa.outputs.path }}
           issuer-id: ${{ steps.secrets.outputs.issuer_id }}
