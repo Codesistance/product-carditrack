@@ -320,6 +320,18 @@ A short, empathetic line describing the member's current status — what the das
 
 **Priority:** P1 | **Auth Required:** Yes
 
+## GET `/api/v1/insights/members/{id}/advise/observations` — implemented
+
+What the Advise pass has noticed about this member over a window, newest first — the dated record behind the single current suggestion `.../advise` serves, for a caregiver going into an appointment. Read-only, no model call.
+
+`?from=` / `?to=` bound the window as instants (`to` exclusive). `from` is clamped to the retention horizon and `to` to now, and **the response repeats the window it actually served** (`from` / `to`) so a client never has to assume it got what it asked for. An inverted or empty window returns an empty list rather than a **400**: the caller asked what happened between two instants, and "nothing" is the true answer for a window containing no time. At most 200 entries come back; `truncated: true` says when there were more, so a report never silently drops the older half of a year.
+
+An entry is written only when a pass says something **different** from that topic's last one — judged against the log's own newest entry for that topic, not against the current suggestion, which disagrees with it whenever a topic went quiet and came back. The read additionally drops an entry that repeats the one before it *for the same topic*, so the contract holds even if two generation passes overlap and both decide a finding is new before either commits. A finding that returns after a different one is kept: that recurrence is the thing worth pointing at. An empty list is an ordinary answer — a member whose readings held steady has nothing logged.
+
+Entries are kept **365 days** (`AdviseObservationRetention.Period`, swept by `RetentionWorker`; see [dpia.md](../../../compliance/dpia.md) §6.3). Unlike `.../advise`, a **paused** member's record is still served: what was noticed in March was noticed in March, and a pause today does not make it untrue. Access is checked either way.
+
+**Priority:** P1 | **Auth Required:** Yes
+
 ---
 
 ## GET `/api/v1/cardimembers/{id}/health/summary`

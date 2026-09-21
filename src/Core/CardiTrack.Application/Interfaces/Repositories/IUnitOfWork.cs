@@ -31,6 +31,7 @@ public interface IUnitOfWork : IDisposable
     IMemberChatTurnUsageRepository MemberChatTurnUsages { get; }
     IMemberStatusLineRepository MemberStatusLines { get; }
     IMemberAdviseRepository MemberAdvises { get; }
+    IMemberAdviseObservationRepository MemberAdviseObservations { get; }
     IMemberInsightRepository MemberInsights { get; }
     IReportRepository Reports { get; }
     IExportConsentRepository ExportConsents { get; }

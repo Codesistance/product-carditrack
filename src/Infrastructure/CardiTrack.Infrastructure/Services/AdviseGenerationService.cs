@@ -311,6 +311,12 @@ public class AdviseGenerationService
         if (incoming.Count == 0 && removals.Count == 0)
             return;
 
+        // The dated record, appended in the same SaveChanges as the guidance it came from — see
+        // MemberAdviseObservation. Judged against the log's own last entry per topic, not against
+        // the advise row about to be overwritten: see StageObservationsAsync for the two cases
+        // where those two disagree.
+        var stagedObservations = await StageObservationsAsync(cardiMemberId, incoming, utcNow, ct);
+
         var staged = new List<MemberAdvise>();
         foreach (var (topic, (summary, suggestion, guideline)) in incoming)
         {
@@ -351,6 +357,14 @@ public class AdviseGenerationService
                 _unitOfWork.MemberAdvises.Remove(insert);
 
             var winners = await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId);
+
+            // The observations staged above were judged before the concurrent pass committed, so
+            // "this says something new" was answered without its entries in view. Dropped and
+            // re-asked against the log as it now stands — which includes whatever that pass
+            // wrote — so this one does not restate what it has already recorded.
+            foreach (var observation in stagedObservations)
+                _unitOfWork.MemberAdviseObservations.Remove(observation);
+            await StageObservationsAsync(cardiMemberId, incoming, utcNow, ct);
             foreach (var (topic, (summary, suggestion, guideline)) in incoming)
             {
                 var winner = winners.FirstOrDefault(r => r.Topic == topic);
@@ -490,6 +504,70 @@ public class AdviseGenerationService
         advise.PromptVersion = CurrentPromptVersion;
         advise.UpdatedDate = utcNow;
     }
+
+    /// <summary>
+    /// Stages a dated entry for every topic this pass says something new about, and returns what
+    /// it staged so a caller recovering from a lost insert race can withdraw them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "New" is judged on the summary — what was noticed — not the suggestion. Two passes can
+    /// reach the same observation and word the action differently, and logging that as a fresh
+    /// entry would fill the record with the same finding restated.
+    /// </para>
+    /// <para>
+    /// Compared against the <em>log's</em> newest entry for the topic, not against the
+    /// <see cref="MemberAdvise"/> row this pass is about to overwrite. The two disagree in two
+    /// cases, and both produce a duplicate line in a record whose whole value is that every line
+    /// is a change. A topic whose advise row was withdrawn on a silent pass and came back on a
+    /// later one has no row to compare against, so the same sentence reads as new — no
+    /// concurrency needed. And two passes running together both read the same pre-update row,
+    /// while only one of them can have written the newest log entry.
+    /// </para>
+    /// <para>
+    /// Staged, not saved. These rows go out with the guidance they describe in the caller's single
+    /// SaveChanges, so a pass can never leave the log claiming something the card never said.
+    /// </para>
+    /// </remarks>
+    private async Task<List<MemberAdviseObservation>> StageObservationsAsync(
+        Guid cardiMemberId,
+        IReadOnlyDictionary<AdviseTopic, (string Summary, string Suggestion, string Guideline)> incoming,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        var staged = new List<MemberAdviseObservation>();
+        var logged = await _unitOfWork.MemberAdviseObservations.GetLatestPerTopicAsync(cardiMemberId, ct);
+
+        foreach (var (topic, (summary, suggestion, guideline)) in incoming)
+        {
+            var last = logged.FirstOrDefault(o => o.Topic == topic);
+            if (last is not null && SaysTheSameThing(last.Summary, summary))
+                continue;
+
+            var observation = new MemberAdviseObservation
+            {
+                CardiMemberId = cardiMemberId,
+                Topic = topic,
+                Summary = summary,
+                Suggestion = suggestion,
+                GuidelineCited = guideline,
+                ObservedAtUtc = utcNow,
+            };
+
+            staged.Add(observation);
+            await _unitOfWork.MemberAdviseObservations.AddAsync(observation);
+        }
+
+        return staged;
+    }
+
+    /// <summary>
+    /// Whether two summaries are the same observation. Trimmed and case-insensitive: a model that
+    /// recapitalises its own sentence has not noticed anything new, and an entry saying so would
+    /// be noise in a record whose whole value is that every line in it is a change.
+    /// </summary>
+    private static bool SaysTheSameThing(string? previous, string current) =>
+        string.Equals(previous?.Trim(), current.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Quiet hours for the caregiver <see cref="MemberAnchorTimeZone"/> actually anchored to —

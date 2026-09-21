@@ -29,6 +29,8 @@ public class AdviseGenerationServiceTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IMemberAdviseRepository _advises = Substitute.For<IMemberAdviseRepository>();
+    private readonly IMemberAdviseObservationRepository _observations =
+        Substitute.For<IMemberAdviseObservationRepository>();
 
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
@@ -42,6 +44,7 @@ public class AdviseGenerationServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.MemberAdvises.Returns(_advises);
+        _unitOfWork.MemberAdviseObservations.Returns(_observations);
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.NotificationPreferences.Returns(_prefs);
@@ -156,6 +159,121 @@ public class AdviseGenerationServiceTests
         private readonly DateTimeOffset _utc;
         public FrozenTimeProvider(DateTimeOffset utc) => _utc = utc;
         public override DateTimeOffset GetUtcNow() => _utc;
+    }
+
+    // ── observation log ─────────────────────────────────────────────────────────
+
+    /// <summary>The resolved copy the rewrite slot's default answer produces, once the name and
+    /// pronoun tokens are filled in — what a stored row actually holds.</summary>
+    private const string ResolvedSummary = "Steps have been below her usual this week.";
+
+    [Fact]
+    public async Task ANewlyNoticedTopic_IsLoggedAsAnObservation()
+    {
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received(1).AddAsync(Arg.Is<MemberAdviseObservation>(o =>
+            o.CardiMemberId == _memberId
+            && o.Topic == AdviseTopic.Activity
+            && o.Summary == ResolvedSummary
+            && o.Suggestion == "A short walk after lunch is worth trying."
+            && o.GuidelineCited == "WHO adult activity guidance"));
+    }
+
+    /// <summary>The log's own last word for a topic — what a fresh observation is judged against.</summary>
+    private void AlreadyLogged(string summary, AdviseTopic topic = AdviseTopic.Activity) =>
+        _observations.GetLatestPerTopicAsync(_memberId, Arg.Any<CancellationToken>()).Returns(
+            [
+                new MemberAdviseObservation
+                {
+                    CardiMemberId = _memberId,
+                    Topic = topic,
+                    Summary = summary,
+                    Suggestion = "A short walk after lunch is worth trying.",
+                    ObservedAtUtc = DateTime.UtcNow.AddDays(-1),
+                },
+            ]);
+
+    [Fact]
+    public async Task AChangedObservation_IsLoggedBesideTheRowItReplaces()
+    {
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns([ExistingRow(_memberId)]);
+        AlreadyLogged("Sleep was shorter than usual.");
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received(1).AddAsync(Arg.Is<MemberAdviseObservation>(o =>
+            o.Summary == ResolvedSummary));
+    }
+
+    /// <summary>
+    /// The one that decides whether the log is worth reading. The generator runs five times a day
+    /// and often reaches the same conclusion; a record that logged every pass would be the same
+    /// sentence a hundred times over, and nobody takes that to an appointment.
+    /// </summary>
+    [Fact]
+    public async Task TheSameObservationReachedAgain_IsNotLoggedTwice()
+    {
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns([ExistingRow(_memberId)]);
+        AlreadyLogged(ResolvedSummary);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.DidNotReceive().AddAsync(Arg.Any<MemberAdviseObservation>());
+    }
+
+    [Fact]
+    public async Task TheSameObservationRecased_IsNotLoggedTwice()
+    {
+        AlreadyLogged("  steps have been below HER usual this week.  ");
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.DidNotReceive().AddAsync(Arg.Any<MemberAdviseObservation>());
+    }
+
+    /// <summary>
+    /// The case that needs no concurrency at all. A silent pass removes a topic's advise row; a
+    /// later pass reaches the same finding again. Judged against the absent row it reads as new,
+    /// and the log gains the same sentence twice — so it is judged against the log instead.
+    /// </summary>
+    [Fact]
+    public async Task ATopicWhoseAdviseRowWasWithdrawnAndCameBack_IsNotLoggedTwice()
+    {
+        // No advise row: the topic went silent at some point and this pass is reinstating it.
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
+        AlreadyLogged(ResolvedSummary);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.DidNotReceive().AddAsync(Arg.Any<MemberAdviseObservation>());
+    }
+
+    /// <summary>
+    /// The log is asked for its own last word rather than reading it off the advise row this pass
+    /// is about to overwrite — the two disagree in exactly the cases the tests above cover.
+    /// </summary>
+    [Fact]
+    public async Task TheLogIsJudgedAgainstItself_NotAgainstTheRowBeingReplaced()
+    {
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received().GetLatestPerTopicAsync(_memberId, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The log is stamped with the pass's own instant, not each row's construction time, so
+    /// entries written together sort together however long the pass took.
+    /// </summary>
+    [Fact]
+    public async Task AnObservationCarriesThePassesOwnInstant()
+    {
+        var clock = NoonUtc();
+
+        await CreateSut(clock).RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received(1).AddAsync(Arg.Is<MemberAdviseObservation>(o =>
+            o.ObservedAtUtc == clock.GetUtcNow().UtcDateTime));
     }
 
     [Fact]

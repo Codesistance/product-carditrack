@@ -58,6 +58,10 @@ public class CardiTrackDbContext : DbContext
     public DbSet<MemberChatTurn> MemberChatTurns => Set<MemberChatTurn>();
     public DbSet<MemberChatTurnUsage> MemberChatTurnUsages => Set<MemberChatTurnUsage>();
 
+    // The dated record of what the Advise pass has noticed, beside the current-guidance row
+    // it is deliberately not part of — see MemberAdviseObservation.
+    public DbSet<MemberAdviseObservation> MemberAdviseObservations => Set<MemberAdviseObservation>();
+
     // Dashboard status line (batch-generated, API-served)
     public DbSet<MemberStatusLine> MemberStatusLines => Set<MemberStatusLine>();
 

@@ -125,6 +125,7 @@ public class MemberErasureService : IMemberErasureService
             await Step("MemberChatSessions", _db.MemberChatSessions.Where(x => x.CardiMemberId == cardiMemberId));
 
             await Step("MemberAdvises", _db.Set<MemberAdvise>().Where(x => x.CardiMemberId == cardiMemberId));
+            await Step("MemberAdviseObservations", _db.MemberAdviseObservations.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("MemberInsights", _db.Set<MemberInsight>().Where(x => x.CardiMemberId == cardiMemberId));
             await Step("MetricAlarmStates", _db.MetricAlarmStates.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("MetricAlarms", _db.MetricAlarms.Where(x => x.CardiMemberId == cardiMemberId));

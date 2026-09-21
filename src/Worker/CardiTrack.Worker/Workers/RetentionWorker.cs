@@ -132,6 +132,7 @@ public class RetentionWorker : CronBackgroundService
         await EraseDueAccountsAsync(options, utcNow, stoppingToken);
         await DeleteExpiredChatSessionsAsync(options, utcNow, stoppingToken);
         await DeleteExpiredInsightsAsync(options, utcNow, stoppingToken);
+        await DeleteExpiredAdviseObservationsAsync(options, utcNow, stoppingToken);
         await DeleteFinishedDeviceInvitesAsync(options, utcNow, stoppingToken);
     }
 
@@ -209,6 +210,77 @@ public class RetentionWorker : CronBackgroundService
         _logger.LogInformation(
             "Retention insight pass complete. Insights deleted: {Count}, older than {Days} days.",
             deleted, InsightRetention.MaxAge.TotalDays);
+    }
+
+    /// <summary>
+    /// Deletes Advise observation entries past <see cref="AdviseObservationRetention.Period"/> —
+    /// the dated record of what the Advise pass noticed about a member.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same class of thing as the insight pass above and swept the same way: model-written
+    /// prose about a named person, in an ordinary EF-tracked table the partitioned AI stores'
+    /// partition-drop mechanism does not reach.
+    /// </para>
+    /// <para>
+    /// Unlike an insight, nothing here is re-derivable. An insight is an interpretation of
+    /// readings that outlive it, so a swept row comes back on the next pass; an observation is a
+    /// record that something changed on a particular day, and once it goes that day is gone from
+    /// the log for good. That is why its period is a year rather than ninety days — long enough to
+    /// cover the appointment before last, which is the span the record exists to answer for.
+    /// </para>
+    /// <para>
+    /// The period is a constant, not a dial, because the API clamps a requested window to the same
+    /// value and then reports the window it served. A configured figure would let the two disagree
+    /// — and the quiet direction of that disagreement is a report rendering a window with a hole in
+    /// it. See <see cref="AdviseObservationRetention"/>.
+    /// </para>
+    /// </remarks>
+    private async Task DeleteExpiredAdviseObservationsAsync(
+        RetentionWorkerOptions options, DateTime utcNow, CancellationToken ct)
+    {
+        var cutoff = AdviseObservationRetention.CutoffAt(utcNow);
+
+        using var scope = _scopeFactory.CreateScope();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+
+        var expired = await unitOfWork.MemberAdviseObservations.GetObservedBeforeAsync(
+            cutoff, AdviseObservationRetention.SweepBatchSize);
+
+        if (expired.Count == 0)
+        {
+            _logger.LogInformation(
+                "Retention found no Advise observations older than {Days} days.",
+                AdviseObservationRetention.Period.TotalDays);
+            return;
+        }
+
+        if (options.DryRun)
+        {
+            // Ids, topics and dates only — never the summary. Same rule the insight pass follows:
+            // a rehearsal an operator reviews must not copy the prose this pass exists to remove
+            // into a log that outlives it.
+            foreach (var observation in expired)
+            {
+                _logger.LogInformation(
+                    "Retention would delete {Topic} observation {ObservationId} for CardiMember " +
+                    "{CardiMemberId}, observed {ObservedAt}, which predates {Cutoff}.",
+                    observation.Topic, observation.Id, observation.CardiMemberId,
+                    observation.ObservedAtUtc, cutoff);
+            }
+
+            _logger.LogInformation(
+                "Retention would delete {Count} Advise observation(s) in total.", expired.Count);
+            return;
+        }
+
+        var deleted = await unitOfWork.MemberAdviseObservations.DeleteObservedBeforeAsync(
+            expired.Select(o => o.Id).ToList(), cutoff);
+
+        _logger.LogInformation(
+            "Retention Advise observation pass complete. Observations deleted: {Count}, older "
+            + "than {Days} days.",
+            deleted, AdviseObservationRetention.Period.TotalDays);
     }
 
     /// <summary>
