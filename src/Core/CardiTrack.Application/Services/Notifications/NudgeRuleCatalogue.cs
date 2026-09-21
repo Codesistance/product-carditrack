@@ -27,6 +27,7 @@ public static class NudgeRuleCatalogue
 
         // Unlock — supply this, get that.
         new SleepScopeMissingRule(),
+        new EmergencyContactMissingRule(),
         new MedicalNotesEmptyRule(),
         new MedicalNotesStaleRule(),
 

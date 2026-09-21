@@ -101,6 +101,12 @@ public static class NudgeCopy
         ["nudge.SLEEP_SCOPE_MISSING.benefit"] =
             "Granting sleep access lets CardiTrack track {name}'s sleep patterns and nightly trends.",
 
+        ["nudge.EMERGENCY_CONTACT_MISSING.title"] = "Add an emergency contact for {name}",
+        ["nudge.EMERGENCY_CONTACT_MISSING.body"] = "No number is saved, so SOS and Call have nowhere to go.",
+        ["nudge.EMERGENCY_CONTACT_MISSING.benefit"] =
+            "One number turns both into a single tap, for you and for anyone else watching over "
+            + "{name}.",
+
         ["nudge.MEDICAL_NOTES_EMPTY.title"] = "Add {name}'s health background",
         ["nudge.MEDICAL_NOTES_EMPTY.body"] = "No conditions or medications are recorded.",
         ["nudge.MEDICAL_NOTES_EMPTY.benefit"] =

@@ -75,6 +75,13 @@ public sealed record NudgeMemberSnapshot
     public required bool HasMedicalNotes { get; init; }
 
     /// <summary>
+    /// Whether this member has an emergency contact number — the one the dashboard's SOS and Call
+    /// actions dial, which is <c>EmergencyContactPhone</c> and never <c>CardiMember.Phone</c>.
+    /// </summary>
+    /// <remarks>Presence only: the number itself is personal data no rule needs to read.</remarks>
+    public required bool HasEmergencyContact { get; init; }
+
+    /// <summary>
     /// When a caregiver last confirmed the notes are current, or null when nobody ever has —
     /// which covers every note written before the date existed. A date, not the notes: the same
     /// PHI line <see cref="HasMedicalNotes"/> draws.

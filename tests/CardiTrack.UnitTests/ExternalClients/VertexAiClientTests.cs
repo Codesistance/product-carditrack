@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 using CardiTrack.Infrastructure.ExternalClients.Vertex;
@@ -31,6 +32,13 @@ public class VertexAiClientTests
     private const string Model = "gemini-2.5-flash-lite";
     private const string Prompt = "Caregiver question with health context: chest pain at night";
     private const string ResponseText = "Trends look stable.";
+
+    /// <summary>
+    /// Wall clock the first attempt is made to spend before it times out, so that the per-attempt
+    /// and whole-call elapsed figures in the timeout log are far enough apart to tell apart. Long
+    /// enough to survive timer granularity, short enough not to slow the suite.
+    /// </summary>
+    private static readonly TimeSpan FirstAttemptDuration = TimeSpan.FromMilliseconds(250);
 
     private const string ExpectedPath =
         "/v1/projects/test-project/locations/europe-west2/publishers/google/models/gemini-2.5-flash-lite:generateContent";
@@ -542,14 +550,73 @@ public class VertexAiClientTests
     }
 
     [Fact]
-    public async Task GenerateAsync_TreatsATimeoutAsTerminal_NotRetried()
+    public async Task GenerateAsync_RetriesATimeoutOnce_ThenGivesUp()
     {
         var handler = new FakeHttpMessageHandler().Throws(new TaskCanceledException());
-        var client = CreateClient(handler, out _);
+        var client = CreateClient(handler, out _, out var time);
 
         await Assert.ThrowsAsync<TimeoutException>(() => client.GenerateAsync(Prompt));
 
-        Assert.Single(handler.Requests);
+        // One retry, not the three attempts an HTTP failure gets: a timeout is worth re-asking
+        // once, and a second one says the far side is not going to answer inside the budget.
+        Assert.Equal(2, handler.Requests.Count);
+        Assert.Equal(TimeSpan.FromSeconds(2), Assert.Single(time.Delays));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_RecoversFromASingleTimeout()
+    {
+        var handler = new FakeHttpMessageHandler()
+            .Throws(new TaskCanceledException())
+            .Enqueue(HttpStatusCode.OK, GeneratePayload);
+        var client = CreateClient(handler, out _);
+
+        Assert.Equal(ResponseText, await client.GenerateAsync(Prompt));
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_LogsTheAttemptElapsed_NotTheWholeCallsElapsed_OnATimeout()
+    {
+        // The first attempt is made to burn real wall clock and the second none of it, which is
+        // what makes the two figures separable: reporting the operation-wide stopwatch for both,
+        // as the line used to, would close the gap asserted below. Nothing else in the call takes
+        // measurable time — the retry backoff resolves instantly through the fake TimeProvider.
+        var handler = new FakeHttpMessageHandler()
+            .Enqueue(_ =>
+            {
+                Thread.Sleep(FirstAttemptDuration);
+                throw new TaskCanceledException();
+            })
+            .Throws(new TaskCanceledException());
+        var client = CreateClient(handler, out var logger);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => client.GenerateAsync(Prompt));
+
+        // The terminal line names the attempt it belongs to and separates the two elapsed
+        // figures, so "timed out after N ms (HttpClient.Timeout is 60 s)" can no longer read as
+        // a contradiction when an earlier attempt and its backoff are inside N.
+        var timedOut = Assert.Single(
+            logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("timed out"));
+        var figures = Regex.Match(
+            timedOut.Message,
+            @"timed out after (\d+) ms on attempt 2 of 3 "
+            + @"\(HttpClient\.Timeout is 60 s; (\d+) ms since the call began\)");
+        Assert.True(figures.Success, timedOut.Message);
+
+        var attemptMs = int.Parse(figures.Groups[1].Value);
+        var totalMs = int.Parse(figures.Groups[2].Value);
+
+        // The call contains the first attempt's duration; the second attempt cannot. A slower
+        // machine only widens this, so the margin is a floor rather than a window.
+        Assert.True(
+            totalMs - attemptMs >= FirstAttemptDuration.TotalMilliseconds / 2,
+            $"attempt {attemptMs} ms, whole call {totalMs} ms — expected the call to exceed the "
+            + $"attempt by most of the {FirstAttemptDuration.TotalMilliseconds} ms spent in the first one.");
+
+        Assert.Contains(
+            logger.Entries,
+            e => e.Level == LogLevel.Warning && e.Message.Contains("retrying once"));
     }
 
     [Fact]

@@ -203,7 +203,9 @@ internal static class MonthbookPrompt
             baseline?.AvgSteps,
             null);
 
-        Add(metrics, days, "Active minutes", l => l.ActiveMinutes,
+        // The same name the card, the trend features and the report use — see
+        // ActivityMetricNaming. Moderate and vigorous minutes only, never time spent moving.
+        Add(metrics, days, ActivityMetricNaming.Label, l => l.ActiveMinutes,
             v => $"{Math.Round(v)} minutes",
             baseline?.AvgActiveMinutes,
             null);

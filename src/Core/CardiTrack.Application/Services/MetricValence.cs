@@ -113,8 +113,8 @@ public static class MetricValence
             TrackedMetric.ActiveMinutes => ByDirection(
                 movement,
                 favourableWhenRising: true,
-                "Compared against their own usual: the published activity guidance is written in "
-                + "minutes of moderate activity a week, not as a daily figure."),
+                "Counts moderate and vigorous minutes only, not time spent moving. Compared "
+                + "against their own usual: the published guidance is written by the week."),
 
             TrackedMetric.OvernightHeartRateVariability => ByDirection(
                 movement,
