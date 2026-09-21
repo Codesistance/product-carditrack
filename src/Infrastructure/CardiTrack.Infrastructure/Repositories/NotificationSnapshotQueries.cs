@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;

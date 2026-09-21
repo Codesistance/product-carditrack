@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.DTOs.Requests;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Repositories;

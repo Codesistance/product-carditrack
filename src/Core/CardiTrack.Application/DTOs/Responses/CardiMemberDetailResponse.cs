@@ -1,4 +1,4 @@
-﻿using CardiTrack.Domain.Enums;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.DTOs.Responses;
 

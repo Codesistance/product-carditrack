@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.Services.Notifications.Rules;
+using CardiTrack.Application.Services.Notifications.Rules;
 
 namespace CardiTrack.Application.Services.Notifications;
 

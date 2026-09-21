@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.Services.Notifications;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.UnitTests.Notifications;

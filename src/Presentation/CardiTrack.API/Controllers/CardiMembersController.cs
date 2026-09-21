@@ -1,4 +1,4 @@
-﻿using CardiTrack.API.Infrastructure.Auditing;
+using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
