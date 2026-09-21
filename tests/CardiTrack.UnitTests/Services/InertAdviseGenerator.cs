@@ -23,6 +23,7 @@ internal static class InertAdviseGenerator
             Substitute.For<IMedicalAiService>(),
             Substitute.For<IRewriteAiService>(),
             PromptContextFactory.Composer(unitOfWork),
-            NullLogger<AdviseGenerationService>.Instance);
+            NullLogger<AdviseGenerationService>.Instance,
+            new PassThroughWriteGuard());
     }
 }

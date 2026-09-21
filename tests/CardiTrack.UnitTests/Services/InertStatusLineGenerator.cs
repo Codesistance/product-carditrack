@@ -24,6 +24,7 @@ internal static class InertStatusLineGenerator
             Substitute.For<IMedicalAiService>(),
             Substitute.For<IRewriteAiService>(),
             PromptContextFactory.Composer(unitOfWork),
-            NullLogger<StatusLineGenerationService>.Instance);
+            NullLogger<StatusLineGenerationService>.Instance,
+                new PassThroughWriteGuard());
     }
 }

@@ -1,4 +1,5 @@
 ﻿using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
@@ -14,13 +15,33 @@ namespace CardiTrack.Infrastructure.Repositories;
 public class DigestRepository : IDigestRepository
 {
     private readonly CardiTrackDbContext _context;
+    private readonly IMemberWriteGuard _guard;
 
-    public DigestRepository(CardiTrackDbContext context)
+    public DigestRepository(CardiTrackDbContext context, IMemberWriteGuard guard)
     {
         _context = context;
+        _guard = guard;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Guarded here rather than at each caller, because there are five of them — Daybook, Weekbook,
+    /// Monthbook, the family digest and <see cref="ReplaceBookAsync"/> — and a sixth is the kind of
+    /// thing that gets added without anyone remembering the erasure race. Every book in the product
+    /// reaches the table through this method, so this is the one place that cannot be forgotten.
+    /// </remarks>
     public async Task<bool> AddAsync(DigestEntry entry, CancellationToken ct = default)
+    {
+        var stored = false;
+        await _guard.WriteIfMemberLivesAsync(
+            entry.CardiMemberId, async inner => stored = await InsertAsync(entry, inner), ct);
+        return stored;
+    }
+
+    /// <summary>
+    /// The insert itself, which assumes the caller holds the member's row lock.
+    /// </summary>
+    private async Task<bool> InsertAsync(DigestEntry entry, CancellationToken ct)
     {
         // DO NOTHING rather than DO UPDATE: two overlapping pipeline executions can generate for
         // the same member at the same instant, and the second has nothing to add — but an ordinary
@@ -146,28 +167,19 @@ public class DigestRepository : IDigestRepository
     {
         // One transaction, so a failure between the delete and the insert — a transient database
         // error, a cancelled request — rolls the delete back and the caregiver keeps the book they
-        // had. Joins the unit of work's transaction when one is already open rather than nesting.
-        var owns = _context.Database.CurrentTransaction is null;
-        var transaction = owns ? await _context.Database.BeginTransactionAsync(ct) : null;
-        try
+        // had. The guard is what opens it, and joins the unit of work's transaction when one is
+        // already open rather than nesting; the member's row lock is taken before the delete, so a
+        // rewrite racing an erasure neither removes the old book nor writes the new one.
+        var removed = 0;
+        var inserted = false;
+        await _guard.WriteIfMemberLivesAsync(entry.CardiMemberId, async inner =>
         {
-            var removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, ct);
-            var inserted = await AddAsync(entry, ct);
-            if (transaction is not null)
-                await transaction.CommitAsync(ct);
-            return (removed, inserted);
-        }
-        catch
-        {
-            if (transaction is not null)
-                await transaction.RollbackAsync(CancellationToken.None);
-            throw;
-        }
-        finally
-        {
-            if (transaction is not null)
-                await transaction.DisposeAsync();
-        }
+            removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, inner);
+            // InsertAsync, not AddAsync: the lock this needs is already held, and going back
+            // through AddAsync would take it a second time for nothing.
+            inserted = await InsertAsync(entry, inner);
+        }, ct);
+        return (removed, inserted);
     }
 
     /// <summary>

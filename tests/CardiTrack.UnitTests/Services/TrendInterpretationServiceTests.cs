@@ -330,7 +330,8 @@ public class TrendInterpretationServiceTests
 
     private TrendInterpretationService CreateSut() =>
         new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            NullLogger<TrendInterpretationService>.Instance);
+            NullLogger<TrendInterpretationService>.Instance,
+            new PassThroughWriteGuard());
 
     private void WithHistory(int days)
     {

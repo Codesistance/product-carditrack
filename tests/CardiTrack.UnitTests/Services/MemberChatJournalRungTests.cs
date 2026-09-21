@@ -161,6 +161,7 @@ public class MemberChatJournalRungTests
             Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             new JournalChatActions(_rewriteAi, _unitOfWork, _access, _books, NullLogger<JournalChatActions>.Instance),
+            new PassThroughWriteGuard(),
             NullLogger<MemberChatService>.Instance);
 
     private Task<MemberChatMessageResponse> Send(string message) =>

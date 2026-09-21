@@ -69,7 +69,7 @@ public class HealthInsightServiceStatusTests
 
     private HealthInsightService CreateSut() =>
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
-            PromptContextFactory.Composer(_unitOfWork));
+            PromptContextFactory.Composer(_unitOfWork), new PassThroughWriteGuard());
 
     [Fact]
     public async Task ServesTheStoredRow_ForALinkedUser()

@@ -169,6 +169,7 @@ public class TrendInterpretationService
     private readonly IMedicalAiService _medicalAi;
     private readonly MemberContextComposer _memberContext;
     private readonly ILogger<TrendInterpretationService> _logger;
+    private readonly IMemberWriteGuard _guard;
     private readonly TimeProvider _timeProvider;
 
     public TrendInterpretationService(
@@ -176,12 +177,14 @@ public class TrendInterpretationService
         IMedicalAiService medicalAi,
         MemberContextComposer memberContext,
         ILogger<TrendInterpretationService> logger,
+        IMemberWriteGuard guard,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _medicalAi = medicalAi;
         _memberContext = memberContext;
         _logger = logger;
+        _guard = guard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -648,8 +651,9 @@ public class TrendInterpretationService
         if (storedAt is null)
             await _unitOfWork.MemberInsights.AddAsync(row);
 
-        await _unitOfWork.SaveChangesAsync();
-        return true;
+        // Guarded, and its answer is this method's answer: a narrative refused because the member
+        // was erased mid-generation wrote nothing, so it did not interpret a trend either.
+        return await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
     }
 
     /// <summary>How many days of readings the features are computed over.</summary>

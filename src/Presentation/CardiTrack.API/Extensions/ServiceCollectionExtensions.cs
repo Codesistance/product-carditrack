@@ -124,6 +124,7 @@ public static class ServiceCollectionExtensions
         services.AddPushServices(configuration);
 
         // Unit of Work
+        services.AddScoped<IMemberWriteGuard, CardiTrack.Infrastructure.Services.MemberWriteGuard>();
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
 
         // AI services

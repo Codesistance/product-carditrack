@@ -150,6 +150,7 @@ public class AdviseGenerationService
     private readonly IRewriteAiService _rewriteAi;
     private readonly MemberContextComposer _memberContext;
     private readonly ILogger<AdviseGenerationService> _logger;
+    private readonly IMemberWriteGuard _guard;
     private readonly TimeProvider _timeProvider;
 
     public AdviseGenerationService(
@@ -158,6 +159,7 @@ public class AdviseGenerationService
         IRewriteAiService rewriteAi,
         MemberContextComposer memberContext,
         ILogger<AdviseGenerationService> logger,
+        IMemberWriteGuard guard,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
@@ -165,6 +167,7 @@ public class AdviseGenerationService
         _rewriteAi = rewriteAi;
         _memberContext = memberContext;
         _logger = logger;
+        _guard = guard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -343,7 +346,13 @@ public class AdviseGenerationService
 
         try
         {
-            await _unitOfWork.SaveChangesAsync();
+            // Guarded, and each save separately rather than the whole try/catch in one
+            // transaction: the recovery below runs *after* a unique violation, and a failed
+            // statement aborts the PostgreSQL transaction it ran in — a single guard around both
+            // would leave the recovery saving into a transaction that can no longer accept
+            // anything. Two guards means two locks, which is what the recovery wants anyway: it
+            // re-reads the winner's rows in between, so it must re-check the member is still there.
+            await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
         }
         catch (DbUpdateException ex)
             when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
@@ -389,7 +398,7 @@ public class AdviseGenerationService
                     PromptVersion = CurrentPromptVersion,
                 });
             }
-            await _unitOfWork.SaveChangesAsync();
+            await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
         }
     }
 

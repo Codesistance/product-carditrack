@@ -162,6 +162,7 @@ public class StatusLineGenerationService
     private readonly IRewriteAiService _rewriteAi;
     private readonly MemberContextComposer _memberContext;
     private readonly ILogger<StatusLineGenerationService> _logger;
+    private readonly IMemberWriteGuard _guard;
     private readonly TimeProvider _timeProvider;
 
     public StatusLineGenerationService(
@@ -170,6 +171,7 @@ public class StatusLineGenerationService
         IRewriteAiService rewriteAi,
         MemberContextComposer memberContext,
         ILogger<StatusLineGenerationService> logger,
+        IMemberWriteGuard guard,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
@@ -177,6 +179,7 @@ public class StatusLineGenerationService
         _rewriteAi = rewriteAi;
         _memberContext = memberContext;
         _logger = logger;
+        _guard = guard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -315,7 +318,9 @@ public class StatusLineGenerationService
             Overwrite(existing, headline, message, utcNow);
             // The generic repository stages rather than executes — without this the row would be
             // dropped when the scope ends (same note as the questionnaire write in the digest).
-            await _unitOfWork.SaveChangesAsync();
+            // Guarded: an erasure during the model call above would otherwise have this update
+            // fail as a phantom concurrency error rather than as the refusal it is.
+            await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
             return;
         }
 
@@ -329,7 +334,7 @@ public class StatusLineGenerationService
         await _unitOfWork.MemberStatusLines.AddAsync(fresh);
         try
         {
-            await _unitOfWork.SaveChangesAsync();
+            await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
         }
         catch (DbUpdateException)
         {
@@ -344,7 +349,7 @@ public class StatusLineGenerationService
                     $"Insert of the status line for CardiMember {cardiMemberId} failed, but no "
                     + "existing row was found — not the unique-index race this handles.");
             Overwrite(winner, headline, message, utcNow);
-            await _unitOfWork.SaveChangesAsync();
+            await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
         }
     }
 
