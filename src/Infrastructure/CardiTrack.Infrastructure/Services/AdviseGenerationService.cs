@@ -312,9 +312,10 @@ public class AdviseGenerationService
             return;
 
         // The dated record, appended in the same SaveChanges as the guidance it came from — see
-        // MemberAdviseObservation. Computed against `existing` before any of it is overwritten,
-        // because the row about to be replaced is the only thing that holds what was last said.
-        var stagedObservations = await StageObservationsAsync(cardiMemberId, existing, incoming, utcNow);
+        // MemberAdviseObservation. Judged against the log's own last entry per topic, not against
+        // the advise row about to be overwritten: see StageObservationsAsync for the two cases
+        // where those two disagree.
+        var stagedObservations = await StageObservationsAsync(cardiMemberId, incoming, utcNow, ct);
 
         var staged = new List<MemberAdvise>();
         foreach (var (topic, (summary, suggestion, guideline)) in incoming)
@@ -357,13 +358,13 @@ public class AdviseGenerationService
 
             var winners = await _unitOfWork.MemberAdvises.GetAllByCardiMemberAsync(cardiMemberId);
 
-            // The observations staged above were judged against rows the concurrent pass has since
-            // replaced, so "this says something new" was answered about the wrong text. Dropped
-            // and re-asked against what actually won, which is the only reading that keeps the log
-            // free of an entry restating what the other pass had already recorded.
+            // The observations staged above were judged before the concurrent pass committed, so
+            // "this says something new" was answered without its entries in view. Dropped and
+            // re-asked against the log as it now stands — which includes whatever that pass
+            // wrote — so this one does not restate what it has already recorded.
             foreach (var observation in stagedObservations)
                 _unitOfWork.MemberAdviseObservations.Remove(observation);
-            await StageObservationsAsync(cardiMemberId, winners, incoming, utcNow);
+            await StageObservationsAsync(cardiMemberId, incoming, utcNow, ct);
             foreach (var (topic, (summary, suggestion, guideline)) in incoming)
             {
                 var winner = winners.FirstOrDefault(r => r.Topic == topic);
@@ -512,9 +513,16 @@ public class AdviseGenerationService
     /// <para>
     /// "New" is judged on the summary — what was noticed — not the suggestion. Two passes can
     /// reach the same observation and word the action differently, and logging that as a fresh
-    /// entry would fill the record with the same finding restated. A topic with no current row is
-    /// always new: either it has never been noticed or it was withdrawn and has come back, and
-    /// both are worth a line.
+    /// entry would fill the record with the same finding restated.
+    /// </para>
+    /// <para>
+    /// Compared against the <em>log's</em> newest entry for the topic, not against the
+    /// <see cref="MemberAdvise"/> row this pass is about to overwrite. The two disagree in two
+    /// cases, and both produce a duplicate line in a record whose whole value is that every line
+    /// is a change. A topic whose advise row was withdrawn on a silent pass and came back on a
+    /// later one has no row to compare against, so the same sentence reads as new — no
+    /// concurrency needed. And two passes running together both read the same pre-update row,
+    /// while only one of them can have written the newest log entry.
     /// </para>
     /// <para>
     /// Staged, not saved. These rows go out with the guidance they describe in the caller's single
@@ -523,15 +531,16 @@ public class AdviseGenerationService
     /// </remarks>
     private async Task<List<MemberAdviseObservation>> StageObservationsAsync(
         Guid cardiMemberId,
-        IReadOnlyList<MemberAdvise> current,
         IReadOnlyDictionary<AdviseTopic, (string Summary, string Suggestion, string Guideline)> incoming,
-        DateTime utcNow)
+        DateTime utcNow,
+        CancellationToken ct)
     {
         var staged = new List<MemberAdviseObservation>();
+        var logged = await _unitOfWork.MemberAdviseObservations.GetLatestPerTopicAsync(cardiMemberId, ct);
 
         foreach (var (topic, (summary, suggestion, guideline)) in incoming)
         {
-            var last = current.FirstOrDefault(r => r.Topic == topic);
+            var last = logged.FirstOrDefault(o => o.Topic == topic);
             if (last is not null && SaysTheSameThing(last.Summary, summary))
                 continue;
 

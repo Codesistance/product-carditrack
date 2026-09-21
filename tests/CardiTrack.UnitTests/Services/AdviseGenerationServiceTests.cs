@@ -180,10 +180,25 @@ public class AdviseGenerationServiceTests
             && o.GuidelineCited == "WHO adult activity guidance"));
     }
 
+    /// <summary>The log's own last word for a topic — what a fresh observation is judged against.</summary>
+    private void AlreadyLogged(string summary, AdviseTopic topic = AdviseTopic.Activity) =>
+        _observations.GetLatestPerTopicAsync(_memberId, Arg.Any<CancellationToken>()).Returns(
+            [
+                new MemberAdviseObservation
+                {
+                    CardiMemberId = _memberId,
+                    Topic = topic,
+                    Summary = summary,
+                    Suggestion = "A short walk after lunch is worth trying.",
+                    ObservedAtUtc = DateTime.UtcNow.AddDays(-1),
+                },
+            ]);
+
     [Fact]
     public async Task AChangedObservation_IsLoggedBesideTheRowItReplaces()
     {
         _advises.GetAllByCardiMemberAsync(_memberId).Returns([ExistingRow(_memberId)]);
+        AlreadyLogged("Sleep was shorter than usual.");
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -192,16 +207,15 @@ public class AdviseGenerationServiceTests
     }
 
     /// <summary>
-    /// The one that decides whether the log is worth reading. The generator runs daily and often
-    /// reaches the same conclusion; a record that logged every pass would be the same sentence a
-    /// hundred times over, and nobody takes that to an appointment.
+    /// The one that decides whether the log is worth reading. The generator runs five times a day
+    /// and often reaches the same conclusion; a record that logged every pass would be the same
+    /// sentence a hundred times over, and nobody takes that to an appointment.
     /// </summary>
     [Fact]
     public async Task TheSameObservationReachedAgain_IsNotLoggedTwice()
     {
-        var unchanged = ExistingRow(_memberId);
-        unchanged.Summary = ResolvedSummary;
-        _advises.GetAllByCardiMemberAsync(_memberId).Returns([unchanged]);
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns([ExistingRow(_memberId)]);
+        AlreadyLogged(ResolvedSummary);
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
@@ -211,13 +225,40 @@ public class AdviseGenerationServiceTests
     [Fact]
     public async Task TheSameObservationRecased_IsNotLoggedTwice()
     {
-        var unchanged = ExistingRow(_memberId);
-        unchanged.Summary = "  steps have been below HER usual this week.  ";
-        _advises.GetAllByCardiMemberAsync(_memberId).Returns([unchanged]);
+        AlreadyLogged("  steps have been below HER usual this week.  ");
 
         await CreateSut().RegenerateIfDueAsync(_memberId);
 
         await _observations.DidNotReceive().AddAsync(Arg.Any<MemberAdviseObservation>());
+    }
+
+    /// <summary>
+    /// The case that needs no concurrency at all. A silent pass removes a topic's advise row; a
+    /// later pass reaches the same finding again. Judged against the absent row it reads as new,
+    /// and the log gains the same sentence twice — so it is judged against the log instead.
+    /// </summary>
+    [Fact]
+    public async Task ATopicWhoseAdviseRowWasWithdrawnAndCameBack_IsNotLoggedTwice()
+    {
+        // No advise row: the topic went silent at some point and this pass is reinstating it.
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns((IReadOnlyList<MemberAdvise>)[]);
+        AlreadyLogged(ResolvedSummary);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.DidNotReceive().AddAsync(Arg.Any<MemberAdviseObservation>());
+    }
+
+    /// <summary>
+    /// The log is asked for its own last word rather than reading it off the advise row this pass
+    /// is about to overwrite — the two disagree in exactly the cases the tests above cover.
+    /// </summary>
+    [Fact]
+    public async Task TheLogIsJudgedAgainstItself_NotAgainstTheRowBeingReplaced()
+    {
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received().GetLatestPerTopicAsync(_memberId, Arg.Any<CancellationToken>());
     }
 
     /// <summary>

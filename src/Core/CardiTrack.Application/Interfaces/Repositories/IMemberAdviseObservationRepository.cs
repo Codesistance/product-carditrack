@@ -15,6 +15,21 @@ public interface IMemberAdviseObservationRepository : IRepository<MemberAdviseOb
         Guid cardiMemberId, DateTime fromUtc, DateTime toUtc, int limit, CancellationToken ct = default);
 
     /// <summary>
+    /// The newest entry this member has for each topic, or an empty list when they have none —
+    /// what the generator compares a fresh observation against to decide whether it is saying
+    /// anything new.
+    /// </summary>
+    /// <remarks>
+    /// The log's own last word, deliberately, rather than the current <c>MemberAdvise</c> row.
+    /// The two disagree in two cases that matter: a topic whose advise row was withdrawn and
+    /// later came back would look new against the (absent) row while the log plainly holds the
+    /// same sentence, and two passes racing each other both read the same pre-update row while
+    /// only one of them can have written the newest log entry.
+    /// </remarks>
+    Task<IReadOnlyList<MemberAdviseObservation>> GetLatestPerTopicAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
+    /// <summary>
     /// Entries observed before <paramref name="cutoffUtc"/>, oldest first, up to
     /// <paramref name="take"/> — the retention sweep's selection pass.
     /// </summary>
