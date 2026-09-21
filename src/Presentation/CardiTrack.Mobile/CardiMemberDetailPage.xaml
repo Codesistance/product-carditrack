@@ -394,14 +394,13 @@
                                        IsVisible="False"
                                        LineBreakMode="WordWrap"/>
 
-                                <!-- The supporting points, one per line. Bullets are drawn in the
-                                     text rather than by a repeater: there are at most a handful,
-                                     and a BindableLayout here would be machinery for three
-                                     sentences. -->
-                                <Label x:Name="InsightFindingsLabel"
-                                       Style="{StaticResource Caption}"
-                                       IsVisible="False"
-                                       LineBreakMode="WordWrap"/>
+                                <!-- The supporting points, one row each. This was a single label
+                                     of newline-joined bullets, on the reasoning that a repeater
+                                     would be machinery for three sentences — which held until a
+                                     member came back with seven, wrapping, in the caption grey
+                                     and 12pt of a timestamp. FindingsList is the smaller piece
+                                     of machinery that buys a hanging wrap and its own spacing. -->
+                                <controls:FindingsList x:Name="InsightFindings" IsVisible="False"/>
 
                                 <BoxView x:Name="InsightDivider"
                                          HeightRequest="1"

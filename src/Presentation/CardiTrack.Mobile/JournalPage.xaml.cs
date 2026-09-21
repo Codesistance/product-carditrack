@@ -382,9 +382,7 @@ public partial class JournalPage : ContentPage
 
         TrendNarrativeLabel.Text = trend!.Narrative;
 
-        TrendFindingsLabel.IsVisible = trend.KeyFindings.Count > 0;
-        TrendFindingsLabel.Text = string.Join(
-            Environment.NewLine, trend.KeyFindings.Select(finding => $"• {finding}"));
+        TrendFindings.Apply(trend.KeyFindings);
 
         // Dated, because a narrative about "the last few weeks" with no date on it invites a
         // caregiver to read a fortnight-old picture as this morning's.

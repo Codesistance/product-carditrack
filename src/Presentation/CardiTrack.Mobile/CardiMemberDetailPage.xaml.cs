@@ -871,8 +871,7 @@ public partial class CardiMemberDetailPage : ContentPage
         InsightSummaryLabel.IsVisible = !string.IsNullOrWhiteSpace(insight.Summary);
         InsightSummaryLabel.Text = insight.Summary ?? string.Empty;
 
-        InsightFindingsLabel.IsVisible = insight.KeyFindings.Count > 0;
-        InsightFindingsLabel.Text = Bulleted(insight.KeyFindings);
+        InsightFindings.Apply(insight.KeyFindings);
 
         var hasTrend = !string.IsNullOrWhiteSpace(insight.Trend);
         InsightTrendTitleLabel.IsVisible = hasTrend;
@@ -911,10 +910,6 @@ public partial class CardiMemberDetailPage : ContentPage
 
         return $"{window} · {written}";
     }
-
-    /// <summary>One point per line, bulleted in the text — at most a handful, never a repeater.</summary>
-    private static string Bulleted(IReadOnlyList<string> points) =>
-        string.Join(Environment.NewLine, points.Select(point => $"• {point}"));
 
     /// <summary>
     /// Shows the "Something to try" (Advise) card, or hides it when there is nothing to suggest right now

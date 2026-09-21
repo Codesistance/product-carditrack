@@ -284,10 +284,10 @@
                         <Label x:Name="TrendNarrativeLabel"
                                Style="{StaticResource Body2}"
                                LineBreakMode="WordWrap"/>
-                        <Label x:Name="TrendFindingsLabel"
-                               Style="{StaticResource Caption}"
-                               IsVisible="False"
-                               LineBreakMode="WordWrap"/>
+                        <!-- The points a caregiver reads first, so not the smallest, palest
+                             thing on the card: they used to share the timestamp's caption grey
+                             at 12pt. Body ink at body size now, one row each. -->
+                        <controls:FindingsList x:Name="TrendFindings" IsVisible="False"/>
                         <Label x:Name="TrendGeneratedLabel"
                                Style="{StaticResource Caption}"
                                IsVisible="False"/>
