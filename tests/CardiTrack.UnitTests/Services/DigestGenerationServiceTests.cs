@@ -1,4 +1,3 @@
-using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json.Nodes;
@@ -11,7 +10,7 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Services;
 using CardiTrack.Infrastructure.Services.PromptContext;
-using CardiTrack.Shared.Telemetry;
+using CardiTrack.UnitTests.Observability;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -25,6 +24,7 @@ namespace CardiTrack.UnitTests.Services;
 /// Never while paused, never from silence — and one member's failure never costs another
 /// family theirs.
 /// </summary>
+[Collection(QuestionnaireTelemetryCollection.Name)]
 public class DigestGenerationServiceTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
@@ -3056,35 +3056,5 @@ public class DigestGenerationServiceTests
 
         Assert.NotNull(prompt);
         return prompt;
-    }
-
-    /// <summary>Captures questionnaire-meter counts so a missed Record* call fails a test.</summary>
-    private sealed class QuestionnaireMetricCapture : IDisposable
-    {
-        private readonly MeterListener _listener = new();
-
-        public List<(string Instrument, long Value, Dictionary<string, object?> Tags)> Longs { get; } = [];
-
-        public QuestionnaireMetricCapture()
-        {
-            _listener.InstrumentPublished = (instrument, listener) =>
-            {
-                if (instrument.Meter.Name == TelemetryNames.QuestionnaireSource)
-                    listener.EnableMeasurementEvents(instrument);
-            };
-            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-            {
-                lock (Longs)
-                {
-                    var dictionary = new Dictionary<string, object?>();
-                    foreach (var tag in tags)
-                        dictionary[tag.Key] = tag.Value;
-                    Longs.Add((instrument.Name, value, dictionary));
-                }
-            });
-            _listener.Start();
-        }
-
-        public void Dispose() => _listener.Dispose();
     }
 }

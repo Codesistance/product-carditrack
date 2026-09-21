@@ -1,7 +1,5 @@
-using System.Diagnostics.Metrics;
-using CardiTrack.Application.Diagnostics;
 using CardiTrack.Application.Interfaces.Repositories;
-using CardiTrack.Shared.Telemetry;
+using CardiTrack.UnitTests.Observability;
 using CardiTrack.Worker;
 using CardiTrack.Worker.Workers;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +12,7 @@ namespace CardiTrack.UnitTests.Workers;
 /// <summary>
 /// The sweep records how many rows actually moved to Expired, not how many it read as lapsed.
 /// </summary>
+[Collection(QuestionnaireTelemetryCollection.Name)]
 public class QuestionnaireExpiryWorkerTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
@@ -80,34 +79,5 @@ public class QuestionnaireExpiryWorkerTests
         : QuestionnaireExpiryWorker(options, scopeFactory, logger)
     {
         public Task RunOnceAsync(CancellationToken ct) => ExecuteJobAsync(ct);
-    }
-
-    private sealed class QuestionnaireMetricCapture : IDisposable
-    {
-        private readonly MeterListener _listener = new();
-
-        public List<(string Instrument, long Value, Dictionary<string, object?> Tags)> Longs { get; } = [];
-
-        public QuestionnaireMetricCapture()
-        {
-            _listener.InstrumentPublished = (instrument, listener) =>
-            {
-                if (instrument.Meter.Name == TelemetryNames.QuestionnaireSource)
-                    listener.EnableMeasurementEvents(instrument);
-            };
-            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-            {
-                lock (Longs)
-                {
-                    var dictionary = new Dictionary<string, object?>();
-                    foreach (var tag in tags)
-                        dictionary[tag.Key] = tag.Value;
-                    Longs.Add((instrument.Name, value, dictionary));
-                }
-            });
-            _listener.Start();
-        }
-
-        public void Dispose() => _listener.Dispose();
     }
 }

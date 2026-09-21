@@ -1,9 +1,8 @@
-using System.Diagnostics.Metrics;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
-using CardiTrack.Shared.Telemetry;
+using CardiTrack.UnitTests.Observability;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.Services;
@@ -12,6 +11,7 @@ namespace CardiTrack.UnitTests.Services;
 /// What a caregiver may do with a question the service asked, and what someone who is not their
 /// caregiver may not.
 /// </summary>
+[Collection(QuestionnaireTelemetryCollection.Name)]
 public class QuestionnaireServiceTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
@@ -538,35 +538,5 @@ public class QuestionnaireServiceTests
         await Assert.ThrowsAsync<KeyNotFoundException>(
             () => CreateSut().OfferStandingFactAsync(_outsiderId, _memberId, "anything"));
         await _questionnaires.DidNotReceive().AddAsync(Arg.Any<MemberQuestionnaire>());
-    }
-
-    /// <summary>Captures questionnaire-meter counts so a missed Record* call fails a test.</summary>
-    private sealed class QuestionnaireMetricCapture : IDisposable
-    {
-        private readonly MeterListener _listener = new();
-
-        public List<(string Instrument, long Value, Dictionary<string, object?> Tags)> Longs { get; } = [];
-
-        public QuestionnaireMetricCapture()
-        {
-            _listener.InstrumentPublished = (instrument, listener) =>
-            {
-                if (instrument.Meter.Name == TelemetryNames.QuestionnaireSource)
-                    listener.EnableMeasurementEvents(instrument);
-            };
-            _listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
-            {
-                lock (Longs)
-                {
-                    var dictionary = new Dictionary<string, object?>();
-                    foreach (var tag in tags)
-                        dictionary[tag.Key] = tag.Value;
-                    Longs.Add((instrument.Name, value, dictionary));
-                }
-            });
-            _listener.Start();
-        }
-
-        public void Dispose() => _listener.Dispose();
     }
 }
