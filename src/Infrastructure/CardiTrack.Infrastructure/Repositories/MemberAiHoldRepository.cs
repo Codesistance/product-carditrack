@@ -1,4 +1,5 @@
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Persistence;
@@ -9,10 +10,12 @@ namespace CardiTrack.Infrastructure.Repositories;
 public class MemberAiHoldRepository : IMemberAiHoldRepository
 {
     private readonly CardiTrackDbContext _context;
+    private readonly IMemberWriteGuard _guard;
 
-    public MemberAiHoldRepository(CardiTrackDbContext context)
+    public MemberAiHoldRepository(CardiTrackDbContext context, IMemberWriteGuard guard)
     {
         _context = context;
+        _guard = guard;
     }
 
     public async Task<MemberAiHold?> GetAsync(
@@ -23,7 +26,20 @@ public class MemberAiHoldRepository : IMemberAiHoldRepository
             .FirstOrDefaultAsync(h => h.CardiMemberId == cardiMemberId && h.Purpose == purpose, ct);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Guarded: the hold is written after a model call that did not finish, so it lands minutes
+    /// after the member was read, exactly as the digest it was standing in for would have. A hold
+    /// row describes a member as much as a digest does — it says this person's summary is being
+    /// suppressed — and an erased member has nothing left to suppress.
+    /// </remarks>
     public async Task UpsertAsync(MemberAiHold hold, CancellationToken ct = default)
+    {
+        await _guard.WriteIfMemberLivesAsync(
+            hold.CardiMemberId, inner => WriteAsync(hold, inner), ct);
+    }
+
+    private async Task WriteAsync(MemberAiHold hold, CancellationToken ct)
     {
         // Raw SQL for the same reason the digest's own insert is: two pipeline executions can
         // overlap on one member, and a tracked add-or-update races itself into a unique

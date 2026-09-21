@@ -180,15 +180,21 @@ public class DigestRepository : IDigestRepository
         var transaction = owns ? await _context.Database.BeginTransactionAsync(ct) : null;
         try
         {
-            var removed = 0;
-            var inserted = false;
-            await _guard.WriteIfMemberLivesAsync(entry.CardiMemberId, async inner =>
+            // The member lock first, before the delete — not around the pair. Erasure locks
+            // CardiMembers and then deletes DigestEntries, so a transaction holding this member's
+            // digest rows and waiting on the member row is half of a deadlock. Held here, this
+            // transaction locks in erasure's own order and erasure waits for it instead.
+            if (!await _guard.HoldMemberAsync(entry.CardiMemberId, ct))
             {
-                removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, inner);
-                // InsertAsync, not AddAsync: the lock this needs is already held, and going back
-                // through AddAsync would take it a second time for nothing.
-                inserted = await InsertAsync(entry, inner);
-            }, ct);
+                if (transaction is not null)
+                    await transaction.RollbackAsync(CancellationToken.None);
+                return (0, false);
+            }
+
+            var removed = await DeleteBookAsync(entry.CardiMemberId, entry.LocalDate, entry.Audience, ct);
+            // InsertAsync, not AddAsync: the lock this needs is already held, and going back
+            // through AddAsync would take it a second time for nothing.
+            var inserted = await InsertAsync(entry, ct);
 
             if (transaction is not null)
                 await transaction.CommitAsync(ct);
