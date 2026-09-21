@@ -59,8 +59,8 @@ public sealed class FindingsList : VerticalStackLayout
     /// A caution mark, not a tick of any colour. A list of what deleting an account destroys is
     /// still a list and should be drawn like one, but a tick beside "nothing can be recovered
     /// afterwards" reads as approval of the sentence it marks, and a red tick reads as an
-    /// emphatic one. The glyph is <c>icon_status_warning</c>'s own triangle in the danger
-    /// palette, so the app has one caution mark rather than two drawings of one.
+    /// emphatic one. The glyph is built like <c>icon_status_check</c> — the same circle at the
+    /// same weight — carrying an exclamation in the danger palette instead of a tick.
     /// </remarks>
     public const string DangerMarker = "icon_caution_danger.svg";
 
@@ -117,8 +117,11 @@ public sealed class FindingsList : VerticalStackLayout
         var text = new Label
         {
             Text = point,
+            // No size of its own: Body2Medium is Message, which is the size and ink the narrative
+            // above these points already uses. The onboarding frame sets its rows a point larger,
+            // but there the list is the screen; here it sits under a paragraph, and a list that
+            // outsizes the prose it belongs to reads as a second, louder voice.
             Style = NamedStyle("Body2Medium"),
-            FontSize = 15,
             LineBreakMode = LineBreakMode.WordWrap,
         };
 
