@@ -10,6 +10,13 @@ failure landed on a job whose binary had already shipped.
 
 This script creates the localization when it is missing instead of waiting for
 one, so the note lands on the first build as readily as the hundredth.
+
+It also owns the wait for App Store Connect to process the build. The action
+can do that too, but on a single token with a ten-minute life and a poll that
+backs off past it: build 20329 (2026-09-21) took over thirteen minutes to be
+listed at all, and the action's fifth poll was refused with a 401 — a delivered
+binary reported as a failed step. Here the token is re-minted as it ages, and
+the deadline is one the app's processing time actually fits inside.
 """
 
 from __future__ import annotations
@@ -26,18 +33,22 @@ import jwt
 
 API = "https://api.appstoreconnect.apple.com/v1"
 
-# App Store Connect rejects tokens with a lifetime over 20 minutes. Nothing here
-# polls for long, so a short one is plenty.
+# App Store Connect rejects tokens with a lifetime over 20 minutes, and refuses
+# one the moment it expires — mid-poll, if the poll outlives it. So a token is
+# minted for 15 minutes and replaced after 10, well before either edge.
 TOKEN_TTL_SECONDS = 15 * 60
+TOKEN_REFRESH_AFTER_SECONDS = 10 * 60
 
 # TestFlight truncates "What to Test" past 4000 characters. mobile-build-changelog.py
 # already fits the text to that; this is the backstop for anything else.
 WHATS_NEW_LIMIT = 4000
 
-# The caller waits for processing before invoking us, so the build is normally
-# visible on the first try. This covers the seconds of index lag after that.
-BUILD_LOOKUP_ATTEMPTS = 6
-BUILD_LOOKUP_DELAY_SECONDS = 15
+# A fresh upload is not listed for a while, then sits in PROCESSING; "What to
+# Test" only sticks to a build that has reached VALID. Both waits share one
+# deadline. Thirty minutes is well past the longest this app has taken and is
+# Linux-runner time, which is cheap; the step is continue-on-error besides.
+PROCESSING_WAIT_MINUTES = 30
+POLL_DELAY_SECONDS = 30
 
 # Used only when the app has no beta app localization to borrow a locale from —
 # i.e. Test Information is still empty. Apple accepts the note either way.
@@ -48,25 +59,38 @@ class AppStoreError(RuntimeError):
     pass
 
 
-def token(issuer_id: str, key_id: str, private_key: str) -> str:
-    now = int(time.time())
-    return jwt.encode(
-        {
-            "iss": issuer_id,
-            "aud": "appstoreconnect-v1",
-            "iat": now - 60,
-            "exp": now + TOKEN_TTL_SECONDS,
-        },
-        private_key,
-        algorithm="ES256",
-        headers={"kid": key_id, "typ": "JWT"},
-    )
+class Bearer:
+    """A token that re-mints itself before App Store Connect would refuse it."""
+
+    def __init__(self, issuer_id: str, key_id: str, private_key: str) -> None:
+        self._issuer_id = issuer_id
+        self._key_id = key_id
+        self._private_key = private_key
+        self._minted_at = 0.0
+        self._value = ""
+
+    def __str__(self) -> str:
+        now = time.time()
+        if now - self._minted_at > TOKEN_REFRESH_AFTER_SECONDS:
+            self._value = jwt.encode(
+                {
+                    "iss": self._issuer_id,
+                    "aud": "appstoreconnect-v1",
+                    "iat": int(now) - 60,
+                    "exp": int(now) + TOKEN_TTL_SECONDS,
+                },
+                self._private_key,
+                algorithm="ES256",
+                headers={"kid": self._key_id, "typ": "JWT"},
+            )
+            self._minted_at = now
+        return self._value
 
 
 def call(
     method: str,
     path: str,
-    bearer: str,
+    bearer: Bearer,
     payload: dict | None = None,
 ) -> dict:
     request = urllib.request.Request(
@@ -87,7 +111,7 @@ def call(
         raise AppStoreError(f"{method} {path} failed ({error.code}): {detail}") from error
 
 
-def find_app(bundle_id: str, bearer: str) -> str:
+def find_app(bundle_id: str, bearer: Bearer) -> str:
     query = urllib.parse.urlencode({"filter[bundleId]": bundle_id, "limit": 1})
     data = call("GET", f"/apps?{query}", bearer).get("data") or []
     if not data:
@@ -95,26 +119,46 @@ def find_app(bundle_id: str, bearer: str) -> str:
     return data[0]["id"]
 
 
-def find_build(app_id: str, build_number: str, bearer: str) -> str:
+def wait_for_build(
+    app_id: str, build_number: str, bearer: Bearer, wait_minutes: int
+) -> str:
+    """The build's id once App Store Connect has finished processing it.
+
+    Processing ends in VALID, or in FAILED / INVALID — a duplicate build number
+    lands there, and so does a binary Apple's checks reject. Neither will ever
+    reach TestFlight, so they are reported as such rather than waited on.
+    """
     query = urllib.parse.urlencode(
         {"filter[app]": app_id, "filter[version]": build_number, "limit": 1}
     )
-    for attempt in range(BUILD_LOOKUP_ATTEMPTS):
+    deadline = time.monotonic() + wait_minutes * 60
+    while True:
         data = call("GET", f"/builds?{query}", bearer).get("data") or []
-        if data:
+        state = (data[0].get("attributes") or {}).get("processingState") if data else None
+        if state == "VALID":
             return data[0]["id"]
-        if attempt < BUILD_LOOKUP_ATTEMPTS - 1:
-            print(
-                f"Build {build_number} not visible yet "
-                f"(attempt {attempt + 1}/{BUILD_LOOKUP_ATTEMPTS}); "
-                f"retrying in {BUILD_LOOKUP_DELAY_SECONDS}s",
-                flush=True,
+        if state in ("FAILED", "INVALID"):
+            raise AppStoreError(
+                f"Build {build_number} is {state} in App Store Connect — it will never "
+                "reach TestFlight. Apple emails the account holder the reason; a duplicate "
+                "build number is the usual one."
             )
-            time.sleep(BUILD_LOOKUP_DELAY_SECONDS)
-    raise AppStoreError(f"Build {build_number} never became visible in App Store Connect.")
+        if time.monotonic() >= deadline:
+            raise AppStoreError(
+                f"Build {build_number} was not processed within {wait_minutes} minutes "
+                f"(last seen: {state or 'not listed yet'}). The binary is uploaded; "
+                "attach the notes by hand once it appears, or dispatch the push again — "
+                "a build the store already holds is skipped, and only the notes are redone."
+            )
+        print(
+            f"Build {build_number}: {state or 'not listed yet'}; "
+            f"checking again in {POLL_DELAY_SECONDS}s",
+            flush=True,
+        )
+        time.sleep(POLL_DELAY_SECONDS)
 
 
-def preferred_locale(app_id: str, bearer: str) -> str:
+def preferred_locale(app_id: str, bearer: Bearer) -> str:
     """The locale Apple would have used, so a later auto-created row matches ours."""
     data = call("GET", f"/apps/{app_id}/betaAppLocalizations", bearer).get("data") or []
     for localization in data:
@@ -124,7 +168,7 @@ def preferred_locale(app_id: str, bearer: str) -> str:
     return FALLBACK_LOCALE
 
 
-def attach(build_id: str, app_id: str, notes: str, bearer: str) -> None:
+def attach(build_id: str, app_id: str, notes: str, bearer: Bearer) -> None:
     existing = call("GET", f"/builds/{build_id}/betaBuildLocalizations", bearer)
     localizations = existing.get("data") or []
 
@@ -177,6 +221,12 @@ def main() -> int:
     parser.add_argument(
         "--private-key-file", required=True, help="App Store Connect .p8, PEM encoded"
     )
+    parser.add_argument(
+        "--wait-minutes",
+        type=int,
+        default=PROCESSING_WAIT_MINUTES,
+        help="how long to wait for App Store Connect to list and process the build",
+    )
     args = parser.parse_args()
 
     with open(args.notes_file, encoding="utf-8") as handle:
@@ -189,9 +239,9 @@ def main() -> int:
         private_key = handle.read()
 
     try:
-        bearer = token(args.issuer_id, args.key_id, private_key)
+        bearer = Bearer(args.issuer_id, args.key_id, private_key)
         app_id = find_app(args.bundle_id, bearer)
-        build_id = find_build(app_id, args.build, bearer)
+        build_id = wait_for_build(app_id, args.build, bearer, args.wait_minutes)
         attach(build_id, app_id, notes, bearer)
     except AppStoreError as error:
         print(f"::error::{error}", file=sys.stderr)

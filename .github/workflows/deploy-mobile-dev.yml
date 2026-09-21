@@ -11,6 +11,12 @@ name: Deploy Mobile → Dev
 #
 # Dispatch on main only. The bucket keeps a tag's builds for 10 days; after
 # that the tag has to be rebuilt before it can be pushed.
+#
+# Pushing is idempotent per store. A store that already holds the tag's build
+# is skipped there, the platform still counts as delivered, and the run ends
+# green — so a run that lost one platform can be dispatched again for `both`
+# and only the missing store is uploaded. A store holding a *higher* number
+# than the tag's is the one case that fails: nothing lower can ever land.
 on:
   workflow_dispatch:
     inputs:
@@ -55,6 +61,10 @@ jobs:
       build_number: ${{ steps.tag.outputs.build_number }}
       android:      ${{ steps.platforms.outputs.android }}
       ios:          ${{ steps.platforms.outputs.ios }}
+      # 'true' when that store already holds the tag's build: its push job is
+      # skipped and dispatch-sanity counts the platform as delivered.
+      play_already:       ${{ steps.stores.outputs.play_already }}
+      testflight_already: ${{ steps.stores.outputs.testflight_already }}
       changelog_testflight: ${{ steps.changelog.outputs.changelog_testflight }}
       changelog_play:       ${{ steps.changelog.outputs.changelog_play }}
       gcp_project_id:      ${{ needs.env.outputs.gcp_project_id }}
@@ -172,10 +182,17 @@ jobs:
       # This runs before the tag is checked out below, because the script only exists
       # on main; an older tag would not carry it.
       #
+      # A store that already holds this very build is not a failure either: an
+      # earlier run delivered it (2026-09-21: Play took 20329, then the TestFlight
+      # step died waiting on an expired token after its binary had shipped). That
+      # store is skipped, the platform counts as delivered, and the run stays green,
+      # so dispatching again for `both` uploads only what is missing.
+      #
       # A store that cannot be reached is not a veto. The upload step still refuses a
       # duplicate, so a momentary API failure warns and lets the run continue rather
       # than blocking a release that would have been fine.
       - name: Stores do not already have this build
+        id: stores
         env:
           PROJECT: ${{ needs.env.outputs.gcp_project_id }}
           TAG: ${{ steps.tag.outputs.tag }}
@@ -191,14 +208,27 @@ jobs:
           secret() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>/dev/null || true; }
           populated() { [ -n "$1" ] && [ "$1" != "REPLACE_ME" ]; }
 
+          # Nothing is assumed delivered until a store says so; set here so the
+          # outputs exist even when a check below is skipped or cannot be made.
+          echo "play_already=false"       >> "$GITHUB_OUTPUT"
+          echo "testflight_already=false" >> "$GITHUB_OUTPUT"
+
           CLASH=0
-          # $1 = store name, $2 = what it holds, $3 = the unit it calls the number
+          # $1 = store name, $2 = the unit it calls the number, $3 = the output that
+          # marks the store delivered, $4 = the script's answer (highest=N, holds=true|false)
           verdict() {
-            if [ "$2" -ge "$BUILD_NUMBER" ]; then
-              echo "::error::$1 already holds $3 $2, and $TAG would upload $BUILD_NUMBER — it will be refused as a duplicate. $TAG has been pushed before, or its build predates the current numbering. Build a new tag (dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks) and push that instead."
+            local highest holds
+            highest=$(printf '%s\n' "$4" | sed -n 's/^highest=//p')
+            holds=$(printf '%s\n' "$4" | sed -n 's/^holds=//p')
+            if [ "$holds" = "true" ]; then
+              echo "::notice::$1 already holds $2 $BUILD_NUMBER from $TAG — nothing to upload, so its push is skipped and the platform counts as delivered."
+              echo "$3=true" >> "$GITHUB_OUTPUT"
+              echo "### $1 — already holds \`$TAG\` ($2 $BUILD_NUMBER); upload skipped" >> "$GITHUB_STEP_SUMMARY"
+            elif [ "${highest:-0}" -ge "$BUILD_NUMBER" ]; then
+              echo "::error::$1 already holds $2 $highest, above the $BUILD_NUMBER that $TAG would upload — it will be refused as a duplicate, and nothing lower can ever land. $TAG's build predates the current numbering. Build a new tag (dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks) and push that instead."
               CLASH=1
             else
-              echo "$1 holds $3 $2; $TAG uploads $BUILD_NUMBER."
+              echo "$1 holds $2 ${highest:-0}; $TAG uploads $BUILD_NUMBER."
             fi
           }
 
@@ -207,11 +237,12 @@ jobs:
             if populated "$PLAY_KEY"; then
               printf '%s' "$PLAY_KEY" > "$KEYS/play.json"
               # The package name the upload step uses, stated the same way it states it.
-              HIGHEST=$(python .github/scripts/mobile-store-build-numbers.py \
+              ANSWER=$(python .github/scripts/mobile-store-build-numbers.py \
                 --platform android \
                 --package-name com.codesistance.carditrack.mobile \
-                --play-key-file "$KEYS/play.json") && OK=0 || OK=$?
-              if [ "$OK" -eq 0 ]; then verdict "Play Console" "$HIGHEST" versionCode; else
+                --play-key-file "$KEYS/play.json" \
+                --build "$BUILD_NUMBER") && OK=0 || OK=$?
+              if [ "$OK" -eq 0 ]; then verdict "Play Console" versionCode play_already "$ANSWER"; else
                 echo "::warning::Could not ask Play Console what it holds; the upload step will still refuse a duplicate."
               fi
             else
@@ -233,13 +264,14 @@ jobs:
               CSPROJ=$(git show "$TAG:src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj" 2>/dev/null || true)
               BUNDLE_ID=$(printf '%s\n' "$CSPROJ" | sed -n 's|.*<ApplicationId>\(.*\)</ApplicationId>.*|\1|p' | head -1 || true)
               if [ -n "$BUNDLE_ID" ]; then
-                HIGHEST=$(python .github/scripts/mobile-store-build-numbers.py \
+                ANSWER=$(python .github/scripts/mobile-store-build-numbers.py \
                   --platform ios \
                   --bundle-id "$BUNDLE_ID" \
                   --issuer-id "$ISSUER" \
                   --key-id "$KEY_ID" \
-                  --private-key-file "$KEYS/appstore.p8") && OK=0 || OK=$?
-                if [ "$OK" -eq 0 ]; then verdict "App Store Connect" "$HIGHEST" build; else
+                  --private-key-file "$KEYS/appstore.p8" \
+                  --build "$BUILD_NUMBER") && OK=0 || OK=$?
+                if [ "$OK" -eq 0 ]; then verdict "App Store Connect" build testflight_already "$ANSWER"; else
                   echo "::warning::Could not ask App Store Connect what it holds; the upload step will still refuse a duplicate."
                 fi
               else
@@ -290,7 +322,10 @@ jobs:
   deploy-play-internal:
     name: Deploy → Play Console (internal)
     needs: resolve
-    if: needs.resolve.outputs.android == 'true'
+    # Skipped outright when Play already holds the build — a re-run after a lost
+    # platform, or a tag pushed twice. Play's release notes travel with the upload,
+    # so there is nothing left to do for a build that is already there.
+    if: needs.resolve.outputs.android == 'true' && needs.resolve.outputs.play_already != 'true'
     runs-on: ubuntu-latest
     # 'skipped' when the secret gate closed, 'failure' when the store rejected
     # it: dispatch-sanity reads this rather than the job's green tick.
@@ -435,8 +470,11 @@ jobs:
             api_key_id:${{ needs.resolve.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-key-id
             api_private_key:${{ needs.resolve.outputs.gcp_project_id }}/carditrack-common-appstore-connect-api-private-key
 
+      # The IPA is only fetched when it is going to be uploaded. When TestFlight
+      # already holds the build, the job still runs — to put the release notes on
+      # a build whose first run died before reaching that step — but uploads nothing.
       - name: Download the build from GCS
-        if: steps.gate.outputs.available == 'true'
+        if: steps.gate.outputs.available == 'true' && needs.resolve.outputs.testflight_already != 'true'
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
           BUCKET: gs://${{ needs.resolve.outputs.gcs_builds_bucket }}
@@ -447,30 +485,38 @@ jobs:
 
       - name: Find IPA
         id: ipa
-        if: steps.gate.outputs.available == 'true'
+        if: steps.gate.outputs.available == 'true' && needs.resolve.outputs.testflight_already != 'true'
         run: echo "path=$(find artifacts/ios -name '*.ipa' | head -1)" >> $GITHUB_OUTPUT
 
       # release-notes is deliberately not passed. The action attaches them by
       # editing a beta build localization App Store Connect has already created,
       # polls ten minutes for one, and fails the step when none appears — which
       # is what a build gets before Test Information exists, and what sank a run
-      # whose binary had already shipped. Without the input the step ends at the
-      # upload, so its outcome means the binary and nothing else. The changelog
-      # is attached below instead. Processing is still waited on: that step
-      # needs a build App Store Connect can see.
+      # whose binary had already shipped.
+      #
+      # wait-for-processing is off for the same shape of reason: the action signs
+      # one token with a ten-minute life and polls with backoff past it, so a
+      # build that takes longer than that to be listed (20329 took over thirteen
+      # minutes on 2026-09-21) ends in a 401 after the binary is safely uploaded.
+      # The step therefore ends at the upload, and its outcome means the binary
+      # and nothing else. Processing is waited on in the next step instead, on
+      # tokens that refresh as they age; the changelog goes on there too.
       - name: Upload to TestFlight
         id: upload
-        if: steps.gate.outputs.available == 'true'
+        if: steps.gate.outputs.available == 'true' && needs.resolve.outputs.testflight_already != 'true'
         uses: apple-actions/upload-testflight-build@1fc69ca369a60b813eaaa2d936eda22794b52e17 # v5
         with:
           app-path: ${{ steps.ipa.outputs.path }}
           issuer-id: ${{ steps.secrets.outputs.issuer_id }}
           api-key-id: ${{ steps.secrets.outputs.api_key_id }}
           api-private-key: ${{ steps.secrets.outputs.api_private_key }}
-          wait-for-processing: true
+          wait-for-processing: false
 
-      # Testers see this as TestFlight "What to Test". continue-on-error because
-      # a build on TestFlight without its changelog is a worse build, not a
+      # Waits for App Store Connect to list and process the build, then writes the
+      # changelog testers see as TestFlight "What to Test". Runs after a skipped
+      # upload as well: a build the store already holds may have arrived from a
+      # run that died before this step, and this puts its notes on. continue-on-error
+      # because a build on TestFlight without its changelog is a worse build, not a
       # failed deploy — the step still goes red in the log, and Summary says so.
       - name: Attach release notes
         id: notes
@@ -505,11 +551,19 @@ jobs:
         if: steps.gate.outputs.available == 'true'
         env:
           NOTES: ${{ needs.resolve.outputs.changelog_testflight }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          BUILD_NUMBER: ${{ needs.resolve.outputs.build_number }}
+          ALREADY: ${{ needs.resolve.outputs.testflight_already }}
+          NOTES_OUTCOME: ${{ steps.notes.outcome }}
         run: |
-          echo "### TestFlight — uploaded \`${{ needs.resolve.outputs.tag }}\` (build ${{ needs.resolve.outputs.build_number }})" >> $GITHUB_STEP_SUMMARY
+          if [ "$ALREADY" = "true" ]; then
+            echo "### TestFlight — already held \`$TAG\` (build $BUILD_NUMBER); upload skipped, release notes refreshed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### TestFlight — uploaded \`$TAG\` (build $BUILD_NUMBER)" >> $GITHUB_STEP_SUMMARY
+          fi
           echo >> $GITHUB_STEP_SUMMARY
-          if [ "${{ steps.notes.outcome }}" != "success" ]; then
-            echo "::warning::Build ${{ needs.resolve.outputs.build_number }} uploaded, but its release notes did not attach."
+          if [ "$NOTES_OUTCOME" != "success" ]; then
+            echo "::warning::Build $BUILD_NUMBER is on App Store Connect, but its release notes did not attach."
             echo "Release notes did not attach — testers see this build without them:" >> $GITHUB_STEP_SUMMARY
             echo >> $GITHUB_STEP_SUMMARY
           fi
@@ -520,7 +574,9 @@ jobs:
   # ── Did the run push what was asked for? ────────────────────────────────────
   # A push job goes green when its secret gate closes (nothing uploaded, by
   # design, with a warning). That is fine for a build; it is not fine for a
-  # workflow whose only job is the upload. Fail the run instead.
+  # workflow whose only job is the upload. Fail the run instead — unless the
+  # store already held the build, which is the one way "nothing uploaded" and
+  # "delivered" are the same thing.
   dispatch-sanity:
     name: Dispatch pushed something
     needs: [resolve, deploy-play-internal, deploy-testflight]
@@ -533,6 +589,8 @@ jobs:
           IOS: ${{ needs.resolve.outputs.ios }}
           PLAY_PUSHED: ${{ needs.deploy-play-internal.outputs.pushed }}
           TF_PUSHED: ${{ needs.deploy-testflight.outputs.pushed }}
+          PLAY_ALREADY: ${{ needs.resolve.outputs.play_already }}
+          TF_ALREADY: ${{ needs.resolve.outputs.testflight_already }}
         run: |
           set -euo pipefail
           if [ "$RESOLVE" != "success" ]; then
@@ -540,11 +598,22 @@ jobs:
             exit 1
           fi
           FAIL=0
-          if [ "$ANDROID" = "true" ] && [ "$PLAY_PUSHED" != "true" ]; then
-            echo "::error::Android was requested but nothing reached Play Console (secret gate closed, or the upload failed)."; FAIL=1
+          if [ "$ANDROID" = "true" ]; then
+            if [ "$PLAY_ALREADY" = "true" ]; then
+              echo "Android: Play Console already held this build — nothing to push."
+            elif [ "$PLAY_PUSHED" = "true" ]; then
+              echo "Android: pushed to Play Console."
+            else
+              echo "::error::Android was requested but nothing reached Play Console (secret gate closed, or the upload failed)."; FAIL=1
+            fi
           fi
-          if [ "$IOS" = "true" ] && [ "$TF_PUSHED" != "true" ]; then
-            echo "::error::iOS was requested but nothing reached TestFlight (secret gate closed, or the upload failed)."; FAIL=1
+          if [ "$IOS" = "true" ]; then
+            if [ "$TF_ALREADY" = "true" ]; then
+              echo "iOS: TestFlight already held this build — nothing to push."
+            elif [ "$TF_PUSHED" = "true" ]; then
+              echo "iOS: pushed to TestFlight."
+            else
+              echo "::error::iOS was requested but nothing reached TestFlight (secret gate closed, or the upload failed)."; FAIL=1
+            fi
           fi
-          [ "$FAIL" -eq 0 ] && echo "Pushed:${ANDROID:+ }$([ "$ANDROID" = "true" ] && echo android)$([ "$IOS" = "true" ] && echo ' ios')"
           exit $FAIL

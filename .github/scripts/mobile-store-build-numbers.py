@@ -19,6 +19,16 @@ Exit codes are the contract:
   by a momentary API failure is a worse outcome than one that fails on a
   duplicate, which is the very thing the upload step itself still catches.
 * ``1`` — the arguments are wrong.
+
+With ``--build N`` — the number the caller is about to push — the answer names
+that build as well as the high-water mark::
+
+    highest=<n>
+    holds=<true|false>
+
+``holds`` is what a re-run meets: an earlier run delivered the build, so there
+is nothing to upload and nothing to fail. The number that can never land is one
+the store has *not* seen sitting below one it has, and only that is a clash.
 """
 
 from __future__ import annotations
@@ -71,8 +81,8 @@ def _call(
         raise StoreUnavailable(f"{method} {url} failed: {error}") from error
 
 
-def _highest(values: list) -> int:
-    """The largest value that is a whole number, ignoring anything that is not.
+def _numbers(values: list) -> list[int]:
+    """The values that are whole numbers, ignoring anything that is not.
 
     Build numbers are strings on both APIs and neither promises they are
     numeric — TestFlight in particular will hold things like "1.0.2" from a
@@ -85,15 +95,16 @@ def _highest(values: list) -> int:
             numbers.append(int(str(value).strip()))
         except (TypeError, ValueError):
             continue
-    return max(numbers, default=0)
+    return numbers
 
 
 # ── App Store Connect ───────────────────────────────────────────────────────
 
 
-def appstore_highest(
+def appstore_builds(
     bundle_id: str, issuer_id: str, key_id: str, private_key: str
-) -> int:
+) -> list[int]:
+    """Every build number App Store Connect lists for the app, newest first."""
     import jwt  # Imported late so a missing dependency is a store we cannot ask.
 
     now = int(time.time())
@@ -115,7 +126,7 @@ def appstore_highest(
     if not apps:
         # A bundle id App Store Connect has never seen holds no builds, which is
         # a real answer: the first upload can use any number.
-        return 0
+        return []
     app_id = apps[0]["id"]
 
     query = urllib.parse.urlencode(
@@ -127,7 +138,7 @@ def appstore_highest(
         }
     )
     builds = _call("GET", f"{APPSTORE_API}/builds?{query}", headers).get("data") or []
-    return _highest([(build.get("attributes") or {}).get("version") for build in builds])
+    return _numbers([(build.get("attributes") or {}).get("version") for build in builds])
 
 
 # ── Play Console ────────────────────────────────────────────────────────────
@@ -166,7 +177,8 @@ def _play_token(service_account: dict) -> str:
     return token
 
 
-def play_highest(package_name: str, service_account: dict) -> int:
+def play_version_codes(package_name: str, service_account: dict) -> list[int]:
+    """Every versionCode Play Console still lists for the app."""
     token = _play_token(service_account)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     base = f"{PLAY_API}/applications/{urllib.parse.quote(package_name)}/edits"
@@ -185,13 +197,22 @@ def play_highest(package_name: str, service_account: dict) -> int:
         for kind, key in (("bundles", "bundles"), ("apks", "apks")):
             listing = _call("GET", f"{base}/{edit_id}/{kind}", headers)
             version_codes += [item.get("versionCode") for item in listing.get(key) or []]
-        return _highest(version_codes)
+        return _numbers(version_codes)
     finally:
         try:
             _call("DELETE", f"{base}/{edit_id}", headers)
         except StoreUnavailable as error:
             # An abandoned edit expires on its own and blocks nothing.
             print(f"::warning::Could not discard the Play edit: {error}", file=sys.stderr)
+
+
+def report(held: list[int], build: int | None) -> None:
+    highest = max(held, default=0)
+    if build is None:
+        print(highest)
+        return
+    print(f"highest={highest}")
+    print(f"holds={'true' if build in held else 'false'}")
 
 
 def main() -> int:
@@ -203,6 +224,11 @@ def main() -> int:
     parser.add_argument("--issuer-id", help="ios: App Store Connect issuer id")
     parser.add_argument("--key-id", help="ios: App Store Connect key id")
     parser.add_argument("--private-key-file", help="ios: App Store Connect .p8")
+    parser.add_argument(
+        "--build",
+        type=int,
+        help="the build number about to be pushed: also say whether the store already holds it",
+    )
     args = parser.parse_args()
 
     if args.platform == "android":
@@ -217,15 +243,12 @@ def main() -> int:
         if args.platform == "android":
             with open(args.play_key_file, encoding="utf-8") as handle:
                 service_account = json.load(handle)
-            print(play_highest(args.package_name, service_account))
+            held = play_version_codes(args.package_name, service_account)
         else:
             with open(args.private_key_file, encoding="utf-8") as handle:
                 private_key = handle.read()
-            print(
-                appstore_highest(
-                    args.bundle_id, args.issuer_id, args.key_id, private_key
-                )
-            )
+            held = appstore_builds(args.bundle_id, args.issuer_id, args.key_id, private_key)
+        report(held, args.build)
     except StoreUnavailable as error:
         print(f"::warning::{error}", file=sys.stderr)
         return 2
