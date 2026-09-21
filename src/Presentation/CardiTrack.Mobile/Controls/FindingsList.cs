@@ -23,10 +23,10 @@ namespace CardiTrack.Mobile.Controls;
 /// detail — and they were the smallest, palest text on the card.
 /// </para>
 /// <para>
-/// The rows are the onboarding list's, down to the marker, the twenty-pixel box, the two-pixel
-/// drop and the twelve of spacing either way: <c>BaselineLearningPage</c> already sets out a
-/// short list of plain statements about a member, and two lists of the same thing in one app
-/// should not be two designs.
+/// The rows are M1-08's, down to the twenty-pixel marker, the two-pixel drop and the twelve of
+/// spacing either way. The marker is the design's own — a pale disc behind the tick — which the
+/// app did not have: <c>icon_action_check.svg</c> is a bare stroke, so the onboarding page this
+/// borrows from had been drawing the frame without its disc.
 /// </para>
 /// </remarks>
 public sealed class FindingsList : VerticalStackLayout
@@ -48,6 +48,24 @@ public sealed class FindingsList : VerticalStackLayout
     /// Nudges the marker down onto the first line's optical centre rather than its box top.
     /// </summary>
     private const int MarkerDrop = 2;
+
+    /// <summary>The marker every list uses unless it says otherwise.</summary>
+    public const string CheckMarker = "icon_check_disc.svg";
+
+    /// <summary>
+    /// The marker for a list whose points are consequences rather than reassurances.
+    /// </summary>
+    /// <remarks>
+    /// The same disc in the danger palette. A list of what deleting an account destroys is still
+    /// a list and should be drawn like one, but a blue tick beside "nothing can be recovered
+    /// afterwards" reads as approval of the sentence it marks.
+    /// </remarks>
+    public const string DangerMarker = "icon_check_disc_danger.svg";
+
+    /// <summary>
+    /// Which marker this list draws. <see cref="CheckMarker"/> unless set.
+    /// </summary>
+    public string MarkerSource { get; set; } = CheckMarker;
 
     public FindingsList()
     {
@@ -72,10 +90,10 @@ public sealed class FindingsList : VerticalStackLayout
         IsVisible = points.Count > 0;
 
         foreach (var point in points)
-            Children.Add(Row(point.Trim()));
+            Children.Add(Row(point.Trim(), MarkerSource));
     }
 
-    private static Grid Row(string point)
+    private static Grid Row(string point, string markerSource)
     {
         // Its own column so the text beside it wraps under itself. Top-aligned rather than
         // centred: against a point that runs to three lines, a marker on the vertical centre
@@ -86,7 +104,7 @@ public sealed class FindingsList : VerticalStackLayout
         // word in front of every one of them that the list does not mean.
         var marker = new Image
         {
-            Source = "icon_action_check.svg",
+            Source = markerSource,
             WidthRequest = MarkerSize,
             HeightRequest = MarkerSize,
             VerticalOptions = LayoutOptions.Start,

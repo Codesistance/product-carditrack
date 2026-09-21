@@ -38,6 +38,17 @@ public partial class SettingsPage : ContentPage
         _drafts = drafts;
         _api = api;
         _biometric = ServiceHelper.GetRequiredService<IDeviceBiometric>();
+
+        // The danger marker, because these are what deleting destroys rather than what the app
+        // will do for you. Filled once: the list is fixed copy.
+        DeletionConsequences.MarkerSource = Controls.FindingsList.DangerMarker;
+        DeletionConsequences.Apply(
+        [
+            "Your sign-in is removed and you can't get back in.",
+            "Every reading, alert and journal entry for the people you watch over is deleted.",
+            "Their devices are disconnected from CardiTrack.",
+            "Nothing can be recovered afterwards.",
+        ]);
     }
 
     protected override void OnAppearing()
