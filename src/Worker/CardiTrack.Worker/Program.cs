@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -84,6 +84,7 @@ builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
 builder.Services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreationKeyRepository>();
 builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
+builder.Services.AddScoped<IMemberAdviseObservationRepository, MemberAdviseObservationRepository>();
 builder.Services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
 builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
 builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();

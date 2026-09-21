@@ -1,4 +1,4 @@
-using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -688,6 +688,90 @@ public class HealthInsightService : IHealthInsightService
             GeneratedAt = new DateTimeOffset(DateTime.SpecifyKind(advise.GeneratedAtUtc, DateTimeKind.Utc)),
         };
     }
+
+    /// <summary>
+    /// How many entries one read returns. Generous for a year of a log that only gains a line
+    /// when something changes, and a ceiling rather than a page size: this is a record somebody
+    /// reads end to end before an appointment, so paging it would be a worse answer than a
+    /// bounded one that says it was bounded.
+    /// </summary>
+    internal const int ObservationLogLimit = 200;
+
+    /// <inheritdoc/>
+    public async Task<AdviseObservationLogResponse> GetAdviseObservationsAsync(
+        Guid requestingUserId,
+        Guid cardiMemberId,
+        DateTimeOffset? from = null,
+        DateTimeOffset? to = null,
+        CancellationToken ct = default)
+    {
+        await _access.RequireViewAccessAsync(requestingUserId, cardiMemberId, ct);
+
+        var utcNow = DateTime.UtcNow;
+        var earliest = AdviseObservationRetention.CutoffAt(utcNow);
+
+        // Deliberately no pause or IsActive guard, unlike GetAdviseAsync. That one withholds a
+        // *current* suggestion because it describes a monitoring state that has since stopped
+        // existing. This is a dated record: what was noticed last March was noticed last March,
+        // and a pause today does not make it untrue. Access is still checked, which is the part
+        // that protects the member.
+        var toUtc = (to?.UtcDateTime ?? utcNow) is var requestedTo && requestedTo > utcNow
+            ? utcNow
+            : requestedTo;
+        var fromUtc = (from?.UtcDateTime ?? earliest) is var requestedFrom && requestedFrom < earliest
+            ? earliest
+            : requestedFrom;
+
+        // An inverted or empty window is answered with an empty log rather than an error: the
+        // caller asked what happened between two instants, and "nothing" is the true answer for a
+        // window containing no time.
+        if (fromUtc >= toUtc)
+        {
+            return new AdviseObservationLogResponse
+            {
+                CardiMemberId = cardiMemberId,
+                From = Utc(fromUtc),
+                To = Utc(toUtc),
+                Observations = [],
+                Truncated = false,
+            };
+        }
+
+        // One over the limit, so "there were more" is answered by the read itself rather than by a
+        // second count query over the same rows.
+        var rows = await _unitOfWork.MemberAdviseObservations.GetByCardiMemberAsync(
+            cardiMemberId, fromUtc, toUtc, ObservationLogLimit + 1, ct);
+
+        var truncated = rows.Count > ObservationLogLimit;
+
+        return new AdviseObservationLogResponse
+        {
+            CardiMemberId = cardiMemberId,
+            From = Utc(fromUtc),
+            To = Utc(toUtc),
+            Observations =
+            [
+                .. rows.Take(ObservationLogLimit).Select(o => new AdviseObservationResponse
+                {
+                    Topic = o.Topic,
+                    Summary = o.Summary,
+                    Suggestion = o.Suggestion,
+                    GuidelineCited = o.GuidelineCited,
+                    ObservedAt = Utc(o.ObservedAtUtc),
+                })
+            ],
+            Truncated = truncated,
+        };
+    }
+
+    /// <summary>
+    /// Stamps a stored instant as UTC before it leaves as a <see cref="DateTimeOffset"/>. Npgsql
+    /// hands these back as <see cref="DateTimeKind.Utc"/>, but a row built in memory by a test or
+    /// a seed carries Unspecified, and the conversion reads that as local — which is how a log
+    /// entry lands on a caregiver's screen an hour out.
+    /// </summary>
+    private static DateTimeOffset Utc(DateTime value) =>
+        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
     private static string BuildAlertPrompt(
         Alert alert,

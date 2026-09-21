@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
@@ -29,6 +29,8 @@ public class AdviseGenerationServiceTests
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
     private readonly IMemberAdviseRepository _advises = Substitute.For<IMemberAdviseRepository>();
+    private readonly IMemberAdviseObservationRepository _observations =
+        Substitute.For<IMemberAdviseObservationRepository>();
 
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
@@ -42,6 +44,7 @@ public class AdviseGenerationServiceTests
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
         _unitOfWork.PatternBaselines.Returns(_baselines);
         _unitOfWork.MemberAdvises.Returns(_advises);
+        _unitOfWork.MemberAdviseObservations.Returns(_observations);
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.NotificationPreferences.Returns(_prefs);
@@ -156,6 +159,80 @@ public class AdviseGenerationServiceTests
         private readonly DateTimeOffset _utc;
         public FrozenTimeProvider(DateTimeOffset utc) => _utc = utc;
         public override DateTimeOffset GetUtcNow() => _utc;
+    }
+
+    // ── observation log ─────────────────────────────────────────────────────────
+
+    /// <summary>The resolved copy the rewrite slot's default answer produces, once the name and
+    /// pronoun tokens are filled in — what a stored row actually holds.</summary>
+    private const string ResolvedSummary = "Steps have been below her usual this week.";
+
+    [Fact]
+    public async Task ANewlyNoticedTopic_IsLoggedAsAnObservation()
+    {
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received(1).AddAsync(Arg.Is<MemberAdviseObservation>(o =>
+            o.CardiMemberId == _memberId
+            && o.Topic == AdviseTopic.Activity
+            && o.Summary == ResolvedSummary
+            && o.Suggestion == "A short walk after lunch is worth trying."
+            && o.GuidelineCited == "WHO adult activity guidance"));
+    }
+
+    [Fact]
+    public async Task AChangedObservation_IsLoggedBesideTheRowItReplaces()
+    {
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns([ExistingRow(_memberId)]);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received(1).AddAsync(Arg.Is<MemberAdviseObservation>(o =>
+            o.Summary == ResolvedSummary));
+    }
+
+    /// <summary>
+    /// The one that decides whether the log is worth reading. The generator runs daily and often
+    /// reaches the same conclusion; a record that logged every pass would be the same sentence a
+    /// hundred times over, and nobody takes that to an appointment.
+    /// </summary>
+    [Fact]
+    public async Task TheSameObservationReachedAgain_IsNotLoggedTwice()
+    {
+        var unchanged = ExistingRow(_memberId);
+        unchanged.Summary = ResolvedSummary;
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns([unchanged]);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.DidNotReceive().AddAsync(Arg.Any<MemberAdviseObservation>());
+    }
+
+    [Fact]
+    public async Task TheSameObservationRecased_IsNotLoggedTwice()
+    {
+        var unchanged = ExistingRow(_memberId);
+        unchanged.Summary = "  steps have been below HER usual this week.  ";
+        _advises.GetAllByCardiMemberAsync(_memberId).Returns([unchanged]);
+
+        await CreateSut().RegenerateIfDueAsync(_memberId);
+
+        await _observations.DidNotReceive().AddAsync(Arg.Any<MemberAdviseObservation>());
+    }
+
+    /// <summary>
+    /// The log is stamped with the pass's own instant, not each row's construction time, so
+    /// entries written together sort together however long the pass took.
+    /// </summary>
+    [Fact]
+    public async Task AnObservationCarriesThePassesOwnInstant()
+    {
+        var clock = NoonUtc();
+
+        await CreateSut(clock).RegenerateIfDueAsync(_memberId);
+
+        await _observations.Received(1).AddAsync(Arg.Is<MemberAdviseObservation>(o =>
+            o.ObservedAtUtc == clock.GetUtcNow().UtcDateTime));
     }
 
     [Fact]
