@@ -621,10 +621,16 @@ public class MedGemmaClient : IExternalAiClient, IAiWarmUpClient
     }
 
     /// <summary>
-    /// The token budget and the repetition guard every request carries. Read per call rather
-    /// than cached so a settings object that can be re-read stays authoritative, the same way
-    /// <c>Model</c> is.
+    /// The token budget, the repetition guard and the sampler temperature every request carries.
+    /// Read per call rather than cached so a settings object that can be re-read stays
+    /// authoritative, the same way <c>Model</c> is.
     /// </summary>
+    /// <remarks>
+    /// The name is narrower than what it returns — kept because these are one thing at the call
+    /// sites: the options block that makes a reply finishable and repeatable, assembled once and
+    /// sent on every request. See <see cref="OllamaOptions"/> for why none of it is left to the
+    /// model tag.
+    /// </remarks>
     private OllamaOptions TokenBudget() => new()
     {
         NumCtx = _settings.ContextTokens,
