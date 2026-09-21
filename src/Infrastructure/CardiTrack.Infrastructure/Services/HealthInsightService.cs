@@ -742,6 +742,9 @@ public class HealthInsightService : IHealthInsightService
         var rows = await _unitOfWork.MemberAdviseObservations.GetByCardiMemberAsync(
             cardiMemberId, fromUtc, toUtc, ObservationLogLimit + 1, ct);
 
+        // Measured on what the window held, before the collapse below — a caller asking whether
+        // there was more than it got is asking about the record, not about how many lines survived
+        // being tidied.
         var truncated = rows.Count > ObservationLogLimit;
 
         return new AdviseObservationLogResponse
@@ -751,7 +754,7 @@ public class HealthInsightService : IHealthInsightService
             To = Utc(toUtc),
             Observations =
             [
-                .. rows.Take(ObservationLogLimit).Select(o => new AdviseObservationResponse
+                .. WithoutRepeats(rows.Take(ObservationLogLimit)).Select(o => new AdviseObservationResponse
                 {
                     Topic = o.Topic,
                     Summary = o.Summary,
@@ -762,6 +765,42 @@ public class HealthInsightService : IHealthInsightService
             ],
             Truncated = truncated,
         };
+    }
+
+    /// <summary>
+    /// Drops an entry that repeats the one before it for the same topic, over a newest-first list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The writer already declines to log an observation that restates its topic's last entry, and
+    /// that check is where the work belongs. This is the guarantee rather than the mechanism: two
+    /// generation passes running together can each decide a finding is new before either has
+    /// committed, and the API's contract — every line is a change — should hold for whoever reads
+    /// the log rather than depending on those two passes never overlapping.
+    /// </para>
+    /// <para>
+    /// Per topic, not over the flat list, because topics interleave: Sleep, Activity, Sleep is
+    /// three consecutive rows and no repeat at all. And only against the immediately preceding
+    /// entry for that topic, so a finding that goes away and genuinely returns months later is
+    /// kept — that recurrence is the thing somebody would want to point at.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<MemberAdviseObservation> WithoutRepeats(
+        IEnumerable<MemberAdviseObservation> newestFirst)
+    {
+        var previousPerTopic = new Dictionary<AdviseTopic, string>();
+
+        foreach (var observation in newestFirst)
+        {
+            if (previousPerTopic.TryGetValue(observation.Topic, out var previous)
+                && string.Equals(previous, observation.Summary?.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            previousPerTopic[observation.Topic] = observation.Summary?.Trim() ?? string.Empty;
+            yield return observation;
+        }
     }
 
     /// <summary>

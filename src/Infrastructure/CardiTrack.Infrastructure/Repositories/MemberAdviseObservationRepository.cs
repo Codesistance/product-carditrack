@@ -27,6 +27,19 @@ public class MemberAdviseObservationRepository
             .Take(limit)
             .ToListAsync(ct);
 
+    // Grouped server-side rather than by pulling a page and reducing in memory: with a handful
+    // of topics the result is tiny, but "the newest per topic" over a page of N is only correct
+    // if N happens to be large enough to contain every topic's latest, and a member whose Sleep
+    // entries outnumber the page would silently compare against nothing.
+    public async Task<IReadOnlyList<MemberAdviseObservation>> GetLatestPerTopicAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        await _dbSet
+            .AsNoTracking()
+            .Where(o => o.CardiMemberId == cardiMemberId)
+            .GroupBy(o => o.Topic)
+            .Select(g => g.OrderByDescending(o => o.ObservedAtUtc).First())
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<MemberAdviseObservation>> GetObservedBeforeAsync(
         DateTime cutoffUtc, int take) =>
         await _dbSet

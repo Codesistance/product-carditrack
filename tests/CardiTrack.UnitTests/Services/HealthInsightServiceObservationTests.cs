@@ -61,9 +61,12 @@ public class HealthInsightServiceObservationTests
                 Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(rows);
 
-    private static MemberAdviseObservation Row(int daysAgo, string summary = "Steps were down.") => new()
+    private static MemberAdviseObservation Row(
+        int daysAgo,
+        string summary = "Steps were down.",
+        AdviseTopic topic = AdviseTopic.Activity) => new()
     {
-        Topic = AdviseTopic.Activity,
+        Topic = topic,
         Summary = summary,
         Suggestion = "A short walk after lunch is worth trying.",
         GuidelineCited = "WHO adult activity guidance",
@@ -152,10 +155,14 @@ public class HealthInsightServiceObservationTests
             Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>Distinct findings, so these exercise the cap rather than the repeat collapse below.</summary>
+    private static MemberAdviseObservation[] DistinctRows(int count) =>
+        [.. Enumerable.Range(0, count).Select(i => Row(i, summary: $"Finding number {i}."))];
+
     [Fact]
     public async Task AWindowHoldingMoreThanTheLimit_IsTrimmedAndSaysSo()
     {
-        Holds([.. Enumerable.Range(0, HealthInsightService.ObservationLogLimit + 1).Select(i => Row(i))]);
+        Holds(DistinctRows(HealthInsightService.ObservationLogLimit + 1));
 
         var log = await CreateSut().GetAdviseObservationsAsync(_userId, _memberId);
 
@@ -166,12 +173,79 @@ public class HealthInsightServiceObservationTests
     [Fact]
     public async Task AWindowHoldingExactlyTheLimit_IsNotReportedAsTrimmed()
     {
-        Holds([.. Enumerable.Range(0, HealthInsightService.ObservationLogLimit).Select(i => Row(i))]);
+        Holds(DistinctRows(HealthInsightService.ObservationLogLimit));
 
         var log = await CreateSut().GetAdviseObservationsAsync(_userId, _memberId);
 
         Assert.Equal(HealthInsightService.ObservationLogLimit, log.Observations.Count);
         Assert.False(log.Truncated);
+    }
+
+    // ── every line is a change ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// The writer already declines to log a repeat, but two passes running together can each
+    /// decide a finding is new before either commits. The contract the API states should hold for
+    /// whoever reads the log rather than depending on those two never overlapping.
+    /// </summary>
+    [Fact]
+    public async Task AnEntryRepeatingTheOneBeforeIt_IsNotServedTwice()
+    {
+        Holds(Row(1), Row(2));
+
+        var log = await CreateSut().GetAdviseObservationsAsync(_userId, _memberId);
+
+        Assert.Single(log.Observations);
+    }
+
+    /// <summary>
+    /// Per topic, not over the flat list. Here the Sleep and Activity entries happen to share
+    /// wording and sit next to each other; neither is a repeat of anything, because a repeat is
+    /// only ever measured against the same topic's own previous entry.
+    /// </summary>
+    [Fact]
+    public async Task TwoTopicsSayingTheSameThing_AreBothKept()
+    {
+        Holds(
+            Row(1, "Things were quieter than usual.", AdviseTopic.Sleep),
+            Row(2, "Things were quieter than usual.", AdviseTopic.Activity),
+            Row(3, "Steps were down.", AdviseTopic.Activity));
+
+        var log = await CreateSut().GetAdviseObservationsAsync(_userId, _memberId);
+
+        Assert.Equal(3, log.Observations.Count);
+    }
+
+    /// <summary>
+    /// A finding that went away and genuinely came back is kept — that recurrence is exactly what
+    /// somebody would want to point at in an appointment.
+    /// </summary>
+    [Fact]
+    public async Task AFindingThatReturnsAfterADifferentOne_IsKept()
+    {
+        Holds(
+            Row(1, "Steps were down."),
+            Row(2, "Steps were back to usual."),
+            Row(3, "Steps were down."));
+
+        var log = await CreateSut().GetAdviseObservationsAsync(_userId, _memberId);
+
+        Assert.Equal(3, log.Observations.Count);
+    }
+
+    /// <summary>
+    /// Truncation reports what the window held, not how many lines survived being tidied — a
+    /// caller asking whether there was more than it got is asking about the record.
+    /// </summary>
+    [Fact]
+    public async Task TruncationIsMeasuredOnTheRecord_NotOnWhatSurvivedTheCollapse()
+    {
+        Holds([.. Enumerable.Range(0, HealthInsightService.ObservationLogLimit + 1).Select(i => Row(i))]);
+
+        var log = await CreateSut().GetAdviseObservationsAsync(_userId, _memberId);
+
+        Assert.Single(log.Observations);
+        Assert.True(log.Truncated);
     }
 
     /// <summary>
