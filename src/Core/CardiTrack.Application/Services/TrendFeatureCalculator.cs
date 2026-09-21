@@ -120,7 +120,10 @@ public static class TrendFeatureCalculator
                 l => l.Steps, b => b.AvgSteps),
             Feature("Sleep", "minutes a night", ordered, baselines, through,
                 l => l.SleepMinutes, b => b.AvgSleepMinutes),
-            Feature("Active minutes", "minutes a day", ordered, baselines, through,
+            // Same name as the card and the books, from ActivityMetricNaming — a test holds this
+            // one and the card together, and the shared constant holds the other three.
+            Feature(ActivityMetricNaming.Label, ActivityMetricNaming.MinutesPerDayUnit,
+                ordered, baselines, through,
                 l => l.ActiveMinutes, b => b.AvgActiveMinutes),
             Feature("Overnight heart rate variability", "ms", ordered, baselines, through,
                 l => l.HeartRateVariabilityMs, b => b.AvgHeartRateVariabilityMs),

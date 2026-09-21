@@ -83,7 +83,10 @@ public static class ReportComparison
             // anyone but a database.
             Row("Sleep", "hours a night", days, log => Hours(log.SleepMinutes),
                 Hours(baseline.AvgSleepMinutes), sleepBand.Low, sleepBand.High, sleepBand.Source),
-            Row("Active minutes", "a day", days, log => log.ActiveMinutes,
+            // Moderate and vigorous minutes only — see ActivityMetricNaming. On a sheet a
+            // clinician reads, "active minutes" invites them to take it for time spent moving and
+            // to read a small number as a sedentary patient.
+            Row(ActivityMetricNaming.Label, ActivityMetricNaming.PerDayUnit, days, log => log.ActiveMinutes,
                 baseline.AvgActiveMinutes, null, null, null),
             Row("Overnight heart rate variability", "ms", days, log => log.HeartRateVariabilityMs,
                 baseline.AvgHeartRateVariabilityMs, null, null, null),

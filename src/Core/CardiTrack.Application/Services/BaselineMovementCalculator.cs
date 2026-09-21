@@ -371,7 +371,12 @@ public static class BaselineMovementCalculator
             _ => HeartRateFloorBpm),
         new(TrackedMetric.Sleep, "Sleep", "hours a night",
             l => Hours(l.SleepMinutes), b => Hours(b.AvgSleepMinutes), _ => null, Fraction),
-        new(TrackedMetric.ActiveMinutes, "Active minutes", "minutes a day",
+        // Named from ActivityMetricNaming, which explains why this is not "active minutes":
+        // the provider counts moderate and vigorous minutes only, so a long gentle walk barely
+        // registers and the old name invited a caregiver to read an active member as a still one.
+        new(TrackedMetric.ActiveMinutes,
+            ActivityMetricNaming.Label,
+            ActivityMetricNaming.MinutesPerDayUnit,
             l => l.ActiveMinutes, b => b.AvgActiveMinutes, _ => null, Fraction),
         new(TrackedMetric.OvernightHeartRateVariability, "Overnight heart rate variability", "ms",
             l => l.HeartRateVariabilityMs,
