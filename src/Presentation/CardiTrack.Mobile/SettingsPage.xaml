@@ -342,9 +342,9 @@
                         <Label Text="If you go ahead, within 30 days of your request:"
                                Style="{StaticResource Body2Dark}"/>
                         <!-- The same rows every other list in the app draws, in the danger
-                             palette. These are consequences rather than reassurances, and the
-                             blue tick that suits "what CardiTrack will learn" would sit beside
-                             "nothing can be recovered afterwards" looking like approval of it. -->
+                             palette, and a caution mark rather than a tick. These are
+                             consequences rather than reassurances: a tick beside "nothing can be
+                             recovered afterwards" reads as approval of it, whatever its colour. -->
                         <controls:FindingsList x:Name="DeletionConsequences" Margin="4,0,0,0"/>
                         <!-- The label ticks the box on its own now — that is the control's, not a
                              gesture this page wires — and the tick is DangerRed, as the box was.

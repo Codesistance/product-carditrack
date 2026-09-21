@@ -56,11 +56,13 @@ public sealed class FindingsList : VerticalStackLayout
     /// The marker for a list whose points are consequences rather than reassurances.
     /// </summary>
     /// <remarks>
-    /// The same disc in the danger palette. A list of what deleting an account destroys is still
-    /// a list and should be drawn like one, but a blue tick beside "nothing can be recovered
-    /// afterwards" reads as approval of the sentence it marks.
+    /// A caution mark, not a tick of any colour. A list of what deleting an account destroys is
+    /// still a list and should be drawn like one, but a tick beside "nothing can be recovered
+    /// afterwards" reads as approval of the sentence it marks, and a red tick reads as an
+    /// emphatic one. The glyph is <c>icon_status_warning</c>'s own triangle in the danger
+    /// palette, so the app has one caution mark rather than two drawings of one.
     /// </remarks>
-    public const string DangerMarker = "icon_check_disc_danger.svg";
+    public const string DangerMarker = "icon_caution_danger.svg";
 
     /// <summary>
     /// Which marker this list draws. <see cref="CheckMarker"/> unless set.
