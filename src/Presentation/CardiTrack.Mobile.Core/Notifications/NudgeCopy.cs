@@ -107,6 +107,25 @@ public static class NudgeCopy
             "Health insights and the doctor-visit report get far more specific with them. "
             + "Encrypted, and visible only to your family.",
 
+        // The only rule that asks about the health background a second time. Its two variants
+        // are the two things we can honestly say: how long since somebody confirmed it, and — for
+        // notes that predate the review date — that nobody ever has. No figure in the second,
+        // because the one we could compute is inferred from a join date and would be stating
+        // something we cannot support.
+        ["nudge.MEDICAL_NOTES_STALE.title"] = "Is {name}'s health background still right?",
+        ["nudge.MEDICAL_NOTES_STALE.body"] =
+            "It's been about {months} months since anyone confirmed it.",
+        ["nudge.MEDICAL_NOTES_STALE.benefit"] =
+            "Conditions and medications change. Health insights and the doctor-visit report read "
+            + "these notes as current, so a quick check keeps them worth reading.",
+
+        ["nudge.MEDICAL_NOTES_STALE.never_confirmed.title"] = "Is {name}'s health background still right?",
+        ["nudge.MEDICAL_NOTES_STALE.never_confirmed.body"] =
+            "These notes have been on file a while and nobody has confirmed them.",
+        ["nudge.MEDICAL_NOTES_STALE.never_confirmed.benefit"] =
+            "Conditions and medications change. Health insights and the doctor-visit report read "
+            + "these notes as current, so a quick check keeps them worth reading.",
+
         // ---- Account lifecycle ----
         ["nudge.PAUSE_LEFT_LONG.title"] = "{name} is paused for another {days} days",
         ["nudge.PAUSE_LEFT_LONG.body"] = "No monitoring or alerts while the pause runs.",

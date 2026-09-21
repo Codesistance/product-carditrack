@@ -113,6 +113,15 @@
                                        Style="{StaticResource DashboardSectionTitle}"/>
                                 <Label x:Name="NotesLabel"
                                        Style="{StaticResource Body2}"/>
+
+                                <!-- When somebody last said this is still true. Its own line under
+                                     the notes rather than beside the heading: it is a statement
+                                     about the text above it, and it can run to two lines at a
+                                     large font scale. Hidden when there are no notes — a date on
+                                     an empty background would be dating nothing. -->
+                                <Label x:Name="ReviewedLabel"
+                                       Style="{StaticResource Caption}"
+                                       IsVisible="False"/>
                             </VerticalStackLayout>
                         </Border>
 
@@ -123,6 +132,17 @@
                                 Style="{StaticResource SecondaryOutlineButton}"
                                 IsVisible="False"
                                 Clicked="OnEditClicked"/>
+
+                        <!-- The other half of dating the background: a caregiver who reads it and
+                             finds nothing to change has confirmed it just as much as one who
+                             retypes a line, and the edit form cannot say so — it replaces every
+                             field on every save, so unchanged notes are what editing something
+                             else looks like. Only offered once there is something to confirm. -->
+                        <Button x:Name="StillAccurateButton"
+                                Text="Still accurate"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                IsVisible="False"
+                                Clicked="OnStillAccurateClicked"/>
 
                     </VerticalStackLayout>
                 </ScrollView>

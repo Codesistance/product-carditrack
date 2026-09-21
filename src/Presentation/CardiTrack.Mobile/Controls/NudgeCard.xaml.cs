@@ -82,6 +82,9 @@ public partial class NudgeCard : ContentView
         "BASELINE_STALLED" => "See progress",
         "SLEEP_SCOPE_MISSING" => "Grant sleep access",
         "MEDICAL_NOTES_EMPTY" => "Add notes",
+        // Not "Confirm": tapping opens the notes so they can be read first, and a caregiver who
+        // has not seen them yet is not in a position to confirm anything.
+        "MEDICAL_NOTES_STALE" => "Review notes",
         "PAUSE_LEFT_LONG" => "Review pause",
         _ => "Open"
     };
