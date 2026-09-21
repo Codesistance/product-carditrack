@@ -229,37 +229,39 @@
                                BoxWidth="76"
                                HorizontalOptions="Start" VerticalOptions="Start"/>
 
-        <!-- Two lines, not one: the headline is the note a caregiver reads at a glance — short
-             enough to land in one beat — and the sentence under it is the context they read
-             second. Grid, not a stack: the label needs a bounded column width to wrap within, and
-             the icon stays on the headline's row rather than re-centering against however many
-             lines the pair wraps to. Neither label overrides LineHeight — the crammed 1.05 this
-             used to carry made a wrapped line look mispadded.
+        <!-- Two rows, one column: the headline is the note a caregiver reads at a glance, the
+             sentence under it the context they read second. Neither label overrides LineHeight —
+             the crammed 1.05 this used to carry made a wrapped line look mispadded. Both rows
+             collapse when their labels are hidden, which is what lets the no-baseline tier below
+             render as the sentence alone.
 
-             The sentence spans both columns rather than sitting in the headline's: only the
-             headline has a glyph to be indented by, so indenting the sentence too left every line
-             of the block starting at a different x. Both rows collapse when their labels are
-             hidden, which is what lets the no-baseline tier below render as the sentence alone. -->
+             There is no glyph in front of the headline any more. It was tinted per tier by the
+             asset itself, and it cost the block its left edge: only the headline was indented by
+             it, so the sentence underneath started at a different x, and once the headline was
+             allowed to wrap the glyph had no single line to sit against. The tier still reaches
+             the reader — the headline is coloured by it, and says the condition in words — so the
+             glyph was reinforcing what two other channels already carried, at the price of the
+             alignment. `line.Icon` is still served and simply not drawn here. -->
         <Grid Grid.Row="1" Grid.Column="1"
-              ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto"
-              ColumnSpacing="6" RowSpacing="2">
-            <!-- Tinted per tier by the asset itself (icon_status_*.svg): these were authored
-                 white for the card's original coloured fill, and stayed invisible — as a bare
-                 17dp indent in front of the status line — once the card went white. -->
-            <Image x:Name="StatusIcon"
-                   Grid.Row="0" Grid.Column="0"
-                   Source="icon_status_check.svg"
-                   WidthRequest="17" HeightRequest="17"
-                   VerticalOptions="Center"/>
+              RowDefinitions="Auto,Auto" RowSpacing="2">
+            <!-- Two lines, because this one is written rather than composed: the detail below
+                 it gets three, and the headline was the only label in the app truncating
+                 model-written prose to a single line. "Slower heart rate and less act…" loses
+                 the half of the sentence a caregiver came for. It keeps TailTruncation as the
+                 backstop so a runaway headline still cannot push the card open. -->
             <Label x:Name="StatusHeadlineLabel"
-                   Grid.Row="0" Grid.Column="1"
+                   Grid.Row="0"
                    FontFamily="QuicksandSemiBold"
-                   FontSize="16"
+                   FontSize="15"
                    LineBreakMode="TailTruncation"
-                   VerticalOptions="Center"/>
+                   MaxLines="2"/>
+            <!-- A point under Body2Dark's fourteen, keeping the step down from the headline that
+                 the old 16/14 pair had. Both come down together so the block reads at one scale
+                 rather than the sentence growing relative to the line above it. -->
             <Label x:Name="StatusDetailLabel"
-                   Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                   Grid.Row="1"
                    Style="{StaticResource Body2Dark}"
+                   FontSize="13"
                    LineBreakMode="WordWrap"
                    MaxLines="3"/>
         </Grid>

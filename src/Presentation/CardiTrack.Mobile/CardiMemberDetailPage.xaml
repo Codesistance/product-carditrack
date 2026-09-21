@@ -437,7 +437,7 @@
                                                      IsVisible="False">
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                         <Image Grid.Column="0"
-                                               Source="icon_monitoring.svg"
+                                               Source="icon_binoculars.svg"
                                                WidthRequest="20" HeightRequest="20"
                                                VerticalOptions="Start"
                                                Margin="0,2,0,0"
