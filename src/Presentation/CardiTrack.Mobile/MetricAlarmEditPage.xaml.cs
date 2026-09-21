@@ -30,6 +30,8 @@ namespace CardiTrack.Mobile;
 [QueryProperty(nameof(MemberId), "memberId")]
 [QueryProperty(nameof(MemberName), "name")]
 [QueryProperty(nameof(AlarmId), "alarmId")]
+[QueryProperty(nameof(Metric), "metric")]
+[QueryProperty(nameof(Threshold), "threshold")]
 public partial class MetricAlarmEditPage : ContentPage
 {
     public const string Route = "metricalarmedit";
@@ -39,6 +41,10 @@ public partial class MetricAlarmEditPage : ContentPage
 
     private readonly MemberRoute _route = new();
     private Guid? _alarmId;
+
+    /// <summary>The reading and starting share a trend card arrived with, if any.</summary>
+    private AlarmMetric? _metric;
+    private decimal? _threshold;
     private AlarmProvenance? _provenance;
     private AlarmDraft? _draft;
     private bool _loaded;
@@ -95,6 +101,45 @@ public partial class MetricAlarmEditPage : ContentPage
     {
         set => _alarmId = Guid.TryParse(Uri.UnescapeDataString(value ?? string.Empty), out var id)
             ? id
+            : null;
+    }
+
+    /// <summary>
+    /// The reading to open on, where the caregiver arrived from somewhere that already knows which
+    /// one they mean — a trend card, rather than the alarms list's "New alert".
+    /// </summary>
+    /// <remarks>
+    /// A suggestion the form starts from, not a decision: every picker below it stays live, and
+    /// nothing is saved until Save. Ignored on an edit, where the alarm being edited has a metric
+    /// of its own and changing it under the caregiver would be answering a question they did not
+    /// ask.
+    /// </remarks>
+    public string Metric
+    {
+        set => _metric = Enum.TryParse<AlarmMetric>(
+            Uri.UnescapeDataString(value ?? string.Empty), ignoreCase: true, out var metric)
+            ? metric
+            : null;
+    }
+
+    /// <summary>
+    /// A starting threshold, as a share of the member's own usual.
+    /// </summary>
+    /// <remarks>
+    /// Carried as a percentage because that is what the sender has: a trend card knows how far
+    /// this member has drifted from their own baseline, and "tell me if it goes this far again" is
+    /// a threshold drawn from their readings rather than a clinical level the app has picked.
+    /// Applied only where the metric supports a baseline share — <see cref="AlarmDraft"/> is the
+    /// authority on that — and dropped rather than forced where it does not.
+    /// </remarks>
+    public string Threshold
+    {
+        set => _threshold = decimal.TryParse(
+            Uri.UnescapeDataString(value ?? string.Empty),
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out var threshold)
+            ? threshold
             : null;
     }
 
@@ -202,6 +247,8 @@ public partial class MetricAlarmEditPage : ContentPage
         _draft = new AlarmDraft(catalogue, existing);
         _loaded = true;
 
+        ApplySuggestion(existing);
+
         _provenance = existing?.Provenance;
 
         HeaderTitle.Text = existing is null ? "New Custom Alert" : "Edit Custom Alert";
@@ -223,6 +270,50 @@ public partial class MetricAlarmEditPage : ContentPage
 
         BuildPickers();
         Refresh();
+    }
+
+    /// <summary>
+    /// Starts the form on the reading a trend card was raised from, where one was passed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Before <see cref="BuildPickers"/> and <see cref="Refresh"/>, so the pickers are drawn from
+    /// a draft that already holds it and no handler has to be suppressed.
+    /// </para>
+    /// <para>
+    /// Never on an edit. The alarm being edited has its own metric and its own level, and
+    /// replacing them with the ones from wherever the caregiver came from would change an existing
+    /// alert into a different one behind their back.
+    /// </para>
+    /// <para>
+    /// <see cref="_touched"/> is deliberately left alone: this is the page filling itself in, not
+    /// the caregiver filling it in, so the live load behind the saved one may still rebuild the
+    /// form.
+    /// </para>
+    /// </remarks>
+    private void ApplySuggestion(MetricAlarmResponse? existing)
+    {
+        if (existing is not null || _draft is null || _metric is not { } metric)
+            return;
+
+        // A metric the catalogue does not carry would leave the draft on whatever it defaulted to
+        // while the form claimed to be about something else.
+        if (!_draft.Metrics.Any(m => m.Metric == metric))
+            return;
+
+        _draft.SelectMetric(metric);
+
+        // The share is offered only where this reading supports one. Several do not — the draft
+        // narrows the kinds per metric — and forcing it would leave an absolute threshold holding
+        // a percentage.
+        if (_threshold is not { } threshold
+            || !_draft.ThresholdKinds.Contains(AlarmThresholdKind.BaselinePercent))
+        {
+            return;
+        }
+
+        _draft.SelectThresholdKind(AlarmThresholdKind.BaselinePercent);
+        _draft.SetThresholdText(threshold.ToString(CultureInfo.InvariantCulture));
     }
 
     /// <summary>The pickers whose contents never change — everything else is rebuilt by <see cref="Refresh"/>.</summary>

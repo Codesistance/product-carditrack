@@ -168,10 +168,15 @@
              reachable while it is scrolled — the same reason the alert chips do. Hidden until the
              member has any entry at all: a filter row over a first-days empty state is a control
              with nothing to do. -->
+        <!-- The chips sit closer to the search box than to whatever the list starts with, and
+             the panel keeps a little padding under them. With twelve above and none below they
+             were flush against the panel's edge, so the first card's own margin was the only
+             thing between a chip and the list — which reads as the chips belonging to the card
+             rather than to the search above them. -->
         <VerticalStackLayout x:Name="FilterPanel"
                              Grid.Row="2"
-                             Spacing="12"
-                             Padding="20,20,20,0"
+                             Spacing="6"
+                             Padding="20,20,20,10"
                              IsVisible="False">
 
             <!-- Same treatment as the questionnaires archive search. Server-side and debounced:

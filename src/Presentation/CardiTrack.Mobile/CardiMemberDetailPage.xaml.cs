@@ -1,3 +1,4 @@
+using System.Globalization;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Enums;
@@ -158,6 +159,7 @@ public partial class CardiMemberDetailPage : ContentPage
         _schedule = schedule;
         _feedback = new RefreshFeedback(SavedBanner, Updating);
         BuildPauseDurations();
+        InsightMovementCards.OnCreateAlert = OpenAlertForMovementAsync;
         PendingQuestionCard.AnswerSubmitted += OnQuestionAnswered;
         PendingQuestionCard.DismissRequested += OnQuestionDismissed;
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
@@ -870,7 +872,13 @@ public partial class CardiMemberDetailPage : ContentPage
         var hasSummary = !string.IsNullOrWhiteSpace(insight?.Summary);
         var hasTrend = !string.IsNullOrWhiteSpace(insight?.Trend);
 
-        InsightAccordion.IsVisible = hasSummary;
+        // The section comes down entirely when there is nothing behind it. A header and a chevron
+        // over an empty body is the worst of both: it takes a line of the card, and it invites a
+        // caregiver to open it to find out there was nothing there.
+        var movements = insight?.Movements ?? [];
+        var hasAnythingToList = movements.Count > 0 || insight?.KeyFindings.Count > 0;
+
+        InsightAccordion.IsVisible = hasSummary || hasAnythingToList;
         InsightCard.IsVisible = hasTrend;
 
         if (insight is null)
@@ -878,8 +886,25 @@ public partial class CardiMemberDetailPage : ContentPage
 
         InsightSummaryLabel.IsVisible = hasSummary;
         InsightSummaryLabel.Text = insight.Summary ?? string.Empty;
-        InsightFindings.Apply(insight.KeyFindings);
-        InsightAccordion.HeaderText = InsightHeader(insight.KeyFindings.Count);
+
+        // Cards where the row carries its movements, the older prose list where it does not.
+        // Never both: the cards say what the bullets say, with the figures the bullets could not
+        // carry, and a row written before the movements column existed still has to render.
+        InsightMovementCards.Apply(movements);
+        InsightFindings.Apply(movements.Count > 0 ? [] : insight.KeyFindings);
+
+        // What is behind the chevron is only called a trend when it is one. A member still being
+        // learned has findings — notes about a picture that is still forming — and naming those
+        // "trends to keep an eye on", with a red count beside them, tells a caregiver something
+        // has been judged about someone CardiTrack has not finished measuring.
+        var hasTrends = movements.Count > 0
+            || (!insight.IsLearning && insight.KeyFindings.Count > 0);
+
+        InsightAccordion.HeaderText = InsightHeader(hasTrends);
+        InsightAccordion.Count = hasTrends
+            ? (movements.Count > 0 ? movements.Count : insight.KeyFindings.Count)
+            : null;
+        InsightAccordion.CountTint = MovementCards.DominantTint(movements);
 
         // The body was measured when it was empty, so an open accordion filled by a later load
         // would be sliced off at whatever it was worth then.
@@ -906,12 +931,41 @@ public partial class CardiMemberDetailPage : ContentPage
     /// a section to find out whether it has anything in it — and with the card now appearing only
     /// when something has actually moved, the count is the answer to the question they came with.
     /// </remarks>
-    private static string InsightHeader(int findings) => findings switch
+    private static string InsightHeader(bool hasTrends) =>
+        hasTrends
+            ? "Trends to keep an eye on"
+            // Nothing has been judged to keep an eye on, so the section is what it always was:
+            // the learning and provisional readings, which describe a picture still forming.
+            // Naming those "trends" would promise a judgement that has not been made.
+            : "How they are doing";
+
+    /// <summary>
+    /// Opens the alarm form on the reading a trend card was raised from.
+    /// </summary>
+    /// <remarks>
+    /// The metric and a starting threshold travel with it, so a caregiver who has just been shown
+    /// that someone is sleeping less than usual does not land on an empty picker and have to find
+    /// "Sleep duration" again. Both are pre-filled rather than saved: the form holds everything
+    /// until Save, and the threshold is this member's own departure rather than a level the app
+    /// has decided matters.
+    /// </remarks>
+    private async Task OpenAlertForMovementAsync(MemberMovementResponse movement)
     {
-        0 => "How they are doing",
-        1 => "How they are doing · 1 thing to look at",
-        _ => $"How they are doing · {findings} things to look at",
-    };
+        if (movement.AlarmMetric is not { } metric)
+            return;
+
+        var route = $"{MetricAlarmEditPage.Route}?memberId={_route.Id}"
+            + $"&name={Uri.EscapeDataString(_member?.Name ?? string.Empty)}"
+            + $"&metric={Uri.EscapeDataString(metric)}";
+
+        if (movement.SuggestedThresholdPercent is { } threshold)
+        {
+            route += "&threshold="
+                + Uri.EscapeDataString(threshold.ToString(CultureInfo.InvariantCulture));
+        }
+
+        await Shell.Current.GoToAsync(route);
+    }
 
     /// <summary>
     /// The window the comparison is against, and when it was written. Both, because either alone

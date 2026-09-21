@@ -314,8 +314,8 @@
                                      not — which is what AccordionSection is for, and where it
                                      already sits on the Dashboard's Key Metrics. -->
                                 <controls:AccordionSection x:Name="InsightAccordion"
-                                        HeaderText="How they are doing"
-                                        IconSource="icon_monitoring.svg"
+                                        HeaderText="Trends to keep an eye on"
+                                        IconSource="icon_trend_watch.svg"
                                         IsVisible="False">
                                     <controls:AccordionSection.Body>
                                         <VerticalStackLayout Spacing="10">
@@ -329,6 +329,17 @@
                                                    Style="{StaticResource Body2Dark}"
                                                    IsVisible="False"
                                                    LineBreakMode="WordWrap"/>
+                                            <!-- One card per metric that moved, each with the
+                                                 figures, what the grade was given on, and an
+                                                 alert on that reading. -->
+                                            <controls:MovementCards x:Name="InsightMovementCards"
+                                                                 IsVisible="False"/>
+
+                                            <!-- The same points as prose, for a row written
+                                                 before the movements were stored alongside them.
+                                                 Only ever one of these two is shown: the cards
+                                                 say what the bullets say, with the figures the
+                                                 bullets had to leave out. -->
                                             <controls:FindingsList x:Name="InsightFindings"
                                                                    IsVisible="False"/>
                                         </VerticalStackLayout>
@@ -426,7 +437,7 @@
                                                      IsVisible="False">
                                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
                                         <Image Grid.Column="0"
-                                               Source="icon_calendar.svg"
+                                               Source="icon_monitoring.svg"
                                                WidthRequest="20" HeightRequest="20"
                                                VerticalOptions="Start"
                                                Margin="0,2,0,0"

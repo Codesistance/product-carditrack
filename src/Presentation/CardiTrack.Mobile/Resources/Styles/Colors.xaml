@@ -107,6 +107,15 @@
     <Color x:Key="PillRedBackground">#26E53E3E</Color>
     <Color x:Key="PillNeutralBackground">#26939DAA</Color>
 
+    <!-- The count badge on a collapsed section, in the grade that dominates what is behind it.
+         Solid rather than the 0x26 pill tints above: those carry dark text on a wash, and this
+         is two or three characters at 11px that have to be legible at a glance. All three take
+         white and clear 4.5:1 with it — MutedText and StatusGreen do not, which is why neither
+         is reused here. -->
+    <Color x:Key="CountBadgeAttention">#C42F2F</Color>
+    <Color x:Key="CountBadgeNeutral">#5F6B7A</Color>
+    <Color x:Key="CountBadgeFavourable">#15644F</Color>
+
     <!-- Alert icon tiles — Figma rgba(239,68,68,0.14), generalised across the severity set -->
     <!-- Quick actions (dashboard), in the app's own blue rather than a severity colour — these are
          ordinary controls, and only the one that dials an emergency contact wears red. The row
