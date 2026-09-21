@@ -33,6 +33,14 @@ public class MedGemmaModelPinTests
     private static readonly string[] WeightsManifestPath = [.. ModelDir, "weights.sha256"];
     private static readonly string[] WeightsEnvPath = [.. ModelDir, "weights.env"];
     private static readonly string[] ModelVersionPath = [.. ModelDir, ".model-version"];
+    private static readonly string[] ModelAliasesPath = [.. ModelDir, ".model-aliases"];
+    private static readonly string[] ComposePath = ["docker-compose.yml"];
+    private static readonly string[][] AppSettingsWithModel =
+    [
+        ["src", "Presentation", "CardiTrack.API", "appsettings.json"],
+        ["src", "Pipeline", "CardiTrack.PipelineJobs", "appsettings.json"],
+        ["tools", "AiSplitEvaluator", "appsettings.json"],
+    ];
     private static readonly string[] DeployWorkflowPath = [".github", "workflows", "deploy-medgemma-common.yml"];
     private static readonly string[] VendorWorkflowPath = [".github", "workflows", "vendor-medgemma-weights.yml"];
     private static readonly string[] FetchScriptPath = ["scripts", "fetch-medgemma-weights.sh"];
@@ -95,6 +103,9 @@ public class MedGemmaModelPinTests
         Assert.Contains("sha256sum -c ../weights.sha256", dockerfile, StringComparison.Ordinal);
         Assert.Contains("ollama create", dockerfile, StringComparison.Ordinal);
         Assert.Contains("-f Modelfile", dockerfile, StringComparison.Ordinal);
+        // Ollama lowercases a stored tag and resolves either spelling; a byte-exact `$1==tag`
+        // rejected a working alias (measured on 0.34.2). The check has to match the way Ollama does.
+        Assert.Contains("tolower($1)==tolower(tag)", dockerfile, StringComparison.Ordinal);
         // The two things that put a registry back into the build.
         Assert.DoesNotContain("ollama pull", dockerfile, StringComparison.Ordinal);
         Assert.DoesNotContain("hf.co", dockerfile, StringComparison.Ordinal);
@@ -152,6 +163,57 @@ public class MedGemmaModelPinTests
         // registry reference again; the tag part is what keeps it distinguishable in `ollama list`.
         Assert.Matches("^[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._-]*$", name);
         Assert.DoesNotContain("hf.co", name, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryCallerNamesTheModelTheImageRegisters()
+    {
+        // .model-version is what `ollama create` registers and what Terraform reads for the
+        // deployed hosts. Compose and appsettings cannot read a file, so they carry the name as
+        // a literal — and a literal drifts the moment the file is bumped alone, which is a 404
+        // on every medical call. This is the check Terraform gets for free by reading the file.
+        var name = File.ReadAllText(PathTo(ModelVersionPath)).Trim();
+
+        var compose = File.ReadAllText(PathTo(ComposePath));
+        Assert.Contains($"AI__Private__Model: \"{name}\"", compose, StringComparison.Ordinal);
+        // The init container derives its name from the file rather than repeating it.
+        Assert.Contains("tr -d '[:space:]' < .model-version", compose, StringComparison.Ordinal);
+        Assert.DoesNotContain($"ollama create {name}", compose, StringComparison.Ordinal);
+        // And checks the bytes before registering them, as the image build does.
+        Assert.Contains("sha256sum -c ../weights.sha256", compose, StringComparison.Ordinal);
+
+        foreach (var segments in AppSettingsWithModel)
+        {
+            var settings = File.ReadAllText(PathTo(segments));
+            Assert.True(settings.Contains($"\"Model\": \"{name}\"", StringComparison.Ordinal),
+                $"{Path.Combine(segments)} names a different Private model than .model-version ({name}).");
+        }
+    }
+
+    [Fact]
+    public void ModelAliases_AreValidNamesOtherThanTheCurrentOne_AndTheBuildRegistersThem()
+    {
+        var name = File.ReadAllText(PathTo(ModelVersionPath)).Trim();
+        var aliases = NonEmptyLines(PathTo(ModelAliasesPath))
+            .Where(line => !line.StartsWith('#'))
+            .ToList();
+
+        Assert.All(aliases, alias =>
+        {
+            // A name Ollama will accept for `ollama cp`, with a tag; never the current name,
+            // which would be a copy onto itself.
+            Assert.Matches("^[A-Za-z0-9][A-Za-z0-9._/-]*:[A-Za-z0-9][A-Za-z0-9._-]*$", alias);
+            Assert.NotEqual(name, alias);
+        });
+
+        // Whether or not a rename is in flight, the wiring that would carry one has to be there:
+        // an alias line with no `ollama cp` behind it is a rollout that 404s.
+        var dockerfile = File.ReadAllText(PathTo(DockerfilePath));
+        var workflow = File.ReadAllText(PathTo(DeployWorkflowPath));
+        Assert.Contains("ARG MODEL_ALIASES", dockerfile, StringComparison.Ordinal);
+        Assert.Contains("ollama cp \"${MODEL_TAG}\" \"${ALIAS}\"", dockerfile, StringComparison.Ordinal);
+        Assert.Contains(".model-aliases", workflow, StringComparison.Ordinal);
+        Assert.Contains("--build-arg \"MODEL_ALIASES=", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -72,7 +72,10 @@ carries the tag's template and params byte for byte. Both hashes were confirmed 
 upstream LFS objects *and* the layer digests of the manifest the tag served, so the vendored
 model is the model that has been running. The Dockerfile was exercised end to end against
 stand-in GGUFs (real model + projector files under the real names, matching manifest) before
-merging. `docs/technical/medgemma_serving_architecture.md` §9.6 has the shape.
+merging. `docs/technical/medgemma_serving_architecture.md` §9.6 has the shape. Rollout order, because the registered name changes and callers read it from
+the environment stack: `deploy-infra-common` (bucket) → `vendor-medgemma-weights` (once) →
+`deploy-medgemma-common` (the image answers to the old name too, via `.model-aliases`) →
+`deploy-infra-dev` (callers move to the new name) → a follow-up that empties `.model-aliases`.
 
 What this closed, beyond the rebuild: `.model-digest` — the manifest-hash guard from #1174 that
 could never be reached — is gone, replaced by a pin on bytes we hold. The Hugging Face mirror is

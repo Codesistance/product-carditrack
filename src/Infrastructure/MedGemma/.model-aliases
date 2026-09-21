@@ -1,0 +1,13 @@
+# Extra names the built image answers to, one per line — empty except during a rename.
+#
+# Callers take their model name from the environment stack (Terraform reads .model-version into
+# AI__Private__Model) and the image deploys separately, so a rename cannot land on both sides at
+# once. The image is built to answer to the old name too, deployed first, then the stack is
+# applied; once every environment is on the new name, delete the line and rebuild.
+#
+# Ollama stores a tag lowercased and matches names case-insensitively, so a line may carry the
+# historical spelling callers were given; the build checks it the way Ollama resolves it.
+#
+# In flight since 2026-09-21: the image built 2026-08-10 served this name, and every deployed
+# environment still asks for it.
+hf.co/unsloth/medgemma-1.5-4b-it-GGUF:Q4_K_M

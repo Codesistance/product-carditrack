@@ -6,6 +6,13 @@
 # tag: the fix refuses the cross-host redirect that tag's blobs arrive by. Bump both parts together.
 FROM ollama/ollama:0.34.2@sha256:da6e0dc5651df159e45686fd663c4dbe1624a52c44d7280eeac1551d8f865532 AS builder
 ARG MODEL_TAG
+# Names the model is *also* registered under, space-separated — normally empty. Read from
+# .model-aliases by the workflow. It exists for a rename in flight: callers get their model name
+# from the environment stack (AI__Private__Model, applied by Terraform) and the image is deployed
+# separately, so no ordering lets both change at once. An image that answers to the old name as
+# well as the new one is what makes the rollout safe — deploy it, then apply the stack, then
+# empty the file. `ollama cp` writes a second manifest over the same blobs; nothing is duplicated.
+ARG MODEL_ALIASES=""
 RUN test -n "${MODEL_TAG}" || { echo "FATAL: MODEL_TAG build arg is empty — pass --build-arg MODEL_TAG=\$(cat src/Infrastructure/MedGemma/.model-version)." >&2; exit 1; }
 
 # Everything the model is made of comes in through the build context, from one directory:
@@ -23,16 +30,22 @@ COPY src/Infrastructure/MedGemma/weights/ ./weights/
 # other way.
 RUN cd weights && sha256sum -c ../weights.sha256
 
-# `ollama create` needs a running server. Register the model under the exact name the hosts will
-# ask for, then assert that name is what got registered: a name Ollama normalises differently
-# from what AI__Private__Model carries would 404 on every generate/chat call at runtime, and
-# the incident of 2026-08-10 (a pulled tag that then failed to resolve) is why this is asserted
-# at build time rather than discovered on the first request.
+# `ollama create` needs a running server. Register the model under the name the hosts will ask
+# for, then assert that name is what got registered: a name Ollama normalises differently from
+# what AI__Private__Model carries would 404 on every generate/chat call at runtime, and the
+# incident of 2026-08-10 (a pulled tag that then failed to resolve) is why this is asserted at
+# build time rather than discovered on the first request. The comparison is case-insensitive
+# because Ollama's is: it lowercases a tag when it stores a name (`…:Q4_K_M` lands on disk as
+# `…/q4_k_m`, measured on 0.34.2) and resolves a request for either spelling, so a byte-exact
+# check would reject a name that works.
 RUN ollama serve & SERVER_PID=$! && \
     sleep 5 && \
     ollama create "${MODEL_TAG}" -f Modelfile && \
-    ollama list | awk -v tag="${MODEL_TAG}" 'NR>1 && $1==tag {found=1} END {exit !found}' || \
-      { echo "FATAL: 'ollama create ${MODEL_TAG}' succeeded but 'ollama list' does not show that exact name — generate/chat calls would 404 against it. What Ollama registered:" >&2; ollama list >&2; exit 1; }; \
+    for ALIAS in ${MODEL_ALIASES}; do ollama cp "${MODEL_TAG}" "${ALIAS}" || exit 1; done && \
+    for NAME in "${MODEL_TAG}" ${MODEL_ALIASES}; do \
+      ollama list | awk -v tag="${NAME}" 'NR>1 && tolower($1)==tolower(tag) {found=1} END {exit !found}' || \
+        { echo "FATAL: '${NAME}' was registered but 'ollama list' does not show that exact name — generate/chat calls would 404 against it. What Ollama registered:" >&2; ollama list >&2; exit 1; }; \
+    done && \
     kill $SERVER_PID
 
 # The runtime stage carries the registered model and none of the loose files it was built from.

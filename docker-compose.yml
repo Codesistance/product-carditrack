@@ -70,7 +70,9 @@ services:
     image: *ollama_image
     volumes:
       - ./src/Infrastructure/MedGemma:/medgemma:ro
-    entrypoint: ["/bin/sh", "-c", "cd /medgemma && OLLAMA_HOST=http://ollama:11434 ollama create medgemma-1.5-4b-it:q4_k_m -f Modelfile"]
+    # The name comes from .model-version, the same file the image build and Terraform read, and
+    # the bytes are checked against weights.sha256 first — the same two things the Dockerfile does.
+    entrypoint: ["/bin/sh", "-c", "cd /medgemma && (cd weights && sha256sum -c ../weights.sha256) && OLLAMA_HOST=http://ollama:11434 ollama create \"$$(tr -d '[:space:]' < .model-version)\" -f Modelfile"]
     depends_on:
       ollama:
         condition: service_healthy

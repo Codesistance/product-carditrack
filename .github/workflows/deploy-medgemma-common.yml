@@ -65,7 +65,11 @@ jobs:
       # weights.sha256, and checked twice below.
       - name: Read model version
         id: model
-        run: echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        run: |
+          echo "tag=$(cat src/Infrastructure/MedGemma/.model-version | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+          # Names the image also answers to during a rename (see the file's own comment). Comment
+          # and blank lines dropped, the rest joined with spaces for the build arg.
+          echo "aliases=$(grep -v '^[[:space:]]*#' src/Infrastructure/MedGemma/.model-aliases | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')" >> $GITHUB_OUTPUT
 
       # The weights come from our own bucket, by content-addressed path, and never from a
       # registry: Ollama's CVE-2026-85180 fix refuses the redirect the old Hugging Face tag pulled
@@ -93,6 +97,7 @@ jobs:
         run: |
           docker build \
             --build-arg MODEL_TAG=${{ steps.model.outputs.tag }} \
+            --build-arg "MODEL_ALIASES=${{ steps.model.outputs.aliases }}" \
             -t "$IMAGE:$TAG" \
             -f src/Infrastructure/MedGemma/Dockerfile .
           docker push "$IMAGE:$TAG"
