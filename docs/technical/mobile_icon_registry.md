@@ -1,40 +1,61 @@
 # Mobile icon registry
 
-Every SVG in `src/Presentation/CardiTrack.Mobile/Resources/Images`, what uses it, and what
-colours it hard-codes. Written so a redesign can be scoped without grepping: the question
+Every SVG in `src/Presentation/CardiTrack.Mobile/Resources/Images`, what uses it, and every
+colour it hard-codes. Written so a redesign can be scoped without grepping: the question
 "what breaks if this icon changes" has an answer here.
 
-**This file is generated from the tree, not maintained by hand.** It goes stale the moment an
-icon is added or a page stops using one, so regenerate it rather than editing it — and treat a
-row that disagrees with the code as the file being out of date, not the code.
+**Generated, not hand-maintained.** Regenerate with:
 
-As of the commit that last touched this file: **89 icons**, of which
-**9 are referenced nowhere**.
+```bash
+python scripts/generate-icon-registry.py
+```
+
+A row that disagrees with the code means this file is stale, not that the code is wrong.
+
+**89 icons**, **28 distinct colours**, **9 referenced nowhere**.
 
 ## Why the colours matter
 
-Every icon here hard-codes its own hex. None of them read `Colors.xaml`, because MAUI cannot
-tint an `<Image>` source from a resource — so a palette change is a change to this many files,
-not to one. That is the single biggest cost in any redesign of this set, and the reason the
-colour column exists.
+Every icon hard-codes its own hex. None read `Colors.xaml`, because MAUI cannot tint an
+`<Image>` source from a resource — so a palette change is a change to this many files, not
+to one. That is the largest cost in any redesign of this set, and the reason this table
+lists every colour rather than only the common ones: a colour used once still pins a file.
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#1884DC` | 32 | Primary |
+| `#1884DC` | 37 | Primary |
 | `#FFFFFF` | 23 | White |
 | `#939DAA` | 12 | MutedText |
+| `#36C09B` | 9 | StatusGreen |
+| `#174E86` | 7 | PrimaryDark |
 | `#E53E3E` | 4 | ErrorRed |
-| `#36C09B` | 3 | StatusGreen |
-| `#C42F2F` | 3 | DangerRed |
 | `#1F8A72` | 3 | MetricTemperatureInk / DatasetBodyText |
+| `#C42F2F` | 3 | DangerRed |
 | `#343434` | 2 | Body2Dark ink |
 | `#999999` | 2 | — |
 | `#F0A92E` | 2 | warning amber |
+| `#123A5F` | 1 | — |
+| `#1A6CB0` | 1 | — |
+| `#1E8E5A` | 1 | — |
+| `#2FA6C4` | 1 | — |
+| `#34A853` | 1 | — |
+| `#3E8AC7` | 1 | — |
+| `#4285F4` | 1 | — |
+| `#727272` | 1 | Body / Body2 ink |
+| `#7C6FDC` | 1 | — |
+| `#9FEBFF` | 1 | — |
+| `#B45309` | 1 | — |
+| `#B9F1FF` | 1 | — |
+| `#CFEDE3` | 1 | — |
+| `#E3F0FA` | 1 | — |
+| `#EA4335` | 1 | — |
+| `#ED7B2F` | 1 | — |
+| `#FBBC05` | 1 | — |
 
 ## Unreferenced
 
-Present in the tree, used by nothing. Candidates for deletion — but check the history before
-removing: an icon can be staged ahead of a screen that has not shipped.
+In the tree, used by nothing. Candidates for deletion — but check the history first: an
+icon can be staged ahead of a screen that has not shipped.
 
 - `icon_back_dark.svg`
 - `icon_clipboard_white.svg`
@@ -53,19 +74,19 @@ removing: an icon can be staged ahead of a screen that has not shipped.
 | Icon | Colours | Used by |
 | --- | --- | --- |
 | `icon_tab_alerts.svg` | `#939DAA` | BottomNavBar, StatusHeroCard |
-| `icon_tab_alerts_active.svg` | `#1884DC` | **nothing** |
+| `icon_tab_alerts_active.svg` | `#1884DC` `#174E86` `#36C09B` | **nothing** |
 | `icon_tab_alerts_unread.svg` | `#F0A92E` | StatusHeroCard |
 | `icon_tab_family.svg` | `#939DAA` | **nothing** |
-| `icon_tab_family_active.svg` | — | **nothing** |
+| `icon_tab_family_active.svg` | `#174E86` `#1884DC` `#36C09B` | **nothing** |
 | `icon_tab_home.svg` | `#939DAA` | BottomNavBar |
-| `icon_tab_home_active.svg` | `#FFFFFF` | **nothing** |
+| `icon_tab_home_active.svg` | `#FFFFFF` `#174E86` `#1884DC` `#36C09B` | **nothing** |
 | `icon_tab_journal.svg` | `#939DAA` | BottomNavBar, StatusHeroCard |
-| `icon_tab_journal_active.svg` | — | **nothing** |
+| `icon_tab_journal_active.svg` | `#174E86` `#1884DC` `#36C09B` | **nothing** |
 | `icon_tab_journal_primary.svg` | `#1884DC` `#FFFFFF` | StatusHeroCard |
 | `icon_tab_qa.svg` | `#939DAA` | StatusHeroCard |
 | `icon_tab_qa_primary.svg` | `#1884DC` `#FFFFFF` | StatusHeroCard |
 | `icon_tab_settings.svg` | `#939DAA` | BottomNavBar |
-| `icon_tab_settings_active.svg` | — | **nothing** |
+| `icon_tab_settings_active.svg` | `#174E86` `#1884DC` `#36C09B` | **nothing** |
 
 ### Status and severity
 
@@ -135,7 +156,7 @@ removing: an icon can be staged ahead of a screen that has not shipped.
 
 | Icon | Colours | Used by |
 | --- | --- | --- |
-| `gradient_splash_bg.svg` | `#FFFFFF` | SplashPage |
+| `gradient_splash_bg.svg` | `#1A6CB0` `#1884DC` `#174E86` `#36C09B` `#2FA6C4` `#FFFFFF` | SplashPage |
 | `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
 | `icon_advise_primary.svg` | `#1884DC` | StatusHeroCard |
 | `icon_bell.svg` | `#1884DC` | CardiMemberDetailPage, DashboardHeader |
@@ -146,7 +167,7 @@ removing: an icon can be staged ahead of a screen that has not shipped.
 | `icon_book_cog.svg` | `#1884DC` | CardiMemberDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
 | `icon_callout.svg` | `#1884DC` | CardiMemberDetailPage |
-| `icon_chatbot.svg` | `#1884DC` `#36C09B` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
+| `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
 | `icon_chatbot_mono.svg` | `#1884DC` | CardiMemberDetailPage |
 | `icon_check_disc.svg` | `#E3F0FA` `#1884DC` | BaselineLearningPage, FindingsList |
 | `icon_clipboard.svg` | `#1884DC` | CardiMemberDetailPage, InviteWaitPage |
@@ -177,10 +198,9 @@ removing: an icon can be staged ahead of a screen that has not shipped.
 | `icon_trash.svg` | `#E53E3E` | AlertDetailPage, AlertListCard, DeviceCard, MetricAlarmEditPage, QuestionCard |
 | `icon_watch.svg` | `#1884DC` | CardiMemberDetailPage |
 
-## Regenerating
+## How "used by" is decided
 
-There is no script checked in for this yet. The listing is a walk of
-`Resources/Images` cross-referenced against every `.xaml` and `.cs` under `src/` for the file
-name as a literal — which is how icons are referenced throughout (`Source="icon_x.svg"`, or a
-string constant as in `FindingsList.CheckMarker`). A name appearing in a comment would count as
-a use, so a row claiming one caller is worth reading before trusting.
+Every `.xaml` and `.cs` under `src/` is searched for the file name as a literal, which is
+how icons are referenced throughout — `Source="icon_x.svg"`, or a string constant as in
+`FindingsList.CheckMarker`. A name mentioned only in a comment therefore counts as a use, so
+a row claiming a single caller is worth reading before trusting.
