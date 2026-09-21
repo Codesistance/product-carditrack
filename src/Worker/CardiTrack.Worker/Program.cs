@@ -91,6 +91,7 @@ builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRe
 builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();
 builder.Services.AddPushServices(configuration);
+builder.Services.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
 

@@ -99,6 +99,7 @@ builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionIn
 // endpoint, wired below for the assessor), not a copy of the send stack. See
 // PushServiceExtensions.AddPushServices' remarks.
 builder.Services.AddPushRepositories();
+builder.Services.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // AI — the private (medical) slot only; see the header note

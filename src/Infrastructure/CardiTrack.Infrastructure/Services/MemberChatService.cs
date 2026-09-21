@@ -461,6 +461,7 @@ public class MemberChatService : IMemberChatService
     private readonly IEncryptionService _encryption;
     private readonly JournalChatActions _journal;
     private readonly AlertSettingsChatActions _alerts;
+    private readonly IMemberWriteGuard _guard;
     private readonly ILogger<MemberChatService> _logger;
 
     public MemberChatService(
@@ -476,6 +477,7 @@ public class MemberChatService : IMemberChatService
         MemberContextComposer memberContext,
         IEncryptionService encryption,
         JournalChatActions journal,
+        IMemberWriteGuard guard,
         ILogger<MemberChatService> logger)
     {
         _journal = journal;
@@ -489,6 +491,7 @@ public class MemberChatService : IMemberChatService
         _access = access;
         _memberContext = memberContext;
         _encryption = encryption;
+        _guard = guard;
         _logger = logger;
     }
 
@@ -538,7 +541,24 @@ public class MemberChatService : IMemberChatService
                 session, flattened, result, utcNow, ct);
             await PersistUsageAsync(assistantTurn.Id, ct, result.Calls);
 
-            await _unitOfWork.SaveChangesAsync();
+            // Guarded: a turn is persisted question text and model reply about a named person —
+            // the one category of AI content this product stores non-de-identified (DPIA R-A17) —
+            // and the pipeline above can run for minutes. The guard joins the journal rung's
+            // transaction when one is open, so the member's row lock covers the offer or the book
+            // change as well as the turns: the rung's work and the record of who asked for it
+            // stand or fall together, which is what that path already promises.
+            if (!await _guard.WriteIfMemberLivesAsync(
+                    cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct))
+            {
+                // Rolled back here rather than left to the guard: when a transaction is already
+                // open it belongs to the journal rung, and the guard does not commit or roll back
+                // what it did not begin. Reported as a 404 because that is what it is — the
+                // caregiver asked about someone the product no longer holds, and a cheerful reply
+                // with nothing saved behind it would be a lie about a health record.
+                await _unitOfWork.RollbackTransactionAsync();
+                throw new KeyNotFoundException("We couldn't find what you were looking for.");
+            }
+
             await _unitOfWork.CommitTransactionAsync();
         }
         catch

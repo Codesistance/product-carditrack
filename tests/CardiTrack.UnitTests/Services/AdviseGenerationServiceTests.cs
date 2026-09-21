@@ -148,7 +148,8 @@ public class AdviseGenerationServiceTests
 
     private AdviseGenerationService CreateSut(TimeProvider? time = null) =>
         new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
-            NullLogger<AdviseGenerationService>.Instance, time);
+            NullLogger<AdviseGenerationService>.Instance,
+            new PassThroughWriteGuard(), time);
 
     /// <summary>Midday UTC, so local-day math in <see cref="AdviseCadence"/> cannot straddle midnight.</summary>
     private static FrozenTimeProvider NoonUtc() =>

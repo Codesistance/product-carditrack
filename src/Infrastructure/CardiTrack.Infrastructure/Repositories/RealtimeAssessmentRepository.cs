@@ -1,4 +1,5 @@
 ﻿using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -12,13 +13,35 @@ namespace CardiTrack.Infrastructure.Repositories;
 public class RealtimeAssessmentRepository : IRealtimeAssessmentRepository
 {
     private readonly CardiTrackDbContext _context;
+    private readonly IMemberWriteGuard _guard;
 
-    public RealtimeAssessmentRepository(CardiTrackDbContext context)
+    public RealtimeAssessmentRepository(CardiTrackDbContext context, IMemberWriteGuard guard)
     {
         _context = context;
+        _guard = guard;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Guarded: the caller reaches here after a MedGemma call that can run for minutes, and an
+    /// erasure landing inside it would otherwise leave this window's assessment — and the alert
+    /// the claim below routes — describing a member who no longer exists. A refused write returns
+    /// false, which the caller already reads as "not mine to route", so the assessment is not
+    /// written and no alert is raised. That is the right answer rather than a convenient one: a
+    /// pass that was refused has nothing to claim.
+    /// </remarks>
     public async Task<bool> UpsertAsync(RealtimeAssessment assessment, CancellationToken ct = default)
+    {
+        var claimed = false;
+        await _guard.WriteIfMemberLivesAsync(
+            assessment.CardiMemberId, async inner => claimed = await WriteAsync(assessment, inner), ct);
+        return claimed;
+    }
+
+    /// <summary>
+    /// The upsert itself, which assumes the caller holds the member's row lock.
+    /// </summary>
+    private async Task<bool> WriteAsync(RealtimeAssessment assessment, CancellationToken ct)
     {
         // Claim-then-update rather than a single DO UPDATE: the caller treats "I inserted" as
         // an exclusive claim on the window (only the inserter routes an alert), and the claim

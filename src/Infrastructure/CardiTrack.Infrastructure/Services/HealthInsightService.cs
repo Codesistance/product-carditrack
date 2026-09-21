@@ -167,17 +167,20 @@ public class HealthInsightService : IHealthInsightService
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICardiMemberAccessService _access;
     private readonly MemberContextComposer _memberContext;
+    private readonly IMemberWriteGuard _guard;
 
     public HealthInsightService(
         IMedicalAiService medicalAi,
         IUnitOfWork unitOfWork,
         ICardiMemberAccessService access,
-        MemberContextComposer memberContext)
+        MemberContextComposer memberContext,
+        IMemberWriteGuard guard)
     {
         _medicalAi = medicalAi;
         _unitOfWork = unitOfWork;
         _access = access;
         _memberContext = memberContext;
+        _guard = guard;
     }
 
     /// <summary>
@@ -305,8 +308,9 @@ public class HealthInsightService : IHealthInsightService
         if (existing is null)
             await _unitOfWork.MemberInsights.AddAsync(row);
 
-        await _unitOfWork.SaveChangesAsync();
-        return true;
+        // Guarded, and its answer is this method's answer: an explanation refused because the
+        // member was erased while the model was writing it did not explain anything.
+        return await _guard.WriteIfMemberLivesAsync(alert.CardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
     }
 
     /// <summary>
@@ -499,7 +503,10 @@ public class HealthInsightService : IHealthInsightService
             if (movements.ShowsNothingIsOff && existing is not null)
             {
                 _unitOfWork.MemberInsights.Remove(existing);
-                await _unitOfWork.SaveChangesAsync();
+                // Guarded like the writes, though this one only removes: an erasure racing it has
+                // already removed the row, and an unguarded delete of a vanished row is a phantom
+                // concurrency failure in a path whose whole job is to fail quietly.
+                await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
             }
 
             return false;
@@ -556,8 +563,7 @@ public class HealthInsightService : IHealthInsightService
         if (existing is null)
             await _unitOfWork.MemberInsights.AddAsync(row);
 
-        await _unitOfWork.SaveChangesAsync();
-        return true;
+        return await _guard.WriteIfMemberLivesAsync(cardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct);
     }
 
     /// <summary>

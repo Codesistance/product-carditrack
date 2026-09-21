@@ -114,6 +114,7 @@ public class MemberChatStatusRungTests
             Substitute.For<IMetricAlarmService>(), _unitOfWork, _access,
             PromptContextFactory.Composer(_unitOfWork), PromptContextFactory.Encryption,
             PromptContextFactory.JournalActions(_rewriteAi, _unitOfWork, _access),
+            new PassThroughWriteGuard(),
             NullLogger<MemberChatService>.Instance);
 
     // ── A question that names a reading ─────────────────────────────────────────

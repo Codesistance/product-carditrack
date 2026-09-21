@@ -93,7 +93,7 @@ public class HealthInsightServiceAccessTests
 
     private HealthInsightService CreateSut() =>
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
-            PromptContextFactory.Composer(_unitOfWork));
+            PromptContextFactory.Composer(_unitOfWork), new PassThroughWriteGuard());
 
     // ── AnalyzeAlertAsync ───────────────────────────────────────────────────────
 

@@ -82,7 +82,8 @@ public class StatusLineGenerationServiceTests
 
     private StatusLineGenerationService CreateSut(TimeProvider? time = null) =>
         new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
-            NullLogger<StatusLineGenerationService>.Instance, time);
+            NullLogger<StatusLineGenerationService>.Instance,
+                new PassThroughWriteGuard(), time);
 
     /// <summary>
     /// 07:00 UTC on 2026-09-07 is 08:00 in Europe/London (BST) — morning, before

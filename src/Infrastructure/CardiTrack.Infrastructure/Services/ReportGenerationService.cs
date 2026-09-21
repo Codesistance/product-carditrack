@@ -198,6 +198,8 @@ public class ReportGenerationService : IReportGenerationService
         var generativeAi = scope.ServiceProvider.GetRequiredService<IGenerativeAiService>();
         var renderers = scope.ServiceProvider.GetServices<IReportRenderer>();
 
+        var guard = scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>();
+
         var report = await unitOfWork.Reports.GetByIdAsync(reportId);
         if (report is null)
         {
@@ -237,22 +239,46 @@ public class ReportGenerationService : IReportGenerationService
             var narrative = await BuildNarrativeAsync(generativeAi, data, report.Format, sections);
             var rendered = await renderer.RenderAsync(data, sections, narrative);
 
-            var objectName = await _storage.UploadAsync(
-                report.OwnerUserId,
-                FormatId(report.Id),
-                rendered.Extension,
-                rendered.ContentType,
-                rendered.Content);
+            // The guard covers the upload as well as the row, which is the one place in this
+            // change where it is held across I/O rather than around a save alone. It has to be:
+            // erasure finds a report's storage object through its ObjectName column, and until
+            // the save below that column is null. An erasure landing between the upload and the
+            // save would delete the row, never learn the object existed, and leave a rendered
+            // health export sitting in the bucket that nothing — not the cascade, not the
+            // orphan report the runbook asks an operator to read — can ever name again.
+            //
+            // Every member the export covers is locked, not just the first: erasure deletes a
+            // Reports row that names an erased member *among others*, so one erased subject
+            // takes the whole document with it.
+            var written = await guard.WriteIfMembersLiveAsync(request.CardiMemberIds, async _ =>
+            {
+                var objectName = await _storage.UploadAsync(
+                    report.OwnerUserId,
+                    FormatId(report.Id),
+                    rendered.Extension,
+                    rendered.ContentType,
+                    rendered.Content);
 
-            report.Status = ReportStatus.Ready;
-            report.ObjectName = objectName;
-            report.ContentType = rendered.ContentType;
-            report.FileName = BuildFileName(data, rendered.Extension);
-            report.FileSizeBytes = rendered.Content.Length;
-            report.CompletedAt = DateTime.UtcNow;
+                report.Status = ReportStatus.Ready;
+                report.ObjectName = objectName;
+                report.ContentType = rendered.ContentType;
+                report.FileName = BuildFileName(data, rendered.Extension);
+                report.FileSizeBytes = rendered.Content.Length;
+                report.CompletedAt = DateTime.UtcNow;
 
-            unitOfWork.Reports.Update(report);
-            await unitOfWork.SaveChangesAsync();
+                unitOfWork.Reports.Update(report);
+                await unitOfWork.SaveChangesAsync();
+            });
+
+            if (!written)
+            {
+                // The row this would have completed is already gone with the member, so there is
+                // nothing left to mark failed — logged and dropped, the same non-event as the
+                // "vanished before generation started" branch above.
+                _logger.LogInformation(
+                    "Report {ReportId} was abandoned: a CardiMember it covers was erased while it "
+                    + "was being generated. Nothing was uploaded.", reportId);
+            }
         }
         catch (Exception ex)
         {

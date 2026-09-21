@@ -240,7 +240,8 @@ public class DigestGenerationServiceTests
             PromptContextFactory.Encryption,
             new StatusLineGenerationService(
                 _unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
-                NullLogger<StatusLineGenerationService>.Instance),
+                NullLogger<StatusLineGenerationService>.Instance,
+                new PassThroughWriteGuard()),
             InertAdviseGenerator.Create(),
             NullLogger<DigestGenerationService>.Instance);
 

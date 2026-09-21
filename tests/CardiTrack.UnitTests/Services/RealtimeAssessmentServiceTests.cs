@@ -116,7 +116,8 @@ public class RealtimeAssessmentServiceTests
 
     private RealtimeAssessmentService CreateSut() =>
         new(_unitOfWork, new SsaDecomposition(), _medicalAi, PromptContextFactory.Composer(_unitOfWork),
-            InertStatusLineGenerator.Create(), NullLogger<RealtimeAssessmentService>.Instance, _enqueue);
+            InertStatusLineGenerator.Create(), NullLogger<RealtimeAssessmentService>.Instance,
+            new PassThroughWriteGuard(), _enqueue);
 
     [Fact]
     public async Task AFullFreshHour_IsAssessed_AndStoredUnderItsWindowStart()

@@ -93,6 +93,22 @@ public class MemberErasureService : IMemberErasureService
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         try
         {
+            // Before every delete below, and that position is the whole point of it. An AI
+            // generator reads the member, spends minutes in a model call, then writes a row naming
+            // them — and no foreign key stops that row landing after this cascade has passed the
+            // table it goes in. IMemberWriteGuard holds FOR KEY SHARE on this row while it writes;
+            // FOR UPDATE here conflicts with it, which leaves exactly two orderings and makes both
+            // safe. Erasure first: the generator's lock waits here, then finds no row and writes
+            // nothing. Generator first: this line waits for its commit, and the deletes below then
+            // sweep the row it wrote as ordinary cascade work. Taken after the deletes it would
+            // guarantee nothing; taken as a plain read it would guarantee nothing either.
+            //
+            // No row to lock is not a failure. A member already erased — a retried sweep, a
+            // half-finished manual run — still has orphans worth collecting, and the cascade below
+            // is what collects them. That is today's behaviour and it stays.
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"""SELECT 1 FROM "CardiMembers" WHERE "Id" = {cardiMemberId} FOR UPDATE""", ct);
+
             // The runbook's order, and it is the order for a reason: children before parents, and
             // the two tables that are easy to miss (DeviceActivityLogs before ActivityLogs, the
             // raw rows before the merged view) kept adjacent so neither is dropped by accident.

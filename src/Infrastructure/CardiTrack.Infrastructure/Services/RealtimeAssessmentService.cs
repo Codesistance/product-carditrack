@@ -95,6 +95,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
     private readonly MemberContextComposer _memberContext;
     private readonly StatusLineGenerationService _statusLine;
     private readonly ILogger<RealtimeAssessmentService> _logger;
+    private readonly IMemberWriteGuard _guard;
     private readonly IAlertNotificationEnqueue? _alertEnqueue;
 
     public RealtimeAssessmentService(
@@ -104,6 +105,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         MemberContextComposer memberContext,
         StatusLineGenerationService statusLine,
         ILogger<RealtimeAssessmentService> logger,
+        IMemberWriteGuard guard,
         IAlertNotificationEnqueue? alertEnqueue = null)
     {
         _unitOfWork = unitOfWork;
@@ -112,6 +114,7 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         _memberContext = memberContext;
         _statusLine = statusLine;
         _logger = logger;
+        _guard = guard;
         _alertEnqueue = alertEnqueue;
     }
 
@@ -314,7 +317,8 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         if (AlertResolution.Resolve(
                 existing, a => a.AlertType == AlertType.HeartRate && !AlertRuleMarkers.IsCustomAlarm(a), utcNow) > 0)
         {
-            await _unitOfWork.SaveChangesAsync();
+            if (!await _guard.WriteIfMemberLivesAsync(memberId, _ => _unitOfWork.SaveChangesAsync(), ct))
+                return;
 
             // The persisted status line may have been generated while this alert was still open,
             // so it can go on describing a tier the member has since left — regenerate it now
@@ -359,7 +363,13 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
             }),
         };
         await _unitOfWork.Alerts.AddAsync(alert);
-        await _unitOfWork.SaveChangesAsync();
+
+        // Guarded: this row is raised minutes after the member was read, and an alert about an
+        // erased member is both health data we may not hold and a page a family would receive
+        // about someone the product has forgotten. Refused means nothing was written, so there is
+        // nothing to describe in a status line and nothing to send — every step below is skipped.
+        if (!await _guard.WriteIfMemberLivesAsync(assessment.CardiMemberId, _ => _unitOfWork.SaveChangesAsync(), ct))
+            return;
         // A freshly-raised alert is the freshest thing the status line can describe — MS-7's
         // resolution: the alert and its line land in the same pass, so no on-demand fast path
         // is needed for the hero card.

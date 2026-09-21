@@ -70,7 +70,7 @@ public class HealthInsightServicePromptTests
 
     private HealthInsightService CreateSut() =>
         new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
-            PromptContextFactory.Composer(_unitOfWork));
+            PromptContextFactory.Composer(_unitOfWork), new PassThroughWriteGuard());
 
     /// <summary>
     /// The row the generating pass stored. Generation writes rather than returns since the batch
