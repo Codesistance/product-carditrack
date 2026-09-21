@@ -62,10 +62,16 @@ jobs:
           RELEASE_NOTES: ${{ inputs.notes }}
         with:
           script: |
-            // Read through env, never string-interpolate ${{ }} into the script
-            // body: inputs.notes is attacker-controlled by anyone who can dispatch
-            // this workflow, and a backtick or ${ in it would otherwise break out
-            // of the literal and execute as code with this job's contents:write token.
+            // Read these through env. Never interpolate a workflow expression
+            // into the script body: inputs.notes is controlled by anyone who can
+            // dispatch this workflow, and a backtick or a dollar-brace in it would
+            // otherwise close the literal and execute as code with this job's
+            // contents:write token.
+            //
+            // Do not write a workflow-expression delimiter in this comment either.
+            // Actions evaluates those anywhere in the file, including inside this
+            // script block, and an empty one is a parse error that takes down the
+            // whole workflow (it did, in #1184).
             const tag = process.env.NEXT_TAG;
             const prev = process.env.PREV_TAG;
             const notes = process.env.RELEASE_NOTES || '';
