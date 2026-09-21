@@ -132,6 +132,85 @@ public class TrendInterpretationServiceTests
         await _insights.DidNotReceive().AddAsync(Arg.Any<MemberInsight>());
     }
 
+    /// <summary>
+    /// The brief asks for each figure against the published ranges, not only against their own
+    /// usual.
+    /// </summary>
+    /// <remarks>
+    /// The ranges were always in the prompt and nothing told the model to use them, so a
+    /// narrative reported five hours of sleep a night without mentioning that seven to nine is
+    /// what the NSF recommends at that age — three findings that all read "lower than usual" and
+    /// gave a family nothing to act on.
+    /// </remarks>
+    [Fact]
+    public async Task ThePromptAsksForTheFigureAgainstThePublishedRange()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("say where their figure sits against", prompt);
+        Assert.Contains("name the body it comes from", prompt);
+
+        // Both yardsticks, and what each one answers: a reading can be down on their usual and
+        // still inside the published range, or steady for them and outside it.
+        Assert.Contains("usual says whether this is a change for them", prompt);
+        Assert.Contains("published ranges say whether it sits", prompt);
+    }
+
+    /// <summary>
+    /// Where the table carries no range, the model is told to say nothing rather than reach for
+    /// one. Two metrics have none on purpose — overnight HRV, which no body publishes an adult
+    /// band for, and breathing asleep, whose only published figure is measured at rest.
+    /// </summary>
+    [Fact]
+    public async Task ThePromptForbidsSupplyingARangeTheTableWithheld()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("that absence is deliberate", prompt);
+        Assert.Contains("supply in its place", prompt);
+
+        // And the table really does withhold those two, so the instruction is not hypothetical.
+        Assert.Contains(HealthReferenceRanges.NoHeartRateVariabilityBand, prompt);
+        Assert.Contains(HealthReferenceRanges.NoOvernightBreathingBand, prompt);
+    }
+
+    /// <summary>
+    /// The line this change had to stay on the right side of.
+    /// </summary>
+    /// <remarks>
+    /// Saying a figure sits outside a published range is a fact about the figure. Saying what it
+    /// might lead to, how likely that is, or what it puts someone at risk of is prognosis — which
+    /// <c>docs/llm_design.md</c> excludes from this pass ("no risk scores"), and which the DPIA
+    /// flags as the thing that can make software a regulated device under EU MDR Rule 11 even
+    /// without diagnosing (open item OI-2). Asking for the comparison must not have loosened it.
+    /// </remarks>
+    [Fact]
+    public async Task ThePromptStillRefusesRiskAndPrognosis()
+    {
+        await CreateSut().InterpretMemberAsync(_memberId, Now);
+
+        var prompt = CapturedPrompt();
+        Assert.Contains("Never name a condition, a diagnosis or a treatment", prompt);
+        Assert.Contains("risk level or a prediction of what will happen next", prompt);
+
+        // And the boundary spelled out, because the new instruction sits right beside it.
+        Assert.Contains("is a fact about the figure and is wanted", prompt);
+        Assert.Contains("what it puts them at risk of is none of those things", prompt);
+    }
+
+    [Fact]
+    public void ChangingTheBriefRetiresTheNarrativesWrittenBeforeIt()
+    {
+        // A stored narrative that never mentioned a published range must not outlive the brief
+        // that now asks for one.
+        Assert.Equal(2, TrendInterpretationService.BriefVersion);
+        Assert.True(
+            TrendInterpretationService.CurrentPromptVersion > 100 + PinnedReferenceTable.Version,
+            "the stamp must exceed everything written under brief 1, whatever the table version.");
+    }
+
     [Fact]
     public async Task ThePromptCarriesTheComputedFiguresAndThePinnedRanges_AndForbidsScores()
     {
