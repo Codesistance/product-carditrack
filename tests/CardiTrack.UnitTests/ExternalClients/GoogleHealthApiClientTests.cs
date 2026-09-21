@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using CardiTrack.Infrastructure.ExternalClients;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.ExternalClients;
@@ -172,7 +173,9 @@ public class GoogleHealthApiClientTests
     }
 
     private static (IGoogleHealthApiClient Sut, RoutedFakeHttpHandler Handler) CreateSut(
-        RoutedFakeHttpHandler? handler = null, TimeSpan? pageRequestDelay = null)
+        RoutedFakeHttpHandler? handler = null,
+        TimeSpan? pageRequestDelay = null,
+        TimeProvider? clock = null)
     {
         handler ??= new RoutedFakeHttpHandler();
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://health.googleapis.com") };
@@ -184,7 +187,10 @@ public class GoogleHealthApiClientTests
         // slow. Tests that specifically exercise pacing pass their own (short) delay.
         return (
             new GoogleHealthApiClient(
-                factory, Substitute.For<ILogger<GoogleHealthApiClient>>(), pageRequestDelay ?? TimeSpan.Zero),
+                factory,
+                Substitute.For<ILogger<GoogleHealthApiClient>>(),
+                pageRequestDelay ?? TimeSpan.Zero,
+                clock),
             handler);
     }
 
@@ -1916,52 +1922,96 @@ public class GoogleHealthApiClientTests
         Assert.Equal(24_000, day.HeartRate.Count);
     }
 
+    private const string HeartRatePath = "/dataTypes/heart-rate/";
+
     /// <summary>
-    /// <para>
     /// Only the second and later page requests wait — the first fires immediately, since most
     /// series are one page and delaying every read would slow every sync for a limit only
-    /// multi-page reads can trip. Asserted on the gap between the two heart-rate requests'
-    /// arrival timestamps specifically, not the call's total wall-clock time: the other three
-    /// series still read after heart-rate in the same call, and on a loaded test runner their
-    /// unrelated overhead could push total elapsed past the pacing threshold even with the delay
-    /// logic removed, passing the test for the wrong reason.
+    /// multi-page reads can trip.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Pacing is asserted by moving a clock rather than by timing one. The client takes its
+    /// <see cref="TimeProvider"/>, so the test can hold the second page at the gate, advance to
+    /// one millisecond short of the interval to show it is still held, and then advance the last
+    /// millisecond to release it. That pins the interval exactly, which a stopwatch reading never
+    /// could: this test previously compared <see cref="Task.Delay(TimeSpan)"/> against a
+    /// <see cref="Stopwatch"/>, and those do not read the same clock — measured on a loaded
+    /// four-core runner, one 200ms delay in sixty returned in 196.2ms, failing the suite about
+    /// one run in seventeen.
     /// </para>
     /// <para>
-    /// The gap is allowed to come in a few milliseconds under the pacing interval, because
-    /// <see cref="Task.Delay(TimeSpan)"/> and <see cref="Stopwatch"/> do not read the same clock
-    /// and the delay may complete a tick early against it. Measured on a loaded four-core runner:
-    /// one sample in sixty returned in 196.2ms for a 200ms delay, which is what made this test
-    /// fail roughly one full-suite run in seventeen. The tolerance is absolute rather than
-    /// proportional, since timer slack does not scale with the interval, and it leaves the
-    /// regression this test exists for well clear of the threshold: with the delay removed the
-    /// two requests arrive 23-25ms apart (measured), against the 175ms this asserts — the gap is
-    /// not zero because the handler still parses a full page in between.
+    /// Counted on heart-rate requests specifically rather than on the call's total elapsed time:
+    /// the other three series are read in the same call, and their unrelated overhead could clear
+    /// a whole-call threshold even with the pacing removed, passing this for the wrong reason.
     /// </para>
-    /// </summary>
+    /// </remarks>
     [Fact]
     public async Task GetGranularDayAsync_PacesPageRequests_AfterTheFirst()
     {
         var page1 = SamplePage("heartRate", "beatsPerMinute", "page-2", "72");
         var page2 = SamplePage("heartRate", "beatsPerMinute", null, "74");
         var handler = new RoutedFakeHttpHandler()
-            .MapSequence("/dataTypes/heart-rate/", page1, page2);
+            .MapSequence(HeartRatePath, page1, page2);
 
-        var pacing = TimeSpan.FromMilliseconds(200);
-        var (sut, _) = CreateSut(handler, pacing);
+        // Deliberately far shorter than the settle window below. Against the fake clock the
+        // length is irrelevant — no delay elapses unless the test advances it — but it is what
+        // makes a regression to real time visible: a client that ignored its TimeProvider would
+        // send the second page part-way through a settle that is three times the interval.
+        var pacing = TimeSpan.FromMilliseconds(20);
+        var settle = pacing * 3;
+        var clock = new FakeTimeProvider();
+        var (sut, _) = CreateSut(handler, pacing, clock);
 
-        await ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
+        var call = ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
 
-        // How far under the interval a Task.Delay may land when measured by Stopwatch — see the
-        // remarks. Absolute, and far below the interval, so a missing delay still fails.
-        var timerSlack = TimeSpan.FromMilliseconds(25);
+        // The first page does not wait — it arrives with the clock untouched.
+        await WaitForHeartRatePagesAsync(handler, 1);
 
-        var timestamps = handler.TimestampsFor("/dataTypes/heart-rate/");
-        Assert.Equal(2, timestamps.Count);
-        var gap = timestamps[1] - timestamps[0];
-        Assert.True(
-            gap >= pacing - timerSlack,
-            $"Expected the second page to wait about {pacing} (allowing {timerSlack} of timer "
-            + $"slack), gap was {gap}.");
+        // The second does. Nothing has moved the clock, so it cannot have been sent.
+        await AssertHeartRatePagesStayAtAsync(handler, 1, settle);
+
+        // Not even a millisecond short of the full interval releases it.
+        clock.Advance(pacing - TimeSpan.FromMilliseconds(1));
+        await AssertHeartRatePagesStayAtAsync(handler, 1, settle);
+
+        // The last millisecond does.
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        await call.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, handler.TimestampsFor(HeartRatePath).Count);
+    }
+
+    /// <summary>
+    /// Waits for <paramref name="expected"/> heart-rate requests to have arrived, failing rather
+    /// than hanging if they do not. Only ever waits in the failing case.
+    /// </summary>
+    private static async Task WaitForHeartRatePagesAsync(RoutedFakeHttpHandler handler, int expected)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (handler.TimestampsFor(HeartRatePath).Count < expected)
+        {
+            Assert.True(
+                deadline.Elapsed < TimeSpan.FromSeconds(10),
+                $"Expected {expected} heart-rate request(s) within 10s, saw "
+                + $"{handler.TimestampsFor(HeartRatePath).Count}.");
+            await Task.Delay(5);
+        }
+    }
+
+    /// <summary>
+    /// Asserts the heart-rate request count is <paramref name="expected"/> and stays there for
+    /// <paramref name="settle"/> of real time. A correct client is parked on a delay against a
+    /// clock the test has not advanced, so it would stay put however long this waited; the wait
+    /// is what gives a client measuring real time somewhere to fail, which is why callers pass a
+    /// window several times the pacing interval.
+    /// </summary>
+    private static async Task AssertHeartRatePagesStayAtAsync(
+        RoutedFakeHttpHandler handler, int expected, TimeSpan settle)
+    {
+        Assert.Equal(expected, handler.TimestampsFor(HeartRatePath).Count);
+        await Task.Delay(settle);
+        Assert.Equal(expected, handler.TimestampsFor(HeartRatePath).Count);
     }
 
     // ── Heart rate variability ───────────────────────────────────────────────────
