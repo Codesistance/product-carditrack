@@ -101,12 +101,19 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
 
     private readonly HttpClient _httpClient;
     private readonly TimeSpan _pageRequestDelay;
+    private readonly TimeProvider _clock;
     private readonly ILogger<GoogleHealthApiClient> _logger;
 
+    /// <param name="clock">
+    /// The clock the inter-page wait is measured against. Defaults to <see cref="TimeProvider.System"/>,
+    /// which is real time; a test passes a fake one so pacing can be asserted by advancing it rather
+    /// than by sleeping and reading a stopwatch — two clocks that need not agree to the millisecond.
+    /// </param>
     public GoogleHealthApiClient(
         IHttpClientFactory httpClientFactory,
         ILogger<GoogleHealthApiClient> logger,
-        TimeSpan? pageRequestDelay = null)
+        TimeSpan? pageRequestDelay = null,
+        TimeProvider? clock = null)
     {
         if (pageRequestDelay < TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(
@@ -115,6 +122,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         _httpClient = httpClientFactory.CreateClient("GoogleHealthClient");
         _logger = logger;
         _pageRequestDelay = pageRequestDelay ?? PageRequestDelay;
+        _clock = clock ?? TimeProvider.System;
     }
 
     public async Task<GoogleHealthActivitiesResult> GetActivitiesAsync(string accessToken, DateOnly date)
@@ -1301,7 +1309,7 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
         do
         {
             if (pageToken is not null)
-                await Task.Delay(_pageRequestDelay);
+                await Task.Delay(_pageRequestDelay, _clock);
 
             var url =
                 $"/v4/users/me/dataTypes/{dataType}/dataPoints?pageSize={SamplePageSize}&filter={escapedFilter}";
