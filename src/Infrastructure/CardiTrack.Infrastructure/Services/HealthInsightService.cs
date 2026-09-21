@@ -524,6 +524,15 @@ public class HealthInsightService : IHealthInsightService
 
         row.Summary = InsightLimits.Fit(summary, InsightLimits.Summary)!;
         row.KeyFindings = InsightLimits.JoinFindings(findings);
+
+        // The measurements the sentences above were written from, kept rather than discarded. A
+        // client draws one card per movement and offers an alarm on it, and neither is
+        // recoverable from the prose: the model is told in so many words not to work out a
+        // percentage, so the figures exist only here.
+        //
+        // Null on the provisional and learning paths, where there is no settled usual to measure
+        // a departure against and Compute was never run.
+        row.Movements = InsightMovements.Write(movements?.Notable);
         row.IsLearning = isLearning;
         row.IsProvisional = provisionalBaseline is not null;
         row.BaselinePeriodDays = (primaryBaseline ?? provisionalBaseline)?.PeriodDays;

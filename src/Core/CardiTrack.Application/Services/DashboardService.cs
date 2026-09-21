@@ -177,7 +177,7 @@ public class DashboardService : IDashboardService
             HasAdvise = advise is not null,
             AdviseGeneratedAt = advise?.GeneratedAtUtc,
             LatestJournalEntryAt = latestJournalEntry?.GeneratedAtUtc,
-            Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now),
+            Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now, age),
             Device = new DashboardDeviceState
             {
                 HasActiveConnection = connections.Count > 0,

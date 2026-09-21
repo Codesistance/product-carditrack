@@ -57,6 +57,20 @@ public class MemberInsight : BaseEntity
     public string? KeyFindings { get; set; }
 
     /// <summary>
+    /// The measured movements behind <see cref="KeyFindings"/>, as JSON — which metrics moved,
+    /// where they sit, and what is usual for this member. Null where nothing moved, and on the
+    /// two scopes that have no baseline to measure against.
+    /// </summary>
+    /// <remarks>
+    /// Structured where <see cref="KeyFindings"/> is prose, and deliberately: the sentences are an
+    /// ordered list with nothing inside them, but a movement is a set of figures a client draws
+    /// and offers an alarm on, and recovering those from a sentence would mean parsing a model's
+    /// wording. <see cref="CardiTrack.Application.Services.InsightMovements"/> owns the shape.
+    /// Nothing about how a movement is <em>judged</em> is stored here — only what was measured.
+    /// </remarks>
+    public string? Movements { get; set; }
+
+    /// <summary>
     /// Whether the member had no baseline at all when this was written — the state the dashboard
     /// calls "getting to know you". The API reports it so the two surfaces never disagree.
     /// </summary>

@@ -698,7 +698,7 @@ public class CardiMemberService : ICardiMemberService
         {
             Id = member.Id,
             Name = member.Name,
-            Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now),
+            Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now, age),
             DateOfBirth = member.DateOfBirth,
             Age = age,
             Gender = member.Gender,
