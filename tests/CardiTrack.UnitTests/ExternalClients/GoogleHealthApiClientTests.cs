@@ -1917,6 +1917,7 @@ public class GoogleHealthApiClientTests
     }
 
     /// <summary>
+    /// <para>
     /// Only the second and later page requests wait — the first fires immediately, since most
     /// series are one page and delaying every read would slow every sync for a limit only
     /// multi-page reads can trip. Asserted on the gap between the two heart-rate requests'
@@ -1924,6 +1925,18 @@ public class GoogleHealthApiClientTests
     /// series still read after heart-rate in the same call, and on a loaded test runner their
     /// unrelated overhead could push total elapsed past the pacing threshold even with the delay
     /// logic removed, passing the test for the wrong reason.
+    /// </para>
+    /// <para>
+    /// The gap is allowed to come in a few milliseconds under the pacing interval, because
+    /// <see cref="Task.Delay(TimeSpan)"/> and <see cref="Stopwatch"/> do not read the same clock
+    /// and the delay may complete a tick early against it. Measured on a loaded four-core runner:
+    /// one sample in sixty returned in 196.2ms for a 200ms delay, which is what made this test
+    /// fail roughly one full-suite run in seventeen. The tolerance is absolute rather than
+    /// proportional, since timer slack does not scale with the interval, and it leaves the
+    /// regression this test exists for well clear of the threshold: with the delay removed the
+    /// two requests arrive 23-25ms apart (measured), against the 175ms this asserts — the gap is
+    /// not zero because the handler still parses a full page in between.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task GetGranularDayAsync_PacesPageRequests_AfterTheFirst()
@@ -1938,10 +1951,17 @@ public class GoogleHealthApiClientTests
 
         await ((IDeviceApiClient)sut).GetGranularDayAsync("token", new DateOnly(2026, 8, 5));
 
+        // How far under the interval a Task.Delay may land when measured by Stopwatch — see the
+        // remarks. Absolute, and far below the interval, so a missing delay still fails.
+        var timerSlack = TimeSpan.FromMilliseconds(25);
+
         var timestamps = handler.TimestampsFor("/dataTypes/heart-rate/");
         Assert.Equal(2, timestamps.Count);
         var gap = timestamps[1] - timestamps[0];
-        Assert.True(gap >= pacing, $"Expected the second page to wait at least {pacing}, gap was {gap}.");
+        Assert.True(
+            gap >= pacing - timerSlack,
+            $"Expected the second page to wait about {pacing} (allowing {timerSlack} of timer "
+            + $"slack), gap was {gap}.");
     }
 
     // ── Heart rate variability ───────────────────────────────────────────────────
