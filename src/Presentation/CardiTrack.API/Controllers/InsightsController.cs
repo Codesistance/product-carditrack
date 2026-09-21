@@ -38,6 +38,13 @@ public class InsightsController : BaseApiController
     private const string InsightBusyMessage =
         "Insights are busy catching up right now — give it a minute and try again.";
 
+    /// <summary>
+    /// The trend read's horizon selector, named once because the action reads it twice: the bound
+    /// parameter carries the value, and <c>Request.Query</c> is what knows whether the caller sent
+    /// the key at all. See <see cref="GetTrend"/>.
+    /// </summary>
+    private const string HorizonQueryKey = "horizon";
+
     private readonly IHealthInsightService _insightService;
     private readonly IDigestQueryService _digests;
 
@@ -153,14 +160,20 @@ public class InsightsController : BaseApiController
         // so "?horizon=2" would quietly mean Weekly — a caller's typo picking a horizon for them.
         // A name comparison admits exactly the three values the contract documents.
         //
-        // Absent and empty are told apart on purpose. No parameter means the caller did not ask,
-        // and gets the rolling read this endpoint has always returned. "?horizon=" means they
-        // meant to ask and sent nothing, which is a malformed request rather than a default.
+        // Presence comes from the raw query, not from the bound value, and that is the whole
+        // reason this reads Request.Query at all: ASP.NET Core binds "?horizon=" to null for a
+        // nullable string, so the parameter alone cannot tell a caller who omitted the horizon
+        // from one who sent it empty. Omitting it means they did not ask, and they get the
+        // rolling read this endpoint has always returned; sending it empty means they meant to
+        // ask and said nothing, which is malformed rather than a default. Testing the action
+        // directly with "" cannot catch the difference — only a request with a query string can.
         var requested = TrendHorizon.Rolling;
-        if (horizon is not null)
+        if (Request.Query.ContainsKey(HorizonQueryKey))
         {
+            // Null here only when the value was supplied empty, which the name match then refuses.
+            var supplied = (horizon ?? string.Empty).Trim();
             var named = Enum.GetNames<TrendHorizon>()
-                .FirstOrDefault(name => name.Equals(horizon.Trim(), StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(name => name.Equals(supplied, StringComparison.OrdinalIgnoreCase));
             if (named is null)
             {
                 return Error(
