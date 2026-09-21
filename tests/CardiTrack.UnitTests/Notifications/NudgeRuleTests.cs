@@ -1,4 +1,4 @@
-using CardiTrack.Application.Services.Notifications;
+﻿using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Application.Services.Notifications.Rules;
 using CardiTrack.Domain.Enums;
 
@@ -509,6 +509,114 @@ public class NudgeRuleTests
 
         var established = new NudgeContextBuilder().NoMedicalNotes().Build();
         Assert.True(new MedicalNotesEmptyRule().Evaluate(established).HasGap);
+    }
+
+    // ---------------------------------------------------------------- MEDICAL_NOTES_STALE
+
+    [Theory]
+    [InlineData(182, false)]
+    [InlineData(183, true)]
+    public void MedicalNotesStale_FiresOnlyOnceTheReviewIntervalHasRunOut(int daysSince, bool expected)
+    {
+        var context = new NudgeContextBuilder()
+            .NotesReviewedAt(NudgeContextBuilder.Now.AddDays(-daysSince))
+            .Build();
+
+        Assert.Equal(expected, new MedicalNotesStaleRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void MedicalNotesStale_CountsAConfirmedBackgroundInWholeMonths()
+    {
+        var context = new NudgeContextBuilder()
+            .NotesReviewedAt(NudgeContextBuilder.Now.AddDays(-209))
+            .Build();
+
+        var verdict = new MedicalNotesStaleRule().Evaluate(context);
+
+        Assert.True(verdict.HasGap);
+        Assert.Null(verdict.Variant);
+        Assert.Equal(6, verdict.TemplateData["months"]);
+    }
+
+    /// <summary>
+    /// Notes that predate the review date are measured from when the member joined, not from the
+    /// deploy that added the column — otherwise every existing family goes quiet for another six
+    /// months, which is the opposite of what the rule is for.
+    /// </summary>
+    [Theory]
+    [InlineData(90, false)]
+    [InlineData(200, true)]
+    public void MedicalNotesStale_MeasuresNeverConfirmedNotesFromWhenTheMemberJoined(
+        int memberAgeDays, bool expected)
+    {
+        var context = new NudgeContextBuilder()
+            .NotesReviewedAt(null)
+            .MemberCreated(NudgeContextBuilder.Now.AddDays(-memberAgeDays))
+            .Build();
+
+        Assert.Equal(expected, new MedicalNotesStaleRule().Evaluate(context).HasGap);
+    }
+
+    /// <summary>
+    /// A figure inferred from a join date is not one we can support, so the never-confirmed case
+    /// gets its own wording rather than a month count it would have to invent.
+    /// </summary>
+    [Fact]
+    public void MedicalNotesStale_SaysSoPlainlyWhenNobodyHasEverConfirmedTheNotes()
+    {
+        var context = new NudgeContextBuilder()
+            .NotesReviewedAt(null)
+            .MemberCreated(NudgeContextBuilder.Now.AddDays(-400))
+            .Build();
+
+        var verdict = new MedicalNotesStaleRule().Evaluate(context);
+
+        Assert.True(verdict.HasGap);
+        Assert.Equal("never_confirmed", verdict.Variant);
+        Assert.Empty(verdict.TemplateData);
+    }
+
+    /// <summary>
+    /// The two medical-notes rules must never both fire: one asks a family to write the
+    /// background down, the other asks whether it still stands, and being asked both at once
+    /// reads as the app not knowing what it already has.
+    /// </summary>
+    [Fact]
+    public void MedicalNotesStale_AndMedicalNotesEmpty_AreMutuallyExclusive()
+    {
+        var nothingOnFile = new NudgeContextBuilder()
+            .NoMedicalNotes()
+            .MemberCreated(NudgeContextBuilder.Now.AddDays(-400))
+            .Build();
+
+        Assert.True(new MedicalNotesEmptyRule().Evaluate(nothingOnFile).HasGap);
+        Assert.False(new MedicalNotesStaleRule().Evaluate(nothingOnFile).HasGap);
+
+        var onFileButOld = new NudgeContextBuilder()
+            .NotesReviewedAt(NudgeContextBuilder.Now.AddDays(-400))
+            .Build();
+
+        Assert.False(new MedicalNotesEmptyRule().Evaluate(onFileButOld).HasGap);
+        Assert.True(new MedicalNotesStaleRule().Evaluate(onFileButOld).HasGap);
+    }
+
+    [Fact]
+    public void MedicalNotesStale_WaitsUntilThereIsABaselineReadingThem()
+    {
+        var learning = new NudgeContextBuilder()
+            .NotesReviewedAt(NudgeContextBuilder.Now.AddDays(-400))
+            .NoBaseline()
+            .Build();
+
+        Assert.False(new MedicalNotesStaleRule().Evaluate(learning).HasGap);
+    }
+
+    [Fact]
+    public void MedicalNotesStale_NeverPushes()
+    {
+        Assert.False(new MedicalNotesStaleRule().Spec.PushesWhenOpen);
+        Assert.True(new MedicalNotesStaleRule().Spec.CanMute);
     }
 
     // ---------------------------------------------------------------- PAUSE_LEFT_LONG

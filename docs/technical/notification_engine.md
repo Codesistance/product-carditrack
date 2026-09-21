@@ -726,9 +726,25 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 |---|---|---|---|---|---|
 | `SLEEP_SCOPE_MISSING` | `Scopes` lacks the sleep bundle | "Grant sleep access so CardiTrack can track {Name}'s sleep patterns and nightly trends." | High | Full | **R1** |
 | `MEDICAL_NOTES_EMPTY` | `MedicalNotes` null/empty | "Conditions and medications make AI insights and the doctor-visit report far more specific. Encrypted at rest, visible only to your family." | Low | Full | **R1** |
+| `MEDICAL_NOTES_STALE` | Notes on file, last confirmed over 183 days ago | "It's been {months} months since {Name}'s health background was confirmed. Conditions and medications change." | Low | Full | **R1** |
 | `EMERGENCY_CONTACT_MISSING` | `EmergencyContactName`/`Phone` null | "Add an emergency contact so the right person is on file when something looks wrong." | High | Full | R2 |
 | `MEMBER_CONTACT_MISSING` | `CardiMember.Phone` null | "Add {Name}'s number to call or text straight from an alert." | Low | Full | R3 |
 | `NO_PRIMARY_CAREGIVER` | No `IsPrimaryCaregiver` among active links | "Name a primary caregiver so urgent alerts have a clear first responder." | Medium | Full | R3 |
+
+> `MEDICAL_NOTES_STALE` is the only rule that ever asks about the health background a second
+> time. Without it `MEDICAL_NOTES_EMPTY` is a one-time question, and the longer a member is
+> monitored the less its answer means. The two are mutually exclusive by construction — one needs
+> notes absent, the other needs them present — so a family is never asked to write the background
+> down and to confirm it in the same breath.
+>
+> It measures from `MedicalNotesReviewedAtUtc`, which is stamped by an edit that actually changes
+> the text and by `POST .../medical-notes/confirm`, never by a form echoing unchanged notes back
+> (see [cardimembers.md](../execution/backend/api/cardimembers.md)). Notes predating that column
+> read `null`, and are measured from when the member joined instead: anchoring on the deploy date
+> would have every existing family go quiet for another six months, and backfilling the column
+> would have been the database claiming a review that never happened. Those fire the
+> `never_confirmed` variant, whose body carries no `{months}` figure — one inferred from a join
+> date is not a figure we can support.
 
 **Copy must not promise what isn't built.** Two rules originally did:
 

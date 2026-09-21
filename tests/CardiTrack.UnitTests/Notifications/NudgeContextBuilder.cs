@@ -1,4 +1,4 @@
-using CardiTrack.Application.Services.Notifications;
+﻿using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.UnitTests.Notifications;
@@ -22,6 +22,8 @@ public sealed class NudgeContextBuilder
     private DateTime _userCreated = Now.AddDays(-90);
     private bool _includeMember = true;
     private bool _hasMedicalNotes = true;
+    private DateTime? _notesReviewedAt;
+    private DateTime _memberCreated = Now.AddDays(-90);
     private DateTime? _pausedUntil;
     private bool _everHadConnection = true;
     private int _daysCaptured = 30;
@@ -80,6 +82,8 @@ public sealed class NudgeContextBuilder
     public NudgeContextBuilder TimeZone(string id) { _timeZoneId = id; return this; }
     public NudgeContextBuilder UserCreated(DateTime at) { _userCreated = at; return this; }
     public NudgeContextBuilder NoMedicalNotes() { _hasMedicalNotes = false; return this; }
+    public NudgeContextBuilder NotesReviewedAt(DateTime? at) { _notesReviewedAt = at; return this; }
+    public NudgeContextBuilder MemberCreated(DateTime at) { _memberCreated = at; return this; }
     public NudgeContextBuilder PausedUntil(DateTime? until) { _pausedUntil = until; return this; }
     public NudgeContextBuilder NeverHadConnection() { _everHadConnection = false; return this; }
     public NudgeContextBuilder DaysCaptured(int days) { _daysCaptured = days; return this; }
@@ -134,8 +138,9 @@ public sealed class NudgeContextBuilder
             ? new NudgeMemberSnapshot
             {
                 Id = _memberId,
-                CreatedDate = Now.AddDays(-90),
+                CreatedDate = _memberCreated,
                 HasMedicalNotes = _hasMedicalNotes,
+                MedicalNotesReviewedAtUtc = _notesReviewedAt,
                 MonitoringPausedUntil = _pausedUntil,
                 EverHadConnection = _everHadConnection,
                 DaysCaptured = _daysCaptured,

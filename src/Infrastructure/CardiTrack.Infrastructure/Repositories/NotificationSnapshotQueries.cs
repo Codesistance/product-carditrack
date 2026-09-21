@@ -1,4 +1,4 @@
-using CardiTrack.Application.Interfaces.Repositories;
+﻿using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
@@ -243,6 +243,7 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                         Id = member.Id,
                         CreatedDate = member.CreatedDate,
                         HasMedicalNotes = !string.IsNullOrWhiteSpace(member.MedicalNotes),
+                        MedicalNotesReviewedAtUtc = member.MedicalNotesReviewedAtUtc,
                         MonitoringPausedUntil = member.MonitoringPausedUntil,
                         EverHadConnection = memberConnections.Count > 0,
                         DaysCaptured = coverage.GetValueOrDefault(member.Id),
