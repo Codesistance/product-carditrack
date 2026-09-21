@@ -261,6 +261,69 @@ public class TrendJournalHorizonTests
     }
 
     [Fact]
+    public async Task AnUnmeasuredWeekWithdrawsTheNarrativeItCouldNotReplace()
+    {
+        // The stale-narrative hole. Last week's account is still stored, this week is measured on
+        // three days so no new one is written, and these horizons carry a wide staleness ceiling
+        // (10 days weekly) precisely so a row survives its own cadence — which is exactly what
+        // would keep last week's readable through the unmeasured week, under an opening that says
+        // "the week that has just ended". An unmeasured period gets no account, and a stale
+        // account reads worse than silence because it reads as current.
+        var lastWeek = new MemberInsight
+        {
+            CardiMemberId = _memberId,
+            Scope = InsightScope.TrendWeekly,
+            Summary = "An account of the week before last.",
+            GeneratedAtUtc = MondayMorning.AddDays(-7),
+            PromptVersion = TrendInterpretationService.CurrentPromptVersion,
+        };
+        _insights.GetByScopeAsync(_memberId, InsightScope.TrendWeekly).Returns(lastWeek);
+        WithPeriodCoverage(measuredDays: 3);
+
+        Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
+
+        _insights.Received(1).Remove(lastWeek);
+        Assert.Empty(_medicalAi.ReceivedCalls());
+    }
+
+    [Fact]
+    public async Task AnUnmeasuredWeekWithNothingStoredRemovesNothing()
+    {
+        WithPeriodCoverage(measuredDays: 3);
+
+        Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
+
+        _insights.DidNotReceive().Remove(Arg.Any<MemberInsight>());
+    }
+
+    [Fact]
+    public async Task ANarrativeWrittenWhileThisOneGeneratedIsNotOverwritten()
+    {
+        // The write is not fenced by the claim, only the release is. A generation that outlives
+        // its twenty-minute lease is taken over, and if the successor finishes first, saving the
+        // row this attempt loaded before the claim would put an older narrative — and an older
+        // GeneratedAtUtc, which is what the staleness ceiling reads — over the newer one. So the
+        // row is re-read after the model call and the write abandoned if someone got there.
+        _insights.GetByScopeAsync(_memberId, InsightScope.TrendWeekly).Returns(
+            (MemberInsight?)null,
+            new MemberInsight
+            {
+                CardiMemberId = _memberId,
+                Scope = InsightScope.TrendWeekly,
+                Summary = "A successor's narrative, written while this one was generating.",
+                GeneratedAtUtc = MondayMorning.AddMinutes(5),
+                PromptVersion = TrendInterpretationService.CurrentPromptVersion,
+            });
+
+        Assert.Equal(0, await CreateSut().InterpretDueJournalHorizonsAsync(MondayMorning));
+
+        // The model still ran — this attempt held the claim when it started — but nothing was
+        // stored over the successor's work.
+        Assert.NotEmpty(_medicalAi.ReceivedCalls());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
     public async Task AWeekMeasuredOnFourDaysIsNarrated()
     {
         WithPeriodCoverage(measuredDays: 4);

@@ -261,7 +261,7 @@ public class TrendInterpretationService
         // for the same reason, and these deviations are measured against those baselines.
         var through = localToday.AddDays(-1);
 
-        return await WriteAsync(member, timeZone, TrendHorizon.Rolling, TrendWindow.Rolling, through, existing, utcNow, ct);
+        return await WriteAsync(member, timeZone, TrendHorizon.Rolling, TrendWindow.Rolling, through, utcNow, ct);
     }
 
     /// <summary>
@@ -449,6 +449,26 @@ public class TrendInterpretationService
                 "CardiMember {CardiMemberId} has {Measured} measured day(s) in the {Horizon} period "
                 + "ending {PeriodEnd}; {Needed} are needed, so no narrative is written.",
                 cardiMemberId, measured, horizon, due.End, window.MinimumDaysForSlope);
+
+            // And the last period's narrative goes with it. Leaving it would serve a caregiver an
+            // account of the week before last under a heading that says "the week that has just
+            // ended" — and the wider ceiling these horizons carry (10 days weekly, 40 monthly, so
+            // a row survives its own cadence) is exactly what would keep it readable while the
+            // unmeasured period went by. An unmeasured period gets no account, on the reasoning
+            // the Weekbook's own coverage guard gives: silence must never read as healthy, and a
+            // stale account reads worse than silence because it reads as current.
+            if (existing is not null)
+            {
+                _unitOfWork.MemberInsights.Remove(existing);
+                await _unitOfWork.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Withdrew the previous {Horizon} narrative for CardiMember {CardiMemberId}: the "
+                    + "period ending {PeriodEnd} was not measured enough to replace it, and the old "
+                    + "one would have been read as describing it.",
+                    horizon, cardiMemberId, due.End);
+            }
+
             return false;
         }
 
@@ -476,7 +496,7 @@ public class TrendInterpretationService
 
         try
         {
-            return await WriteAsync(member, timeZone, horizon, window, due.End, existing, utcNow, ct);
+            return await WriteAsync(member, timeZone, horizon, window, due.End, utcNow, ct);
         }
         finally
         {
@@ -499,7 +519,6 @@ public class TrendInterpretationService
         TrendHorizon horizon,
         TrendWindow window,
         DateOnly through,
-        MemberInsight? existing,
         DateTime utcNow,
         CancellationToken ct)
     {
@@ -574,10 +593,28 @@ public class TrendInterpretationService
             .Take(InsightLimits.MaxFindings)
             .ToList();
 
-        var row = existing ?? new MemberInsight
+        // Re-read before writing, and abandon if someone has written since this attempt began.
+        // The claim fences the lease, not this: a generation that outlives its twenty minutes is
+        // taken over by a successor, and if that successor finishes first, saving the row loaded
+        // before the claim would put this attempt's older narrative — and its older
+        // GeneratedAtUtc, which is what the staleness ceiling reads — over the newer one. The
+        // model call is the long part and it has already happened, so this costs one indexed read
+        // on a path that has just spent seconds or minutes in inference.
+        var scope = ScopeFor(horizon);
+        var current = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, scope);
+        if (current is not null && current.GeneratedAtUtc >= utcNow)
+        {
+            _logger.LogInformation(
+                "Another execution wrote the {Horizon} narrative for CardiMember {CardiMemberId} "
+                + "while this one was generating; keeping theirs and discarding this read.",
+                horizon, cardiMemberId);
+            return false;
+        }
+
+        var row = current ?? new MemberInsight
         {
             CardiMemberId = cardiMemberId,
-            Scope = ScopeFor(horizon),
+            Scope = scope,
         };
 
         // Fitted to the column, not trusted to the brief's asked-for length: the completion budget
@@ -591,7 +628,7 @@ public class TrendInterpretationService
         row.GeneratedAtUtc = utcNow;
         row.PromptVersion = CurrentPromptVersion;
 
-        if (existing is null)
+        if (current is null)
             await _unitOfWork.MemberInsights.AddAsync(row);
 
         await _unitOfWork.SaveChangesAsync();

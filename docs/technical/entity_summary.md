@@ -1,8 +1,8 @@
 # CardiTrack Entity Summary
 
-This document provides an overview of all domain entities in the CardiTrack system. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
+This document provides an overview of the CardiTrack domain entities. The numbered sections are a documented subset rather than the whole set — several entities carry no section of their own (`MemberAiHold` and `GenerationLease`, among others), and the counts below are the authoritative figures. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
 
-**Implemented today:** 25 entity classes and **33** enums exist in `CardiTrack.Domain` (plus two static merge helpers, `ActivityLogMerge` and `GranularSeriesMerge`, in `Entities/`), mapped by EF Core (**33** migrations applied as of 2026-08-14 — this count drifts fast and is not re-verified every edit; the pipeline's own output entities, e.g. `RealtimeAssessment`/`DigestEntry`/`EnvironmentalReading`/`MemberQuestionnaire`, are among the 25 but are documented in [llm_design.md](../llm_design.md) instead — `MemberQuestionnaire` also has its own API contract in [questionnaires.md](../execution/backend/api/questionnaires.md), and is the one entity deliberately **not** soft-deletable, since erasing a family's answer has to mean the row is gone). A further set of feature entities is designed but not yet built — see the "Planned" section below.
+**Implemented today:** **42** entity classes and **54** enums exist in `CardiTrack.Domain` (plus two static merge helpers, `ActivityLogMerge` and `GranularSeriesMerge`, in `Entities/`), mapped by EF Core (**33** migrations applied as of 2026-08-14 — this count drifts fast and is not re-verified every edit; the pipeline's own output entities, e.g. `RealtimeAssessment`/`DigestEntry`/`EnvironmentalReading`/`MemberQuestionnaire`, are among the 42 but are documented in [llm_design.md](../llm_design.md) instead — `MemberQuestionnaire` also has its own API contract in [questionnaires.md](../execution/backend/api/questionnaires.md), and is the one entity deliberately **not** soft-deletable, since erasing a family's answer has to mean the row is gone). A further set of feature entities is designed but not yet built — see the "Planned" section below.
 
 ## Entity Overview
 
@@ -120,6 +120,17 @@ This document provides an overview of all domain entities in the CardiTrack syst
 - **Two partial unique indexes rather than one composite.** Postgres counts nulls as distinct, so a single index over (member, scope, alert) would let a member collect any number of baseline rows with a null `AlertId`, none of them in conflict. Instead: unique on (CardiMemberId, Scope) `WHERE "AlertId" IS NULL`, and unique on AlertId `WHERE "AlertId" IS NOT NULL`
 - Scope persists as its **name** (`HasConversion<string>`), like the rest of the schema
 - Retention **90 days for the member-scoped rows**, swept by the Worker (`InsightRetention`) rather than dropped with a partition — this table is ordinary EF-tracked. **Alert explanations are exempt**: the read path serves one however old it is, so sweeping it would leave an alert in the history that the product declines to explain. Erasure reaches every scope by CardiMemberId, which is why the member index is unfiltered as well as filtered
+
+#### 13a. **GenerationLease** *(2026-09-21)*
+- One member's claim on one once-per-period generation, held across the model call that writes it — what stops two overlapping pipeline executions both paying to generate the same period
+- Contains: CardiMemberId, Work (`GenerationWork` — Daybook, Weekbook, Monthbook, TrendWeekly, TrendMonthly), PeriodEnd, HeldUntilUtc, ClaimedAtUtc
+- **Carries no health data.** A member id, which writer holds the claim, which period is in flight and two timestamps. Nothing derived from a reading, nothing model-written, nothing a caregiver sees
+- **Why it exists:** the digest job is scheduled every thirty minutes against a Cloud Run timeout of an hour, so a slow pass is still running when the next execution starts and both can read the same member before either writes. The unique indexes downstream kept the stored data right, so what was being lost was inference rather than correctness
+- **One row per member per work, not per period** — the claimed period is a column, so next period's claim overwrites the last. That bounds the table at members × works and is why nothing sweeps it; a per-period key would have been a row per member per day for the Daybook alone
+- **A lease, not a lock.** `HeldUntilUtc` lets a later execution take over a claim whose holder was killed mid-generation, so a crash costs one period's delay rather than the period. Taken by a single `INSERT ... ON CONFLICT DO UPDATE ... WHERE` whose predicate admits the update only when the existing lease has lapsed, so the exclusivity is Postgres' and not the caller's
+- `TryClaimAsync` returns a **claim id** and the release is keyed on it: a takeover rewrites the row's `Id`, so a holder that overran its lease releases nothing rather than removing its successor's claim
+- Work persists as its **name** (`HasConversion<string>`), like the rest of the schema. Unique index on (CardiMemberId, Work), which is also the upsert's conflict target
+- No retention sweep by design; leaves with the member on erasure (`MemberErasureService`, manual runbook row 20a)
 
 ### Business Entities
 
@@ -288,7 +299,7 @@ CardiTrack.Domain/
 │   ├── IEntity.cs
 │   └── ISoftDeletable.cs
 ├── Enums/       one file per enum — the 33 listed above
-└── Entities/    27 files — the 25 entity classes, plus the two static
+└── Entities/    44 files — the 42 entity classes, plus the two static
                  merge helpers (ActivityLogMerge.cs, GranularSeriesMerge.cs)
 ```
 
