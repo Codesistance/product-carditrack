@@ -121,10 +121,9 @@ public static class TrendFeatureCalculator
             Feature("Sleep", "minutes a night", ordered, baselines, through,
                 l => l.SleepMinutes, b => b.AvgSleepMinutes),
             // Named for what it counts. The provider sums MODERATE and VIGOROUS only and drops
-            // LIGHT (GoogleHealthApiClient.ActiveActivityLevels), so a gentle five-thousand-step
-            // afternoon scores almost none of it — and "active minutes: 9" reads as somebody who
-            // barely moved. BaselineMovementCalculator carries the same name, and a test holds
-            // the two to it.
+            // LIGHT (GoogleHealthApiClient.ActiveActivityLevels), so a long gentle walk scores
+            // almost none of it and the old name read as minutes spent moving.
+            // BaselineMovementCalculator carries the same name, and a test holds the two to it.
             Feature("Harder activity", "minutes a day at moderate pace or above", ordered, baselines, through,
                 l => l.ActiveMinutes, b => b.AvgActiveMinutes),
             Feature("Overnight heart rate variability", "ms", ordered, baselines, through,

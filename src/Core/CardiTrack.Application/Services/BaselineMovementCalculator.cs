@@ -374,9 +374,9 @@ public static class BaselineMovementCalculator
         // "Active minutes" was the label, and it read as minutes spent moving. It is not: the
         // provider sums MODERATE and VIGOROUS only and drops LIGHT, deliberately, so that the
         // figure matches the one a wearer sees in their own app — see
-        // GoogleHealthApiClient.ActiveActivityLevels. A member who walked five thousand steps at
-        // a gentle pace scores nearly none of them, so "active minutes: 9 a day" beside a usual
-        // 13 reads as somebody who barely moved, about somebody who walked all afternoon.
+        // GoogleHealthApiClient.ActiveActivityLevels. A member who walks a long way at a gentle
+        // pace scores almost none of it, so under the old name a low figure beside a low usual
+        // read as somebody who barely moved, about somebody who had been walking all afternoon.
         new(TrackedMetric.ActiveMinutes, "Harder activity", "minutes a day at moderate pace or above",
             l => l.ActiveMinutes, b => b.AvgActiveMinutes, _ => null, Fraction),
         new(TrackedMetric.OvernightHeartRateVariability, "Overnight heart rate variability", "ms",
