@@ -11,6 +11,30 @@ public interface IMemberInsightRepository : IRepository<MemberInsight>
     /// </summary>
     Task<MemberInsight?> GetByScopeAsync(Guid cardiMemberId, InsightScope scope);
 
+    /// <summary>
+    /// When the stored row at this scope was last written, read from the database rather than
+    /// from anything already in memory — or null when there is no row.
+    /// </summary>
+    /// <remarks>
+    /// Exists because <see cref="GetByScopeAsync"/> cannot answer it. That one is deliberately
+    /// tracked, so a second call within the same scope returns the instance the first call put in
+    /// the change tracker, carrying the values it had then. That is right for a read-then-update
+    /// writer and useless for asking whether someone else has written since — a generation that
+    /// outlived its lease and was taken over needs the real answer before it saves. Projecting to
+    /// a scalar bypasses the tracker outright, rather than relying on a no-tracking flag a later
+    /// reader could remove for the same reason the tracking was added.
+    /// </remarks>
+    Task<DateTime?> GetGeneratedAtUtcAsync(
+        Guid cardiMemberId, InsightScope scope, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every member holding a row at this scope. A writer that must reconsider a member whose
+    /// readings have stopped needs it: a candidate list drawn from recent activity alone cannot
+    /// reach someone whose stored narrative is still being served and no longer true.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetMemberIdsWithScopeAsync(
+        InsightScope scope, CancellationToken ct = default);
+
     /// <summary>The explanation written for one alert, or null when the pass has not reached it.</summary>
     Task<MemberInsight?> GetForAlertAsync(Guid alertId);
 

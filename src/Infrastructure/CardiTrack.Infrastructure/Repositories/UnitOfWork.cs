@@ -44,6 +44,7 @@ public class UnitOfWork : IUnitOfWork
     public IExportConsentRepository ExportConsents { get; }
     public ICardiMemberCreationKeyRepository CardiMemberCreationKeys { get; }
     public IMemberAiHoldRepository MemberAiHolds { get; }
+    public IGenerationLeaseRepository GenerationLeases { get; }
     public IDeviceHistoryRepullRepository DeviceHistoryRepulls { get; }
     public IDeviceConnectionInviteRepository DeviceConnectionInvites { get; }
 
@@ -83,6 +84,7 @@ public class UnitOfWork : IUnitOfWork
         IReportRepository reports,
         IExportConsentRepository exportConsents,
         IMemberAiHoldRepository memberAiHolds,
+        IGenerationLeaseRepository generationLeases,
         IDeviceHistoryRepullRepository deviceHistoryRepulls,
         IDeviceConnectionInviteRepository deviceConnectionInvites,
         ICardiMemberCreationKeyRepository cardiMemberCreationKeys)
@@ -122,6 +124,7 @@ public class UnitOfWork : IUnitOfWork
         Reports = reports;
         ExportConsents = exportConsents;
         MemberAiHolds = memberAiHolds;
+        GenerationLeases = generationLeases;
         DeviceHistoryRepulls = deviceHistoryRepulls;
         DeviceConnectionInvites = deviceConnectionInvites;
         CardiMemberCreationKeys = cardiMemberCreationKeys;

@@ -3,6 +3,7 @@ using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -36,6 +37,13 @@ public class InsightsController : BaseApiController
     /// </summary>
     private const string InsightBusyMessage =
         "Insights are busy catching up right now — give it a minute and try again.";
+
+    /// <summary>
+    /// The trend read's horizon selector, named once because the action reads it twice: the bound
+    /// parameter carries the value, and <c>Request.Query</c> is what knows whether the caller sent
+    /// the key at all. See <see cref="GetTrend"/>.
+    /// </summary>
+    private const string HorizonQueryKey = "horizon";
 
     private readonly IHealthInsightService _insightService;
     private readonly IDigestQueryService _digests;
@@ -118,26 +126,68 @@ public class InsightsController : BaseApiController
     }
 
     /// <summary>
-    /// The longer view of a CardiMember — where their readings have been going over the weeks —
-    /// written by the daily trend pass and persisted per member; read-only here, no model call on
-    /// this path. A blank <c>narrative</c> means there is not yet a month of readings to describe
-    /// a trajectory from, which is the learning state rather than a failure.
+    /// The longer view of a CardiMember — where their readings have been going — written by a
+    /// trend pass and persisted per member per horizon; read-only here, no model call on this
+    /// path. A blank <c>narrative</c> means there is not yet a month of readings to describe a
+    /// trajectory from, which is the learning state rather than a failure.
     /// </summary>
+    /// <param name="cardiMemberId">The member to read.</param>
+    /// <param name="horizon">
+    /// Which stretch to read: <c>rolling</c> (the default — the daily pass's unaligned read),
+    /// <c>weekly</c> (the week ending the evening before the member's own week start) or
+    /// <c>monthly</c> (the month just gone). Omitting it returns what this endpoint returned
+    /// before the journal-aligned horizons existed, so existing callers are unaffected — the same
+    /// defaulting <c>?audience=</c> does on the digest endpoints.
+    /// </param>
+    /// <param name="ct">Cancellation.</param>
     [HttpGet("members/{cardiMemberId:guid}/trend")]
     [ProducesResponseType(typeof(ApiResponse<TrendInsightResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<TrendInsightResponse>>> GetTrend(
-        Guid cardiMemberId, CancellationToken ct)
+        Guid cardiMemberId, [FromQuery] string? horizon, CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
             return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
         }
 
+        // Matched against the names rather than parsed. Model binding turns an unrecognised value
+        // into the zero member, which is not a defined TrendHorizon, so "?horizon=yearly" would
+        // silently serve the rolling read instead of saying it is not a horizon. Enum.TryParse is
+        // no better on its own: it accepts the underlying number, and Enum.IsDefined then agrees,
+        // so "?horizon=2" would quietly mean Weekly — a caller's typo picking a horizon for them.
+        // A name comparison admits exactly the three values the contract documents.
+        //
+        // Presence comes from the raw query, not from the bound value, and that is the whole
+        // reason this reads Request.Query at all: ASP.NET Core binds "?horizon=" to null for a
+        // nullable string, so the parameter alone cannot tell a caller who omitted the horizon
+        // from one who sent it empty. Omitting it means they did not ask, and they get the
+        // rolling read this endpoint has always returned; sending it empty means they meant to
+        // ask and said nothing, which is malformed rather than a default. Testing the action
+        // directly with "" cannot catch the difference — only a request with a query string can.
+        var requested = TrendHorizon.Rolling;
+        if (Request.Query.ContainsKey(HorizonQueryKey))
+        {
+            // Null here only when the value was supplied empty, which the name match then refuses.
+            var supplied = (horizon ?? string.Empty).Trim();
+            var named = Enum.GetNames<TrendHorizon>()
+                .FirstOrDefault(name => name.Equals(supplied, StringComparison.OrdinalIgnoreCase));
+            if (named is null)
+            {
+                return Error(
+                    "That isn't a trend horizon — use rolling, weekly or monthly.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            requested = Enum.Parse<TrendHorizon>(named);
+        }
+
         try
         {
-            var result = await _insightService.GetTrendAsync(UserContext.UserId, cardiMemberId, ct);
+            var result = await _insightService.GetTrendAsync(
+                UserContext.UserId, cardiMemberId, requested, ct);
             return Success(result);
         }
         catch (KeyNotFoundException ex)

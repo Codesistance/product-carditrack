@@ -44,6 +44,7 @@ public class WeekbookGenerationTests
     public WeekbookGenerationTests()
     {
         _unitOfWork.CardiMembers.Returns(_members);
+        GenerationLeaseStub.GrantAll(_unitOfWork);
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);

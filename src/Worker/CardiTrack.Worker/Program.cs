@@ -87,6 +87,7 @@ builder.Services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
 builder.Services.AddScoped<IMemberAdviseObservationRepository, MemberAdviseObservationRepository>();
 builder.Services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
 builder.Services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
+builder.Services.AddScoped<IGenerationLeaseRepository, GenerationLeaseRepository>();
 builder.Services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
 builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
 builder.Services.AddScoped<INotificationSnapshotQueries, NotificationSnapshotQueries>();

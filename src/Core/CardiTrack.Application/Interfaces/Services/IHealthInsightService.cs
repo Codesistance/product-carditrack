@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Interfaces.Services;
 
@@ -25,12 +26,20 @@ public interface IHealthInsightService
 
     /// <summary>
     /// The stored trend narrative for a CardiMember the requesting user is linked to — the longer
-    /// view, written by the daily trend pass. Read-only, like the two above. A member with under a
-    /// month of readings comes back with empty text: that is the learning state, not a failure.
-    /// Throws <see cref="KeyNotFoundException"/> when the user may not view that member's health data.
+    /// view, written by a trend pass at the requested <paramref name="horizon"/>. Read-only, like
+    /// the two above. A member with under a month of readings comes back with empty text: that is
+    /// the learning state, not a failure. Throws <see cref="KeyNotFoundException"/> when the user
+    /// may not view that member's health data.
     /// </summary>
+    /// <param name="horizon">
+    /// Which stored read to return. Defaults to <see cref="TrendHorizon.Rolling"/>, the one this
+    /// served before the journal-aligned horizons existed.
+    /// </param>
     Task<TrendInsightResponse> GetTrendAsync(
-        Guid requestingUserId, Guid cardiMemberId, CancellationToken ct = default);
+        Guid requestingUserId,
+        Guid cardiMemberId,
+        TrendHorizon horizon = TrendHorizon.Rolling,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Writes the explanation for one alert. Called by the pipeline pass that raised it, never

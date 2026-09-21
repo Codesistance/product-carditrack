@@ -131,6 +131,7 @@ public class MemberErasureService : IMemberErasureService
             await Step("MetricAlarms", _db.MetricAlarms.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("MemberStatusLines", _db.MemberStatusLines.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("MemberAiHolds", _db.MemberAiHolds.Where(x => x.CardiMemberId == cardiMemberId));
+            await Step("GenerationLeases", _db.GenerationLeases.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("DeviceHistoryRepulls", _db.DeviceHistoryRepulls.Where(x => x.CardiMemberId == cardiMemberId));
 
             // Array columns, not foreign keys: a consent or a report naming this member among

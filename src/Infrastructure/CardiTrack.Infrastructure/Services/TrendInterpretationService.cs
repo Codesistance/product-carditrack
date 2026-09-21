@@ -1,6 +1,7 @@
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
+using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
@@ -10,8 +11,10 @@ using Microsoft.Extensions.Logging;
 namespace CardiTrack.Infrastructure.Services;
 
 /// <summary>
-/// The daily trend pass: deterministic features computed in .NET, read by MedGemma against the
-/// pinned reference ranges, stored as the member's <see cref="InsightScope.Trend"/> insight.
+/// The trend pass: deterministic features computed in .NET, read by MedGemma against the pinned
+/// reference ranges, stored as the member's trend insight. Three horizons — the rolling read of
+/// <see cref="InsightScope.Trend"/>, and the journal-aligned
+/// <see cref="InsightScope.TrendWeekly"/> and <see cref="InsightScope.TrendMonthly"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,10 +27,19 @@ namespace CardiTrack.Infrastructure.Services;
 /// dropped.
 /// </para>
 /// <para>
-/// Runs as <c>--job trend</c> in the pipeline rather than in the Worker. It is a model call, which
-/// is the one thing CLAUDE.md sanctions the pipeline for; the deterministic half runs inside that
-/// same job rather than as a Worker poll, so the rule that non-AI background work lives in the
-/// Worker is not bent — the Worker still owns the baselines this reads.
+/// One service, two job hosts, and the split is about clocks rather than concerns.
+/// <see cref="InterpretDueMembersAsync"/> is the rolling narrative and runs as <c>--job trend</c>
+/// on a daily tick, which is all an unaligned read needs.
+/// <see cref="InterpretDueJournalHorizonsAsync"/> runs on the half-hourly <c>--job digest</c>
+/// pass beside the three CardiJournal books, because a horizon falling due on the member's own
+/// local weekday and hour cannot be served by a job that sees them once a day — see that method's
+/// remarks.
+/// </para>
+/// <para>
+/// Either way it is the pipeline rather than the Worker. It is a model call, which is the one
+/// thing CLAUDE.md sanctions the pipeline for; the deterministic half runs inside that same job
+/// rather than as a Worker poll, so the rule that non-AI background work lives in the Worker is
+/// not bent — the Worker still owns the baselines this reads.
 /// </para>
 /// </remarks>
 public class TrendInterpretationService
@@ -39,8 +51,13 @@ public class TrendInterpretationService
     /// a narrative would report five hours of sleep a night without mentioning that seven to nine
     /// is what the NSF recommends at that age — three findings that all said "lower than usual"
     /// and nothing a family could act on.
+    /// <br/>
+    /// 3: the opening sentence now names the stretch being read, so one body can serve all three
+    /// horizons. The rolling brief's wording is byte-for-byte what it was, but the version still
+    /// moves — every stored narrative predates the horizons existing, and the stamp is what makes
+    /// a row from before a change regenerate rather than look current.
     /// </remarks>
-    internal const int BriefVersion = 2;
+    internal const int BriefVersion = 3;
 
     /// <summary>
     /// The brief and the pinned table it carries, as one stamped number. A row written by an older
@@ -74,17 +91,34 @@ public class TrendInterpretationService
     private static readonly int[] TrendBaselineWindows = [30, 60, 90];
 
     /// <summary>
-    /// <c>CARDITRACK_TREND_PROMPT</c>. Fixed prefix, as every brief here is: the serving engine can
-    /// only reuse a cached prefix that has not changed, and member data always goes after it.
+    /// The one sentence that differs between horizons: which stretch the figures below describe.
+    /// </summary>
+    /// <remarks>
+    /// The stretch is stated rather than left to be inferred from the window header in the
+    /// rendered features. A model handed seven days of averages under a brief that says "a month"
+    /// writes about a month — the figures are what they are, but the noun in the first sentence is
+    /// the one that reaches the caregiver, and it would be describing a period nobody computed.
+    /// </remarks>
+    private static string OpeningFor(TrendHorizon horizon) => horizon switch
+    {
+        TrendHorizon.Weekly =>
+            "You are reading the week that has just ended for one person, for their family.",
+        TrendHorizon.Monthly =>
+            "You are reading the month that has just ended for one person, for their family.",
+        _ => "You are reading a month of one person's wearable readings for their family.",
+    };
+
+    /// <summary>
+    /// <c>CARDITRACK_TREND_PROMPT</c>, everything after the opening. Fixed prefix, as every brief
+    /// here is: the serving engine can only reuse a cached prefix that has not changed, and member
+    /// data always goes after it. Three openings means three prefixes, each still fixed.
     /// </summary>
     /// <remarks>
     /// No sample sentences. MedGemma repeats phrasing it is shown, and a trend narrative written
     /// from a sample would describe the sample's member rather than this one — the same reason the
     /// digest and journal briefs stopped listing examples (#1098).
     /// </remarks>
-    private const string TrendInstructions =
-        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + """
-        You are reading a month of one person's wearable readings for their family.
+    private const string TrendBody = """
 
         Every figure below was computed from their own measurements before you saw it. Say what the
         figures say. Never work out a percentage, a difference or a direction yourself, and never
@@ -126,6 +160,10 @@ public class TrendInterpretationService
         appear. Where the readings have been steady, say so plainly rather than looking for
         something to report.
         """ + MedicalPromptBlocks.ContextGuardrail;
+
+    /// <summary>The whole brief for one horizon: its opening, then the body every horizon shares.</summary>
+    internal static string InstructionsFor(TrendHorizon horizon) =>
+        MedicalPromptBlocks.Tone + MedicalPromptBlocks.Pronouns + OpeningFor(horizon) + TrendBody;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMedicalAiService _medicalAi;
@@ -222,22 +260,300 @@ public class TrendInterpretationService
         // decline that is only the clock. BaselineCalculationWorker ends its window a day back
         // for the same reason, and these deviations are measured against those baselines.
         var through = localToday.AddDays(-1);
+
+        return await WriteAsync(member, timeZone, TrendHorizon.Rolling, TrendWindow.Rolling, through, utcNow, ct);
+    }
+
+    /// <summary>
+    /// The UTC instant the member's current local day began — the anchor the once-per-period
+    /// check compares a stored row against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Converted through the timezone rather than by subtracting the local time of day, which is
+    /// the same arithmetic only while the offset has not moved since midnight. On a fall-back day
+    /// the wall clock reads 23:00 after twenty-four hours have passed, so subtracting would put
+    /// the day's start an hour late and a narrative written at 00:30 would read as belonging to
+    /// the day before — which is the duplicate this check exists to prevent, on exactly the day
+    /// the comment beside it claims to handle.
+    /// </para>
+    /// <para>
+    /// Midnight does not exist in every zone on every date: a few shift their clocks at midnight,
+    /// and spring-forward then skips the hour outright. <see cref="TimeZoneInfo.ConvertTimeToUtc"/>
+    /// throws on such a time, so the first hour that does exist is used instead. Erring late is
+    /// the safe direction — a day start too early would read a row from the previous evening as
+    /// today's and cost the member their narrative, where one slightly late costs at worst a
+    /// repeated read. Ambiguous midnights resolve to standard time, which is the later instant,
+    /// for the same reason.
+    /// </para>
+    /// </remarks>
+    internal static DateTime LocalDayStartUtc(DateTime localNow, TimeZoneInfo timeZone)
+    {
+        var midnight = DateTime.SpecifyKind(localNow.Date, DateTimeKind.Unspecified);
+        if (timeZone.IsInvalidTime(midnight))
+            midnight = midnight.AddHours(1);
+
+        return TimeZoneInfo.ConvertTimeToUtc(midnight, timeZone);
+    }
+
+    /// <summary>Which stored insight one horizon's narrative lands under.</summary>
+    internal static InsightScope ScopeFor(TrendHorizon horizon) => horizon switch
+    {
+        TrendHorizon.Weekly => InsightScope.TrendWeekly,
+        TrendHorizon.Monthly => InsightScope.TrendMonthly,
+        _ => InsightScope.Trend,
+    };
+
+    /// <summary>
+    /// Writes the weekly and monthly narratives for every member they are due for. Returns how
+    /// many were written.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Called from the half-hourly <c>--job digest</c> pass, not from <c>--job trend</c>, and the
+    /// reason is arithmetic rather than taste. These two horizons fall due on the member's own
+    /// local clock — the weekday their journal week starts, at an hour they choose anywhere in
+    /// <c>JournalSchedule</c>'s 01:00–12:00 window. A once-daily job sees each member at exactly
+    /// one local instant per day, so a member whose chosen hour has not yet passed at that instant
+    /// is declined, and by the next run their local date is no longer their week start: they would
+    /// never receive a weekly narrative at all. The digest pass already resolves every member's
+    /// local time every half hour for the three CardiJournal books, which is the same problem with
+    /// the same answer.
+    /// </para>
+    /// <para>
+    /// The rolling narrative stays on <c>--job trend</c>. It is not aligned to anything, so a
+    /// daily tick serves it, and moving it here would turn one candidate sweep a day into
+    /// forty-eight against a service whose measured cost profile says cadence is the only lever.
+    /// </para>
+    /// </remarks>
+    public async Task<int> InterpretDueJournalHorizonsAsync(
+        DateTime utcNow, CancellationToken ct = default)
+    {
+        var weekly = await InterpretDueAtHorizonAsync(TrendHorizon.Weekly, utcNow, ct);
+        var monthly = await InterpretDueAtHorizonAsync(TrendHorizon.Monthly, utcNow, ct);
+        return weekly + monthly;
+    }
+
+    private async Task<int> InterpretDueAtHorizonAsync(
+        TrendHorizon horizon, DateTime utcNow, CancellationToken ct)
+    {
+        // The Monthbook's own cheap guard: on about twenty-nine days in thirty no timezone on
+        // earth is on the first, so the whole horizon is answerable without touching the database.
+        // There is no equivalent for the weekly horizon — members choose their own week start, so
+        // at any instant some weekday somewhere is one.
+        if (horizon == TrendHorizon.Monthly && !JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utcNow, 1))
+            return 0;
+
+        // Wide enough to catch a member whose readings stopped partway through the period, in any
+        // timezone — the same nine and thirty-five the two books use.
+        var lookbackDays = horizon == TrendHorizon.Monthly ? 35 : 9;
+        var windowStart = DateOnly.FromDateTime(utcNow).AddDays(-lookbackDays);
+        var active = await _unitOfWork.CardiMembers.GetActiveIdsWithActivitySinceAsync(windowStart);
+
+        // Plus everyone already holding a narrative at this horizon, whatever their readings have
+        // done since. The books can be candidate-listed on recent activity alone because a member
+        // with nothing to say simply gets no book; this pass has a second job they do not — taking
+        // down an account the new period could not replace. A member whose watch stopped more than
+        // nine days ago is exactly the one whose stored narrative is about to start describing a
+        // week it was not written from, and a list drawn from activity cannot reach them.
+        var scope = ScopeFor(horizon);
+        var holding = await _unitOfWork.MemberInsights.GetMemberIdsWithScopeAsync(scope, ct);
+
+        var memberIds = active.Concat(holding).Distinct().ToList();
+
+        var written = 0;
+        foreach (var memberId in memberIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (await InterpretJournalHorizonForMemberAsync(memberId, horizon, utcNow, ct))
+                    written++;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // One member's failure is not the pass's, and it is emphatically not the digest
+                // pass's: this runs inside the job that writes the books, and a trend that threw
+                // must not cost the next member their Daybook.
+                _logger.LogError(ex,
+                    "{Horizon} trend interpretation failed for CardiMember {CardiMemberId}.",
+                    horizon, memberId);
+            }
+        }
+
+        if (written > 0)
+        {
+            _logger.LogInformation(
+                "{Horizon} trend pass complete. Narratives written: {Written} of {Candidates} candidate member(s).",
+                horizon, written, memberIds.Count);
+        }
+
+        return written;
+    }
+
+    /// <summary>
+    /// One member's weekly or monthly narrative, or false when it is not due, not possible, or
+    /// already written for this period.
+    /// </summary>
+    private async Task<bool> InterpretJournalHorizonForMemberAsync(
+        Guid cardiMemberId, TrendHorizon horizon, DateTime utcNow, CancellationToken ct)
+    {
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(cardiMemberId);
+        if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
+            return false;
+
+        var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, cardiMemberId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
+
+        var period = horizon == TrendHorizon.Monthly
+            ? JournalDueCheck.Monthly(member, localNow)
+            : JournalDueCheck.Weekly(member, localNow);
+        if (period is not { } due)
+            return false;
+
+        var existing = await _unitOfWork.MemberInsights
+            .GetByScopeAsync(cardiMemberId, ScopeFor(horizon));
+
+        // Written once per period. A member stays due for the rest of their local day once their
+        // chosen hour passes, and the digest pass runs every half hour — so without this the first
+        // write would be followed by up to twenty more of the same period, each paying for a model
+        // call. Anchored to the start of the member's own local day rather than a fixed interval:
+        // a 20-hour floor would let a second narrative through near the end of a 25-hour
+        // fall-back day, and the period has not changed just because the clock did.
+        if (existing is not null
+            && existing.PromptVersion >= CurrentPromptVersion
+            && existing.GeneratedAtUtc >= LocalDayStartUtc(localNow, timeZone))
+        {
+            return false;
+        }
+
+        // The period's own coverage, checked before any model call, at its book's threshold —
+        // four of seven, fourteen of a month. A period measured on fewer days than that is an
+        // unmeasured period, and a narrative of it would have to speak for the days that are
+        // missing.
+        //
+        // The threshold is the book's; what counts toward it is not. A book describes whatever
+        // the period recorded, so a day carrying only distance or SpO2 counts for it; a trend
+        // reads six series and can plot none of those, so CountMeasuredDays asks for a day
+        // carrying something it can draw a line through. That divergence is correct rather than a
+        // drift: a member with four distance-only days gets their Weekbook and no weekly trend,
+        // because there was nothing to trend. (The rows cannot double up — ActivityLogs is unique
+        // on (CardiMemberId, Date); the per-device rows live in DeviceActivityLogs.)
+        //
+        // The history gate inside the calculator is a different question again: that one asks
+        // whether the member has a learned normal at all.
+        // A month is 28, 29, 30 or 31 days and the window has to be its own length: the narrative
+        // says "the month that has just ended", and a fixed thirty ending on the last of February
+        // would be describing two days of January as well, while a thirty-one-day month would lose
+        // its first. A week is always seven, so it takes the preset.
+        var window = horizon == TrendHorizon.Monthly
+            ? TrendWindow.ForMonth(due.DayCount)
+            : TrendWindow.For(horizon);
+
+        var periodLogs = await _unitOfWork.ActivityLogs
+            .GetByCardiMemberAndDateRangeAsync(cardiMemberId, due.Start, due.End);
+        var measured = TrendFeatureCalculator.CountMeasuredDays(periodLogs);
+        if (measured < window.MinimumDaysForSlope)
+        {
+            _logger.LogInformation(
+                "CardiMember {CardiMemberId} has {Measured} measured day(s) in the {Horizon} period "
+                + "ending {PeriodEnd}; {Needed} are needed, so no narrative is written.",
+                cardiMemberId, measured, horizon, due.End, window.MinimumDaysForSlope);
+
+            // And the last period's narrative goes with it. Leaving it would serve a caregiver an
+            // account of the week before last under a heading that says "the week that has just
+            // ended" — and the wider ceiling these horizons carry (10 days weekly, 40 monthly, so
+            // a row survives its own cadence) is exactly what would keep it readable while the
+            // unmeasured period went by. An unmeasured period gets no account, on the reasoning
+            // the Weekbook's own coverage guard gives: silence must never read as healthy, and a
+            // stale account reads worse than silence because it reads as current.
+            if (existing is not null)
+            {
+                _unitOfWork.MemberInsights.Remove(existing);
+                await _unitOfWork.SaveChangesAsync();
+
+                _logger.LogInformation(
+                    "Withdrew the previous {Horizon} narrative for CardiMember {CardiMemberId}: the "
+                    + "period ending {PeriodEnd} was not measured enough to replace it, and the old "
+                    + "one would have been read as describing it.",
+                    horizon, cardiMemberId, due.End);
+            }
+
+            return false;
+        }
+
+        // Claimed before the model call, not after the probe above it. That probe is a fast path:
+        // the digest job is scheduled every thirty minutes against a Cloud Run timeout of an
+        // hour, so a slow pass is still running when the next execution starts and both can read
+        // the same member before either writes. The unique index keeps the stored row right
+        // either way; what it cannot do is stop the second execution paying for the generation
+        // first. Same claim the three books take, on the same pass — see
+        // DigestGenerationService.UnderClaimAsync.
+        var work = horizon == TrendHorizon.Monthly
+            ? GenerationWork.TrendMonthly
+            : GenerationWork.TrendWeekly;
+
+        var claim = await _unitOfWork.GenerationLeases.TryClaimAsync(
+            cardiMemberId, work, due.End, utcNow, GenerationLeaseTerm.Default, ct);
+        if (claim is not { } claimId)
+        {
+            _logger.LogInformation(
+                "Another execution is already writing the {Horizon} trend narrative for CardiMember "
+                + "{CardiMemberId} for the period ending {PeriodEnd}; leaving it to them.",
+                horizon, cardiMemberId, due.End);
+            return false;
+        }
+
+        try
+        {
+            return await WriteAsync(member, timeZone, horizon, window, due.End, utcNow, ct);
+        }
+        finally
+        {
+            // By the claim this attempt took, so a narrative that overran its lease and was taken
+            // over releases nothing rather than removing its successor's. CancellationToken.None:
+            // a cancelled pass still has to hand the claim back, or the period stays held until
+            // the lease expires for no reason.
+            await _unitOfWork.GenerationLeases.ReleaseAsync(claimId, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// One member's trend at one horizon: the history read, the model call, the guards and the
+    /// store. Shared by all three horizons — what differs between them is the window the figures
+    /// are drawn over, the opening sentence of the brief, and the scope the row lands under.
+    /// </summary>
+    private async Task<bool> WriteAsync(
+        CardiMember member,
+        TimeZoneInfo timeZone,
+        TrendHorizon horizon,
+        TrendWindow window,
+        DateOnly through,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
+        var cardiMemberId = member.Id;
+
+        // The same span of history at every horizon, and deliberately: the window preset cuts the
+        // average and the slope to the period being described, while the deviations behind them
+        // are still measured against baselines learned over a quarter of a year. A week read
+        // against only its own seven days would have nothing to be unusual relative to.
         var from = through.AddDays(-(TrendWindowDays - 1));
         var logs = (await _unitOfWork.ActivityLogs
             .GetByCardiMemberAndDateRangeAsync(cardiMemberId, from, through)).ToList();
 
         var baselines = new List<PatternBaseline>();
-        foreach (var window in TrendBaselineWindows)
+        foreach (var baselineDays in TrendBaselineWindows)
         {
             // Sequential, not Task.WhenAll: these run against one DbContext, and EF Core refuses a
             // second operation on a context while one is still running.
             var baseline = await _unitOfWork.PatternBaselines
-                .GetLatestByCardiMemberAsync(cardiMemberId, window);
+                .GetLatestByCardiMemberAsync(cardiMemberId, baselineDays);
             if (baseline is not null)
                 baselines.Add(baseline);
         }
 
-        var features = TrendFeatureCalculator.Compute(logs, baselines, through);
+        var features = TrendFeatureCalculator.Compute(logs, baselines, through, window);
         if (features is null)
         {
             // The cold start the design names: under a month of readings there is no trajectory to
@@ -254,7 +570,7 @@ public class TrendInterpretationService
             new MemberContextRequest(member, cardiMemberId, through, utcNow, PromptPurpose.Trend), ct);
 
         var prompt = $"""
-            {TrendInstructions}
+            {InstructionsFor(horizon)}
 
             [PATIENT CONTEXT]
             {memberContext}
@@ -287,11 +603,34 @@ public class TrendInterpretationService
             .Take(InsightLimits.MaxFindings)
             .ToList();
 
-        var row = existing ?? new MemberInsight
+        // Re-read before writing, and abandon if someone has written since this attempt began.
+        // The claim fences the lease, not this: a generation that outlives its twenty minutes is
+        // taken over by a successor, and if that successor finishes first, saving the row loaded
+        // before the claim would put this attempt's older narrative — and its older
+        // GeneratedAtUtc, which is what the staleness ceiling reads — over the newer one. The
+        // model call is the long part and it has already happened, so this costs one indexed read
+        // on a path that has just spent seconds or minutes in inference.
+        var scope = ScopeFor(horizon);
+        var storedAt = await _unitOfWork.MemberInsights.GetGeneratedAtUtcAsync(cardiMemberId, scope, ct);
+        if (storedAt is { } written && written >= utcNow)
         {
-            CardiMemberId = cardiMemberId,
-            Scope = InsightScope.Trend,
-        };
+            _logger.LogInformation(
+                "Another execution wrote the {Horizon} narrative for CardiMember {CardiMemberId} "
+                + "while this one was generating; keeping theirs and discarding this read.",
+                horizon, cardiMemberId);
+            return false;
+        }
+
+        // That scalar read, not this one, is what answers "has anyone written since?".
+        // GetByScopeAsync is deliberately tracked and may hand back the instance an earlier probe
+        // in this same scope already loaded, carrying the values it had then — which makes it the
+        // right thing to attach an update to and the wrong thing to ask about freshness.
+        var row = await _unitOfWork.MemberInsights.GetByScopeAsync(cardiMemberId, scope)
+            ?? new MemberInsight
+            {
+                CardiMemberId = cardiMemberId,
+                Scope = scope,
+            };
 
         // Fitted to the column, not trusted to the brief's asked-for length: the completion budget
         // is larger than the column, so a verbose but otherwise valid reply would fail the save
@@ -304,7 +643,9 @@ public class TrendInterpretationService
         row.GeneratedAtUtc = utcNow;
         row.PromptVersion = CurrentPromptVersion;
 
-        if (existing is null)
+        // Off the scalar read rather than off the tracked entity: a row the tracker already holds
+        // is one the database already has, and a row it does not is new to both.
+        if (storedAt is null)
             await _unitOfWork.MemberInsights.AddAsync(row);
 
         await _unitOfWork.SaveChangesAsync();

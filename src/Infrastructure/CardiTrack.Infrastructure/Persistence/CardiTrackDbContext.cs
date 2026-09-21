@@ -52,6 +52,7 @@ public class CardiTrackDbContext : DbContext
 
     // Members a generation path has stopped asking the model about, and until when
     public DbSet<MemberAiHold> MemberAiHolds => Set<MemberAiHold>();
+    public DbSet<GenerationLease> GenerationLeases => Set<GenerationLease>();
 
     // Member chat (Scenario 1)
     public DbSet<MemberChatSession> MemberChatSessions => Set<MemberChatSession>();

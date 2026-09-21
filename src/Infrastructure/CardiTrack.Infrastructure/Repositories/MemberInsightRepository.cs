@@ -19,6 +19,28 @@ public class MemberInsightRepository : Repository<MemberInsight>, IMemberInsight
         await _dbSet.FirstOrDefaultAsync(i =>
             i.CardiMemberId == cardiMemberId && i.Scope == scope && i.AlertId == null);
 
+    /// <inheritdoc />
+    public async Task<DateTime?> GetGeneratedAtUtcAsync(
+        Guid cardiMemberId, InsightScope scope, CancellationToken ct = default) =>
+        // Projected to a scalar, which is what makes this answer the database rather than the
+        // change tracker. The tracked read above would hand back the instance it loaded earlier
+        // carrying the timestamp it had then, and the caller is asking precisely whether that is
+        // still what is stored.
+        await _dbSet
+            .Where(i => i.CardiMemberId == cardiMemberId && i.Scope == scope && i.AlertId == null)
+            .Select(i => (DateTime?)i.GeneratedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Guid>> GetMemberIdsWithScopeAsync(
+        InsightScope scope, CancellationToken ct = default) =>
+        await _dbSet
+            .AsNoTracking()
+            .Where(i => i.Scope == scope && i.AlertId == null)
+            .Select(i => i.CardiMemberId)
+            .Distinct()
+            .ToListAsync(ct);
+
     public async Task<MemberInsight?> GetForAlertAsync(Guid alertId) =>
         await _dbSet.FirstOrDefaultAsync(i => i.AlertId == alertId);
 

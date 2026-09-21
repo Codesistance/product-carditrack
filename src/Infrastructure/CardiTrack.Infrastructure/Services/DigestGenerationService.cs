@@ -670,31 +670,6 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// </remarks>
     private const int MonthbookMinimumDaysWithData = 14;
 
-    /// <summary>
-    /// Whether any timezone on earth could put a member's local calendar on
-    /// <paramref name="dayOfMonth"/> at this instant.
-    /// </summary>
-    /// <remarks>
-    /// Real UTC offsets run from -12:00 to +14:00, so the fleet's local clocks span 26 hours and
-    /// touch at most three calendar dates at once. Deliberately generous at both ends rather than
-    /// enumerating the timezone database: being wrong towards "possible" costs one pass that
-    /// declines every member individually, while being wrong towards "impossible" would lose a
-    /// member their book for good.
-    /// </remarks>
-    internal static bool AnyTimeZoneCouldBeOnDayOfMonth(DateTime utcNow, int dayOfMonth)
-    {
-        var earliest = DateOnly.FromDateTime(utcNow.AddHours(-12));
-        var latest = DateOnly.FromDateTime(utcNow.AddHours(14));
-
-        for (var date = earliest; date <= latest; date = date.AddDays(1))
-        {
-            if (date.Day == dayOfMonth)
-                return true;
-        }
-
-        return false;
-    }
-
     public async Task<int> GenerateDueMonthbooksAsync(DateTime utcNow, CancellationToken ct = default)
     {
         // On roughly twenty-nine days in thirty, no timezone on earth is on the first of a month,
@@ -702,7 +677,7 @@ public partial class DigestGenerationService : IDigestGenerationService
         // Worth the guard: this runs 48 times a day, and without it every one of those passes
         // reads the candidate list and then a member row and a timezone per candidate, only to
         // decline all of them on a date comparison.
-        if (!AnyTimeZoneCouldBeOnDayOfMonth(utcNow, 1))
+        if (!JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utcNow, 1))
             return 0;
 
         // Wide enough to catch a member whose readings stopped partway through the month just
@@ -764,32 +739,34 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
-        var localToday = DateOnly.FromDateTime(localNow);
 
         // Due on the first, and only once their chosen hour has passed. A member whose own local
         // date is not the first stops here — before any month-scoped read, though their row and
         // timezone have already been fetched above. The pass as a whole is spared entirely by the
         // offset-span guard in the caller on the days when nobody can be due.
-        if (localToday.Day != 1)
+        //
+        // Shared with the trend-interpretation pass through JournalDueCheck, so a month's note
+        // and that month's Monthbook can never disagree about which month just ended.
+        if (JournalDueCheck.Monthly(member, localNow) is not { } month)
             return false;
 
-        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.MonthbookLocalTime))
-            return false;
-
-        var monthEnd = localToday.AddDays(-1);
-        var monthStart = new DateOnly(monthEnd.Year, monthEnd.Month, 1);
+        var monthEnd = month.End;
+        var monthStart = month.Start;
 
         var existing = await _unitOfWork.Digests.GetLatestByDateAsync(
             memberId, monthEnd, DigestAudience.Monthbook, ct);
         if (existing is not null)
             return false;
 
-        var composed = await ComposeMonthbookAsync(member, timeZone, monthStart, monthEnd, utcNow, ct);
-        if (composed.Entry is null)
-            return false;
+        return await UnderClaimAsync(memberId, GenerationWork.Monthbook, monthEnd, utcNow, ct, async () =>
+        {
+            var composed = await ComposeMonthbookAsync(member, timeZone, monthStart, monthEnd, utcNow, ct);
+            if (composed.Entry is null)
+                return false;
 
-        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-        return true;
+            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
+            return true;
+        });
     }
 
     public async Task<int> GenerateDueWeekbooksAsync(DateTime utcNow, CancellationToken ct = default)
@@ -852,20 +829,19 @@ public partial class DigestGenerationService : IDigestGenerationService
 
         var timeZone = await MemberAnchorTimeZone.ResolveAsync(_unitOfWork, memberId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, timeZone);
-        var localToday = DateOnly.FromDateTime(localNow);
 
         // Due on the day the member's week starts, and only once their chosen hour has passed.
-        if (localToday.DayOfWeek != JournalSchedule.EffectiveWeekStart(member.JournalWeekStartsOn))
-            return false;
-
-        if (TimeOnly.FromDateTime(localNow) < JournalSchedule.EffectiveTime(member.WeekbookLocalTime))
-            return false;
-
         // The week that ended last night: seven days back from yesterday inclusive. Dated by its
         // last day, so one LocalDate identifies one week and the partial unique index can hold
         // written-once on (member, date) alone.
-        var weekEnd = localToday.AddDays(-1);
-        var weekStart = weekEnd.AddDays(-6);
+        //
+        // Shared with the trend-interpretation pass through JournalDueCheck, so a week's note and
+        // that week's Weekbook can never disagree about which seven days they describe.
+        if (JournalDueCheck.Weekly(member, localNow) is not { } week)
+            return false;
+
+        var weekEnd = week.End;
+        var weekStart = week.Start;
 
         // The same fast-path-then-index contract the Daybook uses: this probe is cheap and runs on
         // every pass of the due day, and IX_DigestEntries_OneWeekbookPerWeek is what actually holds
@@ -875,12 +851,15 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (existing is not null)
             return false;
 
-        var composed = await ComposeWeekbookAsync(member, timeZone, weekStart, weekEnd, utcNow, ct);
-        if (composed.Entry is null)
-            return false;
+        return await UnderClaimAsync(memberId, GenerationWork.Weekbook, weekEnd, utcNow, ct, async () =>
+        {
+            var composed = await ComposeWeekbookAsync(member, timeZone, weekStart, weekEnd, utcNow, ct);
+            if (composed.Entry is null)
+                return false;
 
-        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-        return true;
+            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
+            return true;
+        });
     }
 
 
@@ -1365,16 +1344,74 @@ public partial class DigestGenerationService : IDigestGenerationService
         if (existing is not null)
             return false;
 
-        var composed = await ComposeDaybookAsync(member, timeZone, reviewedDate, utcNow, ct);
-        if (composed.Entry is null)
+        return await UnderClaimAsync(memberId, GenerationWork.Daybook, reviewedDate, utcNow, ct, async () =>
+        {
+            var composed = await ComposeDaybookAsync(member, timeZone, reviewedDate, utcNow, ct);
+            if (composed.Entry is null)
+                return false;
+
+            await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
+
+            // No question is asked off a daybook entry. Questions exist to explain readings while
+            // they still matter, and the answer would arrive a day after the day it was about —
+            // the same reasoning that stops a time-scoped answer being carried forward.
+            return true;
+        });
+    }
+
+    /// <summary>
+    /// Runs <paramref name="write"/> holding this member's claim on one period's generation, or
+    /// returns false without running it when another execution already holds a live one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The probe above this — "is there already a book for this period?" — is a fast path, not a
+    /// guarantee. The digest job is scheduled every thirty minutes against a Cloud Run timeout of
+    /// an hour, so a slow pass is still running when the next execution starts, and both can read
+    /// the same member before either writes. The unique indexes keep the stored data right either
+    /// way; what they cannot do is stop the second execution paying for the model call first, and
+    /// on a service whose cost tracks inference cadence that is the part worth keeping.
+    /// </para>
+    /// <para>
+    /// Released in a <c>finally</c> rather than only on success, so a member whose generation
+    /// failed is retried on the next pass instead of waiting out the lease. An execution that
+    /// never reaches the release — killed by a deploy or the job's own timeout — is covered by
+    /// the expiry instead, which is the reason this is a lease and not a lock.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> UnderClaimAsync(
+        Guid memberId,
+        GenerationWork work,
+        DateOnly periodEnd,
+        DateTime utcNow,
+        CancellationToken ct,
+        Func<Task<bool>> write)
+    {
+        var claim = await _unitOfWork.GenerationLeases.TryClaimAsync(
+            memberId, work, periodEnd, utcNow, GenerationLeaseTerm.Default, ct);
+        if (claim is not { } claimId)
+        {
+            _logger.LogInformation(
+                "Another execution is already generating the {Work} for CardiMember {CardiMemberId} "
+                + "for the period ending {PeriodEnd}; leaving it to them.",
+                work, memberId, periodEnd);
             return false;
+        }
 
-        await _unitOfWork.Digests.AddAsync(composed.Entry, ct);
-
-        // No question is asked off a daybook entry. Questions exist to explain readings while they
-        // still matter, and the answer would arrive a day after the day it was about — the same
-        // reasoning that stops a time-scoped answer being carried forward.
-        return true;
+        try
+        {
+            return await write();
+        }
+        finally
+        {
+            // By the claim this attempt took, so a generation that overran its lease and was
+            // taken over releases nothing rather than removing its successor's.
+            //
+            // CancellationToken.None, for AdvisoryLock's reason: a cancelled pass still has to
+            // hand the claim back, and the token that cancelled the work would cancel this too —
+            // leaving the period held until the lease expires for no reason.
+            await _unitOfWork.GenerationLeases.ReleaseAsync(claimId, CancellationToken.None);
+        }
     }
 
     private async Task<bool> GenerateForMemberAsync(Guid memberId, DateTime utcNow, CancellationToken ct)

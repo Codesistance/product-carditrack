@@ -44,6 +44,7 @@ public class MonthbookGenerationTests
     public MonthbookGenerationTests()
     {
         _unitOfWork.CardiMembers.Returns(_members);
+        GenerationLeaseStub.GrantAll(_unitOfWork);
         _unitOfWork.UserCardiMembers.Returns(_links);
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.ActivityLogs.Returns(_activityLogs);
@@ -190,7 +191,7 @@ public class MonthbookGenerationTests
     {
         var utc = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
 
-        Assert.True(DigestGenerationService.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
+        Assert.True(JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
     }
 
     [Theory]
@@ -202,7 +203,7 @@ public class MonthbookGenerationTests
     {
         var utc = new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Utc);
 
-        Assert.False(DigestGenerationService.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
+        Assert.False(JournalDueCheck.AnyTimeZoneCouldBeOnDayOfMonth(utc, 1));
     }
 
     [Fact]
