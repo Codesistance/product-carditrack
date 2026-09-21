@@ -105,6 +105,28 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    public Task<string?> EditMedicalNotesAsync(string? firstName, string? notes) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return null;
+
+            var form = new MedicalNotesEditPopupPage(firstName, notes);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(form, animated: false);
+                return await form.Result;
+            }
+            finally
+            {
+                // Released only once the form has left the modal stack — same handshake as the
+                // contact form above, and the page underneath reads IsShowing to know it never left.
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     public Task ShowWeatherAsync(WeatherSnapshotResponse weather) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {

@@ -35,6 +35,16 @@ public class NudgeCopyTests
             new NudgeContextBuilder()
                 .WithConnections(NudgeContextBuilder.Connection() with { LastSyncDate = null })
                 .Build(),
+            // Both staleness variants: the counted one, and the never-confirmed one whose copy
+            // must carry no {months} — the only figure available there is inferred from a join
+            // date, which is not one we can state.
+            new NudgeContextBuilder()
+                .NotesReviewedAt(NudgeContextBuilder.Now.AddDays(-400))
+                .Build(),
+            new NudgeContextBuilder()
+                .NotesReviewedAt(null)
+                .MemberCreated(NudgeContextBuilder.Now.AddDays(-400))
+                .Build(),
             new NudgeContextBuilder()
                 .NoBaseline().DaysCaptured(4)
                 .LastActivity(DateOnly.FromDateTime(NudgeContextBuilder.Now).AddDays(-20))

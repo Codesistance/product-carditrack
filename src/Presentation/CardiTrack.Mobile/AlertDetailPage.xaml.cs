@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Offline;
 using CardiTrack.Mobile.Core.Charts;
 using CardiTrack.Mobile.Services;

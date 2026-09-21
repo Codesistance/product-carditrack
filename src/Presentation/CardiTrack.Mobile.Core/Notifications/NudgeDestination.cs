@@ -8,6 +8,14 @@ public enum NudgeDestinationKind
 
     MemberDetail,
     MemberEdit,
+
+    /// <summary>
+    /// This member's health background — <c>carditrack://cardimembers/{id}/edit#medicalNotes</c>,
+    /// from the two medical-notes rules. Its own kind rather than <see cref="MemberEdit"/> because
+    /// the fragment names a different intent: the caregiver came to write or confirm one thing,
+    /// and the profile form is a page of fields they can disturb on the way to it.
+    /// </summary>
+    MemberMedicalNotes,
     MemberDevices,
     MemberBaseline,
 
@@ -65,9 +73,10 @@ public static class NudgeLinkParser
         if (string.IsNullOrWhiteSpace(deepLink) || !deepLink.StartsWith(Scheme, StringComparison.Ordinal))
             return NudgeDestination.Unknown;
 
-        // Fragments address a field within a screen ("#medicalNotes"). No page scrolls to a field
-        // yet, so the fragment is read for intent and then dropped rather than passed to a route
-        // that would not understand it.
+        // Fragments address a field within a screen ("#medicalNotes"). They are read for intent
+        // and never passed on: a fragment is this parser's business, and a route that received one
+        // would not know what to do with it. Where a fragment names a destination of its own, it
+        // resolves to that destination below rather than to the path's.
         var withoutScheme = deepLink[Scheme.Length..];
         var hashIndex = withoutScheme.IndexOf('#');
         var fragment = hashIndex >= 0 ? withoutScheme[(hashIndex + 1)..] : null;
@@ -89,6 +98,14 @@ public static class NudgeLinkParser
 
             ["cardimembers", var id, "questions", ..] when Guid.TryParse(id, out var forQuestions)
                 => new(NudgeDestinationKind.MemberQuestions, forQuestions),
+
+            // Before the bare edit case: the fragment is the more specific intent, and a caregiver
+            // sent to the top of the profile form to write one note has been sent to the wrong
+            // place — which is what happened to both medical-notes rules until this existed.
+            ["cardimembers", var id, "edit"]
+                when string.Equals(fragment, "medicalNotes", StringComparison.OrdinalIgnoreCase)
+                     && Guid.TryParse(id, out var forNotes)
+                => new(NudgeDestinationKind.MemberMedicalNotes, forNotes),
 
             ["cardimembers", var id, "edit"] when Guid.TryParse(id, out var forEdit)
                 => new(NudgeDestinationKind.MemberEdit, forEdit),

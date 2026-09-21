@@ -20,7 +20,18 @@ public class NudgeLinkParserTests
         NudgeDestinationKind.MemberDevices)]
     [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/questions",
         NudgeDestinationKind.MemberQuestions)]
+    // The fragment is the more specific intent and wins over the path's own destination: a
+    // caregiver sent to the top of the profile form to write one note has been sent to the
+    // wrong place.
     [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/edit#medicalNotes",
+        NudgeDestinationKind.MemberMedicalNotes)]
+    [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/edit#MEDICALNOTES",
+        NudgeDestinationKind.MemberMedicalNotes)]
+    [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/edit",
+        NudgeDestinationKind.MemberEdit)]
+    // An unrecognised fragment falls back to the path rather than to Unknown — the screen it
+    // names is still the right screen, and we simply cannot honour the finer intent.
+    [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/edit#somethingElse",
         NudgeDestinationKind.MemberEdit)]
     [InlineData("carditrack://cardimembers/22222222-2222-2222-2222-222222222222/baseline",
         NudgeDestinationKind.MemberBaseline)]

@@ -115,6 +115,17 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         return updated;
     }
 
+    public async Task<CardiMemberDetailResponse> ConfirmMedicalNotesAsync(
+        Guid cardiMemberId, CancellationToken ct = default)
+    {
+        var confirmed = await SendAsync<CardiMemberDetailResponse>(
+            HttpMethod.Post, $"{ApiPaths.CardiMember(cardiMemberId)}/medical-notes/confirm", ct);
+        // The profile's own keys, the same ones an edit evicts: the review date this just moved is
+        // part of that payload, and a cached copy would go on showing the old one.
+        await EvictAsync(MemberProfileKeys(cardiMemberId));
+        return confirmed;
+    }
+
     public async Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default)
     {
         await SendNoDataAsync(HttpMethod.Delete, ApiPaths.CardiMember(cardiMemberId), ct);

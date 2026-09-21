@@ -420,6 +420,7 @@ public partial class SettingsPage : ContentPage
             "BASELINE_STALLED" => "Reminders about stalled learning",
             "SLEEP_SCOPE_MISSING" => "Reminders about sleep access",
             "MEDICAL_NOTES_EMPTY" => "Reminders about health background",
+            "MEDICAL_NOTES_STALE" => "Reminders to confirm the health background",
             "PAUSE_LEFT_LONG" => "Reminders about long pauses",
             null when mute.Category is not null => $"Everything in {mute.Category}",
             _ => "A reminder"

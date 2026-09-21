@@ -57,6 +57,18 @@ public interface ICardiTrackApiClient
     Task<CardiMemberDetailResponse> UpdateCardiMemberAsync(
         Guid cardiMemberId, UpdateCardiMemberRequest request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Records that the health background was read and found still current, without changing it.
+    /// </summary>
+    /// <remarks>
+    /// Its own call rather than re-saving the form, because the form cannot say this. An update is
+    /// a full replacement, so it carries the notes whether or not anybody looked at them, and the
+    /// server only re-dates them when the text actually changes. This is the caregiver saying the
+    /// unchanged text still stands.
+    /// </remarks>
+    Task<CardiMemberDetailResponse> ConfirmMedicalNotesAsync(
+        Guid cardiMemberId, CancellationToken ct = default);
+
     /// <summary>Removes a CardiMember (M1-13 danger zone).</summary>
     Task RemoveCardiMemberAsync(Guid cardiMemberId, CancellationToken ct = default);
 

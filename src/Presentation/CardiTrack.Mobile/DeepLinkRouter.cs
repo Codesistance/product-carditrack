@@ -36,6 +36,12 @@ public static class DeepLinkRouter
             NudgeDestinationKind.MemberEdit when destination.CardiMemberId is { } e
                 => $"{EditCardiMemberPage.Route}?memberId={e}",
 
+            // Onto the health background's own page with its editor already open — the caregiver
+            // tapped "Add notes", so the next thing they should see is somewhere to type, not a
+            // screen with the notes on it and another button to press.
+            NudgeDestinationKind.MemberMedicalNotes when destination.CardiMemberId is { } n
+                => $"{MedicalInformationPage.Route}?memberId={n}&{MedicalInformationPage.EditOnArrivalQuery}=true",
+
             // Baseline progress lives on the member detail screen (M1-13) rather than a page of
             // its own, so both destinations land there.
             NudgeDestinationKind.MemberBaseline when destination.CardiMemberId is { } b
