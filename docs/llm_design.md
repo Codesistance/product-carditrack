@@ -897,7 +897,8 @@ Trend-feature computation (TrendFeatureCalculator, .NET — no ML)
               breathing-asleep moving averages and least-squares slopes,
               deviations vs. 30/60/90-day baselines, day-of-week seasonality
   — Window per horizon (TrendWindow): rolling = 7d average + 28d slope,
-              weekly = the week end-to-end, monthly = 30 days
+              weekly = the week end-to-end (7d), monthly = the calendar
+              month's own length (28-31d, from JournalPeriod.DayCount)
   ↓
 Cold start check
   ├── < 30 days data → no trend narrative (learning mode, as insights today)
@@ -927,11 +928,13 @@ Three, sharing one service, one feature calculator and one pinned table. What di
 |---|---|---|---|---|
 | `Rolling` | `Trend` | daily | 7-day average, 28-day slope | `--job trend`, `23 3 * * *` |
 | `Weekly` | `TrendWeekly` | the member's own `JournalWeekStartsOn`, once `WeekbookLocalTime` passes | the seven days ending the evening before | `--job digest`, `*/30` |
-| `Monthly` | `TrendMonthly` | the 1st, once `MonthbookLocalTime` passes | the month just gone | `--job digest`, `*/30` |
+| `Monthly` | `TrendMonthly` | the 1st, once `MonthbookLocalTime` passes | the month just gone, at its own length — 28 to 31 days, from `JournalPeriod.DayCount` | `--job digest`, `*/30` |
 
 **Why the journal horizons do not ride `--job trend`.** They fall due on the member's own local weekday and hour, and a caregiver may put that hour anywhere in `JournalSchedule`'s 01:00–12:00 window. A once-daily job sees each member at exactly one local instant, so a member whose chosen hour had not yet passed at that instant is declined — and by the next run their local date is no longer their week start. They would never receive a weekly narrative at all. The digest pass already resolves every member's local time every half hour for the three CardiJournal books; the due rule is shared with them through `JournalDueCheck`, so a week's narrative and that week's Weekbook cannot disagree about which seven days they describe. The rolling read stays on `--job trend`: it is aligned to nothing, so a daily tick serves it, and moving it would turn one candidate sweep a day into forty-eight against a service whose measured cost profile says cadence is the only lever.
 
-**Guards.** Each journal horizon refuses a period measured on fewer days than its book does — four of seven, fourteen of a month — checked before any model call. That is a separate question from the cold start, which asks whether the member has a learned normal at all and is the same 30 days at every horizon: the horizon changes what is described, never how much history it takes before anything is. Written once per member per local day, anchored to the start of their own local day rather than a fixed interval, so a 25-hour fall-back day cannot admit a second narrative of the same period.
+**Window lengths.** A week is always seven days, so it takes the preset. A month is 28, 29, 30 or 31 and takes its own length, via `TrendWindow.ForMonth(JournalPeriod.DayCount)`: the window ends on the month's last day, so its length is the only thing deciding whether it starts on the first. A fixed thirty — which is what `TrendAwareness.MonthWindowDays` draws its *chart* over, to keep every month the same width — would have had a February narrative describing two days of January, and a 31-day month losing its first, while the brief says "the month that has just ended" either way. A chart makes no claim about which month it is; a sentence does.
+
+**Guards.** Each journal horizon refuses a period measured on fewer days than its book does — four of seven, fourteen of a month, whatever that month's length — checked before any model call. That is a separate question from the cold start, which asks whether the member has a learned normal at all and is the same 30 days at every horizon: the horizon changes what is described, never how much history it takes before anything is. Written once per member per local day, anchored to the start of their own local day rather than a fixed interval, so a 25-hour fall-back day cannot admit a second narrative of the same period.
 
 **Staleness.** `InsightServability.MaxAgeFor` gives each scope its own ceiling — 3 days rolling, 10 weekly, 40 monthly — because the ceiling is a buffer on top of the cadence that writes the row. At the flat 3 days a weekly narrative would be withheld on four days in seven and a monthly one on twenty-seven in thirty, which reads to a caregiver as the feature not existing rather than as a row that aged out. All three stay inside `InsightRetention.MaxAge` (90 days), so a row is never served after the sweep could have taken it.
 
