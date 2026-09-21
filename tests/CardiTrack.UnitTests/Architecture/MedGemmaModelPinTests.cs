@@ -217,6 +217,22 @@ public class MedGemmaModelPinTests
     }
 
     [Fact]
+    public void ComposeRunsTheOllamaTheImageIsBuiltOn()
+    {
+        // The Modelfile's two-FROM projector registration was verified on one Ollama version.
+        // Compose registers from the same Modelfile, so it has to run that version — a digest
+        // pinned in each file separately would drift apart on the next bump.
+        var dockerfileDigest = File.ReadAllLines(PathTo(DockerfilePath))
+            .Where(line => line.TrimStart().StartsWith("FROM ollama/ollama", StringComparison.Ordinal))
+            .Select(line => line[(line.IndexOf("@sha256:", StringComparison.Ordinal) + "@sha256:".Length)..].Split(' ')[0])
+            .Distinct()
+            .Single();
+        var compose = File.ReadAllText(PathTo(ComposePath));
+
+        Assert.Contains($"image: &ollama_image ollama/ollama@sha256:{dockerfileDigest}", compose, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WeightsNeverReachGit()
     {
         var gitignore = File.ReadAllText(PathTo(GitIgnorePath));
