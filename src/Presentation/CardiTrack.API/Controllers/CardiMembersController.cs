@@ -149,8 +149,8 @@ public class CardiMembersController : BaseApiController
         try
         {
             var member = await _cardiMembers.ConfirmMedicalNotesAsync(UserContext.UserId, cardiMemberId, ct);
-            // Not logged here — see Resume: AuditLoggingMiddleware already records user, member
-            // and timestamp for this request, which is the whole of what happened.
+            // Not logged here: AuditLoggingMiddleware already records user, member and timestamp
+            // for this request, and a confirmation has no further detail to add.
             return Success(member, "Thanks — we'll take it as current.");
         }
         catch (KeyNotFoundException ex)

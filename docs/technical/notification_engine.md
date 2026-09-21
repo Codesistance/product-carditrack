@@ -726,11 +726,17 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 |---|---|---|---|---|---|
 | `SLEEP_SCOPE_MISSING` | `Scopes` lacks the sleep bundle | "Grant sleep access so CardiTrack can track {Name}'s sleep patterns and nightly trends." | High | Full | **R1** |
 | `MEDICAL_NOTES_EMPTY` | `MedicalNotes` null/empty | "Conditions and medications make AI insights and the doctor-visit report far more specific. Encrypted at rest, visible only to your family." | Low | Full | **R1** |
-| `MEDICAL_NOTES_STALE` | Notes on file, last confirmed over 183 days ago | "It's been {months} months since {Name}'s health background was confirmed. Conditions and medications change." | Low | Full | **R1** |
+| `MEDICAL_NOTES_STALE` | Notes on file, last confirmed over 183 days ago | "It's been {months} months since {Name}'s health background was confirmed. Conditions and medications change." | Low | Full | **R1 — rule written, not yet registered** |
 | `EMERGENCY_CONTACT_MISSING` | `EmergencyContactName`/`Phone` null | "Add an emergency contact so the right person is on file when something looks wrong." | High | Full | R2 |
 | `MEMBER_CONTACT_MISSING` | `CardiMember.Phone` null | "Add {Name}'s number to call or text straight from an alert." | Low | Full | R3 |
 | `NO_PRIMARY_CAREGIVER` | No `IsPrimaryCaregiver` among active links | "Name a primary caregiver so urgent alerts have a clear first responder." | Medium | Full | R3 |
 
+> `MEDICAL_NOTES_STALE` is **not live yet.** The rule class, its snapshot field and its tests
+> ship ahead of its copy, which lives in the mobile string table; it is deliberately absent from
+> `NudgeRuleCatalogue` until the client change that brings its words, because a registered rule
+> with no copy renders the fallback string to a caregiver. Everything below describes it as it
+> will behave once that registration lands.
+>
 > `MEDICAL_NOTES_STALE` is the only rule that ever asks about the health background a second
 > time. Without it `MEDICAL_NOTES_EMPTY` is a one-time question, and the longer a member is
 > monitored the less its answer means. The two are mutually exclusive by construction — one needs

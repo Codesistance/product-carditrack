@@ -544,6 +544,15 @@ public class CardiMemberService : ICardiMemberService
         if (string.IsNullOrWhiteSpace(member.MedicalNotes))
             throw new InvalidOperationException("There are no medical notes to confirm yet.");
 
+        // Notes written before encryption are still sitting in the database as plain text, and
+        // Reveal's fallback hides that from every reader. Every other write path re-stores them
+        // encrypted as a side effect of saving what was typed — this one changes no text, so
+        // without this it would be the single write that touches a row and leaves its PHI in the
+        // clear. Only the legacy rows are rewritten: re-encrypting sound ciphertext would churn a
+        // new nonce onto every confirmation for nothing.
+        if (IsLegacyPlaintext(member.MedicalNotes))
+            member.MedicalNotes = Protect(member.MedicalNotes);
+
         var now = DateTime.UtcNow;
         member.MedicalNotesReviewedAtUtc = now;
         member.UpdatedDate = now;
@@ -769,6 +778,27 @@ public class CardiMemberService : ICardiMemberService
 
     private string? Protect(string? medicalNotes) =>
         string.IsNullOrWhiteSpace(medicalNotes) ? null : _encryption.Encrypt(medicalNotes);
+
+    /// <summary>
+    /// Whether the stored value is plain text rather than ciphertext — the case
+    /// <see cref="Reveal"/> silently tolerates. Asked by testing the same thing Reveal does, so
+    /// the two cannot disagree about what a legacy row is.
+    /// </summary>
+    private bool IsLegacyPlaintext(string? storedNotes)
+    {
+        if (string.IsNullOrEmpty(storedNotes))
+            return false;
+
+        try
+        {
+            _encryption.Decrypt(storedNotes);
+            return false;
+        }
+        catch (Exception ex) when (ex is FormatException or ArgumentException or CryptographicException)
+        {
+            return true;
+        }
+    }
 
     /// <summary>
     /// The notes as <see cref="Protect"/> would store them — blank in any form is null — so a

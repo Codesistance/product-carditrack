@@ -652,6 +652,35 @@ public class CardiMemberServiceTests
         Assert.Equal(member.MedicalNotesReviewedAtUtc, detail.MedicalNotesReviewedAtUtc);
     }
 
+    /// <summary>
+    /// Confirming changes no text, so it is the one write that could touch a pre-encryption row
+    /// and leave its PHI in the clear — every other path re-stores the notes encrypted as a side
+    /// effect of saving what was typed.
+    /// </summary>
+    [Fact]
+    public async Task ConfirmMedicalNotes_MigratesLegacyPlaintextNotesForward()
+    {
+        var member = SeedMember(encryptedNotes: "Written before encryption");
+
+        await CreateSut().ConfirmMedicalNotesAsync(_userId, member.Id);
+
+        Assert.Equal("enc(Written before encryption)", member.MedicalNotes);
+    }
+
+    /// <summary>
+    /// And only those rows. Re-encrypting sound ciphertext would put a fresh nonce on the column
+    /// every time somebody said "still accurate", for no gain.
+    /// </summary>
+    [Fact]
+    public async Task ConfirmMedicalNotes_DoesNotReEncryptNotesThatAreAlreadyCiphertext()
+    {
+        var member = SeedMember();
+
+        await CreateSut().ConfirmMedicalNotesAsync(_userId, member.Id);
+
+        Assert.Equal("enc(Pacemaker fitted 2019)", member.MedicalNotes);
+    }
+
     [Fact]
     public async Task ConfirmMedicalNotes_RefusesWhenThereIsNoBackgroundToConfirm()
     {
