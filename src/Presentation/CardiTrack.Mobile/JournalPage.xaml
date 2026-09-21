@@ -274,46 +274,6 @@
                 <VerticalStackLayout>
                 <controls:SavedDataBanner x:Name="SavedBanner" Margin="20,20,20,0"/>
 
-                <!-- The longer view, above the books rather than inside any of them. Each book is
-                     a reassessment of its own finished period and never reads another narrative;
-                     pasting a current trend onto an entry about last March would date it wrongly.
-                     Here it reads as what it is — where things have been going lately, beside the
-                     account of each period. -->
-                <Border x:Name="TrendCard"
-                        Style="{StaticResource ElevatedCard}"
-                        Margin="20,20,20,0"
-                        IsVisible="False">
-                    <VerticalStackLayout Spacing="8">
-                        <!-- Same header block as the member card's two sections: icon, title, and
-                             the line saying what it is, bound at Spacing 2. -->
-                        <VerticalStackLayout Spacing="2">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                                <Image Grid.Column="0"
-                                       Source="icon_calendar.svg"
-                                       WidthRequest="20" HeightRequest="20"
-                                       VerticalOptions="Start"
-                                       Margin="0,2,0,0"
-                                       AutomationProperties.IsInAccessibleTree="False"/>
-                                <Label Grid.Column="1"
-                                       Text="The longer view"
-                                       Style="{StaticResource DashboardSectionTitle}"/>
-                            </Grid>
-                            <Label Text="Where things have been heading over recent weeks"
-                                   Style="{StaticResource Compact}"/>
-                        </VerticalStackLayout>
-                        <!-- Message ink: prose read for its content, not a caption on something. -->
-                        <Label x:Name="TrendNarrativeLabel"
-                               Style="{StaticResource Body2Dark}"
-                               LineBreakMode="WordWrap"/>
-                        <!-- The points a caregiver reads first, so not the smallest, palest
-                             thing on the card: they used to share the timestamp's caption grey
-                             at 12pt. Body ink at body size now, one row each. -->
-                        <controls:FindingsList x:Name="TrendFindings" IsVisible="False"/>
-                        <Label x:Name="TrendGeneratedLabel"
-                               Style="{StaticResource Caption}"
-                               IsVisible="False"/>
-                    </VerticalStackLayout>
-                </Border>
                 <Grid Padding="20,20,20,24">
 
                     <!-- Loading: three quiet placeholder cards rather than a spinner, so the
