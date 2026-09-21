@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.Interfaces.Clients;
+using CardiTrack.Application.Interfaces.Clients;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Entities;

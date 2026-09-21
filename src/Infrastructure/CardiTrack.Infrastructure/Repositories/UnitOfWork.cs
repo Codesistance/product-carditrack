@@ -1,4 +1,4 @@
-﻿using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore.Storage;
 
