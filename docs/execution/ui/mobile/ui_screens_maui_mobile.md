@@ -342,14 +342,32 @@ Visible on tab roots (Dashboard / Alerts / Journal / Settings). Onboarding hides
 │                                    │
 │          Content Area              │
 │                                    │
-├──────────┬──────────┬────────┬────────┤
-│ Dashboard│  Alerts  │Journal │Settings│
-└──────────┴──────────┴────────┴────────┘
+├──────────┬──────────┬────────┬────────┬────────┤
+│ Dashboard│  Alerts  │ Family │Journal │Settings│
+└──────────┴──────────┴────────┴────────┴────────┘
 ```
 
 - Badge count on Alerts tab for unread alerts
-- **The third tab is the Journal (CardiJournal), not Family.** The Family tab held a stub ("Family sharing (MVP 2) is coming soon") for invitations that are R3 work, so a quarter of the bar did nothing while the daybook entries had no surface at all. `FamilyPage` is deleted. When family sharing lands it belongs under Settings or scoped to a member — a badge for pending invites goes wherever that surface ends up, not back in the bar
-- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Journal / Settings, SVG icons). Alerts opens the real M1-10 list; the Journal lists the Daybook entries; Settings carries the account card, a "Silenced reminders" card listing held notification mutes with a "Show me everything again" reset, then four grouped section cards (Notifications, Account, Privacy, About), Sign out and the account-deletion request — see M2-01 below. Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- **Five tabs since family sharing shipped, with Family in the third slot (D-18).** The slot is the
+  one the original Family stub held before the Journal took it. The stub was deleted in 2026-08
+  because it only ever said "coming soon"; `FamilyPage` is now a real screen with three states —
+  no family, a member of one, its admin — and a switcher drawer opened from the header name or by
+  re-tapping the tab. Five is the platform ceiling, so this is the last tab the bar can take.
+- **The drawer scopes the Family tab only.** Dashboard, Alerts and Journal go on showing every
+  member the caregiver has a grant for, whichever family owns them (PRD §3, OQ-16).
+- As built, the Shell defines a **TabBar only** (Dashboard / Alerts / Family / Journal / Settings,
+  SVG icons). Alerts opens the real M1-10 list; Family opens the tab described above; the Journal
+  lists the Daybook entries; Settings carries the account card, a "Silenced reminders" card listing
+  held notification mutes with a "Show me everything again" reset, then four grouped section cards
+  (Notifications, Account, Privacy, About), Sign out and the account-deletion request — see M2-01
+  below. Onboarding pages hide the tab bar via `Shell.TabBarIsVisible=False`.
+- **Family sharing screens, none of them from a Figma frame** (design sync outstanding):
+  `FamilyPage` + its switcher drawer, `StartFamilyPage`, `JoinFamilyPage`, `AcceptInvitePage`
+  (carries the forced quiet-hours question, D-8), `ApproveJoinRequestPage` (member picker, D-10),
+  `TransferFamilyAdminPage`, `CaregiverInvitesPage` ("Who can see <name>", off Member Details), and
+  `AlertRespondPage` (canned chips + note, D-20). The switcher drawer is the app's first
+  bottom-anchored sheet; every other new surface is a full page, because the app has no
+  bottom-sheet pattern.
 
 ### Flyout Menu
 

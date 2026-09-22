@@ -57,13 +57,13 @@
    ]
   },
   "ink": {
-   "title": "Ink · the member-detail row icons",
+   "title": "Ink · the member-detail row icons, drawn solid",
    "style": "linear",
    "slots": [
-    "#343434"
+    "#727272"
    ],
    "tokens": [
-    "HeadingText"
+    "BodyText"
    ]
   },
   "infoGreen": {
@@ -348,7 +348,8 @@
    "name": "remind",
    "badge": "setting-two",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_user_bell.svg",
@@ -356,7 +357,8 @@
    "name": "user",
    "badge": "remind",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_binoculars.svg",
@@ -378,7 +380,8 @@
    "name": "book",
    "badge": "setting-two",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_calendar.svg",
@@ -463,7 +466,8 @@
    "source": "iconpark",
    "name": "clipboard",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_edit.svg",
@@ -527,6 +531,14 @@
    "name": "home",
    "group": "white",
    "size": 28
+  },
+  {
+   "file": "icon_moon.svg",
+   "source": "iconpark",
+   "name": "moon",
+   "group": "brand",
+   "solid": true,
+   "size": 24
   },
   {
    "file": "icon_medical_files.svg",
@@ -595,7 +607,8 @@
    "source": "iconpark",
    "name": "peoples",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_pause.svg",
@@ -816,7 +829,8 @@
    "source": "iconpark",
    "name": "iwatch",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   }
  ]
 }

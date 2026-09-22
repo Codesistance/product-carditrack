@@ -185,24 +185,30 @@
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Tapped="OnNightCoverageTapped"/>
                                         </Border.GestureRecognizers>
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                                            <Image Grid.Column="0"
-                                                   Source="icon_bell.svg"
-                                                   WidthRequest="20" HeightRequest="20"
-                                                   VerticalOptions="Center"
-                                                   AutomationProperties.IsInAccessibleTree="False"/>
-                                            <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
-                                                <Label Text="At night"
-                                                       Style="{StaticResource Caption}"/>
+                                        <!-- The label heads the band from its left edge rather
+                                             than sitting in the icon's column: it names the whole
+                                             row, and indented under the moon it read as a caption
+                                             belonging to the sentence beside it. -->
+                                        <VerticalStackLayout Spacing="4">
+                                            <Label Text="At night"
+                                                   Style="{StaticResource Caption}"/>
+                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                                <Image Grid.Column="0"
+                                                       Source="icon_moon.svg"
+                                                       WidthRequest="20" HeightRequest="20"
+                                                       VerticalOptions="Center"
+                                                       AutomationProperties.IsInAccessibleTree="False"/>
                                                 <Label x:Name="NightCoverageLabel"
+                                                       Grid.Column="1"
                                                        Style="{StaticResource Body2Dark}"
+                                                       VerticalOptions="Center"
                                                        LineBreakMode="WordWrap"/>
-                                            </VerticalStackLayout>
-                                            <Label Grid.Column="2"
-                                                   Text="Change"
-                                                   Style="{StaticResource Link}"
-                                                   VerticalTextAlignment="Center"/>
-                                        </Grid>
+                                                <Label Grid.Column="2"
+                                                       Text="Change"
+                                                       Style="{StaticResource Link}"
+                                                       VerticalTextAlignment="Center"/>
+                                            </Grid>
+                                        </VerticalStackLayout>
                                     </Border>
                                 </VerticalStackLayout>
                             </Border>

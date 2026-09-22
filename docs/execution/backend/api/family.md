@@ -42,7 +42,7 @@ A family has exactly one admin, and only the admin pays. An admin cannot simply 
 
 | Route | What it does |
 |-------|--------------|
-| `GET /api/v1/families/mine` | Every family this user belongs to, with their role in each |
+| `GET /api/v1/families/mine` | Every family this user belongs to, with their role in each, and each family's Family ID |
 | `GET /api/v1/families/{id}/members` | The roster |
 | `PUT /api/v1/families/{id}/admin` | Hands over the family and its plan; promote and demote in one save |
 | `DELETE /api/v1/families/{id}/members/{userId}` | Admin removes somebody |
@@ -55,6 +55,11 @@ A family has exactly one admin, and only the admin pays. An admin cannot simply 
 | `POST` \| `GET` \| `DELETE /api/v1/cardimembers/{id}/caregiver-invites[/{inviteId}]` | Issue, list and revoke invitations to watch one member |
 | `GET /api/v1/caregiver-invites/{token}` | The landing page's view of an invitation |
 | `POST /api/v1/caregiver-invites/{token}/accept` \| `.../decline` | The invitee's answer |
+
+**The Family ID travels with the summary.** `FamilySummary.familyId` carries the stored eight
+characters, for every member of the family rather than only its admin: it identifies the family and
+authorizes nothing (D-11), and the client that shows it is the one place a caregiver can read it
+out from. Added 2026-09-22 with the mobile Family tab, which is where it is displayed.
 
 ### Still the per-member grant underneath
 
