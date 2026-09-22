@@ -16,6 +16,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<UserCardiMember> UserCardiMembers => Set<UserCardiMember>();
     public DbSet<UserOrganization> UserOrganizations => Set<UserOrganization>();
     public DbSet<CaregiverInvite> CaregiverInvites => Set<CaregiverInvite>();
+    public DbSet<FamilyJoinRequest> FamilyJoinRequests => Set<FamilyJoinRequest>();
 
     // Device & Health Data
     public DbSet<DeviceConnection> DeviceConnections => Set<DeviceConnection>();

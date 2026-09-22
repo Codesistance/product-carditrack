@@ -52,6 +52,9 @@ public class OnboardingService : IOnboardingService
         {
             Name = request.Organization.Name,
             Type = request.Organization.Type,
+            // Minted here rather than by the database so the code is known before the save, and
+            // so onboarding can hand it back in the same response that created the family.
+            FamilyId = FamilyIdentifier.Mint(),
             IsActive = true
         };
         await _unitOfWork.Organizations.AddAsync(organization);

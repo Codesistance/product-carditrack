@@ -16,6 +16,7 @@ public class UnitOfWork : IUnitOfWork
     public IUserCardiMemberRepository UserCardiMembers { get; }
     public IUserOrganizationRepository UserOrganizations { get; }
     public ICaregiverInviteRepository CaregiverInvites { get; }
+    public IFamilyJoinRequestRepository FamilyJoinRequests { get; }
     public IDeviceConnectionRepository DeviceConnections { get; }
     public IActivityLogRepository ActivityLogs { get; }
     public IDeviceActivityLogRepository DeviceActivityLogs { get; }
@@ -59,6 +60,7 @@ public class UnitOfWork : IUnitOfWork
         IUserCardiMemberRepository userCardiMembers,
         IUserOrganizationRepository userOrganizations,
         ICaregiverInviteRepository caregiverInvites,
+        IFamilyJoinRequestRepository familyJoinRequests,
         IDeviceConnectionRepository deviceConnections,
         IActivityLogRepository activityLogs,
         IDeviceActivityLogRepository deviceActivityLogs,
@@ -101,6 +103,7 @@ public class UnitOfWork : IUnitOfWork
         UserCardiMembers = userCardiMembers;
         UserOrganizations = userOrganizations;
         CaregiverInvites = caregiverInvites;
+        FamilyJoinRequests = familyJoinRequests;
         DeviceConnections = deviceConnections;
         ActivityLogs = activityLogs;
         DeviceActivityLogs = deviceActivityLogs;

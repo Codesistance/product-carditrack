@@ -52,6 +52,7 @@ try
     builder.Services.AddScoped<IUserCardiMemberRepository, UserCardiMemberRepository>();
     builder.Services.AddScoped<IUserOrganizationRepository, UserOrganizationRepository>();
     builder.Services.AddScoped<ICaregiverInviteRepository, CaregiverInviteRepository>();
+    builder.Services.AddScoped<IFamilyJoinRequestRepository, FamilyJoinRequestRepository>();
     builder.Services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
     builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
     builder.Services.AddScoped<IDeviceActivityLogRepository, DeviceActivityLogRepository>();

@@ -86,6 +86,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserCardiMemberRepository, CardiTrack.Infrastructure.Repositories.UserCardiMemberRepository>();
         services.AddScoped<IUserOrganizationRepository, CardiTrack.Infrastructure.Repositories.UserOrganizationRepository>();
         services.AddScoped<ICaregiverInviteRepository, CardiTrack.Infrastructure.Repositories.CaregiverInviteRepository>();
+        services.AddScoped<IFamilyJoinRequestRepository, CardiTrack.Infrastructure.Repositories.FamilyJoinRequestRepository>();
         services.AddScoped<IDeviceConnectionRepository, CardiTrack.Infrastructure.Repositories.DeviceConnectionRepository>();
         services.AddScoped<IActivityLogRepository, CardiTrack.Infrastructure.Repositories.ActivityLogRepository>();
         services.AddScoped<IDeviceActivityLogRepository, CardiTrack.Infrastructure.Repositories.DeviceActivityLogRepository>();
@@ -164,6 +165,8 @@ public static class ServiceCollectionExtensions
         // through the unit of work and touches nothing outside it.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IFamilyService,
             CardiTrack.Application.Services.FamilyService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IFamilyJoinService,
+            CardiTrack.Application.Services.FamilyJoinService>();
         // Caregiver-triggered sync (issue #67). Request-scoped, not a background job — the
         // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,

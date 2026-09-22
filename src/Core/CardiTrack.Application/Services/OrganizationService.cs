@@ -22,6 +22,7 @@ public class OrganizationService : IOrganizationService
         var organization = new Organization
         {
             Name = request.Name,
+            FamilyId = FamilyIdentifier.Mint(),
             Type = request.Type,
             IsActive = true
         };
