@@ -3,6 +3,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.UnitTests.Notifications;
 using NSubstitute;
 
@@ -95,24 +96,91 @@ public class UserServiceTests
     }
 
     /// <summary>
-    /// The legacy two-call create path records the membership the request named, at the role it
-    /// asked for — it never decides the role itself, the same way it never decided User.Role.
+    /// The legacy two-call create path admits its caller to the family they just created in the
+    /// preceding call — one with nobody in it yet — and makes them its admin.
     /// </summary>
     [Fact]
-    public async Task CreateUser_RecordsMembershipOfTheRequestedOrganization_AtTheRequestedRole()
+    public async Task CreateUser_MakesTheCreatorAdminOfTheEmptyOrganizationTheyJustMade()
     {
         User? savedUser = null;
         UserOrganization? savedMembership = null;
         await _users.AddAsync(Arg.Do<User>(u => savedUser = u));
         await _memberships.AddAsync(Arg.Do<UserOrganization>(m => savedMembership = m));
         var request = Request(emailVerified: true);
+        _memberships.GetByOrganizationIdAsync(request.OrganizationId).Returns([]);
 
         await CreateSut().CreateUserAsync(request);
 
         Assert.NotNull(savedMembership);
         Assert.Equal(savedUser!.Id, savedMembership!.UserId);
         Assert.Equal(request.OrganizationId, savedMembership.OrganizationId);
-        Assert.Equal(request.Role, savedMembership.Role);
+        // Assigned, not accepted from the body — see the test below for why that distinction is
+        // the whole point.
+        Assert.Equal(UserRole.Admin, savedMembership.Role);
+    }
+
+    /// <summary>
+    /// The escalation this path used to allow, and the reason the role is no longer taken from
+    /// the request body.
+    /// </summary>
+    /// <remarks>
+    /// Naming an organization with <c>Role = Admin</c> was harmless while <c>User.Role</c> was a
+    /// column nothing authorized against. It stopped being harmless the moment
+    /// <c>UserOrganization.Role</c> became the fact <c>FamilyService</c> and
+    /// <c>FamilyJoinService</c> gate admin operations on — at which point any authenticated caller
+    /// who knew a family's id, a removed caregiver included, could take it over.
+    /// </remarks>
+    [Fact]
+    public async Task CreateUser_CannotJoinAFamilyThatAlreadyHasMembers_LetAloneRunIt()
+    {
+        UserOrganization? savedMembership = null;
+        await _memberships.AddAsync(Arg.Do<UserOrganization>(m => savedMembership = m));
+
+        var request = Request(emailVerified: true);
+        request.Role = UserRole.Admin;
+        _memberships.GetByOrganizationIdAsync(request.OrganizationId).Returns(
+        [
+            new UserOrganization
+            {
+                UserId = Guid.NewGuid(),
+                OrganizationId = request.OrganizationId,
+                Role = UserRole.Admin,
+                IsActive = true,
+            },
+        ]);
+
+        await CreateSut().CreateUserAsync(request);
+
+        // No membership at all. Joining a family that exists is an ask an admin answers, not
+        // something a request body decides.
+        Assert.Null(savedMembership);
+    }
+
+    [Fact]
+    public async Task CreateUser_RefusedAFamily_DoesNotKeepItAsTheirHomeOne()
+    {
+        User? savedUser = null;
+        await _users.AddAsync(Arg.Do<User>(u => savedUser = u));
+
+        var request = Request(emailVerified: true);
+        _memberships.GetByOrganizationIdAsync(request.OrganizationId).Returns(
+        [
+            new UserOrganization
+            {
+                UserId = Guid.NewGuid(),
+                OrganizationId = request.OrganizationId,
+                Role = UserRole.Admin,
+                IsActive = true,
+            },
+        ]);
+
+        await CreateSut().CreateUserAsync(request);
+
+        // OrganizationId is what the rest of the product reads as "this account's own family".
+        // Left pointing at one they were just refused, it would grant by the back door exactly
+        // what the membership check refused at the front.
+        Assert.NotNull(savedUser);
+        Assert.Null(savedUser!.OrganizationId);
     }
 
     [Fact]

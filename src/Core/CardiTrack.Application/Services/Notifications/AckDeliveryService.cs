@@ -103,7 +103,11 @@ public class AckDeliveryService : IAckDeliveryService
             // from exactly those — counting an in-app answer as one would report a push as having
             // landed on a phone that may have been face-down all night.
             delivery.State = DeliveryState.Answered;
-            delivery.DeliveredDate ??= utcNow;
+            // DeliveredDate deliberately untouched. It is the record that a specific handset
+            // posted /delivered, and most rows reaching here never did — a Pending copy held for
+            // somebody's quiet hours has not been sent at all. Stamping it would make delivery
+            // reporting claim a push arrived because somebody answered on another device, which
+            // is the exact confusion the separate Answered state exists to avoid.
             _unitOfWork.NotificationDeliveries.Update(delivery);
         }
 

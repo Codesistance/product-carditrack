@@ -174,6 +174,20 @@ public class CaregiverInviteService : ICaregiverInviteService
             throw new KeyNotFoundException("Invitation not found");
         }
 
+        // The member may have been erased since the invitation was written. The cascade deletes
+        // invitations now, but a redemption already in flight can arrive after that sweep passed
+        // this table — the schema has no foreign key to stop the grant landing anyway, the same
+        // gap IMemberWriteGuard exists for. Checked here as well as swept there, because a link
+        // to a member nobody can name is unreachable and unremovable from the app.
+        var member = await _unitOfWork.CardiMembers.GetByIdAsync(invite.CardiMemberId);
+        if (member is not { IsActive: true })
+        {
+            _logger.LogWarning(
+                "Caregiver invite {InviteId} refused: CardiMember {CardiMemberId} is no longer active.",
+                invite.Id, invite.CardiMemberId);
+            throw new KeyNotFoundException("Invitation not found");
+        }
+
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         // Claim the invitation before writing anything. Losing this race means somebody else

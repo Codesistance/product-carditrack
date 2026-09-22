@@ -36,6 +36,35 @@ public class FamilyJoinRequestRepository : Repository<FamilyJoinRequest>, IFamil
             .ToListAsync(ct);
     }
 
+    public async Task<FamilyJoinRequest> AddOrGetLiveAsync(
+        FamilyJoinRequest request, DateTime utcNow, CancellationToken ct = default)
+    {
+        await _dbSet.AddAsync(request, ct);
+
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+            return request;
+        }
+        catch (DbUpdateException)
+        {
+            // Lost the insert race. Drop this attempt from the change tracker first — left
+            // Added, the next SaveChangesAsync on this scope would retry it and fail again,
+            // taking an unrelated write down with it.
+            _context.Entry(request).State = EntityState.Detached;
+
+            var winner = await GetLiveAsync(
+                request.RequestedByUserId, request.OrganizationId, utcNow, ct);
+
+            // Nothing live after a conflict means the conflict was not the one this handles —
+            // let it go up rather than swallow a real failure.
+            if (winner is null)
+                throw;
+
+            return winner;
+        }
+    }
+
     public async Task<FamilyJoinRequest?> GetLiveAsync(
         Guid userId, Guid organizationId, DateTime utcNow, CancellationToken ct = default)
     {

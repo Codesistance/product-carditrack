@@ -43,8 +43,16 @@ public class FamilyJoinService : IFamilyJoinService
         if (normalized is null)
             return empty;
 
+        // Family organizations only. Every organization is minted a code, business ones included,
+        // but joining is a family contract: one admin who pays, a roster anybody in it can see,
+        // and a role that grants a share of watching. A care home's roster is staff, governed by
+        // an agreement rather than by whoever holds the code, so its code resolves to nothing
+        // here — and does so through the same empty receipt as an unknown one, which is what keeps
+        // "that code exists but is not joinable" from being an answer this endpoint gives.
         var organization = await _unitOfWork.Organizations
-            .FirstOrDefaultAsync(o => o.FamilyId == normalized && o.IsActive);
+            .FirstOrDefaultAsync(o => o.FamilyId == normalized
+                                      && o.Type == OrganizationType.Family
+                                      && o.IsActive);
         if (organization is null)
             return empty;
 
@@ -69,10 +77,12 @@ public class FamilyJoinService : IFamilyJoinService
             ExpiresAt = now.Add(RequestLifetime),
         };
 
-        await _unitOfWork.FamilyJoinRequests.AddAsync(joinRequest);
-        await _unitOfWork.SaveChangesAsync();
+        // The read above and this insert are two statements, so two taps a moment apart can both
+        // find nothing live. The repository settles that against the unique index and hands back
+        // whichever request is now live, so the loser gets a receipt rather than a 500.
+        var stored = await _unitOfWork.FamilyJoinRequests.AddOrGetLiveAsync(joinRequest, now, ct);
 
-        return new FamilyJoinRequestReceipt(joinRequest.Id, joinRequest.ExpiresAt);
+        return new FamilyJoinRequestReceipt(stored.Id, stored.ExpiresAt);
     }
 
     public async Task<IReadOnlyList<FamilyJoinRequestSummary>> GetMineAsync(

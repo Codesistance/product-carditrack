@@ -308,7 +308,8 @@ public class NotificationDispatchWorker : CronBackgroundService
                 Escalates = delivery.Category == DeliveryCategory.Safety
                     || (delivery.Category == DeliveryCategory.Health && delivery.Severity == AlertSeverity.Red),
                 CurrentStage = delivery.EscalationStage,
-                SentDate = delivery.SentDate
+                SentDate = delivery.SentDate,
+                IsEscalatedCopy = delivery.IsEscalation
             });
 
             try

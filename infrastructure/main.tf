@@ -212,6 +212,10 @@ module "deployments" {
       # localhost case this is written for. Prod has no custom domain today (see
       # docs/infrastructure.md); set one before wearer invitations are used there.
       "DeviceInvites__PublicBaseUrl" = "https://${var.api_custom_domain}"
+      # Same reasoning, same attack, for the invitation an admin sends another caregiver. The
+      # option's own docs describe the Host-header substitution; without this line the deployed
+      # default was empty and the fallback was exactly that substitution.
+      "CaregiverInvites__PublicBaseUrl" = "https://${var.api_custom_domain}"
     } : {}
   )
   api_secret_env_vars = merge(

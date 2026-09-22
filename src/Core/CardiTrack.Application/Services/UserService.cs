@@ -4,6 +4,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
@@ -61,15 +62,37 @@ public class UserService : IUserService
 
         await _unitOfWork.Users.AddAsync(user);
 
-        // Membership of the organization the request named, at the role it asked for. The
-        // onboarding path makes its creator the Admin; this legacy two-call path trusts the
-        // request, as it always has for User.Role.
-        await _unitOfWork.UserOrganizations.AddAsync(new UserOrganization
+        // Membership, but only where the caller is provably entitled to it — the family they just
+        // created in the preceding POST /onboarding/organization call, which has nobody in it yet.
+        //
+        // This path takes OrganizationId and Role from the request body and always has. That was
+        // harmless while User.Role was a column nothing authorized against; it stopped being
+        // harmless the moment UserOrganization.Role became the fact FamilyService and
+        // FamilyJoinService gate admin operations on. Trusting the body now would let any
+        // authenticated caller name somebody else's family with Role = Admin and take it over —
+        // a removed caregiver still knows the id. So the role is assigned here rather than
+        // accepted, and a family that already has members admits nobody through this door: they
+        // ask, and an admin decides (POST /api/v1/families/join-requests).
+        var claimable = request.OrganizationId != Guid.Empty
+            && !(await _unitOfWork.UserOrganizations.GetByOrganizationIdAsync(request.OrganizationId))
+                .Any(m => m.IsActive);
+
+        if (claimable)
         {
-            UserId = user.Id,
-            OrganizationId = request.OrganizationId,
-            Role = request.Role
-        });
+            await _unitOfWork.UserOrganizations.AddAsync(new UserOrganization
+            {
+                UserId = user.Id,
+                OrganizationId = request.OrganizationId,
+                Role = UserRole.Admin
+            });
+        }
+        else
+        {
+            // No membership, and no home family either — the column is what the rest of the
+            // product reads as "this account's own family", and pointing it at one they were not
+            // admitted to would grant by the back door what the check above just refused.
+            user.OrganizationId = null;
+        }
 
         try
         {

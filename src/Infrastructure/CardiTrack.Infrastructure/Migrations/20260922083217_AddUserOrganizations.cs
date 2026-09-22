@@ -94,9 +94,10 @@ namespace CardiTrack.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "UserOrganizations");
-
+            // Before the DropTable below, because it reads the table. Reversed order fails the
+            // whole rollback on a missing relation — and fails it after the memberships are
+            // already gone, which is the one state with no way back to either shape.
+            //
             // A guest has no home organization, so reverting the column to NOT NULL would need a
             // value invented for them. Adopting the first family they joined is the only reading
             // that keeps them reachable; a guest in no family at all gets the all-zero guid, which
@@ -111,6 +112,9 @@ namespace CardiTrack.Infrastructure.Migrations
                 ), '00000000-0000-0000-0000-000000000000'::uuid)
                 WHERE u."OrganizationId" IS NULL;
                 """);
+
+            migrationBuilder.DropTable(
+                name: "UserOrganizations");
 
             migrationBuilder.AlterColumn<Guid>(
                 name: "OrganizationId",

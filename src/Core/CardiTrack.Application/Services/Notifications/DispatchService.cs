@@ -214,7 +214,10 @@ public class DispatchService : IDispatchService
             DedupKey = plan.DedupKey,
             CollapseKey = plan.CollapseKey,
             ExpiresAt = plan.ExpiresAt,
-            ScheduledFor = plan.ScheduledFor
+            ScheduledFor = plan.ScheduledFor,
+            // Stored, because the escalation sweep reads it back off the row to decide whether
+            // this copy may fan out again. It may not: see NotificationDelivery.IsEscalation.
+            IsEscalation = request.IsEscalation
         };
 
         await _unitOfWork.NotificationDeliveries.AddAsync(delivery);

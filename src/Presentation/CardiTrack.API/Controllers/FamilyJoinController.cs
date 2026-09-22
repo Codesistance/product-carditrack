@@ -50,7 +50,7 @@ public class FamilyJoinController : BaseApiController
     /// already in are indistinguishable here — a walk through the code space has to learn nothing.
     /// </remarks>
     [HttpPost("join-requests")]
-    [ProducesResponseType(typeof(ApiResponse<FamilyJoinRequestReceipt>), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(ApiResponse<FamilyJoinRequestReceipt>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     // Named Ask rather than Request: ControllerBase.Request is the incoming HttpRequest, and
     // shadowing it makes every later use of Request in this class ambiguous to the reader even
