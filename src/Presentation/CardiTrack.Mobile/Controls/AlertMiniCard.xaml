@@ -33,30 +33,31 @@
                        WidthRequest="26" HeightRequest="26"/>
             </Border>
 
-            <!-- The tile is what sets this card's height, so the two labels have to fit inside
-                 46: a two-line title at 16 plus a 14pt timestamp came to roughly 59, and the
-                 card grew a row taller than the icon it sits beside. The title keeps two lines
-                 — truncating "Long daytime rest" to one loses the half that says which rest —
-                 and the timestamp gives up the size instead, since "10 hours ago" is the least
-                 load-bearing line on the card. Two title lines at 14 come to 30, the timestamp
-                 to 10, and the single point of spacing leaves 41 — under the tile with room to
-                 spare, which is why there is no height cap here: capping at 46 clipped the
-                 timestamp to a sliver, because the stack measures a little above the sum of
-                 its lines. The sizes are the constraint; the tile stays the tallest thing in
-                 the row on its own. -->
+            <!-- Sized for reading first and for the tile second. The title keeps two lines —
+                 truncating "Long daytime rest" to one loses the half that says which rest —
+                 and the timestamp stays the smaller of the two, since "11 hours ago" is the
+                 least load-bearing line on the card.
+
+                 At 15 and 12 the stack runs past the 46dp tile and the card settles around
+                 88dp rather than the 77 the tile alone would ask for. That is deliberate: 13
+                 and 10 did fit inside the tile, and read as small. Anything that has to be
+                 inside 46 has to come off the title's two lines, not off these sizes.
+
+                 No height cap: MaximumHeightRequest="46" was tried and clipped the timestamp
+                 to a sliver, because the stack measures a little above the sum of its lines. -->
             <VerticalStackLayout Grid.Column="1"
                                  Spacing="0"
                                  VerticalOptions="Center">
                 <Label x:Name="TitleLabel"
                        FontFamily="QuicksandSemiBold"
-                       FontSize="13"
+                       FontSize="15"
                        LineHeight="0.95"
                        TextColor="{StaticResource HeadingText}"
                        MaxLines="2"
                        LineBreakMode="TailTruncation"/>
                 <Label x:Name="TimeLabel"
                        Style="{StaticResource MetricRowLabel}"
-                       FontSize="10"
+                       FontSize="12"
                        LineHeight="0.95"/>
             </VerticalStackLayout>
 
