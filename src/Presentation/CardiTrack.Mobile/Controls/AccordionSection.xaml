@@ -21,19 +21,20 @@
                  the same offset the card headers above this one use. At 22 and 12 it started at
                  34, and an accordion sitting inside a card next to a card header stepped its
                  title 6px further in than the heading directly above it. -->
-            <!-- Closed, the header wears a tint so it reads as a control with something behind
-                 it; open, the tint goes and the header becomes the title of what is now on
-                 screen. The chrome is present in both states with the same padding and the same
-                 negative margin cancelling it, so switching it on and off moves nothing — only
-                 the fill changes. That is the whole of the ask: a closed style that costs the
-                 open state nothing. -->
+            <!-- Closed, the header wears a tinted rounded band so it reads as a control with
+                 something behind it; open, the fill goes and the header becomes the title of
+                 what is now on screen. The chrome is present in both states with the same
+                 padding and the same radius, so switching the fill on and off moves nothing and
+                 the open state pays nothing for the closed one's styling — which was the ask.
+                 The padding is real rather than cancelled by a negative margin: a tint that runs
+                 to the card's own edge has no corners to round. -->
             <Border x:Name="HeaderChrome"
-                    StrokeThickness="0"
+                    StrokeThickness="1"
+                    Stroke="Transparent"
                     BackgroundColor="Transparent"
-                    Padding="10,4"
-                    Margin="-10,0">
+                    Padding="12,6">
                 <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="12"/>
+                    <RoundRectangle CornerRadius="14"/>
                 </Border.StrokeShape>
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" HeightRequest="44">
                 <Grid.GestureRecognizers>

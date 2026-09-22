@@ -266,6 +266,7 @@ public partial class CaregiverInvitesPage : ContentPage
             $"This link works for {FamilyCopy.Remaining(invite.ExpiresAt, DateTime.UtcNow)} and can be used once. "
             + "We don't send it for you — that way we never learn who you sent it to.";
 
+        LinkLabel.Text = _freshLink;
         QrImage.Source = InviteQrCode.Render(_freshLink) is { } png
             ? ImageSource.FromStream(() => new MemoryStream(png))
             : null;

@@ -395,7 +395,7 @@
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnShareWithFamilyTapped"/>
                                     </Grid.GestureRecognizers>
-                                    <Label Text="Share with Family"
+                                    <Label Text="Share"
                                            Style="{StaticResource Body2Dark}"
                                            VerticalTextAlignment="Center"/>
                                     <Image Grid.Column="1" Source="icon_chevron.svg"

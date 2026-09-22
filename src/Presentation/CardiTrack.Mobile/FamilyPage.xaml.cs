@@ -246,7 +246,11 @@ public partial class FamilyPage : ContentPage
         RoleDetailLabel.Text = isAdmin
             ? "You decide who joins and what they can see, and this family's plan is yours."
             : AdminLine(view.Roster);
-        WatchedLabel.Text = FamilyCopy.WatchedLine(family.WatchedMemberNames);
+
+        // Who the caller can see is the "Who we watch" list further down, by name and with each
+        // one's open alert on it. Saying it again here as a sentence was the same fact twice, and
+        // the weaker of the two.
+        WatchedLabel.IsVisible = false;
 
         // Only when there is one to show. A server that predates the Family ID on this response
         // sends nothing, and a card headed "Your Family ID" with an empty line under it is worse
@@ -537,7 +541,8 @@ public partial class FamilyPage : ContentPage
         if (parsed is JoinInput.Invitation invitation)
         {
             JoinEntry.Text = string.Empty;
-            await Shell.Current.GoToAsync($"{AcceptInvitePage.Route}?token={Uri.EscapeDataString(invitation.Token)}");
+            await Shell.Current.GoToAsync(
+                $"{AcceptInvitePage.Route}?token={Uri.EscapeDataString(invitation.Token)}");
             return;
         }
 

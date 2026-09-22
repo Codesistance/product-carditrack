@@ -159,9 +159,12 @@
                         </VerticalStackLayout>
                     </Border>
 
+                    <!-- AuthGradientButton, the one gradient style with a disabled state: this
+                         button starts disabled by design (D-8 — the question is not optional),
+                         and a full-strength button that does not respond reads as a fault. -->
                     <Button x:Name="AcceptButton"
                             Text="Accept"
-                            Style="{StaticResource PrimaryGradientButton}"
+                            Style="{StaticResource AuthGradientButton}"
                             IsEnabled="False"
                             Clicked="OnAcceptClicked"/>
 

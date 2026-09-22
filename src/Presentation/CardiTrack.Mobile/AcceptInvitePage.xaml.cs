@@ -140,6 +140,14 @@ public partial class AcceptInvitePage : ContentPage
             + "we hold alerts until your quiet hours end.";
     }
 
+    /// <summary>
+    /// Back goes to the dashboard rather than popping: this page is reached from a link, from the
+    /// join field, and from the Family tab, and the one thing all three have behind them is the
+    /// app itself. Declining is a deliberate answer with its own button — leaving is not one.
+    /// </summary>
+    private async void OnBackTapped(object? sender, TappedEventArgs e) =>
+        await this.GoBackAsync(AppShell.DashboardRoute);
+
     private void OnWakeMeTapped(object? sender, TappedEventArgs e) => Choose(true);
 
     private void OnHoldTapped(object? sender, TappedEventArgs e) => Choose(false);

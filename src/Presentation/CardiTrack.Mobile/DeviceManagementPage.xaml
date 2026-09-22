@@ -128,7 +128,18 @@
                         <!-- Troubleshooting -->
                         <Border Style="{StaticResource ElevatedCard}">
                             <VerticalStackLayout Spacing="10">
-                                <Grid ColumnDefinitions="*,Auto">
+                                <!-- The same closed-state band AccordionSection wears, since this
+                                     is the same kind of control drawn by hand: tinted and rounded
+                                     while there is something behind it, plain once it is open. -->
+                                <Border x:Name="HelpChrome"
+                                        StrokeThickness="1"
+                                        Stroke="Transparent"
+                                        BackgroundColor="{StaticResource InputBackground}"
+                                        Padding="12,6">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="14"/>
+                                    </Border.StrokeShape>
+                                <Grid ColumnDefinitions="*,Auto" HeightRequest="36">
                                     <Grid.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnToggleHelpTapped"/>
                                     </Grid.GestureRecognizers>
@@ -145,6 +156,7 @@
                                            WidthRequest="20" HeightRequest="20"
                                            VerticalOptions="Center"/>
                                 </Grid>
+                                </Border>
                                 <!-- The app's one list of short statements (FindingsList), filled
                                      from code-behind. Written as three bulleted labels before,
                                      which is a fourth spelling of a list the onboarding page and

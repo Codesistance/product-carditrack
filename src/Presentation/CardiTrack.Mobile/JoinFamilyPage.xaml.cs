@@ -38,9 +38,25 @@ public partial class JoinFamilyPage : ContentPage
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(AppShell.FamilyRoute);
 
-    private void OnAskCompleted(object? sender, EventArgs e) => _ = AskAsync();
+    private void OnAskCompleted(object? sender, EventArgs e) => _ = AskSafelyAsync();
 
-    private void OnAskClicked(object? sender, EventArgs e) => _ = AskAsync();
+    private void OnAskClicked(object? sender, EventArgs e) => _ = AskSafelyAsync();
+
+    /// <summary>
+    /// Started from a tap, so nothing above it can catch a failure: without this a code that
+    /// could not be acted on would leave the caregiver pressing a button that never answers.
+    /// </summary>
+    private async Task AskSafelyAsync()
+    {
+        try
+        {
+            await AskAsync();
+        }
+        catch (Exception ex)
+        {
+            await _popups.ShowWarningAsync(ex.Message, "Couldn't open that");
+        }
+    }
 
     private async Task AskAsync()
     {
@@ -56,10 +72,13 @@ public partial class JoinFamilyPage : ContentPage
             return;
         }
 
+        // An invitation names one member and grants access on acceptance; asking to join a
+        // family is a different act. The token goes to the invitation screen, which is reached
+        // from the Family tab so it survives this page being popped on the way.
         if (parsed is JoinInput.Invitation invitation)
         {
             await Shell.Current.GoToAsync(
-                $"{AcceptInvitePage.Route}?token={Uri.EscapeDataString(invitation.Token)}");
+                $"{AppShell.FamilyRoute}/{AcceptInvitePage.Route}?token={Uri.EscapeDataString(invitation.Token)}");
             return;
         }
 

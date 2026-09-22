@@ -681,11 +681,17 @@ public partial class AlertDetailPage : ContentPage
     }
 
     /// <summary>
-    /// Hands the alert to whatever the caregiver already uses to talk to their family. Deliberately
-    /// the same three facts the sharer can see on the banner in front of them — who, what, and
-    /// when — and none of the numbers below it: this leaves the app for an arbitrary destination,
-    /// so it carries the least that still makes the message worth sending.
+    /// Hands the alert to whatever the caregiver already uses to talk to people. Deliberately the
+    /// same three facts the sharer can see on the banner in front of them — who, what, and when —
+    /// and none of the numbers below it: this leaves the app for an arbitrary destination, so it
+    /// carries the least that still makes the message worth sending.
     /// </summary>
+    /// <remarks>
+    /// The row says "Share", not "Share with Family". Family is now a place in this app with
+    /// people in it, and a row that named it while handing the alert to the OS share sheet
+    /// promised something the app does: telling the family is answering the alert, which is the
+    /// button below this list.
+    /// </remarks>
     private async void OnShareWithFamilyTapped(object? sender, TappedEventArgs e)
     {
         if (_alert is not { } alert)

@@ -84,6 +84,16 @@
                                 <Label x:Name="NewInviteDetailLabel"
                                        Style="{StaticResource Body2}"
                                        LineBreakMode="WordWrap"/>
+                                <!-- The link in full, not only behind a Copy button: a caregiver
+                                     sending this to a sibling wants to see what they are about to
+                                     send, and one who is reading it down the phone needs it on
+                                     screen. It is already in the clipboard and in the QR code, so
+                                     showing it reveals nothing the page was keeping back. -->
+                                <Border Style="{StaticResource OutlinedCard}" Padding="12,10">
+                                    <Label x:Name="LinkLabel"
+                                           Style="{StaticResource Caption}"
+                                           LineBreakMode="CharacterWrap"/>
+                                </Border>
                                 <Image x:Name="QrImage"
                                        HeightRequest="160"
                                        Aspect="AspectFit"

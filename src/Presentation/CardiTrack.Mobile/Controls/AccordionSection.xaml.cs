@@ -128,18 +128,30 @@ public partial class AccordionSection : ContentView
     }
 
     /// <summary>
-    /// The closed header's tint, and its absence once the body is open.
+    /// The header's two states: a tinted band while it is closed, and a thin blue outline once it
+    /// is open.
     /// </summary>
     /// <remarks>
-    /// Only <see cref="VisualElement.BackgroundColor"/> moves. The <c>Border</c> around the
-    /// header keeps its padding and its cancelling margin in both states, so nothing reflows when
-    /// the fill appears or goes — which is what makes this a style the closed state can have
-    /// without the open one paying for it.
+    /// <para>
+    /// The outline goes on the header alone, not around the body: what the caregiver opened is
+    /// still the control they tapped, and a frame drawn around the whole content area would read
+    /// as a card inside a card — the very thing this control was written not to be.
+    /// </para>
+    /// <para>
+    /// Only the two colours move. The padding, the radius and the one-unit stroke are the same in
+    /// both states, so nothing reflows when the fill or the outline appears — which is what lets
+    /// the closed state carry a style the open one does not pay for.
+    /// </para>
     /// </remarks>
-    private void ApplyHeaderChrome() =>
+    private void ApplyHeaderChrome()
+    {
         HeaderChrome.BackgroundColor = IsExpanded
             ? Colors.Transparent
             : NamedColor("InputBackground") ?? Colors.Transparent;
+        HeaderChrome.Stroke = new SolidColorBrush(IsExpanded
+            ? NamedColor("Primary") ?? Colors.Transparent
+            : Colors.Transparent);
+    }
 
     /// <summary>
     /// Re-fits an open body to content that arrived after it was opened. The clip is held at a

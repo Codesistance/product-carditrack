@@ -202,11 +202,21 @@ public partial class AlertRespondPage : ContentPage
         SubmitButton.IsEnabled = _draft.CanSubmit;
     }
 
+    /// <summary>
+    /// Every keystroke is saved, not just the ones followed by leaving the page.
+    /// </summary>
+    /// <remarks>
+    /// Android does not raise <c>OnDisappearing</c> when the app is backgrounded from a Shell
+    /// page, so a note written and then interrupted by the phone call it is about was lost —
+    /// which is the exact case the draft exists for. Preferences writes are cheap and this string
+    /// is capped at 500 characters, so there is nothing to debounce away.
+    /// </remarks>
     private void OnNoteChanged(object? sender, TextChangedEventArgs e)
     {
         _draft.Note = e.NewTextValue ?? string.Empty;
         UpdateCounter();
         SubmitButton.IsEnabled = _draft.CanSubmit;
+        SaveDraft();
     }
 
     private void UpdateCounter()

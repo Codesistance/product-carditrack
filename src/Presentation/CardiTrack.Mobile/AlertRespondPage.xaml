@@ -128,8 +128,13 @@
                              Padding="20,10,20,16"
                              IsVisible="False"
                              BackgroundColor="{StaticResource PageGround}">
+            <!-- AuthGradientButton rather than the plain gradient: it is the one gradient
+                 button with a disabled state (it fades to GradientButtonLightBrush), and this
+                 button spends its first seconds disabled while the caregiver decides what to
+                 say. The plain one keeps full-strength ink on a full-strength gradient and
+                 reads as a button that is simply not responding. -->
             <Button x:Name="SubmitButton"
-                    Style="{StaticResource PrimaryGradientButton}"
+                    Style="{StaticResource AuthGradientButton}"
                     Clicked="OnSubmitClicked"/>
         </VerticalStackLayout>
     </Grid>
