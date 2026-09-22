@@ -108,6 +108,8 @@ public class FamilyService : IFamilyService
         current.UpdatedDate = now;
         _unitOfWork.UserOrganizations.Update(current);
 
+        await AdoptAsHomeFamilyIfHomelessAsync(newAdminUserId, organizationId, now);
+
         await _unitOfWork.SaveChangesAsync();
 
         return await BuildRosterAsync(requestingUserId, organizationId);
@@ -154,6 +156,33 @@ public class FamilyService : IFamilyService
         }
 
         await DeactivateAsync(membership, organizationId, requestingUserId);
+    }
+
+    /// <summary>
+    /// Gives a new admin a home family, where they had none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A guest joined somebody else's family and never started one of their own, so
+    /// <c>User.OrganizationId</c> is null — which is right for a guest and wrong the moment they
+    /// are handed the family. That column is what <c>UserContextMiddleware</c> serves as the
+    /// caller's organization, and organization-scoped reads work from it, so an admin without one
+    /// owns a family and its billing while the product shows them nothing.
+    /// </para>
+    /// <para>
+    /// Only when they have none. Somebody who already has a home family keeps it: being made
+    /// admin of their mother's household is not a reason to stop their own being theirs.
+    /// </para>
+    /// </remarks>
+    private async Task AdoptAsHomeFamilyIfHomelessAsync(Guid userId, Guid organizationId, DateTime now)
+    {
+        var user = await _unitOfWork.Users.GetByIdAsync(userId);
+        if (user is null || user.OrganizationId is not null)
+            return;
+
+        user.OrganizationId = organizationId;
+        user.UpdatedDate = now;
+        _unitOfWork.Users.Update(user);
     }
 
     /// <summary>

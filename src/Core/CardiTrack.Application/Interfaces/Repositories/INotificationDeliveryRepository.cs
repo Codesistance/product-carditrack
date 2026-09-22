@@ -17,6 +17,13 @@ public interface INotificationDeliveryRepository : IRepository<NotificationDeliv
     Task<NotificationDelivery?> GetByDedupKeyAsync(string dedupKey, CancellationToken ct = default);
 
     /// <summary>
+    /// Every delivery this alert's answer stopped — the rows sitting in
+    /// <see cref="Domain.Enums.DeliveryState.Answered"/>.
+    /// </summary>
+    Task<IReadOnlyList<NotificationDelivery>> GetAnsweredForAlertAsync(
+        Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
     /// The users who already have a delivery row for this alert, whatever state it is in.
     /// </summary>
     /// <remarks>

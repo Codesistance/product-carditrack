@@ -209,6 +209,18 @@ public class FamilyJoinService : IFamilyJoinService
                 approver.UpdatedDate = now;
                 _unitOfWork.UserOrganizations.Update(approver);
             }
+
+            // A guest admitted as admin has no home family — that is what being a guest meant —
+            // and User.OrganizationId is what UserContextMiddleware serves as the caller's
+            // organization. Left null they would own the family and its billing while every
+            // organization-scoped read showed them nothing. Somebody who already has one keeps it.
+            var admitted = await _unitOfWork.Users.GetByIdAsync(request.RequestedByUserId);
+            if (admitted is not null && admitted.OrganizationId is null)
+            {
+                admitted.OrganizationId = organizationId;
+                admitted.UpdatedDate = now;
+                _unitOfWork.Users.Update(admitted);
+            }
         }
 
         var existingLinks = (await _unitOfWork.UserCardiMembers.GetByUserIdAsync(request.RequestedByUserId))

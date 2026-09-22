@@ -32,6 +32,25 @@ public interface IAckDeliveryService
     /// </para>
     /// </remarks>
     Task<int> HaltEscalationForAlertAsync(Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Puts back the deliveries an answer stopped, because the answer was taken back. Returns how
+    /// many resumed.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart to <see cref="HaltEscalationForAlertAsync"/>, and undo is exactly why it has
+    /// to exist: "handled" is a claim a caregiver can make in error — tapping the wrong row, or
+    /// meaning to do something they then could not do — and un-acknowledging is how they take it
+    /// back. Without this the alert returns to unhandled while its deliveries stay terminal, so the
+    /// ladder that was the reason anybody would look again can never resume. The alert reads as
+    /// live and nothing is chasing it, which is worse than either state on its own.
+    /// <para>
+    /// Rows go back to <c>Sent</c> with their original <c>SentDate</c> untouched, so the ladder
+    /// resumes where it had got to rather than restarting — the boundaries are elapsed time since
+    /// the first send, and a clock reset here would be a second full escalation for one event.
+    /// </para>
+    /// </remarks>
+    Task<int> ResumeEscalationForAlertAsync(Guid alertId, CancellationToken ct = default);
 }
 
 public class AckDeliveryService : IAckDeliveryService
@@ -113,5 +132,25 @@ public class AckDeliveryService : IAckDeliveryService
 
         await _unitOfWork.SaveChangesAsync();
         return unfinished.Count;
+    }
+
+    public async Task<int> ResumeEscalationForAlertAsync(Guid alertId, CancellationToken ct = default)
+    {
+        var answered = await _unitOfWork.NotificationDeliveries.GetAnsweredForAlertAsync(alertId, ct);
+        if (answered.Count == 0)
+            return 0;
+
+        foreach (var delivery in answered)
+        {
+            // Sent, not Pending: these were sent, and the ladder measures from SentDate, which is
+            // left alone so the rung the alert had reached is the rung it resumes at. A row that
+            // never got that far has a null SentDate and no ladder to resume, so it goes back to
+            // the queue instead.
+            delivery.State = delivery.SentDate is null ? DeliveryState.Pending : DeliveryState.Sent;
+            _unitOfWork.NotificationDeliveries.Update(delivery);
+        }
+
+        await _unitOfWork.SaveChangesAsync();
+        return answered.Count;
     }
 }

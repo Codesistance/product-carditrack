@@ -96,4 +96,50 @@ public class AckDeliveryServiceTests
     {
         public override DateTimeOffset GetUtcNow() => new(utcNow, TimeSpan.Zero);
     }
+
+    // ── Undo has to put back what the answer stopped ────────────────────────────
+
+    [Fact]
+    public async Task ResumeEscalationForAlert_PutsAnsweredRowsBackOnTheLadder()
+    {
+        var answered = Delivery(DeliveryState.Answered, _alertId);
+        var originalSentDate = answered.SentDate;
+        _deliveries.GetAnsweredForAlertAsync(_alertId, Arg.Any<CancellationToken>())
+            .Returns([answered]);
+
+        var resumed = await CreateSut().ResumeEscalationForAlertAsync(_alertId);
+
+        Assert.Equal(1, resumed);
+        Assert.Equal(DeliveryState.Sent, answered.State);
+
+        // The ladder's boundaries are elapsed time since the first send, so the clock is left
+        // alone — the alert resumes at the rung it had reached, not at the bottom. Restarting it
+        // would be a second full escalation for one event.
+        Assert.Equal(originalSentDate, answered.SentDate);
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task ResumeEscalationForAlert_SendsARowThatNeverWentBackToTheQueue()
+    {
+        var neverSent = Delivery(DeliveryState.Answered, _alertId);
+        neverSent.SentDate = null;
+        _deliveries.GetAnsweredForAlertAsync(_alertId, Arg.Any<CancellationToken>())
+            .Returns([neverSent]);
+
+        await CreateSut().ResumeEscalationForAlertAsync(_alertId);
+
+        // A copy held for somebody's quiet hours was never sent, so it has no ladder to resume —
+        // marking it Sent would claim a push that never happened and start a clock from nothing.
+        Assert.Equal(DeliveryState.Pending, neverSent.State);
+    }
+
+    [Fact]
+    public async Task ResumeEscalationForAlert_WithNothingAnswered_SavesNothing()
+    {
+        _deliveries.GetAnsweredForAlertAsync(_alertId, Arg.Any<CancellationToken>()).Returns([]);
+
+        Assert.Equal(0, await CreateSut().ResumeEscalationForAlertAsync(_alertId));
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
 }

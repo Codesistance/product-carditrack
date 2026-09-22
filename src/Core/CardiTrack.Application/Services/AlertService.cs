@@ -470,6 +470,12 @@ public class AlertService : IAlertService
             alert.AcknowledgedByUserId = null;
             _unitOfWork.Alerts.Update(alert);
             await _unitOfWork.SaveChangesAsync();
+
+            // Acknowledging stopped the ladder, so un-acknowledging has to start it again.
+            // Otherwise undo returns the alert to unhandled while every delivery about it stays
+            // terminal: it reads as live on every screen and nothing at all is chasing it, which
+            // is worse than leaving it acknowledged would have been.
+            await _ackDelivery.ResumeEscalationForAlertAsync(alert.Id, ct);
         }
 
         var unread = await _unitOfWork.Alerts.CountUnreadAsync(

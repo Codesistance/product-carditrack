@@ -834,6 +834,33 @@ public class AlertServiceTests
     }
 
     [Fact]
+    public async Task Unacknowledging_PutsTheLadderBack()
+    {
+        var alert = MakeRuledAlert(acknowledgedAt: Now.UtcDateTime.AddMinutes(-2));
+        alert.AcknowledgedByUserId = _userId;
+
+        await CreateSut().UnacknowledgeAsync(_userId, alert.Id);
+
+        // Acknowledging stopped the ladder, so taking it back has to start it again. Otherwise
+        // undo leaves the alert reading as live on every screen with nothing at all chasing it,
+        // which is worse than either state on its own.
+        await _ackDelivery.Received(1).ResumeEscalationForAlertAsync(alert.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Unacknowledging_SomethingAlreadyUnacknowledged_LeavesTheLadderAlone()
+    {
+        var alert = MakeRuledAlert();
+
+        await CreateSut().UnacknowledgeAsync(_userId, alert.Id);
+
+        // Idempotent, and resuming deliveries nobody stopped would be a push about an alert that
+        // was never answered in the first place.
+        await _ackDelivery.DidNotReceive()
+            .ResumeEscalationForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AnAlertThatRefusesTheRequest_NeverTouchesTheLadder()
     {
         var alert = MakeRuledAlert();

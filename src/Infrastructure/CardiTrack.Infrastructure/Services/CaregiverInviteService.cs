@@ -285,9 +285,18 @@ public class CaregiverInviteService : ICaregiverInviteService
             return;
         }
 
-        membership.IsActive = true;
-        membership.Role = role;
-        membership.JoinedDate = now;
+        // The role applies to joining, not to being here already. An invitation admits as Member,
+        // so overwriting an active membership's role would demote a family's own Admin the moment
+        // they accepted an invitation to watch one more person — leaving the family with no admin
+        // at all, and nobody promoted in their place. Reactivating a lapsed membership does take
+        // the invite's role, because that is somebody joining again.
+        if (!membership.IsActive)
+        {
+            membership.IsActive = true;
+            membership.Role = role;
+            membership.JoinedDate = now;
+        }
+
         membership.UpdatedDate = now;
         _unitOfWork.UserOrganizations.Update(membership);
     }
