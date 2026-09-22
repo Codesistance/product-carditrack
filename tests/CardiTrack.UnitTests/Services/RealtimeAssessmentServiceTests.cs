@@ -27,6 +27,7 @@ public class RealtimeAssessmentServiceTests
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
     private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
 
     private readonly Guid _memberId = Guid.NewGuid();
@@ -67,6 +68,28 @@ public class RealtimeAssessmentServiceTests
                 Message = "A steady hour, nothing unusual.",
                 Severity = "low",
             });
+
+        // The alert path rewrites the clinical read before a caregiver sees it. Echoing the read
+        // back keeps every assertion about what reaches the card reading as it did, while the
+        // tests that care about the boundary stub it deliberately.
+        _rewriteAi.GenerateStructuredAsync<RealtimeAssessmentService.AlertRewriteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => new RealtimeAssessmentService.AlertRewriteAiResponse
+            {
+                Message = ReadFromRewritePrompt((string)call[0]!),
+            });
+    }
+
+    /// <summary>
+    /// The rewrite fake echoes the clinical read it was handed, which is what keeps the alert-copy
+    /// assertions unchanged across the split — and, because it reads the prompt rather than a
+    /// captured variable, it also proves the read actually crossed the boundary.
+    /// </summary>
+    private static string ReadFromRewritePrompt(string prompt)
+    {
+        const string marker = "finding: ";
+        var at = prompt.LastIndexOf(marker, StringComparison.Ordinal);
+        return at < 0 ? string.Empty : prompt[(at + marker.Length)..].Trim();
     }
 
     private CardiMember Member() => new()
@@ -115,7 +138,8 @@ public class RealtimeAssessmentServiceTests
     }
 
     private RealtimeAssessmentService CreateSut() =>
-        new(_unitOfWork, new SsaDecomposition(), _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+        new(_unitOfWork, new SsaDecomposition(), _medicalAi, _rewriteAi,
+            PromptContextFactory.Composer(_unitOfWork),
             InertStatusLineGenerator.Create(), NullLogger<RealtimeAssessmentService>.Instance,
             new PassThroughWriteGuard(), _enqueue);
 
@@ -150,12 +174,20 @@ public class RealtimeAssessmentServiceTests
 
         await CreateSut().AssessDueMembersAsync(UtcNow);
 
+        // The stored read keeps the mechanism. That is the point of the split: four other prompts
+        // read this text, and blanking it — as this path did until 2026-09-22 — threw away the
+        // most informative thing the clinical model had said, to protect a caregiver who does not
+        // read it. The rewrite is what protects the caregiver.
         await _assessments.Received(1).UpsertAsync(
             Arg.Is<RealtimeAssessment>(a =>
-                a.ModelOutput == RealtimeAssessmentService.NonClinicalObservation
+                a.ModelOutput.Contains("tachycardia")
                 && a.Severity == AlertSeverity.Orange
                 && a.RawSeverity == "high"),
             Arg.Any<CancellationToken>());
+
+        // The alert a family reads does not. Here the rewrite echoed the read back, the register
+        // guard caught the condition, and the severity still routes on the constant — fail safe,
+        // because silence about an orange heart rate is the worse failure.
         await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
             a.Message == RealtimeAssessmentService.NonClinicalObservation
             && a.Severity == AlertSeverity.Orange));
@@ -562,7 +594,10 @@ public class RealtimeAssessmentServiceTests
         Assert.NotNull(prompt);
         Assert.Contains("exactly one of critical, high, medium, or low", prompt);
         Assert.Contains("scores under 3 are ordinary", prompt);
-        Assert.Contains("Write as a caregiver would", prompt);
+        // The caregiver register moved to the rewrite half: this prompt writes for another
+        // model now, and asking it to "write as a caregiver would" is the throttle itself.
+        Assert.DoesNotContain("Write as a caregiver would", prompt);
+        Assert.Contains("internal clinical read", prompt);
         Assert.DoesNotContain("heart patient", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("elevated heart rate during steps", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("\"deviation_score\"", prompt);

@@ -33,6 +33,7 @@ public class MedicalPromptToneTests
         typeof(DigestGenerationService),
         typeof(HealthInsightService),
         typeof(RealtimeAssessmentService),
+        typeof(StatisticalAlertService),
         typeof(StatusLineGenerationService),
         typeof(DaybookPrompt),
         typeof(WeekbookPrompt),
@@ -308,6 +309,8 @@ public class MedicalPromptToneTests
     [
         "AdviseGenerationService.RewriteInstructions",
         "DigestGenerationService.FamilyDigestRewriteInstructions",
+        "RealtimeAssessmentService.RewriteInstructions",
+        "StatisticalAlertService.RewriteInstructions",
         "StatusLineGenerationService.RewriteInstructions",
     ];
 
@@ -324,6 +327,8 @@ public class MedicalPromptToneTests
         "AdviseGenerationService.RewriteInstructions",
         "DigestGenerationService.FamilyDigestRewriteInstructions",
         "MemberChatService.RewriteInstructions",
+        "RealtimeAssessmentService.RewriteInstructions",
+        "StatisticalAlertService.RewriteInstructions",
         "StatusLineGenerationService.RewriteInstructions",
     ];
 
@@ -854,8 +859,14 @@ public class MedicalPromptToneTests
     public void The_assessment_prompt_uses_caregiver_language_and_names_no_sample_causes()
     {
         var assessment = AllPrompts().Single(p => p.Field == "AssessmentInstructions").Prompt;
+        var rewrite = AllPrompts()
+            .Single(p => p.Field == "RewriteInstructions" && p.Service == nameof(RealtimeAssessmentService))
+            .Prompt;
 
-        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), assessment, StringComparison.Ordinal);
+        // The register moved to the rewrite half on 2026-09-22: the assessment's own output is
+        // read by four other prompts and, on the one path a family sees it, rewritten first.
+        Assert.DoesNotContain(MedicalPromptBlocks.CaregiverRegister.Trim(), assessment, StringComparison.Ordinal);
+        Assert.Contains(MedicalPromptBlocks.CaregiverRegister.Trim(), rewrite, StringComparison.Ordinal);
         Assert.Contains("scores under 3 are ordinary", assessment);
         Assert.Contains("exactly one of critical, high, medium, or low", assessment);
         Assert.DoesNotContain("heart patient", assessment, StringComparison.OrdinalIgnoreCase);
