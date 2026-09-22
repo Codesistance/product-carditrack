@@ -124,7 +124,22 @@ public partial class AccordionSection : ContentView
     public AccordionSection()
     {
         InitializeComponent();
+        ApplyHeaderChrome();
     }
+
+    /// <summary>
+    /// The closed header's tint, and its absence once the body is open.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="VisualElement.BackgroundColor"/> moves. The <c>Border</c> around the
+    /// header keeps its padding and its cancelling margin in both states, so nothing reflows when
+    /// the fill appears or goes — which is what makes this a style the closed state can have
+    /// without the open one paying for it.
+    /// </remarks>
+    private void ApplyHeaderChrome() =>
+        HeaderChrome.BackgroundColor = IsExpanded
+            ? Colors.Transparent
+            : NamedColor("InputBackground") ?? Colors.Transparent;
 
     /// <summary>
     /// Re-fits an open body to content that arrived after it was opened. The clip is held at a
@@ -160,6 +175,7 @@ public partial class AccordionSection : ContentView
         _isAnimating = true;
         IsExpanded = true;
         SemanticProperties.SetDescription(ChevronIcon, "Collapse");
+        ApplyHeaderChrome();
 
         var width = RootLayout.Width > 0 ? RootLayout.Width : Width;
         var targetHeight = BodyHost.Measure(width, double.PositiveInfinity).Height;
@@ -176,6 +192,7 @@ public partial class AccordionSection : ContentView
         _isAnimating = true;
         IsExpanded = false;
         SemanticProperties.SetDescription(ChevronIcon, "Expand");
+        ApplyHeaderChrome();
 
         this.AbortAnimation("accordion");
         new Animation(v => BodyClip.HeightRequest = v, BodyClip.Height, 0)

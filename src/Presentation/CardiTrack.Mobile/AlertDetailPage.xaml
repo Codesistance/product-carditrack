@@ -362,7 +362,7 @@
                              Call/Message buttons, worded differently and with their own
                              availability rules. -->
                         <!-- 2 points of separation, less the control's own shadow gutter. -->
-                        <controls:QuickActionRow x:Name="QuickActions" Margin="0,-8,0,-13"/>
+                        <controls:QuickActionRow x:Name="QuickActions" Margin="-10,-8,-10,-13"/>
 
                         <Label Text="More Options"
                                Style="{StaticResource DashboardSectionTitle}"
@@ -405,6 +405,23 @@
                             </VerticalStackLayout>
                         </Border>
 
+                        <!-- What the family did (D-20), newest first. The list is the
+                             coordination answer this product gives instead of a notes feature:
+                             every response is kept, attributed and timestamped, and the whole
+                             family reads it on the alert itself. Absent until somebody has
+                             answered, because an empty "What the family did" reads as nobody
+                             having done anything rather than as nothing having been said. -->
+                        <VerticalStackLayout x:Name="ResponsesSection"
+                                             Spacing="10"
+                                             IsVisible="False">
+                            <Label Text="What the family did"
+                                   Style="{StaticResource DashboardSectionTitle}"
+                                   Margin="0,6,0,0"/>
+                            <Border Style="{StaticResource ElevatedCard}" Padding="4,2">
+                                <VerticalStackLayout x:Name="ResponsesHost"/>
+                            </Border>
+                        </VerticalStackLayout>
+
                         <Label x:Name="AcknowledgedLabel"
                                Style="{StaticResource Body2}"
                                HorizontalTextAlignment="Center"
@@ -414,6 +431,15 @@
                         <Button x:Name="AcknowledgeButton"
                                 Style="{StaticResource PrimaryGradientButton}"
                                 Clicked="OnAcknowledgeClicked"/>
+
+                        <!-- Close is caregiver-owned resolution: the family has dealt with it,
+                             and the rule re-arms so a condition that persists fires again rather
+                             than staying silent behind a note (D-20). Offered beside acknowledge
+                             rather than instead of it — they are different claims. -->
+                        <Button x:Name="CloseButton"
+                                Text="Close this alert"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                Clicked="OnCloseClicked"/>
 
                         <!-- Acknowledging is a claim a caregiver makes about themselves, and they
                              can make it by accident. Undo stays on the screen rather than living

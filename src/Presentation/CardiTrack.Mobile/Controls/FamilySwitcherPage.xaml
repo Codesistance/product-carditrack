@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="CardiTrack.Mobile.Controls.FamilySwitcherPage"
+             BackgroundColor="Transparent">
+
+    <!-- The family switcher (D-19). The app's popups are centred cards (AppPopupPage,
+         AppChooserPage, ChoiceSheetPage); this is the one that comes up from the bottom, because
+         it is opened from the bar and from the header above it and a thumb has to reach every row.
+
+         It borrows the rest of their shell — scrim, a card that swallows its own taps, a Result
+         a caller awaits — so it counts as a popup for IPopupService.IsShowing and the page
+         underneath knows it never left. Radius is on the card's top corners only: the sheet runs
+         to the bottom edge of the screen, and a full-bleed page may not carry radius on its shell. -->
+    <Grid x:Name="Scrim" BackgroundColor="{StaticResource ScrimOverlay}" Opacity="0">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Tapped="OnScrimTapped"/>
+        </Grid.GestureRecognizers>
+
+        <Border x:Name="Card"
+                BackgroundColor="{StaticResource White}"
+                StrokeThickness="0"
+                Padding="20,20,20,10"
+                VerticalOptions="End"
+                TranslationY="40"
+                SafeAreaEdges="None, None, None, Container">
+            <Border.StrokeShape>
+                <RoundRectangle CornerRadius="24,24,0,0"/>
+            </Border.StrokeShape>
+            <Border.GestureRecognizers>
+                <!-- Swallows taps so they don't fall through to the scrim. -->
+                <TapGestureRecognizer/>
+            </Border.GestureRecognizers>
+
+            <VerticalStackLayout Spacing="4">
+
+                <!-- The handle says which way this came from and which way it goes. -->
+                <BoxView HeightRequest="4"
+                         WidthRequest="40"
+                         CornerRadius="2"
+                         Color="{StaticResource Gray300}"
+                         HorizontalOptions="Center"
+                         Margin="0,0,0,12"/>
+
+                <Label Text="Your families"
+                       Style="{StaticResource Heading3}"/>
+                <Label Text="Where the open alerts are, and which one this tab is showing"
+                       Style="{StaticResource Body2}"
+                       Margin="0,0,0,8"/>
+
+                <ScrollView x:Name="RowsScroll" HorizontalScrollBarVisibility="Never">
+                    <VerticalStackLayout x:Name="RowsHost" Spacing="8"/>
+                </ScrollView>
+
+                <BoxView HeightRequest="1"
+                         Color="{StaticResource Divider}"
+                         Margin="0,10,0,6"/>
+
+                <!-- Both ways to another family, always here — even for a caregiver in exactly
+                     one with nothing pending, because the way to a second one has to stay where
+                     it was. -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,2,0,4">
+                    <Button Text="Start a family"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            Clicked="OnStartFamilyClicked"/>
+                    <Button Grid.Column="1"
+                            Text="Join with an ID"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            Clicked="OnJoinFamilyClicked"/>
+                </Grid>
+
+                <Button Text="Close"
+                        BackgroundColor="Transparent"
+                        TextColor="{StaticResource MutedText}"
+                        FontFamily="QuicksandSemiBold"
+                        FontSize="16"
+                        HeightRequest="44"
+                        Clicked="OnCloseClicked"/>
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentPage>

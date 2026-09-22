@@ -20,6 +20,8 @@ public partial class AppShell : Shell
 
     public const string AlertsRoute = "//alerts";
 
+    public const string FamilyRoute = "//family";
+
     public const string JournalRoute = "//journal";
 
     public const string SettingsRoute = "//settings";
@@ -64,6 +66,13 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(MetricAlarmEditPage.Route, typeof(MetricAlarmEditPage));
         Routing.RegisterRoute(NotificationPreferencesPage.Route, typeof(NotificationPreferencesPage));
         Routing.RegisterRoute(ExportConsentsPage.Route, typeof(ExportConsentsPage));
+        Routing.RegisterRoute(StartFamilyPage.Route, typeof(StartFamilyPage));
+        Routing.RegisterRoute(JoinFamilyPage.Route, typeof(JoinFamilyPage));
+        Routing.RegisterRoute(AcceptInvitePage.Route, typeof(AcceptInvitePage));
+        Routing.RegisterRoute(ApproveJoinRequestPage.Route, typeof(ApproveJoinRequestPage));
+        Routing.RegisterRoute(TransferFamilyAdminPage.Route, typeof(TransferFamilyAdminPage));
+        Routing.RegisterRoute(CaregiverInvitesPage.Route, typeof(CaregiverInvitesPage));
+        Routing.RegisterRoute(AlertRespondPage.Route, typeof(AlertRespondPage));
         _routesRegistered = true;
     }
 

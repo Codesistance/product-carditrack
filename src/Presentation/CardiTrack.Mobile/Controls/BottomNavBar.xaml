@@ -29,7 +29,10 @@
             <Shadow Brush="#014297" Opacity="0.11" Radius="14" Offset="0,-5"/>
         </Border.Shadow>
 
-        <Grid ColumnDefinitions="*,*,*,*" Padding="0,14,0,0" VerticalOptions="Start">
+        <!-- Five columns since D-18 put Family in the third slot, which is where the original
+             Family stub sat before the Journal took it. Five is the platform ceiling and this is
+             the last tab the bar can take. -->
+        <Grid ColumnDefinitions="*,*,*,*,*" Padding="0,14,0,0" VerticalOptions="Start">
 
             <VerticalStackLayout x:Name="DashboardTab" Grid.Column="0" Spacing="4">
                 <VerticalStackLayout.GestureRecognizers>
@@ -57,9 +60,24 @@
                        Style="{StaticResource TabBarLabel}"/>
             </VerticalStackLayout>
 
-            <!-- Summaries and Settings render at 24: their glyphs fill their own 24-unit box,
-                 where the Figma pair sits inset in a 28 one. Same optical size either way. -->
-            <VerticalStackLayout x:Name="JournalTab" Grid.Column="2" Spacing="4">
+            <!-- Family, Summaries and Settings render at 24: their glyphs fill their own
+                 24-unit box, where the Figma pair sits inset in a 28 one. Same optical size
+                 either way. -->
+            <VerticalStackLayout x:Name="FamilyTab" Grid.Column="2" Spacing="4">
+                <VerticalStackLayout.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnFamilyTapped"/>
+                </VerticalStackLayout.GestureRecognizers>
+                <Image x:Name="FamilyIcon"
+                       Source="icon_tab_family.svg"
+                       WidthRequest="24" HeightRequest="24"
+                       Margin="0,2"
+                       HorizontalOptions="Center"/>
+                <Label x:Name="FamilyLabel"
+                       Text="Family"
+                       Style="{StaticResource TabBarLabel}"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout x:Name="JournalTab" Grid.Column="3" Spacing="4">
                 <VerticalStackLayout.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnSummariesTapped"/>
                 </VerticalStackLayout.GestureRecognizers>
@@ -73,7 +91,7 @@
                        Style="{StaticResource TabBarLabel}"/>
             </VerticalStackLayout>
 
-            <VerticalStackLayout x:Name="SettingsTab" Grid.Column="3" Spacing="4">
+            <VerticalStackLayout x:Name="SettingsTab" Grid.Column="4" Spacing="4">
                 <VerticalStackLayout.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnSettingsTapped"/>
                 </VerticalStackLayout.GestureRecognizers>

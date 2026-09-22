@@ -36,7 +36,7 @@ const exportName = (name) => name.split('-').map((s) => s[0].toUpperCase() + s.s
 // 48-unit viewBox, so two of them compose by transform alone.
 const innerMarkup = (svg) => svg.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
 
-function drawIconPark(name, entry, group, size) {
+function drawIconPark(name, entry, group, size, strokeWidthOverride) {
   const draw = iconPark[exportName(name)];
   if (!draw) throw new Error(`${entry.file}: no IconPark icon named ${name}`);
   const multi = group.style === 'Multicolor';
@@ -45,16 +45,31 @@ function drawIconPark(name, entry, group, size) {
     theme: multi ? 'multi-color' : 'outline',
     fill: multi ? group.slots : group.slots[0],
     size,
-    strokeWidth,
+    strokeWidth: strokeWidthOverride ?? strokeWidth,
     strokeLinecap,
     strokeLinejoin,
   });
 }
 
+// Fills the shapes IconPark left hollow, so a glyph with no internal fill of its own still
+// reads as a solid mark rather than as a wire outline. Only paths and rects that carry no fill
+// are touched: the ones the template did fill are already saying something with that colour.
+// The fill is the group's external-fill slot — the same colour these glyphs fill with where the
+// template does it for them — so a solid icon stays in the palette it belongs to.
+const fillHollow = (svg, colour) =>
+  svg
+    // A shape with no fill at all inherits the root's fill="none" ...
+    .replace(/<(path|rect|circle|ellipse|polygon)(?![^>]*fill=)/g, `<$1 fill="${colour}"`)
+    // ... and one that says fill="none" is hollow just as deliberately. Both are the
+    // template declining to fill a shape, which is exactly what a solid glyph overrides.
+    // The root <svg>'s own fill="none" survives, because only these five elements match.
+    .replace(/(<(?:path|rect|circle|ellipse|polygon)[^>]*?)fill="none"/g, `$1fill="${colour}"`);
+
 function fromIconPark(entry) {
   const group = config.groups[entry.group];
   if (!group) throw new Error(`${entry.file}: unknown group ${entry.group}`);
-  const base = drawIconPark(entry.name, entry, group, entry.size);
+  let base = drawIconPark(entry.name, entry, group, entry.size);
+  if (entry.solid) base = fillHollow(base, group.slots[group.slots.length > 1 ? 1 : 0]);
   if (!entry.badge) return base;
 
   // A badged glyph: one icon, two objects. The subject is drawn smaller and anchored to the
@@ -62,20 +77,24 @@ function fromIconPark(entry) {
   // a little over half size in the top-right, where it modifies the subject the way a
   // superscript modifies a number.
   //
-  // The badge rides a disc of the card colour so it stays readable where it crosses the
-  // subject's outline. That is the one thing here tied to context: these three rows are
-  // white cards, and a knockout is only invisible on the ground it is painted for. A badged
-  // icon moved onto a tint has to take its disc colour with it.
+  // The badge is drawn first and the subject over it, so where the two cross the subject wins
+  // and the badge reads as something behind the mark rather than stuck on top of it. That is
+  // also what lets the disc go: a knockout only ever existed to stop the badge colliding with
+  // the outline it sat on, and behind the subject there is nothing to knock out. It carries its
+  // own blue and a thinner stroke instead, which is the whole of what makes it a superscript —
+  // same weight as the subject and it competes, lighter and it recedes.
   const b = config.iconpark.badge;
-  const badge = drawIconPark(entry.badge, entry, group, entry.size);
-  const cx = b.x + 24 * b.scale;
-  const cy = b.y + 24 * b.scale;
+  const badgeGroup = { style: group.style, slots: group.slots.map(() => b.ink) };
+  let badge = drawIconPark(entry.badge, entry, badgeGroup, entry.size, b.strokeWidth);
+  // Solid, like the subject: at badge size an outline is a handful of hairlines that read as
+  // noise beside a mark drawn at full weight, and filling it is what makes the small glyph
+  // legible rather than merely present.
+  if (b.solid) badge = fillHollow(badge, b.ink);
   return [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg width="${entry.size}" height="${entry.size}" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">`,
-    `<g transform="translate(0 ${b.baseY}) scale(${b.baseScale})">${innerMarkup(base)}</g>`,
-    `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${b.knockoutRadius}" fill="${b.knockout}"/>`,
     `<g transform="translate(${b.x} ${b.y}) scale(${b.scale})">${innerMarkup(badge)}</g>`,
+    `<g transform="translate(0 ${b.baseY}) scale(${b.baseScale})">${innerMarkup(base)}</g>`,
     `</svg>`,
   ].join('');
 }

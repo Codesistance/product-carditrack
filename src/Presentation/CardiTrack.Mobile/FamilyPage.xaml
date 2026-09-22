@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.FamilyPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- The Family tab (D-18), in the third slot the original Family stub held before the
+         Journal took it. Three states, all drawn from the same content stack rather than from
+         three pages: no family, in one, or running one — see FamilyTabState.
+
+         No Figma frame; the design-sync backlog carries it. Full-bleed, as every page is:
+         radius sits on the cards, never on the shell. -->
+
+    <!-- Safe area per edge, and on the layout rather than the ContentPage (no effect there on
+         Android). Top keeps the status-bar inset the header band is drawn against; bottom
+         releases it so BottomNavBar can claim it and run white to the screen edge. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <!-- The family's name is the switcher (D-19): tapping it opens the drawer, and so does
+             re-tapping the tab. The chevron says the name is a control rather than a title. -->
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+
+                <controls:SquareBorder x:Name="HeaderIcon"
+                        Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Back"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="6" HorizontalOptions="Start">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSwitchFamilyTapped"/>
+                        </Grid.GestureRecognizers>
+                        <Label x:Name="FamilyNameLabel"
+                               Text="Family"
+                               Style="{StaticResource Heading3}"
+                               TextColor="{StaticResource White}"
+                               LineBreakMode="TailTruncation"/>
+                        <Image Grid.Column="1"
+                               Source="icon_caret_down_white.svg"
+                               WidthRequest="14" HeightRequest="7"
+                               VerticalOptions="Center"
+                               SemanticProperties.Description="Switch family"/>
+                    </Grid>
+                    <Label x:Name="HeaderSubtitle"
+                           Text="Who else is watching with you"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,16,20,28">
+
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="96"/>
+                        <controls:SkeletonView HeightRequest="140"/>
+                        <controls:SkeletonView HeightRequest="80"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ErrorPanel"
+                                         Spacing="10"
+                                         IsVisible="False"
+                                         Padding="0,60,0,0">
+                        <Label Text="We couldn't load your family"
+                               Style="{StaticResource Heading3}"
+                               HorizontalTextAlignment="Center"/>
+                        <Label x:Name="ErrorDetailLabel"
+                               Style="{StaticResource Body2}"
+                               HorizontalTextAlignment="Center"/>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                HorizontalOptions="Center"
+                                Clicked="OnRetryClicked"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                        <controls:SavedDataBanner x:Name="SavedBanner"/>
+
+                        <!-- ── No family ────────────────────────────────────────────────────
+                             A guest: an ask they are waiting on, or nothing at all. Both ways
+                             forward sit here, and the trial sentence (D-12) is said outright
+                             rather than discovered on the next screen. -->
+                        <VerticalStackLayout x:Name="NoFamilyPanel" Spacing="14" IsVisible="False">
+
+                            <VerticalStackLayout x:Name="PendingAskHost" Spacing="14"/>
+
+                            <Border Style="{StaticResource ElevatedCard}">
+                                <VerticalStackLayout Spacing="10">
+                                    <Label Text="Start your own family"
+                                           Style="{StaticResource DashboardSectionTitle}"/>
+                                    <Label x:Name="StartFamilyDetailLabel"
+                                           Style="{StaticResource Body2}"
+                                           LineBreakMode="WordWrap"/>
+                                    <Button Text="Start a family"
+                                            Style="{StaticResource PrimaryGradientButton}"
+                                            Clicked="OnStartFamilyClicked"/>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <Border Style="{StaticResource ElevatedCard}">
+                                <VerticalStackLayout Spacing="10">
+                                    <Label Text="Join a family"
+                                           Style="{StaticResource DashboardSectionTitle}"/>
+                                    <Label Text="Ask whoever set up CardiTrack for their Family ID, or paste the link they sent you. Their admin decides what you can see."
+                                           Style="{StaticResource Body2}"
+                                           LineBreakMode="WordWrap"/>
+                                    <Border Style="{StaticResource AuthEntryBorder}">
+                                        <Entry x:Name="JoinEntry"
+                                               Style="{StaticResource AuthEntry}"
+                                               Placeholder="Family ID, or a link"
+                                               ReturnType="Go"
+                                               Completed="OnJoinCompleted"
+                                               SemanticProperties.Description="Family ID or invitation link"/>
+                                    </Border>
+                                    <Button x:Name="JoinButton"
+                                            Text="Ask to join"
+                                            Style="{StaticResource SecondaryOutlineButton}"
+                                            Clicked="OnJoinClicked"/>
+                                </VerticalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <!-- ── In a family ──────────────────────────────────────────────────
+                             Admin and member share this stack; the cards that only an admin
+                             may act on hide themselves. -->
+                        <VerticalStackLayout x:Name="FamilyPanel" Spacing="14" IsVisible="False">
+
+                            <!-- Who runs it and what the caller can see. For an admin this is
+                                 also where the Family ID lives, because it is the thing they
+                                 hand to somebody on the phone. -->
+                            <!-- Padding off the card and onto its two halves, so the night-cover
+                                 row can be a band across the foot rather than another paragraph
+                                 inside it — the same shape the alert comparison card uses, and
+                                 for the same reason: the lines above are facts about the family,
+                                 and this one is a setting the caregiver can act on. -->
+                            <Border Style="{StaticResource ElevatedCard}" Padding="0">
+                                <VerticalStackLayout Spacing="0">
+                                    <VerticalStackLayout Padding="14,14,14,12" Spacing="8">
+                                        <Label x:Name="RoleLabel" Style="{StaticResource DashboardSectionTitle}"/>
+                                        <Label x:Name="RoleDetailLabel"
+                                               Style="{StaticResource Body2}"
+                                               LineBreakMode="WordWrap"/>
+                                        <Label x:Name="WatchedLabel"
+                                               Style="{StaticResource Body2}"
+                                               LineBreakMode="WordWrap"/>
+                                    </VerticalStackLayout>
+
+                                    <!-- What the accept flow wrote (D-8), where a caregiver can
+                                         see it without going to Settings — and change it, since
+                                         the whole row is the tap target rather than two words at
+                                         the end of a sentence. -->
+                                    <Border x:Name="NightCoverageRow"
+                                            StrokeThickness="0"
+                                            BackgroundColor="{StaticResource InputBackground}"
+                                            Padding="14,12"
+                                            IsVisible="False">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="0,0,20,20"/>
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnNightCoverageTapped"/>
+                                        </Border.GestureRecognizers>
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                            <Image Grid.Column="0"
+                                                   Source="icon_bell.svg"
+                                                   WidthRequest="20" HeightRequest="20"
+                                                   VerticalOptions="Center"
+                                                   AutomationProperties.IsInAccessibleTree="False"/>
+                                            <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                                <Label Text="At night"
+                                                       Style="{StaticResource Caption}"/>
+                                                <Label x:Name="NightCoverageLabel"
+                                                       Style="{StaticResource Body2Dark}"
+                                                       LineBreakMode="WordWrap"/>
+                                            </VerticalStackLayout>
+                                            <Label Grid.Column="2"
+                                                   Text="Change"
+                                                   Style="{StaticResource Link}"
+                                                   VerticalTextAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <Border x:Name="FamilyIdCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                                <VerticalStackLayout Spacing="10">
+                                    <Label Text="Your Family ID"
+                                           Style="{StaticResource DashboardSectionTitle}"/>
+                                    <Label Text="Anybody with this can ask to join. Knowing it is not access — you still decide."
+                                           Style="{StaticResource Body2}"
+                                           LineBreakMode="WordWrap"/>
+                                    <Label x:Name="FamilyIdLabel"
+                                           Style="{StaticResource Heading2}"
+                                           CharacterSpacing="2"
+                                           SemanticProperties.Description="Your Family ID"/>
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                        <Button x:Name="CopyFamilyIdButton"
+                                                Text="Copy"
+                                                Style="{StaticResource SecondaryOutlineButton}"
+                                                Clicked="OnCopyFamilyIdClicked"/>
+                                        <Button Grid.Column="1"
+                                                Text="Share"
+                                                Style="{StaticResource PrimaryGradientButton}"
+                                                Clicked="OnShareFamilyIdClicked"/>
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <!-- Admin only: who is waiting. Above the roster, because it is the
+                                 thing on this screen that is waiting on them. -->
+                            <VerticalStackLayout x:Name="QueueSection" Spacing="10" IsVisible="False">
+                                <Label x:Name="QueueTitleLabel"
+                                       Style="{StaticResource DashboardSectionTitle}"
+                                       Margin="4,4,4,0"/>
+                                <VerticalStackLayout x:Name="QueueHost" Spacing="10"/>
+                            </VerticalStackLayout>
+
+                            <Label Text="Everyone in this family"
+                                   Style="{StaticResource DashboardSectionTitle}"
+                                   Margin="4,4,4,0"/>
+                            <VerticalStackLayout x:Name="RosterHost" Spacing="10"/>
+
+                            <!-- The people this family watches, each with how many caregivers
+                                 it has and whether one of its alerts is open. -->
+                            <VerticalStackLayout x:Name="WatchedSection" Spacing="10" IsVisible="False">
+                                <Label Text="Who we watch"
+                                       Style="{StaticResource DashboardSectionTitle}"
+                                       Margin="4,4,4,0"/>
+                                <VerticalStackLayout x:Name="WatchedHost" Spacing="10"/>
+                            </VerticalStackLayout>
+
+                            <Button x:Name="LeaveButton"
+                                    Text="Leave this family"
+                                    Style="{StaticResource DangerOutlineButton}"
+                                    Margin="0,6,0,0"
+                                    Clicked="OnLeaveClicked"/>
+                        </VerticalStackLayout>
+
+                    </VerticalStackLayout>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+
+        <controls:BottomNavBar Grid.Row="2" Tab="Family"/>
+
+        <controls:UpdatingOverlay x:Name="Updating" Grid.RowSpan="3"/>
+    </Grid>
+</ContentPage>

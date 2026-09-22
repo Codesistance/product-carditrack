@@ -244,7 +244,7 @@
                                      control's shadow gutter, so the tiles keep the card's 16-point
                                      rhythm while their shadows stay whole. -->
                                 <controls:QuickActionRow x:Name="QuickActions"
-                                                         Margin="0,-10,0,-13"/>
+                                                         Margin="-10,-10,-10,-13"/>
 
                                 <!-- Poor-sleep nudge (issue #188): points at the real Sleep alert
                                      StatisticalAlertWorker already raises (AlertType.Sleep) rather

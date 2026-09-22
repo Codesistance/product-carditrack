@@ -21,6 +21,10 @@
             ContentTemplate="{DataTemplate local:AlertsPage}"
             Route="alerts" />
         <ShellContent
+            Title="Family"
+            ContentTemplate="{DataTemplate local:FamilyPage}"
+            Route="family" />
+        <ShellContent
             Title="Journal"
             ContentTemplate="{DataTemplate local:JournalPage}"
             Route="journal" />

@@ -21,6 +21,20 @@
                  the same offset the card headers above this one use. At 22 and 12 it started at
                  34, and an accordion sitting inside a card next to a card header stepped its
                  title 6px further in than the heading directly above it. -->
+            <!-- Closed, the header wears a tint so it reads as a control with something behind
+                 it; open, the tint goes and the header becomes the title of what is now on
+                 screen. The chrome is present in both states with the same padding and the same
+                 negative margin cancelling it, so switching it on and off moves nothing — only
+                 the fill changes. That is the whole of the ask: a closed style that costs the
+                 open state nothing. -->
+            <Border x:Name="HeaderChrome"
+                    StrokeThickness="0"
+                    BackgroundColor="Transparent"
+                    Padding="10,4"
+                    Margin="-10,0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="12"/>
+                </Border.StrokeShape>
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" HeightRequest="44">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnHeaderTapped"/>
@@ -78,6 +92,7 @@
                 <!-- Description is kept in step with the state in code-behind: the same
                      control collapses once open, and announcing "Expand" then is wrong. -->
             </Grid>
+            </Border>
 
             <Border x:Name="BodyClip"
                     StrokeThickness="0"

@@ -1633,6 +1633,20 @@ public partial class CardiMemberDetailPage : ContentPage
     }
 
     /// <summary>M1-17 Health Data Export, scoped to the member whose page this is.</summary>
+    /// <summary>
+    /// "Who can see &lt;name&gt;" — the caregivers watching this member and the invitations out
+    /// for them. The member's name rides along so the page can title itself without a second
+    /// fetch of a profile this page already holds.
+    /// </summary>
+    private async void OnWhoCanSeeTapped(object? sender, TappedEventArgs e)
+    {
+        if (_member is not { } member)
+            return;
+
+        await Shell.Current.GoToAsync(
+            $"{CaregiverInvitesPage.Route}?memberId={member.Id}&name={Uri.EscapeDataString(member.Name)}");
+    }
+
     private async void OnExportDataTapped(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync($"{ExportHealthDataPage.Route}?memberId={_route.Id}");
 

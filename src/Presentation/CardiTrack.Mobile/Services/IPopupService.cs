@@ -106,6 +106,13 @@ public interface IPopupService
     Task<int?> ChooseIndexAsync(string title, IReadOnlyList<string> options, int selectedIndex);
 
     /// <summary>
+    /// The Family tab's switcher drawer: the families the caregiver is in, the asks they are
+    /// waiting on, and the two ways to another family. Null when they closed it without choosing.
+    /// </summary>
+    Task<FamilySwitcherChoice?> ChooseFamilyAsync(
+        IReadOnlyList<FamilySwitcherRow> families, IReadOnlyList<string> waitingOn);
+
+    /// <summary>
     /// Opens the M1-13 contact carousel's own edit form on one record: the emergency contact, or
     /// the CardiMember's own number. Returns what was entered, or null when cancelled — an
     /// unchanged return is still a return, so the caller compares before it saves.

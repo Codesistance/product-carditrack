@@ -173,6 +173,14 @@ public static class MauiProgram
         builder.Services.AddTransient<MetricTrendPage>();
         builder.Services.AddTransient<NotificationsPage>();
         builder.Services.AddTransient<AlertDetailPage>();
+        builder.Services.AddTransient<AlertRespondPage>();
+        builder.Services.AddTransient<FamilyPage>();
+        builder.Services.AddTransient<StartFamilyPage>();
+        builder.Services.AddTransient<JoinFamilyPage>();
+        builder.Services.AddTransient<AcceptInvitePage>();
+        builder.Services.AddTransient<ApproveJoinRequestPage>();
+        builder.Services.AddTransient<TransferFamilyAdminPage>();
+        builder.Services.AddTransient<CaregiverInvitesPage>();
 
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);

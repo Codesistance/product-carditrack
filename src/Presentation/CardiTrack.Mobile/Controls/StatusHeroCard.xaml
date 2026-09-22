@@ -261,15 +261,18 @@ The tier glyph is back in front of the headline, on its line. It could not
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
                 <Image x:Name="StatusIcon"
                        Grid.Column="0"
-                       WidthRequest="20" HeightRequest="20"
+                       WidthRequest="18" HeightRequest="18"
                        VerticalOptions="Start"
-                       Margin="0,3,0,0"
+                       Margin="0,1,0,0"
                        IsVisible="False"
                        AutomationProperties.IsInAccessibleTree="False"/>
+                <!-- Same size as the sentence under it, in the heaviest face the app ships:
+                     the headline is a summary of the detail, not a heading over it, and at 18
+                     it outweighed the member's own name above. -->
                 <Label x:Name="StatusHeadlineLabel"
                        Grid.Column="1"
                        FontFamily="QuicksandSemiBold"
-                       FontSize="18"
+                       FontSize="14"
                        LineBreakMode="TailTruncation"
                        MaxLines="2"/>
             </Grid>

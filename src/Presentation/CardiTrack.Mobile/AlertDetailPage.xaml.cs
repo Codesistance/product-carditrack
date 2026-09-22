@@ -1,6 +1,7 @@
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Services;
 using CardiTrack.Mobile.Controls;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Offline;
@@ -188,6 +189,7 @@ public partial class AlertDetailPage : ContentPage
         ApplyContext(alert, firstName);
         ApplyEvidence(alert);
         ApplyNarrative(alert);
+        ApplyResponses(alert);
         ApplyAcknowledgement(alert);
 
         QuickActions.Apply(
@@ -443,10 +445,12 @@ public partial class AlertDetailPage : ContentPage
     }
 
     /// <summary>
-    /// The handled state and its undo. Acknowledged offers Undo; resolved does not — resolution is
-    /// the system's own judgement that the condition has passed, and the endpoint refuses to
-    /// reopen it, so offering a button that would come back with an error would be a worse answer
-    /// than not offering one.
+    /// The handled state, its undo, and the close beside it. Acknowledged offers Undo; resolved
+    /// does not — resolution is a judgement that the condition has passed, and the endpoint
+    /// refuses to reopen it, so offering a button that would come back with an error would be a
+    /// worse answer than not offering one. Close has no undo either, and for the same reason it
+    /// is final for caregivers: it re-arms the rule, so taking it back would mean un-firing an
+    /// alert that may already have fired again.
     /// </summary>
     private void ApplyAcknowledgement(AlertDetailResponse alert)
     {
@@ -457,34 +461,71 @@ public partial class AlertDetailPage : ContentPage
         AcknowledgeButton.Text = alert.Severity == "red" ? "I'm on my way" : "Mark as acknowledged";
         UndoAcknowledgeButton.IsVisible = acknowledged;
 
+        // Closing stays available on an alert somebody has acknowledged — that is the ordinary
+        // sequence, one caregiver says they are on it and then says what happened — and goes when
+        // it is resolved, which is what closed means.
+        CloseButton.IsVisible = alert.Status != "resolved";
+
         if (!handled)
         {
             AcknowledgedLabel.IsVisible = false;
             return;
         }
 
-        AcknowledgedLabel.Text = HandledLabel(alert);
+        AcknowledgedLabel.Text = AlertAnswerCopy.HandledLine(alert) ?? AlertAnswerCopy.SettledOnItsOwn;
         AcknowledgedLabel.IsVisible = true;
     }
 
     /// <summary>
-    /// What closed this alert. The two states are not the same claim and must not share a
-    /// sentence: <c>AlertResolution.Resolve</c> sets <c>IsResolved</c> from the producer's own
-    /// "the condition has passed" test and never looks at who acknowledged, so a resolved alert
-    /// nobody touched has no acknowledger and no acknowledgement time. Keying the copy off the
-    /// handled state rather than off <see cref="AlertDetailResponse.AcknowledgedAt"/> told the
-    /// caregiver a bare "Acknowledged" about an episode that had simply settled by itself.
+    /// "What the family did": every response kept against this alert, newest first, each with
+    /// who, when, the code's label and the note.
     /// </summary>
-    private static string HandledLabel(AlertDetailResponse alert)
+    /// <remarks>
+    /// The whole of the coordination answer (D-20). There is no in-app feed — nothing reads one
+    /// back, and the PRD records that it was not built — so the alert itself is where a family
+    /// finds out what somebody else already did about it.
+    /// </remarks>
+    private void ApplyResponses(AlertDetailResponse alert)
     {
-        if (alert.AcknowledgedAt is not { } at)
-            return "This settled on its own — no action needed";
+        var responses = AlertAnswerCopy.NewestFirst(alert.Responses);
+        ResponsesSection.IsVisible = responses.Count > 0;
+        ResponsesHost.Clear();
+        if (responses.Count == 0)
+            return;
 
-        var who = string.IsNullOrWhiteSpace(alert.AcknowledgedByName)
-            ? "Acknowledged"
-            : $"Acknowledged by {NameFormatting.FirstName(alert.AcknowledgedByName)}";
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        for (var i = 0; i < responses.Count; i++)
+        {
+            if (i > 0)
+            {
+                ResponsesHost.Add(new BoxView
+                {
+                    HeightRequest = 1,
+                    Color = (Color)resources["Divider"],
+                    Margin = new Thickness(12, 0),
+                });
+            }
 
-        return $"{who}, {RelativeTime.Format(at)}";
+            var response = responses[i];
+            var block = new VerticalStackLayout
+            {
+                Spacing = 2,
+                Padding = new Thickness(12, 12),
+            };
+            block.Add(new Label
+            {
+                Text = $"{AlertAnswerCopy.RowTitle(response)} · {RelativeTime.Format(response.CreatedAt)}",
+                Style = (Style)resources["Body1SemiBoldDark"],
+                LineBreakMode = LineBreakMode.WordWrap,
+            });
+            block.Add(new Label
+            {
+                Text = AlertAnswerCopy.RowDetail(response),
+                Style = (Style)resources["Body2"],
+                LineBreakMode = LineBreakMode.WordWrap,
+            });
+            ResponsesHost.Add(block);
+        }
     }
 
     /// <summary>
@@ -508,8 +549,29 @@ public partial class AlertDetailPage : ContentPage
         ErrorPanel.IsVisible = error;
     }
 
-    private void OnAcknowledgeClicked(object? sender, EventArgs e) =>
-        _ = SetAcknowledgedAsync(handled: true);
+    /// <summary>
+    /// Acknowledging goes through the response page rather than straight to the endpoint: with a
+    /// second caregiver, "I am on it" is worth saying in words the rest of the family can read,
+    /// and the page's canned chips make that one tap rather than a sentence to compose. The
+    /// bodyless acknowledge is still what the endpoint receives when they pick nothing.
+    /// </summary>
+    private async void OnAcknowledgeClicked(object? sender, EventArgs e)
+    {
+        if (_alert is not { } alert)
+            return;
+
+        await Shell.Current.GoToAsync(
+            $"{AlertRespondPage.Route}?alertId={alert.AlertId}&kind={AlertAnswerKinds.Wire(AlertAnswerKind.Acknowledge)}");
+    }
+
+    private async void OnCloseClicked(object? sender, EventArgs e)
+    {
+        if (_alert is not { } alert)
+            return;
+
+        await Shell.Current.GoToAsync(
+            $"{AlertRespondPage.Route}?alertId={alert.AlertId}&kind={AlertAnswerKinds.Wire(AlertAnswerKind.Close)}");
+    }
 
     private void OnUndoAcknowledgeClicked(object? sender, EventArgs e) =>
         _ = SetAcknowledgedAsync(handled: false);

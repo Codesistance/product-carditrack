@@ -69,7 +69,8 @@ public class FamilyService : IFamilyService
                 ToWireRole(membership.Role),
                 IsHomeFamily: user?.OrganizationId == organization.Id,
                 people,
-                watched));
+                watched,
+                organization.FamilyId));
         }
 
         return summaries;

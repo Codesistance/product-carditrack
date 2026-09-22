@@ -22,8 +22,10 @@
          gave the row a horizontal gutter only, which left the same hard cut along the top and
          bottom of all four tiles. The gutter is now the shadow's own geometry (QuickActionTile:
          radius 10, offset 0,3) — 10 on three sides, 13 below to carry the offset — and the call
-         sites pull the extra height back out with a negative margin so the row sits where it
-         always did. -->
+         sites pull the whole gutter back out with a negative margin on all four sides, so the
+         tiles line up with the text above them and only the shadow lives in the inset. Cancelling
+         the vertical gutter alone left the row 10 narrower than everything around it on both
+         edges, which read as a row that had been centred rather than one that spanned. -->
 
     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="10" Margin="10,10,10,13">
         <Border x:Name="EmergencyCallAction"

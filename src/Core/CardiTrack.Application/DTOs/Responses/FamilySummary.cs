@@ -14,10 +14,17 @@ namespace CardiTrack.Application.DTOs.Responses;
 /// The CardiMembers in this family the caller can actually see, by name. Not every member of the
 /// family — only what this caller was granted, because the list is what they are able to open.
 /// </param>
+/// <param name="FamilyId">
+/// The eight characters somebody types to ask to join, as stored — unseparated, and formatted for
+/// reading by <c>FamilyIdentifier.ToDisplay</c>. Sent to every member of the family, not only its
+/// admin: it identifies the family rather than authorizing anything, and the client that shows it
+/// is the one place a caregiver can read it out from (D-11).
+/// </param>
 public record FamilySummary(
     Guid OrganizationId,
     string Name,
     string Role,
     bool IsHomeFamily,
     int MemberCount,
-    IReadOnlyList<string> WatchedMemberNames);
+    IReadOnlyList<string> WatchedMemberNames,
+    string FamilyId = "");

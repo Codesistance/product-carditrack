@@ -55,67 +55,127 @@
                                    HorizontalOptions="Center"
                                    Margin="0,24"/>
 
-                <VerticalStackLayout x:Name="Panel" IsVisible="False" Spacing="12">
+                <VerticalStackLayout x:Name="Panel" IsVisible="False" Spacing="14">
                     <controls:SavedDataBanner x:Name="SavedBanner"/>
 
-                    <Label Text="Quiet hours"
-                           Style="{StaticResource DashboardSectionTitle}"
-                           Margin="4,0,4,0"/>
+                    <!-- Alert Settings' shape, which is the app's shape for a page of settings:
+                         one elevated card per section, a title and a line of what the section is
+                         for, then an outlined card of rows with hairlines between them. The page
+                         used to alternate loose section labels with one card per row, so three
+                         switches read as three unrelated objects rather than as one page. -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="Quiet hours"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <!-- Fixed copy, in the contract's own words: a caregiver setting quiet
+                                 hours must know what will still wake them. -->
+                            <Label Text="Non-urgent notifications wait until they end. Safety notifications — a device gone quiet, nobody listening — always come through."
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
 
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60"
-                              SemanticProperties.Description="Quiet hours"
-                              SemanticProperties.Hint="Choose the hours when non-urgent notifications wait">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnQuietHoursTapped"/>
-                            </Grid.GestureRecognizers>
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Quiet hours" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label Text="Non-urgent notifications wait until they end"
-                                       Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Label x:Name="QuietHoursValue"
-                                   Grid.Column="1"
-                                   Style="{StaticResource Body1SemiBoldDark}"
-                                   TextColor="{StaticResource Primary}"
-                                   VerticalTextAlignment="Center"/>
-                        </Grid>
+                            <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                                <VerticalStackLayout Spacing="0">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12"
+                                          Padding="0,8" MinimumHeightRequest="48"
+                                          SemanticProperties.Description="Quiet hours"
+                                          SemanticProperties.Hint="Choose the hours when non-urgent notifications wait">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnQuietHoursTapped"/>
+                                        </Grid.GestureRecognizers>
+                                        <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                            <Label Text="When they run"
+                                                   Style="{StaticResource Body1SemiBoldDark}"
+                                                   FontSize="15"/>
+                                            <Label Text="The hours you would rather not hear from us"
+                                                   Style="{StaticResource Body2}"
+                                                   FontSize="13"
+                                                   LineBreakMode="WordWrap"/>
+                                        </VerticalStackLayout>
+                                        <Label x:Name="QuietHoursValue"
+                                               Grid.Column="1"
+                                               Style="{StaticResource Body1SemiBoldDark}"
+                                               FontSize="15"
+                                               TextColor="{StaticResource Primary}"
+                                               VerticalTextAlignment="Center"
+                                               VerticalOptions="Center"/>
+                                    </Grid>
+
+                                    <BoxView Style="{StaticResource DividerLine}"/>
+
+                                    <!-- D-8's answer, kept where it can be changed. The accept
+                                         flow asks this question once and writes it here; a
+                                         caregiver who chose in a hurry, or who backed out and
+                                         kept the default, needs somewhere to put it right. In
+                                         this section because it is the exception to it. -->
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12"
+                                          Padding="0,8" MinimumHeightRequest="48">
+                                        <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                            <Label Text="Wake me for an unanswered alert"
+                                                   Style="{StaticResource Body1SemiBoldDark}"
+                                                   FontSize="15"
+                                                   LineBreakMode="WordWrap"/>
+                                            <Label Text="A red alert nobody has answered after five minutes comes to everybody watching. This decides whether yours waits for your quiet hours to end."
+                                                   Style="{StaticResource Body2}"
+                                                   FontSize="13"
+                                                   LineBreakMode="WordWrap"/>
+                                        </VerticalStackLayout>
+                                        <Switch x:Name="EscalatedSwitch"
+                                                Grid.Column="1"
+                                                OnColor="{StaticResource Primary}"
+                                                VerticalOptions="Center"
+                                                Toggled="OnEscalatedToggled"
+                                                SemanticProperties.Description="Wake me for an alert nobody else answered"/>
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Border>
+                        </VerticalStackLayout>
                     </Border>
 
-                    <!-- Fixed copy, in the contract's own words: a caregiver setting quiet hours
-                         must know what will still wake them. -->
-                    <Label Text="Safety notifications — a device gone quiet, nobody listening — always come through, even in quiet hours."
-                           Style="{StaticResource Body2}"
-                           Margin="4,0,4,8"/>
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="On the lock screen"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label Text="What somebody glancing at your phone can read without unlocking it."
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
 
-                    <Label Text="On the lock screen"
-                           Style="{StaticResource DashboardSectionTitle}"
-                           Margin="4,0,4,0"/>
-
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" HeightRequest="60">
-                            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
-                                <Label Text="Show details" Style="{StaticResource Body1SemiBoldDark}"/>
-                                <Label Text="Off shows only that there is something to read"
-                                       Style="{StaticResource Body2}"/>
-                            </VerticalStackLayout>
-                            <Switch x:Name="LockScreenSwitch"
-                                    Grid.Column="1"
-                                    OnColor="{StaticResource Primary}"
-                                    VerticalOptions="Center"
-                                    Toggled="OnLockScreenToggled"
-                                    SemanticProperties.Description="Show details on the lock screen"/>
-                        </Grid>
+                            <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12"
+                                      Padding="0,8" MinimumHeightRequest="48">
+                                    <VerticalStackLayout Grid.Column="0" Spacing="2" VerticalOptions="Center">
+                                        <Label Text="Show details"
+                                               Style="{StaticResource Body1SemiBoldDark}"
+                                               FontSize="15"/>
+                                        <Label Text="Off shows only that there is something to read"
+                                               Style="{StaticResource Body2}"
+                                               FontSize="13"
+                                               LineBreakMode="WordWrap"/>
+                                    </VerticalStackLayout>
+                                    <Switch x:Name="LockScreenSwitch"
+                                            Grid.Column="1"
+                                            OnColor="{StaticResource Primary}"
+                                            VerticalOptions="Center"
+                                            Toggled="OnLockScreenToggled"
+                                            SemanticProperties.Description="Show details on the lock screen"/>
+                                </Grid>
+                            </Border>
+                        </VerticalStackLayout>
                     </Border>
 
-                    <Label Text="What to hear about"
-                           Style="{StaticResource DashboardSectionTitle}"
-                           Margin="4,8,4,0"/>
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="What to hear about"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label Text="Turn off the kinds you would rather not hear. Safety is listed so the page says what cannot be silenced."
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
 
-                    <!-- One row per category the API lets a caregiver mute, with Safety shown
-                         and pinned on so the list says what can't be silenced rather than hiding it. -->
-                    <Border Style="{StaticResource ElevatedCard}" Padding="14,6">
-                        <VerticalStackLayout x:Name="CategoryRows" Spacing="0"/>
+                            <!-- One row per category the API lets a caregiver mute, built in
+                                 code-behind into the same outlined card the sections above use. -->
+                            <Border Style="{StaticResource OutlinedCard}" Padding="14,4">
+                                <VerticalStackLayout x:Name="CategoryRows" Spacing="0"/>
+                            </Border>
+                        </VerticalStackLayout>
                     </Border>
                 </VerticalStackLayout>
 

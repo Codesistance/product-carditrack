@@ -16,6 +16,30 @@ internal static class ApiPaths
     public const string ExportConsents = "api/v1/reports/consents";
     public const string HealthDataDisclosure = "api/v1/users/me/health-data-disclosure";
 
+    // ---- Families (docs/execution/backend/api/family.md, "Implemented today") ----
+
+    /// <summary>Every family the caller is in, with their role in each.</summary>
+    public const string MyFamilies = "api/v1/families/mine";
+
+    /// <summary>The asks the caller has made and not yet had answered.</summary>
+    public const string MyJoinRequests = "api/v1/families/join-requests/mine";
+
+    /// <summary>Where an ask is posted, and where one is withdrawn from (with its id appended).</summary>
+    public const string JoinRequests = "api/v1/families/join-requests";
+
+    public static string FamilyMembers(Guid organizationId) => $"api/v1/families/{organizationId}/members";
+    public static string FamilyAdmin(Guid organizationId) => $"api/v1/families/{organizationId}/admin";
+    public static string FamilyJoinRequests(Guid organizationId) => $"api/v1/families/{organizationId}/join-requests";
+    public static string CaregiverInvites(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}/caregiver-invites";
+
+    /// <summary>
+    /// The invitee's view of one invitation. Never cached: the token is a live credential, and
+    /// a copy of what it unlocks has no business outliving the screen that asked.
+    /// </summary>
+    public static string CaregiverInvite(string token) => $"api/v1/caregiver-invites/{Uri.EscapeDataString(token)}";
+
+    public static string AlertClose(Guid alertId) => $"{Alert(alertId)}/close";
+
     public static string CardiMember(Guid cardiMemberId) => $"api/v1/cardimembers/{cardiMemberId}";
 
     /// <summary>

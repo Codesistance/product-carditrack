@@ -56,13 +56,12 @@ public sealed class FindingsList : VerticalStackLayout
     /// The marker for a list whose points are consequences rather than reassurances.
     /// </summary>
     /// <remarks>
-    /// A caution mark, not a tick of any colour. A list of what deleting an account destroys is
-    /// still a list and should be drawn like one, but a tick beside "nothing can be recovered
-    /// afterwards" reads as approval of the sentence it marks, and a red tick reads as an
-    /// emphatic one. The glyph is built like <c>icon_status_check</c> — the same circle at the
-    /// same weight — carrying an exclamation in the danger palette instead of a tick.
+    /// A plain deep-red square, not a tick and not a caution triangle. A tick beside "nothing can
+    /// be recovered afterwards" reads as approval of the sentence it marks; a triangle beside four
+    /// of them in a row reads as four emergencies, which is louder than a list of consequences
+    /// somebody asked to see. A square marks the row and lets the words carry the weight.
     /// </remarks>
-    public const string DangerMarker = "icon_caution_danger.svg";
+    public const string DangerMarker = "icon_marker_square.svg";
 
     /// <summary>
     /// Which marker this list draws. <see cref="CheckMarker"/> unless set.

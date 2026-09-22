@@ -83,6 +83,34 @@ public sealed class PopupService : IPopupService
             }
         });
 
+    /// <summary>
+    /// The one popup in the app that comes up from the bottom rather than sitting in the middle
+    /// (see <see cref="FamilySwitcherPage"/>), and the only one that returns something other than
+    /// a choice from a list — the drawer's foot offers two actions as well as its rows.
+    /// </summary>
+    public Task<FamilySwitcherChoice?> ChooseFamilyAsync(
+        IReadOnlyList<FamilySwitcherRow> families, IReadOnlyList<string> waitingOn) =>
+        MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var page = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page is null)
+                return null;
+
+            var drawer = new FamilySwitcherPage(families, waitingOn);
+            Interlocked.Increment(ref _open);
+            try
+            {
+                await page.Navigation.PushModalAsync(drawer, animated: false);
+                return await drawer.Result;
+            }
+            finally
+            {
+                // Released once the drawer has left the stack, the same handshake the chooser and
+                // the choice sheet make — the tab underneath reads IsShowing to know it never left.
+                Interlocked.Decrement(ref _open);
+            }
+        });
+
     public Task<ContactEdit?> EditContactAsync(ContactEditKind kind, string? name, string? phone) =>
         MainThread.InvokeOnMainThreadAsync(async () =>
         {
