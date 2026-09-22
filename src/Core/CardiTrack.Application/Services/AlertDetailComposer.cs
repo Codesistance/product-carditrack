@@ -83,6 +83,13 @@ public static class AlertDetailComposer
         StatisticalAlertRules.DaytimeInactivityBlockRule => ActivityDays,
         DeviceSilenceRule => 0,
         RealtimeHeartRateRule => 0,
+
+        // No daily series, and deliberately not the default below. A rhythm finding is an event
+        // the device stamped, not a reading with a trend behind it — and the fallback would put a
+        // fortnight of step counts under "an ECG came back as atrial fibrillation", which reads as
+        // evidence for a finding that has nothing to do with steps.
+        StatisticalAlertRules.EcgAtrialFibrillationRule => 0,
+        StatisticalAlertRules.IrregularRhythmRule => 0,
         // A markerless Inactivity row is the old device-silence producer; don't fetch steps.
         null => 0,
         _ => ActivityDays,
@@ -373,6 +380,12 @@ public static class AlertDetailComposer
         StatisticalAlertRules.OvernightBreathingUpRule => AlertReasons.Monitoring,
         StatisticalAlertRules.DaytimeInactivityBlockRule => AlertReasons.Activity,
         StatisticalAlertRules.IrregularSleepRule => AlertReasons.Sleep,
+
+        // The heart icon, not monitoring: a rhythm finding is the most literally cardiac thing
+        // this screen shows. Without these two arms AlertType.Rhythm falls through to the default
+        // below and the most consequential alert in the product gets the generic icon.
+        StatisticalAlertRules.EcgAtrialFibrillationRule => AlertReasons.Heart,
+        StatisticalAlertRules.IrregularRhythmRule => AlertReasons.Heart,
         DeviceSilenceRule => AlertReasons.Device,
         _ => type switch
         {
