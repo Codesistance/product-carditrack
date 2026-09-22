@@ -41,6 +41,7 @@ public class CaregiverInviteService : ICaregiverInviteService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IAuditLogRepository _auditLogs;
     private readonly IOptions<CaregiverInviteOptions> _options;
+    private readonly IFamilyWriteGuard _guard;
     private readonly ILogger<CaregiverInviteService> _logger;
     private readonly TimeProvider _timeProvider;
 
@@ -49,12 +50,14 @@ public class CaregiverInviteService : ICaregiverInviteService
         IAuditLogRepository auditLogs,
         IOptions<CaregiverInviteOptions> options,
         ILogger<CaregiverInviteService> logger,
+        IFamilyWriteGuard guard,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
         _auditLogs = auditLogs;
         _options = options;
         _logger = logger;
+        _guard = guard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -164,6 +167,13 @@ public class CaregiverInviteService : ICaregiverInviteService
         var invite = await FindLiveAsync(token, ct)
             ?? throw new KeyNotFoundException("Invitation not found");
 
+        // One transaction, held on the family, from here to the end. The claim used to commit on
+        // its own — TryResolveAsync is a conditional ExecuteUpdate — so a failure in the grants
+        // below spent the invitation without granting anything, and the invitee could not retry
+        // because their invitation now reads as accepted. The seat check has the same shape as the
+        // approval path's: a count and then an insert, which two redemptions at once both pass.
+        await using var guarded = await BeginGuardedAsync(invite.OrganizationId, ct);
+
         // An invitation must not outlive the authority that issued it. The issuer may have been
         // demoted, removed from the family, or had their own account closed since they sent it.
         if (!await IsAdminOfAsync(invite.CreatedByUserId, invite.OrganizationId))
@@ -226,6 +236,7 @@ public class CaregiverInviteService : ICaregiverInviteService
 
         await EnsureMembershipAsync(redeemingUserId, invite.OrganizationId, invite.Role, now);
         await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitTransactionAsync();
 
         invite.Status = CaregiverInviteStatus.Accepted;
         invite.ResolvedAt = now;
@@ -270,6 +281,28 @@ public class CaregiverInviteService : ICaregiverInviteService
     /// inserting is what the unique index on (UserId, OrganizationId) requires, and it keeps a
     /// family's history of a person to one row.
     /// </summary>
+    /// <summary>
+    /// Opens a transaction and holds the family in it, so a read and the write it justifies cannot
+    /// be split by another caller. Rolls back unless the caller commits.
+    /// </summary>
+    private async Task<GuardedFamily> BeginGuardedAsync(Guid organizationId, CancellationToken ct)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+
+        if (!await _guard.HoldAsync(organizationId, ct))
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw new KeyNotFoundException("Invitation not found");
+        }
+
+        return new GuardedFamily(_unitOfWork);
+    }
+
+    private sealed class GuardedFamily(IUnitOfWork unitOfWork) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync() => await unitOfWork.RollbackTransactionAsync();
+    }
+
     private async Task EnsureMembershipAsync(Guid userId, Guid organizationId, UserRole role, DateTime now)
     {
         var membership = await _unitOfWork.UserOrganizations.GetAsync(userId, organizationId);

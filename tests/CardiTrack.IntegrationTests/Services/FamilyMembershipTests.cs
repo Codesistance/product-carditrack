@@ -49,6 +49,7 @@ public class FamilyMembershipTests : IAsyncLifetime
             sc.AddScoped(parameter.ParameterType, implementation);
         }
         sc.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+        sc.AddScoped<IFamilyWriteGuard, FamilyWriteGuard>();
         sc.AddLogging();
         sc.AddScoped<IUnitOfWork, UnitOfWork>();
         sc.AddScoped<IFamilyService, FamilyService>();
@@ -285,6 +286,78 @@ public class FamilyMembershipTests : IAsyncLifetime
 
         await PlanLimits.RequireRoomForAnotherPersonAsync(unitOfWork, seed.OrganizationId);
         await PlanLimits.RequireRoomForAnotherCardiMemberAsync(unitOfWork, seed.OrganizationId);
+    }
+
+    // ── The one-admin invariant, enforced rather than promised ─────────────────
+
+    [Fact]
+    public async Task TheDatabaseItself_RefusesASecondActiveAdmin()
+    {
+        var seed = await SeedAsync();
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        // Straight past every service, which is the point: IFamilyWriteGuard is what keeps two
+        // transfers from racing, but an invariant the roster, the approval queue and "the admin
+        // pays" all rest on should not be enforceable only by remembering to take a lock. A future
+        // path that forgets has to fail here rather than quietly leave a family with two admins.
+        db.UserOrganizations.Add(new UserOrganization
+        {
+            UserId = Guid.NewGuid(),
+            OrganizationId = seed.OrganizationId,
+            Role = UserRole.Admin,
+            IsActive = true,
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task ALapsedAdminMembership_DoesNotBlockTheLiveOne()
+    {
+        var seed = await SeedAsync();
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        // The index is filtered on IsActive, so somebody who was the admin and left still has
+        // their row — and it must not stand in the way of whoever runs the family now. Getting
+        // this wrong would make a family unadministrable after its first handover.
+        db.UserOrganizations.Add(new UserOrganization
+        {
+            UserId = Guid.NewGuid(),
+            OrganizationId = seed.OrganizationId,
+            Role = UserRole.Admin,
+            IsActive = false,
+        });
+
+        await db.SaveChangesAsync();
+
+        Assert.Equal(1, await db.UserOrganizations
+            .CountAsync(m => m.OrganizationId == seed.OrganizationId
+                             && m.Role == UserRole.Admin && m.IsActive));
+    }
+
+    [Fact]
+    public async Task HandingTheFamilyOn_PassesThroughNoMomentWithTwoAdmins()
+    {
+        var seed = await SeedAsync();
+
+        using (var transferring = _services.CreateScope())
+            await Sut(transferring).TransferAdminAsync(seed.AdminId, seed.OrganizationId, seed.SiblingId);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        // It succeeding at all is the assertion: the index is checked per statement rather than at
+        // commit, and a partial index cannot be deferred, so promoting before demoting would be
+        // rejected by the database halfway through the handover.
+        var admins = await db.UserOrganizations
+            .Where(m => m.OrganizationId == seed.OrganizationId && m.Role == UserRole.Admin && m.IsActive)
+            .ToListAsync();
+
+        Assert.Equal(seed.SiblingId, Assert.Single(admins).UserId);
     }
 
     // ── helpers ────────────────────────────────────────────────────────────────

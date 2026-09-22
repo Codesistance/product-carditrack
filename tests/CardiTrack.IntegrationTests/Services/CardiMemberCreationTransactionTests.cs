@@ -57,6 +57,7 @@ public class CardiMemberCreationTransactionTests : IAsyncLifetime
         // the repositories it builds take the write guard themselves (see MemberWriteGuard), and
         // without this every resolve of IUnitOfWork fails on DigestRepository.
         sc.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+        sc.AddScoped<IFamilyWriteGuard, FamilyWriteGuard>();
         // The guard logs, so it needs a logger factory to resolve at all.
         sc.AddLogging();
         sc.AddScoped<IUnitOfWork, UnitOfWork>();

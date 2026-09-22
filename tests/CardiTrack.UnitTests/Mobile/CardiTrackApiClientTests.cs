@@ -88,27 +88,6 @@ public class CardiTrackApiClientTests
     }
 
     [Fact]
-    public async Task CreateOrganization_PostsCamelCaseJson()
-    {
-        var (client, http) = CreateSut();
-        http.Enqueue(HttpStatusCode.OK, """
-            {"success":true,"message":"ok","data":{"id":"6f9619ff-8b86-d011-b42d-00c04fc964ff",
-             "name":"Ada's Family","type":1,"isActive":true},"timestamp":"2026-08-01T00:00:00Z"}
-            """);
-
-        var org = await client.CreateOrganizationAsync(new CreateOrganizationRequest
-        {
-            Name = "Ada's Family",
-            Type = OrganizationType.Family,
-        });
-
-        var request = http.Requests.Single();
-        Assert.Equal("/api/Onboarding/organization", request.Uri!.AbsolutePath);
-        Assert.Contains("\"name\":", request.Body);
-        Assert.Equal("Ada's Family", org.Name);
-    }
-
-    [Fact]
     public async Task GetDashboard_UsesV1Route()
     {
         var (client, http) = CreateSut();
@@ -151,8 +130,11 @@ public class CardiTrackApiClientTests
              "timestamp":"2026-08-01T00:00:00Z"}
             """);
 
+        // Any call would do — this asserts how the client surfaces a validation body, not which
+        // endpoint produced it. It used to ride on CreateOrganizationAsync, which is gone with the
+        // two-call onboarding path.
         var ex = await Assert.ThrowsAsync<ApiException>(() =>
-            client.CreateOrganizationAsync(new CreateOrganizationRequest()));
+            client.SetupAsync(new OnboardingSetupRequest()));
 
         Assert.Contains(ex.Errors, e => e.Contains("Name is required"));
     }

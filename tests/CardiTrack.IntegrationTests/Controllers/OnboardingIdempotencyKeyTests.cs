@@ -105,7 +105,6 @@ public class OnboardingIdempotencyKeyTests
         return new OnboardingController(
             _userContext,
             Substitute.For<ILogger<OnboardingController>>(),
-            Substitute.For<IOrganizationService>(),
             Substitute.For<IUserService>(),
             _members,
             Substitute.For<IOnboardingService>(),

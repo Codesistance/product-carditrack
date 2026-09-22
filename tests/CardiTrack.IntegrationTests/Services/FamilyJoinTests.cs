@@ -50,6 +50,7 @@ public class FamilyJoinTests : IAsyncLifetime
             sc.AddScoped(parameter.ParameterType, implementation);
         }
         sc.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+        sc.AddScoped<IFamilyWriteGuard, FamilyWriteGuard>();
         sc.AddLogging();
         sc.AddScoped<IUnitOfWork, UnitOfWork>();
         sc.AddScoped<IFamilyJoinService, FamilyJoinService>();

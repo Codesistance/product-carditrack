@@ -105,6 +105,7 @@ builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionIn
 // PushServiceExtensions.AddPushServices' remarks.
 builder.Services.AddPushRepositories();
 builder.Services.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+builder.Services.AddScoped<IFamilyWriteGuard, FamilyWriteGuard>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // AI — the private (medical) slot only; see the header note

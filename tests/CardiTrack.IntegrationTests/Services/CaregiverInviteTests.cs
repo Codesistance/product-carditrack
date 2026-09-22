@@ -60,6 +60,7 @@ public class CaregiverInviteTests : IAsyncLifetime
         // Not a UnitOfWork constructor parameter, so the loop never reaches it, and without it
         // every resolve of IUnitOfWork fails on DigestRepository.
         sc.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+        sc.AddScoped<IFamilyWriteGuard, FamilyWriteGuard>();
         sc.AddLogging();
         sc.AddScoped<IUnitOfWork, UnitOfWork>();
 
@@ -324,7 +325,11 @@ public class CaregiverInviteTests : IAsyncLifetime
             scope.ServiceProvider.GetRequiredService<IUnitOfWork>(),
             Substitute.For<IAuditLogRepository>(),
             Options.Create(new CaregiverInviteOptions { PublicBaseUrl = BaseUrl, LifetimeDays = 7 }),
-            scope.ServiceProvider.GetRequiredService<ILogger<CaregiverInviteService>>());
+            scope.ServiceProvider.GetRequiredService<ILogger<CaregiverInviteService>>(),
+            // The real guard, on the same DbContext: redemption now runs inside a transaction that
+            // holds the family, and substituting it away would leave the transaction untested.
+            new CardiTrack.Infrastructure.Services.FamilyWriteGuard(
+                scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>()));
 
     private async Task<string> CreateInviteAsync(Seed seed, CreateCaregiverInviteRequest request)
     {

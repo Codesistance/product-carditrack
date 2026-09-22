@@ -59,6 +59,7 @@ public class AlertAnswerTests : IAsyncLifetime
             sc.AddScoped(parameter.ParameterType, implementation);
         }
         sc.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+        sc.AddScoped<IFamilyWriteGuard, FamilyWriteGuard>();
         sc.AddLogging();
         sc.AddScoped<IUnitOfWork, UnitOfWork>();
         sc.AddScoped<ICardiMemberAccessService, CardiMemberAccessService>();

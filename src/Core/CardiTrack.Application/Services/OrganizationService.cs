@@ -17,47 +17,6 @@ public class OrganizationService : IOrganizationService
         _subscriptionService = subscriptionService;
     }
 
-    public async Task<OrganizationResponse> CreateOrganizationAsync(CreateOrganizationRequest request)
-    {
-        var organization = new Organization
-        {
-            Name = request.Name,
-            FamilyId = FamilyIdentifier.Mint(),
-            Type = request.Type,
-            IsActive = true
-        };
-
-        await _unitOfWork.Organizations.AddAsync(organization);
-
-        // Create trial subscription (Step 3 in onboarding)
-        await _subscriptionService.CreateTrialSubscriptionAsync(organization.Id, request.Type);
-
-        await _unitOfWork.SaveChangesAsync();
-
-        // Fetch with subscription to return complete response
-        var orgWithSubscription = await _unitOfWork.Organizations.GetWithSubscriptionAsync(organization.Id);
-
-        return new OrganizationResponse
-        {
-            Id = organization.Id,
-            Name = organization.Name,
-            FamilyId = FamilyIdentifier.ToDisplay(organization.FamilyId),
-            Type = organization.Type,
-            IsActive = organization.IsActive,
-            CreatedDate = organization.CreatedDate,
-            Subscription = orgWithSubscription?.Subscription != null ? new SubscriptionResponse
-            {
-                Id = orgWithSubscription.Subscription.Id,
-                Tier = orgWithSubscription.Subscription.Tier,
-                Status = orgWithSubscription.Subscription.Status,
-                StartDate = orgWithSubscription.Subscription.StartDate,
-                TrialEndDate = orgWithSubscription.Subscription.TrialEndDate,
-                MaxCardiMembers = orgWithSubscription.Subscription.MaxCardiMembers,
-                MaxUsers = orgWithSubscription.Subscription.MaxUsers
-            } : null
-        };
-    }
-
     public async Task<OrganizationResponse?> GetByIdAsync(Guid id)
     {
         var org = await _unitOfWork.Organizations.GetWithSubscriptionAsync(id);

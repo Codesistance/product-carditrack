@@ -221,6 +221,27 @@ public class AccountErasureService : IAccountErasureService
                 .Where(t => _db.MemberChatSessions.Any(s => s.Id == t.SessionId && s.UserId == userId)));
             await Step("MemberChatSessions", _db.MemberChatSessions.Where(s => s.UserId == userId));
 
+            // Rows this account owns. Both carry a required user id, so neither can be nulled the
+            // way the alert's acknowledger is — and both are live offers as well as dangling
+            // references. An invitation this account sent would still be redeemable into a family
+            // it is no longer in; a join request it made would still sit in somebody's queue
+            // waiting on an answer for a person who no longer exists.
+            await Step("CaregiverInvites", _db.CaregiverInvites.Where(i => i.CreatedByUserId == userId));
+            await Step("FamilyJoinRequests",
+                _db.FamilyJoinRequests.Where(r => r.RequestedByUserId == userId));
+
+            // Rows this account only *touched*. These belong to other people — somebody else's
+            // request that this admin answered, somebody else's invitation that this account
+            // accepted — so the name comes off and the row stays, the same rule row 40 applies to
+            // an alert's acknowledger. Deleting them would erase another person's record of what
+            // happened to them.
+            rows.Add(("FamilyJoinRequests.ResolvedByUserId (nulled)", await _db.FamilyJoinRequests
+                .Where(r => r.ResolvedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.ResolvedByUserId, (Guid?)null), rest)));
+            rows.Add(("CaregiverInvites.AcceptedByUserId (nulled)", await _db.CaregiverInvites
+                .Where(i => i.AcceptedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.AcceptedByUserId, (Guid?)null), rest)));
+
             // RequestedByUserId is required, so these cannot be nulled the way an
             // acknowledgement can. The member's 48-hour re-pull cooldown resets — a smaller
             // cost than keeping a row naming an erased caregiver.

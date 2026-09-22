@@ -18,7 +18,6 @@ namespace CardiTrack.API.Controllers;
 [Authorize]
 public class OnboardingController : BaseApiController
 {
-    private readonly IOrganizationService _organizationService;
     private readonly IUserService _userService;
     private readonly ICardiMemberService _cardiMemberService;
     private readonly IOnboardingService _onboardingService;
@@ -35,7 +34,6 @@ public class OnboardingController : BaseApiController
     public OnboardingController(
         IUserContext userContext,
         ILogger<OnboardingController> logger,
-        IOrganizationService organizationService,
         IUserService userService,
         ICardiMemberService cardiMemberService,
         IOnboardingService onboardingService,
@@ -44,7 +42,6 @@ public class OnboardingController : BaseApiController
         IGuestFamilyProvisioner guestFamilies)
         : base(userContext, logger)
     {
-        _organizationService = organizationService;
         _userService = userService;
         _cardiMemberService = cardiMemberService;
         _onboardingService = onboardingService;
@@ -99,47 +96,19 @@ public class OnboardingController : BaseApiController
         return Created(response, "Welcome aboard — your organization and account are ready!");
     }
 
-    /// <summary>
-    /// Step 2: Create organization (Family or Business)
-    /// </summary>
-    [HttpPost("organization")]
-    [ProducesResponseType(typeof(ApiResponse<OrganizationResponse>), StatusCodes.Status201Created)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<ApiResponse<OrganizationResponse>>> CreateOrganization(
-        [FromBody] CreateOrganizationRequest request)
-    {
-        var validation = await _organizationValidator.ValidateAsync(request);
-        if (!validation.IsValid)
-            return ValidationFailed(validation);
-
-        Logger.LogInformation("Creating organization: {Name}, Type: {Type}", request.Name, request.Type);
-
-        var response = await _organizationService.CreateOrganizationAsync(request);
-
-        return Created(response, "Your organization is ready!");
-    }
-
-    /// <summary>
-    /// Step 4: Create user account linked to Auth0
-    /// </summary>
-    [HttpPost("user")]
-    [ProducesResponseType(typeof(ApiResponse<UserResponse>), StatusCodes.Status201Created)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<ApiResponse<UserResponse>>> CreateUser(
-        [FromBody] CreateUserRequest request)
-    {
-        // Get Auth0UserId and verification state from the authenticated user context —
-        // both come from the token, never from the client body.
-        request.Auth0UserId = UserContext.Auth0UserId;
-        request.EmailVerified = UserContext.EmailVerified;
-
-        Logger.LogInformation("Creating user account for Auth0 user: {Auth0UserId}", request.Auth0UserId);
-
-        var response = await _userService.CreateUserAsync(request);
-
-        return Created(response, "Welcome aboard — your account is ready!");
-    }
+    // POST organization and POST user are gone (2026-09-22). They were the two-call version of
+    // the single call above, and splitting account creation in half is what made the hole: the
+    // second call had to be told which organization to join and at what role, and the only thing
+    // it could check was that nobody had joined yet. "Empty" is not ownership, so any
+    // authenticated caller holding an organization id could race the real one and be installed as
+    // its admin. That was survivable while User.Role authorized nothing; it stopped being
+    // survivable when UserOrganization.Role became the fact family authorization rests on.
+    //
+    // Guarding it would have meant recording a creator and comparing it — a column, a migration,
+    // and a check that has to be right for ever. Removing the seam means there is nothing to
+    // guard: SetupAsync creates the organization and its first member in one transaction, so the
+    // creator is known rather than inferred. Nothing called these — the mobile client's own
+    // methods for them were dead code, removed with them.
 
     /// <summary>
     /// Step 5: Create CardiMember (person to monitor)
@@ -257,7 +226,8 @@ public class OnboardingController : BaseApiController
             return Error("Let's set up your organization first.", 403);
         }
 
-        var cardiMembers = await _cardiMemberService.GetByOrganizationIdAsync(UserContext.OrganizationId);
+        var cardiMembers = await _cardiMemberService.GetForUserInOrganizationAsync(
+            UserContext.UserId, UserContext.OrganizationId);
         var message = cardiMembers.Count switch
         {
             0 => "No CardiMembers yet — add your first one to get started!",

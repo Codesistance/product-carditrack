@@ -64,6 +64,7 @@ public class ErasureDuringGenerationTests : IAsyncLifetime
                 b => b.MigrationsAssembly("CardiTrack.Infrastructure")));
         sc.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
         sc.AddScoped<IMemberWriteGuard, MemberWriteGuard>();
+        sc.AddScoped<IFamilyWriteGuard, FamilyWriteGuard>();
         sc.AddLogging();
         _services = sc.BuildServiceProvider();
 

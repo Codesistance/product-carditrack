@@ -349,7 +349,8 @@ public class CardiMemberService : ICardiMemberService
         };
     }
 
-    public async Task<List<CardiMemberResponse>> GetByOrganizationIdAsync(Guid organizationId)
+    public async Task<List<CardiMemberResponse>> GetForUserInOrganizationAsync(
+        Guid requestingUserId, Guid organizationId)
     {
         var cardiMembers = await _unitOfWork.CardiMembers.GetByOrganizationIdAsync(organizationId);
         var responses = new List<CardiMemberResponse>();
@@ -357,7 +358,20 @@ public class CardiMemberService : ICardiMemberService
         foreach (var cm in cardiMembers)
         {
             var relationships = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cm.Id);
-            var primaryRelationship = relationships.FirstOrDefault();
+
+            // The caller's own grant, and nothing without one. Belonging to a family is not the
+            // same as being allowed to see everybody in it: a caregiver invited to watch one
+            // person gets a link to that person, and this list is the only member read that used
+            // to answer from the organization alone. With one caregiver per family the two were
+            // the same set, so the difference could not show.
+            var mine = relationships.FirstOrDefault(r => r.UserId == requestingUserId && r.IsActive);
+            if (mine is null)
+                continue;
+
+            // Their own relationship, too. It used to take whichever link came back first, which
+            // was the only one there was — now it would show a caregiver somebody else's
+            // relationship to the member, and somebody else's primary-caregiver flag.
+            var primaryRelationship = mine;
 
             responses.Add(new CardiMemberResponse
             {

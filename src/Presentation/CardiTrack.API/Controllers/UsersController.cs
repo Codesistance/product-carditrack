@@ -1,3 +1,4 @@
+using CardiTrack.Application.Exceptions;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Services;
@@ -141,6 +142,7 @@ public class UsersController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<AccountDeletionStatusResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<ApiResponse<AccountDeletionStatusResponse>>> RequestAccountDeletion()
     {
         if (!UserContext.IsAuthenticated || string.IsNullOrWhiteSpace(UserContext.Auth0UserId))
@@ -149,10 +151,20 @@ public class UsersController : BaseApiController
         Logger.LogInformation(
             "Account deletion requested by Auth0 user {Auth0UserId}", UserContext.Auth0UserId);
 
-        var status = await _users.RequestDeletionAsync(UserContext.Auth0UserId);
-        return status is null
-            ? Error("We couldn't find your account — please sign in again.", StatusCodes.Status404NotFound)
-            : Success(status, "Your account is scheduled for deletion. Sign in before then to stop it.");
+        try
+        {
+            var status = await _users.RequestDeletionAsync(UserContext.Auth0UserId);
+            return status is null
+                ? Error("We couldn't find your account — please sign in again.", StatusCodes.Status404NotFound)
+                : Success(status, "Your account is scheduled for deletion. Sign in before then to stop it.");
+        }
+        catch (FamilyRuleException ex)
+        {
+            // They still run a family other people are in. Refused here rather than thirty days
+            // later at the erasure itself, which is a promise the product has already made by
+            // then — see UserService.RefuseIfTheyStillRunAFamilyAsync.
+            return Error(ex.Message, StatusCodes.Status422UnprocessableEntity);
+        }
     }
 
     /// <summary>

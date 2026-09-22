@@ -56,12 +56,35 @@ public class FamilyJoinRequestRepository : Repository<FamilyJoinRequest>, IFamil
             var winner = await GetLiveAsync(
                 request.RequestedByUserId, request.OrganizationId, utcNow, ct);
 
-            // Nothing live after a conflict means the conflict was not the one this handles —
-            // let it go up rather than swallow a real failure.
-            if (winner is null)
+            if (winner is not null)
+                return winner;
+
+            // No live request, but the insert still conflicted — so what blocked it is a lapsed
+            // one. Expiry is a filter on reads rather than a status (FamilyJoinRequestStatus has
+            // no Expired member, on purpose: expiry is a fact about the clock, not something
+            // somebody does), so the row stays Pending for ever and the unique index refuses every
+            // later attempt. Somebody whose ask lapsed after seven days could never ask that
+            // family again.
+            //
+            // So the lapsed row is reused rather than retired or duplicated, which is exactly what
+            // the index means: one live ask per person per family, and this is the same person
+            // asking the same family. The admin's queue keeps one row for them either way.
+            var lapsed = await _dbSet
+                .Where(r => r.RequestedByUserId == request.RequestedByUserId
+                            && r.OrganizationId == request.OrganizationId
+                            && r.Status == FamilyJoinRequestStatus.Pending
+                            && r.ExpiresAt <= utcNow)
+                .FirstOrDefaultAsync(ct);
+
+            // Nothing lapsed either: the conflict was not this case, so let it go up rather than
+            // swallow a real failure.
+            if (lapsed is null)
                 throw;
 
-            return winner;
+            lapsed.ExpiresAt = request.ExpiresAt;
+            lapsed.UpdatedDate = utcNow;
+            await _context.SaveChangesAsync(ct);
+            return lapsed;
         }
     }
 

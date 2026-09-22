@@ -22,9 +22,13 @@ public class FamilyJoinService : IFamilyJoinService
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
 
-    public FamilyJoinService(IUnitOfWork unitOfWork, TimeProvider? timeProvider = null)
+    private readonly IFamilyWriteGuard _guard;
+
+    public FamilyJoinService(
+        IUnitOfWork unitOfWork, IFamilyWriteGuard guard, TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
+        _guard = guard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -153,6 +157,17 @@ public class FamilyJoinService : IFamilyJoinService
         ApproveJoinRequest decision,
         CancellationToken ct = default)
     {
+        // One transaction, held on the family, around everything below. Two things needed it.
+        //
+        // The claim used to commit on its own: TryResolveAsync is a conditional ExecuteUpdate, so
+        // the request was already Approved before the membership and grants were written. Any
+        // failure after that point left somebody approved with no access and no way to retry —
+        // their request reads as answered.
+        //
+        // And the seat check is a count followed by an insert. Two admins approving two different
+        // people at once would both see the last free place and both take it.
+        await using var guarded = await BeginGuardedAsync(organizationId, ct);
+
         await RequireAdminAsync(requestingUserId, organizationId);
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
@@ -194,6 +209,23 @@ public class FamilyJoinService : IFamilyJoinService
         }
 
         var grantedRole = ResolveRole(decision.Role);
+
+        // The incumbent steps down before the new admin is written, and the demotion is saved on
+        // its own. Same reason as FamilyService.TransferAdminAsync: the one-active-admin index is
+        // checked per statement, so promoting first would pass through a state with two. Still one
+        // transaction, so the handover remains all-or-nothing.
+        if (grantedRole == UserRole.Admin)
+        {
+            var stepping = await _unitOfWork.UserOrganizations.GetAsync(requestingUserId, organizationId);
+            if (stepping is not null)
+            {
+                stepping.Role = UserRole.Member;
+                stepping.UpdatedDate = now;
+                _unitOfWork.UserOrganizations.Update(stepping);
+                await _unitOfWork.SaveChangesAsync();
+            }
+        }
+
         await EnsureMembershipAsync(request.RequestedByUserId, organizationId, grantedRole, now);
 
         // Admitting somebody as admin hands them the family, and its plan, in the same act — a
@@ -202,14 +234,6 @@ public class FamilyJoinService : IFamilyJoinService
         // "the admin pays" names nobody.
         if (grantedRole == UserRole.Admin)
         {
-            var approver = await _unitOfWork.UserOrganizations.GetAsync(requestingUserId, organizationId);
-            if (approver is not null)
-            {
-                approver.Role = UserRole.Member;
-                approver.UpdatedDate = now;
-                _unitOfWork.UserOrganizations.Update(approver);
-            }
-
             // A guest admitted as admin has no home family — that is what being a guest meant —
             // and User.OrganizationId is what UserContextMiddleware serves as the caller's
             // organization. Left null they would own the family and its billing while every
@@ -251,6 +275,7 @@ public class FamilyJoinService : IFamilyJoinService
         }
 
         await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitTransactionAsync();
     }
 
     public async Task DeclineAsync(
@@ -290,6 +315,28 @@ public class FamilyJoinService : IFamilyJoinService
         membership.JoinedDate = now;
         membership.UpdatedDate = now;
         _unitOfWork.UserOrganizations.Update(membership);
+    }
+
+    /// <summary>
+    /// Opens a transaction and holds the family in it, so a read and the write it justifies cannot
+    /// be split by another caller. Rolls back unless the caller commits.
+    /// </summary>
+    private async Task<GuardedFamily> BeginGuardedAsync(Guid organizationId, CancellationToken ct)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+
+        if (!await _guard.HoldAsync(organizationId, ct))
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw new KeyNotFoundException("Request not found");
+        }
+
+        return new GuardedFamily(_unitOfWork);
+    }
+
+    private sealed class GuardedFamily(IUnitOfWork unitOfWork) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync() => await unitOfWork.RollbackTransactionAsync();
     }
 
     private async Task RequireAdminAsync(Guid requestingUserId, Guid organizationId)

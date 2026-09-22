@@ -31,55 +31,10 @@ public class OrganizationServiceTests
         MaxUsers = 1,
     };
 
-    [Fact]
-    public async Task Create_PersistsOrganization_AndProvisionsTrialSubscription()
-    {
-        Organization? savedOrg = null;
-        await _organizations.AddAsync(Arg.Do<Organization>(o => savedOrg = o));
-        var request = new CreateOrganizationRequest { Name = "Doe Family", Type = OrganizationType.Family };
-
-        await CreateSut().CreateOrganizationAsync(request);
-
-        Assert.NotNull(savedOrg);
-        Assert.Equal("Doe Family", savedOrg!.Name);
-        Assert.Equal(OrganizationType.Family, savedOrg.Type);
-        Assert.True(savedOrg.IsActive);
-        await _subscriptions.Received(1).CreateTrialSubscriptionAsync(savedOrg.Id, OrganizationType.Family);
-        await _unitOfWork.Received(1).SaveChangesAsync();
-    }
-
-    [Fact]
-    public async Task Create_ReturnsResponseWithSubscription_WhenReloadedWithOne()
-    {
-        Organization? savedOrg = null;
-        await _organizations.AddAsync(Arg.Do<Organization>(o =>
-        {
-            savedOrg = o;
-            o.Subscription = BuildTrialSubscription(o.Id);
-            _organizations.GetWithSubscriptionAsync(o.Id).Returns(o);
-        }));
-
-        var response = await CreateSut().CreateOrganizationAsync(
-            new CreateOrganizationRequest { Name = "Doe Family", Type = OrganizationType.Family });
-
-        Assert.Equal(savedOrg!.Id, response.Id);
-        Assert.NotNull(response.Subscription);
-        Assert.Equal(SubscriptionStatus.Trial, response.Subscription!.Status);
-        Assert.Equal(SubscriptionTier.Complete, response.Subscription.Tier);
-        Assert.Equal(5, response.Subscription.MaxCardiMembers);
-    }
-
-    [Fact]
-    public async Task Create_ReturnsNullSubscription_WhenReloadFindsNone()
-    {
-        _organizations.GetWithSubscriptionAsync(Arg.Any<Guid>()).Returns((Organization?)null);
-
-        var response = await CreateSut().CreateOrganizationAsync(
-            new CreateOrganizationRequest { Name = "Acme Care", Type = OrganizationType.Business });
-
-        Assert.Equal("Acme Care", response.Name);
-        Assert.Null(response.Subscription);
-    }
+    // The Create_* tests are gone with OrganizationService.CreateOrganizationAsync, removed
+    // 2026-09-22 along with POST /onboarding/organization. Creating a family now happens only
+    // inside OnboardingService.SetupAsync, where it commits with the user and the membership in
+    // one transaction — covered there, including the trial provisioning these asserted.
 
     [Fact]
     public async Task GetById_ReturnsNull_WhenOrganizationMissing()

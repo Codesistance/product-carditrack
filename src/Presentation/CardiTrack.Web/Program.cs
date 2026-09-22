@@ -88,6 +88,7 @@ try
     builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
     builder.Services.AddPushRepositories();
     builder.Services.AddScoped<IMemberWriteGuard, CardiTrack.Infrastructure.Services.MemberWriteGuard>();
+    builder.Services.AddScoped<IFamilyWriteGuard, CardiTrack.Infrastructure.Services.FamilyWriteGuard>();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IUserService, UserService>();
 

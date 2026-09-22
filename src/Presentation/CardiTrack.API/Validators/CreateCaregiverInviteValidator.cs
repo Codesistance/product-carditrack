@@ -14,18 +14,31 @@ public class CreateCaregiverInviteValidator : AbstractValidator<CreateCaregiverI
     /// breaks an app already in the stores.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>staff</c> is absent on purpose. It exists in <c>UserRole</c> for the Enterprise offering
     /// and is never assignable to a family, so a request asking for it is refused here rather than
     /// quietly downgraded to member by the service.
+    /// </para>
+    /// <para>
+    /// <c>admin</c> is absent for the same reason, and was accepted until 2026-09-22. An
+    /// invitation admits as a member: a family has one admin, and handing somebody the family and
+    /// its billing is its own deliberate act with the incumbent's hand on it
+    /// (<c>PUT /api/v1/families/{id}/admin</c>), not a field on a message sent a week earlier.
+    /// Accepting the word here and downgrading it in the service meant answering 200 to a request
+    /// for a handover and then not performing one — the precise thing the paragraph above says
+    /// this list exists to prevent.
+    /// </para>
     /// </remarks>
-    internal static readonly string[] Roles = ["member", "admin"];
+    internal static readonly string[] Roles = ["member"];
 
     public CreateCaregiverInviteValidator()
     {
         RuleFor(x => x.Role)
             .NotEmpty().WithMessage("Role is required")
             .Must(r => Roles.Contains(r, StringComparer.OrdinalIgnoreCase))
-            .WithMessage($"Role must be one of: {string.Join(", ", Roles)}");
+            .WithMessage(
+                "An invitation can only add someone as a member. To hand over the family, "
+                + "use the admin transfer instead.");
 
         // Somebody who can see nothing and hear nothing has been invited to no purpose, and the
         // grant would be a row that only confuses the caregiver list.

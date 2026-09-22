@@ -25,8 +25,6 @@ public interface ICardiTrackApiClient
     /// </summary>
     Task<OnboardingSetupResponse> SetupAsync(OnboardingSetupRequest request, CancellationToken ct = default);
 
-    Task<OrganizationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, CancellationToken ct = default);
-    Task<UserResponse> CreateUserAsync(CreateUserRequest request, CancellationToken ct = default);
     /// <summary>
     /// Adds a CardiMember.
     /// </summary>

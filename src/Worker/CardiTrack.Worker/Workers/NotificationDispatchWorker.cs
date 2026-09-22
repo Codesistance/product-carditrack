@@ -324,10 +324,18 @@ public class NotificationDispatchWorker : CronBackgroundService
                         break;
 
                     case EscalationAction.FanOutToOtherCaregivers:
+                        // Copies first, rung afterwards. Marking the rung spent up front meant a
+                        // failure partway through the loop left the family with a prefix — some
+                        // caregivers copied, the rest never reached, and no retry, because the
+                        // original had already moved past the action that would have produced
+                        // them. Ordering it this way means a failure leaves the rung unspent and
+                        // the next thirty-second sweep runs it again; the per-recipient dedup keys
+                        // make that repeat idempotent, so nobody who was reached gets a second
+                        // push.
+                        await FanOutAsync(delivery, dispatch, unitOfWork, ct);
                         delivery.EscalationStage = EscalationStage.FannedOut;
                         unitOfWork.NotificationDeliveries.Update(delivery);
                         await unitOfWork.SaveChangesAsync();
-                        await FanOutAsync(delivery, dispatch, unitOfWork, ct);
                         PushTelemetry.Escalated.Add(1,
                             new KeyValuePair<string, object?>(PushTelemetry.StageTag, nameof(EscalationStage.FannedOut)));
                         break;

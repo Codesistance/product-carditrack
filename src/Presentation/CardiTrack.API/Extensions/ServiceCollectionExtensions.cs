@@ -130,6 +130,7 @@ public static class ServiceCollectionExtensions
 
         // Unit of Work
         services.AddScoped<IMemberWriteGuard, CardiTrack.Infrastructure.Services.MemberWriteGuard>();
+        services.AddScoped<IFamilyWriteGuard, CardiTrack.Infrastructure.Services.FamilyWriteGuard>();
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
 
         // AI services

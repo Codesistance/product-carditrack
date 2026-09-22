@@ -553,6 +553,9 @@ public class DispatchService : IDispatchService
         DedupKey = $"{source.DedupKey}:{Guid.NewGuid():N}",
         CollapseKey = source.CollapseKey,
         ExpiresAt = source.ExpiresAt,
-        ScheduledFor = source.ScheduledFor
+        ScheduledFor = source.ScheduledFor,
+        // Carried, or a caregiver with two phones gets one row the ladder treats as an original
+        // and fans out from all over again. The flag describes the message, not the handset.
+        IsEscalation = source.IsEscalation
     };
 }

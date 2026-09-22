@@ -46,5 +46,19 @@ public class UserOrganizationConfiguration : IEntityTypeConfiguration<UserOrgani
         // adding a second, so the history of the membership stays one line.
         builder.HasIndex(uo => new { uo.UserId, uo.OrganizationId })
             .IsUnique();
+
+        // And a family has exactly one admin. IFamilyWriteGuard is what actually keeps that true
+        // — every path that moves the role takes FOR UPDATE on the family first, so two transfers
+        // queue instead of racing. This index is the backstop underneath it: the invariant the
+        // roster, the approval queue and "the admin pays" all rest on should not be enforceable
+        // only by remembering to take a lock. A future path that forgets fails loudly here rather
+        // than quietly leaving a family with two admins or none.
+        // Named explicitly, because it is a second index on the same column as the roster lookup
+        // above and EF would otherwise treat this as redefining that one — dropping the plain
+        // index every "who is in this family" query uses.
+        builder.HasIndex(uo => new { uo.OrganizationId, uo.Role, uo.IsActive })
+            .IsUnique()
+            .HasFilter("\"Role\" = 'Admin' AND \"IsActive\"")
+            .HasDatabaseName("IX_UserOrganizations_OneActiveAdmin");
     }
 }

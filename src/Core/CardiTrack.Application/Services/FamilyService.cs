@@ -18,10 +18,12 @@ public class FamilyService : IFamilyService
     internal const string DeniedMessage = "Family not found";
 
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IFamilyWriteGuard _guard;
 
-    public FamilyService(IUnitOfWork unitOfWork)
+    public FamilyService(IUnitOfWork unitOfWork, IFamilyWriteGuard guard)
     {
         _unitOfWork = unitOfWork;
+        _guard = guard;
     }
 
     public async Task<IReadOnlyList<FamilySummary>> GetMineAsync(
@@ -83,6 +85,12 @@ public class FamilyService : IFamilyService
     public async Task<IReadOnlyList<FamilyMemberSummary>> TransferAdminAsync(
         Guid requestingUserId, Guid organizationId, Guid newAdminUserId, CancellationToken ct = default)
     {
+        // Held before the admin is even read. Two transfers arriving together would otherwise both
+        // see themselves as the incumbent's, both promote, and both demote — leaving two admins or
+        // none, depending on the order the saves landed. A family has exactly one admin, and that
+        // is only true if the reading and the moving of the role are one step.
+        await using var _ = await BeginGuardedAsync(organizationId, ct);
+
         var current = await RequireAdminAsync(requestingUserId, organizationId);
 
         if (newAdminUserId == requestingUserId)
@@ -100,17 +108,24 @@ public class FamilyService : IFamilyService
         // Both sides of the handover in one save. Promotion and demotion are the same act here —
         // a family has one admin, and that admin pays for it, so a moment with two or none is not
         // a state the product has an answer for.
+        // Demote first, and save before promoting. Both writes are inside the one transaction, so
+        // the handover is still atomic — this only orders the two statements. It has to be ordered
+        // because IX_UserOrganizations_OneActiveAdmin is checked per statement, not at commit, and
+        // a partial index cannot be deferred: promoting first would mean a moment with two active
+        // admins, which is exactly the state the index exists to make impossible.
+        current.Role = UserRole.Member;
+        current.UpdatedDate = now;
+        _unitOfWork.UserOrganizations.Update(current);
+        await _unitOfWork.SaveChangesAsync();
+
         successor.Role = UserRole.Admin;
         successor.UpdatedDate = now;
         _unitOfWork.UserOrganizations.Update(successor);
 
-        current.Role = UserRole.Member;
-        current.UpdatedDate = now;
-        _unitOfWork.UserOrganizations.Update(current);
-
         await AdoptAsHomeFamilyIfHomelessAsync(newAdminUserId, organizationId, now);
 
         await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitTransactionAsync();
 
         return await BuildRosterAsync(requestingUserId, organizationId);
     }
@@ -156,6 +171,33 @@ public class FamilyService : IFamilyService
         }
 
         await DeactivateAsync(membership, organizationId, requestingUserId);
+    }
+
+    /// <summary>
+    /// Opens a transaction and holds the family in it, so a read and the write it justifies cannot
+    /// be split by another caller.
+    /// </summary>
+    /// <remarks>
+    /// The returned scope rolls the transaction back if the caller throws or returns without
+    /// committing — which is what makes a refusal partway through leave nothing behind.
+    /// </remarks>
+    private async Task<GuardedFamily> BeginGuardedAsync(Guid organizationId, CancellationToken ct)
+    {
+        await _unitOfWork.BeginTransactionAsync();
+
+        if (!await _guard.HoldAsync(organizationId, ct))
+        {
+            await _unitOfWork.RollbackTransactionAsync();
+            throw new KeyNotFoundException("That family doesn't exist.");
+        }
+
+        return new GuardedFamily(_unitOfWork);
+    }
+
+    /// <summary>Rolls back unless the caller committed. Struct-free on purpose: it has to be awaited.</summary>
+    private sealed class GuardedFamily(IUnitOfWork unitOfWork) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync() => await unitOfWork.RollbackTransactionAsync();
     }
 
     /// <summary>
@@ -217,17 +259,16 @@ public class FamilyService : IFamilyService
         // the same column a removal revoked both at once; splitting them made it possible to end
         // somebody's membership and leave them reading the family's members anyway.
         //
-        // Repointed at another family they are actually in, where there is one, so a caregiver
-        // removed from one household does not lose their own.
+        // Cleared, never repointed at another family they happen to be in. An earlier version of
+        // this did repoint, which looked like a kindness and was a hole: the organization-scoped
+        // reads behind this pointer — GET /api/v1/onboarding/cardimembers among them — list every
+        // member of the organization without consulting UserCardiMember at all. Handing somebody
+        // that pointer for a family they joined with a grant on one person would show them the
+        // whole household. Null is the guest state, it is honest, and nothing widens from it.
         var user = await _unitOfWork.Users.GetByIdAsync(userId);
         if (user is not null && user.OrganizationId == organizationId)
         {
-            var remaining = (await _unitOfWork.UserOrganizations.GetByUserIdAsync(userId))
-                .Where(m => m.IsActive && m.OrganizationId != organizationId)
-                .OrderBy(m => m.JoinedDate)
-                .FirstOrDefault();
-
-            user.OrganizationId = remaining?.OrganizationId;
+            user.OrganizationId = null;
             user.UpdatedDate = now;
             _unitOfWork.Users.Update(user);
         }

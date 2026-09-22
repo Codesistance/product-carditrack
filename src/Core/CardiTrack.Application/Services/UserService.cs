@@ -40,93 +40,6 @@ public class UserService : IUserService
         return true;
     }
 
-    public async Task<UserResponse> CreateUserAsync(CreateUserRequest request)
-    {
-        // The unique index on Email would reject a second identity claiming the same
-        // address anyway, but as an opaque 500 — surface it as a conflict instead.
-        await ThrowIfEmailOwnedElsewhereAsync(request.Email, request.Auth0UserId);
-
-        var user = new User
-        {
-            Auth0UserId = request.Auth0UserId,
-            Email = request.Email,
-            Name = request.Name,
-            Phone = request.Phone,
-            Role = request.Role,
-            OrganizationId = request.OrganizationId,
-            IsActive = true,
-            // Real claim from the access token (via the tenant's post-login Action).
-            // Absent claim => unverified until a later login proves otherwise.
-            EmailVerified = request.EmailVerified ?? false
-        };
-
-        await _unitOfWork.Users.AddAsync(user);
-
-        // Membership, but only where the caller is provably entitled to it — the family they just
-        // created in the preceding POST /onboarding/organization call, which has nobody in it yet.
-        //
-        // This path takes OrganizationId and Role from the request body and always has. That was
-        // harmless while User.Role was a column nothing authorized against; it stopped being
-        // harmless the moment UserOrganization.Role became the fact FamilyService and
-        // FamilyJoinService gate admin operations on. Trusting the body now would let any
-        // authenticated caller name somebody else's family with Role = Admin and take it over —
-        // a removed caregiver still knows the id. So the role is assigned here rather than
-        // accepted, and a family that already has members admits nobody through this door: they
-        // ask, and an admin decides (POST /api/v1/families/join-requests).
-        var claimable = request.OrganizationId != Guid.Empty
-            && !(await _unitOfWork.UserOrganizations.GetByOrganizationIdAsync(request.OrganizationId))
-                .Any(m => m.IsActive);
-
-        if (claimable)
-        {
-            await _unitOfWork.UserOrganizations.AddAsync(new UserOrganization
-            {
-                UserId = user.Id,
-                OrganizationId = request.OrganizationId,
-                Role = UserRole.Admin
-            });
-        }
-        else
-        {
-            // No membership, and no home family either — the column is what the rest of the
-            // product reads as "this account's own family", and pointing it at one they were not
-            // admitted to would grant by the back door what the check above just refused.
-            user.OrganizationId = null;
-        }
-
-        try
-        {
-            await _unitOfWork.SaveChangesAsync();
-        }
-        catch
-        {
-            // A concurrent request can race past the check above and win the insert;
-            // the unique index on Email then fails this one. Re-check who owns the
-            // email now — a real conflict becomes 409, anything else is a real failure.
-            await ThrowIfEmailOwnedElsewhereAsync(request.Email, request.Auth0UserId);
-            throw;
-        }
-
-        return new UserResponse
-        {
-            Id = user.Id,
-            Email = user.Email,
-            Name = user.Name,
-            Phone = user.Phone,
-            Role = user.Role,
-            OrganizationId = user.OrganizationId,
-            IsActive = user.IsActive,
-            CreatedDate = user.CreatedDate
-        };
-    }
-
-    private async Task ThrowIfEmailOwnedElsewhereAsync(string email, string auth0UserId)
-    {
-        var owner = await _unitOfWork.Users.GetByEmailAsync(email);
-        if (owner is not null && owner.Auth0UserId != auth0UserId)
-            throw new DuplicateEmailException("An account with this email already exists.");
-    }
-
     public async Task<User?> GetByAuth0UserIdAsync(string auth0UserId)
     {
         return await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
@@ -183,6 +96,8 @@ public class UserService : IUserService
         var user = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
         if (user is null) return null;
 
+        await RefuseIfTheyStillRunAFamilyAsync(user.Id);
+
         // Conditional update rather than read-then-save, the same shape the disclosure dismissal
         // uses: whichever request lands first is the one the 30 days are counted from, and a
         // second tap is a no-op that still reports the truth.
@@ -210,6 +125,52 @@ public class UserService : IUserService
         await ReleasePushRegistrationsAsync(stored.Id);
 
         return StatusOf(persisted);
+    }
+
+    /// <summary>
+    /// Refuses a deletion request from somebody who is still the admin of a family with other
+    /// people in it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Erasing them would leave that family with members and no admin: nobody who can approve a
+    /// join request, invite a caregiver, remove one, or move the plan — and the plan is theirs,
+    /// so it goes with them. The same rule already governs leaving a family
+    /// (<see cref="Exceptions.FamilyRuleException.AdminMustTransferFirst"/>); deleting an account
+    /// is leaving every family at once and should not be the way round it.
+    /// </para>
+    /// <para>
+    /// Refused here, at the request, rather than at erasure. The erasure itself runs thirty days
+    /// later in <c>RetentionWorker</c>, by which point the person has asked and waited; throwing
+    /// there would leave an account that can never be erased, which is a worse failure than the
+    /// one this prevents and the wrong kind of answer to give a data-subject request.
+    /// </para>
+    /// <para>
+    /// Somebody alone in their family is not refused — there is nobody to hand it to, and the
+    /// family goes with them.
+    /// </para>
+    /// </remarks>
+    private async Task RefuseIfTheyStillRunAFamilyAsync(Guid userId)
+    {
+        var memberships = (await _unitOfWork.UserOrganizations.GetByUserIdAsync(userId))
+            .Where(m => m.IsActive && m.Role == UserRole.Admin)
+            .ToList();
+
+        foreach (var membership in memberships)
+        {
+            var others = (await _unitOfWork.UserOrganizations
+                    .GetByOrganizationIdAsync(membership.OrganizationId))
+                .Any(m => m.IsActive && m.UserId != userId);
+
+            if (others)
+            {
+                throw new FamilyRuleException(
+                    FamilyRuleException.AdminMustTransferFirst,
+                    "You're the admin of a family with other people in it. Hand it to someone else "
+                    + "before you delete your account, or they'll be left without anyone who can "
+                    + "manage it.");
+            }
+        }
     }
 
     /// <summary>
