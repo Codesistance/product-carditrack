@@ -359,8 +359,8 @@ One-time setup before the first store upload — full step-by-step commands in
 
 1. **Apple**: distribution certificate (.p12), App Store provisioning profile named **CardiTrack Distribution**, app record for `com.codesistance.carditrack.mobile` in App Store Connect, App Store Connect API key (App Manager role), internal-tester group in TestFlight.
 2. **Google**: upload keystore (alias `carditrack`), app in Play Console with Play App Signing, **first AAB uploaded manually** (required before the Play API accepts uploads), publisher service account with *Release to testing tracks*, internal testers.
-3. **Firebase**: both client config files downloaded from the Firebase console, their keys restricted, and loaded into Secret Manager before the manual first AAB — a signed publish fails without the config.
-4. Run *Deploy Infrastructure → Common* to create the secrets, then populate each (base64-encode binary payloads).
+3. Run *Deploy Infrastructure → Common* to create the secrets (seeded `REPLACE_ME`), then populate each (base64-encode binary payloads).
+4. **Firebase**: both client config files downloaded from the Firebase console, their keys restricted, and loaded into the secrets step 3 created — before the manual first AAB in step 2, because a signed publish fails without the config.
 
 ## Testing
 
