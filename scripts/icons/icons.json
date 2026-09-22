@@ -7,13 +7,13 @@
   "strokeLinecap": "round",
   "strokeLinejoin": "round",
   "badge": {
-   "scale": 0.4,
-   "x": 28.8,
-   "y": 0,
+   "scale": 0.5,
+   "x": 21,
+   "y": 3,
    "baseScale": 0.74,
    "baseY": 12.5,
    "knockout": "#FFFFFF",
-   "knockoutRadius": 10,
+   "knockoutRadius": 11,
    "note": "Composes two glyphs into one file: the subject at baseScale anchored bottom-left, the badge at scale in the top-right, on a knockout disc the colour of the card these rows sit on."
   },
   "note": "strokeWidth is on the 48-unit grid: 2 = 1px at 24dp. The hand-drawn set used 2px; the thinner stroke is what takes the hard edge off the four-colour glyphs."
@@ -37,6 +37,32 @@
     "derived, Primary cooled to hue 210 at 58% saturation",
     "White",
     "MetricTileTint, opaque"
+   ]
+  },
+  "sos": {
+   "title": "Emergency \u00b7 on the red quick-action tile",
+   "style": "Multicolor",
+   "slots": [
+    "#861B1B",
+    "#C42F2F",
+    "#FFFFFF",
+    "#FBE4E4"
+   ],
+   "tokens": [
+    "derived, DangerRed darkened",
+    "DangerRed",
+    "White",
+    "derived, StatusRed at 14% over white"
+   ]
+  },
+  "ink": {
+   "title": "Ink \u00b7 the member-detail row icons",
+   "style": "linear",
+   "slots": [
+    "#343434"
+   ],
+   "tokens": [
+    "HeadingText"
    ]
   },
   "muted": {
@@ -213,6 +239,13 @@
    "size": 24
   },
   {
+   "file": "icon_action_sos.svg",
+   "source": "iconpark",
+   "name": "phone-call",
+   "group": "sos",
+   "size": 24
+  },
+  {
    "file": "icon_action_check.svg",
    "source": "iconpark",
    "name": "check",
@@ -273,7 +306,7 @@
    "source": "iconpark",
    "name": "remind",
    "badge": "setting-two",
-   "group": "muted",
+   "group": "ink",
    "size": 24
   },
   {
@@ -281,7 +314,7 @@
    "source": "iconpark",
    "name": "user",
    "badge": "remind",
-   "group": "muted",
+   "group": "ink",
    "size": 24
   },
   {
@@ -303,7 +336,7 @@
    "source": "iconpark",
    "name": "book",
    "badge": "setting-two",
-   "group": "muted",
+   "group": "ink",
    "size": 24
   },
   {
@@ -367,6 +400,13 @@
    "source": "iconpark",
    "name": "clipboard",
    "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_clipboard_ink.svg",
+   "source": "iconpark",
+   "name": "clipboard",
+   "group": "ink",
    "size": 24
   },
   {
@@ -684,7 +724,7 @@
    "file": "icon_watch.svg",
    "source": "iconpark",
    "name": "iwatch",
-   "group": "brand",
+   "group": "ink",
    "size": 24
   }
  ]

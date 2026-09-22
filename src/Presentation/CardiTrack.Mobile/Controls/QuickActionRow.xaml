@@ -36,7 +36,12 @@
                 <TapGestureRecognizer Tapped="OnEmergencyCallTapped"/>
             </Border.GestureRecognizers>
             <VerticalStackLayout Spacing="10">
-                <Image Source="icon_action_call.svg"
+                <!-- The same handset as Call, in the destructive red rather than the
+                     brand blue: this tile dials the emergency contact, and it was the
+                     only thing on it still saying "ordinary call" while the tint and
+                     the label both said otherwise. DangerRed clears 3:1 on the red
+                     tint (3.97) where the label's StatusRed does not (2.96). -->
+                <Image Source="icon_action_sos.svg"
                        WidthRequest="22" HeightRequest="22"
                        HorizontalOptions="Center"/>
                 <Label Text="SOS"

@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**86 icons**, **32 distinct colours**, **2 referenced nowhere**.
+**88 icons**, **33 distinct colours**, **2 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,27 +23,28 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 31 | White |
-| `#153D66` | 24 | icons.json brand outer stroke |
-| `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
-| `#939DAA` | 17 | MutedText |
+| `#FFFFFF` | 30 | White |
+| `#153D66` | 23 | icons.json brand outer stroke |
+| `#3175B9` | 18 | icons.json brand and activity fill, steel blue |
+| `#939DAA` | 14 | MutedText |
 | `#1884DC` | 8 | Primary |
 | `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
-| `#C42F2F` | 6 | DangerRed |
+| `#C42F2F` | 7 | DangerRed |
+| `#343434` | 6 | Body2Dark ink |
 | `#FBE4E4` | 5 | derived: StatusRed at 14% over white |
 | `#1F8A72` | 4 | MetricTemperatureInk / DatasetBodyText |
-| `#C9E1FF` | 3 | MetricTileTint, opaque (brand internal fill) |
 | `#727272` | 2 | Body / Body2 ink |
 | `#B45309` | 2 | severity orange ink |
+| `#C9E1FF` | 2 | MetricTileTint, opaque (brand internal fill) |
 | `#123A5F` | 1 | — |
 | `#1A6CB0` | 1 | — |
 | `#2FA6C4` | 1 | — |
-| `#343434` | 1 | Body2Dark ink |
 | `#34A853` | 1 | — |
 | `#3E8AC7` | 1 | MetricBreathingInk |
 | `#4285F4` | 1 | — |
 | `#7C6FDC` | 1 | MetricSleepInk |
+| `#861B1B` | 1 | — |
 | `#9FEBFF` | 1 | — |
 | `#A9741A` | 1 | DatasetWarningText |
 | `#B9F1FF` | 1 | — |
@@ -119,6 +120,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_action_details.svg` | `#3175B9` `#153D66` | DashboardPage |
 | `icon_action_profile.svg` | `#3175B9` `#153D66` | QuickActionRow |
 | `icon_action_sms.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage, QuickActionRow |
+| `icon_action_sos.svg` | `#861B1B` `#C42F2F` | QuickActionRow |
 
 ### Alert reasons
 
@@ -156,16 +158,17 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
 | `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
 | `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader |
-| `icon_bell_cog.svg` | `#939DAA` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_bell_cog.svg` | `#343434` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
-| `icon_book_cog.svg` | `#939DAA` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_book_cog.svg` | `#343434` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
 | `icon_callout.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
 | `icon_chatbot_mono.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_check_disc.svg` | `#3175B9` `#153D66` `#FFFFFF` | BaselineLearningPage, FindingsList |
 | `icon_clipboard.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, InviteWaitPage |
+| `icon_clipboard_ink.svg` | `#343434` | CardiMemberDetailPage |
 | `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, MedicalInformationPage |
 | `icon_expand.svg` | `#153D66` | MetricTrendCard |
 | `icon_export_white.svg` | `#FFFFFF` | ExportAction |
@@ -189,8 +192,8 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_share.svg` | `#153D66` | ExportDeliveryPopupPage, InviteWaitPage |
 | `icon_star.svg` | `#939DAA` | DeviceCard, StarRatingView |
 | `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertDetailPage, AlertListCard, DeviceCard, MetricAlarmEditPage, QuestionCard |
-| `icon_user_bell.svg` | `#939DAA` `#FFFFFF` | CardiMemberDetailPage |
-| `icon_watch.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_user_bell.svg` | `#343434` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_watch.svg` | `#343434` | CardiMemberDetailPage |
 
 ## How "used by" is decided
 

@@ -54,7 +54,11 @@ public partial class StatusHeroCard : ContentView
     public void Apply(DashboardResponse data)
     {
         var firstName = NameFormatting.FirstName(data.Name);
-        NameLabel.Text = $"{data.Name}, {data.Age}";
+        NameLabel.Text = data.Name;
+        // Age alone for now. DashboardResponse carries Name and Age and no sex: Gender lives on
+        // CardiMemberDetailResponse and on the create/update forms, but the dashboard payload has
+        // never been given it. When it is, this is the line that joins them.
+        MemberMetaLabel.Text = $"{data.Age}";
         Avatar.Apply(data.Name, data.PhotoUrl);
         _memberId = data.CardiMemberId;
         ApplyDaybook(data.LatestJournalEntryAt);
@@ -99,7 +103,7 @@ public partial class StatusHeroCard : ContentView
         else if (_liveMessage is { } live)
             line = (line.ColorKey, line.Icon, _liveHeadline ?? line.Headline, live);
 
-        SetStatusLine(line.ColorKey, line.Headline, line.Detail);
+        SetStatusLine(line.ColorKey, line.Icon, line.Headline, line.Detail);
         _cardiMemberId = data.CardiMemberId;
         _healthStatus = data.HealthStatus;
 
@@ -287,11 +291,12 @@ public partial class StatusHeroCard : ContentView
     /// show, which leaves the sentence alone lining up with the name above it.
     /// </summary>
     /// <remarks>
-    /// <c>MemberStatusLine.Icon</c> is still served and deliberately not drawn: the per-tier glyph
-    /// in front of the headline cost the block its left edge, and the tier reaches the reader
-    /// through the headline's colour and its words regardless.
+    /// <c>MemberStatusLine.Icon</c> is drawn again, in its own column ahead of the headline. It
+    /// was dropped when this block sat in a narrow column beside the avatar and the glyph left
+    /// the headline starting at a different x from the sentence under it; the block spans the
+    /// card now, and the sentence is inset to meet the headline's text rather than its glyph.
     /// </remarks>
-    private void SetStatusLine(string colorKey, string? headline, string detail)
+    private void SetStatusLine(string colorKey, string? icon, string? headline, string detail)
     {
         var hasHeadline = !string.IsNullOrWhiteSpace(headline);
 
@@ -302,6 +307,10 @@ public partial class StatusHeroCard : ContentView
                 (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
             StatusHeadlineLabel.Text = headline;
         }
+
+        StatusIcon.IsVisible = hasHeadline && !string.IsNullOrWhiteSpace(icon);
+        if (StatusIcon.IsVisible)
+            StatusIcon.Source = icon;
 
         StatusDetailLabel.Text = detail;
     }

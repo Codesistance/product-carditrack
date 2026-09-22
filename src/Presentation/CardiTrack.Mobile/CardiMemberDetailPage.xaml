@@ -899,7 +899,7 @@
                                 <TapGestureRecognizer Tapped="OnExportDataTapped"/>
                             </Border.GestureRecognizers>
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="52">
-                                <Image Grid.Column="0" Source="icon_clipboard.svg"
+                                <Image Grid.Column="0" Source="icon_clipboard_ink.svg"
                                        WidthRequest="22" HeightRequest="22" VerticalOptions="Center"/>
                                 <Label Grid.Column="1"
                                        Text="Export Data"
