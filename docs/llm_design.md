@@ -931,7 +931,7 @@ Cold start check
   ↓
 Pinned reference-range table (versioned in the codebase, injected into the prompt)
   ↓
-MedGemma (CARDITRACK_TREND_PROMPT) — interprets computed features
+MedGemma (CARDITRACK_TREND_PROMPT, clinical half) — interprets computed features against the pinned ranges; the Rewrite slot writes the family's account from that read (split 2026-09-22, BriefVersion 4, which retires every narrative written under the tone block)
   — Generates the plain-language trend narrative
   ↓
 Routing: narrative feeds the family digest and the insights API

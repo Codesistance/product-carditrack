@@ -20,6 +20,7 @@ public class TrendJournalHorizonTests
 {
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly ICardiMemberRepository _members = Substitute.For<ICardiMemberRepository>();
     private readonly IActivityLogRepository _activityLogs = Substitute.For<IActivityLogRepository>();
     private readonly IPatternBaselineRepository _baselines = Substitute.For<IPatternBaselineRepository>();
@@ -396,7 +397,13 @@ public class TrendJournalHorizonTests
         Assert.Contains("the week that has just ended", prompt);
         // And the shared body is still all there — the horizons change the opening, nothing else.
         Assert.Contains("Never give a score, a probability", prompt);
-        Assert.Contains("Never name a condition", prompt);
+        // The condition boundary moved to the rewrite half on 2026-09-22: this read is
+        // consumed by another model, and naming the mechanism is what it is now for.
+        Assert.DoesNotContain("Never name a condition", prompt);
+        Assert.Contains(
+            "never carry the name of a condition",
+            TrendInterpretationService.RewriteInstructions,
+            StringComparison.Ordinal);
         Assert.Contains("Pinned reference ranges", prompt);
     }
 
@@ -430,9 +437,42 @@ public class TrendJournalHorizonTests
         WeekbookLocalTime = weekbookTime,
     };
 
-    private TrendInterpretationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+    private TrendInterpretationService CreateSut()
+    {
+        RewriteEchoesTheRead();
+        return new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             NullLogger<TrendInterpretationService>.Instance, new PassThroughWriteGuard());
+    }
+
+    /// <summary>
+    /// The rewrite echoes the clinical read it was handed, so every assertion about the narrative
+    /// a family reads holds across the split — and, because it reads the prompt rather than a
+    /// captured variable, it also proves the read crossed the slot boundary.
+    /// </summary>
+    private void RewriteEchoesTheRead() =>
+        _rewriteAi.GenerateStructuredAsync<TrendInterpretationService.TrendAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var prompt = (string)call[0]!;
+                const string marker = "--- Clinical read to write from ---";
+                var body = prompt[(prompt.LastIndexOf(marker, StringComparison.Ordinal) + marker.Length)..].Trim();
+                const string findingsMarker = "key findings:";
+                var at = body.IndexOf(findingsMarker, StringComparison.Ordinal);
+                var summary = (at < 0 ? body : body[..at]).Trim();
+                var findings = at < 0
+                    ? []
+                    : body[(at + findingsMarker.Length)..]
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(line => line.TrimStart('-', ' '))
+                        .Where(line => line.Length > 0)
+                        .ToList();
+                return new TrendInterpretationService.TrendAiResponse
+                {
+                    Summary = summary,
+                    KeyFindings = findings,
+                };
+            });
 
     /// <summary>A full quarter of readings, every day measured — the default for these tests.</summary>
     private void WithFullHistory() => WithHistory(90);
