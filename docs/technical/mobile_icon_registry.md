@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**86 icons**, **30 distinct colours**, **2 referenced nowhere**.
+**86 icons**, **32 distinct colours**, **2 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,10 +23,12 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#174E86` | 31 | PrimaryDark |
 | `#FFFFFF` | 29 | White |
-| `#1884DC` | 27 | Primary |
+| `#153D66` | 24 | — |
+| `#3175B9` | 19 | — |
 | `#939DAA` | 17 | MutedText |
+| `#1884DC` | 8 | Primary |
+| `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
 | `#C42F2F` | 6 | DangerRed |
 | `#FBE4E4` | 5 | derived: StatusRed at 14% over white |
@@ -79,7 +81,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_tab_journal_active.svg` | `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
 | `icon_tab_journal_primary.svg` | `#1884DC` `#FFFFFF` | StatusHeroCard |
 | `icon_tab_qa.svg` | `#939DAA` | StatusHeroCard |
-| `icon_tab_qa_primary.svg` | `#1884DC` `#174E86` `#FFFFFF` | StatusHeroCard |
+| `icon_tab_qa_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
 | `icon_tab_settings.svg` | `#939DAA` | BottomNavBar |
 | `icon_tab_settings_active.svg` | `#174E86` `#1884DC` `#36C09B` | BottomNavBar |
 
@@ -95,7 +97,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_status_warning.svg` | `#FFF3DE` `#A9741A` | AlertMiniCard, StatusHeroCard |
 | `icon_trend_good.svg` | `#1F8A72` | MovementCards |
 | `icon_trend_neutral.svg` | `#727272` | MovementCards |
-| `icon_trend_watch.svg` | `#174E86` | CardiMemberDetailPage |
+| `icon_trend_watch.svg` | `#153D66` | CardiMemberDetailPage |
 
 ### Metrics
 
@@ -105,18 +107,18 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_metric_heart.svg` | `#E53E3E` | AlertDetailPage, AlertMiniCard, BaselineLearningPage, ConnectionSuccessPage, DeviceConnectionPage, MetricCard, TrendMetricCatalogue |
 | `icon_metric_sleep.svg` | `#7C6FDC` | AlertDetailPage, AlertMiniCard, DeviceConnectionPage, MetricCard, TrendMetricCatalogue |
 | `icon_metric_spo2.svg` | `#1F8A72` | MetricCard, TrendMetricCatalogue |
-| `icon_metric_steps.svg` | `#1884DC` | AlertDetailPage, AlertMiniCard, ConnectionSuccessPage, DeviceConnectionPage, MetricCard, TrendMetricCatalogue |
+| `icon_metric_steps.svg` | `#3175B9` | AlertDetailPage, AlertMiniCard, ConnectionSuccessPage, DeviceConnectionPage, MetricCard, TrendMetricCatalogue |
 | `icon_metric_temperature.svg` | `#1F8A72` | MetricCard, TrendMetricCatalogue |
 
 ### Actions
 
 | Icon | Colours | Used by |
 | --- | --- | --- |
-| `icon_action_call.svg` | `#174E86` `#1884DC` | AlertListCard, CardiMemberDetailPage, QuickActionRow |
-| `icon_action_check.svg` | `#174E86` | AlertListCard, ChoiceSheetPage, FindingsList, InviteWaitPage |
-| `icon_action_details.svg` | `#1884DC` `#174E86` `#FFFFFF` | DashboardPage |
-| `icon_action_profile.svg` | `#1884DC` `#174E86` | QuickActionRow |
-| `icon_action_sms.svg` | `#1884DC` `#174E86` `#FFFFFF` | CardiMemberDetailPage, QuickActionRow |
+| `icon_action_call.svg` | `#153D66` `#3175B9` | AlertListCard, CardiMemberDetailPage, QuickActionRow |
+| `icon_action_check.svg` | `#153D66` | AlertListCard, ChoiceSheetPage, FindingsList, InviteWaitPage |
+| `icon_action_details.svg` | `#3175B9` `#153D66` `#FFFFFF` | DashboardPage |
+| `icon_action_profile.svg` | `#3175B9` `#153D66` | QuickActionRow |
+| `icon_action_sms.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage, QuickActionRow |
 
 ### Alert reasons
 
@@ -152,43 +154,43 @@ icon can be staged ahead of a screen that has not shipped.
 | --- | --- | --- |
 | `gradient_splash_bg.svg` | `#1A6CB0` `#1884DC` `#174E86` `#36C09B` `#2FA6C4` `#FFFFFF` | SplashPage |
 | `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
-| `icon_advise_primary.svg` | `#1884DC` `#174E86` `#FFFFFF` | StatusHeroCard |
-| `icon_bell.svg` | `#1884DC` `#174E86` | CardiMemberDetailPage, DashboardHeader |
+| `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
+| `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader |
 | `icon_bell_cog.svg` | `#939DAA` | CardiMemberDetailPage |
 | `icon_bell_plus.svg` | `#939DAA` | CardiMemberDetailPage |
-| `icon_binoculars.svg` | `#174E86` `#1884DC` | CardiMemberDetailPage |
-| `icon_book.svg` | `#1884DC` `#174E86` | CardiMemberDetailPage |
+| `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
+| `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
 | `icon_book_cog.svg` | `#939DAA` | CardiMemberDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
-| `icon_callout.svg` | `#1884DC` `#174E86` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_callout.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
-| `icon_chatbot_mono.svg` | `#174E86` `#1884DC` | CardiMemberDetailPage |
-| `icon_check_disc.svg` | `#1884DC` `#174E86` `#FFFFFF` | BaselineLearningPage, FindingsList |
-| `icon_clipboard.svg` | `#174E86` `#1884DC` | CardiMemberDetailPage, InviteWaitPage |
-| `icon_edit.svg` | `#174E86` `#1884DC` | CardiMemberDetailPage, MedicalInformationPage |
-| `icon_expand.svg` | `#174E86` | MetricTrendCard |
+| `icon_chatbot_mono.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
+| `icon_check_disc.svg` | `#3175B9` `#153D66` `#FFFFFF` | BaselineLearningPage, FindingsList |
+| `icon_clipboard.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, InviteWaitPage |
+| `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, MedicalInformationPage |
+| `icon_expand.svg` | `#153D66` | MetricTrendCard |
 | `icon_export_white.svg` | `#FFFFFF` | ExportAction |
 | `icon_eye.svg` | `#939DAA` | CreateAccountPage, SignInPage |
 | `icon_eye_off.svg` | `#939DAA` | CreateAccountPage, SignInPage |
-| `icon_format_csv.svg` | `#1884DC` `#174E86` `#FFFFFF` | ExportFormatPopupPage |
+| `icon_format_csv.svg` | `#3175B9` `#153D66` `#FFFFFF` | ExportFormatPopupPage |
 | `icon_format_pdf.svg` | `#FBE4E4` `#C42F2F` | ExportFormatPopupPage |
 | `icon_history_white.svg` | `#FFFFFF` | MemberChatPage |
 | `icon_home_white.svg` | `#FFFFFF` | DashboardHeader, WizardHeader |
-| `icon_medical_cross.svg` | `#1884DC` `#174E86` `#C9E1FF` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_medical_cross.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_notification.svg` | `#FFFFFF` | FcmNotificationChannel, PushRegistrationCoordinator |
-| `icon_open.svg` | `#174E86` | ExportDeliveryPopupPage |
+| `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |
 | `icon_pause.svg` | `#B45309` | CardiMemberDetailPage |
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage |
-| `icon_plus.svg` | `#174E86` | ConnectionSuccessPage, DeviceManagementPage |
+| `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage |
 | `icon_power_red.svg` | `#C42F2F` | SettingsPage |
 | `icon_power_white.svg` | `#FFFFFF` | DashboardPage, SettingsPage |
 | `icon_refresh.svg` | `#939DAA` | AlertsPage, ConnectionSuccessPage, DeviceCard |
 | `icon_refresh_white.svg` | `#FFFFFF` | AlertsPage |
-| `icon_save.svg` | `#1884DC` `#174E86` `#C9E1FF` `#FFFFFF` | ExportDeliveryPopupPage |
-| `icon_share.svg` | `#174E86` | ExportDeliveryPopupPage, InviteWaitPage |
+| `icon_save.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | ExportDeliveryPopupPage |
+| `icon_share.svg` | `#153D66` | ExportDeliveryPopupPage, InviteWaitPage |
 | `icon_star.svg` | `#939DAA` | DeviceCard, StarRatingView |
 | `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertDetailPage, AlertListCard, DeviceCard, MetricAlarmEditPage, QuestionCard |
-| `icon_watch.svg` | `#1884DC` `#174E86` `#C9E1FF` `#FFFFFF` | CardiMemberDetailPage |
+| `icon_watch.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | CardiMemberDetailPage |
 
 ## How "used by" is decided
 
