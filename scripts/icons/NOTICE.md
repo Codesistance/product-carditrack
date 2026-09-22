@@ -20,4 +20,5 @@ Copyright Google LLC. https://github.com/google/material-design-icons
 The files under `material/` are the Material Symbols Rounded glyphs at weight 500, optical
 size 24, copied unchanged from `symbols/web/<name>/materialsymbolsrounded/<name>_wght500_24px.svg`.
 `generate.mjs` sets a fill colour and a declared size on the root element when it writes
-them into the app; that is the only modification.
+them into the app; that is the only modification, and each generated file opens with a comment
+saying so, as section 4(b) of the licence requires of a modified file.

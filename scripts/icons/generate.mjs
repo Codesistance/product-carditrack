@@ -52,8 +52,13 @@ function fromIconPark(entry) {
 function fromMaterial(entry) {
   const src = fs.readFileSync(path.join(here, config.material.folder, `${entry.name}.svg`), 'utf8');
   // Material Symbols ship with no fill on the root, so the paths inherit; set the ink there and
-  // the declared size, leaving the 960-unit viewBox to scale it.
-  return src.replace(
+  // the declared size, leaving the 960-unit viewBox to scale it. The output is a modified copy
+  // of an Apache 2.0 file, and section 4(b) of that licence wants each modified file to say so,
+  // hence the comment ahead of the root element; NOTICE.md carries the attribution.
+  const notice = `<!-- Material Symbols Rounded "${entry.name}" by Google LLC, Apache License 2.0 `
+    + `(see scripts/icons/NOTICE.md). Modified by scripts/icons/generate.mjs: root width, height `
+    + `and fill set to ${entry.size}dp and ${entry.fill}. -->\n`;
+  return notice + src.replace(
     /<svg\b[^>]*>/,
     (tag) => tag
       .replace(/\s(width|height)="[^"]*"/g, '')
