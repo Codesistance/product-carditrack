@@ -5,10 +5,12 @@ namespace CardiTrack.Domain.Entities;
 /// inside it. The only beat-level cardiac data CardiTrack holds: every other heart-rate store in
 /// the product is a one-minute average or coarser.
 /// <para>
-/// Composite-keyed (CardiMemberId, WindowStartUtc) and day-partitioned on
-/// <see cref="WindowStartUtc"/>, the same shape as <see cref="RealtimeAssessment"/>, and kept for
-/// the same 90 days. The natural key is also the idempotency key: the routine window re-reads the
-/// last three days on every pull, so the same window arrives repeatedly and must land once.
+/// Composite-keyed (CardiMemberId, DeviceConnectionId, WindowStartUtc) and day-partitioned on
+/// <see cref="WindowStartUtc"/>, kept for the same 90 days as <see cref="RealtimeAssessment"/>.
+/// The natural key is also the idempotency key: the routine window re-reads the last three days on
+/// every pull, so the same window arrives repeatedly and must land once. It carries the connection
+/// because these rows are per device, like <see cref="GranularMetricHour"/> — two watches on one
+/// wearer can cover the same minutes, and each window is a measurement one of them made.
 /// </para>
 /// </summary>
 /// <remarks>
@@ -31,7 +33,7 @@ public class RhythmEpisode
     /// <summary>End of the analysis window (UTC).</summary>
     public DateTime WindowEndUtc { get; set; }
 
-    /// <summary>The connection the window was fetched from — audit only, not a join target.</summary>
+    /// <summary>The connection that measured this window. Part of the key — see the class remarks.</summary>
     public Guid DeviceConnectionId { get; set; }
 
     /// <summary>

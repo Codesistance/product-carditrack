@@ -33,9 +33,8 @@ public class RhythmEpisodeRepository : IRhythmEpisodeRepository
                     {episode.BeatCount}, {episode.RrMilliseconds}, {episode.OffsetMillisFromStart},
                     {episode.MeanRrMs}, {episode.MinRrMs}, {episode.MaxRrMs}, {episode.RmssdMs},
                     {episode.IngestedAtUtc})
-            ON CONFLICT ("CardiMemberId", "WindowStartUtc") DO UPDATE SET
+            ON CONFLICT ("CardiMemberId", "DeviceConnectionId", "WindowStartUtc") DO UPDATE SET
                 "WindowEndUtc" = EXCLUDED."WindowEndUtc",
-                "DeviceConnectionId" = EXCLUDED."DeviceConnectionId",
                 "NotificationStartUtc" = EXCLUDED."NotificationStartUtc",
                 "Positive" = EXCLUDED."Positive",
                 "BeatCount" = EXCLUDED."BeatCount",

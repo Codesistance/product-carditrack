@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260922113307_AddRhythmEpisodesAndDeviceRhythmCounts")]
+    [Migration("20260922131352_AddRhythmEpisodesAndDeviceRhythmCounts")]
     partial class AddRhythmEpisodesAndDeviceRhythmCounts
     {
         /// <inheritdoc />
@@ -2928,14 +2928,14 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<Guid>("CardiMemberId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("DeviceConnectionId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("WindowStartUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("BeatCount")
                         .HasColumnType("integer");
-
-                    b.Property<Guid>("DeviceConnectionId")
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("IngestedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -2969,7 +2969,7 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<DateTime>("WindowEndUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.HasKey("CardiMemberId", "WindowStartUtc");
+                    b.HasKey("CardiMemberId", "DeviceConnectionId", "WindowStartUtc");
 
                     b.HasIndex("CardiMemberId", "NotificationStartUtc");
 

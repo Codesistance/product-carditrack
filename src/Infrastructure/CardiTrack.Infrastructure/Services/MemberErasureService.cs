@@ -140,6 +140,11 @@ public class MemberErasureService : IMemberErasureService
             await Step("RealtimeAssessments", _db.RealtimeAssessments.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("DigestEntries", _db.DigestEntries.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("EnvironmentalReadings", _db.EnvironmentalReadings.Where(x => x.CardiMemberId == cardiMemberId));
+
+            // Beat-level cardiac data, and the most identifying physiological record the platform
+            // holds. Range-partitioned with no foreign key, so nothing cascades it: left out of
+            // this list, a member's interbeat intervals stay queryable after their own erasure.
+            await Step("RhythmEpisodes", _db.RhythmEpisodes.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("GranularMetricHours", _db.GranularMetricHours.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("MetricRollupsHourly", _db.MetricRollupsHourly.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("DeviceActivityLogs", _db.DeviceActivityLogs.Where(x => x.CardiMemberId == cardiMemberId));

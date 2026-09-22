@@ -70,12 +70,17 @@ namespace CardiTrack.Infrastructure.Migrations
             // the same arrangement as RealtimeAssessments and EnvironmentalReadings.
             // PartitionMaintenanceWorker creates the children; a day without one rejects its
             // inserts, which is why that worker runs hourly and pre-creates a fortnight ahead.
+            //
+            // The key carries DeviceConnectionId as well as the partition column: these rows are
+            // per device, like GranularMetricHours. Two watches on one wearer can raise
+            // notifications over the same minutes, and keying on (member, window) alone would let
+            // whichever synced second overwrite the other's measurement.
             migrationBuilder.Sql("""
                 CREATE TABLE "RhythmEpisodes" (
                     "CardiMemberId" uuid NOT NULL,
+                    "DeviceConnectionId" uuid NOT NULL,
                     "WindowStartUtc" timestamp with time zone NOT NULL,
                     "WindowEndUtc" timestamp with time zone NOT NULL,
-                    "DeviceConnectionId" uuid NOT NULL,
                     "NotificationStartUtc" timestamp with time zone NOT NULL,
                     "Positive" boolean NOT NULL,
                     "BeatCount" integer NOT NULL,
@@ -87,7 +92,7 @@ namespace CardiTrack.Infrastructure.Migrations
                     "RmssdMs" integer NULL,
                     "IngestedAtUtc" timestamp with time zone NOT NULL,
                     CONSTRAINT "PK_RhythmEpisodes"
-                        PRIMARY KEY ("CardiMemberId", "WindowStartUtc")
+                        PRIMARY KEY ("CardiMemberId", "DeviceConnectionId", "WindowStartUtc")
                 ) PARTITION BY RANGE ("WindowStartUtc");
                 """);
 

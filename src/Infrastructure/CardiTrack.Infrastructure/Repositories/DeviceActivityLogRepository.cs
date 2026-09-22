@@ -82,9 +82,20 @@ public class DeviceActivityLogRepository : Repository<DeviceActivityLog>, IDevic
         existing.ModerateZoneFloorBpm = log.ModerateZoneFloorBpm;
         existing.LongestSedentaryStretchMinutes = log.LongestSedentaryStretchMinutes;
         existing.LongestSedentaryStretchStartUtc = log.LongestSedentaryStretchStartUtc;
-        existing.EcgReadings = log.EcgReadings;
-        existing.EcgAtrialFibrillationReadings = log.EcgAtrialFibrillationReadings;
-        existing.IrregularRhythmNotifications = log.IrregularRhythmNotifications;
+        // The three rhythm counts coalesce instead of overwriting, and they are the only columns
+        // here that do. Every other reading above is re-fetched on every pull, so writing what
+        // came back is a refresh. Rhythm is deliberately *not* fetched on the history re-pull or
+        // the autonomous backfill — the ECG filter cannot reach old days affordably — so those
+        // paths call this with nulls for a day whose counts may already be known. Overwriting
+        // would not be a refresh but a deletion: a caregiver asking to re-pull history could erase
+        // an EcgAtrialFibrillationReadings of 1 and take the evidence for a standing AFib alert
+        // with it. Null here means "this pull did not look", never "this pull found nothing" —
+        // the zero is what carries the second meaning, and a zero still overwrites.
+        existing.EcgReadings = log.EcgReadings ?? existing.EcgReadings;
+        existing.EcgAtrialFibrillationReadings =
+            log.EcgAtrialFibrillationReadings ?? existing.EcgAtrialFibrillationReadings;
+        existing.IrregularRhythmNotifications =
+            log.IrregularRhythmNotifications ?? existing.IrregularRhythmNotifications;
     }
 
     public async Task<IEnumerable<DeviceActivityLog>> GetByCardiMemberAndDateAsync(

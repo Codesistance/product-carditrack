@@ -15,13 +15,14 @@ public class RhythmEpisodeConfiguration : IEntityTypeConfiguration<RhythmEpisode
     {
         builder.ToTable("RhythmEpisodes");
 
-        // The partition key must be part of the primary key — PostgreSQL enforces it. Two windows
-        // of one member cannot share a start instant, so this is also the idempotency key the
-        // three-day routine re-read needs.
-        builder.HasKey(e => new { e.CardiMemberId, e.WindowStartUtc });
+        // The partition key must be part of the primary key — PostgreSQL enforces it — and so must
+        // the connection: these rows are kept per device, exactly like GranularMetricHours. Two
+        // watches on one wearer can raise notifications over the same minutes, and each window is
+        // a measurement one of them made; keying on (member, window) alone would let whichever
+        // device synced second overwrite the other's reading and quietly halve the evidence.
+        builder.HasKey(e => new { e.CardiMemberId, e.DeviceConnectionId, e.WindowStartUtc });
 
         builder.Property(e => e.WindowEndUtc).IsRequired();
-        builder.Property(e => e.DeviceConnectionId).IsRequired();
         builder.Property(e => e.NotificationStartUtc).IsRequired();
         builder.Property(e => e.Positive).IsRequired();
         builder.Property(e => e.BeatCount).IsRequired();

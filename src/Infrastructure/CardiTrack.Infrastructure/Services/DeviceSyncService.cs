@@ -7,6 +7,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.Settings;
 using CardiTrack.Shared.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace CardiTrack.Infrastructure.Services;
@@ -28,6 +29,13 @@ public class DeviceSyncService : IDeviceSyncService
     private readonly INotificationGapResolver _gapResolver;
     private readonly List<DeviceProviderSettings> _providers;
 
+    /// <summary>
+    /// Optional so the tests that construct this service directly need not stand one up — the same
+    /// reason <c>StatisticalAlertService</c> takes its insight service that way. Used only to
+    /// report enrichment that failed without costing the sync.
+    /// </summary>
+    private readonly ILogger<DeviceSyncService>? _logger;
+
     public DeviceSyncService(
         IOAuthTokenRefreshService tokenRefresh,
         IDeviceApiClient deviceApi,
@@ -37,8 +45,10 @@ public class DeviceSyncService : IDeviceSyncService
         IGranularIngestionService granularIngestion,
         IUnitOfWork unitOfWork,
         INotificationGapResolver gapResolver,
-        IOptions<List<DeviceProviderSettings>> providers)
+        IOptions<List<DeviceProviderSettings>> providers,
+        ILogger<DeviceSyncService>? logger = null)
     {
+        _logger = logger;
         _tokenRefresh = tokenRefresh;
         _deviceApi = deviceApi;
         _deviceConnections = deviceConnections;
@@ -406,15 +416,37 @@ public class DeviceSyncService : IDeviceSyncService
     /// <remarks>
     /// Written per device rather than merged across them, unlike the day counts: a window is a
     /// measurement one watch made, and two watches disagreeing about the same minutes is
-    /// information rather than a conflict to resolve. Best-effort like the read itself — the
-    /// episodes are evidence attached to an alert the counts already raise, so failing to store
-    /// them must not cost the day.
+    /// information rather than a conflict to resolve.
+    /// <para>
+    /// Best-effort <em>in fact</em>, not merely in this comment: the write runs before the sync is
+    /// marked successful, so an escaping database error — a missing partition, a transient
+    /// failure — would fail the whole member sync over beat-detail enrichment and re-fetch the
+    /// entire window on the next pull. The episodes are evidence attached to an alert the day
+    /// counts already raise, and those counts have landed by the time this runs, so a failure here
+    /// costs detail and never the finding.
+    /// </para>
     /// </remarks>
     private async Task StoreRhythmEpisodesAsync(DeviceConnection connection, DeviceRhythmDay rhythm)
     {
         if (rhythm.AnalysisWindows.Count == 0)
             return;
 
+        try
+        {
+            await WriteRhythmEpisodesAsync(connection, rhythm);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(
+                ex,
+                "Rhythm episode write failed for connection {DeviceConnectionId}; the day's counts "
+                + "are unaffected and the next pull re-reads the same windows.",
+                connection.Id);
+        }
+    }
+
+    private async Task WriteRhythmEpisodesAsync(DeviceConnection connection, DeviceRhythmDay rhythm)
+    {
         var ingestedAt = DateTime.UtcNow;
 
         foreach (var window in rhythm.AnalysisWindows)
