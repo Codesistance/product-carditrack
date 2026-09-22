@@ -15,6 +15,7 @@ public class UnitOfWork : IUnitOfWork
     public ISubscriptionRepository Subscriptions { get; }
     public IUserCardiMemberRepository UserCardiMembers { get; }
     public IUserOrganizationRepository UserOrganizations { get; }
+    public ICaregiverInviteRepository CaregiverInvites { get; }
     public IDeviceConnectionRepository DeviceConnections { get; }
     public IActivityLogRepository ActivityLogs { get; }
     public IDeviceActivityLogRepository DeviceActivityLogs { get; }
@@ -57,6 +58,7 @@ public class UnitOfWork : IUnitOfWork
         ISubscriptionRepository subscriptions,
         IUserCardiMemberRepository userCardiMembers,
         IUserOrganizationRepository userOrganizations,
+        ICaregiverInviteRepository caregiverInvites,
         IDeviceConnectionRepository deviceConnections,
         IActivityLogRepository activityLogs,
         IDeviceActivityLogRepository deviceActivityLogs,
@@ -98,6 +100,7 @@ public class UnitOfWork : IUnitOfWork
         Subscriptions = subscriptions;
         UserCardiMembers = userCardiMembers;
         UserOrganizations = userOrganizations;
+        CaregiverInvites = caregiverInvites;
         DeviceConnections = deviceConnections;
         ActivityLogs = activityLogs;
         DeviceActivityLogs = deviceActivityLogs;

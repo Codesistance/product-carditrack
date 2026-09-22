@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<CreateDeviceInviteRequest>, CreateDeviceInviteValidator>();
+        services.AddScoped<IValidator<CreateCaregiverInviteRequest>, CreateCaregiverInviteValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         services.AddScoped<IValidator<HistoryRepullRequest>, HistoryRepullValidator>();
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
@@ -84,6 +85,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISubscriptionRepository, CardiTrack.Infrastructure.Repositories.SubscriptionRepository>();
         services.AddScoped<IUserCardiMemberRepository, CardiTrack.Infrastructure.Repositories.UserCardiMemberRepository>();
         services.AddScoped<IUserOrganizationRepository, CardiTrack.Infrastructure.Repositories.UserOrganizationRepository>();
+        services.AddScoped<ICaregiverInviteRepository, CardiTrack.Infrastructure.Repositories.CaregiverInviteRepository>();
         services.AddScoped<IDeviceConnectionRepository, CardiTrack.Infrastructure.Repositories.DeviceConnectionRepository>();
         services.AddScoped<IActivityLogRepository, CardiTrack.Infrastructure.Repositories.ActivityLogRepository>();
         services.AddScoped<IDeviceActivityLogRepository, CardiTrack.Infrastructure.Repositories.DeviceActivityLogRepository>();
@@ -150,6 +152,13 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(CardiTrack.Infrastructure.Settings.DeviceInviteOptions.SectionName));
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionInviteService,
             CardiTrack.Infrastructure.Services.DeviceConnectionInviteService>();
+
+        // Caregiver invitations: an admin offers somebody a share of the watching. Same shape as
+        // the wearer invitation above, and request-scoped for the same reason.
+        services.Configure<CardiTrack.Infrastructure.Settings.CaregiverInviteOptions>(
+            configuration.GetSection(CardiTrack.Infrastructure.Settings.CaregiverInviteOptions.SectionName));
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.ICaregiverInviteService,
+            CardiTrack.Infrastructure.Services.CaregiverInviteService>();
         // Caregiver-triggered sync (issue #67). Request-scoped, not a background job — the
         // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,
