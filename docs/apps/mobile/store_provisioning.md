@@ -163,8 +163,9 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
    Secret Manager first (section G, steps 1–3) and fetch it into the worktree:
 
    ```powershell
+   # --out-file, not a > redirect: Windows PowerShell re-encodes redirected output (UTF-16, BOM)
    gcloud secrets versions access latest --secret=carditrack-common-firebase-android-config `
-     --project=carditrack-490120 > src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json
+     --project=carditrack-490120 --out-file=src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json
    dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj `
      -f net10.0-android -c Release `
      -p:AndroidPackageFormats=aab -p:AndroidKeyStore=true `

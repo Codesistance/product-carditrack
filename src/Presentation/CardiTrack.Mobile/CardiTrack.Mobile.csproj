@@ -207,7 +207,7 @@
 
 	<Target Name="_CardiTrackRequireFirebaseConfig" BeforeTargets="BeforeBuild" Condition="'$(_CardiTrackFirebaseConfigRequired)' == 'true'">
 		<Error Condition="!Exists('$(_CardiTrackFirebaseConfig)')"
-		       Text="$(_CardiTrackFirebaseConfigRepoPath) is missing. A store build without the Firebase config ships an app that can never register for push. From the repository root: gcloud secrets versions access latest --secret=$(_CardiTrackFirebaseConfigSecret) --project=carditrack-490120 > $(_CardiTrackFirebaseConfigRepoPath)" />
+		       Text="$(_CardiTrackFirebaseConfigRepoPath) is missing. A store build without the Firebase config ships an app that can never register for push. From the repository root: gcloud secrets versions access latest --secret=$(_CardiTrackFirebaseConfigSecret) --project=carditrack-490120 --out-file=$(_CardiTrackFirebaseConfigRepoPath) (--out-file, not a shell redirect: PowerShell re-encodes redirected output)" />
 	</Target>
 
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
