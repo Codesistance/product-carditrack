@@ -334,8 +334,16 @@ public class DeviceSyncService : IDeviceSyncService
     {
         // Checked once for the whole window rather than per day: a connection's granted scopes do
         // not change mid-pull, and the check is over a parsed JSON list.
-        var readsRhythm = DeviceScopes.GrantsRhythm(ParseScopes(connection.Scopes));
-        if (readsRhythm)
+        //
+        // Two gates, not one. ReadRhythmDayAsync below fetches the combined ECG-and-IRN day and
+        // each half tolerates its own absence, so it is right to run for a connection holding
+        // either scope alone -- that is what the broad GrantsRhythm is for. GetIrnProfileAsync is
+        // not like that: it is a single IRN-specific request, and gating it on the broad check
+        // would send it on every pull from an ECG-only connection, each one a predictable 403
+        // spent and logged for good.
+        var scopes = ParseScopes(connection.Scopes);
+        var readsRhythm = DeviceScopes.GrantsRhythm(scopes);
+        if (DeviceScopes.GrantsIrn(scopes))
             await CaptureIrnProfileAsync(connection, accessToken);
 
         // Oldest first, so a mid-window provider failure still leaves the earlier days stored.
