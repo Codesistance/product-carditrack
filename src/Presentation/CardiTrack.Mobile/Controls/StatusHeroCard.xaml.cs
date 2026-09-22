@@ -312,6 +312,11 @@ public partial class StatusHeroCard : ContentView
         if (StatusIcon.IsVisible)
             StatusIcon.Source = icon;
 
+        // The sentence is inset to meet the headline's text only while there is a glyph to
+        // clear: the glyph's 20 plus the column's 8. A tier with no glyph (no baseline yet)
+        // would otherwise wrap its sentence 28dp narrower than the block it is meant to fill.
+        StatusDetailLabel.Margin = StatusIcon.IsVisible ? new Thickness(28, 0, 0, 0) : Thickness.Zero;
+
         StatusDetailLabel.Text = detail;
     }
 

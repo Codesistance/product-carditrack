@@ -275,12 +275,14 @@ The tier glyph is back in front of the headline, on its line. It could not
             </Grid>
             <!-- A point under Body2Dark's fourteen, keeping the step down from the headline that
                  the old 16/14 pair had. Both come down together so the block reads at one scale
-                 rather than the sentence growing relative to the line above it. -->
+                 rather than the sentence growing relative to the line above it. Its left margin
+                 is set by SetStatusLine: the glyph's column width when the glyph is drawn, so the
+                 sentence meets the headline's text, and nothing when a tier has no glyph, so the
+                 headless sentence gets the whole block rather than an indent under empty space. -->
             <Label x:Name="StatusDetailLabel"
                    Grid.Row="1"
                    Style="{StaticResource Body2Dark}"
                    FontSize="16"
-                   Margin="28,0,0,0"
                    LineBreakMode="WordWrap"
                    MaxLines="3"/>
         </Grid>
