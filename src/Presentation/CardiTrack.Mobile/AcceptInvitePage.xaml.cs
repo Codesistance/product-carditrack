@@ -126,14 +126,10 @@ public partial class AcceptInvitePage : ContentPage
         InviteTitleLabel.Text = $"{inviter} would like you to help watch over {member}.";
         InviteExpiryLabel.Text = $"This invitation works for {FamilyCopy.Remaining(invite.ExpiresAt, DateTime.UtcNow)}.";
 
-        // What an invitation grants is fixed by the invitation itself, and the inviter chose it.
-        // Said as what they will be able to do rather than as three flag names.
-        GrantsList.Apply(
-        [
-            $"See how {member} is doing — their readings, their alerts and their journal.",
-            $"Get the alerts about {member} on your own phone.",
-            "Join their family as a member. Only its admin can invite people or change the plan.",
-        ]);
+        // What an invitation grants is fixed by the invitation itself, and the inviter chose it —
+        // so the list is built from the flags the view carries, not from a sentence that assumes
+        // both. Said as what they will be able to do rather than as flag names.
+        GrantsList.Apply(GrantLines(invite, member));
 
         QuietHoursNoteLabel.Text =
             "You can change this later under Settings, Notifications. If you leave without choosing, "
@@ -147,6 +143,31 @@ public partial class AcceptInvitePage : ContentPage
     /// </summary>
     private async void OnBackTapped(object? sender, TappedEventArgs e) =>
         await this.GoBackAsync(AppShell.DashboardRoute);
+
+    /// <summary>
+    /// One line per grant the invitation carries, and the membership line every invitation ends
+    /// with. A view carrying neither flag is one from a server that predates them, not an
+    /// invitation that grants nothing — the composer refuses to mint one of those — so it falls
+    /// back to the fuller wording rather than a list that says only "you join the family".
+    /// </summary>
+    private static IReadOnlyList<string> GrantLines(CaregiverInviteView invite, string member)
+    {
+        var (view, alerts) = invite.CanViewHealthData || invite.ReceiveAlerts
+            ? (invite.CanViewHealthData, invite.ReceiveAlerts)
+            : (true, true);
+
+        var lines = new List<string>(3);
+        if (view)
+            lines.Add($"See how {member} is doing — their readings, their alerts and their journal.");
+        if (alerts)
+        {
+            lines.Add(view
+                ? $"Get the alerts about {member} on your own phone."
+                : $"Get the alerts about {member} on your own phone, and answer them — without a view of the readings behind them.");
+        }
+        lines.Add("Join their family as a member. Only its admin can invite people or change the plan.");
+        return lines;
+    }
 
     private void OnWakeMeTapped(object? sender, TappedEventArgs e) => Choose(true);
 

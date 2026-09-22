@@ -94,6 +94,17 @@ public sealed class AlertResponseDraftStore
         _store.Remove(IndexKey);
     });
 
+    /// <summary>
+    /// Two writes that cannot be one, ordered so a failure between them errs towards the index
+    /// knowing too much rather than too little.
+    /// </summary>
+    /// <remarks>
+    /// Saving: the index first, then the value. If the value write then fails, the index names a
+    /// key with nothing under it, which <see cref="ClearAsync"/> removes harmlessly. The other
+    /// order left the value in the keystore with no index entry, and a sign-out that walked the
+    /// index would never find it — an unsent note about the wearer, kept for the next caregiver on
+    /// the phone. Removing: the value first, then the index, for the same reason.
+    /// </remarks>
     private async Task WriteAsync(string key, string? payload)
     {
         var index = await ReadIndexAsync();
@@ -105,9 +116,9 @@ public sealed class AlertResponseDraftStore
             return;
         }
 
-        await _store.SetAsync(key, payload);
         if (index.Add(key))
             await WriteIndexAsync(index);
+        await _store.SetAsync(key, payload);
     }
 
     private async Task<HashSet<string>> ReadIndexAsync()

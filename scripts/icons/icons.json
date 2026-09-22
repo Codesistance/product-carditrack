@@ -57,13 +57,19 @@
    ]
   },
   "ink": {
-   "title": "Ink · the member-detail row icons, drawn solid",
-   "style": "linear",
+   "title": "Ink · the member-detail row icons: grey stroke, light fill, white inner lines",
+   "style": "Multicolor",
    "slots": [
-    "#727272"
+    "#727272",
+    "#D9DCE1",
+    "#FFFFFF",
+    "#D9DCE1"
    ],
    "tokens": [
-    "BodyText"
+    "BodyText",
+    "derived: BodyText at 25% over white",
+    "White",
+    "derived: BodyText at 25% over white"
    ]
   },
   "infoGreen": {
@@ -535,7 +541,7 @@
   {
    "file": "icon_moon.svg",
    "source": "iconpark",
-   "name": "moon",
+   "name": "sleep-two",
    "group": "brand",
    "solid": true,
    "size": 24

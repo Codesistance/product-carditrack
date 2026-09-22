@@ -193,15 +193,19 @@
                                             <Label Text="At night"
                                                    Style="{StaticResource Caption}"/>
                                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                                <!-- Top of the sentence, not its middle: the mark
+                                                     belongs to the first line, and centred against
+                                                     two lines it floated between them. -->
                                                 <Image Grid.Column="0"
                                                        Source="icon_moon.svg"
                                                        WidthRequest="20" HeightRequest="20"
-                                                       VerticalOptions="Center"
+                                                       VerticalOptions="Start"
+                                                       Margin="0,1,0,0"
                                                        AutomationProperties.IsInAccessibleTree="False"/>
                                                 <Label x:Name="NightCoverageLabel"
                                                        Grid.Column="1"
                                                        Style="{StaticResource Body2Dark}"
-                                                       VerticalOptions="Center"
+                                                       VerticalOptions="Start"
                                                        LineBreakMode="WordWrap"/>
                                                 <Label Grid.Column="2"
                                                        Text="Change"

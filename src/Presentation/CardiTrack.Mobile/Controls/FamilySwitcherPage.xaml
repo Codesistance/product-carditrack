@@ -58,10 +58,13 @@
 
                 <!-- Both ways to another family, always here — even for a caregiver in exactly
                      one with nothing pending, because the way to a second one has to stay where
-                     it was. -->
+                     it was. The same pair the tab's no-family state draws, in the same weights:
+                     starting a family is the primary act and joining one the secondary, so two
+                     identical outlines read as two equal unknowns where one is the answer for
+                     most people. -->
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,2,0,4">
                     <Button Text="Start a family"
-                            Style="{StaticResource SecondaryOutlineButton}"
+                            Style="{StaticResource PrimaryGradientButton}"
                             Clicked="OnStartFamilyClicked"/>
                     <Button Grid.Column="1"
                             Text="Join with an ID"

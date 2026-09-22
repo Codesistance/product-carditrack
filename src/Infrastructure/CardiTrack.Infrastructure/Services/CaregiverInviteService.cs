@@ -155,10 +155,15 @@ public class CaregiverInviteService : ICaregiverInviteService
         await _unitOfWork.CaregiverInvites.TryMarkOpenedAsync(
             invite.Id, _timeProvider.GetUtcNow().UtcDateTime, ct);
 
+        // The grants travel with the view: the invitee is deciding whether to accept, and a page
+        // that told everybody "readings, alerts and journal" when the inviter had ticked one of
+        // them would be asking them to accept something other than what is on offer.
         return new CaregiverInviteView(
             FirstName(member.Name),
             FirstName(inviter.Name),
-            invite.ExpiresAt);
+            invite.ExpiresAt,
+            invite.CanViewHealthData,
+            invite.ReceiveAlerts);
     }
 
     public async Task<CaregiverInviteRedemption> RedeemAsync(

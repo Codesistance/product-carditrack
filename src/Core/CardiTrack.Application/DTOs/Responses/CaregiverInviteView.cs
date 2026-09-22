@@ -21,7 +21,11 @@ namespace CardiTrack.Application.DTOs.Responses;
 /// <param name="MemberFirstName">The person being watched, as the page names them.</param>
 /// <param name="InviterFirstName">Who is asking.</param>
 /// <param name="ExpiresAt">When the invitation stops working.</param>
+/// <param name="CanViewHealthData">Whether accepting grants a view of the member's readings, alerts and journal.</param>
+/// <param name="ReceiveAlerts">Whether accepting puts the invitee on the member's alert deliveries.</param>
 public record CaregiverInviteView(
     string MemberFirstName,
     string InviterFirstName,
-    DateTime ExpiresAt);
+    DateTime ExpiresAt,
+    bool CanViewHealthData = true,
+    bool ReceiveAlerts = true);

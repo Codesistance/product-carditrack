@@ -121,6 +121,26 @@ public class AlertResponseDraftStoreTests
         Assert.Equal("kept", (await store.LoadAsync(scope, Alert, AlertAnswerKind.Acknowledge))!.Note);
     }
 
+    [Fact]
+    public async Task AValueWriteThatFails_LeavesNothingTheClearCannotFind()
+    {
+        // The index is written first, so a value write that fails leaves an index entry with
+        // nothing under it — and never a value the index does not know about.
+        var keystore = new FakeSecureStore { FailSetsFor = k => !k.EndsWith(":index", StringComparison.Ordinal) };
+        var store = new AlertResponseDraftStore(keystore);
+        var scope = AlertResponseDraftStore.ScopeFor("tom@example.com");
+
+        await Assert.ThrowsAsync<IOException>(() =>
+            store.SaveAsync(scope, Alert, AlertAnswerKind.Close, new AlertResponseDraft { Note = "orphan" }));
+
+        Assert.DoesNotContain(keystore.Values.Keys, k => k.Contains("orphan") || k.Contains("Close"));
+        Assert.Contains(keystore.Values.Keys, k => k.EndsWith(":index", StringComparison.Ordinal));
+
+        keystore.FailSetsFor = null;
+        await store.ClearAsync();
+        Assert.Empty(keystore.Values);
+    }
+
     private sealed class FakeSecureStore : ISecureKeyValueStore
     {
         public Dictionary<string, string> Values { get; } = new(StringComparer.Ordinal);
@@ -128,6 +148,8 @@ public class AlertResponseDraftStoreTests
         public TimeSpan FirstSetDelay { get; init; }
 
         public bool FailNextSet { get; set; }
+
+        public Func<string, bool>? FailSetsFor { get; set; }
 
         private bool _delayed;
 
@@ -141,6 +163,9 @@ public class AlertResponseDraftStoreTests
                 FailNextSet = false;
                 throw new IOException("keystore refused");
             }
+
+            if (FailSetsFor?.Invoke(key) == true)
+                throw new IOException("keystore refused this key");
 
             if (!_delayed && FirstSetDelay > TimeSpan.Zero)
             {

@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**96 icons**, **33 distinct colours**, **3 referenced nowhere**.
+**96 icons**, **34 distinct colours**, **3 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -23,7 +23,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 26 | White |
+| `#FFFFFF` | 27 | White |
 | `#153D66` | 24 | icons.json brand outer stroke |
 | `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 14 | MutedText |
@@ -32,6 +32,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#727272` | 8 | Body / Body2 ink |
 | `#174E86` | 7 | PrimaryDark |
 | `#36C09B` | 7 | StatusGreen |
+| `#D9DCE1` | 6 | — |
 | `#FBE4E4` | 6 | derived: StatusRed at 14% over white |
 | `#1F8A72` | 5 | MetricTemperatureInk / DatasetBodyText |
 | `#B45309` | 3 | severity orange ink |
@@ -163,17 +164,17 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
 | `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
 | `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader |
-| `icon_bell_cog.svg` | `#1884DC` `#727272` | CardiMemberDetailPage |
+| `icon_bell_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
-| `icon_book_cog.svg` | `#1884DC` `#727272` | CardiMemberDetailPage |
+| `icon_book_cog.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
 | `icon_callout.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
 | `icon_chatbot_mono.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_check_disc.svg` | `#3175B9` `#153D66` `#FFFFFF` | BaselineLearningPage, FindingsList |
 | `icon_clipboard.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, InviteWaitPage |
-| `icon_clipboard_ink.svg` | `#727272` | CardiMemberDetailPage |
+| `icon_clipboard_ink.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_edit.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage, MedicalInformationPage |
 | `icon_expand.svg` | `#153D66` | MetricTrendCard |
 | `icon_export_white.svg` | `#FFFFFF` | ExportAction |
@@ -190,7 +191,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_notification.svg` | `#FFFFFF` | FcmNotificationChannel, PushRegistrationCoordinator |
 | `icon_open.svg` | `#153D66` | ExportDeliveryPopupPage |
 | `icon_pause.svg` | `#B45309` | CardiMemberDetailPage |
-| `icon_people.svg` | `#727272` | CardiMemberDetailPage |
+| `icon_people.svg` | `#D9DCE1` `#727272` | CardiMemberDetailPage |
 | `icon_person_remove.svg` | `#FBE4E4` `#C42F2F` | CardiMemberDetailPage, FamilyPage |
 | `icon_plus.svg` | `#153D66` | ConnectionSuccessPage, DeviceManagementPage |
 | `icon_power_red.svg` | `#C42F2F` | SettingsPage |
@@ -201,8 +202,8 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_share.svg` | `#153D66` | ExportDeliveryPopupPage, InviteWaitPage |
 | `icon_star.svg` | `#939DAA` | DeviceCard, StarRatingView |
 | `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertDetailPage, AlertListCard, DeviceCard, MetricAlarmEditPage, QuestionCard |
-| `icon_user_bell.svg` | `#1884DC` `#727272` | CardiMemberDetailPage |
-| `icon_watch.svg` | `#727272` | CardiMemberDetailPage |
+| `icon_user_bell.svg` | `#1884DC` `#D9DCE1` `#727272` | CardiMemberDetailPage |
+| `icon_watch.svg` | `#D9DCE1` `#727272` `#FFFFFF` | CardiMemberDetailPage |
 
 ## How "used by" is decided
 
