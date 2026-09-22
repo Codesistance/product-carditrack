@@ -15,7 +15,11 @@ name: Deploy Mobile → Dev
 # Pushing is idempotent per store. A store that already holds the tag's build
 # is skipped there, the platform still counts as delivered, and the run ends
 # green — so a run that lost one platform can be dispatched again for `both`
-# and only the missing store is uploaded. On TestFlight "holds" means a build
+# and only the missing store is uploaded. The skip needs the tag's build number
+# to be the one recorded for it at build time, which is a function of the tag
+# alone; a legacy tag on the commit-count fallback keeps the clash behaviour,
+# since another tag minted on the same commit shares that count and the store
+# cannot say which of them it holds. On TestFlight "holds" means a build
 # that is VALID or still PROCESSING, and delivery is confirmed by waiting for
 # VALID; a build that failed processing has spent its number and fails the run
 # like a store holding a *higher* number does: nothing lower can ever land.
@@ -61,6 +65,7 @@ jobs:
     outputs:
       tag:          ${{ steps.tag.outputs.tag }}
       build_number: ${{ steps.tag.outputs.build_number }}
+      build_number_recorded: ${{ steps.tag.outputs.build_number_recorded }}
       android:      ${{ steps.platforms.outputs.android }}
       ios:          ${{ steps.platforms.outputs.ios }}
       # 'true' when that store already holds the tag's build: its push job is
@@ -167,12 +172,18 @@ jobs:
           # they came to disagree. Tags archived before build-number.txt existed carry
           # the commit count the old scheme used, so that stays the fallback.
           BUILD_NUMBER=$(gcloud storage cat "$BUCKET/$TAG/build-number.txt" 2>/dev/null | tr -cd '[:digit:]' || true)
+          RECORDED=true
           if [ -z "$BUILD_NUMBER" ]; then
             BUILD_NUMBER=$(git rev-list --count "$TAG")
+            RECORDED=false
             echo "$TAG was archived before build numbers were recorded — using its commit count ($BUILD_NUMBER)."
           fi
           echo "tag=$TAG"                   >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          # A recorded number is a function of the tag alone, so a store holding it
+          # holds this tag's build. A commit count is not: the store check needs to
+          # know which it has before it treats a held number as delivered.
+          echo "build_number_recorded=$RECORDED" >> "$GITHUB_OUTPUT"
           PRESENT=""; [ "$ANDROID" = "true" ] && PRESENT="$PRESENT android"; [ "$IOS" = "true" ] && PRESENT="$PRESENT ios"
           echo "Pushing $TAG (build $BUILD_NUMBER):$PRESENT"
 
@@ -224,6 +235,7 @@ jobs:
           ANDROID: ${{ steps.platforms.outputs.android }}
           IOS: ${{ steps.platforms.outputs.ios }}
           BUNDLE_ID: ${{ steps.bundle.outputs.bundle_id }}
+          RECORDED: ${{ steps.tag.outputs.build_number_recorded }}
         run: |
           set -uo pipefail
           KEYS="$RUNNER_TEMP/store-preflight"
@@ -245,10 +257,16 @@ jobs:
             local highest holds
             highest=$(printf '%s\n' "$4" | sed -n 's/^highest=//p')
             holds=$(printf '%s\n' "$4" | sed -n 's/^holds=//p')
-            if [ "$holds" = "true" ]; then
+            if [ "$holds" = "true" ] && [ "$RECORDED" = "true" ]; then
               echo "::notice::$1 already holds $2 $BUILD_NUMBER from $TAG — nothing to upload, so its push is skipped."
               echo "$3=true" >> "$GITHUB_OUTPUT"
               echo "### $1 — already holds \`$TAG\` ($2 $BUILD_NUMBER); upload skipped" >> "$GITHUB_STEP_SUMMARY"
+            elif [ "$holds" = "true" ]; then
+              # The number is a commit count, which another tag minted on the same
+              # commit shares; the store cannot say whose build it has, and the
+              # number is spent either way.
+              echo "::error::$1 already holds $2 $BUILD_NUMBER, but $TAG's number is a commit count rather than one recorded for the tag, and a commit count is not unique to a tag — the store may hold another tag's build under it. Build a new tag (dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks) and push that instead."
+              CLASH=1
             elif [ "${highest:-0}" -ge "$BUILD_NUMBER" ]; then
               echo "::error::$1 has already seen $2 $highest, at or above the $BUILD_NUMBER that $TAG would upload — it will be refused as a duplicate, and nothing lower can ever land. Either $TAG's build predates the current numbering, or an earlier upload of it failed processing and spent the number. Build a new tag (dispatch CI / Deploy Apps → Dev on main with the mobile_android / mobile_ios ticks) and push that instead."
               CLASH=1
