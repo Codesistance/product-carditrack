@@ -16,7 +16,7 @@ Terraform for CardiTrack's Google Cloud platform — project **`carditrack-49012
 
 | Stack | Root | State prefix | Holds |
 |-------|------|--------------|-------|
-| `common` | `infrastructure/common/` | `carditrack/common` | Artifact Registry (`carditrack-common`), mobile builds bucket (`carditrack-common-builds`), 9 store distribution secrets |
+| `common` | `infrastructure/common/` | `carditrack/common` | Artifact Registry (`carditrack-common`), mobile builds bucket (`carditrack-common-builds`), the `carditrack-common-*` secrets (11 read by the mobile workflows — signing, store and Firebase client config — 2 Slack, 3 operator-only APNs; see `docs/apps/mobile/store_provisioning.md`) |
 | `dev` | `infrastructure/` | `carditrack/dev` | Full per-env stack (Cloud Run, Cloud SQL, buckets, secrets, LB/WAF, …) |
 | `prod` | `infrastructure/` | `carditrack/prod` | Same, with prod sizing/flags |
 
