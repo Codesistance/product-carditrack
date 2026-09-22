@@ -72,7 +72,6 @@ public partial class AccountSetupPage : ContentPage
                 {
                     Email = _authService.CurrentUserEmail ?? string.Empty,
                     Name = _authService.CurrentUserName ?? orgName,
-                    Role = UserRole.Member,
                     TimeZoneId = TimeZoneInfo.Local.Id,
                 },
             });
