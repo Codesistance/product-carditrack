@@ -3,10 +3,10 @@
  "iconpark": {
   "package": "@icon-park/svg",
   "version": "1.4.2",
-  "strokeWidth": 3,
+  "strokeWidth": 2,
   "strokeLinecap": "round",
   "strokeLinejoin": "round",
-  "note": "strokeWidth is on the 48-unit grid: 3 = 1.5px at 24dp. The hand-drawn set used 2px; the thinner stroke is what takes the hard edge off the four-colour glyphs."
+  "note": "strokeWidth is on the 48-unit grid: 2 = 1px at 24dp. The hand-drawn set used 2px; the thinner stroke is what takes the hard edge off the four-colour glyphs."
  },
  "material": {
   "source": "google/material-design-icons, Material Symbols Rounded, weight 500, 24px, optical size 24",
