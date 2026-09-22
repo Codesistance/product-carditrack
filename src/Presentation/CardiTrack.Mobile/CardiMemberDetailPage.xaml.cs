@@ -5,6 +5,7 @@ using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
 using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Api;
+using CardiTrack.Mobile.Core.Family;
 using CardiTrack.Mobile.Core.Forms;
 using CardiTrack.Mobile.Core.Navigation;
 using CardiTrack.Mobile.Core.Offline;
@@ -619,8 +620,34 @@ public partial class CardiMemberDetailPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Shows "Who can see them" only to the admin of the family that owns this member — the one
+    /// caller the invitation endpoints answer. Best-effort and after the render: the row is an
+    /// extra, and a families call that fails must not cost the page that is already up.
+    /// </summary>
+    private async Task ApplyWhoCanSeeAsync(Guid organizationId)
+    {
+        if (organizationId == Guid.Empty)
+        {
+            WhoCanSeeRow.IsVisible = false;
+            return;
+        }
+
+        try
+        {
+            var families = await _api.GetMyFamiliesAsync();
+            var family = families.FirstOrDefault(f => f.OrganizationId == organizationId);
+            WhoCanSeeRow.IsVisible = family is not null && FamilyTabState.IsAdmin(family.Role);
+        }
+        catch (ApiException)
+        {
+            WhoCanSeeRow.IsVisible = false;
+        }
+    }
+
     private void Apply(CardiMemberDetailResponse member)
     {
+        _ = ApplyWhoCanSeeAsync(member.OrganizationId);
         Avatar.Apply(member.Name, member.PhotoUrl);
         NameLabel.Text = member.Name;
         AgeRelationshipLabel.Text = $"{member.Age} years old • {member.Relationship.GetDisplayName()}";

@@ -193,20 +193,26 @@ public partial class TransferFamilyAdminPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Leaves, and only then moves on. A leave the server refused keeps the caregiver on this page:
+    /// they are still a member, the tab they would have been sent to would draw them as one, and
+    /// the refusal's own sentence is what tells them what to do next.
+    /// </summary>
     private async Task LeaveAsync()
     {
         try
         {
             await _api.LeaveFamilyAsync(_organizationId);
-            await _popups.ShowInfoAsync(
-                $"You've left {_familyName}. You no longer see the people it watches.",
-                "Done");
         }
         catch (ApiException ex)
         {
             await _popups.ShowWarningAsync(ex.Message, "Couldn't leave");
+            return;
         }
 
+        await _popups.ShowInfoAsync(
+            $"You've left {_familyName}. You no longer see the people it watches.",
+            "Done");
         await Shell.Current.GoToAsync(AppShell.FamilyRoute);
     }
 

@@ -75,6 +75,40 @@
 
                         <controls:SavedDataBanner x:Name="SavedBanner"/>
 
+                        <!-- What the invitation grants, chosen before the link exists (Story 4.1):
+                             seeing the readings and getting the alerts are two grants, and a
+                             sibling who only wants to be rung at 3am is a real case. Both start
+                             on, because an invitation that granted nothing would be a message
+                             with no reason to send it. -->
+                        <Border x:Name="ComposerCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Label Text="What they can do"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Label x:Name="ComposerDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       LineBreakMode="WordWrap"/>
+                                <controls:CheckField x:Name="ViewHealthCheck"
+                                                     IsChecked="True"
+                                                     CheckedChanged="OnGrantChanged"/>
+                                <controls:CheckField x:Name="ReceiveAlertsCheck"
+                                                     IsChecked="True"
+                                                     CheckedChanged="OnGrantChanged"/>
+                                <Label x:Name="ComposerHintLabel"
+                                       Style="{StaticResource Caption}"
+                                       LineBreakMode="WordWrap"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                    <Button Text="Cancel"
+                                            Style="{StaticResource SecondaryOutlineButton}"
+                                            Clicked="OnComposerCancelClicked"/>
+                                    <Button x:Name="MakeLinkButton"
+                                            Grid.Column="1"
+                                            Text="Make the link"
+                                            Style="{StaticResource AuthGradientButton}"
+                                            Clicked="OnMakeLinkClicked"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
                         <!-- The freshly minted link. Shown once, here, because the API returns it
                              once: neither the list nor a later create hands it back. -->
                         <Border x:Name="NewInviteCard" Style="{StaticResource ElevatedCard}" IsVisible="False">

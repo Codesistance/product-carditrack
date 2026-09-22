@@ -14,6 +14,10 @@ namespace CardiTrack.Application.DTOs.Responses;
 public class CardiMemberDetailResponse
 {
     public Guid Id { get; set; }
+
+    /// <summary>The family that owns this member — see <see cref="CardiMemberResponse.OrganizationId"/>.</summary>
+    public Guid OrganizationId { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     /// <summary>

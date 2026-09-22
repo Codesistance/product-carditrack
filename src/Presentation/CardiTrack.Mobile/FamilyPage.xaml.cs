@@ -1,3 +1,4 @@
+using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Domain.Entities;
@@ -42,6 +43,7 @@ public partial class FamilyPage : ContentPage
 
     private IReadOnlyList<FamilySummary> _families = [];
     private IReadOnlyList<FamilyJoinRequestSummary> _asks = [];
+    private IReadOnlyList<CardiMemberResponse> _members = [];
     private IReadOnlyList<AlertSummaryResponse> _openAlerts = [];
     private FamilyTabSelection _selection = new(FamilyTabMode.NoFamily, null);
     private Guid? _chosen;
@@ -204,9 +206,11 @@ public partial class FamilyPage : ContentPage
         var queue = selection.Mode == FamilyTabMode.Admin && selection.Family is { } admin
             ? await scope.Track(_api.PeekPendingJoinRequestsAsync(admin.OrganizationId, ct)) ?? []
             : [];
-        var alerts = await scope.Track(_api.PeekAlertsAsync(status: OfflineReadDefaults.OpenAlertStatus, ct: ct));
+        var members = await scope.Track(_api.PeekCardiMembersAsync(ct)) ?? [];
+        var alerts = await scope.Track(_api.PeekAlertsAsync(
+            status: OfflineReadDefaults.OpenAlertStatus, limit: AlertQuery.MaxLimit, ct: ct));
 
-        return new FamilyView(families, asks, selection, roster, queue, alerts?.Alerts ?? []);
+        return new FamilyView(families, asks, selection, roster, queue, members, alerts?.Alerts ?? []);
     }
 
     private async Task<FamilyView> FetchAsync(CancellationToken ct, RefreshScope scope)
@@ -225,19 +229,29 @@ public partial class FamilyPage : ContentPage
             ? await scope.Track(_api.GetPendingJoinRequestsAsync(admin.OrganizationId, ct))
             : [];
 
+        // The members the caller may see, each stamped with the family that owns it — the join
+        // that puts a member's row under the right family and its alerts on that row.
+        var members = families.Count == 0 ? [] : await scope.Track(_api.GetCardiMembersAsync(ct));
+
         // The drawer's per-family alert state has no endpoint of its own (FamilyAlertState says
-        // why), so it is derived from the open alerts this caregiver can already see.
+        // why), so it is derived from the open alerts this caregiver can already see. The
+        // largest page the API will serve, not its default 50: the drawer counts and ranks from
+        // this one response, and a page that stopped short would rank the wrong family first
+        // without saying so. A caregiver with more open alerts than that has a bigger problem
+        // than the drawer's ordering, and the row's count still says how many it counted.
         var alerts = families.Count == 0
             ? new AlertListResponse()
-            : await scope.Track(_api.GetAlertsAsync(status: OfflineReadDefaults.OpenAlertStatus, ct: ct));
+            : await scope.Track(_api.GetAlertsAsync(
+                status: OfflineReadDefaults.OpenAlertStatus, limit: AlertQuery.MaxLimit, ct: ct));
 
-        return new FamilyView(families, asks, selection, roster, queue, alerts.Alerts);
+        return new FamilyView(families, asks, selection, roster, queue, members, alerts.Alerts);
     }
 
     private void Apply(FamilyView view)
     {
         _families = view.Families;
         _asks = view.Asks;
+        _members = view.Members;
         _openAlerts = view.OpenAlerts;
         _selection = view.Selection;
 
@@ -418,22 +432,30 @@ public partial class FamilyPage : ContentPage
     }
 
     /// <summary>
-    /// The people this family watches. The caregiver count is not on the wire, so the row says
-    /// what is known — the member, and whether one of their alerts is open — rather than
-    /// inventing a number. Tapping one lands on their alert, which is what D-19's last edge asks
-    /// for: a family the drawer showed as red must be one tap from the thing that made it red.
+    /// The people this family watches: the caller's members that this family owns, each with its
+    /// worst open alert. The caregiver count is not on the wire, so the row says what is known
+    /// rather than inventing a number. Tapping one lands on their alert, which is what D-19's
+    /// last edge asks for: a family the drawer showed as red must be one tap from the thing that
+    /// made it red — and with no open alert, on the member themselves.
     /// </summary>
+    /// <remarks>
+    /// Joined by id, never by name. A family that watches the same person as another family
+    /// holds its own record (D-15), and a row matched on the name could show the other family's
+    /// alert and open the other family's member.
+    /// </remarks>
     private void ApplyWatched(FamilySummary family)
     {
         WatchedHost.Clear();
-        WatchedSection.IsVisible = family.WatchedMemberNames.Count > 0;
+        var members = _members.Where(m => m.OrganizationId == family.OrganizationId).ToList();
+        WatchedSection.IsVisible = members.Count > 0;
         if (!WatchedSection.IsVisible)
             return;
 
-        foreach (var name in family.WatchedMemberNames)
+        foreach (var member in members)
         {
+            var name = member.Name;
             var alert = _openAlerts
-                .Where(a => string.Equals(a.CardiMemberName?.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase))
+                .Where(a => a.CardiMemberId == member.Id)
                 .OrderByDescending(a => FamilyAlertState.SeverityRank(a.Severity))
                 .ThenByDescending(a => a.TriggeredAt)
                 .FirstOrDefault();
@@ -446,7 +468,7 @@ public partial class FamilyPage : ContentPage
             };
 
             var avatar = new MemberAvatar { BoxWidth = 40, VerticalOptions = LayoutOptions.Center };
-            avatar.Apply(name, null);
+            avatar.Apply(name, member.PhotoUrl);
             row.Add(avatar, 0, 0);
 
             var text = new VerticalStackLayout { Spacing = 1, VerticalOptions = LayoutOptions.Center };
@@ -467,11 +489,13 @@ public partial class FamilyPage : ContentPage
                 var pill = SeverityPill(alert.Severity);
                 pill.VerticalOptions = LayoutOptions.Start;
                 row.Add(pill, 2, 0);
-                var tap = new TapGestureRecognizer();
-                tap.Tapped += async (_, _) =>
-                    await Shell.Current.GoToAsync($"{AlertDetailPage.Route}?alertId={alert.AlertId}");
-                row.GestureRecognizers.Add(tap);
             }
+
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += async (_, _) => await Shell.Current.GoToAsync(alert is not null
+                ? $"{AlertDetailPage.Route}?alertId={alert.AlertId}"
+                : $"{CardiMemberDetailPage.Route}?memberId={member.Id}");
+            row.GestureRecognizers.Add(tap);
 
             WatchedHost.Add(Card(row, padding: new Thickness(14, 10)));
         }
@@ -797,13 +821,16 @@ public partial class FamilyPage : ContentPage
         if (_popups.IsShowing)
             return;
 
-        var ordered = FamilyAlertState.OrderForDrawer(_families, f => FamilyAlertState.For(f, _openAlerts));
+        FamilyAlertSummary StateOf(FamilySummary f) =>
+            FamilyAlertState.For(FamilyAlertState.MembersOf(f.OrganizationId, _members), _openAlerts);
+
+        var ordered = FamilyAlertState.OrderForDrawer(_families, StateOf);
         var rows = ordered
             .Select(f => new FamilySwitcherRow(
                 f.OrganizationId,
                 f.Name,
                 FamilyTabState.IsAdmin(f.Role) ? "Admin" : "Member",
-                FamilyAlertState.For(f, _openAlerts),
+                StateOf(f),
                 f.OrganizationId == _selection.Family?.OrganizationId))
             .ToList();
 
@@ -868,5 +895,6 @@ public partial class FamilyPage : ContentPage
         FamilyTabSelection Selection,
         IReadOnlyList<FamilyMemberSummary> Roster,
         IReadOnlyList<PendingJoinRequest> Queue,
+        IReadOnlyList<CardiMemberResponse> Members,
         IReadOnlyList<AlertSummaryResponse> OpenAlerts);
 }

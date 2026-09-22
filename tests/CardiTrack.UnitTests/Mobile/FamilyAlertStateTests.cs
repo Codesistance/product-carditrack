@@ -5,14 +5,17 @@ namespace CardiTrack.UnitTests.Mobile;
 
 public class FamilyAlertStateTests
 {
-    private static FamilySummary Family(string name, params string[] watched) =>
-        new(Guid.NewGuid(), name, "member", false, 2, watched);
+    private static readonly Guid Margaret = Guid.NewGuid();
+    private static readonly Guid Frank = Guid.NewGuid();
+    private static readonly Guid Stranger = Guid.NewGuid();
 
-    private static AlertSummaryResponse Alert(string member, string severity, int minutesAgo = 5) => new()
+    private static FamilySummary Family(string name) => new(Guid.NewGuid(), name, "member", false, 2, []);
+
+    private static AlertSummaryResponse Alert(Guid member, string severity, int minutesAgo = 5) => new()
     {
         AlertId = Guid.NewGuid(),
-        CardiMemberId = Guid.NewGuid(),
-        CardiMemberName = member,
+        CardiMemberId = member,
+        CardiMemberName = "Margaret Doe",
         Severity = severity,
         Status = "new",
         TriggeredAt = DateTime.UtcNow.AddMinutes(-minutesAgo),
@@ -21,9 +24,7 @@ public class FamilyAlertStateTests
     [Fact]
     public void QuietWhenNoneOfTheFamilysMembersHaveOpenAlerts()
     {
-        var family = Family("Doe", "Margaret Doe");
-
-        var state = FamilyAlertState.For(family, [Alert("Somebody Else", "red")]);
+        var state = FamilyAlertState.For([Margaret], [Alert(Stranger, "red")]);
 
         Assert.True(state.IsQuiet);
         Assert.Equal(0, state.OpenCount);
@@ -33,14 +34,9 @@ public class FamilyAlertStateTests
     [Fact]
     public void CountsMatchingAlerts_AndKeepsTheWorstSeverity()
     {
-        var family = Family("Doe", "Margaret Doe", "Frank Doe");
-
-        var state = FamilyAlertState.For(family,
-        [
-            Alert("Margaret Doe", "yellow", minutesAgo: 30),
-            Alert("frank doe ", "orange", minutesAgo: 2),
-            Alert("Margaret Doe", "red", minutesAgo: 90),
-        ]);
+        var state = FamilyAlertState.For(
+            [Margaret, Frank],
+            [Alert(Margaret, "yellow", 30), Alert(Frank, "orange", 2), Alert(Margaret, "red", 90)]);
 
         Assert.Equal(3, state.OpenCount);
         Assert.Equal("red", state.HighestSeverity);
@@ -49,23 +45,37 @@ public class FamilyAlertStateTests
     }
 
     [Fact]
-    public void MatchesNamesCaseInsensitively_AndIgnoresSurroundingSpace()
+    public void TwoFamiliesWatchingOnePersonUnderOneName_EachSeeOnlyTheirOwnRecord()
     {
-        var family = Family("Doe", "  margaret DOE ");
+        // D-15: two records, one name. The join is on the id, so the name is irrelevant.
+        var theirs = Guid.NewGuid();
+        var state = FamilyAlertState.For([Margaret], [Alert(theirs, "red")]);
 
-        var state = FamilyAlertState.For(family, [Alert("Margaret Doe", "orange")]);
-
-        Assert.Equal(1, state.OpenCount);
+        Assert.True(state.IsQuiet);
     }
 
     [Fact]
-    public void FamilyWithNoWatchedMembersIsQuietWhateverTheAlerts()
+    public void FamilyWithNoMembersIsQuietWhateverTheAlerts()
     {
-        var family = Family("Doe");
+        Assert.True(FamilyAlertState.For([], [Alert(Margaret, "red")]).IsQuiet);
+    }
 
-        var state = FamilyAlertState.For(family, [Alert("", "red"), Alert("Margaret Doe", "red")]);
+    [Fact]
+    public void MembersOf_PicksTheFamilysOwnFromTheGrantScopedList()
+    {
+        var ours = Guid.NewGuid();
+        var members = new List<CardiMemberResponse>
+        {
+            new() { Id = Margaret, Name = "Margaret Doe", OrganizationId = ours },
+            new() { Id = Frank, Name = "Frank Doe", OrganizationId = ours },
+            new() { Id = Stranger, Name = "Margaret Doe", OrganizationId = Guid.NewGuid() },
+        };
 
-        Assert.True(state.IsQuiet);
+        var ids = FamilyAlertState.MembersOf(ours, members);
+
+        Assert.Equal(2, ids.Count);
+        Assert.Contains(Margaret, ids);
+        Assert.DoesNotContain(Stranger, ids);
     }
 
     [Fact]

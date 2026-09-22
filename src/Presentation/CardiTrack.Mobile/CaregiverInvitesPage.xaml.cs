@@ -156,10 +156,15 @@ public partial class CaregiverInvitesPage : ContentPage
 
         GrantsList.Apply(
         [
-            $"They see how {who} is doing, and get the alerts about {who}.",
+            $"What you choose for them: seeing how {who} is doing, getting the alerts about {who}, or both.",
             $"They join your family as a member — they can't invite anybody else or change what the rest of you see.",
             "They choose, as they accept, whether an alert nobody else answered wakes them at night.",
         ]);
+
+        ComposerDetailLabel.Text = $"Tick what this invitation lets them do for {who}. You can't change it after they accept.";
+        ViewHealthCheck.Text = $"See how {who} is doing — readings, alerts and journal";
+        ReceiveAlertsCheck.Text = $"Get the alerts about {who} on their phone";
+        ApplyGrantHint();
 
         EmptyDetailLabel.Text =
             $"Invite whoever else looks after {who}. They'll need the link you send them, and an account of their own.";
@@ -206,34 +211,62 @@ public partial class CaregiverInvitesPage : ContentPage
         return new Border { Style = Named("ElevatedCard"), Content = stack };
     }
 
-    private async void OnInviteClicked(object? sender, EventArgs e)
+    /// <summary>Opens the grant choices; the link is minted from them, not from a confirmation.</summary>
+    private void OnInviteClicked(object? sender, EventArgs e)
     {
         if (_busy || _member.IsMissing)
             return;
 
-        var first = NameFormatting.FirstName(_memberName);
-        var who = string.IsNullOrWhiteSpace(first) ? "this person" : first;
-        var confirmed = await _popups.ConfirmInfoAsync(
-            $"We'll make a link that lets one person see how {who} is doing and get their alerts. "
-            + "Send it to somebody you trust — anybody who opens it and signs in can accept it.",
-            "Invite somebody", "Make the link", "Cancel");
-        if (!confirmed)
+        ComposerCard.IsVisible = true;
+        ActionsPanel.IsVisible = false;
+    }
+
+    private void OnComposerCancelClicked(object? sender, EventArgs e)
+    {
+        ComposerCard.IsVisible = false;
+        ActionsPanel.IsVisible = true;
+    }
+
+    private void OnGrantChanged(object? sender, CheckedChangedEventArgs e) => ApplyGrantHint();
+
+    /// <summary>
+    /// An invitation that grants nothing is a message with no reason to send it, so the button
+    /// waits until at least one box is ticked — and the hint says which combinations mean what.
+    /// </summary>
+    private void ApplyGrantHint()
+    {
+        var view = ViewHealthCheck.IsChecked;
+        var alerts = ReceiveAlertsCheck.IsChecked;
+        MakeLinkButton.IsEnabled = view || alerts;
+        ComposerHintLabel.Text = (view, alerts) switch
+        {
+            (true, true) => "The usual: they can look whenever they like, and they're rung when something happens.",
+            (true, false) => "They can look, but nothing will ring them — they won't be a second pair of eyes at night.",
+            (false, true) => "They're rung when something happens, and can answer the alert, but can't browse the readings.",
+            _ => "Tick at least one, or there's nothing to invite them to.",
+        };
+    }
+
+    private async void OnMakeLinkClicked(object? sender, EventArgs e)
+    {
+        if (_busy || _member.IsMissing || !(ViewHealthCheck.IsChecked || ReceiveAlertsCheck.IsChecked))
             return;
 
         _busy = true;
-        InviteButton.IsEnabled = false;
+        MakeLinkButton.IsEnabled = false;
         try
         {
             var invite = await _api.CreateCaregiverInviteAsync(_member.Id, new CreateCaregiverInviteRequest
             {
-                // What the invitation grants. Both true: an invitation exists so that somebody
-                // can take a share of the watching, and a caregiver who sees the data but never
-                // hears an alert is not a second pair of eyes at 3am.
-                CanViewHealthData = true,
-                ReceiveAlerts = true,
+                // What the inviter ticked. Never a role: an invitation admits as a member, and
+                // handing the family over is its own deliberate act.
+                CanViewHealthData = ViewHealthCheck.IsChecked,
+                ReceiveAlerts = ReceiveAlertsCheck.IsChecked,
                 Role = "member",
             });
 
+            ComposerCard.IsVisible = false;
+            ActionsPanel.IsVisible = true;
             ShowFreshLink(invite);
             await LoadAsync();
         }
@@ -247,7 +280,7 @@ public partial class CaregiverInvitesPage : ContentPage
         finally
         {
             _busy = false;
-            InviteButton.IsEnabled = true;
+            MakeLinkButton.IsEnabled = true;
         }
     }
 
@@ -344,7 +377,9 @@ public partial class CaregiverInvitesPage : ContentPage
         SkeletonPanel.IsVisible = loading;
         ContentPanel.IsVisible = loaded;
         ErrorPanel.IsVisible = error;
-        ActionsPanel.IsVisible = loaded;
+        // The composer takes the button's place while it is open, so a reload underneath it
+        // must not bring the button back beside it.
+        ActionsPanel.IsVisible = loaded && !ComposerCard.IsVisible;
     }
 
     private static Style? Named(string key) =>

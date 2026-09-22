@@ -66,19 +66,6 @@ public class AlertResponseDraftTests
     }
 
     [Fact]
-    public void StorageKeysAreSeparatePerAlertAndPerKind()
-    {
-        var alert = Guid.NewGuid();
-
-        Assert.NotEqual(
-            AlertResponseDraft.StorageKey(alert, AlertAnswerKind.Acknowledge),
-            AlertResponseDraft.StorageKey(alert, AlertAnswerKind.Close));
-        Assert.NotEqual(
-            AlertResponseDraft.StorageKey(alert, AlertAnswerKind.Close),
-            AlertResponseDraft.StorageKey(Guid.NewGuid(), AlertAnswerKind.Close));
-    }
-
-    [Fact]
     public void OptionsFor_PicksTheListForTheKind()
     {
         var alert = new AlertDetailResponse

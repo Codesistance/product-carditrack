@@ -894,7 +894,13 @@
                         <!-- Who else watches this person, and the invitations out for them
                              (Story 4.1). With the other ways in rather than with the two rows
                              below: sharing somebody changes who can see them, not the member. -->
-                        <Border Style="{StaticResource ElevatedCard}" Padding="14,4">
+                        <!-- Hidden until the page knows the caller runs this member's family:
+                             issuing, listing and revoking invitations are the admin's, and a row
+                             that opens a refusal is worse than no row. -->
+                        <Border x:Name="WhoCanSeeRow"
+                                Style="{StaticResource ElevatedCard}"
+                                Padding="14,4"
+                                IsVisible="False">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnWhoCanSeeTapped"/>
                             </Border.GestureRecognizers>

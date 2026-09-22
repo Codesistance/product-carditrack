@@ -15,41 +15,33 @@ public sealed record FamilyAlertSummary(int OpenCount, string? HighestSeverity, 
 }
 
 /// <summary>
-/// Derives the drawer's per-family alert state (D-19) from the two lists the API does serve.
+/// Derives the drawer's per-family alert state (D-19) from the open alerts the caregiver can
+/// already see, joined to the family by the members' ids.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <c>GET /families/mine</c> carries the names of the members a caller may see in each family and
-/// nothing that identifies them; the alert list carries a member's id and name. So the join is
-/// on the name — trimmed, case-insensitive — which is honest about what the server offers and
-/// is the whole reason this lives in one place with a test: when the family summary grows an
-/// open-alert count of its own, this class goes and nothing else changes.
-/// </para>
-/// <para>
-/// The known weakness is D-15: two families watching the same person under the same name would
-/// each be credited with the other's alerts. That is a display-only overcount in the drawer, and
-/// a member's row on the tab still opens only that family's own record.
-/// </para>
+/// The join is on <c>CardiMemberId</c>: the member list says which family each member belongs to,
+/// and every alert names its member. No name is compared anywhere, so two families watching the
+/// same person under the same name (D-15) each see only their own record's alerts. A server-side
+/// per-family summary would make this class unnecessary; until one exists, this is the one place
+/// the derivation lives, with a test.
 /// </remarks>
 public static class FamilyAlertState
 {
-    public static FamilyAlertSummary For(FamilySummary family, IReadOnlyCollection<AlertSummaryResponse> openAlerts)
+    public static FamilyAlertSummary For(
+        IReadOnlyCollection<Guid> familyMemberIds, IReadOnlyCollection<AlertSummaryResponse> openAlerts)
     {
-        ArgumentNullException.ThrowIfNull(family);
+        ArgumentNullException.ThrowIfNull(familyMemberIds);
         ArgumentNullException.ThrowIfNull(openAlerts);
-
-        var watched = new HashSet<string>(
-            family.WatchedMemberNames.Select(Normalise).Where(n => n.Length > 0),
-            StringComparer.Ordinal);
-        if (watched.Count == 0)
+        if (familyMemberIds.Count == 0)
             return FamilyAlertSummary.Quiet;
 
+        var members = familyMemberIds as IReadOnlySet<Guid> ?? familyMemberIds.ToHashSet();
         var count = 0;
         string? highest = null;
         DateTime? latest = null;
         foreach (var alert in openAlerts)
         {
-            if (!watched.Contains(Normalise(alert.CardiMemberName)))
+            if (!members.Contains(alert.CardiMemberId))
                 continue;
             count++;
             highest = HigherOf(highest, alert.Severity);
@@ -58,6 +50,13 @@ public static class FamilyAlertState
         }
 
         return count == 0 ? FamilyAlertSummary.Quiet : new FamilyAlertSummary(count, highest, latest);
+    }
+
+    /// <summary>The ids of the members a family owns, from the caller's grant-scoped member list.</summary>
+    public static IReadOnlySet<Guid> MembersOf(Guid organizationId, IEnumerable<CardiMemberResponse> members)
+    {
+        ArgumentNullException.ThrowIfNull(members);
+        return members.Where(m => m.OrganizationId == organizationId).Select(m => m.Id).ToHashSet();
     }
 
     /// <summary>
@@ -90,6 +89,4 @@ public static class FamilyAlertState
     };
 
     public static string? HigherOf(string? a, string? b) => SeverityRank(b) > SeverityRank(a) ? b : a;
-
-    private static string Normalise(string? name) => (name ?? string.Empty).Trim().ToUpperInvariant();
 }

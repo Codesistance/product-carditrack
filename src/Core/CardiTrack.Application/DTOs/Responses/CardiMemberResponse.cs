@@ -5,6 +5,15 @@ namespace CardiTrack.Application.DTOs.Responses;
 public class CardiMemberResponse
 {
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// The family that owns this member. The list this rides on is grant-scoped across every
+    /// family the caller is in, so without it a client cannot tell whose member it is looking at —
+    /// and two families watching one person hold two records under one name (D-15), so the name
+    /// cannot stand in for it.
+    /// </summary>
+    public Guid OrganizationId { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public DateOnly DateOfBirth { get; set; }
     public int Age { get; set; }

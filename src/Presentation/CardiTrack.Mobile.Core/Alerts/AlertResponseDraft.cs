@@ -43,13 +43,6 @@ public sealed class AlertResponseDraft
         Note = string.IsNullOrWhiteSpace(Note) ? null : Note.Trim(),
     };
 
-    /// <summary>
-    /// Per alert and per kind: a half-written close must not reappear under Acknowledge. Also the
-    /// keystore entry's name, so it has to stay free of anything but the two ids.
-    /// </summary>
-    public static string StorageKey(Guid alertId, AlertAnswerKind kind) =>
-        $"AlertResponseDraft:{alertId:N}:{kind}";
-
     public string Serialize() => JsonSerializer.Serialize(new Stored(Code, Note));
 
     public static AlertResponseDraft? Deserialize(string? stored)
