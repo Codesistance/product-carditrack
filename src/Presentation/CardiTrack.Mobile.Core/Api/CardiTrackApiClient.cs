@@ -316,6 +316,17 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     private int EvictionsOf(string path) => _evictions.TryGetValue(path, out var count) ? count : 0;
 
+    /// <summary>
+    /// Bumped when the whole cache is dropped rather than one key of it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="_evictions"/> cannot express "every key", and enumerating them would only cover
+    /// the ones this client has already touched. A read that began before a clear carries the
+    /// epoch from before it and is refused at save time, which is the same guarantee per-key
+    /// eviction gives, for the case that has no key.
+    /// </remarks>
+    private int _cacheEpoch;
+
     private static string[] MemberProfileKeys(Guid cardiMemberId) =>
     [
         ApiPaths.CardiMember(cardiMemberId),
@@ -576,12 +587,23 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     // dashboard by a member id these calls do not have; both screens re-fetch live on every
     // landing and tick, and the alerts list already masks the gap with its pending-deletes set.
     public async Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(
-        Guid alertId, CancellationToken ct = default)
+        Guid alertId, AlertAnswerRequest? answer = null, CancellationToken ct = default)
     {
-        var acknowledged = await SendAsync<AlertAcknowledgementResponse>(
-            HttpMethod.Post, $"api/v1/alerts/{alertId}/acknowledge", ct);
+        // A null answer sends no body at all, which is the form this call had before answers
+        // existed and the one the server still accepts; an answer rides along as JSON.
+        var acknowledged = await SendAsync<AlertAnswerRequest, AlertAcknowledgementResponse>(
+            HttpMethod.Post, $"api/v1/alerts/{alertId}/acknowledge", answer, ct);
         await EvictAsync(ApiPaths.Alert(alertId));
         return acknowledged;
+    }
+
+    public async Task<AlertAcknowledgementResponse> CloseAlertAsync(
+        Guid alertId, AlertAnswerRequest? answer = null, CancellationToken ct = default)
+    {
+        var closed = await SendAsync<AlertAnswerRequest, AlertAcknowledgementResponse>(
+            HttpMethod.Post, ApiPaths.AlertClose(alertId), answer, ct);
+        await EvictAsync(ApiPaths.Alert(alertId));
+        return closed;
     }
 
     public async Task<AlertAcknowledgementResponse> UnacknowledgeAlertAsync(
@@ -713,6 +735,143 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     private static string DeviceInvites(Guid cardiMemberId) =>
         $"api/v1/cardimembers/{cardiMemberId}/device-invites";
+
+    // ---- Families ----
+
+    public Task<IReadOnlyList<FamilySummary>> GetMyFamiliesAsync(CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<FamilySummary>>(ApiPaths.MyFamilies, ct);
+
+    public Task<IReadOnlyList<FamilySummary>?> PeekMyFamiliesAsync(CancellationToken ct = default) =>
+        PeekAsync<IReadOnlyList<FamilySummary>>(ApiPaths.MyFamilies, ct);
+
+    public Task<IReadOnlyList<FamilyMemberSummary>> GetFamilyMembersAsync(
+        Guid organizationId, CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<FamilyMemberSummary>>(ApiPaths.FamilyMembers(organizationId), ct);
+
+    public Task<IReadOnlyList<FamilyMemberSummary>?> PeekFamilyMembersAsync(
+        Guid organizationId, CancellationToken ct = default) =>
+        PeekAsync<IReadOnlyList<FamilyMemberSummary>>(ApiPaths.FamilyMembers(organizationId), ct);
+
+    public async Task<IReadOnlyList<FamilyMemberSummary>> TransferFamilyAdminAsync(
+        Guid organizationId, Guid userId, CancellationToken ct = default)
+    {
+        var roster = await SendAsync<TransferFamilyAdminRequest, IReadOnlyList<FamilyMemberSummary>>(
+            HttpMethod.Put, ApiPaths.FamilyAdmin(organizationId),
+            new TransferFamilyAdminRequest { UserId = userId }, ct);
+        // The caller's own role changed, so the family list is stale as well as the roster.
+        await EvictAsync(ApiPaths.FamilyMembers(organizationId), ApiPaths.MyFamilies);
+        return roster;
+    }
+
+    public async Task RemoveFamilyMemberAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, $"{ApiPaths.FamilyMembers(organizationId)}/{userId}", ct);
+        await EvictAsync(ApiPaths.FamilyMembers(organizationId), ApiPaths.MyFamilies);
+    }
+
+    public async Task LeaveFamilyAsync(Guid organizationId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, $"{ApiPaths.FamilyMembers(organizationId)}/me", ct);
+
+        // Everything, not the three keys this call could name. The caller has just given up the
+        // right to read a family's members, and their readings, alerts and journals are saved
+        // under paths this method does not know — a member id it never saw, an alert list under
+        // whichever filter was last used. Dropping the lot costs a cold re-fetch of the families
+        // they are still in; keeping any of it means an offline launch can still draw somebody
+        // they no longer watch.
+        //
+        // The bump is what stops a read that was already in flight from saving its answer back
+        // into the cache a moment after it was cleared.
+        await ClearCacheAsync();
+    }
+
+    public async Task<FamilyJoinRequestReceipt> RequestToJoinFamilyAsync(string familyId, CancellationToken ct = default)
+    {
+        var receipt = await PostAsync<JoinFamilyRequest, FamilyJoinRequestReceipt>(
+            ApiPaths.JoinRequests, new JoinFamilyRequest { FamilyId = familyId }, ct);
+        await EvictAsync(ApiPaths.MyJoinRequests);
+        return receipt;
+    }
+
+    public Task<IReadOnlyList<FamilyJoinRequestSummary>> GetMyJoinRequestsAsync(CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<FamilyJoinRequestSummary>>(ApiPaths.MyJoinRequests, ct);
+
+    public Task<IReadOnlyList<FamilyJoinRequestSummary>?> PeekMyJoinRequestsAsync(CancellationToken ct = default) =>
+        PeekAsync<IReadOnlyList<FamilyJoinRequestSummary>>(ApiPaths.MyJoinRequests, ct);
+
+    public async Task WithdrawJoinRequestAsync(Guid requestId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(HttpMethod.Delete, $"{ApiPaths.JoinRequests}/{requestId}", ct);
+        await EvictAsync(ApiPaths.MyJoinRequests);
+    }
+
+    public Task<IReadOnlyList<PendingJoinRequest>> GetPendingJoinRequestsAsync(
+        Guid organizationId, CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<PendingJoinRequest>>(ApiPaths.FamilyJoinRequests(organizationId), ct);
+
+    public Task<IReadOnlyList<PendingJoinRequest>?> PeekPendingJoinRequestsAsync(
+        Guid organizationId, CancellationToken ct = default) =>
+        PeekAsync<IReadOnlyList<PendingJoinRequest>>(ApiPaths.FamilyJoinRequests(organizationId), ct);
+
+    public async Task ApproveJoinRequestAsync(
+        Guid organizationId, Guid requestId, ApproveJoinRequest decision, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(
+            HttpMethod.Post, $"{ApiPaths.FamilyJoinRequests(organizationId)}/{requestId}/approve", decision, ct);
+        // Somebody new is in: the queue shrank, the roster grew, and — if the admin handed the
+        // family over in the same act — the caller's own role in it changed.
+        await EvictAsync(
+            ApiPaths.FamilyJoinRequests(organizationId), ApiPaths.FamilyMembers(organizationId), ApiPaths.MyFamilies);
+    }
+
+    public async Task DeclineJoinRequestAsync(Guid organizationId, Guid requestId, CancellationToken ct = default)
+    {
+        await SendNoDataAsync(
+            HttpMethod.Post, $"{ApiPaths.FamilyJoinRequests(organizationId)}/{requestId}/decline", ct);
+        await EvictAsync(ApiPaths.FamilyJoinRequests(organizationId));
+    }
+
+    public async Task<CaregiverInviteResponse> CreateCaregiverInviteAsync(
+        Guid cardiMemberId, CreateCaregiverInviteRequest request, CancellationToken ct = default)
+    {
+        var invite = await PostAsync<CreateCaregiverInviteRequest, CaregiverInviteResponse>(
+            ApiPaths.CaregiverInvites(cardiMemberId), request, ct);
+        await EvictAsync(ApiPaths.CaregiverInvites(cardiMemberId));
+        return invite;
+    }
+
+    public Task<IReadOnlyList<CaregiverInviteResponse>> GetCaregiverInvitesAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        GetAsync<IReadOnlyList<CaregiverInviteResponse>>(ApiPaths.CaregiverInvites(cardiMemberId), ct);
+
+    public Task<IReadOnlyList<CaregiverInviteResponse>?> PeekCaregiverInvitesAsync(
+        Guid cardiMemberId, CancellationToken ct = default) =>
+        PeekAsync<IReadOnlyList<CaregiverInviteResponse>>(ApiPaths.CaregiverInvites(cardiMemberId), ct);
+
+    public async Task<CaregiverInviteResponse> RevokeCaregiverInviteAsync(
+        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default)
+    {
+        var invite = await SendAsync<CaregiverInviteResponse>(
+            HttpMethod.Delete, $"{ApiPaths.CaregiverInvites(cardiMemberId)}/{inviteId}", ct);
+        await EvictAsync(ApiPaths.CaregiverInvites(cardiMemberId));
+        return invite;
+    }
+
+    public Task<CaregiverInviteView> ViewCaregiverInviteAsync(string token, CancellationToken ct = default) =>
+        GetAsync<CaregiverInviteView>(ApiPaths.CaregiverInvite(token), ct, cache: false);
+
+    public async Task<CaregiverInviteRedemption> AcceptCaregiverInviteAsync(string token, CancellationToken ct = default)
+    {
+        var redemption = await SendAsync<CaregiverInviteRedemption>(
+            HttpMethod.Post, $"{ApiPaths.CaregiverInvite(token)}/accept", ct);
+        // A new grant and, unless they were already in it, a new family: every list that says
+        // who the caller may see is now short by one.
+        await EvictAsync(ApiPaths.MyFamilies, ApiPaths.CardiMembers);
+        return redemption;
+    }
+
+    public Task DeclineCaregiverInviteAsync(string token, CancellationToken ct = default) =>
+        SendNoDataAsync(HttpMethod.Post, $"{ApiPaths.CaregiverInvite(token)}/decline", ct);
 
     public Task ResendVerificationAsync(string email, CancellationToken ct = default) =>
         PostAsync<ResendVerificationRequest, bool>(
@@ -929,6 +1088,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         // warmer fetches a member's screens together — so one expected miss among them would
         // otherwise bar every other read in the batch from caching and quietly undo the warm.
         var evictions = EvictionsOf(path);
+        var epoch = Volatile.Read(ref _cacheEpoch);
         HttpResponseMessage response;
         try
         {
@@ -961,8 +1121,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
         // A null-data success is an answer, but not one worth caching: TryReadCacheAsync would
         // only reject the entry as unreadable on the way back out, one warning per offline read.
-        if (value is not null && cache && EvictionsOf(path) == evictions)
+        if (value is not null && cache && EvictionsOf(path) == evictions
+            && Volatile.Read(ref _cacheEpoch) == epoch)
+        {
             await TrySaveCacheAsync(path, body, generation, ct);
+        }
         return value;
     }
 
@@ -1137,6 +1300,35 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// device holding the old answer, and a cache that cannot delete must not turn a mutation
     /// that succeeded into one that appears to have failed.
     /// </summary>
+    /// <summary>
+    /// Drops every saved read on the device, and bars the reads already in flight from putting
+    /// theirs back.
+    /// </summary>
+    /// <remarks>
+    /// The eviction counter is bumped for the same reason <see cref="EvictAsync"/> bumps a key's:
+    /// a GET that started before this ran holds a generation from before it, and
+    /// <see cref="TrySaveCacheAsync"/> refuses to write anything whose generation is stale. Tied
+    /// to no key in particular, so it has to be every key — which is what
+    /// <see cref="_evictions"/>'s null entry means.
+    /// </remarks>
+    private async Task ClearCacheAsync()
+    {
+        Interlocked.Increment(ref _cacheEpoch);
+        if (_cache is null)
+            return;
+
+        try
+        {
+            await _cache.ClearAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort, like every other cache write: a device that will not let go of its
+            // cache must not fail the leave that has already happened on the server.
+            _logger.LogWarning(ex, "Clearing the offline cache after leaving a family failed.");
+        }
+    }
+
     private async Task EvictAsync(params string[] keys)
     {
         // Counted per key, before the removals: a read that returns while this is still deleting

@@ -4,6 +4,7 @@ public enum NavTab
 {
     Dashboard,
     Alerts,
+    Family,
     Journal,
     Settings,
 }
@@ -47,6 +48,7 @@ public partial class BottomNavBar : ContentView
 
         Style(DashboardIcon, DashboardLabel, "icon_tab_home", Tab == NavTab.Dashboard);
         Style(AlertsIcon, AlertsLabel, "icon_tab_alerts", Tab == NavTab.Alerts);
+        Style(FamilyIcon, FamilyLabel, "icon_tab_family", Tab == NavTab.Family);
         Style(JournalIcon, JournalLabel, "icon_tab_journal", Tab == NavTab.Journal);
         Style(SettingsIcon, SettingsLabel, "icon_tab_settings", Tab == NavTab.Settings);
 
@@ -75,20 +77,37 @@ public partial class BottomNavBar : ContentView
 
     private void OnAlertsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Alerts, AppShell.AlertsRoute);
 
+    private void OnFamilyTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Family, AppShell.FamilyRoute);
+
     private void OnSummariesTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Journal, AppShell.JournalRoute);
 
     private void OnSettingsTapped(object? sender, TappedEventArgs e) => GoTo(NavTab.Settings, AppShell.SettingsRoute);
 
+    /// <summary>
+    /// Raised when the tab already showing is tapped again, which the bar itself does nothing
+    /// about. The Family tab uses it to open its switcher drawer (D-19), so the way to a second
+    /// family is the tab a caregiver is already on.
+    /// </summary>
+    /// <remarks>
+    /// Static because the bar is one instance per page and the page that cares is not the one
+    /// holding the bar that was tapped — every page has its own. A page subscribes for its own
+    /// tab and checks it is on screen before acting.
+    /// </remarks>
+    public static event EventHandler<NavTab>? SameTabTapped;
+
     /// <remarks>
     /// Sitting on a tab's own root, re-navigating to it would rebuild the page for nothing, so
-    /// the tap is swallowed. From a page pushed above that root — a member's details, say — the
-    /// same tap has to take you back down to it, which is what makes the bar usable there at all.
+    /// the tap is swallowed — but announced first, for a tab that has something to say about
+    /// being tapped twice.
     /// </remarks>
     private void GoTo(NavTab tab, string route)
     {
         var isTabRoot = Shell.Current.Navigation.NavigationStack.Count <= 1;
         if (Tab == tab && isTabRoot)
+        {
+            SameTabTapped?.Invoke(this, tab);
             return;
+        }
 
         // Choosing a tab ends whatever journey a content affordance had started. The bar
         // deliberately records no origin of its own (see TabNavigation), but it must cancel one

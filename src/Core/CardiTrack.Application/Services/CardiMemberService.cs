@@ -268,6 +268,7 @@ public class CardiMemberService : ICardiMemberService
         return new CardiMemberResponse
         {
             Id = cardiMember.Id,
+            OrganizationId = cardiMember.OrganizationId,
             Name = cardiMember.Name,
             DateOfBirth = cardiMember.DateOfBirth,
             Age = CalculateAge(cardiMember.DateOfBirth),
@@ -335,6 +336,7 @@ public class CardiMemberService : ICardiMemberService
         return new CardiMemberResponse
         {
             Id = cardiMember.Id,
+            OrganizationId = cardiMember.OrganizationId,
             Name = cardiMember.Name,
             DateOfBirth = cardiMember.DateOfBirth,
             Age = CalculateAge(cardiMember.DateOfBirth),
@@ -381,6 +383,7 @@ public class CardiMemberService : ICardiMemberService
             responses.Add(new CardiMemberResponse
             {
                 Id = cm.Id,
+                OrganizationId = cm.OrganizationId,
                 Name = cm.Name,
                 DateOfBirth = cm.DateOfBirth,
                 Age = CalculateAge(cm.DateOfBirth),
@@ -720,6 +723,7 @@ public class CardiMemberService : ICardiMemberService
         return new CardiMemberDetailResponse
         {
             Id = member.Id,
+            OrganizationId = member.OrganizationId,
             Name = member.Name,
             Insight = MemberInsightComposer.Compose(baselineInsight, trendInsight, now, age),
             DateOfBirth = member.DateOfBirth,

@@ -241,6 +241,16 @@ public partial class DeviceManagementPage : ContentPage
     {
         HelpPanel.IsVisible = !HelpPanel.IsVisible;
         HelpChevron.Source = HelpPanel.IsVisible ? "icon_chevron.svg" : "icon_chevron_down.svg";
+
+        // The same two states AccordionSection gives its header: a tinted band while closed, a
+        // thin blue outline once open, and neither of them around the body. Padding, radius and
+        // stroke width stay the same either way, so nothing moves.
+        HelpChrome.BackgroundColor = HelpPanel.IsVisible
+            ? Colors.Transparent
+            : MetricStatus.Resource("InputBackground", Colors.Transparent);
+        HelpChrome.Stroke = new SolidColorBrush(HelpPanel.IsVisible
+            ? MetricStatus.Resource("Primary", Colors.Transparent)
+            : Colors.Transparent);
     }
 
     // History first, so arriving from the Notifications inbox returns to the inbox rather than to

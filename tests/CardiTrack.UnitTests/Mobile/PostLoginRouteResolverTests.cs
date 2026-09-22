@@ -5,9 +5,10 @@ namespace CardiTrack.UnitTests.Mobile;
 
 public class PostLoginRouteResolverTests
 {
-    private static OnboardingStatusResponse Status(bool account, bool member, bool device) => new()
+    private static OnboardingStatusResponse Status(bool account, bool member, bool device, bool organization = true) => new()
     {
         HasUserAccount = account,
+        HasOrganization = organization,
         HasCardiMember = member,
         HasDeviceConnected = device,
     };
@@ -31,6 +32,18 @@ public class PostLoginRouteResolverTests
 
         Assert.Equal(PostLoginDestination.AddCardiMember, route.Destination);
         // The wizard walks on into the device step by itself; nothing to resume over it.
+        Assert.False(route.ResumeDeviceSetup);
+    }
+
+    [Fact]
+    public void AGuestWithNoFamilyAndNobodyToWatch_LandsInTheShell_NotTheWizard()
+    {
+        // D-12: they chose to join somebody else's family rather than start one, and the wizard
+        // would start one for them. The Family tab is where their pending ask lives.
+        var route = PostLoginRouteResolver.Resolve(
+            Status(account: true, member: false, device: false, organization: false), deviceSetupDismissed: false);
+
+        Assert.Equal(PostLoginDestination.Dashboard, route.Destination);
         Assert.False(route.ResumeDeviceSetup);
     }
 

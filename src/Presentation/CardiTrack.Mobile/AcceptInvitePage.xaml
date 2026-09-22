@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.AcceptInvitePage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- Accepting an invitation to help watch one person (Story 4.2, A3).
+
+         Two steps, in this order and not the other: what the invitation is, then the question
+         D-8 forces before it completes — whether an escalated alert nobody else answered wakes
+         this caregiver inside their own quiet hours. The choice is required, so the accept
+         button belongs to the second step and there is no way past it that writes a grant. -->
+    <Grid RowDefinitions="Auto,*" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Back"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label x:Name="HeaderTitle"
+                           Text="You've been invited"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitle"
+                           Text="To help watch over somebody"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <Grid Padding="20,16,20,28">
+
+                <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                    <controls:SkeletonView HeightRequest="120"/>
+                    <controls:SkeletonView HeightRequest="160"/>
+                </VerticalStackLayout>
+
+                <!-- Before sign-in, and for a token that is no longer good: one card, no name.
+                     The endpoint that would name the member needs an account, deliberately — a
+                     guessed token must never be worth a first name. -->
+                <VerticalStackLayout x:Name="GenericPanel" Spacing="14" IsVisible="False">
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label x:Name="GenericTitleLabel"
+                                   Text="Somebody has invited you to CardiTrack"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label x:Name="GenericDetailLabel"
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
+                        </VerticalStackLayout>
+                    </Border>
+                    <Button x:Name="GenericButton"
+                            Text="Sign in to see it"
+                            Style="{StaticResource PrimaryGradientButton}"
+                            Clicked="OnGenericButtonClicked"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <controls:MemberAvatar x:Name="Avatar" BoxWidth="52"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <Label x:Name="InviteTitleLabel"
+                                       Style="{StaticResource Body1SemiBoldDark}"
+                                       LineBreakMode="WordWrap"/>
+                                <Label x:Name="InviteExpiryLabel"
+                                       Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="What you'll be able to do"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <controls:FindingsList x:Name="GrantsList"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- D-8. Not a toggle with a default: two buttons, neither chosen, and the
+                         accept button stays disabled until one is. The default the backend holds
+                         (hold for quiet hours) is what a caregiver who backs out here keeps, and
+                         the copy says so rather than leaving it to be discovered at 3am. -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="12">
+                            <Label x:Name="QuietHoursQuestionLabel"
+                                   Style="{StaticResource DashboardSectionTitle}"
+                                   LineBreakMode="WordWrap"/>
+                            <Label Text="An alert goes to whoever it is for first. If nobody has answered it after five minutes, it comes to everybody else watching — and that is the one this question is about."
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
+
+                            <Border x:Name="WakeMeOption" Style="{StaticResource OutlinedCard}" Padding="14,12">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnWakeMeTapped"/>
+                                </Border.GestureRecognizers>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="Wake me" Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label Text="Ring through my quiet hours when nobody else has answered"
+                                               Style="{StaticResource Body2}"
+                                               LineBreakMode="WordWrap"/>
+                                    </VerticalStackLayout>
+                                    <Image x:Name="WakeMeTick"
+                                           Grid.Column="1"
+                                           Source="icon_action_check.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"
+                                           IsVisible="False"/>
+                                </Grid>
+                            </Border>
+
+                            <Border x:Name="HoldOption" Style="{StaticResource OutlinedCard}" Padding="14,12">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnHoldTapped"/>
+                                </Border.GestureRecognizers>
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="Let it wait" Style="{StaticResource Body1SemiBoldDark}"/>
+                                        <Label Text="Hold it until my quiet hours end, as they do now"
+                                               Style="{StaticResource Body2}"
+                                               LineBreakMode="WordWrap"/>
+                                    </VerticalStackLayout>
+                                    <Image x:Name="HoldTick"
+                                           Grid.Column="1"
+                                           Source="icon_action_check.svg"
+                                           WidthRequest="20" HeightRequest="20"
+                                           VerticalOptions="Center"
+                                           IsVisible="False"/>
+                                </Grid>
+                            </Border>
+
+                            <Label x:Name="QuietHoursNoteLabel"
+                                   Style="{StaticResource Caption}"
+                                   LineBreakMode="WordWrap"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- AuthGradientButton, the one gradient style with a disabled state: this
+                         button starts disabled by design (D-8 — the question is not optional),
+                         and a full-strength button that does not respond reads as a fault. -->
+                    <Button x:Name="AcceptButton"
+                            Text="Accept"
+                            Style="{StaticResource AuthGradientButton}"
+                            IsEnabled="False"
+                            Clicked="OnAcceptClicked"/>
+
+                    <Button x:Name="DeclineButton"
+                            Text="No thanks"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            Clicked="OnDeclineClicked"/>
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+    </Grid>
+</ContentPage>

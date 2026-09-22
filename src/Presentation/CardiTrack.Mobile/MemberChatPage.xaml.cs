@@ -1096,15 +1096,11 @@ public sealed class ChatTurnItem
         TextColor = Colors.White,
         BubbleBackground = Microsoft.Maui.Controls.Application.Current?.Resources["Primary"] as Color ?? Colors.Blue,
         RowAlignment = LayoutOptions.End,
-        // ElevatedCard's numbers, created per item — a Shadow is a bindable object with a
-        // parent, so one shared instance cannot serve many bubbles.
-        BubbleShadow = new Shadow
-        {
-            Brush = Microsoft.Maui.Controls.Application.Current?.Resources["CardShadowBrush"] as Brush ?? Brush.Black,
-            Opacity = 0.15f,
-            Radius = 14,
-            Offset = new Point(0, 4),
-        },
+        // No shadow. The caregiver's own messages already stand off the ground by being solid
+        // Primary against it, and a raised bubble reads as a card with something behind it —
+        // which a sent message has not got. The bot's replies were always flat; this makes the
+        // pair one conversation rather than two kinds of object.
+        BubbleShadow = null,
     };
 
     /// <summary>

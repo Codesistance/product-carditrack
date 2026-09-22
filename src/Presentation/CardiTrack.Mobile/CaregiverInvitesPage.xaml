@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.CaregiverInvitesPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- "Who can see <member>" (Stories 4.1 and 4.4): the invitations out for this person and
+         the state each is in, with a fresh one minted here. The link comes back exactly once,
+         so the card that shows it is the only place it will ever be. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Back"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label x:Name="HeaderTitle"
+                           Text="Who can see them"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitle"
+                           Text="The people helping you watch over them"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <RefreshView x:Name="Refresher"
+                     Grid.Row="1"
+                     RefreshColor="{StaticResource Primary}"
+                     Refreshing="OnPullToRefresh">
+            <ScrollView>
+                <Grid Padding="20,16,20,20">
+
+                    <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                        <controls:SkeletonView HeightRequest="120"/>
+                        <controls:SkeletonView HeightRequest="90"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
+                        <Label Text="We couldn't load this"
+                               Style="{StaticResource Heading3}"
+                               HorizontalTextAlignment="Center"/>
+                        <Label x:Name="ErrorDetailLabel"
+                               Style="{StaticResource Body2}"
+                               HorizontalTextAlignment="Center"/>
+                        <Button Text="Try again"
+                                Style="{StaticResource SecondaryOutlineButton}"
+                                HorizontalOptions="Center"
+                                Clicked="OnRetryClicked"/>
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                        <controls:SavedDataBanner x:Name="SavedBanner"/>
+
+                        <!-- What the invitation grants, chosen before the link exists (Story 4.1):
+                             seeing the readings and getting the alerts are two grants, and a
+                             sibling who only wants to be rung at 3am is a real case. Both start
+                             on, because an invitation that granted nothing would be a message
+                             with no reason to send it. -->
+                        <Border x:Name="ComposerCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Label Text="What they can do"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Label x:Name="ComposerDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       LineBreakMode="WordWrap"/>
+                                <controls:CheckField x:Name="ViewHealthCheck"
+                                                     IsChecked="True"
+                                                     CheckedChanged="OnGrantChanged"/>
+                                <controls:CheckField x:Name="ReceiveAlertsCheck"
+                                                     IsChecked="True"
+                                                     CheckedChanged="OnGrantChanged"/>
+                                <Label x:Name="ComposerHintLabel"
+                                       Style="{StaticResource Caption}"
+                                       LineBreakMode="WordWrap"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                    <Button Text="Cancel"
+                                            Style="{StaticResource SecondaryOutlineButton}"
+                                            Clicked="OnComposerCancelClicked"/>
+                                    <Button x:Name="MakeLinkButton"
+                                            Grid.Column="1"
+                                            Text="Make the link"
+                                            Style="{StaticResource AuthGradientButton}"
+                                            Clicked="OnMakeLinkClicked"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- The freshly minted link. Shown once, here, because the API returns it
+                             once: neither the list nor a later create hands it back. -->
+                        <Border x:Name="NewInviteCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                            <VerticalStackLayout Spacing="10">
+                                <Label Text="Send them this link"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Label x:Name="NewInviteDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       LineBreakMode="WordWrap"/>
+                                <!-- The link in full, not only behind a Copy button: a caregiver
+                                     sending this to a sibling wants to see what they are about to
+                                     send, and one who is reading it down the phone needs it on
+                                     screen. It is already in the clipboard and in the QR code, so
+                                     showing it reveals nothing the page was keeping back. -->
+                                <Border Style="{StaticResource OutlinedCard}" Padding="12,10">
+                                    <Label x:Name="LinkLabel"
+                                           Style="{StaticResource Caption}"
+                                           LineBreakMode="CharacterWrap"/>
+                                </Border>
+                                <Image x:Name="QrImage"
+                                       HeightRequest="160"
+                                       Aspect="AspectFit"
+                                       HorizontalOptions="Center"
+                                       SemanticProperties.Description="A QR code carrying the invitation link"/>
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                    <Button x:Name="CopyLinkButton"
+                                            Text="Copy link"
+                                            Style="{StaticResource SecondaryOutlineButton}"
+                                            Clicked="OnCopyLinkClicked"/>
+                                    <Button Grid.Column="1"
+                                            Text="Share"
+                                            Style="{StaticResource PrimaryGradientButton}"
+                                            Clicked="OnShareLinkClicked"/>
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Label Text="Invitations"
+                               Style="{StaticResource DashboardSectionTitle}"
+                               Margin="4,4,4,0"/>
+
+                        <Border x:Name="EmptyCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                            <VerticalStackLayout Spacing="6">
+                                <Label x:Name="EmptyTitleLabel"
+                                       Text="Nobody else yet"
+                                       Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="EmptyDetailLabel"
+                                       Style="{StaticResource Body2}"
+                                       LineBreakMode="WordWrap"/>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <VerticalStackLayout x:Name="InvitesHost" Spacing="10"/>
+
+                        <Border Style="{StaticResource ElevatedCard}">
+                            <VerticalStackLayout Spacing="10">
+                                <Label Text="What an invitation gives them"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <controls:FindingsList x:Name="GrantsList"/>
+                            </VerticalStackLayout>
+                        </Border>
+                    </VerticalStackLayout>
+                </Grid>
+            </ScrollView>
+        </RefreshView>
+
+        <VerticalStackLayout x:Name="ActionsPanel"
+                             Grid.Row="2"
+                             Padding="20,10,20,16"
+                             IsVisible="False"
+                             BackgroundColor="{StaticResource PageGround}">
+            <Button x:Name="InviteButton"
+                    Text="Invite somebody"
+                    Style="{StaticResource PrimaryGradientButton}"
+                    Clicked="OnInviteClicked"/>
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

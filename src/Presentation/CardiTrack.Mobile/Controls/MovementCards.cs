@@ -218,7 +218,10 @@ public sealed class MovementCards : VerticalStackLayout
     private static string Marker(string? valence) => valence switch
     {
         "favourable" => "icon_trend_good.svg",
-        "attention" => "icon_caution_danger.svg",
+        // Hands round a heart, not a caution triangle. A movement worth attention is a reason to
+        // look after somebody, and the triangle — the same mark the account-deletion list uses for
+        // what cannot be undone — read as an emergency on a card about a quieter week.
+        "attention" => "icon_movement_attention.svg",
         _ => "icon_trend_neutral.svg",
     };
 

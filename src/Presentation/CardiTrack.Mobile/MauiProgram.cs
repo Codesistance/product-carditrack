@@ -1,3 +1,4 @@
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Configuration;
@@ -93,6 +94,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IStatusLineStore, OfflineStatusLineStore>();
         builder.Services.AddSingleton<IDraftPhotoStore>(_ => new FileDraftPhotoStore(FileSystem.AppDataDirectory));
         builder.Services.AddSingleton<CardiMemberDraftStore>();
+        builder.Services.AddSingleton<AlertResponseDraftStore>();
         builder.Services.AddSingleton<IProfilePhotoTranscoder, MauiProfilePhotoTranscoder>();
         builder.Services.AddSingleton<ITokenRefresher, TokenRefresher>();
         builder.Services.AddTransient<AuthHttpMessageHandler>();
@@ -173,6 +175,14 @@ public static class MauiProgram
         builder.Services.AddTransient<MetricTrendPage>();
         builder.Services.AddTransient<NotificationsPage>();
         builder.Services.AddTransient<AlertDetailPage>();
+        builder.Services.AddTransient<AlertRespondPage>();
+        builder.Services.AddTransient<FamilyPage>();
+        builder.Services.AddTransient<StartFamilyPage>();
+        builder.Services.AddTransient<JoinFamilyPage>();
+        builder.Services.AddTransient<AcceptInvitePage>();
+        builder.Services.AddTransient<ApproveJoinRequestPage>();
+        builder.Services.AddTransient<TransferFamilyAdminPage>();
+        builder.Services.AddTransient<CaregiverInvitesPage>();
 
         var app = builder.Build();
         AppLogging.HookUnhandledExceptions(app.Services);

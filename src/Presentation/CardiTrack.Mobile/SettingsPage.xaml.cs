@@ -1,4 +1,5 @@
 using CardiTrack.Application.DTOs.Responses;
+using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Auth;
 using CardiTrack.Mobile.Core.Onboarding;
@@ -19,6 +20,7 @@ public partial class SettingsPage : ContentPage
     private readonly IAuthService _authService;
     private readonly IPopupService _popups;
     private readonly CardiMemberDraftStore _drafts;
+    private readonly AlertResponseDraftStore _alertDrafts;
     private readonly ICardiTrackApiClient _api;
     private readonly IDeviceBiometric _biometric;
 
@@ -30,11 +32,13 @@ public partial class SettingsPage : ContentPage
         IAuthService authService,
         IPopupService popups,
         CardiMemberDraftStore drafts,
+        AlertResponseDraftStore alertDrafts,
         ICardiTrackApiClient api)
     {
         InitializeComponent();
         _authService = authService;
         _popups = popups;
+        _alertDrafts = alertDrafts;
         _drafts = drafts;
         _api = api;
         _biometric = ServiceHelper.GetRequiredService<IDeviceBiometric>();
@@ -283,6 +287,8 @@ public partial class SettingsPage : ContentPage
         Try(() => Preferences.Default.Remove(WizardLauncher.ResumeDismissedKey), "wizard resume flag");
         Try(DiagnosticsConsent.Clear, "diagnostics consent");
         await TryAsync(() => _drafts.ClearAsync(), "member draft");
+        // Unsent notes about the people they watched: the same reason as the member draft.
+        await TryAsync(() => _alertDrafts.ClearAsync(), "alert response drafts");
 
         // Always, even if every step above failed: leaving them inside an app that can no longer
         // load anything is the worst of the available outcomes.
@@ -611,6 +617,9 @@ public partial class SettingsPage : ContentPage
             DiagnosticsConsent.Clear();
             // Holds a name, DOB and medical notes — must not survive into the next session.
             await _drafts.ClearAsync();
+            // Nor may an unsent note about somebody's alert: the next caregiver on this phone
+            // could open the same alert and find it waiting in the field.
+            await _alertDrafts.ClearAsync();
             WindowNavigation.SetRootPage(this, new NavigationPage(new SignInPage()));
         }
         finally

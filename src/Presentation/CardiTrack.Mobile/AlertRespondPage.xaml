@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.AlertRespondPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- Answering an alert (Story 4.10, E2): the canned responses for this rule as chips, an
+         optional note, and one button naming the action. A canned pick alone is enough, and so
+         is a note alone.
+
+         A full page, not a sheet — the app has no bottom-sheet pattern, and a note field under a
+         keyboard needs the room. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Back"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label x:Name="HeaderTitle"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitle"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <Grid Padding="20,16,20,20">
+
+                <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                    <controls:SkeletonView HeightRequest="60"/>
+                    <controls:SkeletonView HeightRequest="140"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
+                    <Label Text="We couldn't open this alert"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="ErrorDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Try again"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HorizontalOptions="Center"
+                            Clicked="OnRetryClicked"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                    <Label x:Name="PromptLabel"
+                           Style="{StaticResource Body2Dark}"
+                           LineBreakMode="WordWrap"/>
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label x:Name="ChipsTitleLabel"
+                                   Text="What did you do?"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <!-- One chip per canned response for this rule, from the alert's own
+                                 responseOptions — never a list this client keeps, which would
+                                 drift from the server's and be refused. -->
+                            <FlexLayout x:Name="ChipsHost"
+                                        Wrap="Wrap"
+                                        Direction="Row"
+                                        JustifyContent="Start"
+                                        AlignItems="Center"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label Text="Anything to add?"
+                                       Style="{StaticResource DashboardSectionTitle}"/>
+                                <Label x:Name="CounterLabel"
+                                       Grid.Column="1"
+                                       Style="{StaticResource Caption}"
+                                       VerticalTextAlignment="Center"/>
+                            </Grid>
+                            <Label x:Name="NoteHintLabel"
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
+                            <Border Style="{StaticResource AuthEntryBorder}"
+                                    HeightRequest="120"
+                                    Padding="12,8">
+                                <Editor x:Name="NoteEditor"
+                                        Placeholder="Rang her, she'd slept in"
+                                        FontFamily="Quicksand"
+                                        FontSize="14"
+                                        PlaceholderColor="{StaticResource BodyText}"
+                                        TextColor="{StaticResource HeadingText}"
+                                        BackgroundColor="Transparent"
+                                        AutoSize="Disabled"
+                                        MaxLength="500"
+                                        TextChanged="OnNoteChanged"/>
+                            </Border>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+
+        <VerticalStackLayout x:Name="ActionsPanel"
+                             Grid.Row="2"
+                             Padding="20,10,20,16"
+                             IsVisible="False"
+                             BackgroundColor="{StaticResource PageGround}">
+            <!-- AuthGradientButton rather than the plain gradient: it is the one gradient
+                 button with a disabled state (it fades to GradientButtonLightBrush), and this
+                 button spends its first seconds disabled while the caregiver decides what to
+                 say. The plain one keeps full-strength ink on a full-strength gradient and
+                 reads as a button that is simply not responding. -->
+            <Button x:Name="SubmitButton"
+                    Style="{StaticResource AuthGradientButton}"
+                    Clicked="OnSubmitClicked"/>
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

@@ -1,5 +1,5 @@
 {
- "_readme": "Source of truth for the mobile icon set. Run `npm ci && npm run generate` in scripts/icons after editing. Sizes are the SVG width/height in dp; groups are the IconPark colour slots (outer stroke, external fill, internal outline, internal fill) for Multicolor, or the single colour for linear. Material entries are tinted with `fill`. Not generated: the vendor sign-in marks, the splash gradient, the monochrome Android notification icon, the bottom-nav tab icons, icon_chatbot.svg, which is the 240dp chat launcher illustration rather than an icon, and the two icon_caret_down files, a bespoke 18x9 chevron matched to the filter chips, which render it at 14x7 and leave no square glyph legible.",
+ "_readme": "Source of truth for the mobile icon set. Run `npm ci && npm run generate` in scripts/icons after editing. Sizes are the SVG width/height in dp; groups are the IconPark colour slots (outer stroke, external fill, internal outline, internal fill) for Multicolor, or the single colour for linear. Material entries are tinted with `fill`. An entry with `solid` true has the shapes IconPark left hollow filled with the group’s external-fill slot, for glyphs whose template fills nothing and would otherwise read as a wire outline. Not generated: the vendor sign-in marks, the splash gradient, the monochrome Android notification icon, the bottom-nav tab icons, icon_chatbot.svg, which is the 240dp chat launcher illustration rather than an icon, and the two icon_caret_down files, a bespoke 18x9 chevron matched to the filter chips, which render it at 14x7 and leave no square glyph legible.",
  "iconpark": {
   "package": "@icon-park/svg",
   "version": "1.4.2",
@@ -7,14 +7,15 @@
   "strokeLinecap": "round",
   "strokeLinejoin": "round",
   "badge": {
-   "scale": 0.5,
-   "x": 21,
-   "y": 3,
+   "scale": 0.625,
+   "x": 17,
+   "y": 2,
    "baseScale": 0.74,
    "baseY": 12.5,
-   "knockout": "#FFFFFF",
-   "knockoutRadius": 11,
-   "note": "Composes two glyphs into one file: the subject at baseScale anchored bottom-left, the badge at scale in the top-right, on a knockout disc the colour of the card these rows sit on."
+   "note": "Composes two glyphs into one file: the badge at scale in the top-right, drawn solid in ink behind the subject, which is drawn at baseScale anchored bottom-left over it. x and y anchor the badge inside the 48-unit box and have to move with scale.",
+   "ink": "#1884DC",
+   "strokeWidth": 1,
+   "solid": true
   },
   "note": "strokeWidth is on the 48-unit grid: 2 = 1px at 24dp. The hand-drawn set used 2px; the thinner stroke is what takes the hard edge off the four-colour glyphs."
  },
@@ -40,7 +41,7 @@
    ]
   },
   "sos": {
-   "title": "Emergency \u00b7 on the red quick-action tile",
+   "title": "Emergency · on the red quick-action tile",
    "style": "Multicolor",
    "slots": [
     "#861B1B",
@@ -56,17 +57,23 @@
    ]
   },
   "ink": {
-   "title": "Ink \u00b7 the member-detail row icons",
-   "style": "linear",
+   "title": "Ink · the member-detail row icons: grey stroke, light fill, white inner lines",
+   "style": "Multicolor",
    "slots": [
-    "#343434"
+    "#727272",
+    "#D9DCE1",
+    "#FFFFFF",
+    "#D9DCE1"
    ],
    "tokens": [
-    "HeadingText"
+    "BodyText",
+    "derived: BodyText at 25% over white",
+    "White",
+    "derived: BodyText at 25% over white"
    ]
   },
   "infoGreen": {
-   "title": "Status info \u00b7 green",
+   "title": "Status info · green",
    "style": "linear",
    "slots": [
     "#1F8A72"
@@ -76,7 +83,7 @@
    ]
   },
   "infoYellow": {
-   "title": "Status info \u00b7 yellow",
+   "title": "Status info · yellow",
    "style": "linear",
    "slots": [
     "#A9741A"
@@ -86,7 +93,7 @@
    ]
   },
   "infoOrange": {
-   "title": "Status info \u00b7 orange",
+   "title": "Status info · orange",
    "style": "linear",
    "slots": [
     "#B45309"
@@ -96,7 +103,7 @@
    ]
   },
   "infoRed": {
-   "title": "Status info \u00b7 red",
+   "title": "Status info · red",
    "style": "linear",
    "slots": [
     "#C42F2F"
@@ -126,7 +133,7 @@
    ]
   },
   "heart": {
-   "title": "Metric \u00b7 heart",
+   "title": "Metric · heart",
    "style": "Multicolor",
    "slots": [
     "#B93A55",
@@ -142,7 +149,7 @@
    ]
   },
   "sleep": {
-   "title": "Metric \u00b7 sleep",
+   "title": "Metric · sleep",
    "style": "Multicolor",
    "slots": [
     "#5A4EBF",
@@ -158,7 +165,7 @@
    ]
   },
   "activity": {
-   "title": "Metric \u00b7 activity and breathing",
+   "title": "Metric · activity and breathing",
    "style": "Multicolor",
    "slots": [
     "#144A80",
@@ -174,7 +181,7 @@
    ]
   },
   "body": {
-   "title": "Metric \u00b7 SpO2 and temperature",
+   "title": "Metric · SpO2 and temperature",
    "style": "Multicolor",
    "slots": [
     "#166B58",
@@ -190,7 +197,7 @@
    ]
   },
   "green": {
-   "title": "Severity \u00b7 green",
+   "title": "Severity · green",
    "style": "Multicolor",
    "slots": [
     "#1F8A72",
@@ -206,7 +213,7 @@
    ]
   },
   "yellow": {
-   "title": "Severity \u00b7 yellow",
+   "title": "Severity · yellow",
    "style": "Multicolor",
    "slots": [
     "#A9741A",
@@ -222,7 +229,7 @@
    ]
   },
   "orange": {
-   "title": "Severity \u00b7 orange",
+   "title": "Severity · orange",
    "style": "Multicolor",
    "slots": [
     "#B45309",
@@ -238,7 +245,7 @@
    ]
   },
   "red": {
-   "title": "Severity \u00b7 red, and destructive",
+   "title": "Severity · red, and destructive",
    "style": "Multicolor",
    "slots": [
     "#C42F2F",
@@ -254,7 +261,7 @@
    ]
   },
   "unknown": {
-   "title": "Severity \u00b7 paused and neutral",
+   "title": "Severity · paused and neutral",
    "style": "Multicolor",
    "slots": [
     "#727272",
@@ -309,7 +316,7 @@
   {
    "file": "icon_action_sms.svg",
    "source": "iconpark",
-   "name": "text-message",
+   "name": "message-one",
    "group": "brand",
    "size": 24
   },
@@ -347,7 +354,8 @@
    "name": "remind",
    "badge": "setting-two",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_user_bell.svg",
@@ -355,7 +363,8 @@
    "name": "user",
    "badge": "remind",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_binoculars.svg",
@@ -377,7 +386,8 @@
    "name": "book",
    "badge": "setting-two",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_calendar.svg",
@@ -389,14 +399,28 @@
   {
    "file": "icon_callout.svg",
    "source": "iconpark",
-   "name": "comment",
+   "name": "message-one",
    "group": "brand",
    "size": 24
+  },
+  {
+   "file": "icon_marker_square.svg",
+   "source": "iconpark",
+   "name": "square-small",
+   "group": "sos",
+   "size": 32
   },
   {
    "file": "icon_caution_danger.svg",
    "source": "iconpark",
    "name": "caution",
+   "group": "red",
+   "size": 32
+  },
+  {
+   "file": "icon_movement_attention.svg",
+   "source": "iconpark",
+   "name": "love-and-help",
    "group": "red",
    "size": 32
   },
@@ -440,14 +464,16 @@
    "source": "iconpark",
    "name": "clipboard",
    "group": "brand",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_clipboard_ink.svg",
    "source": "iconpark",
    "name": "clipboard",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_edit.svg",
@@ -513,9 +539,17 @@
    "size": 28
   },
   {
-   "file": "icon_medical_cross.svg",
+   "file": "icon_moon.svg",
    "source": "iconpark",
-   "name": "red-cross",
+   "name": "sleep-two",
+   "group": "brand",
+   "solid": true,
+   "size": 24
+  },
+  {
+   "file": "icon_medical_files.svg",
+   "source": "iconpark",
+   "name": "medical-files",
    "group": "brand",
    "size": 24
   },
@@ -573,6 +607,14 @@
    "name": "link-out",
    "group": "brand",
    "size": 24
+  },
+  {
+   "file": "icon_people.svg",
+   "source": "iconpark",
+   "name": "peoples",
+   "group": "ink",
+   "size": 24,
+   "solid": true
   },
   {
    "file": "icon_pause.svg",
@@ -793,7 +835,8 @@
    "source": "iconpark",
    "name": "iwatch",
    "group": "ink",
-   "size": 24
+   "size": 24,
+   "solid": true
   }
  ]
 }

@@ -125,6 +125,7 @@ public partial class NotificationPreferencesPage : ContentPage
                 ? $"{start:HH:mm} – {end:HH:mm}"
                 : "Off";
             LockScreenSwitch.IsToggled = _prefs.ShowDetailsOnLockScreen;
+            EscalatedSwitch.IsToggled = _prefs.EscalatedAlertsPierceQuietHours;
             // A category the caregiver cannot mute is pinned on regardless of what the server
             // holds: the API strips Safety from every update, but a stored list from before that
             // rule could still carry it, and the switch must not contradict the copy beside it.
@@ -140,26 +141,46 @@ public partial class NotificationPreferencesPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// The category rows, in the shape Alert Settings gives a list of switches: 15/13 type, a
+    /// 48-high row, and a hairline between rows rather than a card each.
+    /// </summary>
     private void BuildCategoryRows()
     {
+        var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
+        var first = true;
         foreach (var (wire, label, detail, canMute) in Categories)
         {
+            if (!first)
+                CategoryRows.Add(new BoxView { Style = (Style)resources["DividerLine"] });
+            first = false;
+
             var row = new Grid
             {
                 ColumnDefinitions = [new ColumnDefinition(GridLength.Star), new ColumnDefinition(GridLength.Auto)],
                 ColumnSpacing = 12,
-                MinimumHeightRequest = 56,
-                Padding = new Thickness(0, 6),
+                MinimumHeightRequest = 48,
+                Padding = new Thickness(0, 8),
             };
-            var resources = Microsoft.Maui.Controls.Application.Current!.Resources;
-            var text = new VerticalStackLayout { Spacing = 1, VerticalOptions = LayoutOptions.Center };
-            text.Add(new Label { Text = label, Style = (Style)resources["Body1SemiBoldDark"] });
-            text.Add(new Label { Text = detail, Style = (Style)resources["Body2"], LineBreakMode = LineBreakMode.WordWrap });
+            var text = new VerticalStackLayout { Spacing = 2, VerticalOptions = LayoutOptions.Center };
+            text.Add(new Label
+            {
+                Text = label,
+                Style = (Style)resources["Body1SemiBoldDark"],
+                FontSize = 15,
+            });
+            text.Add(new Label
+            {
+                Text = detail,
+                Style = (Style)resources["Body2"],
+                FontSize = 13,
+                LineBreakMode = LineBreakMode.WordWrap,
+            });
             row.Add(text, 0, 0);
 
             var sw = new Switch
             {
-                OnColor = (Color)Microsoft.Maui.Controls.Application.Current!.Resources["Primary"],
+                OnColor = (Color)resources["Primary"],
                 VerticalOptions = LayoutOptions.Center,
                 IsToggled = true,
                 IsEnabled = canMute,
@@ -212,6 +233,13 @@ public partial class NotificationPreferencesPage : ContentPage
         await SaveAsync(p => p.ShowDetailsOnLockScreen = e.Value);
     }
 
+    private async void OnEscalatedToggled(object? sender, ToggledEventArgs e)
+    {
+        if (_rendering || _prefs is null)
+            return;
+        await SaveAsync(p => p.EscalatedAlertsPierceQuietHours = e.Value);
+    }
+
     private async Task OnCategoryToggledAsync(string wire, bool hear)
     {
         if (_rendering || _prefs is null)
@@ -259,6 +287,11 @@ public partial class NotificationPreferencesPage : ContentPage
             QuietHoursStart = _prefs.QuietHoursStart,
             QuietHoursEnd = _prefs.QuietHoursEnd,
             ShowDetailsOnLockScreen = _prefs.ShowDetailsOnLockScreen,
+            // Sent on every save, not only its own: the PUT replaces the document, so leaving it
+            // out reset a caregiver's answer to the accept-flow question every time they touched
+            // a mute or their quiet hours — silently, and in the direction that costs the family
+            // its night cover.
+            EscalatedAlertsPierceQuietHours = _prefs.EscalatedAlertsPierceQuietHours,
             MutedCategories = [.. _prefs.MutedCategories],
         };
         change(request);

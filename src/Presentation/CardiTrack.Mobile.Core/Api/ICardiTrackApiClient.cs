@@ -275,7 +275,19 @@ public interface ICardiTrackApiClient
         CancellationToken ct = default);
 
     /// <summary>Marks one alert as handled (M1-10 card action).</summary>
-    Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(Guid alertId, CancellationToken ct = default);
+    /// <param name="answer">
+    /// What the caregiver did about it — a canned code from the alert's <c>responseOptions</c>,
+    /// a note, or both. Null keeps the bodyless form, which the server still accepts.
+    /// </param>
+    Task<AlertAcknowledgementResponse> AcknowledgeAlertAsync(
+        Guid alertId, AlertAnswerRequest? answer = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Closes an alert on the family's say-so: the condition is dealt with, and the rule may fire
+    /// again. Final for caregivers — there is no undo-close, mirroring a system resolution.
+    /// </summary>
+    Task<AlertAcknowledgementResponse> CloseAlertAsync(
+        Guid alertId, AlertAnswerRequest? answer = null, CancellationToken ct = default);
 
     /// <summary>
     /// Tells the API a caregiver has arrived, so the medical model can be loaded before they get
@@ -587,6 +599,91 @@ public interface ICardiTrackApiClient
     Task<MemberChatSessionListResponse?> PeekMemberChatSessionsAsync(Guid cardiMemberId, CancellationToken ct = default);
     Task<MemberChatSuggestionsResponse?> PeekMemberChatSuggestionsAsync(Guid cardiMemberId, CancellationToken ct = default);
     Task<List<ExportConsentHistoryItem>?> PeekExportConsentsAsync(CancellationToken ct = default);
+
+    // ---- Families: membership, joining, and caregiver invitations ----
+
+    /// <summary>Every family the caller belongs to, with their role and the members they may see in each.</summary>
+    Task<IReadOnlyList<FamilySummary>> GetMyFamiliesAsync(CancellationToken ct = default);
+
+    Task<IReadOnlyList<FamilySummary>?> PeekMyFamiliesAsync(CancellationToken ct = default);
+
+    /// <summary>The people in one family. Any member of it may read this.</summary>
+    Task<IReadOnlyList<FamilyMemberSummary>> GetFamilyMembersAsync(Guid organizationId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<FamilyMemberSummary>?> PeekFamilyMembersAsync(Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Hands the family and its plan to another member; the caller becomes a member in the same
+    /// save. Returns the roster as it now stands.
+    /// </summary>
+    Task<IReadOnlyList<FamilyMemberSummary>> TransferFamilyAdminAsync(
+        Guid organizationId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>Admin removes somebody from the family, and with it their view of its members.</summary>
+    Task RemoveFamilyMemberAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Leaves a family. Refused (422) for its admin, who must hand it over first — or, alone in
+    /// it, is told to delete their account instead.
+    /// </summary>
+    /// <remarks>
+    /// On success the device's whole read cache is dropped, not only the family's own keys: every
+    /// dashboard, alert list, journal and member profile the caregiver has opened is a saved copy
+    /// of health data they may no longer read, and each is filed under its own path. Evicting the
+    /// handful this call knows about would leave the rest to be served offline for the cache's
+    /// lifetime, which is the one thing leaving a family has to stop.
+    /// </remarks>
+    Task LeaveFamilyAsync(Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Asks to join the family with this Family ID. The receipt is identical for a code that does
+    /// not exist, so nothing about it says whether the ask landed anywhere.
+    /// </summary>
+    Task<FamilyJoinRequestReceipt> RequestToJoinFamilyAsync(string familyId, CancellationToken ct = default);
+
+    /// <summary>The asks the caller has made — pending, declined or expired.</summary>
+    Task<IReadOnlyList<FamilyJoinRequestSummary>> GetMyJoinRequestsAsync(CancellationToken ct = default);
+
+    Task<IReadOnlyList<FamilyJoinRequestSummary>?> PeekMyJoinRequestsAsync(CancellationToken ct = default);
+
+    Task WithdrawJoinRequestAsync(Guid requestId, CancellationToken ct = default);
+
+    /// <summary>Admin: who is waiting to be let into this family.</summary>
+    Task<IReadOnlyList<PendingJoinRequest>> GetPendingJoinRequestsAsync(Guid organizationId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<PendingJoinRequest>?> PeekPendingJoinRequestsAsync(Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>Admin lets somebody in, choosing which members they get and their role.</summary>
+    Task ApproveJoinRequestAsync(
+        Guid organizationId, Guid requestId, ApproveJoinRequest decision, CancellationToken ct = default);
+
+    Task DeclineJoinRequestAsync(Guid organizationId, Guid requestId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Mints an invitation to watch one member and returns it with its link. The link comes back
+    /// exactly once, here — the list never carries it — so the caller must keep it.
+    /// </summary>
+    Task<CaregiverInviteResponse> CreateCaregiverInviteAsync(
+        Guid cardiMemberId, CreateCaregiverInviteRequest request, CancellationToken ct = default);
+
+    /// <summary>Every invitation issued for this member, newest first, without their links.</summary>
+    Task<IReadOnlyList<CaregiverInviteResponse>> GetCaregiverInvitesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<CaregiverInviteResponse>?> PeekCaregiverInvitesAsync(Guid cardiMemberId, CancellationToken ct = default);
+
+    Task<CaregiverInviteResponse> RevokeCaregiverInviteAsync(
+        Guid cardiMemberId, Guid inviteId, CancellationToken ct = default);
+
+    /// <summary>
+    /// What an invitation is for: two first names and a deadline. Needs a signed-in caller — the
+    /// endpoint is deliberately not anonymous, so a guessed token never yields a name.
+    /// </summary>
+    Task<CaregiverInviteView> ViewCaregiverInviteAsync(string token, CancellationToken ct = default);
+
+    /// <summary>Redeems an invitation for the signed-in user. Always admits as a member.</summary>
+    Task<CaregiverInviteRedemption> AcceptCaregiverInviteAsync(string token, CancellationToken ct = default);
+
+    Task DeclineCaregiverInviteAsync(string token, CancellationToken ct = default);
 }
 
 /// <summary>A downloaded export: the bytes, and what to call them when saving or sharing.</summary>

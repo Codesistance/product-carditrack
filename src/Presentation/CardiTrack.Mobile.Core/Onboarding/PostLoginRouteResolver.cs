@@ -33,8 +33,16 @@ public static class PostLoginRouteResolver
         if (status is null || !status.HasUserAccount)
             return new PostLoginRoute(PostLoginDestination.AccountSetup, false);
 
+        // A guest (D-12) has no family of their own and nobody to watch until an admin lets them
+        // in: the add-member wizard would start a family they chose not to start, so they land in
+        // the shell, where the Family tab shows the ask they are waiting on. A caregiver who
+        // started a family and has not yet added anyone still gets the wizard, as before.
         if (!status.HasCardiMember)
-            return new PostLoginRoute(PostLoginDestination.AddCardiMember, false);
+        {
+            return status.HasOrganization
+                ? new PostLoginRoute(PostLoginDestination.AddCardiMember, false)
+                : new PostLoginRoute(PostLoginDestination.Dashboard, false);
+        }
 
         // A member without a device is the resumable case: land on the dashboard and offer
         // the device leg over it, unless the user has already waved it away once.

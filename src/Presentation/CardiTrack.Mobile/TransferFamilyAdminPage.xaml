@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.TransferFamilyAdminPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- Handing the family on (Story 4.8, D-13/14): one admin, and they are the payer, so
+         promoting somebody demotes the caller in the same save. Leaving is the step after, and
+         is offered here because it is the reason an admin arrives. -->
+    <Grid RowDefinitions="Auto,*" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Back"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label Text="Hand the family on"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label x:Name="HeaderSubtitle"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <Grid Padding="20,16,20,28">
+
+                <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                    <controls:SkeletonView HeightRequest="110"/>
+                    <controls:SkeletonView HeightRequest="160"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
+                    <Label Text="We couldn't load this family"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="ErrorDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Try again"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HorizontalOptions="Center"
+                            Clicked="OnRetryClicked"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="What handing it on does"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <controls:FindingsList x:Name="ConsequencesList"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Alone in the family there is nobody to hand it to, and "leaving" is not
+                         a family operation at all — it is account deletion, and this says so and
+                         points at it rather than offering a button that comes back refused. -->
+                    <Border x:Name="SoloCard" Style="{StaticResource ElevatedCard}" IsVisible="False">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="You're the only one here"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label Text="There is nobody to hand this family to. If you're finished with CardiTrack, deleting your account is the way — it stops the monitoring and removes the data, with 30 days to change your mind."
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
+                            <Button Text="Go to account deletion"
+                                    Style="{StaticResource DangerOutlineButton}"
+                                    Clicked="OnAccountDeletionClicked"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <VerticalStackLayout x:Name="SuccessorSection" Spacing="10" IsVisible="False">
+                        <Label Text="Who takes it on"
+                               Style="{StaticResource DashboardSectionTitle}"
+                               Margin="4,4,4,0"/>
+                        <VerticalStackLayout x:Name="SuccessorHost" Spacing="10"/>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+    </Grid>
+</ContentPage>

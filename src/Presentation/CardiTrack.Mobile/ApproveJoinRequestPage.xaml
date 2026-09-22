@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:CardiTrack.Mobile.Controls"
+             x:Class="CardiTrack.Mobile.ApproveJoinRequestPage"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{StaticResource PageGround}">
+
+    <!-- The admin's decision (D-10): who this person gets to see, and what they are in the
+         family. A full page rather than a sheet — the app has no bottom-sheet pattern, and this
+         is a decision about somebody's access to health data, not a quick pick. -->
+    <Grid RowDefinitions="Auto,*,Auto" SafeAreaEdges="None, Container, None, None">
+
+        <controls:HeaderBand Grid.Row="0" ContentPadding="20,14,20,16">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <controls:SquareBorder Grid.Column="0"
+                        MinimumHeightRequest="40"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource HeaderButtonTint}"
+                        VerticalOptions="Fill">
+                    <controls:SquareBorder.StrokeShape>
+                        <RoundRectangle CornerRadius="99"/>
+                    </controls:SquareBorder.StrokeShape>
+                    <controls:SquareBorder.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackTapped"/>
+                    </controls:SquareBorder.GestureRecognizers>
+                    <Image Source="icon_back_white.svg" WidthRequest="20" HeightRequest="20"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           SemanticProperties.Description="Back"/>
+                </controls:SquareBorder>
+
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Start">
+                    <Label x:Name="HeaderTitle"
+                           Text="Let them in?"
+                           Style="{StaticResource Heading3}"
+                           TextColor="{StaticResource White}"/>
+                    <Label Text="Choose what they can see before you say yes"
+                           FontFamily="Quicksand"
+                           FontSize="12"
+                           TextColor="{StaticResource White}"
+                           Opacity="0.85"
+                           LineBreakMode="TailTruncation"/>
+                </VerticalStackLayout>
+            </Grid>
+        </controls:HeaderBand>
+
+        <ScrollView Grid.Row="1">
+            <Grid Padding="20,16,20,20">
+
+                <VerticalStackLayout x:Name="SkeletonPanel" Spacing="14" IsVisible="False">
+                    <controls:SkeletonView HeightRequest="80"/>
+                    <controls:SkeletonView HeightRequest="180"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ErrorPanel" Spacing="10" IsVisible="False" Padding="0,60,0,0">
+                    <Label Text="We couldn't load this request"
+                           Style="{StaticResource Heading3}"
+                           HorizontalTextAlignment="Center"/>
+                    <Label x:Name="ErrorDetailLabel"
+                           Style="{StaticResource Body2}"
+                           HorizontalTextAlignment="Center"/>
+                    <Button Text="Try again"
+                            Style="{StaticResource SecondaryOutlineButton}"
+                            HorizontalOptions="Center"
+                            Clicked="OnRetryClicked"/>
+                </VerticalStackLayout>
+
+                <VerticalStackLayout x:Name="ContentPanel" Spacing="14" IsVisible="False">
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <controls:MemberAvatar x:Name="Avatar" BoxWidth="48"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <Label x:Name="NameLabel" Style="{StaticResource Body1SemiBoldDark}"/>
+                                <Label x:Name="AskedLabel" Style="{StaticResource Body2}"/>
+                            </VerticalStackLayout>
+                        </Grid>
+                    </Border>
+
+                    <!-- Minimum necessary: nobody is ticked to begin with, and approving with
+                         none selected admits them to the family without a single person's data.
+                         That is a real answer — a sibling who only needs to be in the family so
+                         they can take over the plan later. -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="Who can they see?"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <Label x:Name="PickerHintLabel"
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
+                            <VerticalStackLayout x:Name="MembersHost" Spacing="0"/>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="10">
+                            <Label Text="Alerts"
+                                   Style="{StaticResource DashboardSectionTitle}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" MinimumHeightRequest="56">
+                                <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                                    <Label Text="Send them the alerts too"
+                                           Style="{StaticResource Body1SemiBoldDark}"/>
+                                    <Label x:Name="AlertsDetailLabel"
+                                           Style="{StaticResource Body2}"
+                                           LineBreakMode="WordWrap"/>
+                                </VerticalStackLayout>
+                                <Switch x:Name="AlertsSwitch"
+                                        Grid.Column="1"
+                                        IsToggled="True"
+                                        OnColor="{StaticResource Primary}"
+                                        VerticalOptions="Center"
+                                        SemanticProperties.Description="Send them the alerts too"/>
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- No role picker. A family has exactly one admin and that admin pays
+                         (D-14), so making somebody an admin is handing the family over — its own
+                         act, on its own screen, not a radio button on an approval. -->
+                    <Border Style="{StaticResource ElevatedCard}">
+                        <VerticalStackLayout Spacing="6">
+                            <Label Text="They join as a member"
+                                   Style="{StaticResource Body1SemiBoldDark}"/>
+                            <Label Text="Members see the people you choose and get their alerts. Only you can invite people, remove them, or change the plan — and handing the family over is a separate, deliberate step."
+                                   Style="{StaticResource Body2}"
+                                   LineBreakMode="WordWrap"/>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+            </Grid>
+        </ScrollView>
+
+        <!-- The decision sits on the screen rather than at the foot of a scroll: it is what the
+             page is for, and a member picker long enough to scroll must not push it out of reach. -->
+        <VerticalStackLayout x:Name="ActionsPanel"
+                             Grid.Row="2"
+                             Padding="20,10,20,16"
+                             Spacing="10"
+                             IsVisible="False"
+                             BackgroundColor="{StaticResource PageGround}">
+            <Button x:Name="ApproveButton"
+                    Text="Let them in"
+                    Style="{StaticResource PrimaryGradientButton}"
+                    Clicked="OnApproveClicked"/>
+            <Button x:Name="DeclineButton"
+                    Text="Decline"
+                    Style="{StaticResource SecondaryOutlineButton}"
+                    Clicked="OnDeclineClicked"/>
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>
