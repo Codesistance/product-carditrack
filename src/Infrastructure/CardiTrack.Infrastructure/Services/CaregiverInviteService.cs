@@ -2,6 +2,7 @@ using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
+using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.Security;
@@ -183,6 +184,13 @@ public class CaregiverInviteService : ICaregiverInviteService
         {
             throw new KeyNotFoundException("Invitation not found");
         }
+
+        // Checked after the claim: a redemption that cannot be honoured should spend the
+        // invitation rather than leave it live for somebody to try again into a full family.
+        // Someone already in the family is exempt — they take up no new place.
+        var rejoining = await _unitOfWork.UserOrganizations.GetAsync(redeemingUserId, invite.OrganizationId);
+        if (rejoining is not { IsActive: true })
+            await PlanLimits.RequireRoomForAnotherPersonAsync(_unitOfWork, invite.OrganizationId, ct);
 
         var existingLinks = await _unitOfWork.UserCardiMembers.GetByUserIdAsync(redeemingUserId);
         var existingLink = existingLinks.FirstOrDefault(

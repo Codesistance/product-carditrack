@@ -159,6 +159,11 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(CardiTrack.Infrastructure.Settings.CaregiverInviteOptions.SectionName));
         services.AddScoped<CardiTrack.Application.Interfaces.Services.ICaregiverInviteService,
             CardiTrack.Infrastructure.Services.CaregiverInviteService>();
+
+        // Families and the people in them. Pure Application: it reads and writes membership rows
+        // through the unit of work and touches nothing outside it.
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IFamilyService,
+            CardiTrack.Application.Services.FamilyService>();
         // Caregiver-triggered sync (issue #67). Request-scoped, not a background job — the
         // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,

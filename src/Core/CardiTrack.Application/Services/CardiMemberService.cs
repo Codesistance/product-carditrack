@@ -107,6 +107,10 @@ public class CardiMemberService : ICardiMemberService
             }
         }
 
+        // Checked after the idempotency replay above, so a retry of a creation that already
+        // succeeded returns the member rather than being refused by the limit that member filled.
+        await PlanLimits.RequireRoomForAnotherCardiMemberAsync(_unitOfWork, organizationId);
+
         var cardiMember = new CardiMember
         {
             OrganizationId = organizationId,
