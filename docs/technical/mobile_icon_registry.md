@@ -24,8 +24,8 @@ lists every colour rather than only the common ones: a colour used once still pi
 | Colour | Icons | Also known as |
 | --- | --- | --- |
 | `#FFFFFF` | 29 | White |
-| `#153D66` | 24 | — |
-| `#3175B9` | 19 | — |
+| `#153D66` | 24 | icons.json brand outer stroke |
+| `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 17 | MutedText |
 | `#1884DC` | 8 | Primary |
 | `#174E86` | 7 | PrimaryDark |

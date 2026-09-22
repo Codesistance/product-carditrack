@@ -36,6 +36,9 @@ NAMED = {
     '#F0A92E': 'warning amber',
     '#FFFFFF': 'White',
     # IconPark colour groups (scripts/icons/icons.json) and the Material metric inks.
+    '#3175B9': 'icons.json brand and activity fill, steel blue',
+    '#153D66': 'icons.json brand outer stroke',
+    '#144A80': 'icons.json activity outer stroke',
     '#C9E1FF': 'MetricTileTint, opaque (brand internal fill)',
     '#B93A55': 'DatasetHeartText',
     '#5A4EBF': 'DatasetSleepText',
