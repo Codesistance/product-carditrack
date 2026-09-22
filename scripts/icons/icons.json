@@ -649,7 +649,7 @@
   {
    "file": "icon_trend_good.svg",
    "source": "iconpark",
-   "name": "trending-up",
+   "name": "check",
    "group": "green",
    "size": 32
   },
@@ -663,7 +663,7 @@
   {
    "file": "icon_trend_watch.svg",
    "source": "iconpark",
-   "name": "trending-down",
+   "name": "chart-line",
    "group": "brand",
    "size": 24
   },
