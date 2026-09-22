@@ -286,8 +286,10 @@ register for push is not one to ship.
             apple-distribution-cert-p12 apple-cert-password appstore-provisioning-profile \
             appstore-connect-issuer-id appstore-connect-api-key-id appstore-connect-api-private-key \
             apns-auth-key-p8 apns-key-id apple-team-id; do
-     v=$(gcloud secrets versions access latest --secret="carditrack-common-$s" --project=carditrack-490120)
-     [ "$v" = "REPLACE_ME" ] && echo "NOT SET: $s" || echo "ok: $s"
+     # An unreadable secret (not created yet, no access) yields an empty value, which is
+     # as unusable as the placeholder — report it, do not let it pass as "ok".
+     v=$(gcloud secrets versions access latest --secret="carditrack-common-$s" --project=carditrack-490120 2>/dev/null || true)
+     if [ -z "$v" ]; then echo "MISSING: $s"; elif [ "$v" = "REPLACE_ME" ]; then echo "NOT SET: $s"; else echo "ok: $s"; fi
    done
    ```
 
