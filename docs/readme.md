@@ -62,7 +62,7 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 **Google for Startups Cloud credits application** — company overview, problem/solution narrative, and GCP usage plan for the credits programme.
 
 #### [product/second_caregiver_prd.md](./product/second_caregiver_prd.md)
-**PRD — Second Caregiver (Family Sharing, Phase 1)** — splits the R3 "Family invitations + roles" row: the per-member caregiver invitation, `MaxUsers` enforcement and escalation fan-out activation move to R2; shared notes, @mentions, roles, the audit-log read endpoint and multi-member comparison stay in R3. Includes a 2026-09-22 competitor check on caregiver seats and access levels.
+**PRD — Second Caregiver (Family Sharing, Phase 1)** — splits the R3 "Family invitations + roles" row: the per-member caregiver invitation, Admin/Member roles, `MaxUsers` enforcement and escalation fan-out activation move to **R1**, treated as closing a safety defect before beta; shared notes, @mentions, the audit-log read endpoint and multi-member comparison stay in R3. Carries the 2026-09-22 decision log (D-1…D-8), a serialised single-builder build order, and a competitor check on caregiver seats and access levels.
 
 **Reference this** for infrastructure setup, deployment, and database operations.
 
