@@ -350,7 +350,7 @@ Signing material and store credentials live in GCP Secret Manager (`carditrack-c
 
 The common secrets file also defines three **operator-only** secrets (no deploy-workflow accessor grant; loaded and read manually by an operator): `carditrack-common-apns-auth-key-p8` (APNs auth key, .p8 PEM contents), `carditrack-common-apns-key-id`, and `carditrack-common-apple-team-id`.
 
-Until a secret is populated (i.e. still holds the `REPLACE_ME` placeholder), the corresponding signed-build/upload jobs skip with a warning instead of failing, so the pipeline stays green during initial setup.
+Until a secret is populated (i.e. still holds the `REPLACE_ME` placeholder), the corresponding signed-build/upload jobs in `deploy-apps-dev.yml` and `deploy-mobile-dev.yml` skip with a warning instead of failing, so the pipeline stays green during initial setup. The prod iOS job in `deploy-apps-prod.yml` has no such gate: an unpopulated `carditrack-common-firebase-ios-config` fails it at "Write Firebase config", because a production build that cannot register for push is not one to ship.
 
 One-time setup before the first store upload — full step-by-step commands in
 **[store_provisioning.md](./store_provisioning.md)**. In summary:
