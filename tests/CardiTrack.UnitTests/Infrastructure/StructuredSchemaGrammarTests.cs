@@ -1,3 +1,4 @@
+using CardiTrack.Application.Services;
 using CardiTrack.Infrastructure.ExternalClients;
 using CardiTrack.Infrastructure.ExternalClients.Medical;
 
@@ -216,6 +217,28 @@ public class StructuredSchemaGrammarTests
         urgency = urgency[..urgency.IndexOf("\"actionBasis\"", StringComparison.Ordinal)];
         Assert.Contains("\"description\":\"One of: watch, check-in, concerning, act-now", urgency);
         Assert.Contains("\"enum\"", urgency);
+    }
+
+    /// <summary>
+    /// A verdict's rule is matched against the finding's rule by exact string, so a paraphrase is
+    /// no verdict at all. MedGemma answered <c>activity_decrease</c> for <c>activity_decline</c> on
+    /// every pass for an hour (2026-09-22) while the brief asked twice for the rule "copied
+    /// exactly" — prose does not constrain a decoder, an <c>enum</c> does. Every rule the engine
+    /// can produce a finding for must be in the schema, or the model is asked to answer about a
+    /// rule it is not permitted to name.
+    /// </summary>
+    [Fact]
+    public void JudgementVerdict_RuleAndSeverity_AreConstrainedToTheirVocabularies()
+    {
+        var schemaText = SchemaTextFor(
+            typeof(CardiTrack.Infrastructure.Services.StatisticalAlertService.JudgementAiResponse));
+
+        Assert.Contains(
+            "\"enum\":[\"critical\",\"high\",\"medium\",\"low\"]", schemaText);
+        Assert.DoesNotContain("\"rule\":{\"type\":[", schemaText);
+
+        foreach (var rule in StatisticalAlertRules.AllRules)
+            Assert.Contains($"\"{rule}\"", schemaText);
     }
 
     private static string SchemaTextFor(Type type) => StructuredOutputSchema.TextFor(type);

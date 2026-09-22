@@ -62,6 +62,28 @@ public static class StatisticalAlertRules
     public const string ElevatedZoneWithoutMovementRule = "elevated_zone_without_movement";
     public const string DaytimeInactivityBlockRule = "daytime_inactivity_block";
 
+    /// <summary>
+    /// Every rule this class can produce a finding for. The judgement reply's <c>rule</c> field
+    /// carries the same eleven as an <c>[AllowedValues]</c> enum, which has to list them one by one
+    /// because an attribute takes compile-time constants; this list is what lets a test prove the
+    /// two agree, so a twelfth rule cannot be added and then silently be unnameable by the model
+    /// asked to judge it.
+    /// </summary>
+    public static readonly IReadOnlyList<string> AllRules =
+    [
+        ActivityDeclineRule,
+        IrregularSleepRule,
+        ElevatedHeartRateRule,
+        NoMorningActivityRule,
+        LongTermTrendRule,
+        HeartRateVariabilityDropRule,
+        IrregularRhythmRule,
+        EcgAtrialFibrillationRule,
+        OvernightBreathingUpRule,
+        ElevatedZoneWithoutMovementRule,
+        DaytimeInactivityBlockRule,
+    ];
+
     /// <summary>Medium sensitivity: a reading more than 30% off its baseline is worth a word.</summary>
     public const double DeviationFraction = 0.30;
 

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CardiTrack.Application.Interfaces.Clients;
@@ -742,10 +743,59 @@ public class StatisticalAlertService : IStatisticalAlertService
         public required IReadOnlyList<JudgementVerdict> Verdicts { get; init; }
     }
 
+    /// <summary>
+    /// One verdict. Both vocabularies are closed with <see cref="AllowedValuesAttribute"/>, which
+    /// <c>StructuredOutputSchema</c> exports as the field's <c>enum</c> and both providers compile
+    /// into the decoding grammar.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asking in prose was not enough, and the brief asks twice — "each carrying the finding's rule
+    /// exactly as written", then "rule: the finding's rule, copied exactly". On 2026-09-22 MedGemma
+    /// answered <c>activity_decrease</c> for <see cref="StatisticalAlertRules.ActivityDeclineRule"/>
+    /// on every pass for one member across an hour, while a second member on the same rule and the
+    /// same build matched every time: byte-identical replies each pass, so prompt sensitivity rather
+    /// than sampling. <see cref="string.Equals(string?, string?, StringComparison)"/> matched
+    /// nothing, the pass failed closed, and the finding was re-judged five minutes later — for ever,
+    /// because a verdict that raises nothing is deliberately not persisted.
+    /// </para>
+    /// <para>
+    /// An <c>enum</c> is the difference between asking and constraining: the paraphrase is not a
+    /// reachable token rather than a discouraged one. The same failure shape is recorded against
+    /// the daily clinical read on 2026-09-13, which answered <c>"urgency": null</c> for a week —
+    /// see <c>StructuredOutputSchema.ConstrainToAllowedValues</c>'s remarks.
+    /// </para>
+    /// <para>
+    /// The rule list is every rule in <see cref="StatisticalAlertRules"/>, not merely the ones a
+    /// given pass asked about. A per-call schema would be narrower still, but this one is static,
+    /// is exported once per process, and closes the branch that actually fired. Matching stays
+    /// case-insensitive: the grammar constrains what the model may emit, and the comparison is the
+    /// belt to its braces.
+    /// </para>
+    /// </remarks>
     internal sealed record JudgementVerdict
     {
+        [AllowedValues(
+            StatisticalAlertRules.ActivityDeclineRule,
+            StatisticalAlertRules.IrregularSleepRule,
+            StatisticalAlertRules.ElevatedHeartRateRule,
+            StatisticalAlertRules.NoMorningActivityRule,
+            StatisticalAlertRules.LongTermTrendRule,
+            StatisticalAlertRules.HeartRateVariabilityDropRule,
+            StatisticalAlertRules.IrregularRhythmRule,
+            StatisticalAlertRules.EcgAtrialFibrillationRule,
+            StatisticalAlertRules.OvernightBreathingUpRule,
+            StatisticalAlertRules.ElevatedZoneWithoutMovementRule,
+            StatisticalAlertRules.DaytimeInactivityBlockRule)]
         public required string Rule { get; init; }
+
+        [AllowedValues(
+            AssessmentSeverityParser.CriticalSeverity,
+            AssessmentSeverityParser.HighSeverity,
+            AssessmentSeverityParser.MediumSeverity,
+            AssessmentSeverityParser.LowSeverity)]
         public required string Severity { get; init; }
+
         public required string Headline { get; init; }
         public required string Message { get; init; }
     }
