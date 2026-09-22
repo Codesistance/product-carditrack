@@ -1,0 +1,299 @@
+# PRD: Second Caregiver (Family Sharing, Phase 1)
+
+**Surfaces:** API · Mobile · **Wave:** R2 · **Plan gate:** none in R2 (family-member limit enforced, not gated)
+**Status:** Draft · **Author:** m.softdir@gmail.com · **Last updated:** 2026-09-22
+
+## Table of Contents
+
+1. [The Problem](#1-the-problem)
+2. [Success Metrics](#2-success-metrics)
+3. [Out of Scope](#3-out-of-scope)
+4. [Competitive Position](#4-competitive-position)
+5. [User Stories & Acceptance Criteria](#5-user-stories--acceptance-criteria)
+6. [Open Questions](#6-open-questions)
+7. [Risk & Dependency Check](#7-risk--dependency-check)
+8. [Surface & Release Placement](#8-surface--release-placement)
+9. [RICE](#9-rice)
+10. [References](#10-references)
+
+---
+
+## 1. The Problem
+
+Caregiving for an elderly parent is shared between siblings, but a CardiTrack account holds exactly
+one caregiver — so the red-alert escalation ladder's fan-out rung has nobody to fan out to, and the
+"up to 5 / 20 family members" on the pricing page cannot be delivered.
+
+**Evidence — three independent sources, none of them a user-behaviour assumption:**
+
+1. **The code says so.** `EscalationPolicy.FanOutToOtherCaregivers` — the t+300s rung for Safety and
+   red Health deliveries — is reached and resolves to zero recipients, because
+   `SubscriptionService` provisions `MaxUsers = 1` for a Family org. Its own doc comment:
+   *"In R1 (`MaxUsers = 1`) this finds zero secondary caregivers and falls straight through."*
+   An unacknowledged 3am red alert therefore escalates to nothing until it is marked undelivered at
+   t+900s.
+2. **The erasure cascade already assumes multiple watchers.** `AccountErasureService` erases the
+   members a departing caregiver "was the last active watcher of" and *releases* the ones somebody
+   else still watches. That branch cannot execute today.
+3. **We already promise it.** `solution_manifest.md` §Pricing and the published pricing page sell
+   5 / 20 / 20 family members. `BaselineLearningPage.xaml.cs` tells beta users they can
+   "invite your family from the Family tab once it's live" — a tab that became CardiJournal.
+
+The market-size claim (53M US / 44M EU informal carers, `market_analysis.md`) supports that care is
+shared in general. What fraction of CardiTrack accounts will actually invite someone is
+**[ASSUMPTION]** — see OQ-1.
+
+## 2. Success Metrics
+
+| Metric | Type | Baseline | Target | How measured |
+|---|---|---|---|---|
+| Red/Safety alerts acknowledged within 15 min | North Star | unknown — OQ-2 | +10pp vs single-caregiver accounts | `NotificationDelivery` stage + `Alert` ack timestamp |
+| Accounts with ≥1 accepted caregiver invite at day 30 | Leading (activation) | 0 (impossible today) | 35% | `CaregiverInvite.Status = Resolved` per org |
+| Escalations reaching `FannedOut` that are then acknowledged | Leading (efficacy) | 0 | >50% of fan-outs | `EscalationStage` transitions |
+| Invites sent but never opened | Guardrail | — | <30% | `CaregiverInvite.OpenedAt IS NULL` past expiry |
+| Secondary-caregiver push opt-outs / mutes | Guardrail | — | <15% | `NotificationPreference` per-category mute |
+
+Ladders to the committed churn (<5%/mo) and alert-latency KPIs. The ack-latency North Star is
+measurable today from existing `NotificationDelivery` and `Alert` rows; the invite metrics need the
+new entity. Nothing here requires new instrumentation beyond DB queries —
+see [apm_setup_runbook.md](../technical/apm_setup_runbook.md).
+
+## 3. Out of Scope
+
+- **Shared care notes + @mentions** — deferred to **R3**. RICE 6.3 vs 80 for this slice; also the
+  most crowded part of the competitive field (see §4).
+- **Roles (Admin / Staff / Member or a viewer tier)** — deferred to **R3**, and possibly dropped.
+  The three existing link flags already express every distinction the code enforces. Revisit when
+  the trigger in OQ-4 fires.
+- **Activity/audit log *read* endpoint** — deferred to **R3**. The audit *write* side ships here
+  (`[AuditHealthDataAccess]`), which is the compliance-relevant half.
+- **Multi-member comparison views** — deferred to **R3**, unrelated to this problem.
+- **Plan-gating family-member count** — **dropped as a tier lever.** No competitor charges per
+  caregiver seat (§4). The tier limit is enforced as a ceiling, never sold as a feature.
+- **Wearer-approved caregiver admission** — **prototype first, not in this slice.** See OQ-3; it is
+  the strongest answer to the consent risk but needs per-metric consent recording, which is
+  ⬜ not started.
+- **SMS/email invitations** — **dropped.** SMS is permanently out of scope
+  ([solution_manifest.md](../solution_manifest.md)); the caregiver shares the link through their own
+  phone's share sheet, exactly as `DeviceConnectionInvite` already does, so we never learn who they
+  sent it to.
+
+## 4. Competitive Position
+
+Checked 2026-09-22; `market_analysis.md`'s teardowns compare monitoring features and predate this.
+
+| Product | Caregiver seats | Price of a seat | Roles | Who grants access |
+|---|---|---|---|---|
+| Aloe Care Health | **Unlimited** (recommends 5) | **Free** — unlimited logins per account | **Four access levels** | Account admin |
+| Bay Alarm Medical | Multiple | **Free** — whole caregiver app free | None published | Account admin |
+| Medical Guardian | Multiple | App free; **$2.99/mo** for emergency notifications to loved ones | None published | Account admin |
+| Apple Health Sharing | **Up to 5** | Free | None | **The wearer** — per data type, revocable anytime |
+| Fitbit Premium / Garmin Connect | — | — | — | No family monitoring at all |
+
+**Three conclusions that change the plan:**
+
+1. **Caregiver seats are free everywhere.** Aloe Care gives unlimited logins at no per-seat charge;
+   Bay Alarm's caregiver app is entirely free. This confirms family sharing is not a pricing lever —
+   and goes further: **the "up to 5 family members" line on Basic is a competitive liability**, since
+   the market norm is unlimited. Enforce the ceiling quietly; stop selling it. Note Medical
+   Guardian monetises the *notification*, not the seat — the closest thing to a viable upsell here,
+   and CardiTrack's push spine already does it for free.
+2. **Aloe Care has four access levels — the one real counter-argument to deferring roles.** Weighing
+   it: their levels gate *two-way voice to a Smart Hub*, hardware CardiTrack does not have, and
+   their circle mixes paid professionals with family. CardiTrack's R2 circle is small and
+   family-only. Holding the defer, with OQ-4 as the trigger to revisit.
+3. **Apple's model is wearer-granted, per-metric, revocable — and CardiTrack's is not.** Apple caps
+   at 5 people and lets recipients see the wearer's own high-heart-rate and irregular-rhythm
+   notifications plus significant-trend alerts. That is the precedent for OQ-3, and the sharpest
+   privacy contrast a reviewer will draw: on CardiTrack the wearer neither grants nor sees who
+   watches them.
+
+**The wedge:** the coordination field is crowded (Caring Village, Caily, Medisafe shared profiles),
+and industry reviews say those apps "underdeliver on real multi-person coordination". But nobody in
+either camp does **escalating alert fan-out** — the alert companies have one recipient or a flat
+broadcast; the coordination apps have no alerts. CardiTrack's ladder (push → re-push at t+120s →
+fan out at t+300s → page at t+900s) is already built. This slice is what switches it on, and it is
+defensible precisely because it is not a notes feature.
+
+## 5. User Stories & Acceptance Criteria
+
+**Story 4.1: Inviting a second caregiver** _(P0 — Must Have)_
+- **As a** primary caregiver
+- **I want to** invite my sibling to watch our mother with me
+- **So that** an alert I miss still reaches someone
+- **Acceptance Criteria:**
+  - **Given** I am the primary caregiver of a member **When** I open "Who can see Margaret" and
+    create an invite **Then** I choose what they get (view health data, receive alerts) and receive
+    a share link and QR code, and the invite token is shown exactly once
+  - **Given** an invite exists **When** I view the list **Then** I see its state (pending / opened /
+    accepted / expired) and can revoke it
+  - **Given** I am **not** the primary caregiver **When** I try to invite **Then** the endpoint
+    refuses with the same "CardiMember not found" message used for a member that does not exist
+  - **[Edge]** **Given** an invite past `ExpiresAt` **When** the recipient opens it **Then** it is
+    dead regardless of stored status, and the page offers no member's name
+  - **[Edge]** **Given** the inviter's own access was revoked after issuing **When** the recipient
+    redeems **Then** redemption fails — an invite must not outlive the authority that issued it
+  - **[Edge]** **Given** the account is at its tier's family-member ceiling **When** I invite
+    **Then** `MEMBER_LIMIT_REACHED` (422) names the current count and the ceiling
+- **Screens:** no Figma M1 frame — **needs design sync** (new "Who can see <member>" screen on
+  member detail, plus an invite sheet)
+- **API:** new — `POST|GET /api/v1/cardimembers/{id}/caregiver-invites`,
+  `DELETE .../caregiver-invites/{inviteId}`; see [family.md](../execution/backend/api/family.md)
+- **Wave:** R2 · **Plan gate:** none (ceiling enforced)
+
+**Story 4.2: Accepting an invitation** _(P0 — Must Have)_
+- **As an** invited family member
+- **I want to** open my sibling's link and start seeing Mum's status
+- **So that** I can take my share of the watching
+- **Acceptance Criteria:**
+  - **Given** a valid invite link **When** I open it **Then** I see who invited me and which member,
+    first name only, read from the member record at render time — never copied into the invite
+  - **Given** I have no account **When** I accept **Then** I sign up through Auth0, verify email, and
+    only then is a `UserCardiMember` link created with the flags the inviter granted
+  - **Given** I accept **Then** `OpenedAt`/`ResolvedAt` are recorded and the inviter sees the state
+    change
+  - **[Edge]** **Given** I hold only the invite token and am not authenticated **When** I request any
+    health data **Then** I am refused — the token authorizes creating the link, never reading PHI
+  - **[Edge]** **Given** I already have access to this member **When** I redeem **Then** the invite
+    resolves without creating a duplicate link, and my existing flags are not silently widened
+  - **[Edge]** **Given** the member's baseline is still learning (days 1–14) **When** I first open
+    the dashboard **Then** I see the same learning-progress state the primary caregiver sees, not an
+    empty dashboard that reads as "healthy"
+- **Screens:** no Figma M1 frame — **needs design sync**
+- **API:** new — `GET|POST /api/v1/caregiver-invites/{token}` (anonymous view, authenticated redeem)
+- **Wave:** R2 · **Plan gate:** none
+
+**Story 4.3: An alert nobody answered reaches the second caregiver** _(P0 — Must Have)_
+- **As a** family sharing the watching
+- **I want to** have an unanswered red alert passed to whoever else is there
+- **So that** a phone face-down at 3am is not the end of the chain
+- **Acceptance Criteria:**
+  - **Given** a red or Safety alert unacknowledged at t+300s **When** the escalation sweep runs
+    **Then** every other active caregiver with `ReceiveAlerts` gets one delivery, deduped per
+    recipient
+  - **Given** a fan-out copy **Then** it never names who failed to respond (§6.3
+    [notification_engine.md](../technical/notification_engine.md))
+  - **[Edge]** **Given** the second caregiver is inside their quiet hours **When** fan-out fires
+    **Then** the behaviour follows the decision in OQ-5 — and is the same for every recipient
+  - **[Edge]** **Given** two caregivers acknowledge within seconds **When** both writes land
+    **Then** the first wins, the second sees "Tom acknowledged this 2 minutes ago", and no
+    acknowledgement is lost
+  - **[Edge]** **Given** the second caregiver has muted that alert category **When** fan-out fires
+    **Then** their mute is honoured and the ladder continues to the next rung rather than counting
+    them as reached
+- **Screens:** M1-10 (Alerts), M1-11/12/16 (`AlertDetailPage`) — ack attribution line is new copy
+- **API:** existing — `AlertsController` ack/undo-ack; `IDispatchService` fan-out
+- **Wave:** R2 · **Plan gate:** none
+
+**Story 4.4: Removing a caregiver** _(P1 — Should Have)_
+- **As a** primary caregiver
+- **I want to** remove someone's access and know exactly what that did
+- **So that** access matches who is actually caring
+- **Acceptance Criteria:**
+  - **Given** another caregiver has access **When** I remove them **Then** their link is deactivated,
+    they lose the dashboard immediately, and they stop being a fan-out target
+  - **[Edge]** **Given** I remove the only other caregiver **When** the removal lands **Then** the
+    member is not left unwatched without telling me, and monitoring continues under me
+  - **[Edge]** **Given** a removed caregiver **Then** their audit rows and delivery history are
+    retained (6-year audit retention), and the UI says so rather than implying erasure
+  - **[Edge]** **Given** the removed caregiver was the *last* active watcher of some other member
+    **When** they later delete their own account **Then** `AccountErasureService` erases what they
+    last watched and releases what others still watch — the branch this slice finally exercises
+- **Screens:** no Figma M1 frame — **needs design sync**
+- **API:** new — `DELETE /api/v1/cardimembers/{id}/caregivers/{userId}`
+- **Wave:** R2 · **Plan gate:** none
+
+## 6. Open Questions
+
+| # | Question | Owner | Blocks | Needed by |
+|---|---|---|---|---|
+| OQ-1 | What share of accounts invite ≥1 caregiver in 30 days? Currently unmeasurable — nobody can. | Product | Whether R3's coordination half is worth building | R2 beta + 30 days |
+| OQ-2 | Baseline ack-latency for red/Safety alerts on single-caregiver accounts | Product + Eng | The North Star baseline | Before R2 dev starts |
+| OQ-3 | Can the wearer admit a caregiver via the link/QR pattern, as Apple's model does? Needs per-metric consent recording (⬜ not started) | Legal/DPO + Product | Nothing in this slice — it is the follow-on prototype | R3 planning |
+| OQ-4 | Roles trigger: do we need access levels before the circle exceeds ~5 people or includes paid professionals (Aloe Care's shape)? | Product | R3 roles scope | R3 planning |
+| OQ-5 | Does Safety-class fan-out override a secondary caregiver's quiet hours? | Product + Eng | Story 4.3 edge path | Before R2 dev starts |
+| OQ-6 | Is prod erasure out of rehearsal? `retention_worker_dry_run = true` in dev; prod has none of it | Eng | **Prod** release of this slice, not dev | Before prod enablement |
+| OQ-7 | Does Google restricted-scope verification change the reach ceiling? Still ⬜ not started as of the last matrix read | Eng/Ops | Reach in §9 | R2 |
+
+## 7. Risk & Dependency Check
+
+| Risk | Assessment | Severity | Evidence needed to de-risk |
+|---|---|---|---|
+| **Value** | Not a demand bet: the escalation rung and the erasure release-branch are both built and unreachable, and the pricing page already sells this. The unknown is only *how many* invite (OQ-1). Competitors treating seats as free and unlimited confirms it is table stakes, not differentiation | 🟢 | OQ-1 after 30 beta days |
+| **Usability** | The invite is easy; explaining the grant is not. A 45–65 caregiver must be able to state what their sibling will see. Aloe Care needed four access levels to make this legible at scale — we are betting three booleans suffice for a small family circle | 🟠 | Prototype the grant screen; 5 caregivers state correctly what the invitee sees |
+| **Feasibility** | Cheapest major feature left. `DeviceConnectionInvite` (#1131–#1137) is a shipped, reviewed invitation primitive to mirror; `CardiMemberAccessService`, the push spine, the ladder and the audit middleware all exist. The one genuinely new piece is redemption ending in an authenticated account rather than anonymously | 🟢 | — |
+| **Viability** | Was 🔴 on 2026-09-05 because erasure was unbuilt while the privacy policy promised 30-day deletion. Erasure shipped 2026-09-14 (#1088/#1089/#1090/#1094) with a tested cascade and upstream OAuth revocation — **but dev-only and in rehearsal**. Widening PHI access to a second human is defensible once erasure actually runs in prod, and not before. The residual gap is that the wearer still neither grants nor sees who watches them, where Apple's comparable feature is wearer-granted | 🟠 | OQ-6 (prod erasure live) + OQ-3 direction |
+
+**Verdict: Pursue — R2, as the four stories above.** The R3 row "Family invitations + roles" splits:
+this slice moves to R2, notes/mentions/roles/audit-read/comparison stay in R3.
+
+**Standing constraints touched:** 100-wearer cap (bounds Reach, not this feature — invites add
+*users*, not wearers, so this is the one growth lever the cap does not block) · no billing until R2
+(ceiling is enforced, nothing is gated) · HIPAA/GDPR consent + minimum-necessary (per-member grants,
+not org-wide) · not-a-medical-device (unchanged — no new inference).
+**Not touched:** Fitbit sunset (confirmed no exposure 2026-09-05), mobile disclosure gap.
+
+**Dependencies (build status as of 2026-09-22):**
+
+| Depends on | Status |
+|---|---|
+| `DeviceConnectionInvite` + `WearerConnectController` — the pattern to mirror | ✅ Shipped |
+| `CardiMemberAccessService.RequireManageAccessAsync` — gates who may invite | ✅ Shipped |
+| Push spine + `EscalationPolicy` ladder | ✅ Shipped (fan-out rung inert) |
+| `AuditLoggingMiddleware` + `[AuditHealthDataAccess]` | ✅ Shipped |
+| Account/member erasure cascade | 🟩 Live in dev, **rehearsal**; prod none — OQ-6 |
+| `MaxUsers` / `MaxCardiMembers` enforcement | ⬜ Not started — **in this slice** |
+| Consent recording (per-metric) | ⬜ Not started — blocks OQ-3 only |
+| Stripe billing | ⬜ Not started — irrelevant; nothing is gated |
+
+## 8. Surface & Release Placement
+
+- **API:** new `CaregiverInvitesController` + `ICaregiverInviteService`, mirroring
+  `DeviceInvitesController` / `IDeviceConnectionInviteService`. Extends
+  [family.md](../execution/backend/api/family.md), which must be corrected: it specifies org-scoped
+  `/api/v1/family-members` with a `viewer` role that does not exist in the `UserRole` enum. The
+  implemented primitive is the per-member `UserCardiMember` link, and this PRD keeps it.
+- **Mobile:** new "Who can see <member>" screen off member detail, plus invite sheet and accept
+  flow. **No Figma M1 frames — needs design sync** (adds to the seven-screen backlog).
+- **Web:** not planned this wave (web is still template-stage).
+- **Worker:** no new job. Fan-out rides the existing escalation sweep; invite expiry is a timestamp
+  check, not a sweep. Any future expired-invite cleanup belongs in `CardiTrack.Worker` only.
+- **Data:** new `CaregiverInvites` table — **identifier schema**, no clinical fields. Holds two ids,
+  granted flags, a SHA-256 token hash (never the token), and timestamps. No invitee name, email or
+  phone: the caregiver addresses the message themselves. Needs a DPIA processing-inventory line
+  ([dpia.md](../compliance/dpia.md)) and inclusion in the erasure cascade's `SubjectDataMap`.
+
+## 9. RICE
+
+| Item | Reach (users/qtr) | Impact | Confidence | Effort (pm) | RICE | Wave | Notes |
+|---|---|---|---|---|---|---|---|
+| Second-caregiver slice (this PRD) | 50 | 2 | 80% | 1.0 | **80** | R2 | Effort fell from 1.5 after `DeviceConnectionInvite` shipped |
+| Fan-out activation (Story 4.3) | 50 | 2 | 80% | 0.25 | **320** | R2 | Only scoreable *after* the slice; not independent |
+| Shared notes + @mentions | 50 | 1 | 50% | 2.0 | **12.5** | R3 | Crowded field (§4) |
+| Roles / access levels | 50 | 0.5 | 50% | 1.0 | **12.5** | R3 | Revisit on OQ-4 |
+| Audit-log read endpoint | 50 | 0.5 | 80% | 0.5 | **40** | R3 | Write side ships in R2; Admin-facing read is the remainder |
+| Multi-member comparison | 25 | 0.5 | 50% | 1.5 | **4.2** | R3 | Reach halved — needs ≥2 CardiMembers |
+
+Reach is 50 accounts/quarter, capped by the 100-connected-wearer ceiling until Google restricted-scope
+verification passes (OQ-7), not by demand. Confidence is 80% where the claim is verifiable in code
+and 50% for anything resting on unvalidated caregiver behaviour.
+
+**Cut line: RICE 40.** Above it: the slice, fan-out activation, and the audit-log read endpoint.
+Below it, and therefore R3 or later: shared notes, roles, multi-member comparison. The audit-read
+endpoint scoring above the line is a genuine surprise from this exercise — it is cheap and its write
+half already ships here; it is worth pulling forward if R2 has room, though it is not part of this
+PRD's committed scope.
+
+## 10. References
+
+- [release_matrix.md](../release_matrix.md) — canonical waves; the R3 rows this PRD splits
+- [solution_manifest.md](../solution_manifest.md) — pricing tiers, unit economics
+- [market_analysis.md](../market_analysis.md) — segments and competitor teardowns (§4 above
+  supersedes its family-sharing lines, checked 2026-09-22)
+- [family.md](../execution/backend/api/family.md) — planned contract; needs the corrections in §8
+- [notification_engine.md](../technical/notification_engine.md) — escalation ladder §6.3
+- [data_protection_architecture.md](../technical/data_protection_architecture.md) — schema
+  separation, minimum-necessary
+- [dpia.md](../compliance/dpia.md) — needs a processing line for `CaregiverInvites`
+- [mobile user_stories.md](../execution/ui/mobile/user_stories.md) — canonical Stories 4.1/4.2 that
+  this PRD supersedes for R2 scope

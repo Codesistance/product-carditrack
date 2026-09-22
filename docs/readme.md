@@ -61,6 +61,9 @@ Welcome to the CardiTrack documentation. This directory contains comprehensive d
 #### [google_credits_pitch.md](./google_credits_pitch.md)
 **Google for Startups Cloud credits application** — company overview, problem/solution narrative, and GCP usage plan for the credits programme.
 
+#### [product/second_caregiver_prd.md](./product/second_caregiver_prd.md)
+**PRD — Second Caregiver (Family Sharing, Phase 1)** — splits the R3 "Family invitations + roles" row: the per-member caregiver invitation, `MaxUsers` enforcement and escalation fan-out activation move to R2; shared notes, @mentions, roles, the audit-log read endpoint and multi-member comparison stay in R3. Includes a 2026-09-22 competitor check on caregiver seats and access levels.
+
 **Reference this** for infrastructure setup, deployment, and database operations.
 
 ---
@@ -263,6 +266,7 @@ dotnet build
 | solution_manifest.md | Product Lead | Monthly or on major changes |
 | release_matrix.md | Product Lead | On release planning changes |
 | market_analysis.md | Business/Marketing | Quarterly |
+| product/second_caregiver_prd.md | Product Lead | Until R2 ships, then archive |
 | infrastructure.md | DevOps Lead | On infrastructure changes |
 | llm_design.md | Tech Lead | On AI pipeline changes |
 | execution/backend/api/ | Backend Team | On API changes |
