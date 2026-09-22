@@ -28,11 +28,13 @@ Until 2026-09-22 a user's family was a column on their row (`User.OrganizationId
 | **Family ID** | Eight characters from a 31-letter alphabet (`KTR7-M2Q9`), minted per family, read aloud or auto-filled from a link. Stored unseparated; the hyphen is for reading. It is **not a secret** and is not sized as one — knowing it buys the right to *ask*, which is worth nothing on its own |
 | **Join request** | `POST /api/v1/families/join-requests` with a Family ID. Returns an identical empty receipt for an unknown code, a malformed one, and a family the caller is already in — so the endpoint cannot be used to discover which families exist. Rate-limited |
 | **Admin approval** | `GET /api/v1/families/{id}/join-requests`, then `POST .../approve` or `POST .../decline`. Mandatory: nothing admits anybody without it |
-| **Caregiver invitation** | `POST /api/v1/cardimembers/{id}/caregiver-invites` — the other direction, where an admin offers a specific person a share of watching a specific member. Token-based, and redemption claims the invitation before writing any grant |
+| **Caregiver invitation** | `POST /api/v1/cardimembers/{id}/caregiver-invites` — the other direction, where an admin offers a specific person a share of watching a specific member. Token-based, and redemption claims the invitation before writing any grant. **Always admits as `Member`**: an invitation says "come and help me watch Mum", and handing the family and its billing to somebody is its own deliberate act (`PUT /api/v1/families/{id}/admin`), not a field on a message sent a week earlier |
 
 ### Roles, and the one admin
 
 **`UserRole` is `Member` (1), `Admin` (2), `Staff` (3)** — integers on the wire, and **there is no `viewer` role**, here or anywhere. The JSON examples further down this document show `"role": "viewer"` as strings; both are wrong and are kept only because the surrounding contract is still design intent.
+
+Leaving a family clears the home pointer too. `User.OrganizationId` is what `UserContextMiddleware` serves as the caller's organization, and organization-scoped reads trust it; while it *was* membership the two ended together, so removal now clears it explicitly (or repoints it at another family they are still in). Otherwise a removed caregiver keeps reading the family's members.
 
 A family has exactly one admin, and only the admin pays. An admin cannot simply leave: `PUT /api/v1/families/{id}/admin` hands the family and its plan to somebody else and demotes the caller in the same save, and only then can they go. `Staff` stays unused by Family organizations — it belongs to the Enterprise offering.
 

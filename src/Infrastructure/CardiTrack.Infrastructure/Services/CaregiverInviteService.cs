@@ -337,12 +337,28 @@ public class CaregiverInviteService : ICaregiverInviteService
         return LiveStatuses.Contains(invite.Status) && invite.ExpiresAt > now ? invite : null;
     }
 
-    private static UserRole ResolveRole(string? role) => role?.Trim().ToLowerInvariant() switch
-    {
-        "admin" => UserRole.Admin,
-        // Staff is an Enterprise concern and is never assignable to a family.
-        _ => UserRole.Member,
-    };
+    /// <summary>
+    /// The role an invitation may carry, which is only ever <see cref="UserRole.Member"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An invitation says "come and help me watch Mum". It is not a handover, and it must not
+    /// become one by a field: a family has exactly one admin, so redeeming an Admin invitation
+    /// would either leave two — breaking the invariant the roster, the approval queue and "the
+    /// admin pays" all rest on — or silently take the family and its billing off the person who
+    /// sent it. Neither is a thing to do because a checkbox was ticked a week earlier.
+    /// </para>
+    /// <para>
+    /// Handing the family over has its own deliberate act, with the incumbent's own hand on it:
+    /// <c>PUT /api/v1/families/{id}/admin</c>, which promotes and demotes in one save.
+    /// </para>
+    /// <para>
+    /// Admin is refused here rather than rejected at the endpoint, so an older client that still
+    /// sends it invites somebody as a member rather than failing — the invitation is still the
+    /// thing the admin meant to send. Staff is an Enterprise concern and was never assignable.
+    /// </para>
+    /// </remarks>
+    private static UserRole ResolveRole(string? role) => UserRole.Member;
 
     private static string ToWireRole(UserRole role) =>
         role == UserRole.Admin ? "admin" : "member";
@@ -358,9 +374,30 @@ public class CaregiverInviteService : ICaregiverInviteService
     private string BuildInviteUrl(string requestBaseUrl, string token)
     {
         var configured = _options.Value.PublicBaseUrl;
-        var baseUrl = (string.IsNullOrWhiteSpace(configured) ? requestBaseUrl : configured).TrimEnd('/');
 
-        return $"{baseUrl}/join?t={Uri.EscapeDataString(token)}";
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            // Fail closed. The fallback below reads the request's own Host, which is
+            // client-supplied: an attacker who can set it has CardiTrack mint an invitation
+            // pointing at their host, and the admin forwards it in good faith to somebody who
+            // trusts them. An admin who cannot send an invitation notices and complains; an admin
+            // who sends a poisoned one does not, and neither does the person who accepts it.
+            //
+            // Terraform supplies the origin wherever there is a custom domain. Where there is not
+            // — prod has none today — this refuses rather than guesses, which is the whole point:
+            // the environments without a configured origin are exactly the ones with no edge
+            // enforcing the Host either.
+            if (!_options.Value.AllowRequestOriginFallback)
+            {
+                throw new InvalidOperationException(
+                    "CaregiverInvites:PublicBaseUrl is not configured, so an invitation link cannot be "
+                    + "addressed safely. Set it to this environment's public origin.");
+            }
+
+            return $"{requestBaseUrl.TrimEnd('/')}/join?t={Uri.EscapeDataString(token)}";
+        }
+
+        return $"{configured.TrimEnd('/')}/join?t={Uri.EscapeDataString(token)}";
     }
 
     private CaregiverInviteResponse ToResponse(CaregiverInvite invite, DateTime utcNow) => new()

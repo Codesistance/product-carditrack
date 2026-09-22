@@ -17,6 +17,18 @@ public interface INotificationDeliveryRepository : IRepository<NotificationDeliv
     Task<NotificationDelivery?> GetByDedupKeyAsync(string dedupKey, CancellationToken ct = default);
 
     /// <summary>
+    /// The users who already have a delivery row for this alert, whatever state it is in.
+    /// </summary>
+    /// <remarks>
+    /// Asked by the fan-out rung, which exists to reach caregivers the original send did not.
+    /// Every state counts, including the terminal ones: somebody whose copy was suppressed or
+    /// dead-lettered was still addressed, and re-addressing them is a second push about one event
+    /// rather than the cover the rung is for.
+    /// </remarks>
+    Task<IReadOnlyList<Guid>> GetNotifiedUserIdsForAlertAsync(
+        Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
     /// Every delivery about one alert that has not reached a terminal state — what is left to
     /// stop when somebody answers the alert itself.
     /// </summary>

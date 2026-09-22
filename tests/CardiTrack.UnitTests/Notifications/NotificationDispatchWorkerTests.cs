@@ -348,6 +348,11 @@ public class NotificationDispatchWorkerTests
             .Returns([original]);
         _links.GetByCardiMemberIdAsync(memberId).Returns(others);
 
+        // Who the t+0 send already reached. Defaults to the original's own recipient, which is
+        // the minimum true statement about any alert that got this far.
+        _deliveries.GetNotifiedUserIdsForAlertAsync(original.SourceId, Arg.Any<CancellationToken>())
+            .Returns([original.UserId]);
+
         return (original, memberId);
     }
 
@@ -392,6 +397,42 @@ public class NotificationDispatchWorkerTests
 
         // Nobody: the owner already has it, and the other two said no in the two ways there are.
         await _dispatch.DidNotReceive().EnqueueAsync(Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FanOut_SaysNothingToACaregiverTheAlertAlreadyReached()
+    {
+        var sibling = Guid.NewGuid();
+        var (original, _) = StageFanOutDue(
+            new UserCardiMember { UserId = sibling, IsActive = true, ReceiveAlerts = true });
+
+        // The t+0 send addresses every caregiver with ReceiveAlerts, not one primary recipient —
+        // so by the time this rung fires the sibling already has the alert.
+        _deliveries.GetNotifiedUserIdsForAlertAsync(original.SourceId, Arg.Any<CancellationToken>())
+            .Returns([original.UserId, sibling]);
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        // Without this, each of the N original rows reaches this rung and copies to the other
+        // N-1: a household of four turns one alert into twelve extra pushes about something
+        // everybody was already told about.
+        await _dispatch.DidNotReceive().EnqueueAsync(Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FanOut_StillReachesACaregiverAddedAfterTheAlertFired()
+    {
+        var added = Guid.NewGuid();
+        var (original, _) = StageFanOutDue(
+            new UserCardiMember { UserId = added, IsActive = true, ReceiveAlerts = true });
+
+        // Nobody but the original recipient was addressed at t+0, because this one was not a
+        // caregiver yet. This is the case the rung actually exists for, and it must still fire.
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _dispatch.Received(1).EnqueueAsync(
+            Arg.Is<EnqueueRequest>(r => r.UserId == added && r.IsEscalation),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

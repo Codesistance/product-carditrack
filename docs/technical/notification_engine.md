@@ -376,11 +376,24 @@ and red Health:
 ```
 t+0     push every registered device of the primary recipient
 t+120s  no ack  → re-push at highest priority; mark recipient unreachable
-t+300s  no ack  → fan out to all other caregivers with ReceiveAlerts on,
-                  copy flagged "Escalated — nobody has acknowledged this yet"
+t+300s  no ack  → copy to any caregiver with ReceiveAlerts the alert has NOT
+                  already reached (see below — usually nobody), copy flagged
+                  "Escalated — nobody has acknowledged this yet"
 t+900s  no ack from anyone → mark UNDELIVERED_CRITICAL; page ops; the alert
                   is pinned to every dashboard as an unmissable banner
 ```
+
+**What the rung actually does, corrected 2026-09-22.** The ladder above is written as "push to the
+primary recipient, then at t+300s fan out to the others", and the dispatch layer has never worked
+that way: `EnqueueForAlertAsync` addresses **every** caregiver with `ReceiveAlerts` at t+0. Under
+`MaxUsers = 1` those two readings were the same thing, so the difference could not show. With a
+real family they are not: each of the N rows written at t+0 reaches this rung, and a rung that
+copied "to all other caregivers" would turn one alert in a household of four into twelve extra
+pushes about an event everybody had already been told about.
+
+So the rung is a **net under the original send**, not a second round of it: it copies only to
+caregivers this alert has not already reached — one added after it fired, or one whose delivery was
+suppressed. Finding nobody is the ordinary outcome, not a rung falling through.
 
 **The fan-out stage is live as of 2026-09-22.** It was always unconditional in the code, and for as
 long as a family account was capped at `MaxUsers = 1` it found nobody and fell straight through, so

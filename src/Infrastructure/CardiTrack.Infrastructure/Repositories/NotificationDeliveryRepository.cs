@@ -65,6 +65,14 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
     public async Task<NotificationDelivery?> GetByDedupKeyAsync(string dedupKey, CancellationToken ct = default) =>
         await _dbSet.FirstOrDefaultAsync(d => d.DedupKey == dedupKey, ct);
 
+    public async Task<IReadOnlyList<Guid>> GetNotifiedUserIdsForAlertAsync(
+        Guid alertId, CancellationToken ct = default) =>
+        await _dbSet
+            .Where(d => d.SourceType == Domain.Enums.DeliverySourceType.Alert && d.SourceId == alertId)
+            .Select(d => d.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<NotificationDelivery>> GetUnfinishedForAlertAsync(
         Guid alertId, CancellationToken ct = default) =>
         await _dbSet

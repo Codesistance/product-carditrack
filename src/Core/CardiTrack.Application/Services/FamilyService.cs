@@ -181,6 +181,28 @@ public class FamilyService : IFamilyService
             _unitOfWork.UserCardiMembers.Update(link);
         }
 
+        // And the home pointer, when this was the family it pointed at. It is not bookkeeping:
+        // UserContextMiddleware serves User.OrganizationId as the caller's organization, and
+        // organization-scoped reads — GET /api/v1/onboarding/cardimembers among them — trust that
+        // value without asking whether the membership behind it is still live. While the two were
+        // the same column a removal revoked both at once; splitting them made it possible to end
+        // somebody's membership and leave them reading the family's members anyway.
+        //
+        // Repointed at another family they are actually in, where there is one, so a caregiver
+        // removed from one household does not lose their own.
+        var user = await _unitOfWork.Users.GetByIdAsync(userId);
+        if (user is not null && user.OrganizationId == organizationId)
+        {
+            var remaining = (await _unitOfWork.UserOrganizations.GetByUserIdAsync(userId))
+                .Where(m => m.IsActive && m.OrganizationId != organizationId)
+                .OrderBy(m => m.JoinedDate)
+                .FirstOrDefault();
+
+            user.OrganizationId = remaining?.OrganizationId;
+            user.UpdatedDate = now;
+            _unitOfWork.Users.Update(user);
+        }
+
         await _unitOfWork.SaveChangesAsync();
     }
 

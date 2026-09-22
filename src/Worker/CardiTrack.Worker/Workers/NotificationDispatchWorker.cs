@@ -352,22 +352,46 @@ public class NotificationDispatchWorker : CronBackgroundService
     }
 
     /// <summary>
-    /// Copies every other caregiver with <c>ReceiveAlerts</c> on. Live from family sharing
-    /// onwards; before it, under <c>MaxUsers = 1</c>, this found nobody and fell straight through.
-    /// The copies are marked as escalations, which is what lets each recipient's own quiet-hours
-    /// preference decide whether it wakes them. The fan-out copy is a rendering concern (never
-    /// names who failed to respond) and lives in Mobile, not here — this only creates the
-    /// additional deliveries.
+    /// Copies the alert to caregivers it has not already reached.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>Usually that is nobody, and that is correct.</strong> §6.3 describes this rung as
+    /// "push to the primary recipient, then at t+300s fan out to the others", but the dispatch
+    /// layer has never worked that way: <c>EnqueueForAlertAsync</c> addresses every caregiver with
+    /// <c>ReceiveAlerts</c> at t+0. Under <c>MaxUsers = 1</c> the two readings were the same thing
+    /// and the difference could not show. With a real family they are not: each of the N original
+    /// rows reaches this rung and would copy to the other N-1, so a household of four would take
+    /// one alert and turn it into twelve extra pushes about an event everybody had already been
+    /// told about.
+    /// </para>
+    /// <para>
+    /// So the rung is what it was always for rather than what the prose said: a net under the
+    /// original send. It catches a caregiver added after the alert fired, or one whose delivery
+    /// was suppressed — and finding nobody is the ordinary, healthy outcome, not a rung falling
+    /// through.
+    /// </para>
+    /// <para>
+    /// The copies are marked as escalations, which is what lets each recipient's own quiet-hours
+    /// preference decide whether it wakes them. The copy's wording never names who failed to
+    /// respond (§6.3) — that is Mobile's concern; this only creates the deliveries.
+    /// </para>
+    /// </remarks>
     private static async Task FanOutAsync(
         Domain.Entities.NotificationDelivery original, IDispatchService dispatch, IUnitOfWork unitOfWork, CancellationToken ct)
     {
         if (original.CardiMemberId is not { } cardiMemberId)
             return;
 
+        // Everyone this alert has already been addressed to, not just this row's recipient. The
+        // t+0 send reached all of them, and every one of their rows arrives at this rung too.
+        var alreadyNotified = (await unitOfWork.NotificationDeliveries
+                .GetNotifiedUserIdsForAlertAsync(original.SourceId, ct))
+            .ToHashSet();
+
         var links = await unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId);
         var otherRecipients = links
-            .Where(l => l.IsActive && l.ReceiveAlerts && l.UserId != original.UserId)
+            .Where(l => l.IsActive && l.ReceiveAlerts && !alreadyNotified.Contains(l.UserId))
             .Select(l => l.UserId)
             .Distinct();
 
