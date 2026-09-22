@@ -46,10 +46,11 @@ reader knows it was weighed, not missed.
 | D-17 | **On trial expiry or payment failure, another member can take over as Admin and pay** | Ties the lapse to the succession rule already in D-13, so a family can keep watching by changing who pays rather than losing monitoring | Degrade the whole family together |
 | D-18 | **A fifth bottom tab, Family, in the third slot** | The family is now a first-class thing (D-9) with its own state — pending, member, admin — and needs a home that is not buried under Settings. Third slot is where the original Family stub sat before Journal took it | Family under Settings; family under Member Details only |
 | D-19 | **The family switcher is a drawer, opened by tapping the family name in the Family tab's header (or re-tapping the tab), and it shows each family's open-alert state** | A switcher that only switches is bookkeeping; one that shows where the alerts are is a reason to open it. The drawer is also the one place a guest's pending request sits beside the families they are in | A chip row at the top of the tab (previous revision) |
+| D-20 | **A caregiver can acknowledge or close an alert with a canned response and an optional note; every response is kept, per caregiver** | With second caregivers, "what did the family do about this" is the coordination question, and it belongs on the alert — not in a separate notes feature. Close is caregiver-owned resolution and re-arms the rule's cooldown, so a condition that persists fires again rather than staying silent behind a note | Free-text only; notes as a separate R3 feature |
 
 **Standing assumption from D-2 + D-3, recorded because it is not free:** one builder absorbing the
-whole of this — ~3.9 person-months once D-9 to D-18 are counted — moves the R1 beta date by roughly
-sixteen weeks. The date was not chosen as the thing to give, so it gives implicitly, and it has now
+whole of this — ~4.6 person-months once D-9 to D-20 are counted — moves the R1 beta date by roughly
+nineteen weeks. The date was not chosen as the thing to give, so it gives implicitly, and it has now
 given twice. If that is not acceptable, the lever is D-2: Phase A (~1.1 pm) closes the safety gap on
 its own, and Phases B and D can follow in R2 without reopening anything.
 
@@ -142,8 +143,10 @@ see [apm_setup_runbook.md](../technical/apm_setup_runbook.md).
 
 ## 3. Out of Scope
 
-- **Shared care notes + @mentions** — deferred to **R3**. RICE 6.3 vs 80 for this slice; also the
-  most crowded part of the competitive field (see §4).
+- **Shared care notes + @mentions as a standalone feature** — deferred to **R3**. Most of what
+  Story 4.2 wanted from notes now arrives through D-20 instead: a response on an alert is a note
+  the whole family sees, attributed and timestamped, without a notes surface to build. What stays
+  in R3 is notes *not* tied to an alert, and @mentions.
 - **`Staff` role and anything facility-facing** — **out.** `UserRole.Staff` stays unused by Family
   orgs; it belongs to the Enterprise offering, which is post-R4 and recruiting design partners.
   Admin / Member ship here (D-5).
@@ -460,6 +463,60 @@ defensible precisely because it is not a notes feature.
 - **API:** existing member and grant reads; new — `GET /api/v1/families/mine`, returning per family: role, members watched, and an open-alert summary (count, highest severity, most recent) so the drawer needs one call
 - **Wave:** R1 · **Plan gate:** none
 
+**Story 4.10: Answering an alert — acknowledge or close, with a reason** _(P0 — Must Have)_
+- **As a** caregiver dealing with an alert
+- **I want to** say what I did in one tap, and add a line if it needs one
+- **So that** the rest of the family knows it is handled and why, without a phone call
+- **Acceptance Criteria — backend:**
+  - **Given** a new entity `AlertResponse` (`AlertId`, `UserId`, `Kind` = Acknowledge | Close,
+    `ResponseCode` nullable, `Note` nullable ≤ 500 chars, `CreatedDate`) **Then** it is
+    append-only — a second caregiver responding adds a row, never overwrites one, and the alert
+    row's `AcknowledgedByUserId` keeps its existing first-wins idempotency
+  - **Given** `Note` is free text about the wearer **Then** it is **AES-encrypted at rest**, the
+    same treatment as medical notes, and lives in the clinical schema
+  - **Given** an alert's `rule` **Then** `GET /api/v1/alerts/{id}` returns `responseOptions` — two
+    short code lists, one for acknowledge and one for close, from a code catalogue
+    (`AlertResponseCatalog`) keyed by rule, with a generic fallback list for rules without one
+  - **Given** `POST /api/v1/alerts/{id}/acknowledge` **Then** it accepts an optional body
+    `{ responseCode?, note? }` (renaming `alerts.md`'s designed `actionTaken` to `responseCode`),
+    keeps its no-body form, and stays idempotent on the alert while always appending a response
+  - **Given** a new `POST /api/v1/alerts/{id}/close` with the same body **Then** it sets
+    `IsResolved` and a new nullable `ResolvedByUserId` (null means CardiTrack resolved it), and
+    the detail response distinguishes "condition passed" from "closed by Jane"
+  - **Given** a caregiver close **Then** the rule's cooldown re-arms exactly as a system resolve
+    does (D-20) — a condition that persists fires a fresh alert rather than hiding behind the note
+  - **Given** any response **Then** every *other* caregiver with a grant on that member gets an
+    in-app notification carrying the responder, the code and the note — the "notifies the family"
+    line `alerts.md` designed and never built — and the escalation ladder stops for that alert
+  - **[Edge]** **Given** undo-acknowledge exists **Then** undo-close does not: close is final for
+    caregivers, mirroring system resolution, and `DELETE .../acknowledge` stays 400 on a resolved
+    alert whoever resolved it. Both endpoints carry `[AuditHealthDataAccess]`
+  - **[Edge]** **Given** two caregivers close within seconds **Then** the first sets `IsResolved`,
+    both responses are kept, and the second sees "Tom closed this 10 s ago" rather than an error
+  - **[Edge]** **Given** a `responseCode` not in the catalogue for that rule **Then** 400, naming
+    the valid codes — the client's list and the server's must not drift silently
+  - **[Edge]** **Given** an alert already system-resolved **When** a caregiver closes it **Then**
+    the response is still recorded (they may still want to say what happened) and nothing else
+    changes
+- **Acceptance Criteria — mobile:**
+  - **Given** alert detail (`AlertDetailPage`) **When** I tap Acknowledge or Close **Then** a sheet
+    offers the canned responses for this rule as chips, an optional note field, and one button
+    naming the action; a canned pick alone is enough, and so is a note alone
+  - **Given** any responses exist **Then** the detail shows "What the family did", newest first,
+    each with who, when, the code's label and the note — and the attribution banner (Story 4.3)
+    shows the latest one
+  - **[Edge]** **Given** the note field **Then** it is capped at 500 with a visible count, and the
+    sheet survives a backgrounded app with the draft intact
+  - **[Edge]** **Given** the accepting caregiver is offline **Then** the tap is refused with a
+    plain message rather than queued — offline sync is R4, and a response that silently never
+    landed is worse than one the caregiver knows to retry
+- **Screens:** the sheet is drawn in the design canvas (flow 5, state c). **M1-11's "More Options"
+  already lists "Add Note About This Alert"** — the only screen in this PRD that has a Figma
+  frame to reconcile against rather than none
+- **API:** `alerts.md` — extends `POST .../acknowledge`, adds `POST .../close`, extends the detail
+  response; the doc's designed `recommendedActions` becomes `responseOptions`
+- **Wave:** R1 · **Plan gate:** none
+
 ## 6. Open Questions
 
 | # | Question | Owner | Blocks | Needed by |
@@ -477,6 +534,8 @@ defensible precisely because it is not a notes feature.
 | OQ-14 | Does Google count one wearer authorising from two families as one connected wearer or two, against the 100-wearer cap? | Eng/Ops | Whether D-15 halves the ceiling | Before beta grows |
 | OQ-15 | Two families alerting on one episode: does either learn the other exists, or is duplicate contact accepted? | Product | Story 4.3 fan-out scope | Before D3 |
 | OQ-16 | Does choosing a family in the drawer scope only the Family tab (as specified) or the whole shell — Dashboard, Alerts, Journal too? Showing open alerts per family makes the second reading tempting; it is also a much larger change, since nothing today has a "current family" | Product | B4 scope | Before B4 |
+| OQ-17 | Should a caregiver close re-arm the rule's cooldown immediately, or after a grace period? Immediate is honest but means "closed — she's fine" can be followed by a fresh page minutes later if the reading has not moved | Product + Eng | E1 | Before E1 |
+| OQ-18 | The canned lists per rule — who writes them? They are product copy in code, and each one is a claim about what a caregiver plausibly did. Draft set in the canvas; needs a pass against the nine-rule taxonomy | Product | E1 | Before E1 |
 | OQ-7 | Does Google restricted-scope verification change the reach ceiling? Still ⬜ not started as of the last matrix read | Eng/Ops | Reach in §9 | R1→R2 gate |
 
 ## 7. Risk & Dependency Check
@@ -536,6 +595,8 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | B2 | Correctness | `MaxUsers` + `MaxCardiMembers` enforcement, one pass | 0.15 pm | — |
 | B3 | Correctness | Caregiver list, removal, night-coverage line | 0.25 pm | — |
 | B4 | Correctness | Family tab: three states, switcher drawer with per-family alert state, bar reshuffle to five (D-18/19) | 0.35 pm | — |
+| E1 | Response | `AlertResponse` entity + migration (encrypted note), `ResolvedByUserId`, `AlertResponseCatalog`, ack body + `POST .../close`, detail projection, family notification, cooldown re-arm (D-20) | 0.35 pm | — |
+| E2 | Response | Response sheet with chips + note, "What the family did" list, banner shows latest response | 0.3 pm | — |
 | D1 | Family | `UserOrganization` join table; `User.OrganizationId` retired into it; active-org resolution in `UserContextMiddleware`; the nine API references corrected (D-9) | 0.5 pm | — |
 | D2 | Family | Family ID (short, human-typeable, non-sequential) + deep link that auto-fills it; join-request entity; rate limiting and a non-confirming response on both paths (D-11) | 0.3 pm | — |
 | D3 | Family | Approval queue with member picker and role (D-10) | 0.3 pm | — |
@@ -544,8 +605,12 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | D6 | Family | Erasure correlates duplicate members by `HealthUserId` and reports uncorrelated records honestly (D-15, OQ-13) | 0.2 pm | — |
 | C | Docs | Correct `family.md` (drop `viewer`), DPIA lines for `CaregiverInvites`, `UserOrganization` and join requests, notification-engine §6.3 | 0.15 pm | — |
 
-**Total ≈ 3.95 person-months** — 2.05 for the caregiver slice and tab, 1.75 for the family model
-(D-9…D-17), 0.15 docs. For one builder that is roughly sixteen weeks.
+**Total ≈ 4.6 person-months** — 2.05 for the caregiver slice and tab, 0.65 for alert responses
+(D-20), 1.75 for the family model (D-9…D-17), 0.15 docs. For one builder that is roughly
+nineteen weeks.
+
+**Phase E is independent of Phase D** and can slot before or after it; it depends only on A3
+(a second caregiver has to exist for "notifies the family" to mean anything).
 
 **Two cut lines, not one.** After **A4** the safety gap is closed — that is the ~1.1 pm that
 justifies being in R1 at all. After **B4** the caregiver slice and its tab are complete and coherent without any
@@ -573,6 +638,10 @@ empty table. This is the same argument that decided roles in D-5.
 - **Web:** not planned this wave (web is still template-stage).
 - **Worker:** no new job. Fan-out rides the existing escalation sweep; invite expiry is a timestamp
   check, not a sweep. Any future expired-invite cleanup belongs in `CardiTrack.Worker` only.
+- **Data (D-20):** new `AlertResponses` table in the **clinical schema** — the note is free text
+  about the wearer and is AES-encrypted like medical notes; `Alert.ResolvedByUserId` added,
+  nullable. Needs a DPIA line and inclusion in the erasure cascade (a caregiver's responses go
+  with their account; a member's alerts already go with the member).
 - **Data:** new `CaregiverInvites` table — **identifier schema**, no clinical fields. Holds two ids,
   granted flags, a SHA-256 token hash (never the token), and timestamps. No invitee name, email or
   phone: the caregiver addresses the message themselves. Needs a DPIA processing-inventory line
@@ -585,6 +654,7 @@ empty table. This is the same argument that decided roles in D-5.
 | Second-caregiver slice (Phases A+B) | 50 | 2 | 80% | 1.7 | **47** | R1 | 1.0 base; +0.4 roles (D-5), +0.2 configurable fan-out (D-6/7), +0.1 forced choice (D-8) |
 | Family model — multi-org, join, approval, succession, duplicate-safe erasure (Phase D) | 50 | 1 | 50% | 1.75 | **14** | R1 by decision | Scores like the deferred R3 items, and is in R1 by product choice rather than by score. Recorded, not contested |
 | — of which Phase A alone (closes the gap) | 50 | 2 | 80% | 1.1 | **73** | R1 | The cut line if the R1 date must hold |
+| Alert responses — canned + note, ack and close (Phase E) | 50 | 1 | 80% | 0.65 | **62** | R1 | Confidence 80%: the coordination need is the one thing every competitor review agrees on, and the Figma frame already lists the note row |
 | Fan-out activation (Story 4.3) | 50 | 2 | 80% | 0.25 | **320** | R1 | Only scoreable *after* A1–A3; not independent |
 | Shared notes + @mentions | 50 | 1 | 50% | 2.0 | **12.5** | R3 | Crowded field (§4) |
 | Roles — Admin/Member only | 50 | 0.5 | 80% | 0.4 | **50** | R1 | Decided in (D-5). Scores above the cut line at this narrower scope and higher confidence — the full four-level version did not |
