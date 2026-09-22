@@ -61,6 +61,16 @@ public class UserService : IUserService
 
         await _unitOfWork.Users.AddAsync(user);
 
+        // Membership of the organization the request named, at the role it asked for. The
+        // onboarding path makes its creator the Admin; this legacy two-call path trusts the
+        // request, as it always has for User.Role.
+        await _unitOfWork.UserOrganizations.AddAsync(new UserOrganization
+        {
+            UserId = user.Id,
+            OrganizationId = request.OrganizationId,
+            Role = request.Role
+        });
+
         try
         {
             await _unitOfWork.SaveChangesAsync();
@@ -286,7 +296,11 @@ public class UserService : IUserService
             await _unitOfWork.SaveChangesAsync();
         }
 
-        var organization = await _unitOfWork.Organizations.GetByIdAsync(user.OrganizationId);
+        // A guest has no home organization; onboarding status then reports HasOrganization false,
+        // which is true — they have members to watch, not a family of their own.
+        var organization = user.OrganizationId is { } homeOrganizationId
+            ? await _unitOfWork.Organizations.GetByIdAsync(homeOrganizationId)
+            : null;
         var cardiMembers = (await _unitOfWork.UserCardiMembers.GetByUserIdAsync(userId)).ToList();
 
         var hasDeviceConnected = await _unitOfWork.DeviceConnections

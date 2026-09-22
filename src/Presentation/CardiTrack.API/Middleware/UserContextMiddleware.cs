@@ -44,7 +44,7 @@ public class UserContextMiddleware
                         if (user is not null)
                         {
                             concreteContext.SetFullUserContext(
-                                user.Id, user.OrganizationId, user.Role, user.DeletionRequestedAtUtc);
+                                user.Id, user.OrganizationId ?? Guid.Empty, user.Role, user.DeletionRequestedAtUtc);
                         }
                     }
 

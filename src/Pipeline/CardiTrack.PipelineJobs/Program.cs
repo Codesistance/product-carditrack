@@ -64,6 +64,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICardiMemberRepository, CardiMemberRepository>();
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IUserCardiMemberRepository, UserCardiMemberRepository>();
+builder.Services.AddScoped<IUserOrganizationRepository, UserOrganizationRepository>();
 builder.Services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
 builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
 builder.Services.AddScoped<IDeviceActivityLogRepository, DeviceActivityLogRepository>();

@@ -4,6 +4,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
@@ -28,12 +29,14 @@ public class OnboardingService : IOnboardingService
         var existingUser = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
         if (existingUser is not null)
         {
-            var existingOrg = await _unitOfWork.Organizations.GetWithSubscriptionAsync(existingUser.OrganizationId);
+            var existingOrg = existingUser.OrganizationId is { } existingOrgId
+                ? await _unitOfWork.Organizations.GetWithSubscriptionAsync(existingOrgId)
+                : null;
             return new OnboardingSetupResponse
             {
                 Organization = existingOrg is not null
                     ? MapOrganization(existingOrg)
-                    : new OrganizationResponse { Id = existingUser.OrganizationId },
+                    : new OrganizationResponse { Id = existingUser.OrganizationId ?? Guid.Empty },
                 User = MapUser(existingUser)
             };
         }
@@ -71,6 +74,16 @@ public class OnboardingService : IOnboardingService
         };
         await _unitOfWork.Users.AddAsync(user);
 
+        // The person who starts a family is its one Admin — and its payer. The role held in a
+        // family lives on the membership row, not on the user, because the same person is a
+        // Member of any family they are later let into.
+        await _unitOfWork.UserOrganizations.AddAsync(new UserOrganization
+        {
+            UserId = user.Id,
+            OrganizationId = organization.Id,
+            Role = UserRole.Admin
+        });
+
         // Single SaveChanges = single database transaction: the organization, its
         // trial subscription, and the user commit together or not at all, so no
         // failure mode can leave an orphaned organization behind.
@@ -91,12 +104,14 @@ public class OnboardingService : IOnboardingService
                 throw;
             }
 
-            var concurrentOrg = await _unitOfWork.Organizations.GetWithSubscriptionAsync(concurrentUser.OrganizationId);
+            var concurrentOrg = concurrentUser.OrganizationId is { } concurrentOrgId
+                ? await _unitOfWork.Organizations.GetWithSubscriptionAsync(concurrentOrgId)
+                : null;
             return new OnboardingSetupResponse
             {
                 Organization = concurrentOrg is not null
                     ? MapOrganization(concurrentOrg)
-                    : new OrganizationResponse { Id = concurrentUser.OrganizationId },
+                    : new OrganizationResponse { Id = concurrentUser.OrganizationId ?? Guid.Empty },
                 User = MapUser(concurrentUser)
             };
         }

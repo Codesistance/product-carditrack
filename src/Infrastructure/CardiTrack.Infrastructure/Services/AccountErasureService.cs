@@ -173,11 +173,17 @@ public class AccountErasureService : IAccountErasureService
             // every organisation-scoped read rather than merely unwatched by this caregiver.
             // Asked inside the transaction, and as late as possible, because afterwards the
             // question cannot be asked at all.
-            var organizationSpent =
-                !await _db.Users.AnyAsync(
-                    u => u.OrganizationId == user.OrganizationId && u.Id != userId, rest)
+            // A guest has no home organisation to spend. Otherwise it is spent only when nobody else
+            // calls it home, nobody else is a member of it (family sharing), and no member record
+            // still belongs to it.
+            var homeOrganizationId = user.OrganizationId ?? Guid.Empty;
+            var organizationSpent = user.OrganizationId.HasValue
+                && !await _db.Users.AnyAsync(
+                    u => u.OrganizationId == homeOrganizationId && u.Id != userId, rest)
+                && !await _db.UserOrganizations.AnyAsync(
+                    uo => uo.OrganizationId == homeOrganizationId && uo.UserId != userId && uo.IsActive, rest)
                 && !await _db.CardiMembers.AnyAsync(
-                    m => m.OrganizationId == user.OrganizationId && !toEraseSet.Contains(m.Id), rest);
+                    m => m.OrganizationId == homeOrganizationId && !toEraseSet.Contains(m.Id), rest);
 
             async Task Step<T>(string table, IQueryable<T> query) where T : class =>
                 rows.Add((table, await query.ExecuteDeleteAsync(rest)));
@@ -217,6 +223,7 @@ public class AccountErasureService : IAccountErasureService
             await Step("Reports", _db.Reports.Where(x => x.OwnerUserId == userId));
             await Step("CardiMemberCreationKeys", _db.CardiMemberCreationKeys.Where(x => x.UserId == userId));
             await Step("UserCardiMembers", _db.UserCardiMembers.Where(x => x.UserId == userId));
+            await Step("UserOrganizations", _db.UserOrganizations.Where(x => x.UserId == userId));
 
             if (organizationSpent)
             {
@@ -229,23 +236,23 @@ public class AccountErasureService : IAccountErasureService
                 await Step("MetricAlarmStates (account alarms)", _db.MetricAlarmStates
                     .Where(s => _db.MetricAlarms.Any(a =>
                         a.Id == s.MetricAlarmId
-                        && a.OrganizationId == user.OrganizationId
+                        && a.OrganizationId == homeOrganizationId
                         && a.CardiMemberId == null)));
                 await Step("MetricAlarms (account rows)", _db.MetricAlarms
-                    .Where(a => a.OrganizationId == user.OrganizationId && a.CardiMemberId == null));
+                    .Where(a => a.OrganizationId == homeOrganizationId && a.CardiMemberId == null));
 
                 // Trial and plan records, not a billing ledger: no payment has ever been taken
                 // (Stripe is R2, unbuilt), so there is nothing here that UK tax law requires be
                 // kept. Revisit when billing ships — an invoice is not a subscription row, and
                 // whatever holds one will need an exception of its own.
                 await Step("Subscriptions", _db.Subscriptions
-                    .Where(s => s.OrganizationId == user.OrganizationId));
+                    .Where(s => s.OrganizationId == homeOrganizationId));
             }
 
             await Step("Users", _db.Users.Where(u => u.Id == userId));
 
             if (organizationSpent)
-                await Step("Organizations", _db.Organizations.Where(o => o.Id == user.OrganizationId));
+                await Step("Organizations", _db.Organizations.Where(o => o.Id == homeOrganizationId));
 
             await transaction.CommitAsync(rest);
         }

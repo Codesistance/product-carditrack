@@ -210,12 +210,14 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
 
             // Account-level rules get their own member-less context, so they are asked once of the
             // person rather than once per relative they watch.
-            if (!memberFilter.HasValue)
+            // A guest — no home family — has no account of their own for account-level rules to
+            // be about, so they get only the per-member contexts below.
+            if (!memberFilter.HasValue && user.OrganizationId is { } homeOrganizationId)
             {
                 contexts.Add(new NudgeContext
                 {
                     UtcNow = utcNow,
-                    OrganizationId = user.OrganizationId,
+                    OrganizationId = homeOrganizationId,
                     User = userSnapshot,
                     Member = null,
                     Mutes = userMutes,
@@ -231,10 +233,12 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
 
                 var memberConnections = connections.Where(c => c.CardiMemberId == member.Id).ToList();
 
+                // The member's own family, not the caregiver's home one: with family sharing the
+                // two differ for anyone watching a relative in a family they joined.
                 contexts.Add(new NudgeContext
                 {
                     UtcNow = utcNow,
-                    OrganizationId = user.OrganizationId,
+                    OrganizationId = member.OrganizationId,
                     User = userSnapshot,
                     Mutes = userMutes,
                     IsOwner = IsOwnerOf(user.Id, member.Id, links),

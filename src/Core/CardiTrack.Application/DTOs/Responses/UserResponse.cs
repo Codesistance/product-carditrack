@@ -9,7 +9,7 @@ public class UserResponse
     public string Name { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public UserRole Role { get; set; }
-    public Guid OrganizationId { get; set; }
+    public Guid? OrganizationId { get; set; }
     public bool IsActive { get; set; }
     public string Locale { get; set; } = string.Empty;
     public string TimeZoneId { get; set; } = string.Empty;

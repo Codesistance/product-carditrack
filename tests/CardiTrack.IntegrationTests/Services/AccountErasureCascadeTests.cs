@@ -179,6 +179,82 @@ public class AccountErasureCascadeTests : IAsyncLifetime
             x => x.OrganizationId == organizationId && x.CardiMemberId == null));
     }
 
+    /// <summary>
+    /// A membership is a row about a person, so it goes with them — every family they were in
+    /// forgets them at once, the home one included.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_RemovesEveryFamilyMembershipTheyHeld()
+    {
+        var (organizationId, leaving, staying) = await SeedSharedHouseholdAsync();
+        Guid otherFamilyId;
+        using (var seedScope = _services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var otherFamily = new Organization { Name = "Osei family", Type = OrganizationType.Family };
+            seedDb.Organizations.Add(otherFamily);
+            otherFamilyId = otherFamily.Id;
+            seedDb.UserOrganizations.AddRange(
+                new UserOrganization { UserId = leaving, OrganizationId = organizationId, Role = UserRole.Admin },
+                new UserOrganization { UserId = leaving, OrganizationId = otherFamily.Id, Role = UserRole.Member },
+                new UserOrganization { UserId = staying, OrganizationId = organizationId, Role = UserRole.Member });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await EraseAsync(leaving);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.UserOrganizations.CountAsync(m => m.UserId == leaving));
+        Assert.Equal(1, await db.UserOrganizations.CountAsync(m => m.UserId == staying));
+        // The family they had merely joined is untouched by their leaving.
+        Assert.Equal(1, await db.Organizations.CountAsync(o => o.Id == otherFamilyId));
+    }
+
+    /// <summary>
+    /// With family sharing, "nobody left in it" has to count members as well as people who call
+    /// it home: a sibling who joined this family without starting one keeps it — and its
+    /// subscription — alive when the person who started it closes their account.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_KeepsTheOrganisationSomeoneElseIsStillAMemberOf()
+    {
+        Guid organizationId, leaving, joiner;
+        using (var seedScope = _services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var organization = new Organization { Name = "Reid family", Type = OrganizationType.Family };
+            var elsewhere = new Organization { Name = "Osei family", Type = OrganizationType.Family };
+            seedDb.Organizations.AddRange(organization, elsewhere);
+            var leavingUser = NewUser(organization.Id, "Anna Reid");
+            var joinerUser = NewUser(elsewhere.Id, "Kofi Osei");   // home is the other family
+            seedDb.Users.AddRange(leavingUser, joinerUser);
+            seedDb.UserOrganizations.AddRange(
+                new UserOrganization { UserId = leavingUser.Id, OrganizationId = organization.Id, Role = UserRole.Admin },
+                new UserOrganization { UserId = joinerUser.Id, OrganizationId = elsewhere.Id, Role = UserRole.Admin },
+                new UserOrganization { UserId = joinerUser.Id, OrganizationId = organization.Id, Role = UserRole.Member });
+            seedDb.Subscriptions.Add(new Subscription
+            {
+                OrganizationId = organization.Id,
+                Tier = SubscriptionTier.Complete,
+                Status = SubscriptionStatus.Trial,
+                StartDate = DateTime.UtcNow.AddDays(-10),
+            });
+            await seedDb.SaveChangesAsync();
+            (organizationId, leaving, joiner) = (organization.Id, leavingUser.Id, joinerUser.Id);
+        }
+
+        await EraseAsync(leaving);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.Users.CountAsync(u => u.Id == leaving));
+        Assert.Equal(1, await db.Organizations.CountAsync(o => o.Id == organizationId));
+        Assert.Equal(1, await db.Subscriptions.CountAsync(x => x.OrganizationId == organizationId));
+        Assert.Equal(1, await db.UserOrganizations.CountAsync(
+            m => m.UserId == joiner && m.OrganizationId == organizationId));
+    }
+
     /// <summary>Two caregivers sharing one household, so the organisation has somebody left.</summary>
     private async Task<(Guid OrganizationId, Guid Leaving, Guid Staying)> SeedSharedHouseholdAsync()
     {

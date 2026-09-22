@@ -32,6 +32,7 @@ public class OrganizationRepository : Repository<Organization>, IOrganizationRep
         return await _dbSet
             .Where(o => o.CreatedDate < cutoff
                 && !_context.Users.Any(u => u.OrganizationId == o.Id)
+                && !_context.UserOrganizations.Any(uo => uo.OrganizationId == o.Id)
                 && !_context.CardiMembers.Any(c => c.OrganizationId == o.Id))
             .ExecuteDeleteAsync();
     }

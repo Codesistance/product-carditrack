@@ -14,12 +14,14 @@ public class OnboardingServiceTests
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IOrganizationRepository _organizations = Substitute.For<IOrganizationRepository>();
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
+    private readonly IUserOrganizationRepository _memberships = Substitute.For<IUserOrganizationRepository>();
     private readonly ISubscriptionService _subscriptions = Substitute.For<ISubscriptionService>();
 
     public OnboardingServiceTests()
     {
         _unitOfWork.Organizations.Returns(_organizations);
         _unitOfWork.Users.Returns(_users);
+        _unitOfWork.UserOrganizations.Returns(_memberships);
     }
 
     private OnboardingService CreateSut() => new(_unitOfWork, _subscriptions);
@@ -55,6 +57,32 @@ public class OnboardingServiceTests
         Assert.True(savedUser.EmailVerified);
         Assert.Equal("Europe/London", savedUser.TimeZoneId);
         // Atomicity hinges on everything committing in one SaveChanges.
+        await _unitOfWork.Received(1).SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Starting a family makes you its one Admin — the role held in a family lives on the
+    /// membership row, not on the user, and it commits in the same save as everything else.
+    /// </summary>
+    [Fact]
+    public async Task Setup_MakesTheCreatorTheAdminOfTheirOwnFamily()
+    {
+        Organization? savedOrg = null;
+        User? savedUser = null;
+        UserOrganization? savedMembership = null;
+        await _organizations.AddAsync(Arg.Do<Organization>(o => savedOrg = o));
+        await _users.AddAsync(Arg.Do<User>(u => savedUser = u));
+        await _memberships.AddAsync(Arg.Do<UserOrganization>(m => savedMembership = m));
+
+        await CreateSut().SetupAsync(BuildRequest(), "auth0|jane", emailVerified: true);
+
+        Assert.NotNull(savedMembership);
+        Assert.Equal(savedUser!.Id, savedMembership!.UserId);
+        Assert.Equal(savedOrg!.Id, savedMembership.OrganizationId);
+        Assert.Equal(UserRole.Admin, savedMembership.Role);
+        Assert.True(savedMembership.IsActive);
+        // The request asked for a Member account role; the family role is Admin regardless.
+        Assert.Equal(UserRole.Member, savedUser.Role);
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 

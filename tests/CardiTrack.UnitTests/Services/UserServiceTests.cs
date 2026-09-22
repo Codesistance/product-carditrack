@@ -14,6 +14,7 @@ public class UserServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IOrganizationRepository _organizations = Substitute.For<IOrganizationRepository>();
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
+    private readonly IUserOrganizationRepository _memberships = Substitute.For<IUserOrganizationRepository>();
     private readonly IDeviceConnectionRepository _deviceConnections = Substitute.For<IDeviceConnectionRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
@@ -23,6 +24,7 @@ public class UserServiceTests
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.Organizations.Returns(_organizations);
         _unitOfWork.UserCardiMembers.Returns(_links);
+        _unitOfWork.UserOrganizations.Returns(_memberships);
         _unitOfWork.DeviceConnections.Returns(_deviceConnections);
         _links.GetByUserIdAsync(_userId).Returns([]);
         _deviceConnections.AnyActiveForCardiMembersAsync(Arg.Any<IEnumerable<Guid>>()).Returns(false);
@@ -90,6 +92,27 @@ public class UserServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             CreateSut().CreateUserAsync(Request(emailVerified: true)));
+    }
+
+    /// <summary>
+    /// The legacy two-call create path records the membership the request named, at the role it
+    /// asked for — it never decides the role itself, the same way it never decided User.Role.
+    /// </summary>
+    [Fact]
+    public async Task CreateUser_RecordsMembershipOfTheRequestedOrganization_AtTheRequestedRole()
+    {
+        User? savedUser = null;
+        UserOrganization? savedMembership = null;
+        await _users.AddAsync(Arg.Do<User>(u => savedUser = u));
+        await _memberships.AddAsync(Arg.Do<UserOrganization>(m => savedMembership = m));
+        var request = Request(emailVerified: true);
+
+        await CreateSut().CreateUserAsync(request);
+
+        Assert.NotNull(savedMembership);
+        Assert.Equal(savedUser!.Id, savedMembership!.UserId);
+        Assert.Equal(request.OrganizationId, savedMembership.OrganizationId);
+        Assert.Equal(request.Role, savedMembership.Role);
     }
 
     [Fact]

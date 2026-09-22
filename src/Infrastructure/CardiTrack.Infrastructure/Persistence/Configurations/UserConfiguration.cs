@@ -12,8 +12,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasKey(u => u.Id);
 
-        builder.Property(u => u.OrganizationId)
-            .IsRequired();
+        // Null for a guest — someone who joined a family without starting one (UserOrganization).
+        builder.Property(u => u.OrganizationId);
 
         builder.Property(u => u.Email)
             .HasMaxLength(255)

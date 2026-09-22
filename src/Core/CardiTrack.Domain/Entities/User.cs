@@ -6,7 +6,13 @@ namespace CardiTrack.Domain.Entities;
 
 public class User : BaseEntity, ISoftDeletable
 {
-    public Guid OrganizationId { get; set; }
+    /// <summary>
+    /// The family this person created and pays for — their <em>home</em> organization — or null
+    /// for a guest who only ever joined someone else's. Which families they are <em>in</em> is
+    /// <see cref="UserOrganization"/>; this is the one whose subscription and account-level
+    /// settings are theirs.
+    /// </summary>
+    public Guid? OrganizationId { get; set; }
     public string Auth0UserId { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
