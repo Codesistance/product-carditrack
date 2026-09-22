@@ -226,8 +226,10 @@ files. Each carries a Google API key, which GitHub secret scanning flags, so **t
 git**: both paths are git-ignored, the signed Android and iOS device jobs in `deploy-apps-dev.yml`
 (and the iOS prod job) write them into `src/Presentation/CardiTrack.Mobile/Platforms/…` from
 these two secrets before publishing, and the csproj fails a store build that has no config
-(`_CardiTrackRequireFirebaseConfig`). Until both secrets are populated the signed builds are
-skipped with a warning, like the signing secrets above.
+(`_CardiTrackRequireFirebaseConfig`). While a secret is still `REPLACE_ME`, the **dev** jobs
+skip the signed build with a warning, like the signing secrets above; the **prod** iOS job has
+no such gate and fails at "Write Firebase config", because a production build that cannot
+register for push is not one to ship.
 
 1. [Firebase console](https://console.firebase.google.com/project/carditrack-490120/settings/general)
    → **Your apps** → the Android app (`com.codesistance.carditrack.mobile`) → download
@@ -235,10 +237,15 @@ skipped with a warning, like the signing secrets above.
    Terraform-managed (`infrastructure/deployments/firebase.tf`).
 2. Restrict the key each file carries (GCP console → **APIs & Services → Credentials**):
    API restrictions to the Firebase services the app uses (Firebase Installations, FCM
-   Registration, Firebase Remote Config if enabled), application restrictions to the Android
-   package name plus the upload-key and Play app-signing SHA-1s, and the iOS bundle ID. Without
-   restrictions the key can be used against any API enabled on the project by anyone holding a
-   copy of the app.
+   Registration, Firebase Remote Config if enabled), application restrictions to the iOS bundle
+   ID, and for Android the package name with **every** SHA-1 the app is signed with — the upload
+   key, the Play app-signing key, **and each developer's Debug keystore**, because the emulator
+   loop deploys a Debug build (`dotnet build -t:Run`, signed with `~/.android/debug.keystore`,
+   alias `androiddebugkey`) and Firebase Installations rejects a build whose certificate is not
+   on the key. Read a Debug SHA-1 with
+   `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`.
+   Without restrictions the key can be used against any API enabled on the project by anyone
+   holding a copy of the app.
 3. Load them as text (no base64):
 
    ```bash
@@ -248,10 +255,20 @@ skipped with a warning, like the signing secrets above.
      --data-file=GoogleService-Info.plist --project=carditrack-490120
    ```
 
-4. Rotating: delete the key in **Credentials** (Firebase creates a replacement for the app on
-   the next config download), re-download both files and add new secret versions. Builds pick
-   up `latest` on their next run; installed apps keep working on the old key only until it is
-   deleted, so ship a build with the new config before deleting the old key.
+4. Rotating, one platform at a time, without an outage. Each file carries its own key, and
+   every installed copy of the app keeps using the key baked into it, so deleting a key before
+   the replacement build has reached those installs breaks Firebase initialisation and push
+   registration on that platform.
+   1. **Credentials → Create credentials → API key**; restrict it as in step 2.
+   2. Put the new key's value into the downloaded config file yourself (`api_key[].current_key`
+      in `google-services.json`, `API_KEY` in `GoogleService-Info.plist`) — the console download
+      always names the Firebase auto-created key, and the SDK only reads the value in the file.
+   3. Add the edited file as a new secret version (step 3). Builds pick up `latest` on their next
+      run; ship a build and let it reach installed devices (TestFlight / Play internal is a day,
+      a production release is however long the rollout takes).
+   4. Only then delete the old key in **Credentials**, and resolve the secret-scanning alert for
+      it as *revoked*.
+   5. Repeat for the other platform.
 
 ## Verification
 
