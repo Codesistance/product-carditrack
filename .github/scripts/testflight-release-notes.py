@@ -142,6 +142,9 @@ def wait_for_build(
     query = urllib.parse.urlencode(
         {"filter[app]": app_id, "filter[version]": build_number, "limit": 1}
     )
+    # One poll always happens, so a zero wait is a single check. After that the
+    # deadline is enforced before sleeping, and the sleep is capped to what is
+    # left, so the wait overruns by at most one request timeout.
     deadline = time.monotonic() + wait_minutes * 60
     while True:
         data = call("GET", f"/builds?{query}", bearer).get("data") or []
@@ -154,19 +157,21 @@ def wait_for_build(
                 "reach TestFlight. Apple emails the account holder the reason; a duplicate "
                 "build number is the usual one."
             )
-        if time.monotonic() >= deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             raise AppStoreError(
                 f"Build {build_number} was not processed within {wait_minutes} minutes "
                 f"(last seen: {state or 'not listed yet'}). The binary is uploaded; "
                 "attach the notes by hand once it appears, or dispatch the push again — "
                 "a build the store already holds is skipped, and only the notes are redone."
             )
+        delay = min(POLL_DELAY_SECONDS, remaining)
         print(
             f"Build {build_number}: {state or 'not listed yet'}; "
-            f"checking again in {POLL_DELAY_SECONDS}s",
+            f"checking again in {delay:.0f}s",
             flush=True,
         )
-        time.sleep(POLL_DELAY_SECONDS)
+        time.sleep(delay)
 
 
 def preferred_locale(app_id: str, bearer: Bearer) -> str:
