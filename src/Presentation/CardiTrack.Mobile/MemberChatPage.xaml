@@ -73,9 +73,9 @@
                     </controls:SquareBorder.GestureRecognizers>
                     <!-- Down, not back: this page is always presented modally (see
                          MemberChatLauncher), so the affordance is dismiss, not navigate-back.
-                         Same 2px-stroke line-icon weight as icon_back_white.svg, not the filled
-                         caret (icon_caret_down_white.svg), which reads as a different, heavier
-                         icon language next to it. -->
+                         Same line-icon weight as icon_back_white.svg. Not the chips' caret
+                         (icon_caret_down_white.svg), which is a stroked chevron too now but is
+                         drawn 18x9 for a 14x7 box, so it arrives squashed at this size. -->
                     <Image Source="icon_chevron_down_white.svg" WidthRequest="20" HeightRequest="20"
                            SemanticProperties.Description="Close"/>
                 </controls:SquareBorder>

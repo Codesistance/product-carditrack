@@ -35,6 +35,27 @@ NAMED = {
     '#1F8A72': 'MetricTemperatureInk / DatasetBodyText',
     '#F0A92E': 'warning amber',
     '#FFFFFF': 'White',
+    # IconPark colour groups (scripts/icons/icons.json) and the Material metric inks.
+    '#3175B9': 'icons.json brand and activity fill, steel blue',
+    '#153D66': 'icons.json brand outer stroke',
+    '#144A80': 'icons.json activity outer stroke',
+    '#C9E1FF': 'MetricTileTint, opaque (brand internal fill)',
+    '#B93A55': 'DatasetHeartText',
+    '#5A4EBF': 'DatasetSleepText',
+    '#10659F': 'DatasetActivityText',
+    '#166B58': 'derived: DatasetBodyText darkened',
+    '#7C6FDC': 'MetricSleepInk',
+    '#3E8AC7': 'MetricBreathingInk',
+    '#E4F6F2': 'DatasetBodyBackground',
+    '#FFF3DE': 'DatasetWarningBackground',
+    '#A9741A': 'DatasetWarningText',
+    '#B45309': 'severity orange ink',
+    '#FCEDE2': 'derived: StatusOrange at 14% over white',
+    '#FBE4E4': 'derived: StatusRed at 14% over white',
+    '#EEF1F5': 'DatasetOtherBackground',
+    '#E8F3FD': 'DatasetActivityBackground',
+    '#EEECFB': 'DatasetSleepBackground',
+    '#FDEEF1': 'DatasetHeartBackground',
 }
 
 GROUPS = [
@@ -75,9 +96,15 @@ def main():
             pass
 
     def used_by(icon):
+        # BottomNavBar builds the selected tab's file at runtime from the stem:
+        # $"{iconStem}_active.svg". The literal in code is the stem alone, so an _active
+        # file counts as used wherever its stem appears as a quoted string.
+        needles = [icon]
+        if icon.endswith('_active.svg'):
+            needles.append('"' + icon[: -len('_active.svg')] + '"')
         names = set()
         for p, text in hay.items():
-            if icon in text:
+            if any(n in text for n in needles):
                 stem = os.path.basename(p)
                 for suffix in ('.xaml.cs', '.xaml', '.cs'):
                     if stem.endswith(suffix):
@@ -168,7 +195,16 @@ def main():
     w('Every `.xaml` and `.cs` under `src/` is searched for the file name as a literal, which is')
     w('how icons are referenced throughout — `Source="icon_x.svg"`, or a string constant as in')
     w('`FindingsList.CheckMarker`. A name mentioned only in a comment therefore counts as a use, so')
-    w('a row claiming a single caller is worth reading before trusting.')
+    w('a row claiming a single caller is worth reading before trusting. The one runtime-built name,')
+    w('the bottom nav\'s `{stem}_active.svg`, is matched on its stem.')
+    w('')
+    w('## How the files are made')
+    w('')
+    w('Everything except the vendor marks, the splash gradient, the Android notification icon, the')
+    w('240dp chat launcher illustration (`icon_chatbot.svg`) and the bottom-nav tab icons is generated')
+    w('by `scripts/icons/generate.mjs` from `scripts/icons/icons.json`,')
+    w('which holds the icon name, source (IconPark or Material Symbols), colour group and size per')
+    w('file. Edit the JSON, run `npm ci && npm run generate` in `scripts/icons`, then regenerate this file.')
     w('')
 
     io.open(OUT, 'w', encoding='utf-8', newline='\r\n').write('\n'.join(out))

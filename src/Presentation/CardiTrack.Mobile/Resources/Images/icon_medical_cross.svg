@@ -1,14 +1,1 @@
-<!-- Medical Information. Was a bare cross in a rounded square, which read as generic "add/health"
-     rather than medical; the clipboard behind it makes it a medical chart — the record this row
-     actually opens — while the cross keeps the medical read. Same 2px line-icon language and
-     Primary stroke as the rest of the hand-authored set (no icon library — see the pending
-     icon-pack design decision). -->
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Clipboard body -->
-  <rect x="4.5" y="4" width="15" height="17.5" rx="2.5" stroke="#1884DC" stroke-width="2"/>
-  <!-- Clip at the top, drawn over the body edge -->
-  <path d="M9.5 4V3.5A1.5 1.5 0 0 1 11 2h2a1.5 1.5 0 0 1 1.5 1.5V4"
-        stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
-  <!-- The cross: the medical mark, centred on the sheet -->
-  <path d="M12 9.5v6M9 12.5h6" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
-</svg>
+<?xml version="1.0" encoding="UTF-8"?><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="20" fill="#3175B9" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M27 12H21V21L12 21V27H21V36H27V27L36 27V21H27V12Z" fill="#C9E1FF" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

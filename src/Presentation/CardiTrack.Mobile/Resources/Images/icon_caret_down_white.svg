@@ -1,3 +1,9 @@
+<!-- The filter chips' caret. A stroked chevron rather than the filled triangle this was: the
+     generated set draws every other glyph as a thin line, and a solid wedge beside them reads
+     as a different icon language — which is the same reason MemberChatPage picks
+     icon_chevron_down_white over this file. Still bespoke and still 18x9, because the chips
+     render it at 14x7 and no square glyph survives that box. White, for the selected chip whose fill it sits on; see
+     icon_caret_down.svg for why this is a stroke rather than a filled wedge. -->
 <svg width="18" height="9" viewBox="0 0 18 9" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M0 0h18L9 9 0 0Z" fill="#FFFFFF"/>
+<path d="M1.6 1.6 9 7.4l7.4-5.8" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

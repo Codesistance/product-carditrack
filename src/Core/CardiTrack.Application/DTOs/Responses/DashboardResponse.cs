@@ -1,3 +1,5 @@
+﻿using CardiTrack.Domain.Enums;
+
 namespace CardiTrack.Application.DTOs.Responses;
 
 /// <summary>
@@ -11,6 +13,14 @@ public class DashboardResponse
     public Guid CardiMemberId { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Age { get; set; }
+
+    /// <summary>
+    /// Shown under the name on the dashboard's hero card, beside the age. Carried here rather
+    /// than read from <c>CardiMemberDetailResponse</c> because the dashboard never fetches that
+    /// payload: the hero card is the first thing a caregiver sees, and it should not need a
+    /// second round trip to say who the member is.
+    /// </summary>
+    public Gender Gender { get; set; }
 
     /// <summary>
     /// The number behind the dashboard's dedicated Emergency Call action (issue #67, reworked by

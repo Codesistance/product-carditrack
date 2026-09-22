@@ -1,0 +1,799 @@
+{
+ "_readme": "Source of truth for the mobile icon set. Run `npm ci && npm run generate` in scripts/icons after editing. Sizes are the SVG width/height in dp; groups are the IconPark colour slots (outer stroke, external fill, internal outline, internal fill) for Multicolor, or the single colour for linear. Material entries are tinted with `fill`. Not generated: the vendor sign-in marks, the splash gradient, the monochrome Android notification icon, the bottom-nav tab icons, icon_chatbot.svg, which is the 240dp chat launcher illustration rather than an icon, and the two icon_caret_down files, a bespoke 18x9 chevron matched to the filter chips, which render it at 14x7 and leave no square glyph legible.",
+ "iconpark": {
+  "package": "@icon-park/svg",
+  "version": "1.4.2",
+  "strokeWidth": 2,
+  "strokeLinecap": "round",
+  "strokeLinejoin": "round",
+  "badge": {
+   "scale": 0.5,
+   "x": 21,
+   "y": 3,
+   "baseScale": 0.74,
+   "baseY": 12.5,
+   "knockout": "#FFFFFF",
+   "knockoutRadius": 11,
+   "note": "Composes two glyphs into one file: the subject at baseScale anchored bottom-left, the badge at scale in the top-right, on a knockout disc the colour of the card these rows sit on."
+  },
+  "note": "strokeWidth is on the 48-unit grid: 2 = 1px at 24dp. The hand-drawn set used 2px; the thinner stroke is what takes the hard edge off the four-colour glyphs."
+ },
+ "material": {
+  "source": "google/material-design-icons, Material Symbols Rounded, weight 500, 24px, optical size 24",
+  "folder": "material"
+ },
+ "groups": {
+  "brand": {
+   "title": "Brand",
+   "style": "Multicolor",
+   "slots": [
+    "#153D66",
+    "#3175B9",
+    "#FFFFFF",
+    "#C9E1FF"
+   ],
+   "tokens": [
+    "derived, PrimaryDark cooled to hue 210 at 66% saturation",
+    "derived, Primary cooled to hue 210 at 58% saturation",
+    "White",
+    "MetricTileTint, opaque"
+   ]
+  },
+  "sos": {
+   "title": "Emergency \u00b7 on the red quick-action tile",
+   "style": "Multicolor",
+   "slots": [
+    "#861B1B",
+    "#C42F2F",
+    "#FFFFFF",
+    "#FBE4E4"
+   ],
+   "tokens": [
+    "derived, DangerRed darkened",
+    "DangerRed",
+    "White",
+    "derived, StatusRed at 14% over white"
+   ]
+  },
+  "ink": {
+   "title": "Ink \u00b7 the member-detail row icons",
+   "style": "linear",
+   "slots": [
+    "#343434"
+   ],
+   "tokens": [
+    "HeadingText"
+   ]
+  },
+  "infoGreen": {
+   "title": "Status info \u00b7 green",
+   "style": "linear",
+   "slots": [
+    "#1F8A72"
+   ],
+   "tokens": [
+    "DatasetBodyText"
+   ]
+  },
+  "infoYellow": {
+   "title": "Status info \u00b7 yellow",
+   "style": "linear",
+   "slots": [
+    "#A9741A"
+   ],
+   "tokens": [
+    "DatasetWarningText"
+   ]
+  },
+  "infoOrange": {
+   "title": "Status info \u00b7 orange",
+   "style": "linear",
+   "slots": [
+    "#B45309"
+   ],
+   "tokens": [
+    "the amber icon_pause already uses"
+   ]
+  },
+  "infoRed": {
+   "title": "Status info \u00b7 red",
+   "style": "linear",
+   "slots": [
+    "#C42F2F"
+   ],
+   "tokens": [
+    "DangerRed"
+   ]
+  },
+  "muted": {
+   "title": "Muted",
+   "style": "linear",
+   "slots": [
+    "#939DAA"
+   ],
+   "tokens": [
+    "MutedText"
+   ]
+  },
+  "white": {
+   "title": "On primary",
+   "style": "linear",
+   "slots": [
+    "#FFFFFF"
+   ],
+   "tokens": [
+    "White"
+   ]
+  },
+  "heart": {
+   "title": "Metric \u00b7 heart",
+   "style": "Multicolor",
+   "slots": [
+    "#B93A55",
+    "#E53E3E",
+    "#FFFFFF",
+    "#FDEEF1"
+   ],
+   "tokens": [
+    "DatasetHeartText",
+    "MetricHeartInk",
+    "White",
+    "DatasetHeartBackground"
+   ]
+  },
+  "sleep": {
+   "title": "Metric \u00b7 sleep",
+   "style": "Multicolor",
+   "slots": [
+    "#5A4EBF",
+    "#7C6FDC",
+    "#FFFFFF",
+    "#EEECFB"
+   ],
+   "tokens": [
+    "DatasetSleepText",
+    "MetricSleepInk",
+    "White",
+    "DatasetSleepBackground"
+   ]
+  },
+  "activity": {
+   "title": "Metric \u00b7 activity and breathing",
+   "style": "Multicolor",
+   "slots": [
+    "#144A80",
+    "#3175B9",
+    "#FFFFFF",
+    "#E8F3FD"
+   ],
+   "tokens": [
+    "derived, DatasetActivityText cooled to hue 210",
+    "derived, MetricStepsInk cooled to hue 210",
+    "White",
+    "DatasetActivityBackground"
+   ]
+  },
+  "body": {
+   "title": "Metric \u00b7 SpO2 and temperature",
+   "style": "Multicolor",
+   "slots": [
+    "#166B58",
+    "#1F8A72",
+    "#FFFFFF",
+    "#E4F6F2"
+   ],
+   "tokens": [
+    "derived, DatasetBodyText darkened",
+    "DatasetBodyText",
+    "White",
+    "DatasetBodyBackground"
+   ]
+  },
+  "green": {
+   "title": "Severity \u00b7 green",
+   "style": "Multicolor",
+   "slots": [
+    "#1F8A72",
+    "#E4F6F2",
+    "#1F8A72",
+    "#FFFFFF"
+   ],
+   "tokens": [
+    "DatasetBodyText",
+    "DatasetBodyBackground",
+    "DatasetBodyText",
+    "White"
+   ]
+  },
+  "yellow": {
+   "title": "Severity \u00b7 yellow",
+   "style": "Multicolor",
+   "slots": [
+    "#A9741A",
+    "#FFF3DE",
+    "#A9741A",
+    "#FFFFFF"
+   ],
+   "tokens": [
+    "DatasetWarningText",
+    "DatasetWarningBackground",
+    "DatasetWarningText",
+    "White"
+   ]
+  },
+  "orange": {
+   "title": "Severity \u00b7 orange",
+   "style": "Multicolor",
+   "slots": [
+    "#B45309",
+    "#FCEDE2",
+    "#B45309",
+    "#FFFFFF"
+   ],
+   "tokens": [
+    "the amber icon_pause already uses",
+    "derived, StatusOrange at 14% over white",
+    "same",
+    "White"
+   ]
+  },
+  "red": {
+   "title": "Severity \u00b7 red, and destructive",
+   "style": "Multicolor",
+   "slots": [
+    "#C42F2F",
+    "#FBE4E4",
+    "#C42F2F",
+    "#FFFFFF"
+   ],
+   "tokens": [
+    "DangerRed",
+    "derived, StatusRed at 14% over white",
+    "DangerRed",
+    "White"
+   ]
+  },
+  "unknown": {
+   "title": "Severity \u00b7 paused and neutral",
+   "style": "Multicolor",
+   "slots": [
+    "#727272",
+    "#EEF1F5",
+    "#727272",
+    "#FFFFFF"
+   ],
+   "tokens": [
+    "BodyText",
+    "DatasetOtherBackground",
+    "BodyText",
+    "White"
+   ]
+  }
+ },
+ "icons": [
+  {
+   "file": "icon_action_call.svg",
+   "source": "iconpark",
+   "name": "phone-call",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_action_sos.svg",
+   "source": "iconpark",
+   "name": "phone-call",
+   "group": "sos",
+   "size": 24
+  },
+  {
+   "file": "icon_action_check.svg",
+   "source": "iconpark",
+   "name": "check",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_action_details.svg",
+   "source": "iconpark",
+   "name": "chart-histogram-two",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_action_profile.svg",
+   "source": "iconpark",
+   "name": "user",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_action_sms.svg",
+   "source": "iconpark",
+   "name": "text-message",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_advise.svg",
+   "source": "iconpark",
+   "name": "tips",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_advise_primary.svg",
+   "source": "iconpark",
+   "name": "tips",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_back_white.svg",
+   "source": "iconpark",
+   "name": "left",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_bell.svg",
+   "source": "iconpark",
+   "name": "remind",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_bell_cog.svg",
+   "source": "iconpark",
+   "name": "remind",
+   "badge": "setting-two",
+   "group": "ink",
+   "size": 24
+  },
+  {
+   "file": "icon_user_bell.svg",
+   "source": "iconpark",
+   "name": "user",
+   "badge": "remind",
+   "group": "ink",
+   "size": 24
+  },
+  {
+   "file": "icon_binoculars.svg",
+   "source": "iconpark",
+   "name": "telescope",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_book.svg",
+   "source": "iconpark",
+   "name": "book",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_book_cog.svg",
+   "source": "iconpark",
+   "name": "book",
+   "badge": "setting-two",
+   "group": "ink",
+   "size": 24
+  },
+  {
+   "file": "icon_calendar.svg",
+   "source": "iconpark",
+   "name": "calendar",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_callout.svg",
+   "source": "iconpark",
+   "name": "comment",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_caution_danger.svg",
+   "source": "iconpark",
+   "name": "caution",
+   "group": "red",
+   "size": 32
+  },
+  {
+   "file": "icon_chatbot_mono.svg",
+   "source": "iconpark",
+   "name": "robot",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_check_disc.svg",
+   "source": "iconpark",
+   "name": "check-one",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_chevron.svg",
+   "source": "iconpark",
+   "name": "right",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_chevron_down.svg",
+   "source": "iconpark",
+   "name": "down",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_chevron_down_white.svg",
+   "source": "iconpark",
+   "name": "down",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_clipboard.svg",
+   "source": "iconpark",
+   "name": "clipboard",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_clipboard_ink.svg",
+   "source": "iconpark",
+   "name": "clipboard",
+   "group": "ink",
+   "size": 24
+  },
+  {
+   "file": "icon_edit.svg",
+   "source": "iconpark",
+   "name": "edit",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_expand.svg",
+   "source": "iconpark",
+   "name": "full-screen",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_export_white.svg",
+   "source": "iconpark",
+   "name": "export",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_eye.svg",
+   "source": "iconpark",
+   "name": "preview-open",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_eye_off.svg",
+   "source": "iconpark",
+   "name": "preview-close",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_format_csv.svg",
+   "source": "iconpark",
+   "name": "table-file",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_format_pdf.svg",
+   "source": "iconpark",
+   "name": "file-pdf",
+   "group": "red",
+   "size": 24
+  },
+  {
+   "file": "icon_history_white.svg",
+   "source": "iconpark",
+   "name": "history",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_home_white.svg",
+   "source": "iconpark",
+   "name": "home",
+   "group": "white",
+   "size": 28
+  },
+  {
+   "file": "icon_medical_cross.svg",
+   "source": "iconpark",
+   "name": "red-cross",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_metric_breathing.svg",
+   "source": "material",
+   "name": "respiratory_rate",
+   "fill": "#3E8AC7",
+   "token": "MetricBreathingInk",
+   "size": 24
+  },
+  {
+   "file": "icon_metric_heart.svg",
+   "source": "material",
+   "name": "ecg_heart",
+   "fill": "#E53E3E",
+   "token": "MetricHeartInk",
+   "size": 24
+  },
+  {
+   "file": "icon_metric_sleep.svg",
+   "source": "material",
+   "name": "bedtime",
+   "fill": "#7C6FDC",
+   "token": "MetricSleepInk",
+   "size": 24
+  },
+  {
+   "file": "icon_metric_spo2.svg",
+   "source": "material",
+   "name": "spo2",
+   "fill": "#1F8A72",
+   "token": "MetricSpO2Ink",
+   "size": 24
+  },
+  {
+   "file": "icon_metric_steps.svg",
+   "source": "material",
+   "name": "directions_walk",
+   "fill": "#3175B9",
+   "token": "derived, MetricStepsInk cooled to hue 210",
+   "size": 24
+  },
+  {
+   "file": "icon_metric_temperature.svg",
+   "source": "material",
+   "name": "thermometer",
+   "fill": "#1F8A72",
+   "token": "MetricTemperatureInk",
+   "size": 24
+  },
+  {
+   "file": "icon_open.svg",
+   "source": "iconpark",
+   "name": "link-out",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_pause.svg",
+   "source": "iconpark",
+   "name": "pause",
+   "group": "orange",
+   "size": 24
+  },
+  {
+   "file": "icon_person_remove.svg",
+   "source": "iconpark",
+   "name": "reduce-user",
+   "group": "red",
+   "size": 24
+  },
+  {
+   "file": "icon_plus.svg",
+   "source": "iconpark",
+   "name": "plus",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_power_red.svg",
+   "source": "iconpark",
+   "name": "power",
+   "group": "red",
+   "size": 24
+  },
+  {
+   "file": "icon_power_white.svg",
+   "source": "iconpark",
+   "name": "power",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_reason_activity_white.svg",
+   "source": "material",
+   "name": "directions_walk",
+   "fill": "#FFFFFF",
+   "token": "White",
+   "size": 24
+  },
+  {
+   "file": "icon_reason_device_white.svg",
+   "source": "iconpark",
+   "name": "iwatch",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_reason_heart_white.svg",
+   "source": "material",
+   "name": "ecg_heart",
+   "fill": "#FFFFFF",
+   "token": "White",
+   "size": 24
+  },
+  {
+   "file": "icon_reason_monitoring_white.svg",
+   "source": "material",
+   "name": "monitor_heart",
+   "fill": "#FFFFFF",
+   "token": "White",
+   "size": 24
+  },
+  {
+   "file": "icon_reason_sleep_white.svg",
+   "source": "material",
+   "name": "bedtime",
+   "fill": "#FFFFFF",
+   "token": "White",
+   "size": 24
+  },
+  {
+   "file": "icon_refresh.svg",
+   "source": "iconpark",
+   "name": "refresh",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_refresh_white.svg",
+   "source": "iconpark",
+   "name": "refresh",
+   "group": "white",
+   "size": 24
+  },
+  {
+   "file": "icon_save.svg",
+   "source": "iconpark",
+   "name": "save",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_share.svg",
+   "source": "iconpark",
+   "name": "share",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_star.svg",
+   "source": "iconpark",
+   "name": "star",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_green.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoGreen",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_yellow.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoYellow",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_orange.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoOrange",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_red.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoRed",
+   "size": 24
+  },
+  {
+   "file": "icon_status_check.svg",
+   "source": "iconpark",
+   "name": "check-one",
+   "group": "green",
+   "size": 32
+  },
+  {
+   "file": "icon_status_critical.svg",
+   "source": "iconpark",
+   "name": "alarm",
+   "group": "red",
+   "size": 32
+  },
+  {
+   "file": "icon_status_paused.svg",
+   "source": "iconpark",
+   "name": "pause-one",
+   "group": "unknown",
+   "size": 32
+  },
+  {
+   "file": "icon_status_urgent.svg",
+   "source": "iconpark",
+   "name": "attention",
+   "group": "orange",
+   "size": 32
+  },
+  {
+   "file": "icon_status_warning.svg",
+   "source": "iconpark",
+   "name": "caution",
+   "group": "yellow",
+   "size": 32
+  },
+  {
+   "file": "icon_tab_qa.svg",
+   "source": "iconpark",
+   "name": "help",
+   "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_tab_qa_primary.svg",
+   "source": "iconpark",
+   "name": "help",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_trash.svg",
+   "source": "iconpark",
+   "name": "delete",
+   "group": "red",
+   "size": 24
+  },
+  {
+   "file": "icon_trend_good.svg",
+   "source": "iconpark",
+   "name": "check",
+   "group": "green",
+   "size": 32
+  },
+  {
+   "file": "icon_trend_neutral.svg",
+   "source": "iconpark",
+   "name": "minus",
+   "group": "unknown",
+   "size": 32
+  },
+  {
+   "file": "icon_trend_watch.svg",
+   "source": "iconpark",
+   "name": "chart-line",
+   "group": "brand",
+   "size": 24
+  },
+  {
+   "file": "icon_watch.svg",
+   "source": "iconpark",
+   "name": "iwatch",
+   "group": "ink",
+   "size": 24
+  }
+ ]
+}

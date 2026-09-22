@@ -1,5 +1,1 @@
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M13.5 4.5H19.5V10.5" stroke="#1884DC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M19.5 4.5L11.5 12.5" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
-<path d="M17 14v4.5A1.5 1.5 0 0 1 15.5 20h-9A1.5 1.5 0 0 1 5 18.5v-9A1.5 1.5 0 0 1 6.5 8H11" stroke="#1884DC" stroke-width="2" stroke-linecap="round"/>
-</svg>
+<?xml version="1.0" encoding="UTF-8"?><svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 12V4H32V12" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M32 36V44H16V36" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 24L4 24" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M44 24L30 24" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M24 34V14" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M39 19L44 24L39 29" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 19L4 24L9 29" stroke="#153D66" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

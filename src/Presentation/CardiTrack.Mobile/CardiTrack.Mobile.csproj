@@ -94,8 +94,18 @@
 		     point (the top-right mesh node) then leaves Android's adaptive-icon safe
 		     zone — the centre 66 of 108 dp — and circular launcher masks clip it.
 		     0.58 measures ~1.1 dp of clearance at every generated density; 0.60
-		     measures ~0 dp, which is already too close to rely on. -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.png" Color="#F5F6F8" ForegroundScale="0.58" />
+		     measures ~0 dp, which is already too close to rely on.
+
+		     0.42 sits well inside that ceiling, and is set for how the icon reads on a
+		     home screen rather than for what fits. The artwork fills 93% of its own
+		     PNG, so 0.58 put it across ~54% of the canvas — about four fifths of the
+		     circle a launcher mask leaves visible, which is why it read as a picture
+		     cropped to a circle rather than as a mark. Google Drive's triangle covers
+		     nearer three fifths of its circle; 0.42 lands the logo at ~39% of the
+		     canvas, the same proportion. One value covers both platforms: MauiIcon
+		     generates the Android adaptive icon and the iOS AppIcon set from this
+		     single declaration. -->
+		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.png" Color="#F5F6F8" ForegroundScale="0.42" />
 
 		<!-- Splash Screen. The asset is deliberately the same white rounded tile SplashPage
 		     draws (88dp tile, 17dp radius, 79x68 logo AspectFit inside — see SplashPage.xaml)

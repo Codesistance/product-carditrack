@@ -1,4 +1,5 @@
-﻿using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Domain.Enums;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
@@ -54,7 +55,18 @@ public partial class StatusHeroCard : ContentView
     public void Apply(DashboardResponse data)
     {
         var firstName = NameFormatting.FirstName(data.Name);
-        NameLabel.Text = $"{data.Name}, {data.Age}";
+        NameLabel.Text = data.Name;
+        // "66 years - Male". Unspecified is left off rather than spelled out: a caregiver who
+        // did not answer the question does not need it read back to them under the name.
+        var sex = data.Gender switch
+        {
+            Gender.Male => "Male",
+            Gender.Female => "Female",
+            _ => null,
+        };
+        MemberMetaLabel.Text = sex is null
+            ? $"{data.Age} years"
+            : $"{data.Age} years · {sex}";
         Avatar.Apply(data.Name, data.PhotoUrl);
         _memberId = data.CardiMemberId;
         ApplyDaybook(data.LatestJournalEntryAt);
@@ -65,13 +77,13 @@ public partial class StatusHeroCard : ContentView
         // words, so a caregiver who reads nothing else has still read the answer.
         (string ColorKey, string? Icon, string? Headline, string Detail) line = data.HealthStatus switch
         {
-            "green" => ("StatusGreen", "icon_status_check.svg", "All steady",
+            "green" => ("StatusGreen", "icon_status_info_green.svg", "All steady",
                 $"{firstName} is doing well"),
-            "yellow" => ("StatusYellow", "icon_status_warning.svg", "Something's different",
+            "yellow" => ("StatusYellow", "icon_status_info_yellow.svg", "Something's different",
                 $"{firstName}'s day isn't quite following the usual shape"),
-            "orange" => ("StatusOrange", "icon_status_urgent.svg", "Worth a check-in",
+            "orange" => ("StatusOrange", "icon_status_info_orange.svg", "Worth a check-in",
                 $"Today looks off enough that {firstName} is worth a call"),
-            "red" => ("StatusRed", "icon_status_critical.svg", "Reach out now",
+            "red" => ("StatusRed", "icon_status_info_red.svg", "Reach out now",
                 $"Something needs attention — contact {firstName}"),
             // Paused is not a health reading — never dress it up as one.
             "paused" => ("StatusUnknown", "icon_status_paused.svg", "Monitoring paused",
@@ -99,7 +111,7 @@ public partial class StatusHeroCard : ContentView
         else if (_liveMessage is { } live)
             line = (line.ColorKey, line.Icon, _liveHeadline ?? line.Headline, live);
 
-        SetStatusLine(line.ColorKey, line.Headline, line.Detail);
+        SetStatusLine(line.ColorKey, line.Icon, line.Headline, line.Detail);
         _cardiMemberId = data.CardiMemberId;
         _healthStatus = data.HealthStatus;
 
@@ -287,11 +299,12 @@ public partial class StatusHeroCard : ContentView
     /// show, which leaves the sentence alone lining up with the name above it.
     /// </summary>
     /// <remarks>
-    /// <c>MemberStatusLine.Icon</c> is still served and deliberately not drawn: the per-tier glyph
-    /// in front of the headline cost the block its left edge, and the tier reaches the reader
-    /// through the headline's colour and its words regardless.
+    /// <c>MemberStatusLine.Icon</c> is drawn again, in its own column ahead of the headline. It
+    /// was dropped when this block sat in a narrow column beside the avatar and the glyph left
+    /// the headline starting at a different x from the sentence under it; the block spans the
+    /// card now, and the sentence is inset to meet the headline's text rather than its glyph.
     /// </remarks>
-    private void SetStatusLine(string colorKey, string? headline, string detail)
+    private void SetStatusLine(string colorKey, string? icon, string? headline, string detail)
     {
         var hasHeadline = !string.IsNullOrWhiteSpace(headline);
 
@@ -302,6 +315,10 @@ public partial class StatusHeroCard : ContentView
                 (Color)Microsoft.Maui.Controls.Application.Current!.Resources[colorKey];
             StatusHeadlineLabel.Text = headline;
         }
+
+        StatusIcon.IsVisible = hasHeadline && !string.IsNullOrWhiteSpace(icon);
+        if (StatusIcon.IsVisible)
+            StatusIcon.Source = icon;
 
         StatusDetailLabel.Text = detail;
     }

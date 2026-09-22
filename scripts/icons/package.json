@@ -1,0 +1,12 @@
+{
+  "name": "carditrack-icons",
+  "private": true,
+  "type": "module",
+  "description": "Generates src/Presentation/CardiTrack.Mobile/Resources/Images from icons.json. See generate.mjs.",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "dependencies": {
+    "@icon-park/svg": "1.4.2"
+  }
+}

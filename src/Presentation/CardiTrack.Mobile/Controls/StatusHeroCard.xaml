@@ -23,32 +23,41 @@
         <!-- MinimumHeightRequest, not a fixed height: the row is 42 tall whether or not the Q&amp;A
              cluster (42) is showing beside the 36 buttons, so the card doesn't jolt when a
              question arrives — but it still grows if a larger system font needs it to. -->
-        <Grid Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
-              ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8"
+        <Grid Grid.Row="0" Grid.Column="1"
+              ColumnDefinitions="*,Auto" ColumnSpacing="8"
               MinimumHeightRequest="42">
-            <Label x:Name="NameLabel"
-                   Grid.Column="0"
-                   Style="{StaticResource Heading2}"
-                   VerticalOptions="Center"
-                   LineBreakMode="TailTruncation"/>
+            <!-- The name is the title; what kind of person they are goes under it. Splitting
+                 "Dad, 66" this way is what frees the row below: the avatar can come up beside
+                 the name, and the summary underneath gets the card's whole width instead of
+                 whatever is left beside a 76pt monogram. -->
+            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Start">
+                <Label x:Name="NameLabel"
+                       Style="{StaticResource Heading2}"
+                       LineBreakMode="TailTruncation"/>
+                <HorizontalStackLayout Spacing="8">
+                    <Label x:Name="MemberMetaLabel"
+                           Style="{StaticResource Body2Dark}"
+                           VerticalOptions="Center"
+                           LineBreakMode="TailTruncation"/>
 
             <!-- Last-session weather (EnvironmentalReading — not live, no stored coordinate).
                  Its own TapGestureRecognizer takes taps before the row's own below, so tapping
                  the chip opens the weather popup rather than M1-13. Hidden outright when the
                  member has no reading, or hasn't granted environmental-context consent. -->
-            <HorizontalStackLayout x:Name="WeatherChip"
-                                    Grid.Column="1"
-                                    Spacing="4"
-                                    VerticalOptions="Center"
-                                    IsVisible="False">
+                    <HorizontalStackLayout x:Name="WeatherChip"
+                                            Spacing="4"
+                                            VerticalOptions="Center"
+                                            IsVisible="False">
                 <HorizontalStackLayout.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnWeatherTapped"/>
                 </HorizontalStackLayout.GestureRecognizers>
-                <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
-                <Label x:Name="WeatherTemperatureLabel"
-                       Style="{StaticResource Body2Dark}"
-                       VerticalOptions="Center"/>
-            </HorizontalStackLayout>
+                        <Label x:Name="WeatherGlyphLabel" FontSize="16" VerticalOptions="Center"/>
+                        <Label x:Name="WeatherTemperatureLabel"
+                               Style="{StaticResource Body2Dark}"
+                               VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
 
             <!-- The card's two ways onward, at its top right: this member's daybook and the
                  alerts. Buttons here rather than links at the card's foot — the foot is where
@@ -60,9 +69,9 @@
                  cost 8 either side, so CardiJournal sat 16 from Alerts while Alerts sat 8 from
                  Advise. A HorizontalStackLayout skips a collapsed child and its spacing with it,
                  so the gap is 8 between whichever buttons are actually showing. -->
-            <HorizontalStackLayout Grid.Column="2"
+            <HorizontalStackLayout Grid.Column="1"
                                     Spacing="8"
-                                    VerticalOptions="Center">
+                                    VerticalOptions="Start">
 
                 <!-- Every button in this row now says two things (see ApplyDaybook and its
                      siblings in the code-behind): the ring pulses while there is something behind
@@ -225,8 +234,8 @@
              sentence that wraps to two or three lines floated the box away from the text it
              belongs to. -->
         <controls:MemberAvatar x:Name="Avatar"
-                               Grid.Row="1" Grid.Column="0"
-                               BoxWidth="76"
+                               Grid.Row="0" Grid.Column="0"
+                               BoxWidth="56"
                                HorizontalOptions="Start" VerticalOptions="Start"/>
 
         <!-- Two rows, one column: the headline is the note a caregiver reads at a glance, the
@@ -235,33 +244,42 @@
              collapse when their labels are hidden, which is what lets the no-baseline tier below
              render as the sentence alone.
 
-             There is no glyph in front of the headline any more. It was tinted per tier by the
-             asset itself, and it cost the block its left edge: only the headline was indented by
-             it, so the sentence underneath started at a different x, and once the headline was
-             allowed to wrap the glyph had no single line to sit against. The tier still reaches
-             the reader — the headline is coloured by it, and says the condition in words — so the
-             glyph was reinforcing what two other channels already carried, at the price of the
-             alignment. `line.Icon` is still served and simply not drawn here. -->
-        <Grid Grid.Row="1" Grid.Column="1"
+The tier glyph is back in front of the headline, on its line. It could not
+             hold its place before, when this block sat in a narrow column beside the avatar:
+             the glyph indented the headline but not the sentence under it, so the two started
+             at different x. With the avatar moved up to the name and the block spanning the
+             card, the sentence has room to start under the glyph's own column, and the
+             headline keeps its left edge whether it wraps or not. `line.Icon` is drawn again
+             rather than merely served. -->
+        <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
               RowDefinitions="Auto,Auto" RowSpacing="2">
             <!-- Two lines, because this one is written rather than composed: the detail below
                  it gets three, and the headline was the only label in the app truncating
                  model-written prose to a single line. "Slower heart rate and less act…" loses
                  the half of the sentence a caregiver came for. It keeps TailTruncation as the
                  backstop so a runaway headline still cannot push the card open. -->
-            <Label x:Name="StatusHeadlineLabel"
-                   Grid.Row="0"
-                   FontFamily="QuicksandSemiBold"
-                   FontSize="15"
-                   LineBreakMode="TailTruncation"
-                   MaxLines="2"/>
-            <!-- A point under Body2Dark's fourteen, keeping the step down from the headline that
-                 the old 16/14 pair had. Both come down together so the block reads at one scale
-                 rather than the sentence growing relative to the line above it. -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Image x:Name="StatusIcon"
+                       Grid.Column="0"
+                       WidthRequest="20" HeightRequest="20"
+                       VerticalOptions="Start"
+                       Margin="0,3,0,0"
+                       IsVisible="False"
+                       AutomationProperties.IsInAccessibleTree="False"/>
+                <Label x:Name="StatusHeadlineLabel"
+                       Grid.Column="1"
+                       FontFamily="QuicksandSemiBold"
+                       FontSize="18"
+                       LineBreakMode="TailTruncation"
+                       MaxLines="2"/>
+            </Grid>
+            <!-- The sentence starts at the card's left edge, under the glyph rather than
+                 under the headline's text: the block spans the card now, and an inset would
+                 only make the one paragraph on it narrower than everything around it. -->
             <Label x:Name="StatusDetailLabel"
                    Grid.Row="1"
                    Style="{StaticResource Body2Dark}"
-                   FontSize="13"
+                   FontSize="14"
                    LineBreakMode="WordWrap"
                    MaxLines="3"/>
         </Grid>

@@ -5,37 +5,75 @@
 
     <!-- Figma 101:2902. Tile tint carries severity; the pill carries whether the alert has
          been dealt with. -->
-    <Border Style="{StaticResource ElevatedCard}" WidthRequest="245">
+    <!-- Squarer and flatter than the shared ElevatedCard: 20 of radius and a 14-radius shadow
+         are drawn for the full-width cards the style was written for, and on a 245-wide tile
+         they eat the corners and pool underneath. 14 and a shadow half the spread at two thirds
+         the opacity, sitting 2 down rather than 4, leave the strip reading as a row of cards
+         rather than a row of pills. The padding comes in too, from the style's 14,14,13,17 —
+         drawn for a full-width card, and a wide frame on a 245 tile — to an even 12,10.
+         Overridden here rather than in the style, which every full-width card on every page
+         shares. -->
+    <Border Style="{StaticResource ElevatedCard}" WidthRequest="245" Padding="12,10">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="14"/>
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="{StaticResource CardShadowBrush}" Opacity="0.1" Radius="7" Offset="0,2"/>
+        </Border.Shadow>
         <Border.GestureRecognizers>
             <TapGestureRecognizer Tapped="OnTapped"/>
         </Border.GestureRecognizers>
 
         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
 
+            <!-- 56 rather than the 46 this tile carried while the labels were smaller: the two
+                 lines of title plus the timestamp measure a shade under 57, and a tile shorter
+                 than the text beside it leaves the card looking bottom-heavy. The glyph keeps
+                 the tile's old proportion — 26 of 46 — so 32 of 56. -->
             <Border x:Name="IconTileBorder"
                     Grid.Column="0"
                     Style="{StaticResource IconTile}"
-                    WidthRequest="46" HeightRequest="46"
+                    WidthRequest="56" HeightRequest="56"
                     VerticalOptions="Center">
                 <Image x:Name="TypeIcon"
-                       WidthRequest="26" HeightRequest="26"/>
+                       WidthRequest="32" HeightRequest="32"/>
             </Border>
 
-            <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+            <!-- Sized for reading first and for the tile second. The title keeps two lines —
+                 truncating "Long daytime rest" to one loses the half that says which rest —
+                 and the timestamp stays the smaller of the two, since "11 hours ago" is the
+                 least load-bearing line on the card.
+
+                 At 15 and 12 the stack runs past the 46dp tile and the card settles around
+                 88dp rather than the 77 the tile alone would ask for. That is deliberate: 13
+                 and 10 did fit inside the tile, and read as small. Anything that has to be
+                 inside 46 has to come off the title's two lines, not off these sizes.
+
+                 No height cap: MaximumHeightRequest="46" was tried and clipped the timestamp
+                 to a sliver, because the stack measures a little above the sum of its lines. -->
+            <VerticalStackLayout Grid.Column="1"
+                                 Spacing="0"
+                                 VerticalOptions="Center">
                 <Label x:Name="TitleLabel"
                        FontFamily="QuicksandSemiBold"
-                       FontSize="16"
+                       FontSize="15"
+                       LineHeight="0.95"
                        TextColor="{StaticResource HeadingText}"
                        MaxLines="2"
                        LineBreakMode="TailTruncation"/>
                 <Label x:Name="TimeLabel"
-                       Style="{StaticResource MetricRowLabel}"/>
+                       Style="{StaticResource MetricRowLabel}"
+                       FontSize="12"
+                       LineHeight="0.95"/>
             </VerticalStackLayout>
 
+            <!-- Top right rather than centred: the pill labels the card, and a badge that
+                 floats level with the middle of a two-line title reads as though it belongs to
+                 whichever line it happens to sit beside. -->
             <Border x:Name="StatusPillBorder"
                     Grid.Column="2"
                     Style="{StaticResource StatusPill}"
-                    VerticalOptions="Center">
+                    VerticalOptions="Start">
                 <Label x:Name="StatusPillLabel"
                        Style="{StaticResource StatusPillText}"/>
             </Border>
