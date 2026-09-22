@@ -313,19 +313,55 @@ public class StatisticalAlertServiceTests
 
     // ── Provisional never alerts, preferences, cooldown, dedup — all ahead of the model ──
 
-    // Provisional-never-alerts, enforced by what is fetched: no 30-day baseline, no rules —
-    // and no wasted reads, and no inference.
+    // Provisional-never-alerts, for the COMPARATIVE rules: no 30-day baseline, nothing that asks
+    // "is this unusual for them" runs, and no inference is spent. The read is narrowed rather than
+    // skipped outright — the measured-rule test below is what it is narrowed *for*.
     [Fact]
-    public async Task NoEstablishedBaseline_MeansTotalSilence()
+    public async Task NoEstablishedBaseline_SilencesTheComparativeRules()
     {
         _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
 
         var raised = await CreateSut().EvaluateAsync(UtcNow);
 
         Assert.Equal(0, raised);
-        await _activityLogs.DidNotReceive().GetByCardiMemberAndDateRangeAsync(
-            Arg.Any<Guid>(), Arg.Any<DateOnly>(), Arg.Any<DateOnly>());
         Assert.Empty(_medicalAi.ReceivedCalls());
+
+        // Two days, not four weeks: without a baseline the trend rule cannot run, so nothing
+        // reads further back than the measured rules need.
+        await _activityLogs.Received(1).GetByCardiMemberAndDateRangeAsync(
+            _memberId,
+            Arg.Is<DateOnly>(from => from == DateOnly.FromDateTime(UtcNow).AddDays(-1)),
+            Arg.Any<DateOnly>());
+    }
+
+    /// <summary>
+    /// The silence this engine must never produce: a member two weeks into wearing a watch has no
+    /// established baseline and exactly the same heart. A finding the device itself made carries
+    /// no inference for a thin window to weaken, so it is judged like any other.
+    /// </summary>
+    [Fact]
+    public async Task NoEstablishedBaseline_StillReportsAFindingTheDeviceItselfMade()
+    {
+        _baselines.GetLatestByCardiMemberAsync(_memberId, 30).Returns((PatternBaseline?)null);
+        _activityLogs.GetByCardiMemberAndDateRangeAsync(
+                _memberId, Arg.Any<DateOnly>(), Arg.Any<DateOnly>())
+            .Returns(new List<ActivityLog>
+            {
+                new()
+                {
+                    CardiMemberId = _memberId,
+                    Date = DateOnly.FromDateTime(UtcNow),
+                    EcgReadings = 1,
+                    EcgAtrialFibrillationReadings = 1,
+                },
+            });
+
+        ModelJudges([Verdict(StatisticalAlertRules.EcgAtrialFibrillationRule, "critical")]);
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(1, raised);
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a => a.AlertType == AlertType.Rhythm));
     }
 
     [Fact]

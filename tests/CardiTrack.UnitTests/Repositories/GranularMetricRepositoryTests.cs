@@ -187,6 +187,7 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
                 DigestMonths = digestMonths,
                 RealtimeDays = realtimeDays,
                 EnvironmentalDays = 90,
+                RhythmDays = 90,
             }));
     }
 
@@ -235,6 +236,7 @@ public class TimeSeriesPartitionServiceTests(TestDatabaseFixture fixture)
                 DigestMonths = 12,
                 RealtimeDays = 90,
                 EnvironmentalDays = 90,
+                RhythmDays = 90,
             });
 
             var survivors = await context.Database

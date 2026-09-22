@@ -29,6 +29,7 @@ public class UnitOfWork : IUnitOfWork
     public IRealtimeAssessmentRepository RealtimeAssessments { get; }
     public IMemberQuestionnaireRepository MemberQuestionnaires { get; }
     public IEnvironmentalReadingRepository EnvironmentalReadings { get; }
+    public IRhythmEpisodeRepository RhythmEpisodes { get; }
     public INotificationRepository Notifications { get; }
     public INotificationMuteRepository NotificationMutes { get; }
     public INotificationDeliveryRepository NotificationDeliveries { get; }
@@ -74,6 +75,7 @@ public class UnitOfWork : IUnitOfWork
         IRealtimeAssessmentRepository realtimeAssessments,
         IMemberQuestionnaireRepository memberQuestionnaires,
         IEnvironmentalReadingRepository environmentalReadings,
+        IRhythmEpisodeRepository rhythmEpisodes,
         INotificationRepository notifications,
         INotificationMuteRepository notificationMutes,
         INotificationDeliveryRepository notificationDeliveries,
@@ -118,6 +120,7 @@ public class UnitOfWork : IUnitOfWork
         RealtimeAssessments = realtimeAssessments;
         MemberQuestionnaires = memberQuestionnaires;
         EnvironmentalReadings = environmentalReadings;
+        RhythmEpisodes = rhythmEpisodes;
         Notifications = notifications;
         NotificationMutes = notificationMutes;
         NotificationDeliveries = notificationDeliveries;

@@ -53,6 +53,8 @@ public static class StatisticalAlertRules
     public const string NoMorningActivityRule = "no_morning_activity";
     public const string LongTermTrendRule = "long_term_trend";
     public const string HeartRateVariabilityDropRule = "hrv_drop";
+    public const string IrregularRhythmRule = "irregular_rhythm";
+    public const string EcgAtrialFibrillationRule = "ecg_afib";
     public const string OvernightBreathingUpRule = "overnight_breathing_up";
     public const string ElevatedZoneWithoutMovementRule = "elevated_zone_without_movement";
     public const string DaytimeInactivityBlockRule = "daytime_inactivity_block";
@@ -562,6 +564,99 @@ public static class StatisticalAlertRules
     /// "yesterday" into copy that will be read on other days.
     /// </summary>
     private static string Day(DateOnly date) => date.ToString("O", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The wearable raised one or more irregular-rhythm notifications — its own screening feature
+    /// telling the wearer it saw a rhythm that could be atrial fibrillation.
+    /// </summary>
+    /// <remarks>
+    /// A <b>measured</b> rule: it reports a finding the device itself made, so unlike every
+    /// comparative rule here it takes no baseline and must not be gated on one. A member two weeks
+    /// into wearing a watch has no established baseline and exactly the same heart.
+    /// <para>
+    /// Reads the freshest day carrying an event, today or yesterday: a notification raised late in
+    /// the evening lands on that day's row, and by the time the fifteen-minute pass sees it the
+    /// member's own calendar may have rolled over. The day it judged is stamped on the finding, so
+    /// an event is reported once whichever pass gets to it first.
+    /// </para>
+    /// <para>
+    /// The observation says who made the finding, because the model writes the family's words from
+    /// it and the distinction is the whole point: the watch screened and flagged, CardiTrack did
+    /// not, and nothing here is a diagnosis.
+    /// </para>
+    /// </remarks>
+    public static StatisticalFinding? IrregularRhythm(ActivityLog? today, ActivityLog? yesterday)
+    {
+        var day = FirstWith(today, yesterday, l => l.IrregularRhythmNotifications is > 0);
+        if (day?.IrregularRhythmNotifications is not { } notifications)
+            return null;
+
+        return new StatisticalFinding(
+            IrregularRhythmRule, AlertType.Rhythm,
+            $"On {Day(day.Date)} the wearer's own device raised {notifications} irregular-rhythm "
+            + "notification(s): its optical screening feature detected a rhythm consistent with "
+            + "atrial fibrillation and told the wearer so. This is the device's finding, not a "
+            + "CardiTrack one, and it is a screening result rather than a diagnosis.",
+            Serialize(new
+            {
+                rule = IrregularRhythmRule,
+                day = day.Date.ToString("O"),
+                irregularRhythmNotifications = notifications,
+            }),
+            NightOf: day.Date);
+    }
+
+    /// <summary>
+    /// An ECG the wearer recorded on their device came back classified as atrial fibrillation.
+    /// </summary>
+    /// <remarks>
+    /// Measured, like <see cref="IrregularRhythm"/>, and for the same reason takes no baseline.
+    /// Only the <c>ATRIAL_FIBRILLATION</c> classification reaches this column — the inconclusive
+    /// and unreadable ones mean the device declined to judge, and the ingestion layer never counts
+    /// them (see <c>GoogleHealthApiClient</c>).
+    /// <para>
+    /// Unlike the notification above, this one has a trace behind it a clinician can open on the
+    /// wearer's device. The observation says so, because it is the difference between "worth
+    /// mentioning" and "there is a recording to show someone".
+    /// </para>
+    /// </remarks>
+    public static StatisticalFinding? EcgAtrialFibrillation(ActivityLog? today, ActivityLog? yesterday)
+    {
+        var day = FirstWith(today, yesterday, l => l.EcgAtrialFibrillationReadings is > 0);
+        if (day?.EcgAtrialFibrillationReadings is not { } readings)
+            return null;
+
+        var taken = day.EcgReadings is { } total ? $" out of {total} taken that day" : string.Empty;
+
+        return new StatisticalFinding(
+            EcgAtrialFibrillationRule, AlertType.Rhythm,
+            $"On {Day(day.Date)} the wearer recorded {readings} ECG reading(s){taken} that their "
+            + "device classified as atrial fibrillation. The device made this classification, not "
+            + "CardiTrack. The trace itself is saved on the wearer's own device and can be shown "
+            + "to a clinician.",
+            Serialize(new
+            {
+                rule = EcgAtrialFibrillationRule,
+                day = day.Date.ToString("O"),
+                ecgAtrialFibrillationReadings = readings,
+                ecgReadings = day.EcgReadings,
+            }),
+            NightOf: day.Date);
+    }
+
+    /// <summary>
+    /// The fresher of two days that carries a signal, or null when neither does. Measured rules
+    /// use it because their event belongs to the day the device stamped it, not to the day the
+    /// pass happened to run.
+    /// </summary>
+    private static ActivityLog? FirstWith(
+        ActivityLog? today, ActivityLog? yesterday, Func<ActivityLog, bool> carriesSignal)
+    {
+        if (today is not null && carriesSignal(today))
+            return today;
+
+        return yesterday is not null && carriesSignal(yesterday) ? yesterday : null;
+    }
 
     private static string Serialize(object metrics) => JsonSerializer.Serialize(metrics);
 }

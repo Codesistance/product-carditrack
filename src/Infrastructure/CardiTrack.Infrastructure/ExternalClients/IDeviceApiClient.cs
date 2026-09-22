@@ -46,4 +46,21 @@ public interface IDeviceApiClient
     /// lookup and must never persist it — see docs/technical/data_protection_architecture.md.
     /// </summary>
     Task<ExerciseGpsPoint?> GetExerciseGpsPointAsync(string accessToken, string sessionId);
+
+    /// <summary>
+    /// The day's ECG readings and irregular-rhythm notifications, with the analysis windows and
+    /// per-beat intervals behind the latter. Requires <c>googlehealth.ecg.readonly</c> and
+    /// <c>googlehealth.irn.readonly</c>; callers check the connection's granted scopes before
+    /// calling, the same as any other optional data type, and implementations tolerate a 403 as a
+    /// backstop for the window where a stored scope list and the token's real grant disagree.
+    /// </summary>
+    Task<DeviceRhythmDay> GetRhythmDayAsync(string accessToken, DateOnly date);
+
+    /// <summary>
+    /// Whether the wearer has completed Irregular Rhythm Notifications setup and is currently
+    /// enrolled. Both null where the read is not permitted — which is the common case, since it
+    /// needs <c>googlehealth.irn.readonly</c>. Null is "we could not ask" and must stay distinct
+    /// from false, "we asked and they are not enrolled": only the second is worth telling a family.
+    /// </summary>
+    Task<(bool? Onboarded, bool? Enrolled)> GetIrnProfileAsync(string accessToken);
 }

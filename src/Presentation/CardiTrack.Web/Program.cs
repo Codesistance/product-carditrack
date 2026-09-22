@@ -65,6 +65,7 @@ try
     builder.Services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
     builder.Services.AddScoped<IMemberQuestionnaireRepository, MemberQuestionnaireRepository>();
     builder.Services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReadingRepository>();
+    builder.Services.AddScoped<IRhythmEpisodeRepository, RhythmEpisodeRepository>();
     builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
     builder.Services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
     builder.Services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();

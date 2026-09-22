@@ -22,6 +22,12 @@ public sealed record PartitionRetention
 
     /// <summary>Days of environmental readings to keep.</summary>
     public required int EnvironmentalDays { get; init; }
+
+    /// <summary>
+    /// Days of beat-level rhythm episodes to keep. The most granular cardiac data the product
+    /// stores, and deliberately not kept longer than the real-time assessments beside it.
+    /// </summary>
+    public required int RhythmDays { get; init; }
 }
 
 /// <summary>

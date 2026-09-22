@@ -761,6 +761,7 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 | Code | Detection | Copy | Priority | Silence | Wave |
 |---|---|---|---|---|---|
 | `SLEEP_SCOPE_MISSING` | `Scopes` lacks the sleep bundle | "Grant sleep access so CardiTrack can track {Name}'s sleep patterns and nightly trends." | High | Full | **R1** |
+| `IRN_NOT_ENROLLED` | A live connection reports `IrnEnrolled == false` | "Their watch can check for an irregular heart rhythm in the background, but that is switched off." | High | Full | **R1** |
 | `MEDICAL_NOTES_EMPTY` | `MedicalNotes` null/empty | "Conditions and medications make AI insights and the doctor-visit report far more specific. Encrypted at rest, visible only to your family." | Low | Full | **R1** |
 | `MEDICAL_NOTES_STALE` | Notes on file, last confirmed over 183 days ago | "It's been {months} months since {Name}'s health background was confirmed. Conditions and medications change." | Low | Full | **R1 — rule written, not yet registered** |
 | `EMERGENCY_CONTACT_MISSING` | `EmergencyContactName`/`Phone` null | "Add an emergency contact so the right person is on file when something looks wrong." | High | Full | R2 |
@@ -790,6 +791,18 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 
 **Copy must not promise what isn't built.** Two rules originally did:
 
+- `IRN_NOT_ENROLLED` is the only nudge that exists to correct a **reassuring** silence. Every
+  other one closes a gap the caregiver can see the shape of - a missing contact, a flat
+  battery, a device that stopped syncing. Here there is nothing to see: the wearer's watch
+  is not screening for atrial fibrillation, so it raises no notifications, so CardiTrack
+  raises no rhythm alerts, and the dashboard looks exactly as it would for someone whose
+  heart is behaving. **Null is not false**: `IrnEnrolled` is null whenever the IRN profile
+  could not be read, which is the permanent state for any connection without the scope -
+  today, all of them. Firing on null would tell a family their relative is not being
+  screened when the truth is that we cannot see whether they are. Only an explicit `false`
+  is a gap. Snooze is 30 days by default and 180 at most, longer than the other Unlock
+  nudges: the switch is on the wearer's own device, a caregiver may have to be with them to
+  reach it, and "not yet" can honestly be the answer for weeks.
 - `SLEEP_SCOPE_MISSING` promised *"unlock sleep-disruption alerts"* — at the time, `AlertType.Sleep`
   had no generator, so it was reworded to the tracking and trends that shipped then. `IrregularSleepRule`
   has since landed in `StatisticalAlertWorker`, so the copy may now promise sleep alerts.

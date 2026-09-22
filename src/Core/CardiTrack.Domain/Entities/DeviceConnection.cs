@@ -118,6 +118,33 @@ public class DeviceConnection : BaseEntity, ISoftDeletable
     /// </summary>
     public DateTime? BatteryUpdatedAt { get; set; }
 
+    /// <summary>
+    /// Whether the wearer has been through the Irregular Rhythm Notifications setup on their own
+    /// device. Null until the profile has been read once — which needs the
+    /// <c>googlehealth.irn.readonly</c> scope, so null is the permanent answer for a connection
+    /// that never granted it.
+    /// </summary>
+    /// <remarks>
+    /// Stored because the alternative is a silence nobody can read. A wearer who never finished IRN
+    /// setup produces no notifications at all, which looks exactly like a wearer whose heart is
+    /// behaving — and the second is the reading a family will take. These columns are what let the
+    /// product say "this is not being watched" rather than saying nothing.
+    /// <para>
+    /// Columns rather than <see cref="Metadata"/> keys for the same reason the battery pair are:
+    /// the reconnect path in <c>DeviceConnectionService</c> rewrites that blob wholesale.
+    /// </para>
+    /// </remarks>
+    public bool? IrnOnboarded { get; set; }
+
+    /// <summary>
+    /// Whether the wearer is currently enrolled in having their data screened for AFib. Distinct
+    /// from <see cref="IrnOnboarded"/>: someone can complete setup and later turn screening off.
+    /// </summary>
+    public bool? IrnEnrolled { get; set; }
+
+    /// <summary>When the IRN profile above was last read. Null means never.</summary>
+    public DateTime? IrnProfileUpdatedAt { get; set; }
+
     // JSON: { "model": "Charge 6", "version": "1.0", "firmwareVersion": "2.3.1" }
     public string? Metadata { get; set; }
 

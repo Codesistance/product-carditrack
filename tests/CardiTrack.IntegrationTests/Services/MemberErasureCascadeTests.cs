@@ -101,6 +101,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
         Assert.Equal(0, await db.RealtimeAssessments.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.DigestEntries.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.EnvironmentalReadings.CountAsync(x => x.CardiMemberId == memberId));
+        Assert.Equal(0, await db.RhythmEpisodes.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.GranularMetricHours.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MetricRollupsHourly.CountAsync(x => x.CardiMemberId == memberId));
         Assert.Equal(0, await db.MemberQuestionnaires.CountAsync(x => x.CardiMemberId == memberId));
@@ -249,6 +250,7 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "RealtimeAssessments",
             "DigestEntries",
             "EnvironmentalReadings",
+            "RhythmEpisodes",
             "GranularMetricHours",
             "MetricRollupsHourly",
             "DeviceActivityLogs",
@@ -607,6 +609,23 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             DeviceConnectionId = connectionId,
             SessionStartUtc = DateTime.UtcNow.AddHours(-2),
             SessionEndUtc = DateTime.UtcNow.AddHours(-1),
+        });
+        db.RhythmEpisodes.Add(new RhythmEpisode
+        {
+            CardiMemberId = member.Id,
+            DeviceConnectionId = connectionId,
+            WindowStartUtc = DateTime.UtcNow.AddHours(-3),
+            WindowEndUtc = DateTime.UtcNow.AddHours(-3).AddMinutes(5),
+            NotificationStartUtc = DateTime.UtcNow.AddHours(-3),
+            Positive = true,
+            BeatCount = 3,
+            RrMilliseconds = [800, 760, 820],
+            OffsetMillisFromStart = [0, 800, 1560],
+            MeanRrMs = 793,
+            MinRrMs = 760,
+            MaxRrMs = 820,
+            RmssdMs = 51,
+            IngestedAtUtc = DateTime.UtcNow,
         });
         db.DeviceHistoryRepulls.Add(new DeviceHistoryRepull
         {

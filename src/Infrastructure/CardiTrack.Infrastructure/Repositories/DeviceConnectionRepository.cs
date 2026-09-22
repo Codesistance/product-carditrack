@@ -294,6 +294,19 @@ public class DeviceConnectionRepository : Repository<DeviceConnection>, IDeviceC
                 .SetProperty(dc => dc.BatteryUpdatedAt, readAtUtc));
     }
 
+    public async Task UpdateIrnProfileAsync(
+        Guid id, bool? onboarded, bool? enrolled, DateTime readAtUtc)
+    {
+        await _dbSet
+            .Where(dc => dc.Id == id
+                         && dc.IsActive
+                         && dc.ConnectionStatus != ConnectionStatus.Disconnected)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(dc => dc.IrnOnboarded, onboarded)
+                .SetProperty(dc => dc.IrnEnrolled, enrolled)
+                .SetProperty(dc => dc.IrnProfileUpdatedAt, readAtUtc));
+    }
+
     /// <summary>
     /// The eligibility filter is deliberately identical to <see cref="GetDueForSyncAsync"/> minus
     /// due-ness: a webhook notification is an invitation to sync sooner, never a way around the

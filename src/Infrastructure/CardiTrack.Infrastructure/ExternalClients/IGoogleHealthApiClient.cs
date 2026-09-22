@@ -18,4 +18,17 @@ public interface IGoogleHealthApiClient
         string accessToken,
         DateOnly date,
         IReadOnlyCollection<(DateTime Start, DateTime End)>? sleepWindows = null);
+
+    /// <summary>
+    /// The day's ECG readings and irregular-rhythm notifications, with the analysis windows and
+    /// beats behind the latter. Call only for a connection whose granted scopes include the two
+    /// rhythm scopes — see <see cref="DeviceRhythmDay"/> for why the gate is the caller's.
+    /// </summary>
+    Task<DeviceRhythmDay> GetRhythmDayAsync(string accessToken, DateOnly date);
+
+    /// <summary>
+    /// The wearer's Irregular Rhythm Notifications onboarding and enrolment status, or nulls where
+    /// the read is not permitted.
+    /// </summary>
+    Task<(bool? Onboarded, bool? Enrolled)> GetIrnProfileAsync(string accessToken);
 }

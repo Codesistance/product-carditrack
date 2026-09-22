@@ -124,6 +124,15 @@ device_pull_params = [
       # Paired-device telemetry (battery level/status). Optional: a connection granted before this
       # scope shipped keeps syncing and simply reports no battery until the wearer reconnects.
       "https://www.googleapis.com/auth/googlehealth.settings.readonly",
+      # Rhythm: ECG classifications and irregular-rhythm (AFib) notifications. Both are
+      # RESTRICTED scopes Google classes as SaMD features. Safe here because the dev project is
+      # never submitted for verification (issue #39) and runs in Testing mode, where a
+      # restricted scope is grantable by an allow-listed tester. They are deliberately ABSENT
+      # from prod.tfvars: requesting an unverified restricted scope there would make Google
+      # refuse the whole consent, taking the four working scopes down with it. Add them to prod
+      # only once #39 has passed for both.
+      "https://www.googleapis.com/auth/googlehealth.ecg.readonly",
+      "https://www.googleapis.com/auth/googlehealth.irn.readonly",
     ]
     additional_authorization_params    = { access_type = "offline" } # Without it Google issues no refresh token
     first_consent_authorization_params = { prompt = "consent" }      # First grant only — re-consent is how a refresh token is re-issued

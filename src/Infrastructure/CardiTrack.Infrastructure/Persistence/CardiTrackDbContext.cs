@@ -36,6 +36,13 @@ public class CardiTrackDbContext : DbContext
     public DbSet<MemberQuestionnaire> MemberQuestionnaires => Set<MemberQuestionnaire>();
     public DbSet<EnvironmentalReading> EnvironmentalReadings => Set<EnvironmentalReading>();
 
+    /// <summary>
+    /// Beat-level detail for the analysis windows behind an irregular-rhythm notification. The
+    /// only sub-minute cardiac data in the schema — see <see cref="RhythmEpisode"/> for why it is
+    /// evidence about a finding already made rather than a substrate for making one.
+    /// </summary>
+    public DbSet<RhythmEpisode> RhythmEpisodes => Set<RhythmEpisode>();
+
     // Business & Compliance
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<Device> Devices => Set<Device>();

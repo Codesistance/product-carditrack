@@ -22,12 +22,32 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         _logger = logger;
     }
 
+    /// <summary>
+    /// How far behind today this method reaches when creating partitions, regardless of
+    /// <c>daysAhead</c>. Sized to clear the widest backward write any caller of
+    /// <see cref="TimeSeriesPartitionService"/>'s tables can make without first calling
+    /// <see cref="EnsurePartitionsForRangeAsync"/> itself: <c>AuditSyncAsync</c>'s repair window
+    /// reaches <c>AuditLookbackDays</c> back (14 by default) through the same <c>PullWindowAsync</c>
+    /// that writes <c>RhythmEpisodes</c> on every routine sync, and a civil day near a UTC boundary
+    /// can shift a window's partition key by one further day at either edge. There is no live link
+    /// to <c>DeviceProviderSettings</c> here on purpose -- this class is deliberately DDL arithmetic
+    /// with no domain coupling -- so raising <c>AuditLookbackDays</c> or <c>SyncLookbackDays</c>
+    /// past what 21 days covers needs a matching raise of this constant; nothing enforces that
+    /// automatically.
+    /// </summary>
+    private const int MinBackfillDays = 21;
+
     public async Task EnsureUpcomingPartitionsAsync(int daysAhead, CancellationToken ct = default)
     {
-        // From yesterday, not today: a sync that starts just before UTC midnight can write into
-        // the day that has just ended, and the partition for it must still exist.
+        // At least MinBackfillDays behind today, not just yesterday: a sync that starts just
+        // before UTC midnight can write into the day that has just ended (hence never less than
+        // one day back), but the audit pass and a fresh connection's repair window can both reach
+        // far further back than that on the very first sweep after this table exists -- see
+        // MinBackfillDays for why 21 is the floor. CREATE TABLE IF NOT EXISTS makes the extra
+        // reach free once steady-state coverage has accumulated; it only matters during a cold
+        // start.
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var firstDay = today.AddDays(-1);
+        var firstDay = today.AddDays(-Math.Max(1, MinBackfillDays));
         var lastDay = today.AddDays(daysAhead);
 
         for (var day = firstDay; day <= lastDay; day = day.AddDays(1))
@@ -35,6 +55,7 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
             await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateDailyPartitionSql(day), ct);
             await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateRealtimePartitionSql(day), ct);
             await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateEnvironmentalPartitionSql(day), ct);
+            await _context.Database.ExecuteSqlRawAsync(TimeSeriesPartitions.CreateRhythmPartitionSql(day), ct);
         }
 
         var firstMonth = new DateOnly(firstDay.Year, firstDay.Month, 1);
@@ -82,6 +103,9 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         if (retention.EnvironmentalDays <= 0)
             throw new ArgumentOutOfRangeException(
                 nameof(retention), retention.EnvironmentalDays, "EnvironmentalDays retention must be positive.");
+        if (retention.RhythmDays <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(retention), retention.RhythmDays, "RhythmDays retention must be positive.");
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -114,6 +138,16 @@ public class TimeSeriesPartitionService : ITimeSeriesPartitionService
         {
             if (TimeSeriesPartitions.TryParseEnvironmentalPartition(name, out var day)
                 && day.AddDays(1) <= environmentalCutoff)
+            {
+                await DropAsync(name, ct);
+            }
+        }
+
+        var rhythmCutoff = today.AddDays(-retention.RhythmDays);
+        foreach (var name in await ChildPartitionsAsync(TimeSeriesPartitions.RhythmParent, ct))
+        {
+            if (TimeSeriesPartitions.TryParseRhythmPartition(name, out var day)
+                && day.AddDays(1) <= rhythmCutoff)
             {
                 await DropAsync(name, ct);
             }

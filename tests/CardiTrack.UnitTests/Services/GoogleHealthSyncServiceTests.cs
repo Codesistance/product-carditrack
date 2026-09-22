@@ -983,4 +983,68 @@ public class DeviceSyncServiceTests
         await _deviceConnections.Received(1)
             .MarkSyncSucceededAsync(_fitbitConnection.Id, Arg.Any<DateTime>());
     }
+
+    // ---------------------------------------------------------------- rhythm scope gating
+
+    private const string EcgOnlyScope =
+        """["activity_and_fitness","health_metrics_and_measurements","sleep","ecg"]""";
+
+    private const string IrnOnlyScope =
+        """["activity_and_fitness","health_metrics_and_measurements","sleep","irn"]""";
+
+    private void SetupDefaultRhythmApiResponse()
+    {
+        _deviceApi.GetRhythmDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>())
+            .Returns(DeviceRhythmDay.None);
+        _deviceApi.GetIrnProfileAsync(Arg.Any<string>())
+            .Returns(((bool?)null, (bool?)null));
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_ReadsTheCombinedRhythmDay_ForAnEcgOnlyConnection()
+    {
+        // GetRhythmDayAsync fetches ECG and IRN together and each half tolerates its own absence,
+        // so a connection holding either scope alone should still trigger it -- that is what the
+        // broad GrantsRhythm gate is for.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        SetupDefaultRhythmApiResponse();
+        _fitbitConnection.Scopes = EcgOnlyScope;
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.Received(WindowDays(LookbackDays))
+            .GetRhythmDayAsync(Arg.Any<string>(), Arg.Any<DateOnly>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_NeverAsksForTheIrnProfile_OnAnEcgOnlyConnection()
+    {
+        // GetIrnProfileAsync is a single IRN-specific request, unlike the combined rhythm-day
+        // read. Gating it on the broad rhythm check would send it every pull from a connection
+        // that never granted IRN, each one a predictable 403 spent and logged for nothing.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        SetupDefaultRhythmApiResponse();
+        _fitbitConnection.Scopes = EcgOnlyScope;
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.DidNotReceive().GetIrnProfileAsync(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task SyncCardiMemberAsync_AsksForTheIrnProfileOnce_ForAnIrnOnlyConnection()
+    {
+        // Once per sync, not once per day in the lookback window: the profile is account state,
+        // not a daily reading.
+        SetupSuccessfulTokenRefresh();
+        SetupDefaultApiResponse();
+        SetupDefaultRhythmApiResponse();
+        _fitbitConnection.Scopes = IrnOnlyScope;
+
+        await CreateSut().SyncCardiMemberAsync(_fitbitConnection);
+
+        await _deviceApi.Received(1).GetIrnProfileAsync(Arg.Any<string>());
+    }
 }

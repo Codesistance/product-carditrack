@@ -75,6 +75,7 @@ Table names are **not** always the entity name — the questionnaire entity live
 | 7 | `RealtimeAssessments` | Partition-dropped at 90 days, but do not wait for it |
 | 8 | `DigestEntries` | Digests **and CardiJournal entries** (Daybook, Weekbook) — partition-dropped at **7 months** |
 | 9 | `EnvironmentalReadings` | Feature is inert, so normally empty — check anyway |
+| 9a | `RhythmEpisodes` | Beat-level interbeat intervals behind an irregular-rhythm notification. Partition-dropped at 90 days, but do not wait for it: this is the most identifying physiological record held, and it has no foreign key, so nothing cascades it. Normally empty until the rhythm scopes are granted — check anyway |
 | 10 | `GranularMetricHours` | Minute-grain; partition-dropped at 90 days |
 | 11 | `MetricRollupsHourly` | Hour-grain; partition-dropped at 13 months |
 | 12 | `DeviceActivityLogs` | **Raw per-device rows.** Easy to miss — `ActivityLogs` is the merged view, this is the source |

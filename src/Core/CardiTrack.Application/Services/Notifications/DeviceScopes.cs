@@ -25,6 +25,18 @@ public static class DeviceScopes
     /// </summary>
     public const string Settings = "settings";
 
+    /// <summary>
+    /// Wearer-initiated ECG readings. A restricted scope Google classes as an SaMD feature, so it
+    /// is granted only where the project has passed verification for it.
+    /// </summary>
+    public const string Ecg = "ecg";
+
+    /// <summary>
+    /// Irregular-rhythm notifications — the device's own passive AFib screening. Restricted and
+    /// SaMD-classed like <see cref="Ecg"/>, and requested alongside it.
+    /// </summary>
+    public const string Irn = "irn";
+
     public static string Normalise(string? scope)
     {
         if (string.IsNullOrWhiteSpace(scope))
@@ -63,4 +75,29 @@ public static class DeviceScopes
     /// </summary>
     public static bool GrantsSettings(IEnumerable<string> scopes) =>
         scopes.Any(s => Normalise(s) == Settings);
+
+    /// <summary>
+    /// Whether the granted set covers either rhythm data type. Both are restricted scopes Google
+    /// classes as SaMD features, so a connection carries them only where the wearer authorised
+    /// after they shipped <em>and</em> the project passed verification for them — which makes
+    /// false the expected answer for most connections rather than a fault.
+    /// </summary>
+    /// <remarks>
+    /// One gate for the pair rather than two, because the read behind it fetches both and each
+    /// half tolerates its own absence: a wearer who granted ECG but not IRN gets ECG counts and
+    /// nulls for the rest, which is exactly what <c>DeviceRhythmDay</c>'s null-versus-zero rule
+    /// exists for. Two gates would save a request only for the wearer who granted exactly one.
+    /// </remarks>
+    public static bool GrantsRhythm(IEnumerable<string> scopes) =>
+        scopes.Any(s => Normalise(s) is Ecg or Irn);
+
+    /// <summary>
+    /// Whether the granted set covers IRN specifically -- narrower than
+    /// <see cref="GrantsRhythm"/>, which also admits an ECG-only grant. Needed wherever a caller
+    /// reads <c>IrnEnrolled</c>/<c>IrnOnboarded</c>: those columns are written only when this scope
+    /// was read, but they are never cleared when a reconnect narrows the granted set, so a stale
+    /// value must not be trusted without checking the connection still carries the scope today.
+    /// </summary>
+    public static bool GrantsIrn(IEnumerable<string> scopes) =>
+        scopes.Any(s => Normalise(s) == Irn);
 }

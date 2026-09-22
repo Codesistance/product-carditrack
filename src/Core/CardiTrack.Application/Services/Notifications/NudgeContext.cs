@@ -145,6 +145,25 @@ public sealed record NudgeConnectionSnapshot
     /// timestamp cannot be distinguished from one taken four days and one charge ago.
     /// </summary>
     public DateTime? BatteryUpdatedAt { get; init; }
+
+    /// <summary>
+    /// Whether the wearer is enrolled in their device's own irregular-rhythm (AFib) screening.
+    /// Null means the profile could not be read — the permanent answer for a connection without
+    /// the IRN scope — and a rule must treat that as "unknown", never as "not enrolled".
+    /// </summary>
+    /// <remarks>
+    /// Device state, not health data: it says what the hardware is configured to do, not anything
+    /// about the wearer's heart, which is why it belongs in a context that deliberately carries no
+    /// direct identifiers.
+    /// </remarks>
+    public bool? IrnEnrolled { get; init; }
+
+    /// <summary>
+    /// Whether the wearer completed IRN setup on their device. Distinct from
+    /// <see cref="IrnEnrolled"/>: someone can finish setup and later turn screening off, and the
+    /// two cases are worth different words.
+    /// </summary>
+    public bool? IrnOnboarded { get; init; }
 }
 
 public sealed record NudgeMuteSnapshot
