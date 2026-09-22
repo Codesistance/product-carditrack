@@ -406,9 +406,11 @@ Safety always override", and it is deliberate. The caregiver who added a member 
 about them; a second caregiver is being escalated *to*, often by a family they joined rather than
 started, so their own preference decides — `NotificationPreference.EscalatedAlertsPierceQuietHours`,
 default false. The copy is **held until their quiet hours end, not dropped**: it is waiting when
-they wake, the rung is still spent on time, and the alert still reaches
-`UNDELIVERED_CRITICAL` at t+900s if nobody answers. Silently pausing the ladder until 06:00 would
-report cover that was never there.
+they wake, the **original delivery's** rung is still spent on time, and the original still reaches
+`UNDELIVERED_CRITICAL` at *its* t+900s if nobody answers. Silently pausing that ladder until 06:00
+would report cover that was never there. The held copy's own 120/300/900s clock starts when it is
+actually sent, not when it was escalated — a copy nobody has received yet has nothing to
+escalate, and starting it earlier would page ops about a phone that had not yet buzzed.
 
 The cost of that default is real and is exactly why accepting an invitation asks the question rather
 than letting the default answer it: a family where everybody holds has no night cover, and most
