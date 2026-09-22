@@ -45,6 +45,7 @@ reader knows it was weighed, not missed.
 | D-16 | **The family that owns the CardiMember governs the tier** | The only answer defined for a guest, who has no organization of their own (D-12), and it keeps payer and benefit attached | Viewer's own plan; higher-of-the-two |
 | D-17 | **On trial expiry or payment failure, another member can take over as Admin and pay** | Ties the lapse to the succession rule already in D-13, so a family can keep watching by changing who pays rather than losing monitoring | Degrade the whole family together |
 | D-18 | **A fifth bottom tab, Family, in the third slot** | The family is now a first-class thing (D-9) with its own state — pending, member, admin — and needs a home that is not buried under Settings. Third slot is where the original Family stub sat before Journal took it | Family under Settings; family under Member Details only |
+| D-19 | **The family switcher is a drawer, opened by tapping the family name in the Family tab's header (or re-tapping the tab), and it shows each family's open-alert state** | A switcher that only switches is bookkeeping; one that shows where the alerts are is a reason to open it. The drawer is also the one place a guest's pending request sits beside the families they are in | A chip row at the top of the tab (previous revision) |
 
 **Standing assumption from D-2 + D-3, recorded because it is not free:** one builder absorbing the
 whole of this — ~3.9 person-months once D-9 to D-18 are counted — moves the R1 beta date by roughly
@@ -155,11 +156,12 @@ see [apm_setup_runbook.md](../technical/apm_setup_runbook.md).
 - **Wearer-approved caregiver admission** — **prototype first, not in this slice.** See OQ-3; it is
   the strongest answer to the consent risk but needs per-metric consent recording, which is
   ⬜ not started.
-- **A full family switcher across the whole shell** — **out.** D-18 gives the Family tab a chip
-  row to choose which family the tab is showing; that is the whole of the switcher for R1. The
-  Dashboard, Alerts and Journal tabs keep showing every member the user has a grant for, in one
-  list, regardless of which family owns them — which is what the link-based access path already
-  does. A shell-wide "current family" concept is not being introduced.
+- **A shell-wide "current family" context** — **out, pending OQ-16.** D-19's drawer chooses
+  which family the Family tab shows; that is the whole of the switcher for R1. The Dashboard,
+  Alerts and Journal tabs keep showing every member the user has a grant for, in one list,
+  regardless of which family owns them — which is what the link-based access path already does.
+  If OQ-16 decides the drawer should switch the whole app, that is a larger change and a new
+  decision, not a widening of this one.
 - **Guest-to-owner upgrades beyond the lazy path** — **out.** A guest who adds their first
   CardiMember gets a family and a trial (D-12). Anything more elaborate (claiming a family,
   merging two families, moving a member between families) is not in scope and has no agreed
@@ -433,18 +435,29 @@ defensible precisely because it is not a notes feature.
     counts, plus "Share Family ID"
   - **Given** I am a Member of the selected family **Then** I see its Admin, what I can see, and
     everyone in it — no queue, no Family ID to share, no plan detail — and I can leave it
-  - **Given** I belong to more than one family, or can start one **Then** a chip row at the top
-    selects which family the tab shows (D-9); it is absent for a person in exactly one family
+  - **Given** the Family tab **When** I tap the family name in its header, or re-tap the tab while
+    on it **Then** a drawer lists every family I belong to, my role in each, and each family's
+    open-alert state — red or orange per the severity contract, green when quiet — with families
+    carrying open alerts sorted first (D-19). Choosing one switches the tab to it
+  - **Given** I have a join request pending **Then** it appears in the same drawer as a "Waiting"
+    row, so my whole family situation is one list; "Start a family" and "Join with a Family ID"
+    sit at the drawer's foot
+  - **Given** I am in exactly one family and have no request pending **Then** the drawer still
+    opens and shows that family plus the two actions — the affordance does not disappear, so the
+    way to a second family is always where it was
   - **[Edge]** **Given** I have no family — a request pending, or nothing at all **Then** the tab
     shows the pending request with its age and a withdraw action, "Start a family" with the exact
     sentence that the trial begins when the first member is added (D-12), and a Family ID field
   - **[Edge]** **Given** a request I sent is declined or expires **Then** the pending card says so
     and offers to ask again, and nothing about the family is revealed that was not revealed before
   - **[Edge]** **Given** Dashboard, Alerts and Journal **Then** they are unchanged by which family
-    chip is selected — the chip scopes only this tab
+    the drawer selects — the selection scopes only this tab (see OQ-16 for the alternative)
+  - **[Edge]** **Given** a family shows an open alert in the drawer **When** I choose it **Then** the
+    Family tab lands with that member's row carrying the alert pill, one tap from alert detail —
+    the drawer must not show an alert it then makes hard to reach
 - **Screens:** no Figma M1 frame — **needs design sync** (three states drawn in the design canvas;
   the bar itself is a fourth sync item, since M1's bar matches neither the shipped four nor this five)
-- **API:** existing member and grant reads; new — `GET /api/v1/families/mine`
+- **API:** existing member and grant reads; new — `GET /api/v1/families/mine`, returning per family: role, members watched, and an open-alert summary (count, highest severity, most recent) so the drawer needs one call
 - **Wave:** R1 · **Plan gate:** none
 
 ## 6. Open Questions
@@ -463,6 +476,7 @@ defensible precisely because it is not a notes feature.
 | OQ-13 | Does the erasure path correlate duplicate CardiMembers by `HealthUserId` before reporting completion? Without it, D-15 leaves a half-honoured erasure | Eng + Compliance | D-15 being safe to ship | Before D4 |
 | OQ-14 | Does Google count one wearer authorising from two families as one connected wearer or two, against the 100-wearer cap? | Eng/Ops | Whether D-15 halves the ceiling | Before beta grows |
 | OQ-15 | Two families alerting on one episode: does either learn the other exists, or is duplicate contact accepted? | Product | Story 4.3 fan-out scope | Before D3 |
+| OQ-16 | Does choosing a family in the drawer scope only the Family tab (as specified) or the whole shell — Dashboard, Alerts, Journal too? Showing open alerts per family makes the second reading tempting; it is also a much larger change, since nothing today has a "current family" | Product | B4 scope | Before B4 |
 | OQ-7 | Does Google restricted-scope verification change the reach ceiling? Still ⬜ not started as of the last matrix read | Eng/Ops | Reach in §9 | R1→R2 gate |
 
 ## 7. Risk & Dependency Check
@@ -521,7 +535,7 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | B1 | Correctness | `User.Role` Admin/Member enforcement, `CANNOT_DEMOTE_LAST_ADMIN` | 0.25 pm | — |
 | B2 | Correctness | `MaxUsers` + `MaxCardiMembers` enforcement, one pass | 0.15 pm | — |
 | B3 | Correctness | Caregiver list, removal, night-coverage line | 0.25 pm | — |
-| B4 | Correctness | Family tab: three states, chip switcher, bar reshuffle to five (D-18) | 0.3 pm | — |
+| B4 | Correctness | Family tab: three states, switcher drawer with per-family alert state, bar reshuffle to five (D-18/19) | 0.35 pm | — |
 | D1 | Family | `UserOrganization` join table; `User.OrganizationId` retired into it; active-org resolution in `UserContextMiddleware`; the nine API references corrected (D-9) | 0.5 pm | — |
 | D2 | Family | Family ID (short, human-typeable, non-sequential) + deep link that auto-fills it; join-request entity; rate limiting and a non-confirming response on both paths (D-11) | 0.3 pm | — |
 | D3 | Family | Approval queue with member picker and role (D-10) | 0.3 pm | — |
@@ -530,7 +544,7 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | D6 | Family | Erasure correlates duplicate members by `HealthUserId` and reports uncorrelated records honestly (D-15, OQ-13) | 0.2 pm | — |
 | C | Docs | Correct `family.md` (drop `viewer`), DPIA lines for `CaregiverInvites`, `UserOrganization` and join requests, notification-engine §6.3 | 0.15 pm | — |
 
-**Total ≈ 3.9 person-months** — 2.0 for the caregiver slice and tab, 1.75 for the family model
+**Total ≈ 3.95 person-months** — 2.05 for the caregiver slice and tab, 1.75 for the family model
 (D-9…D-17), 0.15 docs. For one builder that is roughly sixteen weeks.
 
 **Two cut lines, not one.** After **A4** the safety gap is closed — that is the ~1.1 pm that
