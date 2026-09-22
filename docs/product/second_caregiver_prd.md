@@ -44,10 +44,11 @@ reader knows it was weighed, not missed.
 | D-15 | **A CardiMember is unique as created — two families watching the same person hold two independent records** | No shared ownership, no shared data stream by reference, no change to `CardiMember.OrganizationId`, and each family's data stays genuinely isolated | A single shared member record |
 | D-16 | **The family that owns the CardiMember governs the tier** | The only answer defined for a guest, who has no organization of their own (D-12), and it keeps payer and benefit attached | Viewer's own plan; higher-of-the-two |
 | D-17 | **On trial expiry or payment failure, another member can take over as Admin and pay** | Ties the lapse to the succession rule already in D-13, so a family can keep watching by changing who pays rather than losing monitoring | Degrade the whole family together |
+| D-18 | **A fifth bottom tab, Family, in the third slot** | The family is now a first-class thing (D-9) with its own state — pending, member, admin — and needs a home that is not buried under Settings. Third slot is where the original Family stub sat before Journal took it | Family under Settings; family under Member Details only |
 
 **Standing assumption from D-2 + D-3, recorded because it is not free:** one builder absorbing the
-whole of this — ~3.6 person-months once D-9 to D-17 are counted — moves the R1 beta date by roughly
-fifteen weeks. The date was not chosen as the thing to give, so it gives implicitly, and it has now
+whole of this — ~3.9 person-months once D-9 to D-18 are counted — moves the R1 beta date by roughly
+sixteen weeks. The date was not chosen as the thing to give, so it gives implicitly, and it has now
 given twice. If that is not acceptable, the lever is D-2: Phase A (~1.1 pm) closes the safety gap on
 its own, and Phases B and D can follow in R2 without reopening anything.
 
@@ -154,11 +155,11 @@ see [apm_setup_runbook.md](../technical/apm_setup_runbook.md).
 - **Wearer-approved caregiver admission** — **prototype first, not in this slice.** See OQ-3; it is
   the strongest answer to the consent risk but needs per-metric consent recording, which is
   ⬜ not started.
-- **Switching the "active" family in the UI** — **out of this PRD.** D-9 makes multi-family
-  membership real in the data model; a family switcher on the mobile shell is a navigation design
-  problem with no Figma frame and no agreed shape. Until it exists, a user sees every member they
-  have a grant for, in one list, regardless of which family owns them — which is what the
-  link-based access path already does.
+- **A full family switcher across the whole shell** — **out.** D-18 gives the Family tab a chip
+  row to choose which family the tab is showing; that is the whole of the switcher for R1. The
+  Dashboard, Alerts and Journal tabs keep showing every member the user has a grant for, in one
+  list, regardless of which family owns them — which is what the link-based access path already
+  does. A shell-wide "current family" concept is not being introduced.
 - **Guest-to-owner upgrades beyond the lazy path** — **out.** A guest who adds their first
   CardiMember gets a family and a trial (D-12). Anything more elaborate (claiming a family,
   merging two families, moving a member between families) is not in scope and has no agreed
@@ -420,6 +421,32 @@ defensible precisely because it is not a notes feature.
 - **API:** new — `PUT /api/v1/families/{familyId}/admin`, `DELETE /api/v1/families/{familyId}/members/me`
 - **Wave:** R1 · **Plan gate:** none
 
+**Story 4.9: The Family tab** _(P0 — Must Have)_
+- **As a** caregiver
+- **I want to** see my family — or families — in one place
+- **So that** joining, approving, and knowing who watches whom is not buried under Settings
+- **Acceptance Criteria:**
+  - **Given** the bottom bar **Then** it reads Dashboard · Alerts · **Family** · Journal · Settings
+    (D-18); five is the platform ceiling and this is the last tab it can take
+  - **Given** I am the Admin of the selected family **Then** I see its Family ID, that I pay for
+    it, join requests waiting on me, everyone in it, and the members we watch with their caregiver
+    counts, plus "Share Family ID"
+  - **Given** I am a Member of the selected family **Then** I see its Admin, what I can see, and
+    everyone in it — no queue, no Family ID to share, no plan detail — and I can leave it
+  - **Given** I belong to more than one family, or can start one **Then** a chip row at the top
+    selects which family the tab shows (D-9); it is absent for a person in exactly one family
+  - **[Edge]** **Given** I have no family — a request pending, or nothing at all **Then** the tab
+    shows the pending request with its age and a withdraw action, "Start a family" with the exact
+    sentence that the trial begins when the first member is added (D-12), and a Family ID field
+  - **[Edge]** **Given** a request I sent is declined or expires **Then** the pending card says so
+    and offers to ask again, and nothing about the family is revealed that was not revealed before
+  - **[Edge]** **Given** Dashboard, Alerts and Journal **Then** they are unchanged by which family
+    chip is selected — the chip scopes only this tab
+- **Screens:** no Figma M1 frame — **needs design sync** (three states drawn in the design canvas;
+  the bar itself is a fourth sync item, since M1's bar matches neither the shipped four nor this five)
+- **API:** existing member and grant reads; new — `GET /api/v1/families/mine`
+- **Wave:** R1 · **Plan gate:** none
+
 ## 6. Open Questions
 
 | # | Question | Owner | Blocks | Needed by |
@@ -494,6 +521,7 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | B1 | Correctness | `User.Role` Admin/Member enforcement, `CANNOT_DEMOTE_LAST_ADMIN` | 0.25 pm | — |
 | B2 | Correctness | `MaxUsers` + `MaxCardiMembers` enforcement, one pass | 0.15 pm | — |
 | B3 | Correctness | Caregiver list, removal, night-coverage line | 0.25 pm | — |
+| B4 | Correctness | Family tab: three states, chip switcher, bar reshuffle to five (D-18) | 0.3 pm | — |
 | D1 | Family | `UserOrganization` join table; `User.OrganizationId` retired into it; active-org resolution in `UserContextMiddleware`; the nine API references corrected (D-9) | 0.5 pm | — |
 | D2 | Family | Family ID (short, human-typeable, non-sequential) + deep link that auto-fills it; join-request entity; rate limiting and a non-confirming response on both paths (D-11) | 0.3 pm | — |
 | D3 | Family | Approval queue with member picker and role (D-10) | 0.3 pm | — |
@@ -502,11 +530,11 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | D6 | Family | Erasure correlates duplicate members by `HealthUserId` and reports uncorrelated records honestly (D-15, OQ-13) | 0.2 pm | — |
 | C | Docs | Correct `family.md` (drop `viewer`), DPIA lines for `CaregiverInvites`, `UserOrganization` and join requests, notification-engine §6.3 | 0.15 pm | — |
 
-**Total ≈ 3.6 person-months** — 1.7 for the caregiver slice, 1.75 for the family model
-(D-9…D-17), 0.15 docs. For one builder that is roughly fifteen weeks.
+**Total ≈ 3.9 person-months** — 2.0 for the caregiver slice and tab, 1.75 for the family model
+(D-9…D-17), 0.15 docs. For one builder that is roughly sixteen weeks.
 
 **Two cut lines, not one.** After **A4** the safety gap is closed — that is the ~1.1 pm that
-justifies being in R1 at all. After **B3** the caregiver slice is complete and coherent without any
+justifies being in R1 at all. After **B4** the caregiver slice and its tab are complete and coherent without any
 of the family-model work. Phase D is a separate product decision that happens to have been taken at
 the same time; it can move to R2 whole without leaving anything half-built, because a caregiver
 invited by link needs none of it.
@@ -523,8 +551,11 @@ empty table. This is the same argument that decided roles in D-5.
   [family.md](../execution/backend/api/family.md), which must be corrected: it specifies org-scoped
   `/api/v1/family-members` with a `viewer` role that does not exist in the `UserRole` enum. The
   implemented primitive is the per-member `UserCardiMember` link, and this PRD keeps it.
-- **Mobile:** new "Who can see <member>" screen off member detail, plus invite sheet and accept
-  flow. **No Figma M1 frames — needs design sync** (adds to the seven-screen backlog).
+- **Mobile:** new **Family** tab (three states + chip switcher, D-18), "Who can see <member>" off
+  the tab and off member detail, invite sheet, approval sheet, accept flow with the forced choice,
+  succession and lapse screens, and the attribution banner + travel ladder on `AlertDetailPage`.
+  **No Figma M1 frames — needs design sync.** Fourteen states are drawn in the design canvas
+  (`Family Sharing Screens`); the five-tab bar is itself a sync item.
 - **Web:** not planned this wave (web is still template-stage).
 - **Worker:** no new job. Fan-out rides the existing escalation sweep; invite expiry is a timestamp
   check, not a sweep. Any future expired-invite cleanup belongs in `CardiTrack.Worker` only.
