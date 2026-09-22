@@ -24,6 +24,7 @@ public class OnboardingController : BaseApiController
     private readonly IOnboardingService _onboardingService;
     private readonly IValidator<CreateOrganizationRequest> _organizationValidator;
     private readonly IValidator<CreateCardiMemberRequest> _cardiMemberValidator;
+    private readonly IGuestFamilyProvisioner _guestFamilies;
 
     /// <summary>
     /// Matches the column. A GUID in any of its spellings fits comfortably; anything longer is a
@@ -39,7 +40,8 @@ public class OnboardingController : BaseApiController
         ICardiMemberService cardiMemberService,
         IOnboardingService onboardingService,
         IValidator<CreateOrganizationRequest> organizationValidator,
-        IValidator<CreateCardiMemberRequest> cardiMemberValidator)
+        IValidator<CreateCardiMemberRequest> cardiMemberValidator,
+        IGuestFamilyProvisioner guestFamilies)
         : base(userContext, logger)
     {
         _organizationService = organizationService;
@@ -48,6 +50,7 @@ public class OnboardingController : BaseApiController
         _onboardingService = onboardingService;
         _organizationValidator = organizationValidator;
         _cardiMemberValidator = cardiMemberValidator;
+        _guestFamilies = guestFamilies;
     }
 
     /// <summary>
@@ -63,13 +66,24 @@ public class OnboardingController : BaseApiController
     public async Task<ActionResult<ApiResponse<OnboardingSetupResponse>>> Setup(
         [FromBody] OnboardingSetupRequest request)
     {
-        var validation = await _organizationValidator.ValidateAsync(request.Organization);
-        if (!validation.IsValid)
-            return ValidationFailed(validation);
+        // No organization in the body is the guest path, not a malformed request: they are
+        // signing up to join a family somebody else runs. Validate only what was actually sent.
+        if (request.Organization is { } organization)
+        {
+            var validation = await _organizationValidator.ValidateAsync(organization);
+            if (!validation.IsValid)
+                return ValidationFailed(validation);
 
-        Logger.LogInformation(
-            "Onboarding setup for Auth0 user {Auth0UserId}: organization {Name}, Type: {Type}",
-            UserContext.Auth0UserId, request.Organization.Name, request.Organization.Type);
+            Logger.LogInformation(
+                "Onboarding setup for Auth0 user {Auth0UserId}: organization {Name}, Type: {Type}",
+                UserContext.Auth0UserId, organization.Name, organization.Type);
+        }
+        else
+        {
+            Logger.LogInformation(
+                "Onboarding setup for Auth0 user {Auth0UserId}: guest, no family of their own.",
+                UserContext.Auth0UserId);
+        }
 
         // Identity comes from the request context, not the client body: email from the
         // token's email claim (body is only a fallback when the claim is absent) and
@@ -147,9 +161,23 @@ public class OnboardingController : BaseApiController
         if (!validation.IsValid)
             return ValidationFailed(validation);
 
-        if (!UserContext.IsAuthenticated || UserContext.OrganizationId == Guid.Empty)
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
-            return Error("Let's set up your organization first — then you can add a CardiMember.", 403);
+            return Error("We couldn't find your account — please sign in again.", 403);
+        }
+
+        // A guest — somebody who signed up to join a family rather than start one — has no
+        // organization until now. Adding a member of their own is the moment they need a family
+        // and a plan, so this creates both. Somebody who already has one gets it back unchanged,
+        // so a retry cannot mint a second family.
+        Guid organizationId;
+        try
+        {
+            organizationId = await _guestFamilies.ResolveHomeOrganizationAsync(UserContext.UserId);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, 403);
         }
 
         // The caregiver's own name for this attempt, so a retry after a lost response returns the
@@ -170,13 +198,13 @@ public class OnboardingController : BaseApiController
         Logger.LogInformation(
             "Creating CardiMember {Name} for organization {OrgId}",
             request.Name,
-            UserContext.OrganizationId);
+            organizationId);
 
         CardiMemberResponse response;
         try
         {
             response = await _cardiMemberService.CreateCardiMemberAsync(
-                UserContext.OrganizationId,
+                organizationId,
                 UserContext.UserId,
                 request,
                 idempotencyKey);

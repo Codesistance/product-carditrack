@@ -41,6 +41,7 @@ public class OrganizationService : IOrganizationService
         {
             Id = organization.Id,
             Name = organization.Name,
+            FamilyId = FamilyIdentifier.ToDisplay(organization.FamilyId),
             Type = organization.Type,
             IsActive = organization.IsActive,
             CreatedDate = organization.CreatedDate,
@@ -66,6 +67,7 @@ public class OrganizationService : IOrganizationService
         {
             Id = org.Id,
             Name = org.Name,
+            FamilyId = FamilyIdentifier.ToDisplay(org.FamilyId),
             Type = org.Type,
             IsActive = org.IsActive,
             CreatedDate = org.CreatedDate,

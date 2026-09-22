@@ -328,13 +328,13 @@ public class FamilyJoinTests : IAsyncLifetime
         {
             Name = "Okafor family",
             Type = OrganizationType.Family,
-            FamilyId = FamilyIdentifier.NormalizeOrNull(FamilyIdentifier.Mint())!,
+            FamilyId = FamilyIdentifier.Mint(),
         };
         var adeyemis = new Organization
         {
             Name = "Adeyemi family",
             Type = OrganizationType.Family,
-            FamilyId = FamilyIdentifier.NormalizeOrNull(FamilyIdentifier.Mint())!,
+            FamilyId = FamilyIdentifier.Mint(),
         };
         db.Organizations.AddRange(okafors, adeyemis);
 

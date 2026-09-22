@@ -167,6 +167,11 @@ public static class ServiceCollectionExtensions
             CardiTrack.Application.Services.FamilyService>();
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IFamilyJoinService,
             CardiTrack.Application.Services.FamilyJoinService>();
+
+        // Gives a guest their own family the first time they add somebody to watch — see the
+        // remarks on IGuestFamilyProvisioner for why that moment rather than signup.
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IGuestFamilyProvisioner,
+            CardiTrack.Application.Services.GuestFamilyProvisioner>();
         // Caregiver-triggered sync (issue #67). Request-scoped, not a background job — the
         // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,

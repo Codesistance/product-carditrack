@@ -6,6 +6,14 @@ public class OrganizationResponse
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The code to share so somebody can ask to join, in display form (<c>KTR7-M2Q9</c>). Rendered
+    /// here rather than stored that way — the column holds it unseparated so lookups compare like
+    /// with like, and the hyphen is only ever for reading.
+    /// </summary>
+    public string FamilyId { get; set; } = string.Empty;
+
     public OrganizationType Type { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedDate { get; set; }

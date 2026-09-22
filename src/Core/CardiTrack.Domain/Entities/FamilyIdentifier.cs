@@ -29,20 +29,23 @@ public static class FamilyIdentifier
 
     private const int GroupLength = 4;
 
-    /// <summary>A fresh code, in display form.</summary>
+    /// <summary>
+    /// A fresh code in <em>storage</em> form — eight characters, no separator.
+    /// </summary>
+    /// <remarks>
+    /// Storage form rather than display form on purpose. Every lookup goes through
+    /// <see cref="NormalizeOrNull"/>, which strips separators, so a minted code carrying its
+    /// hyphen would be stored in a shape no typed code could ever match — a family nobody could
+    /// join, and nothing would have failed loudly to say so. <see cref="ToDisplay"/> puts the
+    /// hyphen back at the edge, where it is for reading rather than for comparing.
+    /// </remarks>
     public static string Mint()
     {
-        var chars = new char[GroupLength * 2 + 1];
-        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(GroupLength * 2);
+        var chars = new char[GroupLength * 2];
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(chars.Length);
 
-        var at = 0;
         for (var i = 0; i < bytes.Length; i++)
-        {
-            if (i == GroupLength)
-                chars[at++] = '-';
-
-            chars[at++] = Alphabet[bytes[i] % Alphabet.Length];
-        }
+            chars[i] = Alphabet[bytes[i] % Alphabet.Length];
 
         return new string(chars);
     }
