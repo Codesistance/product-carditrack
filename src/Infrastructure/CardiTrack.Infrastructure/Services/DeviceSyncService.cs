@@ -377,9 +377,21 @@ public class DeviceSyncService : IDeviceSyncService
     /// <remarks>
     /// Worth a request per pull because the alternative is a silence nobody can read: a wearer who
     /// never finished IRN setup raises no notifications at all, which on every screen looks exactly
-    /// like a wearer whose heart is behaving. Best-effort and never throws, like
-    /// <see cref="CaptureBatteryAsync"/> — a profile we cannot read leaves both columns null, which
-    /// is "we could not ask" rather than "they are not covered".
+    /// like a wearer whose heart is behaving. Best-effort and never throws — this catch is
+    /// deliberately wider than <see cref="IsProviderApiException"/>: that predicate is
+    /// provider-rejection-only by design (its own doc comment excludes infrastructure failures
+    /// like network timeouts, and the outer catch in <see cref="SyncCardiMemberAsync"/> uses the
+    /// same predicate to decide whether to mark <see cref="ConnectionStatus.SyncError"/>, which a
+    /// transient network blip should not do). A profile we cannot read for any reason, provider
+    /// rejection or a plain timeout, leaves both columns null, which is "we could not ask" rather
+    /// than "they are not covered" — and must not cost the rest of this pull's health data, which
+    /// this call runs ahead of. There is no database write inside this try block, so widening it
+    /// cannot swallow one.
+    /// <para>
+    /// <see cref="CaptureBatteryAsync"/> makes the same "best-effort, never throws" promise and
+    /// only catches <see cref="IsProviderApiException"/> too — the same gap, not fixed here since
+    /// it is outside what this change touches.
+    /// </para>
     /// </remarks>
     private async Task CaptureIrnProfileAsync(DeviceConnection connection, string accessToken)
     {
@@ -389,7 +401,7 @@ public class DeviceSyncService : IDeviceSyncService
         {
             (onboarded, enrolled) = await _deviceApi.GetIrnProfileAsync(accessToken);
         }
-        catch (Exception ex) when (IsProviderApiException(ex))
+        catch (Exception ex) when (IsProviderApiException(ex) || IsTransportFailure(ex))
         {
             return;
         }
@@ -646,4 +658,16 @@ public class DeviceSyncService : IDeviceSyncService
     /// </summary>
     protected virtual bool IsProviderApiException(Exception ex) =>
         ex is GoogleHealthApiException;
+
+    /// <summary>
+    /// The infrastructure half <see cref="IsProviderApiException"/> deliberately excludes: a
+    /// timeout or a connection failure reaching the provider at all, as opposed to the provider
+    /// answering and rejecting the request. Distinct from that predicate on purpose -- most
+    /// callers in this class want a transport failure to propagate (it is not the provider saying
+    /// no, and the outer catch's SyncError transition should not fire for a local network blip) --
+    /// so this exists for the few call sites that are optional enrichment and must swallow either
+    /// category equally, the way <see cref="CaptureIrnProfileAsync"/> does.
+    /// </summary>
+    private static bool IsTransportFailure(Exception ex) =>
+        ex is HttpRequestException or TaskCanceledException;
 }

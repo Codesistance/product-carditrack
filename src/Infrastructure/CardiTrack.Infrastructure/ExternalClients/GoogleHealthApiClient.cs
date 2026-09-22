@@ -1020,10 +1020,27 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             // A malformed request is a bug in the URL or filter built here, and the rest of this
             // client treats it as one. It still must not cost the other read, so it is logged
             // loudly rather than thrown.
+            //
+            // Deliberately NOT passing ex itself, or ex.Message, to the logger. EnsureSuccessAsync
+            // and ParseBodyAsync build GoogleHealthApiException.Message from the raw response body
+            // verbatim -- for these two data types that body can be an ECG reading or a batch of
+            // IRN heartbeats. Attaching the exception object here would put beat-level cardiac
+            // data into whatever sink ILogger writes to (Serilog to Cloud Logging to Datadog,
+            // 100%-sampled), which is exactly the exposure the fields selector and the
+            // waveform-never-fetched discipline exist to prevent everywhere else in this file.
+            // Only the data type name, the status code and the malformed flag are safe to log.
             if (ex.IsMalformedRequest)
-                _logger.LogError(ex, "Google Health API {What} rejected the request as malformed.", what);
+            {
+                _logger.LogError(
+                    "Google Health API {What} rejected the request as malformed (status {StatusCode}).",
+                    what, ex.StatusCode);
+            }
             else if (ex.StatusCode is not 403 && !IsAbsentDataType(ex))
-                _logger.LogWarning(ex, "Google Health API {What} could not be read this pull.", what);
+            {
+                _logger.LogWarning(
+                    "Google Health API {What} could not be read this pull (status {StatusCode}).",
+                    what, ex.StatusCode);
+            }
 
             return null;
         }

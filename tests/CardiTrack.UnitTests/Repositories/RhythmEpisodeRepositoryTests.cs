@@ -144,4 +144,31 @@ public class RhythmEpisodeRepositoryTests(TestDatabaseFixture fixture)
         Assert.Equal([0, 800, 1560], stored.OffsetMillisFromStart);
         Assert.Equal(51, stored.RmssdMs);
     }
+
+    [Fact]
+    public async Task UpsertAsync_SucceedsFourteenDaysBack_WhichIsWhatTheAuditPassCanReach()
+    {
+        // EnsureUpcomingPartitionsAsync's backward reach used to stop at yesterday regardless of
+        // the caller's daysAhead. AuditSyncAsync's repair window is
+        // Math.Max(SyncLookbackDays, AuditLookbackDays) -- 14 days by default -- and it writes
+        // rhythm episodes through the same PullWindowAsync every routine sync uses. Pre-fix, an
+        // insert into a day that far back would throw "no partition found for row", which
+        // StoreRhythmEpisodesAsync's best-effort catch swallows: every beat from the audit pass
+        // silently lost while the day's counts still looked healthy. No other write path ever
+        // reaches this far back for RhythmEpisodes specifically (EnsurePartitionsForRangeAsync,
+        // used by the history re-pull, deliberately excludes this table), so a partition this far
+        // back can only exist if EnsureUpcomingPartitionsAsync's own backward range created it.
+        using var scope = fixture.CreateScope();
+        await EnsurePartitionsAsync(scope);
+        var repo = scope.ServiceProvider.GetRequiredService<IRhythmEpisodeRepository>();
+
+        var memberId = Guid.NewGuid();
+        var window = DateTime.UtcNow.Date.AddDays(-14).AddHours(3);
+
+        var thrown = await Record.ExceptionAsync(
+            () => repo.UpsertAsync(Episode(memberId, Guid.NewGuid(), window)));
+
+        Assert.Null(thrown);
+        Assert.Single(await repo.GetInRangeAsync(memberId, window.AddMinutes(-1), window.AddMinutes(1)));
+    }
 }
