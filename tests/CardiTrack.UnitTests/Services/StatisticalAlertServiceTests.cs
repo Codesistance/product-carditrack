@@ -31,6 +31,7 @@ public class StatisticalAlertServiceTests
     private readonly IAlertPreferenceRepository _alertPreferences = Substitute.For<IAlertPreferenceRepository>();
     private readonly IEnvironmentalReadingRepository _environmentalReadings = Substitute.For<IEnvironmentalReadingRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IAlertNotificationEnqueue _enqueue = Substitute.For<IAlertNotificationEnqueue>();
 
     private readonly Guid _memberId = Guid.NewGuid();
@@ -94,7 +95,7 @@ public class StatisticalAlertServiceTests
     /// severities echo what the rules used to hard-code, which keeps the orchestration tests
     /// readable — the point of the pass is that these now come from the answer, not the rule.
     /// </summary>
-    private static readonly IReadOnlyList<StatisticalAlertService.JudgementVerdict> DefaultVerdicts =
+    private static readonly IReadOnlyList<TestVerdict> DefaultVerdicts =
     [
         Verdict(StatisticalAlertRules.ActivityDeclineRule, "medium"),
         Verdict(StatisticalAlertRules.IrregularSleepRule, "medium"),
@@ -107,22 +108,59 @@ public class StatisticalAlertServiceTests
         Verdict(StatisticalAlertRules.DaytimeInactivityBlockRule, "medium"),
     ];
 
-    private static StatisticalAlertService.JudgementVerdict Verdict(
-        string rule, string severity, string headline = "Quieter than usual", string? message = null) => new()
-    {
-        Rule = rule,
-        Severity = severity,
-        Headline = headline,
-        Message = message ?? "A quieter day than usual for her. Worth a gentle check-in when you next speak.",
-    };
+    /// <summary>
+    /// One rule's whole journey through both slots, so a test can still say "the model judged this
+    /// medium and called it a much quieter day" in a single call. The clinical half supplies the
+    /// rule, the severity and the read; the rewrite half supplies the headline and message a
+    /// caregiver sees. <see cref="ModelJudges"/> wires both fakes from it, which is what keeps the
+    /// split invisible to the twenty-odd tests that only care what ends up on the alert.
+    /// </summary>
+    private sealed record TestVerdict(
+        string Rule, string Severity, string Read, string Headline, string Message);
 
-    private void ModelJudges(IReadOnlyList<StatisticalAlertService.JudgementVerdict> verdicts) =>
+    private static TestVerdict Verdict(
+        string rule,
+        string severity,
+        string headline = "Quieter than usual",
+        string? message = null,
+        string read = "Steps well below this person's 30-day usual, with no matching change in resting heart rate.") =>
+        new(rule, severity, read, headline,
+            message ?? "A quieter day than usual for her. Worth a gentle check-in when you next speak.");
+
+    /// <summary>
+    /// Wires the clinical read and the rewrite that writes from it. The rewrite echoes back exactly
+    /// the rules it was handed, which is the behaviour the service is entitled to expect rather
+    /// than the one it defends against — the dropped-entry case has a test of its own.
+    /// </summary>
+    private void ModelJudges(IReadOnlyList<TestVerdict> verdicts)
+    {
         _medicalAi.GenerateStructuredAsync<StatisticalAlertService.JudgementAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(new StatisticalAlertService.JudgementAiResponse { Verdicts = verdicts });
+            .Returns(new StatisticalAlertService.JudgementAiResponse
+            {
+                Verdicts = [.. verdicts.Select(v => new StatisticalAlertService.JudgementVerdict
+                {
+                    Rule = v.Rule,
+                    Severity = v.Severity,
+                    Finding = v.Read,
+                })],
+            });
+
+        _rewriteAi.GenerateStructuredAsync<StatisticalAlertService.JudgementRewriteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new StatisticalAlertService.JudgementRewriteAiResponse
+            {
+                Entries = [.. verdicts.Select(v => new StatisticalAlertService.JudgementRewrite
+                {
+                    Rule = v.Rule,
+                    Headline = v.Headline,
+                    Message = v.Message,
+                })],
+            });
+    }
 
     private StatisticalAlertService CreateSut() =>
-        new(_unitOfWork, _medicalAi, PromptContextFactory.Composer(_unitOfWork),
+        new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
             InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance, new PassThroughWriteGuard(), _enqueue);
 
     // ── The verdict is the model's ────────────────────────────────────────────────────────
@@ -254,6 +292,121 @@ public class StatisticalAlertServiceTests
         Assert.Equal(0, raised);
         await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
         await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The rewrite runs on the other slot and can fail on its own — a Vertex timeout, a 429, a
+    /// region that stopped serving the model. It fails closed like every other exit here: nothing
+    /// is persisted, so the next pass re-judges the finding. Writing the alert from copy of our own
+    /// would put the hard-coded sentence back in a loop this service exists to keep it out of.
+    /// </summary>
+    [Fact]
+    public async Task ARewriteFailure_RaisesNothing_AndLeavesTheFindingForTheNextPass()
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "medium")]);
+        _rewriteAi.GenerateStructuredAsync<StatisticalAlertService.JudgementRewriteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpRequestException("Vertex unavailable"));
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// The same failure that cost activity_decline every verdict it was given on 2026-09-22, one
+    /// stage later: entries are matched to their read by exact rule, so a rewrite that drops or
+    /// renames one must not have another read's copy written against it. Both stages now constrain
+    /// the rule to the eleven, but the match stays defensive.
+    /// </summary>
+    [Fact]
+    public async Task TheRewriteDropsAnEntry_RaisesNothingForThatRule()
+    {
+        ModelJudges([Verdict(StatisticalAlertRules.ActivityDeclineRule, "medium")]);
+        _rewriteAi.GenerateStructuredAsync<StatisticalAlertService.JudgementRewriteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new StatisticalAlertService.JudgementRewriteAiResponse { Entries = [] });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+    }
+
+    /// <summary>
+    /// A severity with no read behind it leaves the rewrite nothing to write from. The second call
+    /// is not made at all — a finding that cannot be written about must not cost the pass a Vertex
+    /// call to discover it.
+    /// </summary>
+    [Fact]
+    public async Task ABlankClinicalRead_RaisesNothing_AndNeverCallsTheRewrite()
+    {
+        _medicalAi.GenerateStructuredAsync<StatisticalAlertService.JudgementAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new StatisticalAlertService.JudgementAiResponse
+            {
+                Verdicts =
+                [
+                    new StatisticalAlertService.JudgementVerdict
+                    {
+                        Rule = StatisticalAlertRules.ActivityDeclineRule,
+                        Severity = "medium",
+                        Finding = "   ",
+                    },
+                ],
+            });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _alerts.DidNotReceive().AddAsync(Arg.Any<Alert>());
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<StatisticalAlertService.JudgementRewriteAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Every finding a member has judged worth raising is rewritten in one call, matching the
+    /// clinical half's own batching. Splitting it per finding would have doubled the pass's
+    /// inference bill to say the same thing in more calls.
+    /// </summary>
+    [Fact]
+    public async Task SeveralFindings_AreRewrittenInOneCall()
+    {
+        SetupLogs(
+            new ActivityLog { CardiMemberId = _memberId, Date = Yesterday, Steps = 1000, RestingHeartRate = 80 });
+        ModelJudges(DefaultVerdicts);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        await _rewriteAi.Received(1).GenerateStructuredAsync<StatisticalAlertService.JudgementRewriteAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// DPIA row A20's boundary, asserted rather than assumed: the Rewrite slot is given the
+    /// clinical reads and nothing else. DemographicsContextSource decrypts caregiver notes without
+    /// redacting the member's name, and MedGemma can repeat that name in its read, so the
+    /// redaction runs on the way across.
+    /// </summary>
+    [Fact]
+    public async Task TheRewritePrompt_CarriesNoMemberIdentity()
+    {
+        ModelJudges([Verdict(
+            StatisticalAlertRules.ActivityDeclineRule, "medium",
+            read: "Margaret Doe's steps sat well below her 30-day usual.")]);
+
+        await CreateSut().EvaluateAsync(UtcNow);
+
+        var prompt = (string)_rewriteAi.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IRewriteAiService.GenerateStructuredAsync))
+            .GetArguments()[0]!;
+
+        Assert.DoesNotContain("Margaret", prompt, StringComparison.OrdinalIgnoreCase);
+        // Word-bounded: the surname is a substring of "does", which the tone block uses.
+        Assert.DoesNotMatch(@"\bDoe\b", prompt);
+        Assert.DoesNotContain("1948", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

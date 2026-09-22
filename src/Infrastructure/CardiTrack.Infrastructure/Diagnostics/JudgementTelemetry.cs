@@ -88,6 +88,25 @@ public static class JudgementTelemetry
     /// <summary>The copy failed the caregiver-register guard. Fails closed.</summary>
     public const string OutcomeMessageRejected = "message_rejected";
 
+    /// <summary>
+    /// The clinical read came back empty for a finding the model had just called worth raising,
+    /// leaving the rewrite nothing to write from. Fails closed.
+    /// </summary>
+    public const string OutcomeReadBlank = "read_blank";
+
+    /// <summary>
+    /// The rewrite call itself threw. Counted once per finding that was waiting on it, so the
+    /// number stays comparable with the other outcomes rather than counting calls.
+    /// </summary>
+    public const string OutcomeRewriteFailed = "rewrite_failed";
+
+    /// <summary>
+    /// The rewrite returned no entry carrying this read's rule — the same shape as
+    /// <see cref="OutcomeUnmatched"/>, one stage later, and worth telling apart because the two
+    /// stages run on different models.
+    /// </summary>
+    public const string OutcomeRewriteMissing = "rewrite_missing";
+
     /// <summary>An alert was written.</summary>
     public const string OutcomeRaised = "raised";
 }
