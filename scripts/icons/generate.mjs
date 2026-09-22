@@ -32,21 +32,52 @@ if (installed !== config.iconpark.version) {
 
 const exportName = (name) => name.split('-').map((s) => s[0].toUpperCase() + s.slice(1)).join('');
 
-function fromIconPark(entry) {
-  const group = config.groups[entry.group];
-  if (!group) throw new Error(`${entry.file}: unknown group ${entry.group}`);
-  const draw = iconPark[exportName(entry.name)];
-  if (!draw) throw new Error(`${entry.file}: no IconPark icon named ${entry.name}`);
+// The markup between an IconPark <svg> and its closing tag. Every glyph it draws uses the same
+// 48-unit viewBox, so two of them compose by transform alone.
+const innerMarkup = (svg) => svg.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+
+function drawIconPark(name, entry, group, size) {
+  const draw = iconPark[exportName(name)];
+  if (!draw) throw new Error(`${entry.file}: no IconPark icon named ${name}`);
   const multi = group.style === 'Multicolor';
   const { strokeWidth, strokeLinecap, strokeLinejoin } = config.iconpark;
   return draw({
     theme: multi ? 'multi-color' : 'outline',
     fill: multi ? group.slots : group.slots[0],
-    size: entry.size,
+    size,
     strokeWidth,
     strokeLinecap,
     strokeLinejoin,
   });
+}
+
+function fromIconPark(entry) {
+  const group = config.groups[entry.group];
+  if (!group) throw new Error(`${entry.file}: unknown group ${entry.group}`);
+  const base = drawIconPark(entry.name, entry, group, entry.size);
+  if (!entry.badge) return base;
+
+  // A badged glyph: one icon, two objects. The subject is drawn smaller and anchored to the
+  // bottom-left, and the badge — the thing that says which *kind* of row this is — sits at
+  // a little over half size in the top-right, where it modifies the subject the way a
+  // superscript modifies a number.
+  //
+  // The badge rides a disc of the card colour so it stays readable where it crosses the
+  // subject's outline. That is the one thing here tied to context: these three rows are
+  // white cards, and a knockout is only invisible on the ground it is painted for. A badged
+  // icon moved onto a tint has to take its disc colour with it.
+  const b = config.iconpark.badge;
+  const badge = drawIconPark(entry.badge, entry, group, entry.size);
+  const cx = b.x + 24 * b.scale;
+  const cy = b.y + 24 * b.scale;
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<svg width="${entry.size}" height="${entry.size}" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">`,
+    `<g transform="translate(0 ${b.baseY}) scale(${b.baseScale})">${innerMarkup(base)}</g>`,
+    `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${b.knockoutRadius}" fill="${b.knockout}"/>`,
+    `<g transform="translate(${b.x} ${b.y}) scale(${b.scale})">${innerMarkup(badge)}</g>`,
+    `</svg>`,
+  ].join('');
 }
 
 function fromMaterial(entry) {

@@ -6,6 +6,16 @@
   "strokeWidth": 2,
   "strokeLinecap": "round",
   "strokeLinejoin": "round",
+  "badge": {
+   "scale": 0.4,
+   "x": 28.8,
+   "y": 0,
+   "baseScale": 0.74,
+   "baseY": 12.5,
+   "knockout": "#FFFFFF",
+   "knockoutRadius": 10,
+   "note": "Composes two glyphs into one file: the subject at baseScale anchored bottom-left, the badge at scale in the top-right, on a knockout disc the colour of the card these rows sit on."
+  },
   "note": "strokeWidth is on the 48-unit grid: 2 = 1px at 24dp. The hand-drawn set used 2px; the thinner stroke is what takes the hard edge off the four-colour glyphs."
  },
  "material": {
@@ -262,13 +272,15 @@
    "file": "icon_bell_cog.svg",
    "source": "iconpark",
    "name": "remind",
+   "badge": "setting-two",
    "group": "muted",
    "size": 24
   },
   {
-   "file": "icon_bell_plus.svg",
+   "file": "icon_user_bell.svg",
    "source": "iconpark",
-   "name": "remind",
+   "name": "user",
+   "badge": "remind",
    "group": "muted",
    "size": 24
   },
@@ -290,6 +302,7 @@
    "file": "icon_book_cog.svg",
    "source": "iconpark",
    "name": "book",
+   "badge": "setting-two",
    "group": "muted",
    "size": 24
   },

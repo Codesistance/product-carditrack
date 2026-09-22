@@ -271,6 +271,8 @@
                                     <Label x:Name="SummaryTitleLabel"
                                            Grid.Column="1"
                                            Style="{StaticResource DashboardSectionTitle}"
+                                           VerticalOptions="Start"
+                                           VerticalTextAlignment="Start"
                                            LineBreakMode="WordWrap"/>
                                     <!-- "When" belongs next to a summary that is recomputed:
                                          without it there is no way to tell a minutes-old
@@ -819,12 +821,13 @@
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnMetricAlarmsTapped"/>
                                 </Grid.GestureRecognizers>
-                                <!-- The same bell as Alert Settings above it, wearing a plus
-                                     instead of a cog: same subject, but these are alerts the
-                                     caregiver added rather than rules CardiTrack applies. Two
-                                     rows with one glyph read as a duplicate. -->
+                                <!-- A person wearing a bell, where the row above is a bell wearing
+                                     a cog: these are the alerts the caregiver set, not the rules
+                                     CardiTrack applies on its own. The subject changes rather than
+                                     the badge, because what separates the two rows is whose alerts
+                                     they are. -->
                                 <Image Grid.Column="0"
-                                       Source="icon_bell_plus.svg"
+                                       Source="icon_user_bell.svg"
                                        WidthRequest="22" HeightRequest="22"
                                        VerticalOptions="Center"/>
                                 <Label Grid.Column="1"

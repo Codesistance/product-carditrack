@@ -23,7 +23,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 
 | Colour | Icons | Also known as |
 | --- | --- | --- |
-| `#FFFFFF` | 28 | White |
+| `#FFFFFF` | 31 | White |
 | `#153D66` | 24 | icons.json brand outer stroke |
 | `#3175B9` | 19 | icons.json brand and activity fill, steel blue |
 | `#939DAA` | 17 | MutedText |
@@ -156,11 +156,10 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_advise.svg` | `#939DAA` | CardiMemberDetailPage, StatusHeroCard |
 | `icon_advise_primary.svg` | `#3175B9` `#153D66` `#FFFFFF` | StatusHeroCard |
 | `icon_bell.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage, DashboardHeader |
-| `icon_bell_cog.svg` | `#939DAA` | CardiMemberDetailPage |
-| `icon_bell_plus.svg` | `#939DAA` | CardiMemberDetailPage |
+| `icon_bell_cog.svg` | `#939DAA` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_binoculars.svg` | `#153D66` `#3175B9` | CardiMemberDetailPage |
 | `icon_book.svg` | `#3175B9` `#153D66` | CardiMemberDetailPage |
-| `icon_book_cog.svg` | `#939DAA` | CardiMemberDetailPage |
+| `icon_book_cog.svg` | `#939DAA` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_calendar.svg` | `#939DAA` | DateField, DeviceCard |
 | `icon_callout.svg` | `#3175B9` `#153D66` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_chatbot.svg` | `#36C09B` `#1884DC` `#174E86` `#9FEBFF` `#B9F1FF` `#123A5F` `#FFFFFF` | ChatBotLauncher, MemberChatPage, PendingBotIndicator |
@@ -190,6 +189,7 @@ icon can be staged ahead of a screen that has not shipped.
 | `icon_share.svg` | `#153D66` | ExportDeliveryPopupPage, InviteWaitPage |
 | `icon_star.svg` | `#939DAA` | DeviceCard, StarRatingView |
 | `icon_trash.svg` | `#FBE4E4` `#C42F2F` | AlertDetailPage, AlertListCard, DeviceCard, MetricAlarmEditPage, QuestionCard |
+| `icon_user_bell.svg` | `#939DAA` `#FFFFFF` | CardiMemberDetailPage |
 | `icon_watch.svg` | `#3175B9` `#153D66` `#C9E1FF` `#FFFFFF` | CardiMemberDetailPage |
 
 ## How "used by" is decided
