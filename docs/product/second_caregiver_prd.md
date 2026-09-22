@@ -633,8 +633,13 @@ empty table. This is the same argument that decided roles in D-5.
 - **Mobile:** new **Family** tab (three states + chip switcher, D-18), "Who can see <member>" off
   the tab and off member detail, invite sheet, approval sheet, accept flow with the forced choice,
   succession and lapse screens, and the attribution banner + travel ladder on `AlertDetailPage`.
-  **No Figma M1 frames — needs design sync.** Fourteen states are drawn in the design canvas
-  (`Family Sharing Screens`); the five-tab bar is itself a sync item.
+  **No Figma M1 frames — needs design sync.** Sixteen states are drawn in the design canvas
+  (`Family Sharing Screens`) from the shipped anatomy — `HeaderBand`, `ElevatedCard`, one card
+  per navigable row, `SeverityBanner`, `MemberAvatar`, `BottomNavBar`, `ChatBotLauncher`. The
+  app has **no bottom-sheet pattern**, so approval, invite and the alert response are full pages;
+  the **family switcher drawer is the one new component** and needs a design decision, not just
+  a frame. `icon_tab_family.svg` and its active twin already ship in `Resources/Images` from the
+  old stub. The five-tab bar is itself a sync item.
 - **Web:** not planned this wave (web is still template-stage).
 - **Worker:** no new job. Fan-out rides the existing escalation sweep; invite expiry is a timestamp
   check, not a sweep. Any future expired-invite cleanup belongs in `CardiTrack.Worker` only.
