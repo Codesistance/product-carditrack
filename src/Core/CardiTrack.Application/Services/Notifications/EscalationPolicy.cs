@@ -48,11 +48,11 @@ public enum EscalationAction
     Repush,
 
     /// <summary>
-    /// Copy every other caregiver with <c>ReceiveAlerts</c> on. In R1 (<c>MaxUsers = 1</c>) this
-    /// finds zero secondary caregivers and falls straight through — the branch still runs, rather
-    /// than being special-cased away, so nothing needs removing when family invitations (R3) add
-    /// real targets. The fan-out copy never names who failed to respond (§6.3) — that is a caller
-    /// concern (rendering), not this policy's.
+    /// Copy every other caregiver with <c>ReceiveAlerts</c> on — the rung family sharing exists
+    /// to make real. Under the old <c>MaxUsers = 1</c> it found zero secondary caregivers and fell
+    /// straight through; the branch was left running rather than special-cased away, so activating
+    /// it needed nothing removed. The fan-out copy never names who failed to respond (§6.3) — that
+    /// is a caller concern (rendering), not this policy's.
     /// </summary>
     FanOutToOtherCaregivers,
     MarkUndeliveredCritical

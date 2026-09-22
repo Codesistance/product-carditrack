@@ -17,6 +17,10 @@ public class NotificationPreferenceConfiguration : IEntityTypeConfiguration<Noti
         builder.Property(p => p.QuietHoursStart);
         builder.Property(p => p.QuietHoursEnd);
 
+        builder.Property(p => p.EscalatedAlertsPierceQuietHours)
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.Property(p => p.ShowDetailsOnLockScreen)
             .IsRequired()
             .HasDefaultValue(false);

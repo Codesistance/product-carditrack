@@ -16,7 +16,9 @@ public class DeliveryPlannerTests
         DeliveryCategory category,
         AlertSeverity? severity = null,
         bool withinQuietHours = false,
-        DateTime? quietHoursEnd = null) => new()
+        DateTime? quietHoursEnd = null,
+        bool isEscalation = false,
+        bool escalatedPierces = false) => new()
         {
             UtcNow = UtcNow,
             Category = category,
@@ -24,7 +26,9 @@ public class DeliveryPlannerTests
             DedupKey = "test:key",
             CollapseKey = null,
             IsWithinQuietHours = withinQuietHours,
-            QuietHoursEndUtc = quietHoursEnd
+            QuietHoursEndUtc = quietHoursEnd,
+            IsEscalation = isEscalation,
+            EscalatedAlertsPierceQuietHours = escalatedPierces
         };
 
     [Fact]
@@ -209,5 +213,124 @@ public class DeliveryPlannerTests
         // Counted from the scheduled send, not from now — a deferred row whose TTL was measured
         // from enqueue time would expire before it was ever due.
         Assert.Equal(quietHoursEnd.AddHours(6), plan.ExpiresAt);
+    }
+
+    // ── Escalated copies and the recipient's own quiet hours ────────────────────
+    //
+    // The one exception to "red and Safety always pierce". The original recipient chose to watch
+    // this person; the second is being escalated TO, so their preference decides — and the
+    // default is to hold. Everything below is a way that exception could leak into the rows it
+    // must not touch.
+
+    [Fact]
+    public void EscalatedRed_IsHeldUntilTheRecipientsQuietHoursEnd_ByDefault()
+    {
+        var quietEnd = UtcNow.AddHours(4);
+
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Health, AlertSeverity.Red,
+            withinQuietHours: true, quietHoursEnd: quietEnd, isEscalation: true));
+
+        // Held, not dropped: the second caregiver never agreed to be woken, and waking somebody
+        // who did not is how a family learns to mute the app.
+        Assert.Equal(quietEnd, plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void EscalatedRed_PiercesQuietHours_WhenTheRecipientAskedToBeWoken()
+    {
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Health, AlertSeverity.Red,
+            withinQuietHours: true, quietHoursEnd: UtcNow.AddHours(4),
+            isEscalation: true, escalatedPierces: true));
+
+        // The opt-in is the whole point of the preference — a family with nobody on night cover
+        // has no escalation ladder at all after dark.
+        Assert.Null(plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void EscalatedSafety_IsAlsoHeld_NotJustHealth()
+    {
+        var quietEnd = UtcNow.AddHours(4);
+
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Safety,
+            withinQuietHours: true, quietHoursEnd: quietEnd, isEscalation: true));
+
+        // Safety overrides unconditionally for the caregiver who owns the member. An escalated
+        // copy of it is still a copy, and the person receiving it still chose their own hours.
+        Assert.Equal(quietEnd, plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void TheOriginalRed_StillPiercesQuietHours_UnaffectedByTheEscalationRule()
+    {
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Health, AlertSeverity.Red,
+            withinQuietHours: true, quietHoursEnd: UtcNow.AddHours(4), isEscalation: false));
+
+        // The regression this file exists to catch: the exception must reach escalated rows only.
+        Assert.Null(plan.ScheduledFor);
+    }
+
+    [Fact]
+    public void EscalatedRed_OutsideQuietHours_SendsImmediatelyEitherWay()
+    {
+        foreach (var pierces in new[] { false, true })
+        {
+            var plan = DeliveryPlanner.Plan(Context(
+                DeliveryCategory.Health, AlertSeverity.Red,
+                withinQuietHours: false, isEscalation: true, escalatedPierces: pierces));
+
+            // The preference answers "may this wake you", not "may this reach you".
+            Assert.Null(plan.ScheduledFor);
+        }
+    }
+
+    [Fact]
+    public void AHeldEscalatedRed_StillEscalates_SoTheLadderKeepsItsSchedule()
+    {
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Health, AlertSeverity.Red,
+            withinQuietHours: true, quietHoursEnd: UtcNow.AddHours(4), isEscalation: true));
+
+        // Holding a copy must not stall the ladder. The rung is spent on time and the alert goes
+        // undelivered at t+900s if nobody answers, which is the outcome the family needs to see —
+        // silently pausing the clock until 06:00 would report cover that was never there.
+        Assert.True(plan.Escalates);
+    }
+
+    [Fact]
+    public void AHeldEscalatedRed_GetsItsFullLifetimeFromWhenItIsActuallySent()
+    {
+        var quietEnd = UtcNow.AddHours(4);
+
+        var plan = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Health, AlertSeverity.Red,
+            withinQuietHours: true, quietHoursEnd: quietEnd, isEscalation: true));
+
+        // Measured from enqueue instead, a row held four hours would expire three and a half
+        // hours before it was due and reach nobody at all.
+        Assert.Equal(quietEnd.AddMinutes(30), plan.ExpiresAt);
+    }
+
+    [Fact]
+    public void EscalationFlags_ChangeNothingForACategoryThatNeverOverrodeAnyway()
+    {
+        var quietEnd = UtcNow.AddHours(3);
+
+        var held = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Health, AlertSeverity.Orange,
+            withinQuietHours: true, quietHoursEnd: quietEnd, isEscalation: true));
+        var pierceRequested = DeliveryPlanner.Plan(Context(
+            DeliveryCategory.Health, AlertSeverity.Orange,
+            withinQuietHours: true, quietHoursEnd: quietEnd,
+            isEscalation: true, escalatedPierces: true));
+
+        // The opt-in grants nothing: orange defers for everybody, and an escalated orange must
+        // not become the thing that wakes a household the original never would have.
+        Assert.Equal(quietEnd, held.ScheduledFor);
+        Assert.Equal(quietEnd, pierceRequested.ScheduledFor);
     }
 }

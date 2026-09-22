@@ -426,4 +426,81 @@ public class DispatchServiceTests
 
         Assert.Empty(await CreateSut().EnqueueForReassuranceAsync(memberId, weeklyOccurrence: 1));
     }
+
+    // ── Escalated copies read the recipient's own preference ────────────────────
+
+    /// <summary>
+    /// One enqueue to one recipient, inside their quiet hours, with no live tokens — enough to
+    /// read back what was planned without reaching the FCM stub.
+    /// </summary>
+    private EnqueueRequest EscalationRequest(Guid userId, bool isEscalation) => new(
+        SourceType: DeliverySourceType.Alert,
+        SourceId: Guid.NewGuid(),
+        UserId: userId,
+        CardiMemberId: Guid.NewGuid(),
+        Category: DeliveryCategory.Health,
+        Severity: AlertSeverity.Red,
+        DedupKey: $"alert:{Guid.NewGuid()}",
+        CollapseKey: null,
+        AlertType: AlertType.HeartRate,
+        IsEscalation: isEscalation);
+
+    private Guid SetupRecipientInQuietHours(bool piercesWhenEscalated)
+    {
+        var userId = Guid.NewGuid();
+
+        _unitOfWork.Users.Returns(_users);
+        _users.GetByIdAsync(userId).Returns(new User { Id = userId, TimeZoneId = "Africa/Lagos" });
+        _preferences.EvaluateQuietHoursAsync(
+                userId, Arg.Any<string>(), Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns((true, (DateTime?)_timeProvider.GetUtcNow().UtcDateTime.AddHours(5)));
+        _preferences.EscalatedAlertsPierceQuietHoursAsync(userId, Arg.Any<CancellationToken>())
+            .Returns(piercesWhenEscalated);
+        _deliveries.GetByDedupKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((NotificationDelivery?)null);
+        _tokens.GetLiveForUserAsync(Arg.Any<Guid>(), Arg.Any<DeliveryCategory>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        return userId;
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_AnEscalatedRed_IsHeldUntilTheRecipientsQuietHoursEnd()
+    {
+        var userId = SetupRecipientInQuietHours(piercesWhenEscalated: false);
+
+        var delivery = await CreateSut().EnqueueAsync(EscalationRequest(userId, isEscalation: true));
+
+        // Judged by the recipient's own clock — a sibling in Lagos is not woken because the
+        // caregiver who owns the member is awake in London.
+        Assert.NotNull(delivery);
+        Assert.Equal(_timeProvider.GetUtcNow().UtcDateTime.AddHours(5), delivery.ScheduledFor);
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_AnEscalatedRed_IsSentAtOnce_WhenTheRecipientAskedToBeWoken()
+    {
+        var userId = SetupRecipientInQuietHours(piercesWhenEscalated: true);
+
+        var delivery = await CreateSut().EnqueueAsync(EscalationRequest(userId, isEscalation: true));
+
+        Assert.NotNull(delivery);
+        Assert.Null(delivery.ScheduledFor);
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_AnOriginalRed_NeverConsultsTheEscalationPreference()
+    {
+        var userId = SetupRecipientInQuietHours(piercesWhenEscalated: false);
+
+        var delivery = await CreateSut().EnqueueAsync(EscalationRequest(userId, isEscalation: false));
+
+        // The caregiver who added this member already agreed to be woken about them. Reading the
+        // preference here at all would be the bug: a false would hold the alert this product
+        // exists to deliver.
+        Assert.NotNull(delivery);
+        Assert.Null(delivery.ScheduledFor);
+        await _preferences.DidNotReceive()
+            .EscalatedAlertsPierceQuietHoursAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
 }

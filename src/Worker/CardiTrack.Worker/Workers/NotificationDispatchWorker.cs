@@ -351,10 +351,12 @@ public class NotificationDispatchWorker : CronBackgroundService
     }
 
     /// <summary>
-    /// Copies every other caregiver with <c>ReceiveAlerts</c> on — a no-op in R1 under
-    /// <c>MaxUsers = 1</c>, left unconditional rather than special-cased away (§6.3). The
-    /// fan-out copy is a rendering concern (never names who failed to respond) and lives in
-    /// Mobile, not here — this only creates the additional deliveries.
+    /// Copies every other caregiver with <c>ReceiveAlerts</c> on. Live from family sharing
+    /// onwards; before it, under <c>MaxUsers = 1</c>, this found nobody and fell straight through.
+    /// The copies are marked as escalations, which is what lets each recipient's own quiet-hours
+    /// preference decide whether it wakes them. The fan-out copy is a rendering concern (never
+    /// names who failed to respond) and lives in Mobile, not here — this only creates the
+    /// additional deliveries.
     /// </summary>
     private static async Task FanOutAsync(
         Domain.Entities.NotificationDelivery original, IDispatchService dispatch, IUnitOfWork unitOfWork, CancellationToken ct)
@@ -378,7 +380,9 @@ public class NotificationDispatchWorker : CronBackgroundService
                 Category: original.Category,
                 Severity: original.Severity,
                 DedupKey: $"{original.DedupKey}:escalated:{userId}",
-                CollapseKey: original.CollapseKey), ct);
+                CollapseKey: original.CollapseKey,
+                AlertType: original.AlertType,
+                IsEscalation: true), ct);
         }
     }
 

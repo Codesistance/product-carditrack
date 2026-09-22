@@ -15,6 +15,13 @@ public class UpdateNotificationPreferenceRequest
     public bool ShowDetailsOnLockScreen { get; set; }
 
     /// <summary>
+    /// Whether an alert escalated to this person may wake them inside their own quiet hours.
+    /// Omitting it means no, for the same reason <see cref="ShowDetailsOnLockScreen"/> does: a
+    /// caller that forgot the field must not end up waking somebody at 3am on its behalf.
+    /// </summary>
+    public bool EscalatedAlertsPierceQuietHours { get; set; }
+
+    /// <summary>
     /// Categories the user has muted for push. Safety can never appear here — the server strips
     /// it rather than trusting the client to omit it.
     /// </summary>

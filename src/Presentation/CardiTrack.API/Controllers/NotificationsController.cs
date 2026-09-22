@@ -346,6 +346,7 @@ public class NotificationsController : BaseApiController
             QuietHoursStart = prefs.QuietHoursStart,
             QuietHoursEnd = prefs.QuietHoursEnd,
             ShowDetailsOnLockScreen = prefs.ShowDetailsOnLockScreen,
+            EscalatedAlertsPierceQuietHours = prefs.EscalatedAlertsPierceQuietHours,
             MutedCategories = System.Text.Json.JsonSerializer.Deserialize<List<string>>(prefs.MutedCategories) ?? []
         });
     }
@@ -368,13 +369,15 @@ public class NotificationsController : BaseApiController
 
         var updated = await _preferences.UpdateAsync(
             userId, request.QuietHoursStart, request.QuietHoursEnd, request.ShowDetailsOnLockScreen,
-            System.Text.Json.JsonSerializer.Serialize(safeMuted), ct);
+            System.Text.Json.JsonSerializer.Serialize(safeMuted),
+            request.EscalatedAlertsPierceQuietHours, ct);
 
         return Success(new NotificationPreferenceResponse
         {
             QuietHoursStart = updated.QuietHoursStart,
             QuietHoursEnd = updated.QuietHoursEnd,
             ShowDetailsOnLockScreen = updated.ShowDetailsOnLockScreen,
+            EscalatedAlertsPierceQuietHours = updated.EscalatedAlertsPierceQuietHours,
             MutedCategories = safeMuted
         });
     }
