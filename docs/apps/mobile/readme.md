@@ -257,9 +257,11 @@ Starting the emulator, unlocking it, deploying, driving it from `adb`, screensho
 
 ### Store builds
 
-Signed store builds are normally produced by CI (below). For a local signed Android AAB, use the same properties CI uses (note the plural `-p:AndroidPackageFormats=aab`):
+Signed store builds are normally produced by CI (below). For a local signed Android AAB, use the same properties CI uses (note the plural `-p:AndroidPackageFormats=aab`). A signed publish refuses to run without the git-ignored Firebase config, so fetch it first:
 
 ```bash
+gcloud secrets versions access latest --secret=carditrack-common-firebase-android-config \
+  --project=carditrack-490120 > src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json
 dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj \
   -f net10.0-android -c Release \
   -p:AndroidPackageFormats=aab -p:AndroidKeyStore=true \
@@ -357,7 +359,8 @@ One-time setup before the first store upload — full step-by-step commands in
 
 1. **Apple**: distribution certificate (.p12), App Store provisioning profile named **CardiTrack Distribution**, app record for `com.codesistance.carditrack.mobile` in App Store Connect, App Store Connect API key (App Manager role), internal-tester group in TestFlight.
 2. **Google**: upload keystore (alias `carditrack`), app in Play Console with Play App Signing, **first AAB uploaded manually** (required before the Play API accepts uploads), publisher service account with *Release to testing tracks*, internal testers.
-3. Run *Deploy Infrastructure → Common* to create the secrets, then populate each (base64-encode binary payloads).
+3. **Firebase**: both client config files downloaded from the Firebase console, their keys restricted, and loaded into Secret Manager before the manual first AAB — a signed publish fails without the config.
+4. Run *Deploy Infrastructure → Common* to create the secrets, then populate each (base64-encode binary payloads).
 
 ## Testing
 

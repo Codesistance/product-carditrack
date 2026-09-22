@@ -158,9 +158,13 @@ $raw = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("<profile>.mobil
 1. [Play Console](https://play.google.com/console) → Create app: name **CardiTrack**, package
    `com.codesistance.carditrack.mobile`, free.
 2. Build a signed AAB locally (the signature of this first upload **registers the upload key** —
-   it must be the keystore from step A):
+   it must be the keystore from step A). A signed publish refuses to run without the Firebase
+   config (`_CardiTrackRequireFirebaseConfig`), and that file is not in git, so load it into
+   Secret Manager first (section G, steps 1–3) and fetch it into the worktree:
 
    ```powershell
+   gcloud secrets versions access latest --secret=carditrack-common-firebase-android-config `
+     --project=carditrack-490120 > src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json
    dotnet publish src/Presentation/CardiTrack.Mobile/CardiTrack.Mobile.csproj `
      -f net10.0-android -c Release `
      -p:AndroidPackageFormats=aab -p:AndroidKeyStore=true `
