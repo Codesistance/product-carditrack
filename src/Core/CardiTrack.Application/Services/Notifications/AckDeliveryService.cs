@@ -14,6 +14,24 @@ public interface IAckDeliveryService
     /// name="pushDeviceTokenId"/> completely.
     /// </summary>
     Task MarkDeliveredAsync(Guid deliveryId, Guid pushDeviceTokenId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stops every outstanding delivery about one alert, because a caregiver answered the alert
+    /// itself. Returns how many were stopped.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Answering in the app and acknowledging a push are the same event as far as the escalation
+    /// ladder is concerned — somebody has this — but they arrive by different doors, and until now
+    /// only the push door closed the ladder. A caregiver who opened the app, read the alert and
+    /// dealt with it was still escalated against, and the family got a second and third page about
+    /// something already handled.
+    /// </para>
+    /// <para>
+    /// Idempotent: a second caregiver answering finds nothing left unfinished and stops nothing.
+    /// </para>
+    /// </remarks>
+    Task<int> HaltEscalationForAlertAsync(Guid alertId, CancellationToken ct = default);
 }
 
 public class AckDeliveryService : IAckDeliveryService
@@ -68,5 +86,28 @@ public class AckDeliveryService : IAckDeliveryService
         }
 
         await _unitOfWork.SaveChangesAsync();
+    }
+
+    public async Task<int> HaltEscalationForAlertAsync(Guid alertId, CancellationToken ct = default)
+    {
+        var unfinished = await _unitOfWork.NotificationDeliveries.GetUnfinishedForAlertAsync(alertId, ct);
+        if (unfinished.Count == 0)
+            return 0;
+
+        var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
+
+        foreach (var delivery in unfinished)
+        {
+            // Answered rather than Delivered. Both halt the ladder, but Delivered is a claim
+            // about a specific handset posting /delivered, and the time-to-ack SLO is measured
+            // from exactly those — counting an in-app answer as one would report a push as having
+            // landed on a phone that may have been face-down all night.
+            delivery.State = DeliveryState.Answered;
+            delivery.DeliveredDate ??= utcNow;
+            _unitOfWork.NotificationDeliveries.Update(delivery);
+        }
+
+        await _unitOfWork.SaveChangesAsync();
+        return unfinished.Count;
     }
 }

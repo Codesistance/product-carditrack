@@ -77,4 +77,23 @@ public class AlertAcknowledgementResponse
 
     /// <summary>The queried scope's unread count after the change, so the badge stays honest.</summary>
     public int UnreadCount { get; set; }
+
+    /// <summary>
+    /// Who closed it, or null when it is not closed or CardiTrack resolved it because the
+    /// condition passed.
+    /// </summary>
+    public Guid? ResolvedByUserId { get; set; }
+
+    /// <summary>
+    /// The answer this call appended, or null when the caller sent no body — every acknowledge
+    /// and close writes one whenever it carries a code or a note, including the second one on an
+    /// alert somebody else already handled.
+    /// </summary>
+    public AlertResponseEntry? Response { get; set; }
+
+    /// <summary>
+    /// How many other caregivers on this member the answer was recorded for. Zero is the ordinary
+    /// answer for a family of one, and is not a failure.
+    /// </summary>
+    public int FamilyNotified { get; set; }
 }

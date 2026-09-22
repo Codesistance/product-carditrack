@@ -2,7 +2,9 @@ using System.Linq.Expressions;
 using CardiTrack.Application.DTOs.Common;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
+using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Services;
+using CardiTrack.Application.Services.Notifications;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using NSubstitute;
@@ -21,6 +23,15 @@ public class AlertServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage _photoStorage =
         Substitute.For<CardiTrack.Application.Interfaces.Clients.IProfilePhotoStorage>();
+
+    /// <summary>
+    /// A reversible stand-in for AES. The tests here are about what gets stored and read back, not
+    /// about the cipher — but a pass-through would let "the note is stored encrypted" pass against
+    /// code that stored it in the clear, so this marks what it touched.
+    /// </summary>
+    private readonly IEncryptionService _encryption = new ReversibleEncryption();
+
+    private readonly IAckDeliveryService _ackDelivery = Substitute.For<IAckDeliveryService>();
 
     private readonly Guid _userId = Guid.NewGuid();
     private readonly Guid _memberId = Guid.NewGuid();
@@ -62,12 +73,14 @@ public class AlertServiceTests
 
     // Composed with the real access service, for the same reason DashboardServiceTests is: the
     // link rules being asserted live there, so substituting it away would leave the scoping untested.
-    private AlertService CreateSut() =>
-        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage, _timeProvider);
+    private AlertService CreateSut() => CreateSutWith(_timeProvider);
 
     /// <summary>A SUT on a clock this test moved — used where the hour itself is the subject.</summary>
-    private AlertService CreateSutAt(DateTimeOffset now) =>
-        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage, new FixedTimeProvider(now));
+    private AlertService CreateSutAt(DateTimeOffset now) => CreateSutWith(new FixedTimeProvider(now));
+
+    private AlertService CreateSutWith(TimeProvider clock) =>
+        new(_unitOfWork, new CardiMemberAccessService(_unitOfWork), _photoStorage,
+            _encryption, _ackDelivery, clock);
 
     private void SetupMember(params CardiMember[] members) =>
         _members.FindAsync(Arg.Any<Expression<Func<CardiMember, bool>>>())
@@ -645,5 +658,229 @@ public class AlertServiceTests
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+
+
+    // ── Answering an alert: acknowledge or close, with a reason ─────────────────
+    //
+    // The coordination feature. With one caregiver, "handled" was the whole answer; with several,
+    // the family needs to know what was done and by whom, and the alert is where that belongs.
+
+    private readonly IAlertResponseRepository _responses = Substitute.For<IAlertResponseRepository>();
+
+    /// <summary>An alert with the no-morning rule stamped on it, which has its own canned answers.</summary>
+    private Alert MakeRuledAlert(bool isResolved = false, DateTime? acknowledgedAt = null)
+    {
+        var alert = MakeAlert(isResolved: isResolved, acknowledgedAt: acknowledgedAt);
+        alert.MetricValues = """{"rule":"no_morning_activity"}""";
+        _alerts.GetByIdWithCardiMemberAsync(alert.Id).Returns(alert);
+        _unitOfWork.AlertResponses.Returns(_responses);
+        _responses.GetForAlertAsync(alert.Id, Arg.Any<CancellationToken>()).Returns([]);
+        return alert;
+    }
+
+    /// <summary>What was handed to the repository to append, or null when nothing was.</summary>
+    private AlertResponse? Appended() =>
+        _responses.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IAlertResponseRepository.AddAsync))
+            .Select(c => (AlertResponse)c.GetArguments()[0]!)
+            .LastOrDefault();
+
+    [Fact]
+    public async Task Acknowledge_WithACodeAndANote_AppendsAResponseAndStoresTheNoteEncrypted()
+    {
+        var alert = MakeRuledAlert();
+
+        var result = await CreateSut().AcknowledgeAsync(
+            _userId, alert.Id, "calling", "Ringing her now, no answer yet.");
+
+        var appended = Appended();
+        Assert.NotNull(appended);
+        Assert.Equal(AlertResponseKind.Acknowledge, appended.Kind);
+        Assert.Equal(_userId, appended.UserId);
+        Assert.Equal("calling", appended.ResponseCode);
+
+        // Stored through the encryption service, not as typed — the note is free text about a
+        // named person's health, and it gets the same treatment medical notes get.
+        Assert.Equal(ReversibleEncryption.Marker + "Ringing her now, no answer yet.", appended.Note);
+
+        // And read back as typed, so the round trip is the thing being pinned rather than the
+        // write alone.
+        Assert.Equal("Ringing her now, no answer yet.", result.Response!.Note);
+        Assert.Equal("Calling them now", result.Response.ResponseLabel);
+    }
+
+    [Fact]
+    public async Task Acknowledge_WithNoBody_AppendsNothing_AndStillWorks()
+    {
+        var alert = MakeRuledAlert();
+
+        var result = await CreateSut().AcknowledgeAsync(_userId, alert.Id);
+
+        // The form that shipped first. A row saying only "somebody tapped something" would pad
+        // every alert's history with entries that answer nothing.
+        Assert.Null(Appended());
+        Assert.Null(result.Response);
+        Assert.Equal("acknowledged", result.Status);
+        Assert.Equal(_userId, alert.AcknowledgedByUserId);
+    }
+
+    [Fact]
+    public async Task Acknowledge_BySomebodyElseAfterTheFirst_KeepsTheFirstsAttribution_AndStillRecordsWhatTheySaid()
+    {
+        var first = Guid.NewGuid();
+        var alert = MakeRuledAlert(acknowledgedAt: Now.UtcDateTime.AddMinutes(-10));
+        alert.AcknowledgedByUserId = first;
+
+        var result = await CreateSut().AcknowledgeAsync(
+            _userId, alert.Id, "checking_in_person", null);
+
+        // Who is on it does not change — but what the second person is doing is exactly the
+        // coordination the table exists for, and losing it is losing the feature.
+        Assert.Equal(first, alert.AcknowledgedByUserId);
+        Assert.Equal(first, result.AcknowledgedByUserId);
+        Assert.Equal(_userId, Appended()!.UserId);
+    }
+
+    [Fact]
+    public async Task Acknowledge_WithACodeTheRuleDoesNotOffer_IsRefusedAndNamesTheOnesItDoes()
+    {
+        var alert = MakeRuledAlert();
+
+        var thrown = await Assert.ThrowsAsync<AlertResponseCodeException>(
+            () => CreateSut().AcknowledgeAsync(_userId, alert.Id, "charged_and_worn", null));
+
+        // A real code — from device_silence, which this rule is not. The client's list and the
+        // server's are two copies of one fact, and a stale app has to be told what to re-sync to.
+        Assert.Contains("calling", thrown.ValidCodes);
+        Assert.Contains("calling", thrown.Message);
+
+        // And nothing happened: an alert marked handled with no record of who handled it is worse
+        // than neither.
+        Assert.Null(alert.AcknowledgedDate);
+        Assert.Null(Appended());
+        await _unitOfWork.DidNotReceive().SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Close_ResolvesTheAlertAndCreditsTheCaregiver()
+    {
+        var alert = MakeRuledAlert();
+
+        var result = await CreateSut().CloseAsync(_userId, alert.Id, "slept_in", null);
+
+        Assert.True(alert.IsResolved);
+        Assert.Equal(_userId, alert.ResolvedByUserId);
+        Assert.Equal(_userId, result.ResolvedByUserId);
+        Assert.Equal("resolved", result.Status);
+
+        // Resolving is what re-arms the producer's cooldown, so a condition that has not really
+        // passed raises a fresh alert rather than staying silent behind this note. Nothing else
+        // needs doing for that — it is the same latch the producers read.
+        Assert.Equal(AlertResponseKind.Close, Appended()!.Kind);
+    }
+
+    [Fact]
+    public async Task Close_AlsoAcknowledgesAnUnacknowledgedAlert()
+    {
+        var alert = MakeRuledAlert();
+
+        await CreateSut().CloseAsync(_userId, alert.Id, "slept_in", null);
+
+        // Closing without acknowledging would leave the alert resolved but still counted unread,
+        // which is the one state a caregiver has no way to clear.
+        Assert.NotNull(alert.AcknowledgedDate);
+        Assert.Equal(_userId, alert.AcknowledgedByUserId);
+    }
+
+    [Fact]
+    public async Task Close_BySecondCaregiverSecondsLater_IsNotAnError_AndKeepsTheFirstAsResolver()
+    {
+        var first = Guid.NewGuid();
+        var alert = MakeRuledAlert(isResolved: true);
+        alert.ResolvedByUserId = first;
+
+        var result = await CreateSut().CloseAsync(_userId, alert.Id, "away_from_home", null);
+
+        Assert.Equal(first, alert.ResolvedByUserId);
+        Assert.Equal(first, result.ResolvedByUserId);
+        Assert.Equal(_userId, Appended()!.UserId);
+    }
+
+    [Fact]
+    public async Task Close_OnAnAlertCardiTrackAlreadyResolved_RecordsTheResponseAndCreditsNobody()
+    {
+        var alert = MakeRuledAlert(isResolved: true);
+
+        await CreateSut().CloseAsync(_userId, alert.Id, null, "Turned out she was at her sister's.");
+
+        // They may still want to say what happened. Crediting them with a resolution the product
+        // made on its own would be the wrong record of both.
+        Assert.Null(alert.ResolvedByUserId);
+        Assert.NotNull(Appended());
+    }
+
+    [Fact]
+    public async Task AnsweringAnAlert_StopsTheEscalationLadderChasingTheFamilyAboutIt()
+    {
+        var alert = MakeRuledAlert();
+
+        await CreateSut().AcknowledgeAsync(_userId, alert.Id, "calling", null);
+
+        // Until now only a push ack halted the ladder. A caregiver who opened the app, read the
+        // alert and dealt with it was still escalated against, and the family got a second and a
+        // third page about something already handled.
+        await _ackDelivery.Received(1).HaltEscalationForAlertAsync(alert.Id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AnAlertThatRefusesTheRequest_NeverTouchesTheLadder()
+    {
+        var alert = MakeRuledAlert();
+
+        await Assert.ThrowsAsync<AlertResponseCodeException>(
+            () => CreateSut().CloseAsync(_userId, alert.Id, "not_a_code", null));
+
+        await _ackDelivery.DidNotReceive()
+            .HaltEscalationForAlertAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AnswerResult_CountsTheOtherCaregiversTheAnswerReaches()
+    {
+        var alert = MakeRuledAlert();
+        var sibling = Guid.NewGuid();
+        _links.GetByCardiMemberIdAsync(_memberId).Returns(
+        [
+            new UserCardiMember { UserId = _userId, CardiMemberId = _memberId, IsActive = true },
+            new UserCardiMember { UserId = sibling, CardiMemberId = _memberId, IsActive = true },
+            new UserCardiMember { UserId = Guid.NewGuid(), CardiMemberId = _memberId, IsActive = false },
+        ]);
+
+        var result = await CreateSut().AcknowledgeAsync(_userId, alert.Id, "calling", null);
+
+        // The responder is not notified of their own answer, and somebody whose grant was revoked
+        // is not a caregiver on this member any more.
+        Assert.Equal(1, result.FamilyNotified);
+    }
+
+    /// <summary>
+    /// Wraps the plain text in a marker instead of encrypting it, so a test can tell "stored as
+    /// written" from "stored through the encryption service" without pinning AES's output.
+    /// </summary>
+    private sealed class ReversibleEncryption : IEncryptionService
+    {
+        internal const string Marker = "enc:";
+
+        public string Encrypt(string plainText) => Marker + plainText;
+
+        public string Decrypt(string cipherText) =>
+            cipherText.StartsWith(Marker, StringComparison.Ordinal)
+                ? cipherText[Marker.Length..]
+                : throw new FormatException("Not ciphertext this fake wrote.");
+
+        public byte[] EncryptBytes(byte[] plainBytes) => plainBytes;
+
+        public byte[] DecryptBytes(byte[] cipherBytes) => cipherBytes;
     }
 }

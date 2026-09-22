@@ -65,6 +65,16 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
     public async Task<NotificationDelivery?> GetByDedupKeyAsync(string dedupKey, CancellationToken ct = default) =>
         await _dbSet.FirstOrDefaultAsync(d => d.DedupKey == dedupKey, ct);
 
+    public async Task<IReadOnlyList<NotificationDelivery>> GetUnfinishedForAlertAsync(
+        Guid alertId, CancellationToken ct = default) =>
+        await _dbSet
+            .Where(d => d.SourceType == Domain.Enums.DeliverySourceType.Alert
+                        && d.SourceId == alertId
+                        && (d.State == Domain.Enums.DeliveryState.Pending
+                            || d.State == Domain.Enums.DeliveryState.Sent
+                            || d.State == Domain.Enums.DeliveryState.Failed))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<NotificationDelivery>> GetDueForEscalationAsync(
         DateTime utcNow, CancellationToken ct = default)
     {
@@ -87,6 +97,7 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
                         && d.State != Domain.Enums.DeliveryState.Delivered
                         && d.State != Domain.Enums.DeliveryState.DeadLettered
                         && d.State != Domain.Enums.DeliveryState.Undelivered
-                        && d.State != Domain.Enums.DeliveryState.Suppressed)
+                        && d.State != Domain.Enums.DeliveryState.Suppressed
+                        && d.State != Domain.Enums.DeliveryState.Answered)
             .ToListAsync(ct);
 }

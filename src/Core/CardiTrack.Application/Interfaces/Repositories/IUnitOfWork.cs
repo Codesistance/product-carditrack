@@ -15,6 +15,7 @@ public interface IUnitOfWork : IDisposable
     IDeviceActivityLogRepository DeviceActivityLogs { get; }
     IDeviceRepository Devices { get; }
     IAlertRepository Alerts { get; }
+    IAlertResponseRepository AlertResponses { get; }
     IPatternBaselineRepository PatternBaselines { get; }
     IGranularMetricRepository GranularMetrics { get; }
     IDigestRepository Digests { get; }

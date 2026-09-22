@@ -22,6 +22,7 @@ public class UnitOfWork : IUnitOfWork
     public IDeviceActivityLogRepository DeviceActivityLogs { get; }
     public IDeviceRepository Devices { get; }
     public IAlertRepository Alerts { get; }
+    public IAlertResponseRepository AlertResponses { get; }
     public IPatternBaselineRepository PatternBaselines { get; }
     public IGranularMetricRepository GranularMetrics { get; }
     public IDigestRepository Digests { get; }
@@ -66,6 +67,7 @@ public class UnitOfWork : IUnitOfWork
         IDeviceActivityLogRepository deviceActivityLogs,
         IDeviceRepository devices,
         IAlertRepository alerts,
+        IAlertResponseRepository alertResponses,
         IPatternBaselineRepository patternBaselines,
         IGranularMetricRepository granularMetrics,
         IDigestRepository digests,
@@ -109,6 +111,7 @@ public class UnitOfWork : IUnitOfWork
         DeviceActivityLogs = deviceActivityLogs;
         Devices = devices;
         Alerts = alerts;
+        AlertResponses = alertResponses;
         PatternBaselines = patternBaselines;
         GranularMetrics = granularMetrics;
         Digests = digests;

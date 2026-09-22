@@ -38,5 +38,20 @@ public enum DeliveryState
 
     /// <summary>Escalation ladder ran out with no ack from anyone. Terminal, paged.</summary>
     [Display(Name = "Undelivered")]
-    Undelivered = 7
+    Undelivered = 7,
+
+    /// <summary>
+    /// A caregiver answered the alert this delivery was about — in the app, on some device, not
+    /// necessarily this one. Terminal, and it halts escalation.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="Delivered"/> on purpose, although both stop the ladder.
+    /// <see cref="Delivered"/> means a specific handset posted <c>/delivered</c>, and the
+    /// time-to-ack SLO is measured from exactly those; counting an in-app answer as one would
+    /// quietly report the push as having arrived on a phone that may have been face-down all
+    /// night. What is true here is the thing that actually matters — somebody dealt with it — and
+    /// saying only that is what keeps the delivery metric about deliveries.
+    /// </remarks>
+    [Display(Name = "Answered")]
+    Answered = 8
 }

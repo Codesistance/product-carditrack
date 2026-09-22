@@ -26,6 +26,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
     public DbSet<DeviceActivityLog> DeviceActivityLogs => Set<DeviceActivityLog>();
     public DbSet<Alert> Alerts => Set<Alert>();
+    public DbSet<AlertResponse> AlertResponses => Set<AlertResponse>();
     public DbSet<PatternBaseline> PatternBaselines => Set<PatternBaseline>();
     public DbSet<DeviceTypeSyncProfile> DeviceTypeSyncProfiles => Set<DeviceTypeSyncProfile>();
     public DbSet<GranularMetricHour> GranularMetricHours => Set<GranularMetricHour>();

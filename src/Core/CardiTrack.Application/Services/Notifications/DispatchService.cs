@@ -381,7 +381,7 @@ public class DispatchService : IDispatchService
         // to perform the 120s repush (EscalationAction.Repush in NotificationDispatchWorker), so
         // returning early on Sent would silently turn every repush into a no-op.
         if (delivery.State is DeliveryState.Delivered or DeliveryState.DeadLettered
-            or DeliveryState.Undelivered or DeliveryState.Suppressed)
+            or DeliveryState.Undelivered or DeliveryState.Suppressed or DeliveryState.Answered)
             return;
 
         // Ahead of everything else, because it is the more fundamental reason to stop: a
