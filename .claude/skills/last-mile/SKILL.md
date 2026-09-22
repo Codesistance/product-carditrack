@@ -71,8 +71,9 @@ git push -u origin <branch>
 gh pr create --title "<headline>" --body-file <file>
 ```
 
-(Cloud sessions have no `gh`; use the GitHub MCP tools — `create_pull_request`,
-`pull_request_read` — for every step written as `gh` here.)
+(`gh` is not on every session's `PATH` — check before reaching for it. Where it
+is missing, the GitHub MCP tools — `create_pull_request`, `pull_request_read` —
+cover every step written as `gh` here.)
 
 - **Never draft** ([CLAUDE.md](../../../CLAUDE.md)) — and mechanically, the
   Copilot-request workflow skips draft PRs, so a draft gets no review at all.
@@ -108,7 +109,7 @@ stands, re-request through the GraphQL `requestReviews` mutation:
 ```
 gh api graphql -f query='mutation{requestReviews(input:{
   pullRequestId:"<PR node id>",botIds:["BOT_kgDOCnlnWA"],union:true}){
-  pullRequest{reviewRequests(first:5){nodes{requestedReviewer{
+  pullRequest{reviewRequests(first:100){nodes{requestedReviewer{
   __typename ... on Bot{login}}}}}}}'
 ```
 
@@ -116,14 +117,21 @@ gh api graphql -f query='mutation{requestReviews(input:{
   `copilot-swe-agent` — that id is accepted silently and registers no review.
 - `union:true` keeps the reviewers already on the PR instead of replacing them.
 - **Read the mutation's own response** to confirm the bot is listed. A 200 alone
-  does not mean Copilot was added.
+  does not mean Copilot was added. Page it at `first:100` as the workflow does —
+  at `first:5` a PR with several reviewers can push Copilot off the page and the
+  check reports a failure that did not happen.
 
-The workflow's own `gh pr edit --add-reviewer copilot` is not a session
-fallback: it works *there* because the workflow runs as the `AUTOMERGE_TOKEN`
-PAT. The Cursor GitHub App token gets 403 on it, and cloud sessions have no
-`gh pr` at all. In a cloud session the `request_copilot_review` MCP tool is the
-route to try — and it gets the same treatment, confirm the reviewer actually
-registered before you start waiting.
+Prefer that over the workflow's own `gh pr edit --add-reviewer copilot`. That
+command is not broken, but it succeeds *there* because the workflow runs as the
+`AUTOMERGE_TOKEN` PAT; the Cursor GitHub App token gets a 403 on it. The blocker
+is which identity you hold, not the command. Sessions also vary in whether `gh`
+is installed at all — cloud sessions provision `GH_TOKEN` with `Pull requests:
+read and write` for exactly this kind of work
+([claude_cloud_environment_setup.md](../../../docs/technical/claude_cloud_environment_setup.md)),
+but the binary is not always on `PATH`. Check rather than assume. Where there is
+no `gh`, the `request_copilot_review` MCP tool is the route — and it gets the
+same treatment: confirm the reviewer actually registered before you start
+waiting.
 
 "Finished" is observable: a review by `copilot-pull-request-reviewer[bot]`
 (state `COMMENTED`) whose `commit_id` is the PR's current head SHA. It typically
@@ -175,9 +183,16 @@ flagged once, with your assessment, to the user.
 
 **`main` moves under you.** Triage rounds take hours, and `main` does not wait —
 PR #1178 ran eight rounds while `main` gained five commits. Before calling a PR
-merge-ready, merge `origin/main` in again and re-run the section 1 gates against
-the result; the gates you ran in round one were against a base that no longer
-exists.
+merge-ready, `git fetch origin main`, merge it in again, and re-run the section 1
+gates against the result; the gates you ran in round one were against a base that
+no longer exists.
+
+Then mind the trap this skill exists to document: **that merge is a new head, and
+it does not request a review** (no `synchronize`, section 3). A round that
+converged before the merge converged on a commit that is no longer the head, so
+section 5's "on the final head commit" is not satisfied by it. Merge first,
+re-request, triage that review — then call it merge-ready. Merging `main` in
+*after* a converged round quietly un-converges it.
 
 Then re-check the **prose** the merge did not conflict on. Git merges docs
 textually, so two edits that never touch the same line merge clean and still
