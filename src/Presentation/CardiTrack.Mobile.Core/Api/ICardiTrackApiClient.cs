@@ -626,6 +626,13 @@ public interface ICardiTrackApiClient
     /// Leaves a family. Refused (422) for its admin, who must hand it over first — or, alone in
     /// it, is told to delete their account instead.
     /// </summary>
+    /// <remarks>
+    /// On success the device's whole read cache is dropped, not only the family's own keys: every
+    /// dashboard, alert list, journal and member profile the caregiver has opened is a saved copy
+    /// of health data they may no longer read, and each is filed under its own path. Evicting the
+    /// handful this call knows about would leave the rest to be served offline for the cache's
+    /// lifetime, which is the one thing leaving a family has to stop.
+    /// </remarks>
     Task LeaveFamilyAsync(Guid organizationId, CancellationToken ct = default);
 
     /// <summary>

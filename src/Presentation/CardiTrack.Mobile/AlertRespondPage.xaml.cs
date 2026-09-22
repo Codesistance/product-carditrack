@@ -3,7 +3,9 @@ using CardiTrack.Mobile.Controls;
 using CardiTrack.Mobile.Core.Alerts;
 using CardiTrack.Mobile.Core.Api;
 using CardiTrack.Mobile.Core.Forms;
+using CardiTrack.Mobile.Core.Onboarding;
 using CardiTrack.Mobile.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Shapes;
 
 namespace CardiTrack.Mobile;
@@ -23,9 +25,11 @@ namespace CardiTrack.Mobile;
 /// the family had been told.
 /// </para>
 /// <para>
-/// The draft survives the app being backgrounded: the note and the chip are written to
-/// preferences as they change and read back on the way in, keyed per alert and per kind so a
-/// half-written close never reappears under Acknowledge.
+/// The draft survives the app being backgrounded: the note and the chip are written as they
+/// change and read back on the way in, keyed per alert and per kind so a half-written close never
+/// reappears under Acknowledge. It goes to <see cref="ISecureKeyValueStore"/> rather than to
+/// preferences, because a note is free text about the wearer — the server encrypts it at rest for
+/// that reason, and a plaintext copy in an app's shared preferences is in every device backup.
 /// </para>
 /// </remarks>
 [QueryProperty(nameof(AlertId), "alertId")]
@@ -36,6 +40,8 @@ public partial class AlertRespondPage : ContentPage
 
     private readonly ICardiTrackApiClient _api;
     private readonly IPopupService _popups;
+    private readonly ISecureKeyValueStore _drafts;
+    private readonly ILogger<AlertRespondPage> _logger;
 
     private readonly AlertResponseDraft _draft = new();
     private readonly Dictionary<string, Border> _chips = [];
@@ -46,11 +52,17 @@ public partial class AlertRespondPage : ContentPage
     private bool _busy;
     private bool _loaded;
 
-    public AlertRespondPage(ICardiTrackApiClient api, IPopupService popups)
+    public AlertRespondPage(
+        ICardiTrackApiClient api,
+        IPopupService popups,
+        ISecureKeyValueStore drafts,
+        ILogger<AlertRespondPage> logger)
     {
         InitializeComponent();
         _api = api;
         _popups = popups;
+        _drafts = drafts;
+        _logger = logger;
     }
 
     public string AlertId
@@ -109,7 +121,7 @@ public partial class AlertRespondPage : ContentPage
         try
         {
             _alert = await _api.GetAlertAsync(_alertId);
-            RestoreDraft();
+            await RestoreDraftAsync();
             Apply(_alert);
             SetState(loaded: true);
         }
@@ -275,31 +287,70 @@ public partial class AlertRespondPage : ContentPage
 
     private string DraftKey => AlertResponseDraft.StorageKey(_alertId, _kind);
 
+    /// <summary>
+    /// Writes the draft to the platform's keystore, and forgets about it.
+    /// </summary>
+    /// <remarks>
+    /// Fire-and-forget on purpose: this runs on every keystroke, and awaiting a keystore write in
+    /// a text handler would put its latency between the caregiver and their own typing. A write
+    /// that loses a race with the next one loses at most the last character typed, and the one
+    /// after it puts it back. Failures are recorded rather than shown — a draft is a convenience,
+    /// and a popup about it would land while somebody is writing about an alert.
+    /// </remarks>
     private void SaveDraft()
     {
         if (_alertId == Guid.Empty)
             return;
 
-        if (_draft.IsEmpty)
-            Preferences.Default.Remove(DraftKey);
-        else
-            Preferences.Default.Set(DraftKey, _draft.Serialize());
+        var key = DraftKey;
+        var payload = _draft.IsEmpty ? null : _draft.Serialize();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (payload is null)
+                    _drafts.Remove(key);
+                else
+                    await _drafts.SetAsync(key, payload);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Saving the alert response draft failed.");
+            }
+        });
     }
 
-    private void RestoreDraft()
+    private async Task RestoreDraftAsync()
     {
-        if (AlertResponseDraft.Deserialize(Preferences.Default.Get(DraftKey, string.Empty)) is not { } saved)
+        string? stored;
+        try
+        {
+            stored = await _drafts.GetAsync(DraftKey);
+        }
+        catch (Exception ex)
+        {
+            // A keystore that will not open is not worth failing the page for: the caregiver
+            // types the note again, which is the state they would have been in anyway.
+            _logger.LogDebug(ex, "Reading the alert response draft failed.");
+            return;
+        }
+
+        if (AlertResponseDraft.Deserialize(stored) is not { } saved)
             return;
 
         _draft.Code = saved.Code;
         _draft.Note = saved.Note;
     }
 
+    /// <summary>
+    /// Drops the draft once it has been sent — the note is now on the alert, where the family
+    /// reads it, and a second copy on the device is one the caregiver cannot see to delete.
+    /// </summary>
     private void ClearDraft()
     {
         _draft.Code = null;
         _draft.Note = string.Empty;
-        Preferences.Default.Remove(DraftKey);
+        SaveDraft();
     }
 
     private void SetState(bool loading = false, bool loaded = false, bool error = false)

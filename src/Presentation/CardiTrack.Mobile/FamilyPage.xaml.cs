@@ -64,7 +64,14 @@ public partial class FamilyPage : ContentPage
 
         // Re-tapping the tab while already on it opens the drawer (D-19). The bar swallows that
         // tap rather than rebuilding the page, so it is raised here instead.
-        BottomNavBar.SameTabTapped += OnSameTabTapped;
+        //
+        // Subscribed and unsubscribed with the page, not in this constructor: the event is
+        // process-wide and static, Shell builds a fresh FamilyPage on every navigation to the
+        // tab, and a handler left attached roots that page, its view tree and its API client for
+        // the rest of the session. The IsOnScreen test in the handler stops a stale instance
+        // acting; it does nothing about it still being there.
+        Loaded += OnPageLoaded;
+        Unloaded += OnPageUnloaded;
         this.RefreshWhenAppResumes(RefreshUnattendedAsync);
     }
 
@@ -90,6 +97,12 @@ public partial class FamilyPage : ContentPage
         DateTime.UtcNow - _lastLoadedUtc < ResumeRefresh.MinimumGap
             ? Task.CompletedTask
             : LoadAsync(silent: true);
+
+    private void OnPageLoaded(object? sender, EventArgs e) =>
+        BottomNavBar.SameTabTapped += OnSameTabTapped;
+
+    private void OnPageUnloaded(object? sender, EventArgs e) =>
+        BottomNavBar.SameTabTapped -= OnSameTabTapped;
 
     private void OnSameTabTapped(object? sender, NavTab tab)
     {

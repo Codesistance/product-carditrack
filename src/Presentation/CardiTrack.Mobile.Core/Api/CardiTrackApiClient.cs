@@ -316,6 +316,17 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
 
     private int EvictionsOf(string path) => _evictions.TryGetValue(path, out var count) ? count : 0;
 
+    /// <summary>
+    /// Bumped when the whole cache is dropped rather than one key of it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="_evictions"/> cannot express "every key", and enumerating them would only cover
+    /// the ones this client has already touched. A read that began before a clear carries the
+    /// epoch from before it and is refused at save time, which is the same guarantee per-key
+    /// eviction gives, for the case that has no key.
+    /// </remarks>
+    private int _cacheEpoch;
+
     private static string[] MemberProfileKeys(Guid cardiMemberId) =>
     [
         ApiPaths.CardiMember(cardiMemberId),
@@ -761,9 +772,17 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public async Task LeaveFamilyAsync(Guid organizationId, CancellationToken ct = default)
     {
         await SendNoDataAsync(HttpMethod.Delete, $"{ApiPaths.FamilyMembers(organizationId)}/me", ct);
-        // Leaving takes the grants with it: the members this family let the caller see are no
-        // longer theirs to open, so the saved member list must not keep offering them.
-        await EvictAsync(ApiPaths.FamilyMembers(organizationId), ApiPaths.MyFamilies, ApiPaths.CardiMembers);
+
+        // Everything, not the three keys this call could name. The caller has just given up the
+        // right to read a family's members, and their readings, alerts and journals are saved
+        // under paths this method does not know — a member id it never saw, an alert list under
+        // whichever filter was last used. Dropping the lot costs a cold re-fetch of the families
+        // they are still in; keeping any of it means an offline launch can still draw somebody
+        // they no longer watch.
+        //
+        // The bump is what stops a read that was already in flight from saving its answer back
+        // into the cache a moment after it was cleared.
+        await ClearCacheAsync();
     }
 
     public async Task<FamilyJoinRequestReceipt> RequestToJoinFamilyAsync(string familyId, CancellationToken ct = default)
@@ -1069,6 +1088,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         // warmer fetches a member's screens together — so one expected miss among them would
         // otherwise bar every other read in the batch from caching and quietly undo the warm.
         var evictions = EvictionsOf(path);
+        var epoch = Volatile.Read(ref _cacheEpoch);
         HttpResponseMessage response;
         try
         {
@@ -1101,8 +1121,11 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
         var value = UnwrapEnvelope<T>("GET", path, body, response.StatusCode, allowNullData);
         // A null-data success is an answer, but not one worth caching: TryReadCacheAsync would
         // only reject the entry as unreadable on the way back out, one warning per offline read.
-        if (value is not null && cache && EvictionsOf(path) == evictions)
+        if (value is not null && cache && EvictionsOf(path) == evictions
+            && Volatile.Read(ref _cacheEpoch) == epoch)
+        {
             await TrySaveCacheAsync(path, body, generation, ct);
+        }
         return value;
     }
 
@@ -1277,6 +1300,35 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     /// device holding the old answer, and a cache that cannot delete must not turn a mutation
     /// that succeeded into one that appears to have failed.
     /// </summary>
+    /// <summary>
+    /// Drops every saved read on the device, and bars the reads already in flight from putting
+    /// theirs back.
+    /// </summary>
+    /// <remarks>
+    /// The eviction counter is bumped for the same reason <see cref="EvictAsync"/> bumps a key's:
+    /// a GET that started before this ran holds a generation from before it, and
+    /// <see cref="TrySaveCacheAsync"/> refuses to write anything whose generation is stale. Tied
+    /// to no key in particular, so it has to be every key — which is what
+    /// <see cref="_evictions"/>'s null entry means.
+    /// </remarks>
+    private async Task ClearCacheAsync()
+    {
+        Interlocked.Increment(ref _cacheEpoch);
+        if (_cache is null)
+            return;
+
+        try
+        {
+            await _cache.ClearAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort, like every other cache write: a device that will not let go of its
+            // cache must not fail the leave that has already happened on the server.
+            _logger.LogWarning(ex, "Clearing the offline cache after leaving a family failed.");
+        }
+    }
+
     private async Task EvictAsync(params string[] keys)
     {
         // Counted per key, before the removals: a read that returns while this is still deleting

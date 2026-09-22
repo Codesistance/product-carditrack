@@ -95,9 +95,13 @@ public partial class ApproveJoinRequestPage : ContentPage
         SetState(loading: true);
         try
         {
-            // The people this family watches, from the admin's own grants — the picker can only
-            // offer what the admin can already see, which is what they are entitled to share.
-            var members = await _api.GetCardiMembersAsync();
+            // The people this family watches, and only this family's: the admin's grants can span
+            // several families, and offering one family's member to a joiner of another would
+            // send an id the approval endpoint refuses — a rejection the admin could do nothing
+            // about, from a list this page drew.
+            var members = ForThisFamily(
+                await _api.GetCardiMembersAsync(),
+                await _api.GetMyFamiliesAsync());
             var queue = await _api.GetPendingJoinRequestsAsync(_organizationId);
             var request = queue.FirstOrDefault(r => r.RequestId == _requestId);
 
@@ -109,6 +113,35 @@ public partial class ApproveJoinRequestPage : ContentPage
             ErrorDetailLabel.Text = ex.Message;
             SetState(error: true);
         }
+    }
+
+    /// <summary>
+    /// The caller's members narrowed to the family being approved into.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Matched on name, because that is what the wire offers: <c>GET /families/mine</c> names the
+    /// members the caller may see in each family and carries no ids, and the member list is
+    /// grant-scoped across every family rather than org-scoped. The alternative is a member list
+    /// per family, which no endpoint serves.
+    /// </para>
+    /// <para>
+    /// Its one weakness is D-15 — two families watching the same person hold two records under
+    /// one name, so both would be offered here. The approval itself is still safe: the server
+    /// checks every id against the family, so the worst case is a refusal, not a member shared
+    /// out of the wrong family. A family-scoped member endpoint would close it properly.
+    /// </para>
+    /// </remarks>
+    private IReadOnlyList<CardiMemberResponse> ForThisFamily(
+        IReadOnlyList<CardiMemberResponse> members, IReadOnlyList<FamilySummary> families)
+    {
+        var family = families.FirstOrDefault(f => f.OrganizationId == _organizationId);
+        if (family is null)
+            return [];
+
+        var watched = new HashSet<string>(
+            family.WatchedMemberNames.Select(n => n.Trim()), StringComparer.OrdinalIgnoreCase);
+        return members.Where(m => watched.Contains(m.Name.Trim())).ToList();
     }
 
     private void Apply(IReadOnlyList<CardiMemberResponse> members, PendingJoinRequest? request)

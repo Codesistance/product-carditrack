@@ -17,7 +17,9 @@ public enum AlertAnswerKind
 /// <remarks>
 /// A canned pick alone is enough, and so is a note alone (Story 4.10). The note is capped at the
 /// server's 500 with a visible count, and the draft round-trips through a string so the page can
-/// park it in preferences when the app is backgrounded and pick it up again on return.
+/// park it in the device's keystore while the app is away and pick it up again on return. The
+/// keystore rather than preferences: the note is free text about the wearer, which is why the
+/// server encrypts it at rest.
 /// </remarks>
 public sealed class AlertResponseDraft
 {
@@ -41,7 +43,10 @@ public sealed class AlertResponseDraft
         Note = string.IsNullOrWhiteSpace(Note) ? null : Note.Trim(),
     };
 
-    /// <summary>Per alert and per kind: a half-written close must not reappear under Acknowledge.</summary>
+    /// <summary>
+    /// Per alert and per kind: a half-written close must not reappear under Acknowledge. Also the
+    /// keystore entry's name, so it has to stay free of anything but the two ids.
+    /// </summary>
     public static string StorageKey(Guid alertId, AlertAnswerKind kind) =>
         $"AlertResponseDraft:{alertId:N}:{kind}";
 
