@@ -1,5 +1,5 @@
 {
- "_readme": "Source of truth for the mobile icon set. Run `npm ci && npm run generate` in scripts/icons after editing. Sizes are the SVG width/height in dp; groups are the IconPark colour slots (outer stroke, external fill, internal outline, internal fill) for Multicolor, or the single colour for linear. Material entries are tinted with `fill`. Not generated: the vendor sign-in marks, the splash gradient, the monochrome Android notification icon, the bottom-nav tab icons, and icon_chatbot.svg, which is the 240dp chat launcher illustration rather than an icon.",
+ "_readme": "Source of truth for the mobile icon set. Run `npm ci && npm run generate` in scripts/icons after editing. Sizes are the SVG width/height in dp; groups are the IconPark colour slots (outer stroke, external fill, internal outline, internal fill) for Multicolor, or the single colour for linear. Material entries are tinted with `fill`. Not generated: the vendor sign-in marks, the splash gradient, the monochrome Android notification icon, the bottom-nav tab icons, icon_chatbot.svg, which is the 240dp chat launcher illustration rather than an icon, and the two icon_caret_down files, a bespoke 18x9 filled triangle matched to the filter chips that no square glyph reproduces.",
  "iconpark": {
   "package": "@icon-park/svg",
   "version": "1.4.2",
@@ -308,20 +308,6 @@
    "size": 24
   },
   {
-   "file": "icon_caret_down.svg",
-   "source": "iconpark",
-   "name": "down",
-   "group": "muted",
-   "size": 18
-  },
-  {
-   "file": "icon_caret_down_white.svg",
-   "source": "iconpark",
-   "name": "down",
-   "group": "white",
-   "size": 18
-  },
-  {
    "file": "icon_caution_danger.svg",
    "source": "iconpark",
    "name": "caution",
@@ -396,14 +382,14 @@
    "source": "iconpark",
    "name": "preview-open",
    "group": "muted",
-   "size": 2
+   "size": 24
   },
   {
    "file": "icon_eye_off.svg",
    "source": "iconpark",
    "name": "preview-close",
    "group": "muted",
-   "size": 2
+   "size": 24
   },
   {
    "file": "icon_format_csv.svg",

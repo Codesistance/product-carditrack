@@ -12,7 +12,7 @@ python scripts/generate-icon-registry.py
 
 A row that disagrees with the code means this file is stale, not that the code is wrong.
 
-**86 icons**, **29 distinct colours**, **2 referenced nowhere**.
+**86 icons**, **30 distinct colours**, **2 referenced nowhere**.
 
 ## Why the colours matter
 
@@ -26,7 +26,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#174E86` | 31 | PrimaryDark |
 | `#FFFFFF` | 29 | White |
 | `#1884DC` | 27 | Primary |
-| `#939DAA` | 18 | MutedText |
+| `#939DAA` | 17 | MutedText |
 | `#36C09B` | 7 | StatusGreen |
 | `#C42F2F` | 6 | DangerRed |
 | `#FBE4E4` | 5 | derived: StatusRed at 14% over white |
@@ -37,6 +37,7 @@ lists every colour rather than only the common ones: a colour used once still pi
 | `#123A5F` | 1 | — |
 | `#1A6CB0` | 1 | — |
 | `#2FA6C4` | 1 | — |
+| `#343434` | 1 | Body2Dark ink |
 | `#34A853` | 1 | — |
 | `#3E8AC7` | 1 | MetricBreathingInk |
 | `#4285F4` | 1 | — |
@@ -132,7 +133,7 @@ icon can be staged ahead of a screen that has not shipped.
 | Icon | Colours | Used by |
 | --- | --- | --- |
 | `icon_back_white.svg` | `#FFFFFF` | AlertDetailPage, AlertSettingsPage, AlertsPage, CardiMemberDetailPage, DeviceManagementPage, EditCardiMemberPage, ExportConsentsPage, ExportHealthDataPage, JournalEntryPage, JournalPage, JournalTimingPage, LegalDocumentPage, MedicalInformationPage, MemberChatPage, MetricAlarmEditPage, MetricAlarmsPage, MetricTrendPage, NotificationPreferencesPage, NotificationsPage, QuestionnairesPage, SettingsPage, WizardHeader |
-| `icon_caret_down.svg` | `#939DAA` | FilterChipBar |
+| `icon_caret_down.svg` | `#343434` | FilterChipBar |
 | `icon_caret_down_white.svg` | `#FFFFFF` | FilterChipBar, MemberChatPage |
 | `icon_chevron.svg` | `#939DAA` | AlertDetailPage, CardiMemberDetailPage, DeviceCard, DeviceManagementPage, MemberChatPage |
 | `icon_chevron_down.svg` | `#939DAA` | AccordionSection, AlertListCard, ChoiceField, DeviceCard, DeviceManagementPage |

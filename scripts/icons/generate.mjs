@@ -5,11 +5,11 @@
 // Every file named in icons.json is written to the mobile Resources/Images folder under
 // its existing name, so the XAML that references it does not change. Two sources:
 //
-//   iconpark  — drawn by the @icon-park/svg package (Apache 2.0, LICENSE.iconpark) with the
+//   iconpark  — drawn by the @icon-park/svg package (Apache 2.0; see NOTICE.md) with the
 //               colour group's slots: Multicolor takes four colours (outer stroke, external
 //               fill, internal outline, internal fill); linear takes one.
-//   material  — a Material Symbols Rounded glyph vendored under material/ (Apache 2.0,
-//               material/LICENSE), tinted with the entry's fill.
+//   material  — a Material Symbols Rounded glyph vendored under material/ (Apache 2.0; see
+//               NOTICE.md), tinted with the entry's fill.
 //
 // The size is the SVG's declared width/height in dp. Resizetizer reads that as the image's
 // base size, so it has to match what the hand-drawn file declared or the layout shifts.
