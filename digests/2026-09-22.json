@@ -1,0 +1,61 @@
+{
+  "date": "2026-09-22",
+  "summary": "*CardiTrack digest — 2026-09-22* · 6 items · 6 FYI · NIA 2027 closes in 5 days (2026-09-27 23:59) — application status still unconfirmed, see 2026-09-21",
+  "empty_reason": null,
+  "items": [
+    {
+      "slug": "website-garmin-q1-2027-vs-closed-developer-program",
+      "title": "Public supported-devices page still promises a dedicated Garmin connection \"Q1 2027\" — internal record says Garmin's developer programme is closed with no date",
+      "url": "https://carditrack.com/supported-devices",
+      "severity": "FYI",
+      "category": "devices",
+      "brief": "research/queue/2026-09-22-website-garmin-q1-2027-vs-closed-developer-program.md",
+      "text": "*FYI* — Public supported-devices page still promises a dedicated Garmin connection \"Q1 2027\" — internal record says Garmin's developer programme is closed with no date\ncarditrack.com/supported-devices (last changed 2026-09-05) lists Garmin under \"Coming next — Q1 2027\" as a dedicated connection. The 2026-09-19 digest recorded that Garmin removed its developer-programme application form with no ETA; Garmin's FAQ still says new access requests are \"temporarily paused\" and today's re-check found no reopening or date. `devices.md` already makes the Garmin engine conditional on access (\"if access does not come, Withings is the next engine\"), so the public page is now the more confident of the two.\nSmallest next action: decide the Garmin line — soften the copy to \"timing depends on Garmin reopening its programme\", or move Garmin to the \"Through Google Health\" group (Garmin Connect shares into Health Connect) — and change the page, `devices.md` and the two internal docs that repeat \"Q1 2027\" together.\nhttps://carditrack.com/supported-devices\n\nclaude \"work through @research/queue/2026-09-22-website-garmin-q1-2027-vs-closed-developer-program.md\""
+    },
+    {
+      "slug": "apple-april-2027-ios-27-sdk-requirement",
+      "title": "Apple: from April 2027 App Store Connect uploads must be built with the iOS 27 SDK — CI pins Xcode 26.4.1, and no stable .NET 10 iOS workload for Xcode 27 exists yet",
+      "url": "https://developer.apple.com/news/?id=k1mtkt1k",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-22-apple-april-2027-ios-27-sdk-requirement.md",
+      "text": "*FYI* — Apple: from April 2027 App Store Connect uploads must be built with the iOS 27 SDK — CI pins Xcode 26.4.1, and no stable .NET 10 iOS workload for Xcode 27 exists yet\nApple's 2026-09-09 developer news post sets the rule: starting April 2027 (day not given), iOS/iPadOS apps uploaded to App Store Connect must be built with the iOS 27 SDK. `deploy-apps-dev.yml` selects Xcode 26.4.1 on macos-26, and MAUI 10.0.101 requires Xcode 26.6; dotnet/macios ships Xcode 27 support for .NET 10 only as pre-release builds so far, with .NET 11 GA (November) the other route. Nothing breaks before April, but the migration path is not yet in CardiTrack's hands.\nSmallest next action: pick .NET 10 + stable Xcode 27 workload, or .NET 11 after GA, and set a January 2027 check that a stable path exists.\nhttps://developer.apple.com/news/?id=k1mtkt1k\n\nclaude \"work through @research/queue/2026-09-22-apple-april-2027-ios-27-sdk-requirement.md\""
+    },
+    {
+      "slug": "android-developer-verification-2026-09-30",
+      "title": "Android developer verification: apps must be registered to a verified developer by 2026-09-30 in Brazil, Indonesia, Singapore, Thailand — global in 2027",
+      "url": "https://developer.android.com/developer-verification",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-22-android-developer-verification-2026-09-30.md",
+      "text": "*FYI* — Android developer verification: apps must be registered to a verified developer by 2026-09-30 in Brazil, Indonesia, Singapore, Thailand — global in 2027\nFrom 2026-09-30, certified Android devices in those four countries block normal installs of any app not registered to a verified developer, from Play or third-party stores alike; Google expands the requirement globally in 2027 and says ~99% of Play apps are registered automatically. CardiTrack is UK-focused, so the September date almost certainly touches nobody real — but nothing in the repo records the developer account's verification or the package's registration status.\nSmallest next action: open Play Console for `com.codesistance.carditrack.mobile`, confirm verified + registered, and note it in the production runbook.\nhttps://developer.android.com/developer-verification\n\nclaude \"work through @research/queue/2026-09-22-android-developer-verification-2026-09-30.md\""
+    },
+    {
+      "slug": "nihr-i4i-pda-october-2026-call",
+      "title": "NIHR i4i Product Development Awards — October 2026 call opens 2026-10-07, outline applications due 1pm 2026-12-02",
+      "url": "https://www.nihr.ac.uk/funding-programmes/invention-for-innovation",
+      "severity": "FYI",
+      "category": "grants",
+      "brief": "research/queue/2026-09-22-nihr-i4i-pda-october-2026-call.md",
+      "text": "*FYI* — NIHR i4i Product Development Awards — October 2026 call opens 2026-10-07, outline applications due 1pm 2026-12-02\nThe main UK public fund for taking a medical device or \"high-impact, patient-focused digital health technology\" towards NHS or social-care adoption. Expected to follow the April 2026 round: two-stage, collaborative, an SME may lead but needs a co-applicant from another organisation (NHS Trust or university). Dates are from a 2026-09-09 consultancy notice citing NIHR — the NIHR page is proxy-blocked from the sandbox, so confirm when the call opens. One caution: PDA funds products with a medical purpose, which pulls CardiTrack toward the SaMD side of the line.\nSmallest next action: by mid-October, decide whether an NHS/academic co-applicant exists and whether the team will describe the product with a medical purpose; if both yes, work backwards from 2026-12-02.\nhttps://www.nihr.ac.uk/funding-programmes/invention-for-innovation\n\nclaude \"work through @research/queue/2026-09-22-nihr-i4i-pda-october-2026-call.md\""
+    },
+    {
+      "slug": "wearableqa-benchmark-meta-fair",
+      "title": "WearableQA (Meta FAIR): first public benchmark for LLM reasoning over long-horizon real-world wearable data",
+      "url": "https://arxiv.org/abs/2609.05405",
+      "severity": "FYI",
+      "category": "models",
+      "brief": "research/queue/2026-09-22-wearableqa-benchmark-meta-fair.md",
+      "text": "*FYI* — WearableQA (Meta FAIR): first public benchmark for LLM reasoning over long-horizon real-world wearable data\narXiv 2609.05405 (2026-09-04): 4,084 ten-option questions built from up to 500 days of wearable series, biomarkers and demographics for 200 real users, across 16 question types (data vs health reasoning × single vs cross-signal); 14 LLMs scored 19.6–72.9% vs 10% chance. Code at github.com/facebookresearch/WearableQA. Whether MedGemma is in the evaluated set is unconfirmed. This is the closest reproducible yardstick to CardiTrack's core task, and the measurement the 2026-09-21 \"which MedGemma tag/size\" brief said any model change needs. Not evidence of clinical validity.\nSmallest next action: run it against the served MedGemma 1.5 4B Q4_K_M and record the cross-signal health-reasoning number as the baseline in the serving architecture doc.\nhttps://arxiv.org/abs/2609.05405\n\nclaude \"work through @research/queue/2026-09-22-wearableqa-benchmark-meta-fair.md\""
+    },
+    {
+      "slug": "ollama-gguf-unbounded-allocation-cve-2026-65315-mitigated",
+      "title": "Ollama CVE-2026-65315 (GGUF metadata unbounded allocation, DoS) — not previously recorded; mitigated in the 0.34.2 we run, and the endpoints need an OIDC token anyway",
+      "url": "https://github.com/advisories/GHSA-9hhj-2jwx-r87p",
+      "severity": "FYI",
+      "category": "dependencies",
+      "brief": "research/queue/2026-09-22-ollama-gguf-unbounded-allocation-cve-2026-65315-mitigated.md",
+      "text": "*FYI* — Ollama CVE-2026-65315 (GGUF metadata unbounded allocation, DoS) — not previously recorded; mitigated in the 0.34.2 we run, and the endpoints need an OIDC token anyway\nGHSA-9hhj-2jwx-r87p (published 2026-07-22, CVSS 8.7, DoS only): a ~32-byte crafted GGUF sent to `/api/blobs` or `/api/create` could force a multi-hundred-MB allocation and crash Ollama. The advisory still lists affected/patched versions as Unknown, so it never matched a version search. Checked today: `fs/gguf/gguf.go` at tag v0.34.2 carries MaxStringLength/MaxArraySize/MaxTensorDims and a checkedLength overflow guard; the MedGemma Cloud Run service has no allUsers invoker, so those endpoints need an OIDC token; and since 2026-09-21 the image builds from vendored, hash-verified weights. No patch action — only the record is missing.\nSmallest next action: add a line to `docs/technical/medgemma_serving_architecture.md` recording this CVE as mitigated with the evidence above, and confirm the embedded llama-server is loopback-only and not started with `--reranking`.\nhttps://github.com/advisories/GHSA-9hhj-2jwx-r87p\n\nclaude \"work through @research/queue/2026-09-22-ollama-gguf-unbounded-allocation-cve-2026-65315-mitigated.md\""
+    }
+  ]
+}
