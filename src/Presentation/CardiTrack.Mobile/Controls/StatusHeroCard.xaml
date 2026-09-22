@@ -30,7 +30,7 @@
                  "Dad, 66" this way is what frees the row below: the avatar can come up beside
                  the name, and the summary underneath gets the card's whole width instead of
                  whatever is left beside a 76pt monogram. -->
-            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Center">
+            <VerticalStackLayout Grid.Column="0" Spacing="1" VerticalOptions="Start">
                 <Label x:Name="NameLabel"
                        Style="{StaticResource Heading2}"
                        LineBreakMode="TailTruncation"/>
@@ -71,7 +71,7 @@
                  so the gap is 8 between whichever buttons are actually showing. -->
             <HorizontalStackLayout Grid.Column="1"
                                     Spacing="8"
-                                    VerticalOptions="Center">
+                                    VerticalOptions="Start">
 
                 <!-- Every button in this row now says two things (see ApplyDaybook and its
                      siblings in the code-behind): the ring pulses while there is something behind
@@ -236,7 +236,7 @@
         <controls:MemberAvatar x:Name="Avatar"
                                Grid.Row="0" Grid.Column="0"
                                BoxWidth="56"
-                               HorizontalOptions="Start" VerticalOptions="Center"/>
+                               HorizontalOptions="Start" VerticalOptions="Start"/>
 
         <!-- Two rows, one column: the headline is the note a caregiver reads at a glance, the
              sentence under it the context they read second. Neither label overrides LineHeight —
@@ -269,20 +269,17 @@ The tier glyph is back in front of the headline, on its line. It could not
                 <Label x:Name="StatusHeadlineLabel"
                        Grid.Column="1"
                        FontFamily="QuicksandSemiBold"
-                       FontSize="20"
+                       FontSize="18"
                        LineBreakMode="TailTruncation"
                        MaxLines="2"/>
             </Grid>
-            <!-- A point under Body2Dark's fourteen, keeping the step down from the headline that
-                 the old 16/14 pair had. Both come down together so the block reads at one scale
-                 rather than the sentence growing relative to the line above it. Its left margin
-                 is set by SetStatusLine: the glyph's column width when the glyph is drawn, so the
-                 sentence meets the headline's text, and nothing when a tier has no glyph, so the
-                 headless sentence gets the whole block rather than an indent under empty space. -->
+            <!-- The sentence starts at the card's left edge, under the glyph rather than
+                 under the headline's text: the block spans the card now, and an inset would
+                 only make the one paragraph on it narrower than everything around it. -->
             <Label x:Name="StatusDetailLabel"
                    Grid.Row="1"
                    Style="{StaticResource Body2Dark}"
-                   FontSize="16"
+                   FontSize="14"
                    LineBreakMode="WordWrap"
                    MaxLines="3"/>
         </Grid>

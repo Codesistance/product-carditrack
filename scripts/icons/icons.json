@@ -65,6 +65,46 @@
     "HeadingText"
    ]
   },
+  "infoGreen": {
+   "title": "Status info \u00b7 green",
+   "style": "linear",
+   "slots": [
+    "#1F8A72"
+   ],
+   "tokens": [
+    "DatasetBodyText"
+   ]
+  },
+  "infoYellow": {
+   "title": "Status info \u00b7 yellow",
+   "style": "linear",
+   "slots": [
+    "#A9741A"
+   ],
+   "tokens": [
+    "DatasetWarningText"
+   ]
+  },
+  "infoOrange": {
+   "title": "Status info \u00b7 orange",
+   "style": "linear",
+   "slots": [
+    "#B45309"
+   ],
+   "tokens": [
+    "the amber icon_pause already uses"
+   ]
+  },
+  "infoRed": {
+   "title": "Status info \u00b7 red",
+   "style": "linear",
+   "slots": [
+    "#C42F2F"
+   ],
+   "tokens": [
+    "DangerRed"
+   ]
+  },
   "muted": {
    "title": "Muted",
    "style": "linear",
@@ -641,6 +681,34 @@
    "source": "iconpark",
    "name": "star",
    "group": "muted",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_green.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoGreen",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_yellow.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoYellow",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_orange.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoOrange",
+   "size": 24
+  },
+  {
+   "file": "icon_status_info_red.svg",
+   "source": "iconpark",
+   "name": "info",
+   "group": "infoRed",
    "size": 24
   },
   {

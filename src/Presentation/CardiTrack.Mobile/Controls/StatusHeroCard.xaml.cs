@@ -1,4 +1,5 @@
-﻿using CardiTrack.Application.DTOs.Responses;
+﻿using CardiTrack.Domain.Enums;
+using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Mobile.Services;
 
 namespace CardiTrack.Mobile.Controls;
@@ -55,10 +56,17 @@ public partial class StatusHeroCard : ContentView
     {
         var firstName = NameFormatting.FirstName(data.Name);
         NameLabel.Text = data.Name;
-        // Age alone for now. DashboardResponse carries Name and Age and no sex: Gender lives on
-        // CardiMemberDetailResponse and on the create/update forms, but the dashboard payload has
-        // never been given it. When it is, this is the line that joins them.
-        MemberMetaLabel.Text = $"{data.Age}";
+        // "66 years - Male". Unspecified is left off rather than spelled out: a caregiver who
+        // did not answer the question does not need it read back to them under the name.
+        var sex = data.Gender switch
+        {
+            Gender.Male => "Male",
+            Gender.Female => "Female",
+            _ => null,
+        };
+        MemberMetaLabel.Text = sex is null
+            ? $"{data.Age} years"
+            : $"{data.Age} years · {sex}";
         Avatar.Apply(data.Name, data.PhotoUrl);
         _memberId = data.CardiMemberId;
         ApplyDaybook(data.LatestJournalEntryAt);
@@ -69,13 +77,13 @@ public partial class StatusHeroCard : ContentView
         // words, so a caregiver who reads nothing else has still read the answer.
         (string ColorKey, string? Icon, string? Headline, string Detail) line = data.HealthStatus switch
         {
-            "green" => ("StatusGreen", "icon_status_check.svg", "All steady",
+            "green" => ("StatusGreen", "icon_status_info_green.svg", "All steady",
                 $"{firstName} is doing well"),
-            "yellow" => ("StatusYellow", "icon_status_warning.svg", "Something's different",
+            "yellow" => ("StatusYellow", "icon_status_info_yellow.svg", "Something's different",
                 $"{firstName}'s day isn't quite following the usual shape"),
-            "orange" => ("StatusOrange", "icon_status_urgent.svg", "Worth a check-in",
+            "orange" => ("StatusOrange", "icon_status_info_orange.svg", "Worth a check-in",
                 $"Today looks off enough that {firstName} is worth a call"),
-            "red" => ("StatusRed", "icon_status_critical.svg", "Reach out now",
+            "red" => ("StatusRed", "icon_status_info_red.svg", "Reach out now",
                 $"Something needs attention — contact {firstName}"),
             // Paused is not a health reading — never dress it up as one.
             "paused" => ("StatusUnknown", "icon_status_paused.svg", "Monitoring paused",
@@ -311,11 +319,6 @@ public partial class StatusHeroCard : ContentView
         StatusIcon.IsVisible = hasHeadline && !string.IsNullOrWhiteSpace(icon);
         if (StatusIcon.IsVisible)
             StatusIcon.Source = icon;
-
-        // The sentence is inset to meet the headline's text only while there is a glyph to
-        // clear: the glyph's 20 plus the column's 8. A tier with no glyph (no baseline yet)
-        // would otherwise wrap its sentence 28dp narrower than the block it is meant to fill.
-        StatusDetailLabel.Margin = StatusIcon.IsVisible ? new Thickness(28, 0, 0, 0) : Thickness.Zero;
 
         StatusDetailLabel.Text = detail;
     }

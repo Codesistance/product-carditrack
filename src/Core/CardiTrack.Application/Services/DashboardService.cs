@@ -155,6 +155,7 @@ public class DashboardService : IDashboardService
             CardiMemberId = member.Id,
             Name = member.Name,
             Age = age,
+            Gender = member.Gender,
             EmergencyContactPhone = member.EmergencyContactPhone,
             EmergencyContactName = member.EmergencyContactName,
             Phone = member.Phone,
