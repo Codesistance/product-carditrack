@@ -519,7 +519,7 @@ Neither gate applies to a member with no summary on file, the same stance the or
 
 ### Learning-phase and provisional prompts (built today)
 
-Before a member has any `PatternBaseline` there is no normal to compare against, so `CARDITRACK_LEARNING_PROMPT` replaces the trend prompt and asks the model to describe what has been observed so far and what is still missing — call nothing unusual, without listing the words it must not use (MedGemma would echo them). The API reports this state as `isLearning` on the baseline-insight response, matching the dashboard's learning state so the two surfaces never disagree.
+All three baseline-shaped briefs were split the same way on 2026-09-23 and share one rewrite half (`BaselineRewriteInstructions`), since all three fill the same card. Before a member has any `PatternBaseline` there is no normal to compare against, so `CARDITRACK_LEARNING_PROMPT` replaces the trend prompt and asks the model to describe what has been observed so far and what is still missing — call nothing unusual, without listing the words it must not use (MedGemma would echo them). The API reports this state as `isLearning` on the baseline-insight response, matching the dashboard's learning state so the two surfaces never disagree.
 
 From about the first week, a **provisional** 7- or 14-day baseline exists before the 30-day one does. `CARDITRACK_PROVISIONAL_PROMPT` sits between the two framings: there is an early picture to compare against, so a comparison is an impression, not an established pattern, and a short window is not treated as settled. Sample hedges are not listed. The response carries `isProvisional`, again mirroring the dashboard. Provisional baselines colour dashboards and soften insight phrasing only — **they never feed alert thresholds** (see [alerts.md](./execution/backend/api/alerts.md)).
 
@@ -857,7 +857,7 @@ Severity router (Cloud Run)
 
 The system prompt changes depending on whether the output is destined for a clinician review queue, the wearer, or a family member. The **user prompt stays identical** — only the framing of the response changes.
 
-**Family member prompt (live):** `CARDITRACK_ALERT_PROMPT` in `HealthInsightService` — Tone, Pronouns, `CaregiverRegister`, then an explanation of this alert and one specific action the caregiver can do now that answers it. The sketch that used to sit here (`[CARDITRACK_FAMILY_PROMPT]`, "non-medical family member", "check on their loved one", "Avoid clinical jargon") is not sent. Sample actions are not listed: MedGemma would repeat them.
+**Family member prompt (live):** `CARDITRACK_ALERT_PROMPT` in `HealthInsightService` — since 2026-09-23 two halves. The **clinical half** carries `WearableClinicalOpening` and `ContextGuardrailNotesOnly` and reads what the alert means in the recent readings, naming the mechanism where there is one; the **rewrite half** on the Rewrite slot carries Tone, `PronounsByToken` and `CaregiverRegister` and writes the explanation and the one specific action the caregiver can do now, from that read and nothing else. The sketch that used to sit here (`[CARDITRACK_FAMILY_PROMPT]`, "non-medical family member", "check on their loved one", "Avoid clinical jargon") is not sent. Sample actions are not listed: MedGemma would repeat them.
 
 > *(A wearer-audience digest prompt — `CARDITRACK_DIGEST_PROMPT` — used to sit here. Descoped 2026-08-10: wearers never log in, so there is no wearer to read it. Family is the only audience.)*
 >

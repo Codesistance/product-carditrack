@@ -16,6 +16,7 @@ namespace CardiTrack.UnitTests.Services;
 public class HealthInsightServiceAccessTests
 {
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
     private readonly IUnitOfWork _unitOfWork = Substitute.For<IUnitOfWork>();
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
     private readonly IAlertRepository _alerts = Substitute.For<IAlertRepository>();
@@ -91,9 +92,12 @@ public class HealthInsightServiceAccessTests
             .Returns(new HealthInsightService.BaselineAiResponse { Summary = "Analysis body.", KeyFindings = [] });
     }
 
-    private HealthInsightService CreateSut() =>
-        new(_medicalAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
+    private HealthInsightService CreateSut()
+    {
+        InsightRewriteEcho.Wire(_rewriteAi);
+        return new(_medicalAi, _rewriteAi, _unitOfWork, new CardiMemberAccessService(_unitOfWork),
             PromptContextFactory.Composer(_unitOfWork), new PassThroughWriteGuard());
+    }
 
     // ── AnalyzeAlertAsync ───────────────────────────────────────────────────────
 

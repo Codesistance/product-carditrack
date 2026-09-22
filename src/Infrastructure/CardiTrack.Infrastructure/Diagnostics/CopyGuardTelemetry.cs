@@ -59,6 +59,20 @@ public static class CopyGuardTelemetry
     /// <summary>Longer than the column that stores it.</summary>
     public const string ReasonTooLong = "too_long";
 
+    /// <summary>
+    /// The clinical read came back empty, so the rewrite was never called and there is nothing to
+    /// store. Not a guard rejecting copy, but it lands a caregiver in the same place — a heading
+    /// over nothing — and belongs on the same counter for that reason.
+    /// </summary>
+    public const string ReasonReadBlank = "read_blank";
+
+    /// <summary>
+    /// The Rewrite slot's call failed, so there is no caregiver copy to store. Counted rather than
+    /// logged where a service carries no logger: a card quietly ceasing to be written is a rate,
+    /// not an incident, and a rate is the shape that makes it visible at all.
+    /// </summary>
+    public const string ReasonRewriteFailed = "rewrite_failed";
+
     /// <summary>Records one discard.</summary>
     public static void Count(string surface, string reason) =>
         Discarded.Add(
