@@ -247,7 +247,12 @@ public static class ApmExtensions
                     // Push delivery spine counters/histograms (notification.* — enqueued, sent,
                     // delivered, failed, escalated, undelivered_critical, time_to_ack) from
                     // PushTelemetry. time_to_ack is the SLO metric (§6.1).
-                    .AddMeter(TelemetryNames.PushSource);
+                    .AddMeter(TelemetryNames.PushSource)
+                    // Pipeline outcomes: what became of each verdict the judgement asked for, and
+                    // what a register guard threw away before anyone read it. Both are exits that
+                    // previously existed only as log lines — which is enough to diagnose one and
+                    // nowhere near enough to notice one.
+                    .AddMeter(TelemetryNames.PipelineSource);
                 provider.AddMetricExporter(metrics, options);
             });
 

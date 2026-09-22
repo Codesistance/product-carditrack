@@ -13,6 +13,7 @@ using CardiTrack.Domain.Common;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
+using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.Security;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging;
@@ -1223,6 +1224,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: the model "
                 + "returned empty text or restated its own instructions.",
                 bookName, memberId, periodPhrase);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonReadsLikeInstructions);
             return JournalComposition.Discarded(usage);
         }
 
@@ -1232,6 +1234,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it names a "
                 + "condition or a treatment ({Marker}).",
                 bookName, memberId, periodPhrase, condition);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonNamesACondition);
             return JournalComposition.Discarded(usage);
         }
 
@@ -1242,6 +1245,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: "
                 + "its sentence count ({Sentences}) is below the minimum.",
                 bookName, memberId, periodPhrase, JournalRegisterGuards.SentenceCount(text));
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonTooFewSentences);
             return JournalComposition.Discarded(usage);
         }
 
@@ -1260,6 +1264,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it uses "
                 + "'{Term}' without explaining it where it is first used.",
                 bookName, memberId, periodPhrase, term);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnglossedTerm);
             return JournalComposition.Discarded(usage);
         }
 
@@ -1270,6 +1275,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it names the "
                 + "member through the placeholder, but no name is on file to resolve it to.",
                 bookName, memberId, periodPhrase);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
             return JournalComposition.Discarded(usage);
         }
 
@@ -1280,6 +1286,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: "
                 + "{Length} characters is over the {Max} the table holds.",
                 bookName, memberId, periodPhrase, storedText.Length, DigestEntry.MaxTextLength);
+            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonTooLong);
             return JournalComposition.Discarded(usage);
         }
 

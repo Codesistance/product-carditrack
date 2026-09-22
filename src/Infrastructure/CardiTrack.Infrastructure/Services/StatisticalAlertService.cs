@@ -442,6 +442,7 @@ public class StatisticalAlertService : IStatisticalAlertService
                 string.Equals(v.Rule?.Trim(), finding.Rule, StringComparison.OrdinalIgnoreCase));
             if (verdict is null)
             {
+                CountVerdict(JudgementTelemetry.OutcomeUnmatched, finding.Rule);
                 _logger.LogWarning(
                     "The model returned no verdict for rule {Rule} on CardiMember {CardiMemberId}; nothing raised.",
                     finding.Rule, memberId);
@@ -453,6 +454,7 @@ public class StatisticalAlertService : IStatisticalAlertService
             {
                 // Fail closed: a severity word outside the taxonomy is no verdict. The model
                 // cannot page a family by deviating from the schema's vocabulary.
+                CountVerdict(JudgementTelemetry.OutcomeSeverityUnmapped, finding.Rule);
                 _logger.LogWarning(
                     "The model's severity {RawSeverity} for rule {Rule} on CardiMember {CardiMemberId} did not map; nothing raised.",
                     rawSeverity, finding.Rule, memberId);
@@ -465,6 +467,11 @@ public class StatisticalAlertService : IStatisticalAlertService
                 // same-day dedup does not see it, so the finding is judged again next pass with
                 // whatever the day has added. That is deliberate: a verdict is about the readings
                 // as they stand, and the readings keep arriving.
+                //
+                // Counted like the others, and it is the denominator that matters: in prod the
+                // root log level is Warning, so this line does not exist there at all and the
+                // failures had nothing to be a proportion of.
+                CountVerdict(JudgementTelemetry.OutcomeBenign, finding.Rule);
                 _logger.LogInformation(
                     "The model judged rule {Rule} on CardiMember {CardiMemberId} not worth attention today.",
                     finding.Rule, memberId);
@@ -474,6 +481,7 @@ public class StatisticalAlertService : IStatisticalAlertService
             var message = CaregiverFacingMessage(verdict.Message, voice);
             if (message is null)
             {
+                CountVerdict(JudgementTelemetry.OutcomeMessageRejected, finding.Rule);
                 _logger.LogWarning(
                     "The model's message for rule {Rule} on CardiMember {CardiMemberId} was unusable; nothing raised.",
                     finding.Rule, memberId);
@@ -493,6 +501,7 @@ public class StatisticalAlertService : IStatisticalAlertService
             };
             await _unitOfWork.Alerts.AddAsync(alert);
             created.Add(alert);
+            CountVerdict(JudgementTelemetry.OutcomeRaised, finding.Rule);
         }
 
         activity?.SetTag(JudgementTelemetry.RaisedTag, created.Count);
@@ -814,6 +823,18 @@ public class StatisticalAlertService : IStatisticalAlertService
         public required string Headline { get; init; }
         public required string Message { get; init; }
     }
+
+    /// <summary>
+    /// One verdict's outcome. Counted at every exit including the successful one, because each of
+    /// the four fail-closed exits is only meaningful as a share of the verdicts that were returned
+    /// — and a warning that recurs on a five-minute schedule is indistinguishable from background
+    /// until it can be divided by that denominator.
+    /// </summary>
+    private static void CountVerdict(string outcome, string rule) =>
+        JudgementTelemetry.Verdicts.Add(
+            1,
+            new KeyValuePair<string, object?>(JudgementTelemetry.OutcomeTag, outcome),
+            new KeyValuePair<string, object?>(JudgementTelemetry.RuleTag, rule));
 
     /// <summary>
     /// The prompt: the fixed brief, the member's context block, and the findings as a JSON array
