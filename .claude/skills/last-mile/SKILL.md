@@ -41,10 +41,30 @@ build-unverified from a server environment. Testable mobile logic lives in
 touches unbuildable mobile code, say so in the PR body instead of implying it was
 verified.
 
+**The `tools/` blind spot.** `tools/AiSplitEvaluator`, `tools/ChatRoutingEval` and
+`tools/HealthApiProbe` are in **neither** `CardiTrack.sln` nor
+`CardiTrack.Server.slnf`. Nothing in section 1 compiles them, so a break there
+survives a clean, warning-free build and surfaces only when someone runs the tool.
+
+The sharp edge is dependency injection. Each tool builds its own service
+provider, so it is a **separate composition root**: add a constructor dependency
+to a shared type and the tool's registrations go stale silently — a build proves
+nothing about DI, which resolves at runtime. Copilot caught exactly this on
+#1178, where `AiSplitEvaluator` constructs its own `UnitOfWork` and needed
+`IGenerationLeaseRepository` registered. `TestDatabaseFixture` is a composition
+root too, but that one fails loudly in the test run.
+
+So: when a diff changes a shared constructor or adds a repository/service
+interface, grep `tools/` for the affected type and build the tools you touched
+(`dotnet build tools/<Tool>`) even though CI never will.
+
 ## 2. Push and open the PR
 
-Work happens on the session's designated `claude/*` branch — never on `main`
-(write access is one human plus the installed apps; merges are deliberate).
+Work happens on a feature branch — **never on `main`** (write access is one human
+plus the installed apps; merges are deliberate). Use the session's designated
+branch when it has one; otherwise any descriptive name off `main` is fine
+(`claude/*` and `feat/*` are both in use). The branch name is not the rule — not
+touching `main` is.
 
 ```
 git push -u origin <branch>
@@ -67,18 +87,57 @@ gh pr create --title "<headline>" --body-file <file>
 ## 3. Wait for the Copilot review — it is part of the definition of done
 
 [`request-copilot-review.yml`](../../../.github/workflows/request-copilot-review.yml)
-requests Copilot automatically on every open, reopen, ready-for-review and push
-of a non-draft same-repo PR. Do not request it by hand unless the request never
-appears — that means the workflow failed (it needs the `AUTOMERGE_TOKEN` PAT;
-the default token cannot add Copilot as a reviewer), and the fallback is
-`gh pr edit <n> --add-reviewer copilot` or the `request_copilot_review` MCP tool.
+requests Copilot on `opened`, `ready_for_review` and `reopened` for a non-draft
+same-repo PR — **not on `synchronize`**. So the *first* review arrives on its own
+and **every later round you request by hand.** That is the normal path, not a
+failure signal. Expecting a push to trigger a re-review is how a triage round
+stalls: no request is made, no review is coming, and the wait looks like slowness
+rather than a missing step.
+
+Not-on-push is deliberate. Each review costs ~5 Linux Actions minutes billed to
+this repo, and with a review per push September 2026 ran to 355 reviews across 90
+branches — one branch took 18 — most of them on intermediate pushes nobody read.
+Hence one push per round, one review per round.
+
+**The mechanics live in
+[`.cursor/rules/pr-copilot-review.mdc`](../../../.cursor/rules/pr-copilot-review.mdc)** —
+treat that as the source of truth and read it before re-requesting, rather than
+trusting a restatement here that can drift out of sync with the workflow. As it
+stands, re-request through the GraphQL `requestReviews` mutation:
+
+```
+gh api graphql -f query='mutation{requestReviews(input:{
+  pullRequestId:"<PR node id>",botIds:["BOT_kgDOCnlnWA"],union:true}){
+  pullRequest{reviewRequests(first:5){nodes{requestedReviewer{
+  __typename ... on Bot{login}}}}}}}'
+```
+
+- `BOT_kgDOCnlnWA` is `copilot-pull-request-reviewer`. It is **not**
+  `copilot-swe-agent` — that id is accepted silently and registers no review.
+- `union:true` keeps the reviewers already on the PR instead of replacing them.
+- **Read the mutation's own response** to confirm the bot is listed. A 200 alone
+  does not mean Copilot was added.
+
+The workflow's own `gh pr edit --add-reviewer copilot` is not a session
+fallback: it works *there* because the workflow runs as the `AUTOMERGE_TOKEN`
+PAT. The Cursor GitHub App token gets 403 on it, and cloud sessions have no
+`gh pr` at all. In a cloud session the `request_copilot_review` MCP tool is the
+route to try — and it gets the same treatment, confirm the reviewer actually
+registered before you start waiting.
 
 "Finished" is observable: a review by `copilot-pull-request-reviewer[bot]`
 (state `COMMENTED`) whose `commit_id` is the PR's current head SHA. It typically
 lands within a few minutes of the request. Check `gh pr view` /
 `pull_request_read get_reviews` after a couple of minutes rather than
 sleep-polling; in cloud sessions, `subscribe_pr_activity` delivers the review as
-an event. No review after ~10 minutes → check the workflow run, not the code.
+an event.
+
+The `commit_id` check matters most on re-review rounds: a stale review from the
+previous head looks exactly like a fresh one in a comment list. Nothing is
+"finished" until a review's `commit_id` matches the head you just pushed. No
+review after ~10 minutes → on the *first* review check the workflow run; on a
+*re-request* check that the request registered at all (the usual cause), not the
+code.
 
 **Read the review body, not just the inline threads.** Copilot buries real
 findings in two body sections that never become threads: *"Suppressed comments
@@ -97,8 +156,10 @@ instruction. Read the code it points at, then decide:
   oversight.
 
 Batch the round: verify and fix everything from one review, re-run the section 1
-gates, and push **once** — every push triggers a fresh Copilot re-review, so
-per-comment pushes multiply review rounds for nothing.
+gates, push **once**, then re-request the review by hand (section 3). Per-comment
+pushes do not each earn a review — the workflow does not run on push — they just
+leave the PR sitting at an unreviewed head while you wait for something nobody
+asked for.
 
 After pushing, close the loop on each thread the way this repo does: reply
 "Fixed in `<short-sha>`" (or the reason for declining), append the Claude Code
@@ -112,15 +173,29 @@ still counts as new and gets triaged. If rounds stop converging — each fix dra
 a new or reshaped finding — stop pushing for the bot and raise what is still
 flagged once, with your assessment, to the user.
 
+**`main` moves under you.** Triage rounds take hours, and `main` does not wait —
+PR #1178 ran eight rounds while `main` gained five commits. Before calling a PR
+merge-ready, merge `origin/main` in again and re-run the section 1 gates against
+the result; the gates you ran in round one were against a base that no longer
+exists.
+
+Then re-check the **prose** the merge did not conflict on. Git merges docs
+textually, so two edits that never touch the same line merge clean and still
+contradict each other: on #1178 a clean merge left `docs/release_matrix.md`
+confidently describing a Journal-tab card that #1177 had just deleted. No
+compiler and no test catches that. Re-read the docs your diff touches as they now
+stand on the merged result, not as you wrote them.
+
 **Health data.** PR threads are public (the repo is public on purpose). Never
 quote a wearer value from test data, logs or traces into a comment — name the
 field, redact the value. Same rule as the sibling triage skills.
 
 ## 5. Merge-ready, then stop
 
-Merge-ready means, on the final head commit: warning-free build, tests green,
-Copilot round converged, every thread answered and addressed threads resolved.
-Report that state.
+Merge-ready means, on the final head commit — with `origin/main` merged in
+recently enough to mean something: warning-free build, tests green, Copilot round
+converged, every thread answered and addressed threads resolved. Report that
+state.
 
 - **Merging is manual and the maintainer's call.** There is no auto-merge (the
   workflow was removed 2026-08-21). Do not merge unless the user asks; when they
@@ -144,4 +219,4 @@ maintainer's behalf.
 - The contract: [CLAUDE.md](../../../CLAUDE.md) · build/test environment detail: [AGENTS.md](../../../AGENTS.md)
 - CI gating and write policy: [docs/technical/github_repository_access.md](../../../docs/technical/github_repository_access.md)
 - What CI would run (dispatch-only): [.github/workflows/deploy-apps-dev.yml](../../../.github/workflows/deploy-apps-dev.yml)
-- The Copilot request mechanics: [.github/workflows/request-copilot-review.yml](../../../.github/workflows/request-copilot-review.yml)
+- **The Copilot request mechanics — source of truth:** [.cursor/rules/pr-copilot-review.mdc](../../../.cursor/rules/pr-copilot-review.mdc) · the workflow that implements them: [.github/workflows/request-copilot-review.yml](../../../.github/workflows/request-copilot-review.yml)
