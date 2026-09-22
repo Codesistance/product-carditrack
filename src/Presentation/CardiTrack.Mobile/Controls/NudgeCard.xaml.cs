@@ -81,6 +81,10 @@ public partial class NudgeCard : ContentView
         "TIMEZONE_DEFAULT" => "Set time zone",
         "BASELINE_STALLED" => "See progress",
         "SLEEP_SCOPE_MISSING" => "Grant sleep access",
+        // Not "Turn on": the switch is on the wearer's own watch, not in this app, and a
+        // button promising an action the app cannot take is the fastest way to lose a caregiver's
+        // trust in every other button here.
+        "IRN_NOT_ENROLLED" => "How to turn it on",
         "MEDICAL_NOTES_EMPTY" => "Add notes",
         // Not "Confirm": tapping opens the notes so they can be read first, and a caregiver who
         // has not seen them yet is not in a position to confirm anything.

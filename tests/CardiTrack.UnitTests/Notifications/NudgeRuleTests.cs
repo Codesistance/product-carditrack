@@ -499,6 +499,82 @@ public class NudgeRuleTests
         Assert.False(new SleepScopeMissingRule().Evaluate(context).HasGap);
     }
 
+    // ---------------------------------------------------------------- IRN_NOT_ENROLLED
+
+    [Fact]
+    public void IrnNotEnrolled_FiresWhenTheWatchCouldScreenAndIsNotDoingSo()
+    {
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.IrnConnection(enrolled: false))
+            .Build();
+
+        Assert.True(new IrnNotEnrolledRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void IrnNotEnrolled_StaysSilentWhenEnrolmentIsUnknown()
+    {
+        // Null is every connection without the IRN scope, which today is all of them. Firing here
+        // would tell a family their relative is not being screened when the truth is that we
+        // cannot see whether they are - a different sentence, and a worse one to get wrong.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.IrnConnection(enrolled: null))
+            .Build();
+
+        Assert.False(new IrnNotEnrolledRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void IrnNotEnrolled_StaysSilentWhenTheWearerIsEnrolled()
+    {
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.IrnConnection(enrolled: true))
+            .Build();
+
+        Assert.False(new IrnNotEnrolledRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void IrnNotEnrolled_IsCoveredByAnyOneEnrolledConnection()
+    {
+        // A second watch that is not enrolled adds nothing to screen with; one that is covers the
+        // member.
+        var context = new NudgeContextBuilder()
+            .WithConnections(
+                NudgeContextBuilder.IrnConnection(
+                    enrolled: false, id: Guid.Parse("44444444-4444-4444-4444-444444444444")),
+                NudgeContextBuilder.IrnConnection(enrolled: true))
+            .Build();
+
+        Assert.False(new IrnNotEnrolledRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void IrnNotEnrolled_IgnoresAConnectionThatIsNotLive()
+    {
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.IrnConnection(
+                enrolled: false, status: ConnectionStatus.Disconnected))
+            .Build();
+
+        Assert.False(new IrnNotEnrolledRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void IrnNotEnrolled_PointsAtTheDeviceTheCaregiverHasToAct_On()
+    {
+        var target = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.IrnConnection(enrolled: false, id: target))
+            .Build();
+
+        var verdict = new IrnNotEnrolledRule().Evaluate(context);
+
+        Assert.True(verdict.HasGap);
+        Assert.Contains(target.ToString(), verdict.ActionDeepLink, StringComparison.Ordinal);
+        Assert.Equal(target.ToString("N"), verdict.Discriminator);
+    }
+
     // ---------------------------------------------------------------- EMERGENCY_CONTACT_MISSING
 
     [Fact]

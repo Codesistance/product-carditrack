@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    [Migration("20260922131352_AddRhythmEpisodesAndDeviceRhythmCounts")]
+    [Migration("20260922135449_AddRhythmEpisodesAndDeviceRhythmCounts")]
     partial class AddRhythmEpisodesAndDeviceRhythmCounts
     {
         /// <inheritdoc />
@@ -2972,6 +2972,8 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasKey("CardiMemberId", "DeviceConnectionId", "WindowStartUtc");
 
                     b.HasIndex("CardiMemberId", "NotificationStartUtc");
+
+                    b.HasIndex("CardiMemberId", "WindowStartUtc");
 
                     b.ToTable("RhythmEpisodes", (string)null);
                 });

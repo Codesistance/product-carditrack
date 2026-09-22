@@ -101,6 +101,18 @@ public static class NudgeCopy
         ["nudge.SLEEP_SCOPE_MISSING.benefit"] =
             "Granting sleep access lets CardiTrack track {name}'s sleep patterns and nightly trends.",
 
+        // Says what is not happening, never what might be wrong. The subject is the watch's
+        // settings, not the wearer's heart, and a caregiver who reads this as "something has been
+        // found" has been frightened for nothing. "Checking for" rather than "screening for": the
+        // second sounds like a test someone has already had.
+        ["nudge.IRN_NOT_ENROLLED.title"] = "{name}'s watch isn't checking heart rhythm",
+        ["nudge.IRN_NOT_ENROLLED.body"] =
+            "Their watch can check for an irregular heart rhythm in the background, but that is "
+            + "switched off.",
+        ["nudge.IRN_NOT_ENROLLED.benefit"] =
+            "With it on, their watch tells {name} if it notices something, and CardiTrack passes "
+            + "that on to you. It is a setting on their watch, so you may need to be with them.",
+
         ["nudge.EMERGENCY_CONTACT_MISSING.title"] = "Add an emergency contact for {name}",
         ["nudge.EMERGENCY_CONTACT_MISSING.body"] = "No number is saved, so SOS and Call have nowhere to go.",
         ["nudge.EMERGENCY_CONTACT_MISSING.benefit"] =

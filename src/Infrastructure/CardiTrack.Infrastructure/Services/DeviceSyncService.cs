@@ -437,11 +437,19 @@ public class DeviceSyncService : IDeviceSyncService
         }
         catch (Exception ex)
         {
+            // Deliberately not claiming the next pull will retry this. Only the first pull of a
+            // UTC day carries the repair lookback; every later pull that day runs with lookback 0,
+            // so a window from a repair day that fails to write here is not re-read and its beat
+            // detail is gone for good. The day's counts survive — they were written before this —
+            // so what is lost is the evidence behind a finding, not the finding. Persisting a
+            // retry queue for beat detail is the follow-up this log is honest about needing.
             _logger?.LogError(
                 ex,
-                "Rhythm episode write failed for connection {DeviceConnectionId}; the day's counts "
-                + "are unaffected and the next pull re-reads the same windows.",
-                connection.Id);
+                "Rhythm episode write failed for connection {DeviceConnectionId} on {WindowCount} "
+                + "window(s); the day's counts are unaffected, but beat detail for a repair-day "
+                + "window will not be re-read by a later pull.",
+                connection.Id,
+                rhythm.AnalysisWindows.Count);
         }
     }
 

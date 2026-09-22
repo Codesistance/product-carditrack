@@ -43,7 +43,12 @@ public class RhythmEpisodeConfiguration : IEntityTypeConfiguration<RhythmEpisode
         builder.Property(e => e.MaxRrMs).IsRequired();
         builder.Property(e => e.IngestedAtUtc).IsRequired();
 
-        // The episode-list read: one member's windows over a date range, newest first.
+        // The range read (GetInRangeAsync). The primary key cannot serve it: DeviceConnectionId
+        // sits between the member and the window, so a (member, window-range) scan cannot use the
+        // key's ordering and would fall back to scanning each partition.
+        builder.HasIndex(e => new { e.CardiMemberId, e.WindowStartUtc });
+
+        // Grouping a notification's windows back into the one thing the wearer was told about.
         builder.HasIndex(e => new { e.CardiMemberId, e.NotificationStartUtc });
     }
 }

@@ -66,7 +66,7 @@ namespace CardiTrack.Infrastructure.Migrations
                 nullable: true);
 
             // Raw SQL rather than the scaffolded CreateTable: EF cannot express PARTITION BY, and
-            // this table is range-partitioned on WindowStartUtc so retention is a partition drop —
+            // this table is range-partitioned on WindowStartUtc so retention is a partition drop -
             // the same arrangement as RealtimeAssessments and EnvironmentalReadings.
             // PartitionMaintenanceWorker creates the children; a day without one rejects its
             // inserts, which is why that worker runs hourly and pre-creates a fortnight ahead.
@@ -96,8 +96,14 @@ namespace CardiTrack.Infrastructure.Migrations
                 ) PARTITION BY RANGE ("WindowStartUtc");
                 """);
 
-            // Declared on the parent so PostgreSQL propagates it to every child, existing and
-            // future — the episode-list read is by member and notification, not by primary key.
+            // Declared on the parent so PostgreSQL propagates them to every child, existing and
+            // future. The primary key serves neither read: DeviceConnectionId sits between the
+            // member and the window, so a (member, window-range) scan cannot use its ordering.
+            migrationBuilder.Sql("""
+                CREATE INDEX "IX_RhythmEpisodes_CardiMemberId_WindowStartUtc"
+                ON "RhythmEpisodes" ("CardiMemberId", "WindowStartUtc");
+                """);
+
             migrationBuilder.Sql("""
                 CREATE INDEX "IX_RhythmEpisodes_CardiMemberId_NotificationStartUtc"
                 ON "RhythmEpisodes" ("CardiMemberId", "NotificationStartUtc");

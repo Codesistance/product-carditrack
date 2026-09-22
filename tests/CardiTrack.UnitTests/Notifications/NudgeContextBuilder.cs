@@ -57,6 +57,27 @@ public sealed class NudgeContextBuilder
         };
 
     /// <summary>
+    /// A connection carrying an IRN profile. Separate from <see cref="Connection"/> for the same
+    /// reason <see cref="BatteryConnection"/> is — that one's trailing <c>params</c> leaves no room
+    /// for optional arguments — and because the default everywhere else must stay null: no
+    /// connection carries the rhythm scope yet, so "unknown" is the honest resting state.
+    /// </summary>
+    public static NudgeConnectionSnapshot IrnConnection(
+        bool? enrolled,
+        bool? onboarded = null,
+        ConnectionStatus status = ConnectionStatus.Connected,
+        Guid? id = null) => new()
+        {
+            Id = id ?? Guid.Parse("33333333-3333-3333-3333-333333333333"),
+            DeviceType = DeviceType.Fitbit,
+            Status = status,
+            LastSyncDate = Now.AddHours(-1),
+            Scopes = ["activity_and_fitness", "health_metrics_and_measurements", "sleep", "irn"],
+            IrnEnrolled = enrolled,
+            IrnOnboarded = onboarded
+        };
+
+    /// <summary>
     /// A connection carrying a battery reading. Separate from <see cref="Connection"/> because
     /// that one's trailing <c>params</c> leaves no room for optional arguments, and because the
     /// healthy default must keep reporting no battery at all — the state every connection made

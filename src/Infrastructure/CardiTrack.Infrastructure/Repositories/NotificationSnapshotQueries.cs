@@ -111,6 +111,8 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                 c.BatteryLevel,
                 c.BatteryStatus,
                 c.BatteryUpdatedAt,
+                c.IrnEnrolled,
+                c.IrnOnboarded,
                 c.IsActive
             })
             .ToListAsync(ct);
@@ -271,7 +273,9 @@ public class NotificationSnapshotQueries : INotificationSnapshotQueries
                                 Scopes = ParseScopes(c.Scopes),
                                 BatteryLevel = c.BatteryLevel,
                                 BatteryStatus = c.BatteryStatus,
-                                BatteryUpdatedAt = c.BatteryUpdatedAt
+                                BatteryUpdatedAt = c.BatteryUpdatedAt,
+                                IrnEnrolled = c.IrnEnrolled,
+                                IrnOnboarded = c.IrnOnboarded
                             })
                     ]
                 });

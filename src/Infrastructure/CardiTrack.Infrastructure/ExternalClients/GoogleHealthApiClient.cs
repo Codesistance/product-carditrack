@@ -746,8 +746,9 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// </remarks>
     public async Task<DeviceRhythmDay> GetRhythmDayAsync(string accessToken, DateOnly date)
     {
-        var ecg = await OptionalRhythmAsync(() => GetEcgDayAsync(accessToken, date));
-        var irn = await OptionalRhythmAsync(() => GetIrregularRhythmDayAsync(accessToken, date));
+        var ecg = await OptionalRhythmAsync(() => GetEcgDayAsync(accessToken, date), "electrocardiogram");
+        var irn = await OptionalRhythmAsync(
+            () => GetIrregularRhythmDayAsync(accessToken, date), "irregular-rhythm-notification");
 
         return new DeviceRhythmDay(
             ecg?.Readings,
@@ -994,15 +995,36 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// an unreadable count and a count of zero mean opposite things to a caregiver, so this must
     /// not flatten one into the other.
     /// </summary>
-    private static async Task<T?> OptionalRhythmAsync<T>(Func<Task<T>> read)
+    /// <remarks>
+    /// Catches every provider-side failure, not only the absent/ungranted ones, because the two
+    /// rhythm reads must not be able to cost each other. An ECG page-cap breach or a malformed
+    /// response would otherwise escape past the ECG read and take the IRN notification beside it —
+    /// so a wearer's watch could flag atrial fibrillation and the day would report nothing because
+    /// their ECG history happened to page badly. The caller cannot tell the two apart once it has
+    /// a <see cref="DeviceRhythmDay"/>, so the isolation has to be here.
+    /// <para>
+    /// Null either way: "we could not read this", never "there was nothing to read". The
+    /// null-versus-zero distinction is what keeps an unreadable day from being presented to a
+    /// caregiver as a quiet one.
+    /// </para>
+    /// </remarks>
+    private async Task<T?> OptionalRhythmAsync<T>(Func<Task<T>> read, string what)
         where T : struct
     {
         try
         {
             return await read();
         }
-        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex) || ex.StatusCode == 403)
+        catch (GoogleHealthApiException ex)
         {
+            // A malformed request is a bug in the URL or filter built here, and the rest of this
+            // client treats it as one. It still must not cost the other read, so it is logged
+            // loudly rather than thrown.
+            if (ex.IsMalformedRequest)
+                _logger.LogError(ex, "Google Health API {What} rejected the request as malformed.", what);
+            else if (ex.StatusCode is not 403 && !IsAbsentDataType(ex))
+                _logger.LogWarning(ex, "Google Health API {What} could not be read this pull.", what);
+
             return null;
         }
     }

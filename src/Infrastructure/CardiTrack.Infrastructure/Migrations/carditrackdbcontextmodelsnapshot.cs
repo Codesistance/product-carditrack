@@ -3154,6 +3154,8 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.HasIndex("CardiMemberId", "NotificationStartUtc");
 
+                    b.HasIndex("CardiMemberId", "WindowStartUtc");
+
                     b.ToTable("RhythmEpisodes", (string)null);
                 });
 
