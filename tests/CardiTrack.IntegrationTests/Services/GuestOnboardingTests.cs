@@ -222,7 +222,6 @@ public class GuestOnboardingTests : IAsyncLifetime
     {
         Email = email,
         Name = name,
-        Role = UserRole.Member,
         TimeZoneId = "Europe/London",
     };
 }

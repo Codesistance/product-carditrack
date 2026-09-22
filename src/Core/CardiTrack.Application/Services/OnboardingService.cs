@@ -73,7 +73,10 @@ public class OnboardingService : IOnboardingService
             Email = request.User.Email,
             Name = request.User.Name,
             Phone = request.User.Phone,
-            Role = request.User.Role,
+            // Mirrors the membership written below rather than trusting the body: this column is
+            // legacy and authorizes nothing, but UserContext still reports it, and it should not
+            // be the one place a client gets to say what it is.
+            Role = organization is not null ? UserRole.Admin : UserRole.Member,
             Locale = request.User.Locale,
             TimeZoneId = request.User.TimeZoneId,
             OrganizationId = organization?.Id,

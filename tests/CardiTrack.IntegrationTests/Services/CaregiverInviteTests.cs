@@ -329,7 +329,8 @@ public class CaregiverInviteTests : IAsyncLifetime
             // The real guard, on the same DbContext: redemption now runs inside a transaction that
             // holds the family, and substituting it away would leave the transaction untested.
             new CardiTrack.Infrastructure.Services.FamilyWriteGuard(
-                scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>()));
+                scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>()),
+            scope.ServiceProvider.GetRequiredService<IMemberWriteGuard>());
 
     private async Task<string> CreateInviteAsync(Seed seed, CreateCaregiverInviteRequest request)
     {

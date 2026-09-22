@@ -364,7 +364,12 @@ public class CardiMemberService : ICardiMemberService
             // person gets a link to that person, and this list is the only member read that used
             // to answer from the organization alone. With one caregiver per family the two were
             // the same set, so the difference could not show.
-            var mine = relationships.FirstOrDefault(r => r.UserId == requestingUserId && r.IsActive);
+            // View permission, the same test CardiMemberAccessService applies everywhere else — an
+            // active link alone is not it. A caregiver admitted for alerts only
+            // (CanViewHealthData = false) holds a link, and this list carries date of birth, email
+            // and phone.
+            var mine = relationships.FirstOrDefault(
+                r => r.UserId == requestingUserId && r.IsActive && r.CanViewHealthData);
             if (mine is null)
                 continue;
 

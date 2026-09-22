@@ -133,6 +133,11 @@ public class FamilyService : IFamilyService
     public async Task RemoveMemberAsync(
         Guid requestingUserId, Guid organizationId, Guid userId, CancellationToken ct = default)
     {
+        // Under the same lock the transfer takes. Without it a transfer can read this person as an
+        // active successor while this deactivates them, then write its stale entity back with
+        // IsActive = true as it promotes them — a removed member resurrected as the admin.
+        await using var guarded = await BeginGuardedAsync(organizationId, ct);
+
         await RequireAdminAsync(requestingUserId, organizationId);
 
         if (userId == requestingUserId)
@@ -151,6 +156,9 @@ public class FamilyService : IFamilyService
 
     public async Task LeaveAsync(Guid requestingUserId, Guid organizationId, CancellationToken ct = default)
     {
+        // Same lock as RemoveMemberAsync, for the same resurrection race against a transfer.
+        await using var guarded = await BeginGuardedAsync(organizationId, ct);
+
         var membership = await RequireMembershipAsync(requestingUserId, organizationId);
 
         if (membership.Role == UserRole.Admin)
@@ -274,6 +282,7 @@ public class FamilyService : IFamilyService
         }
 
         await _unitOfWork.SaveChangesAsync();
+        await _unitOfWork.CommitTransactionAsync();
     }
 
     private async Task<IReadOnlyList<FamilyMemberSummary>> BuildRosterAsync(

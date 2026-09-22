@@ -46,7 +46,12 @@ public class OnboardingSetupUserRequest
     [Phone(ErrorMessage = "Invalid phone number")]
     public string? Phone { get; set; }
 
-    public UserRole Role { get; set; } = UserRole.Member;
+    // No Role. It was here, and the server wrote it straight to User.Role — the same shape the
+    // two-call onboarding path was deleted for. Nothing authorizes on that column any more (the
+    // role that means something lives on UserOrganization), but a client-settable field named
+    // "Role" is a trap for whoever next reads it as one. The server assigns it from what the
+    // request actually does: Admin when it starts a family, Member when it joins as a guest.
+    // A client still sending the field is ignored by deserialization rather than refused.
 
     [StringLength(10)]
     public string Locale { get; set; } = "en-US";

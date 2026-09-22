@@ -33,7 +33,6 @@ public class OnboardingServiceTests
         {
             Email = "jane@doe.com",
             Name = "Jane Doe",
-            Role = UserRole.Member,
             TimeZoneId = "Europe/London",
         },
     };
@@ -81,8 +80,10 @@ public class OnboardingServiceTests
         Assert.Equal(savedOrg!.Id, savedMembership.OrganizationId);
         Assert.Equal(UserRole.Admin, savedMembership.Role);
         Assert.True(savedMembership.IsActive);
-        // The request asked for a Member account role; the family role is Admin regardless.
-        Assert.Equal(UserRole.Member, savedUser.Role);
+        // The account role is assigned, never read from the body — it mirrors the membership, so
+        // somebody who starts a family is Admin on both. The request has no Role field to ask
+        // with any more; that was the last client-settable field named "Role" in onboarding.
+        Assert.Equal(UserRole.Admin, savedUser.Role);
         await _unitOfWork.Received(1).SaveChangesAsync();
     }
 

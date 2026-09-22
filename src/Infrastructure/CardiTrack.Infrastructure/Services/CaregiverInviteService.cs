@@ -42,6 +42,7 @@ public class CaregiverInviteService : ICaregiverInviteService
     private readonly IAuditLogRepository _auditLogs;
     private readonly IOptions<CaregiverInviteOptions> _options;
     private readonly IFamilyWriteGuard _guard;
+    private readonly IMemberWriteGuard _memberGuard;
     private readonly ILogger<CaregiverInviteService> _logger;
     private readonly TimeProvider _timeProvider;
 
@@ -51,6 +52,7 @@ public class CaregiverInviteService : ICaregiverInviteService
         IOptions<CaregiverInviteOptions> options,
         ILogger<CaregiverInviteService> logger,
         IFamilyWriteGuard guard,
+        IMemberWriteGuard memberGuard,
         TimeProvider? timeProvider = null)
     {
         _unitOfWork = unitOfWork;
@@ -58,6 +60,7 @@ public class CaregiverInviteService : ICaregiverInviteService
         _options = options;
         _logger = logger;
         _guard = guard;
+        _memberGuard = memberGuard;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -184,11 +187,21 @@ public class CaregiverInviteService : ICaregiverInviteService
             throw new KeyNotFoundException("Invitation not found");
         }
 
-        // The member may have been erased since the invitation was written. The cascade deletes
-        // invitations now, but a redemption already in flight can arrive after that sweep passed
-        // this table — the schema has no foreign key to stop the grant landing anyway, the same
-        // gap IMemberWriteGuard exists for. Checked here as well as swept there, because a link
-        // to a member nobody can name is unreachable and unremovable from the app.
+        // Hold the member for the rest of this transaction — family lock first, then member, the
+        // order IFamilyWriteGuard documents. A plain existence check was not enough: erasure takes
+        // FOR UPDATE on this row and can commit between that read and the grant insert below, and
+        // with no foreign key nothing would stop a UserCardiMember landing for a member who is
+        // gone. FOR KEY SHARE here conflicts with erasure's lock, so whichever of the two arrives
+        // second waits and then sees the truth. A row that is not there at all reads as refused.
+        if (!await _memberGuard.HoldMemberAsync(invite.CardiMemberId, ct))
+        {
+            _logger.LogWarning(
+                "Caregiver invite {InviteId} refused: CardiMember {CardiMemberId} no longer exists.",
+                invite.Id, invite.CardiMemberId);
+            throw new KeyNotFoundException("Invitation not found");
+        }
+
+        // Still checked for a soft-deleted member, whose row exists and holds a lock fine.
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(invite.CardiMemberId);
         if (member is not { IsActive: true })
         {
