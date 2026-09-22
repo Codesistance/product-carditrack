@@ -561,6 +561,34 @@ public class NudgeRuleTests
     }
 
     [Fact]
+    public void IrnNotEnrolled_IgnoresAStaleFalse_OnAConnectionThatNoLongerGrantsTheScope()
+    {
+        // IrnEnrolled is written once from a profile read and never cleared -- not on reconnect,
+        // not when a scope narrows. A connection that once granted IRN and reported false, then
+        // reconnected without the scope, must not be nudged over: nothing today can vouch for
+        // that value.
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.IrnConnection(enrolled: false, grantsIrnScope: false))
+            .Build();
+
+        Assert.False(new IrnNotEnrolledRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
+    public void IrnNotEnrolled_TreatsAStaleTrue_AsUnknownRatherThanCovered()
+    {
+        // The same scope filter excludes a stale "true" as readily as a stale "false" -- it runs
+        // before either boolean is read. The verdict is NoGap either way, but for the same reason
+        // an unscoped connection is dropped from every other check in this rule: we have no
+        // current information, not a confident "this member is covered".
+        var context = new NudgeContextBuilder()
+            .WithConnections(NudgeContextBuilder.IrnConnection(enrolled: true, grantsIrnScope: false))
+            .Build();
+
+        Assert.False(new IrnNotEnrolledRule().Evaluate(context).HasGap);
+    }
+
+    [Fact]
     public void IrnNotEnrolled_PointsAtTheDeviceTheCaregiverHasToAct_On()
     {
         var target = Guid.Parse("44444444-4444-4444-4444-444444444444");

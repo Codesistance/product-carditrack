@@ -90,4 +90,14 @@ public static class DeviceScopes
     /// </remarks>
     public static bool GrantsRhythm(IEnumerable<string> scopes) =>
         scopes.Any(s => Normalise(s) is Ecg or Irn);
+
+    /// <summary>
+    /// Whether the granted set covers IRN specifically -- narrower than
+    /// <see cref="GrantsRhythm"/>, which also admits an ECG-only grant. Needed wherever a caller
+    /// reads <c>IrnEnrolled</c>/<c>IrnOnboarded</c>: those columns are written only when this scope
+    /// was read, but they are never cleared when a reconnect narrows the granted set, so a stale
+    /// value must not be trusted without checking the connection still carries the scope today.
+    /// </summary>
+    public static bool GrantsIrn(IEnumerable<string> scopes) =>
+        scopes.Any(s => Normalise(s) == Irn);
 }

@@ -16,11 +16,21 @@ namespace CardiTrack.Application.Services.Notifications.Rules;
 /// not watching for the one finding it would most want to report, and nothing anywhere says so.
 /// </para>
 /// <para>
-/// <b>Null is not false.</b> <see cref="NudgeConnectionSnapshot.IrnEnrolled"/> is null whenever the
-/// profile could not be read, which is the permanent state for any connection without the IRN
-/// scope — today, every connection. Firing on null would tell a family their relative is not being
-/// screened when the truth is that we cannot see whether they are, which is a different sentence
-/// and a worse one to get wrong. Only an explicit <c>false</c> is a gap.
+/// <b>Only a connection that currently grants the IRN scope is consulted at all</b> — the rule
+/// filters on <c>DeviceScopes.GrantsIrn</c> before it looks at either profile column. Those
+/// columns are written once from a profile read and never cleared, not on reconnect, not when a
+/// scope narrows or is revoked, so a stale value on a now-unscoped connection cannot be trusted in
+/// either direction: a stale <c>false</c> would nudge over a device we can no longer ask, and a
+/// stale <c>true</c> would call the member covered by a device that may not still be screening.
+/// </para>
+/// <para>
+/// <b>Within a scoped connection, null is not false.</b>
+/// <see cref="NudgeConnectionSnapshot.IrnEnrolled"/> is null when its profile has not been read
+/// yet or the read failed — which is the permanent state for every connection today, since no
+/// connection carries the scope until issue #39's verification lands. Firing on null would tell a
+/// family their relative is not being screened when the truth is that we cannot see whether they
+/// are, which is a different sentence and a worse one to get wrong. Only an explicit <c>false</c>
+/// is a gap.
 /// </para>
 /// <para>
 /// Scoped to the connection rather than the member: enrolment is a setting on one wearer's device
@@ -52,8 +62,16 @@ public sealed class IrnNotEnrolledRule : INudgeRule
         if (context.Member is null)
             return NudgeVerdict.NoGap;
 
+        // Scope-gated, not just null-gated. IrnEnrolled/IrnOnboarded are written once from a
+        // profile read and never cleared — not on reconnect, not when a scope is narrowed or
+        // revoked — so a connection that once granted IRN and later stopped still carries
+        // whatever the last read said. Reading either column off a connection that does not
+        // currently grant the scope would trust a value nothing today can vouch for: a stale
+        // "false" would nudge over a device we can no longer ask, and a stale "true" would call
+        // the member covered by a device that may not still be screening at all.
         var live = context.Connections
-            .Where(c => c.Status == ConnectionStatus.Connected)
+            .Where(c => c.Status == ConnectionStatus.Connected
+                        && DeviceScopes.GrantsIrn(c.Scopes))
             .ToList();
 
         if (live.Count == 0)
@@ -64,8 +82,8 @@ public sealed class IrnNotEnrolledRule : INudgeRule
         if (live.Any(c => c.IrnEnrolled == true))
             return NudgeVerdict.NoGap;
 
-        // Only a connection that positively reported "not enrolled" is a gap. Nulls — every
-        // connection without the scope, and any whose profile read failed — are unknown, and an
+        // Only a connection that positively reported "not enrolled" is a gap. Nulls — a scoped
+        // connection whose profile read has not landed yet or failed — are unknown, and an
         // unknown must not be presented as a finding.
         var target = live
             .Where(c => c.IrnEnrolled == false)

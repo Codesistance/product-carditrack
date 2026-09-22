@@ -66,13 +66,16 @@ public sealed class NudgeContextBuilder
         bool? enrolled,
         bool? onboarded = null,
         ConnectionStatus status = ConnectionStatus.Connected,
-        Guid? id = null) => new()
+        Guid? id = null,
+        bool grantsIrnScope = true) => new()
         {
             Id = id ?? Guid.Parse("33333333-3333-3333-3333-333333333333"),
             DeviceType = DeviceType.Fitbit,
             Status = status,
             LastSyncDate = Now.AddHours(-1),
-            Scopes = ["activity_and_fitness", "health_metrics_and_measurements", "sleep", "irn"],
+            Scopes = grantsIrnScope
+                ? ["activity_and_fitness", "health_metrics_and_measurements", "sleep", "irn"]
+                : ["activity_and_fitness", "health_metrics_and_measurements", "sleep"],
             IrnEnrolled = enrolled,
             IrnOnboarded = onboarded
         };
