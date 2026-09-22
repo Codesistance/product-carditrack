@@ -210,7 +210,8 @@
                                                 <Label Grid.Column="2"
                                                        Text="Change"
                                                        Style="{StaticResource Link}"
-                                                       VerticalTextAlignment="Center"/>
+                                                       VerticalOptions="Start"
+                                                       VerticalTextAlignment="Start"/>
                                             </Grid>
                                         </VerticalStackLayout>
                                     </Border>
