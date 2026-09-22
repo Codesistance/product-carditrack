@@ -198,6 +198,15 @@ public class AccountErasureService : IAccountErasureService
             rows.Add(("Alerts.AcknowledgedByUserId (nulled)", await _db.Alerts
                 .Where(a => a.AcknowledgedByUserId == userId)
                 .ExecuteUpdateAsync(s => s.SetProperty(a => a.AcknowledgedByUserId, (Guid?)null), rest)));
+            rows.Add(("Alerts.ResolvedByUserId (nulled)", await _db.Alerts
+                .Where(a => a.ResolvedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.ResolvedByUserId, (Guid?)null), rest)));
+            // The note stays: it says what was done about a member somebody else may still be
+            // watching, and is the record that stops the next caregiver repeating a phone call
+            // this one already made. Only the name goes.
+            rows.Add(("AlertResponses.UserId (nulled)", await _db.AlertResponses
+                .Where(r => r.UserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.UserId, (Guid?)null), rest)));
             rows.Add(("MemberQuestionnaires.AnsweredByUserId (nulled)", await _db.MemberQuestionnaires
                 .Where(q => q.AnsweredByUserId == userId)
                 .ExecuteUpdateAsync(s => s.SetProperty(q => q.AnsweredByUserId, (Guid?)null), rest)));

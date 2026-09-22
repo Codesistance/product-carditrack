@@ -152,17 +152,22 @@ The client's delivery acknowledgement — posted from the background push handle
   "quietHoursStart": "22:00:00",
   "quietHoursEnd": "07:00:00",
   "showDetailsOnLockScreen": false,
+  "escalatedAlertsPierceQuietHours": false,
   "mutedCategories": ["Nudge"]
 }
 ```
 
-`quietHoursStart`/`End` are nullable — unset means no deferral window. Safety-category pushes always pierce quiet hours regardless.
+`quietHoursStart`/`End` are nullable — unset means no deferral window, and they are evaluated on the **recipient's own** `TimeZoneId`, so a sibling three time zones away is judged by their own clock. Safety-category and red Health pushes pierce quiet hours regardless, with one exception.
+
+`escalatedAlertsPierceQuietHours` is that exception (2026-09-22, default **false**). An alert escalated to you — one nobody else answered, arriving at the ladder's t+300s fan-out rung — is held until your quiet hours end unless you asked to be woken by one. The caregiver who added a member chose to be woken about them; a second caregiver is being escalated *to*, often by a family they joined rather than started, so they choose. Held, not dropped: the copy is waiting when they wake, the rung is still spent on time, and the alert still reaches `UNDELIVERED_CRITICAL` at t+900s if nobody answers.
+
+The cost is real and worth stating: a family where everybody leaves this off has no night cover, which is when most unacknowledged red alerts happen. That is why the invitation-accept flow asks rather than letting the default answer.
 
 ### PUT `/api/v1/notifications/preferences`
 
 **Auth:** Yes
 
-**Request body:** same shape as the GET response. `showDetailsOnLockScreen` is opt-in richness (§7.1) — a caller that omits it gets `false`, never silently turned on. `mutedCategories` can never include `"Safety"`: the server strips it rather than trusting the client to omit it.
+**Request body:** same shape as the GET response. `showDetailsOnLockScreen` is opt-in richness (§7.1) — a caller that omits it gets `false`, never silently turned on, and `escalatedAlertsPierceQuietHours` behaves the same way for the same reason: a client that forgot the field must not wake somebody at 3am on its behalf. Both are full-document PUT semantics, so a client sending a partial body turns the omitted flags off. `mutedCategories` can never include `"Safety"`: the server strips it rather than trusting the client to omit it.
 
 **Response:** `200 OK`, the updated preferences object.
 
@@ -196,4 +201,4 @@ What the iOS notification service extension (or Android's data-message handler) 
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [User Stories 3.2, 5.1](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 14, 2026
+**Last Updated:** September 22, 2026

@@ -382,12 +382,33 @@ t+900s  no ack from anyone → mark UNDELIVERED_CRITICAL; page ops; the alert
                   is pinned to every dashboard as an unmissable banner
 ```
 
-**In R1 the fan-out stage has no targets on a family account.** `MaxUsers = 1`
-([user_onboarding_process.md](./user_onboarding_process.md) Step 3), so the ladder degrades to
-push → re-push → `UNDELIVERED_CRITICAL` → page ops, with no human fallback. That is worth building
-anyway — the t+900s state is what turns a silent failure into a known one — but the design should not
-be read as delivering redundant human coverage before **R3 family invitations**. Business accounts
-(`MaxUsers = 20`) get the full ladder immediately and are out of MVP scope.
+**The fan-out stage is live as of 2026-09-22.** It was always unconditional in the code, and for as
+long as a family account was capped at `MaxUsers = 1` it found nobody and fell straight through, so
+the ladder degraded to push → re-push → `UNDELIVERED_CRITICAL` → page ops with no human fallback.
+Family sharing raises that cap to 20 and the rung now finds people. Nothing had to be removed to
+turn it on, which is the whole reason the branch was left running rather than special-cased away.
+
+**An escalated copy does not pierce quiet hours by default.** This is the one exception to "red and
+Safety always override", and it is deliberate. The caregiver who added a member chose to be woken
+about them; a second caregiver is being escalated *to*, often by a family they joined rather than
+started, so their own preference decides — `NotificationPreference.EscalatedAlertsPierceQuietHours`,
+default false. The copy is **held until their quiet hours end, not dropped**: it is waiting when
+they wake, the rung is still spent on time, and the alert still reaches
+`UNDELIVERED_CRITICAL` at t+900s if nobody answers. Silently pausing the ladder until 06:00 would
+report cover that was never there.
+
+The cost of that default is real and is exactly why accepting an invitation asks the question rather
+than letting the default answer it: a family where everybody holds has no night cover, and most
+unacknowledged red alerts happen at night. See D-6/D-7/D-8 in
+[second_caregiver_prd.md](../product/second_caregiver_prd.md).
+
+**Answering the alert in the app halts the ladder too.** Until 2026-09-22 only a push ack did, so a
+caregiver who opened the app, read the alert and dealt with it was still escalated against — and in a
+family of one nobody saw it happen. Outstanding deliveries for an answered alert move to the
+`Answered` state: terminal, and distinct from `Delivered`, which is a claim that a specific handset
+posted `/delivered` and is what the time-to-ack SLO is measured from. Pending rows are caught as well
+as sent ones, because the copy deferred to the end of somebody's quiet hours is the one most worth
+stopping.
 
 **The fan-out copy does not name who failed to respond.** *"Margaret's primary contact hasn't
 responded"* would disclose one caregiver's behaviour — whether they looked at their phone — to
@@ -634,7 +655,7 @@ NotificationDelivery                    -- transactional outbox; BOTH producers 
 │                                          generically, so without this the ErasureWorker
 │                                          sweep has nothing to filter on
 ├── Category enum, Channel (Push|InApp)
-├── State (Pending|Sent|Delivered|Suppressed|Failed|DeadLettered|Undelivered)
+├── State (Pending|Sent|Delivered|Suppressed|Failed|DeadLettered|Undelivered|Answered)
 ├── PushDeviceTokenId?, DedupKey UNIQUE, CollapseKey, ExpiresAt
 ├── ScheduledFor                        -- quiet-hours deferral lands here
 ├── Attempts, NextAttemptAt, LastError, ProviderMessageId
@@ -696,11 +717,11 @@ priority, and silence policy. `Full` = snooze + mute-forever · `Snooze` = time-
 | `PUSH_UNREACHABLE` | OS permission denied/revoked, safety channel muted, token dead 7d, or `Permanent` send failure | "Alerts can't reach this phone. Turn notifications on so urgent alerts get through." | Safety | R2 (with push) |
 | `NO_ALERT_RECIPIENT` | Every active `UserCardiMember` has `ReceiveAlerts = false` | "Nobody is set to receive {Name}'s alerts. Turn one on so a red alert reaches someone." | Safety | **R3** |
 
-> `NO_ALERT_RECIPIENT` is R3, not R1. Family accounts have **`MaxUsers = 1`**
-> ([user_onboarding_process.md](./user_onboarding_process.md) Step 3), so in R1 there is exactly one
-> caregiver per family account and `ReceiveAlerts` defaults true — the rule can only fire if that sole
-> user disables their own alerts. It becomes real with family invitations in R3. Business accounts
-> (`MaxUsers = 20`) are the exception, and are out of MVP scope.
+> `NO_ALERT_RECIPIENT` became real on 2026-09-22. It was written for a world where a family account
+> had **`MaxUsers = 1`** and `ReceiveAlerts` defaulted true, so the rule could only fire if the sole
+> caregiver disabled their own alerts. Family sharing raises the cap to 20, which means a member can
+> now have several caregivers and every one of them can have alerts off — a family that believes it
+> is covered and is not.
 
 ### Blocking — core value is unavailable *(in-app)*
 
@@ -1191,10 +1212,10 @@ paging · token liveness (passive sweep — see §17) · `PUSH_UNREACHABLE` · q
 `CONSENT_NOT_RECORDED` with per-metric consent · the three multi-caregiver rules with family
 invitations (R3) · web inbox parity when the web dashboard lands · push inline actions (matrix R4).
 
-**Explicitly out of scope, still:** email and SMS (permanently), the multi-caregiver rules pending
-family invitations (R3), and the web inbox. Push delivery, the escalation ladder, and cross-recipient
-fan-out (for the current `MaxUsers = 1` account shape) shipped in Phase 3 ahead of the original R2
-placement.
+**Explicitly out of scope, still:** email and SMS (permanently), and the web inbox. Push delivery, the
+escalation ladder and cross-recipient fan-out shipped in Phase 3 ahead of the original R2 placement,
+against the `MaxUsers = 1` account shape of the time; family sharing (2026-09-22) gave the fan-out
+rung and `NO_ALERT_RECIPIENT` real targets without changing either.
 
 ---
 

@@ -584,6 +584,21 @@ not org-wide) · not-a-medical-device (unchanged — no new inference).
 D-3 means no parallelism: this is a queue, not a board. Phase A is the whole safety argument — the
 gap is closed at the end of it and not before, because fan-out needs a second caregiver to exist.
 
+> **Backend status, 2026-09-22.** Every server-side row below is built and merged on
+> `claude/family-sharing-strategy-m7lh8d`; what is outstanding is the mobile half of A3, B3, B4, E2
+> and D3/D4's screens, which is a separate branch and an emulator pass. The estimates are left as
+> they were written rather than revised after the fact, since revising them turns an estimate into
+> a record of itself. Two deviations from the plan, both stated where they land:
+>
+> - **The in-app notification to other caregivers (E1) is not built**, and is the one item here
+>   scoped down rather than delivered. Nothing reads in-app deliveries back — there is no feed
+>   endpoint — so writing rows for one would be a write nothing surfaces. What the family sees is
+>   the answer on the alert itself, which the detail response carries.
+> - **A4 grew a preference.** The fan-out rung's copies do not pierce a second caregiver's quiet
+>   hours by default (`NotificationPreference.EscalatedAlertsPierceQuietHours`), which is D-7 as
+>   written; the accept-flow question (D-8) is the mobile half and is outstanding with the rest of
+>   A3's screens.
+
 | # | Phase | Work | Effort | Gap closed? |
 |---|---|---|---|---|
 | 0 | Now | Fix `BaselineLearningPage.xaml.cs:57` — it points beta users at a Family tab that became CardiJournal | minutes | no |

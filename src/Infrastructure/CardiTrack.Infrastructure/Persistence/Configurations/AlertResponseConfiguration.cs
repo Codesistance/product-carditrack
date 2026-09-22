@@ -13,7 +13,9 @@ public class AlertResponseConfiguration : IEntityTypeConfiguration<AlertResponse
         builder.HasKey(r => r.Id);
 
         builder.Property(r => r.AlertId).IsRequired();
-        builder.Property(r => r.UserId).IsRequired();
+        // Nullable: an erased caregiver's name is removed from the answers they gave,
+        // which are about a member somebody else may still be watching.
+        builder.Property(r => r.UserId);
 
         builder.Property(r => r.Kind)
             .IsRequired()

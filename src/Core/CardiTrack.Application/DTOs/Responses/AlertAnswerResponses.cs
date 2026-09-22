@@ -10,9 +10,14 @@ public class AlertResponseEntry
     /// <summary>acknowledge / close.</summary>
     public string Kind { get; set; } = string.Empty;
 
-    public Guid UserId { get; set; }
+    /// <summary>Who answered, or null once that account has been erased.</summary>
+    public Guid? UserId { get; set; }
 
-    /// <summary>Who answered, as the family knows them. Falls back to "Someone" for a deleted account.</summary>
+    /// <summary>
+    /// Who answered, as the family knows them. Falls back to "Someone" for an erased account —
+    /// the line is still a claim somebody made, and reads better unattributed than attributed to
+    /// nobody.
+    /// </summary>
     public string UserName { get; set; } = string.Empty;
 
     /// <summary>The stored code, or null when they only wrote a note.</summary>

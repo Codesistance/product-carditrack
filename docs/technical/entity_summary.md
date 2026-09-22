@@ -2,7 +2,7 @@
 
 This document provides an overview of the CardiTrack domain entities. The numbered sections are a documented subset rather than the whole set — several entities carry no section of their own (`MemberAiHold` and `GenerationLease`, among others), and the counts below are the authoritative figures. All entities live in **PostgreSQL 16 on GCP Cloud SQL**, the transactional system of record; the planned AI pipeline's outputs are documented separately in [llm_design.md](../llm_design.md). Field-level protection (what is encrypted, and what is planned to be) is covered in [data_protection_architecture.md](./data_protection_architecture.md).
 
-**Implemented today:** **42** entity classes and **54** enums exist in `CardiTrack.Domain` (plus two static merge helpers, `ActivityLogMerge` and `GranularSeriesMerge`, in `Entities/`), mapped by EF Core (**33** migrations applied as of 2026-08-14 — this count drifts fast and is not re-verified every edit; the pipeline's own output entities, e.g. `RealtimeAssessment`/`DigestEntry`/`EnvironmentalReading`/`MemberQuestionnaire`, are among the 42 but are documented in [llm_design.md](../llm_design.md) instead — `MemberQuestionnaire` also has its own API contract in [questionnaires.md](../execution/backend/api/questionnaires.md), and is the one entity deliberately **not** soft-deletable, since erasing a family's answer has to mean the row is gone). A further set of feature entities is designed but not yet built — see the "Planned" section below.
+**Implemented today:** **46** entity classes and **57** enums exist in `CardiTrack.Domain` (plus three static helpers in `Entities/` — `ActivityLogMerge`, `GranularSeriesMerge` and `FamilyIdentifier`, which mints and normalises a family's shareable code), mapped by EF Core (**82** migrations as of 2026-09-22 — this count drifts fast and is not re-verified every edit; the pipeline's own output entities, e.g. `RealtimeAssessment`/`DigestEntry`/`EnvironmentalReading`/`MemberQuestionnaire`, are among the 46 but are documented in [llm_design.md](../llm_design.md) instead — `MemberQuestionnaire` also has its own API contract in [questionnaires.md](../execution/backend/api/questionnaires.md), and is the one entity deliberately **not** soft-deletable, since erasing a family's answer has to mean the row is gone). A further set of feature entities is designed but not yet built — see the "Planned" section below.
 
 ## Entity Overview
 
@@ -10,7 +10,8 @@ This document provides an overview of the CardiTrack domain entities. The number
 
 #### 1. **Organization**
 - Represents either a Family account or Business (care home)
-- Contains: Name, Type (Family/Business), IsActive
+- Contains: Name, Type (Family/Business), FamilyId, IsActive
+- `FamilyId` is the human-readable code a family is known by — eight characters from a 31-letter alphabet with the confusable pairs dropped (`I`/`1`, `O`/`0`), stored unseparated and rendered `KTR7-M2Q9`. **Not a secret and not sized as one**: knowing it buys the right to *ask* an admin to let you in, which is worth nothing on its own. What defends the family is that approval is mandatory, that a request reveals nothing to the asker, and that guessing is rate-limited
 - Guid references only, except the Subscription FK (see Design Principles)
 
 #### 2. **User**
@@ -21,6 +22,8 @@ This document provides an overview of the CardiTrack domain entities. The number
 - `HealthDataDisclosureDismissedDate` records dismissal of the Google-required health-data disclosure banner (PR #9)
 - Indexes: unique Email, OrganizationId, IsActive, and a **unique FILTERED index on Auth0UserId** (filter: not-empty) that makes onboarding retries race-safe
 - Role hidden in UI for Family type organizations
+- **`OrganizationId` is nullable since 2026-09-22** and means the *home* family — the one this person's own CardiMembers and subscription belong to. Null for somebody who signed up to join a family somebody else runs and has not started one of their own; they get one lazily when they add their first member. Which families a person *belongs to* is `UserOrganization`, not this column
+- **`Role` on this row is legacy.** A role is held in a family, not by a person, so the live role is the one on `UserOrganization`
 
 #### 3. **CardiMember**
 - Person being monitored (can be the User themselves)
@@ -37,6 +40,31 @@ This document provides an overview of the CardiTrack domain entities. The number
 - Many-to-many relationship between Users and CardiMembers
 - Contains: RelationshipType, IsPrimaryCaregiver, CanViewHealthData, ReceiveAlerts, AssignedDate (the per-relationship `NotificationPreferences` JSON column was dropped by `AddPushDeliverySpine` in favour of the per-User NotificationPreference table)
 - Enables multiple users to monitor same CardiMember (care home scenario)
+- Written by onboarding, by an approved join request, and by an accepted caregiver invitation — with exactly the `CanViewHealthData` / `ReceiveAlerts` the admin chose
+
+#### 4a. **UserOrganization** (Join Table) — *added 2026-09-22*
+- Which families a user belongs to, and what they are in each
+- Contains: UserId, OrganizationId, Role, JoinedDate, IsActive
+- **The role lives here, not on User.** Somebody can be the admin of their own family and an ordinary member of their mother's, and a single column on the person could say only one of those
+- A family has exactly one admin. Leaving as the last admin is refused — `FamilyService.TransferAdminAsync` promotes a successor and demotes the caller in one save, and only then can they go
+- Backfill made the **earliest-created user in each organization** the admin. Copying `User.Role` would have left every existing family admin-less, since that column defaults to Member
+
+#### 4b. **CaregiverInvite** — *added 2026-09-22*
+- An admin offering a named person a share of watching one CardiMember
+- Contains: CardiMemberId, OrganizationId, CreatedByUserId, Role, CanViewHealthData, ReceiveAlerts, TokenHash, Status, ExpiresAt, OpenedAt, ResolvedAt, AcceptedByUserId
+- Only the hash of the token is stored, the same shape `DeviceConnectionInvite` uses. Redemption **claims the invitation before writing any grant**, and re-checks that the issuer is still an admin — an invitation written by somebody who has since been removed grants nothing
+
+#### 4c. **FamilyJoinRequest** — *added 2026-09-22*
+- Somebody asking to join a family by its `FamilyId`, and the admin's decision
+- Contains: UserId, OrganizationId, Status, RequestedAt, ResolvedAt, ResolvedByUserId
+- Asking returns an **identical empty receipt** for an unknown code, a malformed one, and a family the caller is already in, so the endpoint cannot be used to discover which families exist
+
+#### 4d. **AlertResponse** — *added 2026-09-22*
+- One caregiver's answer to one alert: what they did, and optionally a line about it
+- Contains: AlertId, UserId, Kind (Acknowledge/Close), ResponseCode, Note, CreatedDate
+- **Append-only.** A second caregiver responding adds a row and never overwrites one; the alert's own `AcknowledgedByUserId` keeps its first-wins idempotency, because "who is on it" is one fact and "what has been done" is not
+- `Note` is free text about a named person's health, so it is **encrypted at rest** (AES-256-GCM, applied in `AlertService`) and the column is `text` rather than `varchar(500)` — ciphertext is several times longer than the 500-character input limit. Same treatment `CardiMember.MedicalNotes` gets
+- `ResponseCode` is validated server-side against `AlertResponseCatalog`, keyed by the alert's `rule`. Codes are stable and stored; labels are re-resolved on read, so re-wording a chip does not re-write what somebody already said
 
 ### Device & Health Data Entities
 
@@ -162,7 +190,7 @@ This document provides an overview of the CardiTrack domain entities. The number
 - **FamilyInvitation** — email invitations with role, 7-day expiry, Pending/Accepted/Revoked/Expired status
 - **SharedNote** — care-coordination notes per CardiMember with @mentions (JSON) and view receipts (JSON)
 - **CardiMemberNote** — self-authored notes by the monitored person (max 1000 chars)
-- **AlertNote** — follow-up notes on an alert, with optional actionTaken analytics key
+- ~~**AlertNote**~~ — **superseded 2026-09-22** by `AlertResponse`, which is an answer rather than a note: the same free text, plus who gave it and whether they were taking the alert on or ending it. The planned `actionTaken` analytics key shipped as `ResponseCode`, validated against a catalogue instead of free-form
 - **AlertPhoto** — photo attachments on alerts (blob URL, caption)
 - ~~**AlertPreference**~~ — **shipped**: one per CardiMember, sparse JSON disable-list of alert rule ids (`DisabledRules`). Missing row = all rules on. Producers skip evaluation for disabled ids. Distinct from `MetricAlarm`, which is the caregiver's own thresholds rather than a switch over CardiTrack's rules.
 - ~~**PushNotificationToken**~~ — **shipped** as `PushDeviceToken` (APNS/FCM tokens per user device, token encrypted with a SHA-256 fingerprint for lookup), part of the push delivery spine (with Notification, NotificationDelivery, NotificationMute)
@@ -201,18 +229,23 @@ This document provides an overview of the CardiTrack domain entities. The number
 - Pattern baselines store day-of-week arrays
 
 ### 6. Security & Encryption
-- Device OAuth tokens (AccessToken, RefreshToken) and CardiMember MedicalNotes are encrypted with AES-256-GCM — see [data_protection_architecture.md](./data_protection_architecture.md)
+- Device OAuth tokens (AccessToken, RefreshToken), CardiMember MedicalNotes and AlertResponse Notes are encrypted with AES-256-GCM — see [data_protection_architecture.md](./data_protection_architecture.md)
 - Credentials are Auth0-hosted; a legacy `PasswordHash` column remains on Users pending removal
 - Audit logging is wired via `AuditLoggingMiddleware`, opt-in per endpoint through `AuditHealthDataAccessAttribute` (health-data controllers only; onboarding's member creation audited since 2026-09-13)
 
 ## Entity Relationships
 
 ```
-Organization (1) ──→ (N) User
+Organization (1) ──→ (N) User            [home family; User.OrganizationId is nullable]
 Organization (1) ──→ (N) CardiMember
 Organization (1) ──→ (1) Subscription   [FK, cascade delete]
 
-User (M) ←──→ (N) CardiMember (via UserCardiMember join table)
+User (M) ←──→ (N) Organization (via UserOrganization join table — membership + role)
+User (M) ←──→ (N) CardiMember (via UserCardiMember join table — per-member access)
+
+Organization (1) ──→ (N) FamilyJoinRequest
+CardiMember  (1) ──→ (N) CaregiverInvite
+Alert        (1) ──→ (N) AlertResponse   [append-only]
 
 CardiMember (1) ──→ (N) DeviceConnection
 DeviceConnection (1) ──→ (N) DeviceActivityLog   [raw: one per device per day]
@@ -237,7 +270,7 @@ User (1) ──→ (1) NotificationPreference
 
 `DeviceTypeSyncProfile` stands alone — one row per `DeviceType` value, no relationships to other entities.
 
-Planned relationships (when the planned entities land): Organization→FamilyInvitation, User→Report, CardiMember→EmergencyContact/ConsentRecord/SharedNote/CardiMemberNote/AlertPreference, Alert→AlertNote/AlertPhoto.
+Planned relationships (when the planned entities land): Organization→FamilyInvitation, User→Report, CardiMember→EmergencyContact/ConsentRecord/SharedNote/CardiMemberNote/AlertPreference, Alert→AlertPhoto (AlertNote is superseded by the shipped AlertResponse).
 
 ## Enums
 
@@ -319,4 +352,4 @@ EF Core mapping lives in `CardiTrack.Infrastructure/Persistence` (a configuratio
 
 ---
 
-**Last Updated:** September 6, 2026
+**Last Updated:** September 22, 2026

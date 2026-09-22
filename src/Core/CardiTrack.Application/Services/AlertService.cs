@@ -398,7 +398,9 @@ public class AlertService : IAlertService
     private async Task<AlertResponseEntry> ProjectResponseAsync(
         Alert alert, AlertResponse response, CancellationToken ct)
     {
-        var responder = await _unitOfWork.Users.GetByIdAsync(response.UserId);
+        var responder = response.UserId is { } userId
+            ? await _unitOfWork.Users.GetByIdAsync(userId)
+            : null;
         return ProjectResponse(
             response, AlertDetailComposer.ReadRule(alert.MetricValues), responder?.Name);
     }
@@ -419,8 +421,8 @@ public class AlertService : IAlertService
             Id = response.Id,
             Kind = response.Kind.ToString().ToLowerInvariant(),
             UserId = response.UserId,
-            // A caregiver who has since left the family still wrote this, and the line reads as a
-            // claim either way — better unattributed than attributed to nobody.
+            // An erased account still gave this answer, and the line reads as a claim either way
+            // — better unattributed than attributed to nobody.
             UserName = string.IsNullOrWhiteSpace(responderName) ? "Someone" : responderName,
             ResponseCode = response.ResponseCode,
             ResponseLabel = response.ResponseCode is null
@@ -606,11 +608,12 @@ public class AlertService : IAlertService
             return;
 
         var names = new Dictionary<Guid, string?>();
-        foreach (var userId in responses.Select(r => r.UserId).Distinct())
+        foreach (var userId in responses.Select(r => r.UserId).OfType<Guid>().Distinct())
             names[userId] = (await _unitOfWork.Users.GetByIdAsync(userId))?.Name;
 
         detail.Responses = responses
-            .Select(r => ProjectResponse(r, rule, names.GetValueOrDefault(r.UserId)))
+            .Select(r => ProjectResponse(
+                r, rule, r.UserId is { } id ? names.GetValueOrDefault(id) : null))
             .ToList();
     }
 

@@ -150,10 +150,61 @@ public class AccountErasureCascadeTests : IAsyncLifetime
 
         var alert = await db.Alerts.SingleAsync(a => a.CardiMemberId == seed.SharedMemberId);
         Assert.Null(alert.AcknowledgedByUserId);
+        Assert.Null(alert.ResolvedByUserId);
 
         var questionnaire = await db.MemberQuestionnaires
             .SingleAsync(q => q.CardiMemberId == seed.SharedMemberId);
         Assert.Null(questionnaire.AnsweredByUserId);
+
+        // The answer itself stays. It says what was done about a member somebody else is still
+        // watching, and is what stops the next caregiver repeating a phone call this one made.
+        var response = await db.AlertResponses.SingleAsync(r => r.AlertId == alert.Id);
+        Assert.Null(response.UserId);
+        Assert.Equal("resting_day", response.ResponseCode);
+        Assert.NotNull(response.Note);
+    }
+
+    /// <summary>
+    /// The other direction: when the member goes, so does everything said about them — including
+    /// the caregiver's own encrypted words on their alerts.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_TakesTheAnswersOnAnErasedMembersAlertsWithThem()
+    {
+        var seed = await SeedAsync();
+
+        Guid removedAlertId;
+        using (var seeding = _services.CreateScope())
+        {
+            var seedDb = seeding.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var alert = new Alert
+            {
+                CardiMemberId = seed.RemovedMemberId,
+                Title = "No movement this morning",
+                Message = "No steps well after their usual wake time.",
+            };
+            seedDb.Alerts.Add(alert);
+            seedDb.AlertResponses.Add(new AlertResponse
+            {
+                AlertId = alert.Id,
+                UserId = seed.UserId,
+                Kind = AlertResponseKind.Close,
+                Note = "v1:0000000000000000:not-real-ciphertext",
+            });
+            await seedDb.SaveChangesAsync();
+            removedAlertId = alert.Id;
+        }
+
+        await EraseAsync(seed.UserId);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        // Nothing in the schema would have taken these with the alert — no foreign key, by
+        // design — so an answer left behind would be encrypted health information about an erased
+        // person, orphaned and unfindable.
+        Assert.Equal(0, await db.AlertResponses.CountAsync(r => r.AlertId == removedAlertId));
+        Assert.Equal(0, await db.Alerts.CountAsync(a => a.Id == removedAlertId));
     }
 
     /// <summary>
@@ -706,12 +757,23 @@ public class AccountErasureCascadeTests : IAsyncLifetime
 
         // On the shared member, so the assertion is that a surviving member keeps their alert
         // with the departing caregiver's name taken off it.
-        db.Alerts.Add(new Alert
+        var sharedAlert = new Alert
         {
             CardiMemberId = shared.Id,
             Title = "Quieter than usual",
             Message = "Fewer steps than their usual pattern.",
             AcknowledgedByUserId = leaving.Id,
+            IsResolved = true,
+            ResolvedByUserId = leaving.Id,
+        };
+        db.Alerts.Add(sharedAlert);
+        db.AlertResponses.Add(new AlertResponse
+        {
+            AlertId = sharedAlert.Id,
+            UserId = leaving.Id,
+            Kind = AlertResponseKind.Close,
+            ResponseCode = "resting_day",
+            Note = "v1:0000000000000000:not-real-ciphertext",
         });
         db.MemberQuestionnaires.Add(new MemberQuestionnaire
         {

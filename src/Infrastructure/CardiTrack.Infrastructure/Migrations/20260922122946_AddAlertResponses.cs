@@ -23,7 +23,7 @@ namespace CardiTrack.Infrastructure.Migrations
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
                     AlertId = table.Column<Guid>(type: "uuid", nullable: false),
-                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: true),
                     Kind = table.Column<string>(type: "character varying(32)", maxLength: 32, nullable: false),
                     ResponseCode = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
                     Note = table.Column<string>(type: "text", nullable: true),

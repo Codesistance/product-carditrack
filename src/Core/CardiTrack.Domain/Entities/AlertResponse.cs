@@ -23,8 +23,16 @@ public class AlertResponse : BaseEntity
 {
     public Guid AlertId { get; set; }
 
-    /// <summary>The caregiver who answered. Never null — CardiTrack's own resolutions write no row here.</summary>
-    public Guid UserId { get; set; }
+    /// <summary>
+    /// The caregiver who answered, or null once that account has been erased.
+    /// </summary>
+    /// <remarks>
+    /// Nullable for erasure, and for the same reason <c>Alert.AcknowledgedByUserId</c> is: the
+    /// answer belongs to the member, who may still be watched by somebody else, so only the name
+    /// of the caregiver who gave it goes. Deleting the row instead would take the family's record
+    /// of what was done about a person they are still looking after.
+    /// </remarks>
+    public Guid? UserId { get; set; }
 
     public AlertResponseKind Kind { get; set; }
 
