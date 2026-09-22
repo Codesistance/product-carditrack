@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using CardiTrack.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardiTrack.Infrastructure.Migrations
 {
     [DbContext(typeof(CardiTrackDbContext))]
-    partial class CardiTrackDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922113307_AddRhythmEpisodesAndDeviceRhythmCounts")]
+    partial class AddRhythmEpisodesAndDeviceRhythmCounts
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -228,9 +231,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<Guid?>("ResolvedByUserId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Severity")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -301,45 +301,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("AlertPreferences", (string)null);
-                });
-
-            modelBuilder.Entity("CardiTrack.Domain.Entities.AlertResponse", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AlertId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("Note")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ResponseCode")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime?>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AlertId", "CreatedDate");
-
-                    b.ToTable("AlertResponses", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.AuditLog", b =>
@@ -581,78 +542,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("CardiMemberCreationKeys", (string)null);
-                });
-
-            modelBuilder.Entity("CardiTrack.Domain.Entities.CaregiverInvite", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid?>("AcceptedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("CanViewHealthData")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
-                    b.Property<Guid>("CardiMemberId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("CreatedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("OpenedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("ReceiveAlerts")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
-                    b.Property<DateTime?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
-
-                    b.Property<DateTime?>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CardiMemberId");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.ToTable("CaregiverInvites", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.Device", b =>
@@ -1536,53 +1425,6 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("OwnerUserId", "RememberUntil");
 
                     b.ToTable("ExportConsents", (string)null);
-                });
-
-            modelBuilder.Entity("CardiTrack.Domain.Entities.FamilyJoinRequest", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("RequestedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ResolvedByUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime?>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RequestedByUserId");
-
-                    b.HasIndex("OrganizationId", "Status");
-
-                    b.HasIndex("RequestedByUserId", "OrganizationId")
-                        .IsUnique()
-                        .HasFilter("\"Status\" = 'Pending'");
-
-                    b.ToTable("FamilyJoinRequests", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.GenerationLease", b =>
@@ -2499,9 +2341,6 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("IsEscalation")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("LastError")
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
@@ -2548,12 +2387,6 @@ namespace CardiTrack.Infrastructure.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -2641,11 +2474,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("NOW()");
-
-                    b.Property<bool>("EscalatedAlertsPierceQuietHours")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<string>("MutedCategories")
                         .IsRequired()
@@ -2750,11 +2578,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("NOW()");
 
-                    b.Property<string>("FamilyId")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
-
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -2774,10 +2597,6 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("FamilyId")
-                        .IsUnique()
-                        .HasFilter("\"FamilyId\" <> ''");
 
                     b.HasIndex("IsActive");
 
@@ -3288,7 +3107,7 @@ namespace CardiTrack.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<Guid?>("OrganizationId")
+                    b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("PasswordHash")
@@ -3392,58 +3211,6 @@ namespace CardiTrack.Infrastructure.Migrations
                     b.HasIndex("UserId", "CardiMemberId", "IsActive");
 
                     b.ToTable("UserCardiMembers", (string)null);
-                });
-
-            modelBuilder.Entity("CardiTrack.Domain.Entities.UserOrganization", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
-                    b.Property<DateTime>("JoinedDate")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("NOW()");
-
-                    b.Property<Guid>("OrganizationId")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Role")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<DateTime?>("UpdatedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("OrganizationId");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("UserId", "OrganizationId")
-                        .IsUnique();
-
-                    b.HasIndex("OrganizationId", "Role", "IsActive")
-                        .IsUnique()
-                        .HasDatabaseName("IX_UserOrganizations_OneActiveAdmin")
-                        .HasFilter("\"Role\" = 'Admin' AND \"IsActive\"");
-
-                    b.ToTable("UserOrganizations", (string)null);
                 });
 
             modelBuilder.Entity("CardiTrack.Domain.Entities.MemberChatTurn", b =>

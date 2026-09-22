@@ -93,7 +93,15 @@ public static class ActivityLogMerge
             // a start time from the next would describe a stretch that never happened. The pair is
             // resolved by the duration — a start time without one is not a stretch.
             LongestSedentaryStretchMinutes = stretch?.LongestSedentaryStretchMinutes,
-            LongestSedentaryStretchStartUtc = stretch?.LongestSedentaryStretchStartUtc
+            LongestSedentaryStretchStartUtc = stretch?.LongestSedentaryStretchStartUtc,
+
+            // Coalesced like any other optional reading rather than summed across devices: two
+            // watches on one wearer would each report the same notification, and adding them would
+            // tell a family their relative had two episodes when they had one. The highest-priority
+            // device that could see rhythm data at all speaks for the day.
+            EcgReadings = First(rowsByPriority, r => r.EcgReadings),
+            EcgAtrialFibrillationReadings = First(rowsByPriority, r => r.EcgAtrialFibrillationReadings),
+            IrregularRhythmNotifications = First(rowsByPriority, r => r.IrregularRhythmNotifications)
         };
     }
 

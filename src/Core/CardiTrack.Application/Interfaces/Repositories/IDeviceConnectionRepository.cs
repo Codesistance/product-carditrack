@@ -65,6 +65,14 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     Task UpdateBatteryAsync(Guid id, int? level, string? status, DateTime readAtUtc);
 
     /// <summary>
+    /// Records whether the wearer has completed Irregular Rhythm Notifications setup on their own
+    /// device and is currently enrolled in having their data screened for AFib. Both null where
+    /// the profile could not be read — an ungranted scope included.
+    /// </summary>
+    /// <param name="readAtUtc">When the profile was read, so staleness can be judged later.</param>
+    Task UpdateIrnProfileAsync(Guid id, bool? onboarded, bool? enrolled, DateTime readAtUtc);
+
+    /// <summary>
     /// Connections the provider has refused, due another attempt at their refresh token — the
     /// auth-recovery probe's input set.
     /// </summary>

@@ -99,6 +99,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRealtimeAssessmentRepository, CardiTrack.Infrastructure.Repositories.RealtimeAssessmentRepository>();
         services.AddScoped<IMemberQuestionnaireRepository, CardiTrack.Infrastructure.Repositories.MemberQuestionnaireRepository>();
         services.AddScoped<IEnvironmentalReadingRepository, CardiTrack.Infrastructure.Repositories.EnvironmentalReadingRepository>();
+        services.AddScoped<IRhythmEpisodeRepository, CardiTrack.Infrastructure.Repositories.RhythmEpisodeRepository>();
         services.AddScoped<IAuditLogRepository, CardiTrack.Infrastructure.Repositories.AuditLogRepository>();
         services.AddScoped<INotificationRepository, CardiTrack.Infrastructure.Repositories.NotificationRepository>();
         services.AddScoped<INotificationMuteRepository, CardiTrack.Infrastructure.Repositories.NotificationMuteRepository>();

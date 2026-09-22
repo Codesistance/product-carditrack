@@ -68,4 +68,13 @@ public class ActivityLog : BaseEntity
     // to hear about.
     public int? LongestSedentaryStretchMinutes { get; set; }
     public DateTime? LongestSedentaryStretchStartUtc { get; set; }
+
+    // Rhythm events the device itself judged. Counts, never waveforms — see DeviceRhythmDay for
+    // why the ECG trace is deliberately never fetched or stored. Null means "we cannot see this
+    // wearer's rhythm data" (the scope was never granted, or the day predates the read); 0 means
+    // "we looked and the device raised nothing", which is the reassuring answer and must stay
+    // distinguishable from the other.
+    public int? EcgReadings { get; set; }
+    public int? EcgAtrialFibrillationReadings { get; set; }
+    public int? IrregularRhythmNotifications { get; set; }
 }

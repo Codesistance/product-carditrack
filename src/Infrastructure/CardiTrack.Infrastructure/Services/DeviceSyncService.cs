@@ -159,7 +159,12 @@ public class DeviceSyncService : IDeviceSyncService
             if (!snapshot.HasAnyData)
                 continue;
 
-            await StoreDayAsync(connection, snapshot, date);
+            // No rhythm on a re-pull, though it is otherwise "everything the provider has for
+            // these days": the ECG filter admits no upper bound, so reaching a day weeks back
+            // means paging forward through every reading taken since. The counts stay null, which
+            // reads as "cannot see" rather than "nothing happened" — the honest answer for a day
+            // nobody looked at.
+            await StoreDayAsync(connection, snapshot, DeviceRhythmDay.None, date);
             daysWithData++;
 
             // The granular series too — a re-pull is "everything the provider has for these
@@ -317,12 +322,123 @@ public class DeviceSyncService : IDeviceSyncService
     private async Task PullWindowAsync(
         DeviceConnection connection, string accessToken, int lookbackDays, DateOnly today)
     {
+        // Checked once for the whole window rather than per day: a connection's granted scopes do
+        // not change mid-pull, and the check is over a parsed JSON list.
+        var readsRhythm = DeviceScopes.GrantsRhythm(ParseScopes(connection.Scopes));
+        if (readsRhythm)
+            await CaptureIrnProfileAsync(connection, accessToken);
+
         // Oldest first, so a mid-window provider failure still leaves the earlier days stored.
         for (var offset = lookbackDays; offset >= 0; offset--)
         {
             var targetDate = today.AddDays(-offset);
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, targetDate);
-            await StoreDayAsync(connection, snapshot, targetDate);
+            var rhythm = readsRhythm
+                ? await ReadRhythmDayAsync(accessToken, targetDate)
+                : DeviceRhythmDay.None;
+
+            await StoreDayAsync(connection, snapshot, rhythm, targetDate);
+            await StoreRhythmEpisodesAsync(connection, rhythm);
+        }
+    }
+
+    /// <summary>
+    /// One day's rhythm events, or <see cref="DeviceRhythmDay.None"/> if the provider refused.
+    /// </summary>
+    /// <remarks>
+    /// Never throws, for the same reason <see cref="CaptureBatteryAsync"/> does not: these two data
+    /// types sit behind restricted scopes and a young verification, so a provider-side refusal is a
+    /// plausible steady state. Letting one park the connection in
+    /// <see cref="ConnectionStatus.SyncError"/> would cost the member every other reading of the
+    /// day over a read most wearers cannot make at all. The counts stay null, which is the
+    /// "cannot see" answer rather than the "nothing happened" one.
+    /// </remarks>
+    /// <summary>
+    /// Records whether the wearer is actually enrolled in AFib screening.
+    /// </summary>
+    /// <remarks>
+    /// Worth a request per pull because the alternative is a silence nobody can read: a wearer who
+    /// never finished IRN setup raises no notifications at all, which on every screen looks exactly
+    /// like a wearer whose heart is behaving. Best-effort and never throws, like
+    /// <see cref="CaptureBatteryAsync"/> — a profile we cannot read leaves both columns null, which
+    /// is "we could not ask" rather than "they are not covered".
+    /// </remarks>
+    private async Task CaptureIrnProfileAsync(DeviceConnection connection, string accessToken)
+    {
+        bool? onboarded;
+        bool? enrolled;
+        try
+        {
+            (onboarded, enrolled) = await _deviceApi.GetIrnProfileAsync(accessToken);
+        }
+        catch (Exception ex) when (IsProviderApiException(ex))
+        {
+            return;
+        }
+
+        // Nothing readable and nothing stored before: writing three nulls over three nulls is a
+        // round trip to the database to change nothing.
+        if (onboarded is null && enrolled is null && connection.IrnProfileUpdatedAt is null)
+            return;
+
+        var readAt = DateTime.UtcNow;
+        await _deviceConnections.UpdateIrnProfileAsync(connection.Id, onboarded, enrolled, readAt);
+        connection.IrnOnboarded = onboarded;
+        connection.IrnEnrolled = enrolled;
+        connection.IrnProfileUpdatedAt = readAt;
+    }
+
+    private async Task<DeviceRhythmDay> ReadRhythmDayAsync(string accessToken, DateOnly targetDate)
+    {
+        try
+        {
+            return await _deviceApi.GetRhythmDayAsync(accessToken, targetDate);
+        }
+        catch (Exception ex) when (IsProviderApiException(ex))
+        {
+            return DeviceRhythmDay.None;
+        }
+    }
+
+    /// <summary>
+    /// Stores the beat-level detail behind the day's irregular-rhythm notifications.
+    /// </summary>
+    /// <remarks>
+    /// Written per device rather than merged across them, unlike the day counts: a window is a
+    /// measurement one watch made, and two watches disagreeing about the same minutes is
+    /// information rather than a conflict to resolve. Best-effort like the read itself — the
+    /// episodes are evidence attached to an alert the counts already raise, so failing to store
+    /// them must not cost the day.
+    /// </remarks>
+    private async Task StoreRhythmEpisodesAsync(DeviceConnection connection, DeviceRhythmDay rhythm)
+    {
+        if (rhythm.AnalysisWindows.Count == 0)
+            return;
+
+        var ingestedAt = DateTime.UtcNow;
+
+        foreach (var window in rhythm.AnalysisWindows)
+        {
+            var rr = window.Beats.Select(b => b.RrMs).ToArray();
+            var (mean, min, max, rmssd) = RhythmEpisodeStatistics.Summarise(rr);
+
+            await _unitOfWork.RhythmEpisodes.UpsertAsync(new RhythmEpisode
+            {
+                CardiMemberId = connection.CardiMemberId,
+                WindowStartUtc = window.StartUtc,
+                WindowEndUtc = window.EndUtc,
+                DeviceConnectionId = connection.Id,
+                NotificationStartUtc = window.NotificationStartUtc,
+                Positive = window.Positive,
+                BeatCount = rr.Length,
+                RrMilliseconds = rr,
+                OffsetMillisFromStart = window.Beats.Select(b => b.OffsetMs).ToArray(),
+                MeanRrMs = mean,
+                MinRrMs = min,
+                MaxRrMs = max,
+                RmssdMs = rmssd,
+                IngestedAtUtc = ingestedAt,
+            });
         }
     }
 
@@ -384,8 +500,10 @@ public class DeviceSyncService : IDeviceSyncService
         for (var date = frontier.AddDays(-1); date >= horizon && date >= chunkFloor; date = date.AddDays(-1))
         {
             var snapshot = await _deviceApi.GetHealthSnapshotAsync(accessToken, date);
+            // Null rhythm for the same reason the re-pull passes none: these are old days, and the
+            // ECG read can only walk backwards from now.
             if (snapshot.HasAnyData)
-                await StoreDayAsync(connection, snapshot, date);
+                await StoreDayAsync(connection, snapshot, DeviceRhythmDay.None, date);
 
             await _deviceConnections.UpdateHistoryBackfilledToAsync(connection.Id, date);
             connection.HistoryBackfilledTo = date;
@@ -396,7 +514,10 @@ public class DeviceSyncService : IDeviceSyncService
     /// Stores one day's snapshot as this device's raw row and re-merges the member's day.
     /// </summary>
     private async Task StoreDayAsync(
-        DeviceConnection connection, DeviceHealthSnapshot snapshot, DateOnly targetDate)
+        DeviceConnection connection,
+        DeviceHealthSnapshot snapshot,
+        DeviceRhythmDay rhythm,
+        DateOnly targetDate)
     {
         var log = new DeviceActivityLog
         {
@@ -452,7 +573,13 @@ public class DeviceSyncService : IDeviceSyncService
             PeakZoneMinutes = snapshot.PeakZoneMinutes,
             ModerateZoneFloorBpm = snapshot.ModerateZoneFloorBpm,
             LongestSedentaryStretchMinutes = snapshot.LongestSedentaryStretchMinutes,
-            LongestSedentaryStretchStartUtc = snapshot.LongestSedentaryStretchStartUtc
+            LongestSedentaryStretchStartUtc = snapshot.LongestSedentaryStretchStartUtc,
+
+            // Null throughout for a connection without the rhythm scopes — "we cannot see this",
+            // which the alert rules and every prompt treat differently from a zero.
+            EcgReadings = rhythm.EcgReadings,
+            EcgAtrialFibrillationReadings = rhythm.EcgAtrialFibrillationReadings,
+            IrregularRhythmNotifications = rhythm.IrregularRhythmNotifications
         };
 
         // Save the raw row first — the merge reads every device's stored row for the day,

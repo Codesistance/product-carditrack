@@ -19,7 +19,16 @@ namespace CardiTrack.Infrastructure.Services;
 /// dedup is handed to the private medical model for its verdict — severity, headline and the
 /// sentences a caregiver reads. The rules are an input provider; the inference is MedGemma's.
 /// Fetching the 30-day baseline and nothing else is how "provisional baselines never alert" is
-/// enforced — members without an established baseline are skipped wholesale.
+/// enforced for the <b>comparative</b> rules — those asking whether a reading is unusual for this
+/// member stay silent without one.
+/// <para>
+/// The <b>measured</b> rules (<c>irregular_rhythm</c>, <c>ecg_afib</c>) sit deliberately outside
+/// that gate. They carry a finding the wearer's own device made and classified, so there is no
+/// inference in them for a thin window to weaken. Skipping a member without a baseline would mean
+/// someone two weeks into wearing a watch hears nothing when it tells them their heart is in
+/// atrial fibrillation — the one silence this engine must never produce. Their severity and
+/// wording still come from the model, exactly like every other finding.
+/// </para>
 /// <para>
 /// Until 2026-09-19 this ran in <c>CardiTrack.Worker</c> and wrote each rule's own hard-coded
 /// severity and copy straight into the alert row: a threshold constant paged families with no
@@ -214,11 +223,17 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return 0;
 
-        // Established baseline only: no 30-day baseline means every rule stays silent, exactly
-        // as the provisional-never-alerts principle demands.
+        // Established baseline only for the COMPARATIVE rules: without a 30-day baseline every
+        // rule that asks "is this unusual for them" stays silent, exactly as the
+        // provisional-never-alerts principle demands.
+        //
+        // The MEASURED rules are not gated on it, and this is the whole reason the two kinds are
+        // named apart. A measured rule reports a finding the wearer's own device made — an ECG it
+        // classified, a rhythm notification it raised — so there is no inference in it to be thin,
+        // and nothing for a baseline to make surer. Returning early here would mean a member two
+        // weeks into wearing a watch gets no word when it tells them their heart is in atrial
+        // fibrillation, which is the one silence this engine must never produce.
         var baseline = await _unitOfWork.PatternBaselines.GetLatestByCardiMemberAsync(memberId, periodDays: 30);
-        if (baseline is null)
-            return 0;
 
         var rulePrefs = AlertRuleOverrides.FromJson(
             (await _unitOfWork.AlertPreferences.GetByCardiMemberIdAsync(memberId, ct))?.DisabledRules);
@@ -232,7 +247,19 @@ public class StatisticalAlertService : IStatisticalAlertService
             && !rulePrefs.IsEnabled(StatisticalAlertRules.HeartRateVariabilityDropRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.OvernightBreathingUpRule)
             && !rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule)
-            && !rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule))
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularRhythmRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule))
+        {
+            return 0;
+        }
+
+        // Every comparative rule is off, or there is no baseline for them to compare against, and
+        // both measured rules are off too — nothing below can produce a finding, so skip the
+        // timezone and activity-log fetches.
+        if (baseline is null
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.IrregularRhythmRule)
+            && !rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule))
         {
             return 0;
         }
@@ -244,8 +271,18 @@ public class StatisticalAlertService : IStatisticalAlertService
 
         // One fetch covers every rule: yesterday and today for the daily rules, four trailing
         // weeks for the trend. Stored dates are the wearer's civil days.
+        //
+        // Narrowed to two days when there is no baseline, because only the measured rules can run
+        // and both read today and yesterday. That keeps most of the "no wasted reads" property the
+        // provisional-never-alerts gate used to give for free: a member in their first 30 days
+        // costs one two-day indexed range read per pass rather than a 28-day one, and gets told
+        // when their watch finds atrial fibrillation.
+        var windowStart = baseline is null
+            ? yesterday
+            : localToday.AddDays(-7 * StatisticalAlertRules.TrendWeeks);
+
         var logsByDate = (await _unitOfWork.ActivityLogs.GetByCardiMemberAndDateRangeAsync(
-                memberId, localToday.AddDays(-7 * StatisticalAlertRules.TrendWeeks), localToday))
+                memberId, windowStart, localToday))
             .ToDictionary(l => l.Date);
         var yesterdayLog = logsByDate.GetValueOrDefault(yesterday);
         var todayLog = logsByDate.GetValueOrDefault(localToday);
@@ -278,36 +315,47 @@ public class StatisticalAlertService : IStatisticalAlertService
         // Off = do not evaluate at all (not merely suppress the raise). Absence of a preference
         // row means every rule is on.
         var findings = new List<StatisticalFinding>();
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.ActivityDeclineRule))
-            AddIfPresent(findings, StatisticalAlertRules.ActivityDecline(baseline, yesterdayLog));
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule))
+
+        // Measured rules first, and outside the baseline guard below: these report what the
+        // device itself found, not what is unusual for this member.
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.IrregularRhythmRule))
+            AddIfPresent(findings, StatisticalAlertRules.IrregularRhythm(todayLog, yesterdayLog));
+        if (rulePrefs.IsEnabled(StatisticalAlertRules.EcgAtrialFibrillationRule))
+            AddIfPresent(findings, StatisticalAlertRules.EcgAtrialFibrillation(todayLog, yesterdayLog));
+
+        if (baseline is not null)
         {
-            // Age against the member's own local today, the same day the readings are dated in —
-            // the sleep rule grades the night on the published band for their age bracket.
-            AddIfPresent(findings, StatisticalAlertRules.IrregularSleep(
-                baseline, lastNightLog, member.DateOfBirth.ToAgeInYears(localToday)));
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.ActivityDeclineRule))
+                AddIfPresent(findings, StatisticalAlertRules.ActivityDecline(baseline, yesterdayLog));
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.IrregularSleepRule))
+            {
+                // Age against the member's own local today, the same day the readings are dated in —
+                // the sleep rule grades the night on the published band for their age bracket.
+                AddIfPresent(findings, StatisticalAlertRules.IrregularSleep(
+                    baseline, lastNightLog, member.DateOfBirth.ToAgeInYears(localToday)));
+            }
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule))
+                AddIfPresent(findings, StatisticalAlertRules.ElevatedHeartRate(baseline, yesterdayLog));
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule))
+                AddIfPresent(findings, StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow));
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule))
+                AddIfPresent(findings, StatisticalAlertRules.LongTermTrend(logsByDate, yesterday));
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.HeartRateVariabilityDropRule))
+            {
+                AddIfPresent(findings, StatisticalAlertRules.HeartRateVariabilityDrop(
+                    baseline, overnightVitalsLog, previousNightLog));
+            }
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.OvernightBreathingUpRule))
+            {
+                // Last night's row, like sleep and HRV: the reading is derived from the night and is
+                // filed under the civil day it ended on.
+                AddIfPresent(findings, StatisticalAlertRules.OvernightBreathingUp(baseline, overnightVitalsLog));
+            }
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule))
+                AddIfPresent(findings, StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, yesterdayLog));
+            if (rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule))
+                AddIfPresent(findings, StatisticalAlertRules.DaytimeInactivityBlock(baseline, yesterdayLog));
         }
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedHeartRateRule))
-            AddIfPresent(findings, StatisticalAlertRules.ElevatedHeartRate(baseline, yesterdayLog));
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.NoMorningActivityRule))
-            AddIfPresent(findings, StatisticalAlertRules.NoMorningActivity(baseline, todayLog, localNow));
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.LongTermTrendRule))
-            AddIfPresent(findings, StatisticalAlertRules.LongTermTrend(logsByDate, yesterday));
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.HeartRateVariabilityDropRule))
-        {
-            AddIfPresent(findings, StatisticalAlertRules.HeartRateVariabilityDrop(
-                baseline, overnightVitalsLog, previousNightLog));
-        }
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.OvernightBreathingUpRule))
-        {
-            // Last night's row, like sleep and HRV: the reading is derived from the night and is
-            // filed under the civil day it ended on.
-            AddIfPresent(findings, StatisticalAlertRules.OvernightBreathingUp(baseline, overnightVitalsLog));
-        }
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.ElevatedZoneWithoutMovementRule))
-            AddIfPresent(findings, StatisticalAlertRules.ElevatedZoneWithoutMovement(baseline, yesterdayLog));
-        if (rulePrefs.IsEnabled(StatisticalAlertRules.DaytimeInactivityBlockRule))
-            AddIfPresent(findings, StatisticalAlertRules.DaytimeInactivityBlock(baseline, yesterdayLog));
 
         // NOTE: this pass's alerts are not auto-resolved, and so still latch — see
         // AlertResolution for what that costs. Closing them needs each rule to say whether it was

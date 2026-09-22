@@ -27,6 +27,8 @@ public static class AlertRuleCatalogue
     public const string HeartRateVariabilityDrop = StatisticalAlertRules.HeartRateVariabilityDropRule;
     public const string OvernightBreathingUp = StatisticalAlertRules.OvernightBreathingUpRule;
     public const string ElevatedZoneWithoutMovement = StatisticalAlertRules.ElevatedZoneWithoutMovementRule;
+    public const string IrregularRhythm = StatisticalAlertRules.IrregularRhythmRule;
+    public const string EcgAtrialFibrillation = StatisticalAlertRules.EcgAtrialFibrillationRule;
 
     // A–G (catalogue reserved; producers not shipped yet)
     public const string LateBedtime = "late_bedtime";
@@ -36,6 +38,15 @@ public static class AlertRuleCatalogue
     public const string DaytimeInactivityBlock = StatisticalAlertRules.DaytimeInactivityBlockRule;
     public const string MultiSignalCluster = "multi_signal_cluster";
     public const string BaselineShift = "baseline_shift";
+
+    /// <summary>
+    /// Rhythm findings the device itself made. Its own cluster rather than a pair of rows under
+    /// <see cref="ClusterHeart"/>: everything there compares a reading against the member's own
+    /// usual, and these two report a classification a regulated feature on their wrist produced.
+    /// A caregiver turning off "elevated resting heart rate" has not asked to stop hearing that
+    /// their relative's watch found atrial fibrillation.
+    /// </summary>
+    public const string ClusterRhythm = "rhythm";
 
     public const string ClusterSleep = "sleep";
     public const string ClusterHeart = "heart_overnight";
@@ -52,6 +63,11 @@ public static class AlertRuleCatalogue
                 new(FragmentedSleep, "Restless night", "More wake-ups or awake time than usual", IsImplemented: false),
                 new(IrregularSleep, "Unusual sleep length", "Last night was much shorter than usual, or well past the recommended hours", IsImplemented: true),
                 new(DaytimeInactivityBlock, "Long daytime rest", "An unusually long inactive stretch in waking hours", IsImplemented: true),
+            ]),
+            new(ClusterRhythm, "Heart rhythm", "Findings their own watch made about their heart rhythm",
+            [
+                new(EcgAtrialFibrillation, "ECG showed atrial fibrillation", "An ECG they recorded on their device came back as atrial fibrillation", IsImplemented: true),
+                new(IrregularRhythm, "Irregular rhythm notification", "Their watch's background check flagged a rhythm that could be atrial fibrillation", IsImplemented: true),
             ]),
             new(ClusterHeart, "Heart & overnight", "Resting heart rate and overnight vitals",
             [

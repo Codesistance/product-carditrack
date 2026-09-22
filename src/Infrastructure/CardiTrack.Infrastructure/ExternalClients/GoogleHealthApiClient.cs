@@ -80,6 +80,30 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     private const int SampleSeriesCap = 100_000;
 
     /// <summary>
+    /// Points per page when walking ECG readings. Small next to <see cref="SamplePageSize"/> on
+    /// purpose: ECG is a handful of deliberate, wearer-initiated readings a day, not a series, and
+    /// the walk usually stops part-way through page one.
+    /// </summary>
+    private const int EcgPageSize = 100;
+
+    /// <summary>
+    /// Pages the ECG walk may take before it gives up. Its filter has no upper bound — the API
+    /// offers none for this type — so the only thing ending an unbounded walk over a long history
+    /// is the day check inside the loop or this.
+    /// </summary>
+    private const int EcgPageCap = 20;
+
+    /// <summary>
+    /// The one <c>Electrocardiogram.resultClassification</c> member that means the device read
+    /// atrial fibrillation. Named as a constant because the alert that fires on it is the most
+    /// consequential in the product, and the neighbouring members (<c>INCONCLUSIVE</c>,
+    /// <c>INCONCLUSIVE_HIGH_HEART_RATE</c>, <c>INCONCLUSIVE_LOW_HEART_RATE</c>, <c>UNREADABLE</c>,
+    /// <c>NOT_ANALYZED</c>) all mean the device declined to judge — a state that must never be
+    /// counted as a positive finding.
+    /// </summary>
+    private const string AtrialFibrillationClassification = "ATRIAL_FIBRILLATION";
+
+    /// <summary>
     /// Minimum spacing between successive page requests within one series read. The Google Health
     /// API's per-user quota is 300 requests/min (5 QPS) standard, but only 2.5 QPS while the app is
     /// unverified — and a single wearer's daily snapshot already fires ~12 requests at once, over
@@ -703,6 +727,320 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
             yield return (sleep.End, interval.End);
     }
 
+    /// <summary>
+    /// One civil day's ECG readings and irregular-rhythm notifications, or
+    /// <see cref="DeviceRhythmDay.None"/> where neither could be read.
+    /// </summary>
+    /// <remarks>
+    /// Sequential rather than concurrent, and deliberately outside
+    /// <see cref="GetHealthSnapshotAsync"/>: these two sit behind their own OAuth scopes, so the
+    /// caller skips this method entirely for a connection that never granted them (see
+    /// <see cref="DeviceRhythmDay"/>). Both reads tolerate a 403 anyway, for the window where the
+    /// stored scope list and the token's real grant disagree — the same belt-and-braces
+    /// <see cref="GetPairedDevicesAsync"/> uses.
+    /// <para>
+    /// A failure to read one does not cost the other, and neither costs the day: the caller treats
+    /// a throw as "not readable this pull", and the routine window re-reads today every ten
+    /// minutes, so a transient failure self-heals well inside the window any of this would alert on.
+    /// </para>
+    /// </remarks>
+    public async Task<DeviceRhythmDay> GetRhythmDayAsync(string accessToken, DateOnly date)
+    {
+        var ecg = await OptionalRhythmAsync(() => GetEcgDayAsync(accessToken, date));
+        var irn = await OptionalRhythmAsync(() => GetIrregularRhythmDayAsync(accessToken, date));
+
+        return new DeviceRhythmDay(
+            ecg?.Readings,
+            ecg?.AtrialFibrillation,
+            irn?.Notifications,
+            irn?.Windows ?? []);
+    }
+
+    /// <summary>
+    /// How many ECG readings the wearer took on <paramref name="date"/>, and how many of those the
+    /// device classified as atrial fibrillation.
+    /// </summary>
+    /// <remarks>
+    /// ECG is the one data type whose filter grammar breaks the civil-day pattern the rest of this
+    /// client uses. It admits a single field — <c>electrocardiogram.interval.start_time</c>, an
+    /// RFC-3339 instant — with <c>&gt;=</c>, no upper bound and no civil sibling (v4 discovery,
+    /// `filter` parameter, "ECG specific"). So the request opens the window a UTC day early, wide
+    /// enough to cover every wearer offset from UTC-12 to UTC+14, and the civil day each reading
+    /// belongs to is settled here from the point's own <c>civilStartTime</c> — keeping the
+    /// civil-day semantics the rest of the client has, rather than letting ECG alone bucket by UTC.
+    /// <para>
+    /// The response is ordered by start time descending (same reference), which is what makes the
+    /// missing upper bound affordable: the walk stops at the first reading that falls before the
+    /// requested day. Callers only ask for days in the routine window for the same reason — an old
+    /// day could only be reached by paging back through every later reading.
+    /// </para>
+    /// <para>
+    /// The <c>fields</c> selector is not an optimisation. Without it every point carries its
+    /// <c>waveformSamples</c> array — thirty seconds of lead-I voltages, which at the 500 Hz these
+    /// devices sample at is 15,000 integers per reading. CardiTrack neither stores nor shows a
+    /// waveform, so asking for one would mean moving diagnostic-grade PHI across the wire and
+    /// through this process's memory only to discard it.
+    /// </para>
+    /// </remarks>
+    private async Task<(int Readings, int AtrialFibrillation)> GetEcgDayAsync(
+        string accessToken, DateOnly date)
+    {
+        var from = date.AddDays(-1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var filter = Uri.EscapeDataString(
+            $"electrocardiogram.interval.start_time >= \"{from.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture)}\"");
+        var fields = Uri.EscapeDataString(
+            "nextPageToken,dataPoints(electrocardiogram(resultClassification,interval(startTime,civilStartTime)))");
+
+        var readings = 0;
+        var atrialFibrillation = 0;
+        string? pageToken = null;
+        var pages = 0;
+
+        do
+        {
+            if (pageToken is not null)
+                await Task.Delay(_pageRequestDelay, _clock);
+
+            var url =
+                $"/v4/users/me/dataTypes/electrocardiogram/dataPoints?pageSize={EcgPageSize}&filter={filter}&fields={fields}";
+            if (!string.IsNullOrEmpty(pageToken))
+                url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+            using var response = await _httpClient.SendAsync(request);
+            await EnsureSuccessAsync(response);
+
+            var root = await ParseBodyAsync(response, "electrocardiogram");
+            foreach (var point in (root["dataPoints"] as JArray)?.OfType<JObject>() ?? [])
+            {
+                var ecg = point["electrocardiogram"];
+                var day = EcgCivilDate(ecg);
+                if (day is null)
+                    continue;
+
+                // Descending order: the first reading older than the requested day ends the walk,
+                // and everything after it is older still.
+                if (day < date)
+                    return (readings, atrialFibrillation);
+
+                if (day > date)
+                    continue;
+
+                readings++;
+                if (string.Equals(
+                        ReadString(ecg, "resultClassification"),
+                        AtrialFibrillationClassification,
+                        StringComparison.Ordinal))
+                {
+                    atrialFibrillation++;
+                }
+            }
+
+            pageToken = ReadString(root, "nextPageToken");
+        }
+        while (!string.IsNullOrEmpty(pageToken) && ++pages < EcgPageCap);
+
+        if (!string.IsNullOrEmpty(pageToken))
+        {
+            // Same discipline as the sample-series cap: a wearer cannot plausibly have recorded
+            // this many ECG readings in the two days this window spans, so the filter is selecting
+            // something other than what it was meant to, and a truncated count would be reported
+            // as the day's count.
+            throw new GoogleHealthApiException(
+                0,
+                $"Google Health API electrocardiogram returned more than {EcgPageCap * EcgPageSize} readings "
+                + $"for {date:yyyy-MM-dd} and still had pages outstanding.");
+        }
+
+        return (readings, atrialFibrillation);
+    }
+
+    /// <summary>
+    /// The day's irregular-rhythm notifications, and the analysis windows behind them with every
+    /// beat the device measured inside each.
+    /// </summary>
+    /// <remarks>
+    /// Unlike ECG, this one is a plain session read on the general
+    /// <c>{session_data_type}.interval.civil_start_time</c> pattern — sleep and ECG are the two
+    /// documented exceptions to it, and this type is neither — so it buckets by the wearer's civil
+    /// day exactly like everything else.
+    /// <para>
+    /// The count is of notification records, not of the <c>alertWindows</c> inside them: a
+    /// notification is one thing the wearer was told, and reporting the analysis windows behind it
+    /// would inflate a single alert into several to a reader who cannot tell the difference. The
+    /// windows are returned alongside rather than instead, for the storage that keeps the beats.
+    /// </para>
+    /// <para>
+    /// <c>heartBeats</c> is optional in the schema, so a window may arrive with none — that is a
+    /// window without beat detail, not an empty episode, and the caller stores it either way so a
+    /// caregiver's notification count and their episode list cannot disagree.
+    /// </para>
+    /// </remarks>
+    private async Task<(int Notifications, IReadOnlyList<RhythmAnalysisWindow> Windows)>
+        GetIrregularRhythmDayAsync(string accessToken, DateOnly date)
+    {
+        const string dataType = "irregular-rhythm-notification";
+
+        var points = await ListDataPointsAsync(
+            accessToken,
+            dataType,
+            IntervalDayFilter(dataType, date),
+            date,
+            fields: "nextPageToken,dataPoints(irregularRhythmNotification(interval(startTime),"
+                + "alertWindows(startTime,endTime,positive,heartBeats(physicalTime,beatsPerMinute))))");
+
+        var windows = new List<RhythmAnalysisWindow>();
+
+        foreach (var point in points)
+        {
+            var irn = point["irregularRhythmNotification"];
+            var notificationStart = ParseInstantUtc(ReadString(irn?["interval"], "startTime"));
+            if (notificationStart is null)
+                continue;
+
+            foreach (var window in (irn?["alertWindows"] as JArray)?.OfType<JObject>() ?? [])
+            {
+                var start = ParseInstantUtc(ReadString(window, "startTime"));
+                var end = ParseInstantUtc(ReadString(window, "endTime"));
+                if (start is null || end is null)
+                    continue;
+
+                windows.Add(new RhythmAnalysisWindow(
+                    start.Value,
+                    end.Value,
+                    notificationStart.Value,
+                    ReadBool(window, "positive") ?? false,
+                    ReadBeats(window, start.Value)));
+            }
+        }
+
+        return (points.Count, windows);
+    }
+
+    /// <summary>
+    /// One analysis window's beats as (offset from the window start, interbeat interval), both in
+    /// milliseconds, in the order served.
+    /// </summary>
+    /// <remarks>
+    /// The interval is recovered from <c>beatsPerMinute</c>, which the v4 schema documents as
+    /// <c>60000 / rr</c> where rr is the gap to the following beat in milliseconds — so inverting
+    /// it returns the measurement rather than approximating it from timestamps, which carry only
+    /// whatever resolution the serialised instant kept. A beat reporting zero or a negative rate is
+    /// dropped: it would invert to a division by zero or a negative interval, and neither is a beat.
+    /// </remarks>
+    private IReadOnlyList<(int OffsetMs, int RrMs)> ReadBeats(JObject window, DateTime windowStartUtc)
+    {
+        var beats = new List<(int, int)>();
+
+        foreach (var beat in (window["heartBeats"] as JArray)?.OfType<JObject>() ?? [])
+        {
+            var at = ParseInstantUtc(ReadString(beat, "physicalTime"));
+            var bpm = ReadInt(beat, "beatsPerMinute");
+            if (at is null || bpm is null or <= 0)
+                continue;
+
+            var offset = (at.Value - windowStartUtc).TotalMilliseconds;
+
+            // A beat outside its own window is the provider disagreeing with itself; keeping it
+            // would put a negative offset in a column the readers assume is monotonic.
+            if (offset < 0 || offset > int.MaxValue)
+                continue;
+
+            beats.Add(((int)offset, 60_000 / bpm.Value));
+        }
+
+        return beats;
+    }
+
+    /// <summary>
+    /// The civil date an ECG reading belongs to: the wearer's own local day from
+    /// <c>interval.civilStartTime</c>, falling back to the UTC date of the physical instant when
+    /// the point carries no civil time — which the schema warns is the case for historical
+    /// readings, whose offsets were never recorded.
+    /// </summary>
+    /// <remarks>
+    /// <c>date</c> is a <c>google.type.Date</c> object of year/month/day, not an RFC-3339 string.
+    /// Reading it as a string is the exact mistake <see cref="ParseCivilDateTime"/> documents
+    /// having shipped once already, where the misread fell back silently instead of failing.
+    /// </remarks>
+    private DateOnly? EcgCivilDate(JToken? ecg)
+    {
+        var civilDate = ecg?["interval"]?["civilStartTime"]?["date"];
+        if (ReadInt(civilDate, "year") is { } year
+            && ReadInt(civilDate, "month") is { } month
+            && ReadInt(civilDate, "day") is { } day)
+        {
+            try
+            {
+                return new DateOnly(year, month, day);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // An out-of-range triple is a shape we do not understand, not a date; fall through
+                // to the physical instant rather than throwing the whole day's read away.
+            }
+        }
+
+        return ParseInstantUtc(ReadString(ecg?["interval"], "startTime")) is { } instant
+            ? DateOnly.FromDateTime(instant)
+            : null;
+    }
+
+    /// <summary>
+    /// Runs a rhythm read, returning null where the wearer's account does not serve the data type
+    /// — an ungranted scope included. Distinct from <c>OptionalSeriesAsync</c>'s empty-list answer:
+    /// an unreadable count and a count of zero mean opposite things to a caregiver, so this must
+    /// not flatten one into the other.
+    /// </summary>
+    private static async Task<T?> OptionalRhythmAsync<T>(Func<Task<T>> read)
+        where T : struct
+    {
+        try
+        {
+            return await read();
+        }
+        catch (GoogleHealthApiException ex) when (IsAbsentDataType(ex) || ex.StatusCode == 403)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether the wearer has completed Irregular Rhythm Notifications setup and is enrolled, from
+    /// <c>GET /v4/users/me/irnProfile</c>. Both null when the read is not permitted or the account
+    /// exposes no profile.
+    /// </summary>
+    /// <remarks>
+    /// Tolerant of 403 and the absent-data-type shapes for the same reason
+    /// <see cref="GetPairedDevicesAsync"/> is: this needs <c>googlehealth.irn.readonly</c>, which
+    /// most connections will not carry, and a refusal must never park a working connection in
+    /// SyncError. Null therefore means "we could not ask", which is the honest answer and is
+    /// distinct from a false — "we asked and they are not enrolled".
+    /// </remarks>
+    public async Task<(bool? Onboarded, bool? Enrolled)> GetIrnProfileAsync(string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/v4/users/me/irnProfile");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var response = await _httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            var probe = new GoogleHealthApiException(
+                (int)response.StatusCode,
+                $"Google Health API irnProfile returned {(int)response.StatusCode}.",
+                IsMalformedRequest((int)response.StatusCode, await response.Content.ReadAsStringAsync()));
+
+            if (probe.StatusCode == 403 || IsAbsentDataType(probe))
+                return (null, null);
+            throw probe;
+        }
+
+        var root = await ParseBodyAsync(response, "irnProfile");
+        return (ReadBool(root, "onboardingStatus"), ReadBool(root, "enrollmentStatus"));
+    }
+
     public async Task<DeviceHealthSnapshot> GetHealthSnapshotAsync(string accessToken, DateOnly date)
     {
         var activitiesTask = GetActivitiesAsync(accessToken, date);
@@ -1299,9 +1637,27 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
     /// remarks for why a multi-page series paces itself against the per-user quota.
     /// </para>
     /// </remarks>
+    /// <param name="fields">
+    /// An optional partial-response selector. Null takes the whole point, which is right for the
+    /// series reads — theirs are a handful of scalars. The rhythm reads pass one because theirs are
+    /// not: an irregular-rhythm notification carries every heartbeat the device measured inside it,
+    /// and a caller that only wants the notification count must not drag those across the wire.
+    /// </param>
     private async Task<List<JObject>> ListDataPointsAsync(
-        string accessToken, string dataType, string filter, DateOnly date)
+        string accessToken, string dataType, string filter, DateOnly date, string? fields = null)
     {
+        // A selector that leaves out nextPageToken does not fail — it returns page one and no
+        // cursor, so this loop exits after the first page and the caller gets a truncated day it
+        // has no way to distinguish from a short one. Exactly the silent-zero failure this client's
+        // history warns about, so it is a throw at the first call rather than a comment.
+        if (!string.IsNullOrEmpty(fields) && !fields.Contains("nextPageToken", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "A partial-response selector must include nextPageToken, or pagination stops "
+                + "silently after the first page.",
+                nameof(fields));
+        }
+
         var escapedFilter = Uri.EscapeDataString(filter);
 
         var points = new List<JObject>();
@@ -1313,6 +1669,8 @@ public class GoogleHealthApiClient : IGoogleHealthApiClient, IDeviceApiClient
 
             var url =
                 $"/v4/users/me/dataTypes/{dataType}/dataPoints?pageSize={SamplePageSize}&filter={escapedFilter}";
+            if (!string.IsNullOrEmpty(fields))
+                url += $"&fields={Uri.EscapeDataString(fields)}";
             if (!string.IsNullOrEmpty(pageToken))
                 url += $"&pageToken={Uri.EscapeDataString(pageToken)}";
 

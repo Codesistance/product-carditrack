@@ -77,6 +77,9 @@ public class ActivityLogRepository : Repository<ActivityLog>, IActivityLogReposi
             existing.ModerateZoneFloorBpm = log.ModerateZoneFloorBpm;
             existing.LongestSedentaryStretchMinutes = log.LongestSedentaryStretchMinutes;
             existing.LongestSedentaryStretchStartUtc = log.LongestSedentaryStretchStartUtc;
+            existing.EcgReadings = log.EcgReadings;
+            existing.EcgAtrialFibrillationReadings = log.EcgAtrialFibrillationReadings;
+            existing.IrregularRhythmNotifications = log.IrregularRhythmNotifications;
             _dbSet.Update(existing);
         }
     }

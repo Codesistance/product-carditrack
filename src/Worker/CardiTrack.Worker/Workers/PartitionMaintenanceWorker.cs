@@ -71,13 +71,15 @@ public class PartitionMaintenanceWorker : CronBackgroundService
             DigestMonths = options.DigestRetentionMonths,
             RealtimeDays = options.RealtimeRetentionDays,
             EnvironmentalDays = options.EnvironmentalRetentionDays,
+            RhythmDays = options.RhythmRetentionDays,
         }, stoppingToken);
 
         _logger.LogInformation(
             "PartitionMaintenance complete. Ahead: {DaysAhead} days; retention: granular {GranularDays} days, " +
             "rollups {RollupMonths} months, digests {DigestMonths} months, assessments {RealtimeDays} days, " +
-            "environmental readings {EnvironmentalDays} days.",
+            "environmental readings {EnvironmentalDays} days, rhythm episodes {RhythmDays} days.",
             options.DaysAhead, options.GranularRetentionDays, options.RollupRetentionMonths,
-            options.DigestRetentionMonths, options.RealtimeRetentionDays, options.EnvironmentalRetentionDays);
+            options.DigestRetentionMonths, options.RealtimeRetentionDays, options.EnvironmentalRetentionDays,
+            options.RhythmRetentionDays);
     }
 }

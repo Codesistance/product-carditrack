@@ -22,6 +22,7 @@ public interface IUnitOfWork : IDisposable
     IRealtimeAssessmentRepository RealtimeAssessments { get; }
     IMemberQuestionnaireRepository MemberQuestionnaires { get; }
     IEnvironmentalReadingRepository EnvironmentalReadings { get; }
+    IRhythmEpisodeRepository RhythmEpisodes { get; }
     INotificationRepository Notifications { get; }
     INotificationMuteRepository NotificationMutes { get; }
     INotificationDeliveryRepository NotificationDeliveries { get; }

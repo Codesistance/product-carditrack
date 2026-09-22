@@ -1,0 +1,48 @@
+using CardiTrack.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace CardiTrack.Infrastructure.Persistence.Configurations;
+
+/// <summary>
+/// Maps the rhythm-episode table — day-partitioned parent created by raw SQL in the migration, the
+/// same arrangement as <see cref="RealtimeAssessmentConfiguration"/>: this configuration only has
+/// to agree with that DDL, and the composite key carries the partition column.
+/// </summary>
+public class RhythmEpisodeConfiguration : IEntityTypeConfiguration<RhythmEpisode>
+{
+    public void Configure(EntityTypeBuilder<RhythmEpisode> builder)
+    {
+        builder.ToTable("RhythmEpisodes");
+
+        // The partition key must be part of the primary key — PostgreSQL enforces it. Two windows
+        // of one member cannot share a start instant, so this is also the idempotency key the
+        // three-day routine re-read needs.
+        builder.HasKey(e => new { e.CardiMemberId, e.WindowStartUtc });
+
+        builder.Property(e => e.WindowEndUtc).IsRequired();
+        builder.Property(e => e.DeviceConnectionId).IsRequired();
+        builder.Property(e => e.NotificationStartUtc).IsRequired();
+        builder.Property(e => e.Positive).IsRequired();
+        builder.Property(e => e.BeatCount).IsRequired();
+
+        // integer[] rather than a child table: these are read whole or not at all — an episode's
+        // beats have no meaning apart from the episode — and a row per beat would turn one
+        // notification into a few thousand rows carrying the same foreign key.
+        builder.Property(e => e.RrMilliseconds)
+            .IsRequired()
+            .HasColumnType("integer[]");
+
+        builder.Property(e => e.OffsetMillisFromStart)
+            .IsRequired()
+            .HasColumnType("integer[]");
+
+        builder.Property(e => e.MeanRrMs).IsRequired();
+        builder.Property(e => e.MinRrMs).IsRequired();
+        builder.Property(e => e.MaxRrMs).IsRequired();
+        builder.Property(e => e.IngestedAtUtc).IsRequired();
+
+        // The episode-list read: one member's windows over a date range, newest first.
+        builder.HasIndex(e => new { e.CardiMemberId, e.NotificationStartUtc });
+    }
+}

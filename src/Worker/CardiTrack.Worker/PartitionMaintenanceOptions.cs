@@ -54,4 +54,17 @@ public class PartitionMaintenanceOptions
     /// they sit alongside in severity/trend prompts.
     /// </summary>
     public int EnvironmentalRetentionDays { get; set; } = 90;
+
+    /// <summary>
+    /// Days the `RhythmEpisodes` rows are kept — 90, the same as the real-time assessments and the
+    /// granular minutes.
+    /// </summary>
+    /// <remarks>
+    /// Beat-level intervals are the most identifying cardiac data the product holds, so this is a
+    /// ceiling to argue down rather than up. It is not the window a caregiver reads an episode in:
+    /// the alert that carries it is raised the same day, and the episode's own summary figures
+    /// reach the clinician report well inside 90 days. Nothing here is the record of the
+    /// notification itself — that is an `Alert` row and outlives this by design.
+    /// </remarks>
+    public int RhythmRetentionDays { get; set; } = 90;
 }
