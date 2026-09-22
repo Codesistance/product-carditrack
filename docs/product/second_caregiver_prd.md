@@ -40,12 +40,42 @@ reader knows it was weighed, not missed.
 | D-11 | **Both join paths: typed Family ID and 256-bit link** | A code you can read down the phone, and a safe link for everything else | Link-only (my recommendation) |
 | D-12 | **A joiner gets no organization and no trial — they are a guest** | Cleanest expression of "only Admin pays"; the trial stops being burned by people who never asked for one | Always-create-an-org |
 | D-13 | **An Admin leaves only by assigning another Admin** | The family never ends up unowned, and with "only Admin pays" the bill always has a named owner | — |
+| D-14 | **Exactly one Admin per family, and that Admin is the payer** | Resolves an ambiguity in the spec: with several Admins, "only Admin pays" does not name a payer. Assigning another Admin (D-13) is therefore a transfer of ownership and of the bill in one act | Several Admins with a separate Owner |
+| D-15 | **A CardiMember is unique as created — two families watching the same person hold two independent records** | No shared ownership, no shared data stream by reference, no change to `CardiMember.OrganizationId`, and each family's data stays genuinely isolated | A single shared member record |
+| D-16 | **The family that owns the CardiMember governs the tier** | The only answer defined for a guest, who has no organization of their own (D-12), and it keeps payer and benefit attached | Viewer's own plan; higher-of-the-two |
+| D-17 | **On trial expiry or payment failure, another member can take over as Admin and pay** | Ties the lapse to the succession rule already in D-13, so a family can keep watching by changing who pays rather than losing monitoring | Degrade the whole family together |
 
 **Standing assumption from D-2 + D-3, recorded because it is not free:** one builder absorbing the
-whole of this — ~3.3 person-months once D-9 to D-13 are counted — moves the R1 beta date by roughly
-fourteen weeks. The date was not chosen as the thing to give, so it gives implicitly, and it has now
+whole of this — ~3.6 person-months once D-9 to D-17 are counted — moves the R1 beta date by roughly
+fifteen weeks. The date was not chosen as the thing to give, so it gives implicitly, and it has now
 given twice. If that is not acceptable, the lever is D-2: Phase A (~1.1 pm) closes the safety gap on
 its own, and Phases B and D can follow in R2 without reopening anything.
+
+
+**What D-15 costs, checked against the code (2026-09-22).** Two records for one person is cheaper
+than it sounds in one place and genuinely risky in another.
+
+*Already safe — ingestion.* `DeviceConnection.HealthUserId` holds the provider's subject id, and its
+index is deliberately **non-unique** with a null filter. `NotificationDrainService` resolves a
+webhook through `GetSyncableByHealthUserIdAsync`, which returns a **collection** and is iterated as
+one. So when one wearer's watch is connected from two families, both connections are woken by the
+same notification. The webhook path was written plural-safe and needs no change for D-15.
+
+*The real gap — erasure correlation.* Nothing links the two records. If the wearer exercises GDPR
+erasure through the family that knows her, `AccountErasureService` erases that family's record and
+the other survives intact, with her health data, and unfindable — because no field says the two are
+the same person. That is a data-subject-rights defect, not an inconvenience. The available
+correlation key is `HealthUserId`, which is the provider's own subject id and is already captured
+opportunistically on first sync. **Proposal (OQ-13): the erasure path resolves duplicates by
+`HealthUserId` before it reports completion, and says plainly when a record could not be correlated
+because no device was ever connected.**
+
+*Two more consequences, neither fatal.* Each family runs its own escalation ladder for the same
+physiological event, so an acknowledgement in one family does not stop the other's — for a safety
+product that is arguably right, but it means two families may call the wearer about one episode and
+neither knows the other exists. And it is unverified whether Google counts one wearer authorising
+twice as one connected wearer or two against the 100-wearer cap (OQ-14); if two, duplicate records
+consume the ceiling twice.
 
 **Blast radius of D-9, measured rather than estimated (2026-09-22):** 62 `OrganizationId` references
 in `src/` outside migrations — 23 Application, 21 Infrastructure, 9 API, 6 Domain, 3 Worker. Of the
@@ -322,6 +352,13 @@ defensible precisely because it is not a notes feature.
     `UserOrganization` rows (D-9), and zero rows is the guest state
   - **[Edge]** **Given** a retried onboarding after a lost response **When** it replays **Then** it
     returns the existing account rather than creating a second family, as `SetupAsync` already does
+  - **[Edge]** **Given** I create my own family and add a CardiMember for a person another family
+    already watches **Then** a second, independent record is created (D-15) — the app does not try
+    to detect or merge them, and the webhook path already wakes both connections from one
+    notification
+  - **[Edge]** **Given** two records exist for one person **When** either is erased **Then** the
+    erasure resolves duplicates by `HealthUserId` before reporting completion (OQ-13), and says so
+    when no device was ever connected and correlation was impossible
 - **Screens:** no Figma M1 frame — **needs design sync** (family step is new; M1-04 follows it)
 - **API:** `POST /api/v1/onboarding/setup` gains a join branch
 - **Wave:** R1 · **Plan gate:** none
@@ -365,6 +402,12 @@ defensible precisely because it is not a notes feature.
   - **[Edge]** **Given** "only Admin pays" **When** Admin changes **Then** the successor must
     *accept*, not merely be nominated — in R1 this is a role change, but in R2 it transfers who owes
     money, and an R1 flow that makes it look free would mislead once Stripe lands
+  - **[Edge]** **Given** exactly one Admin per family (D-14) **Then** promoting a successor
+    demotes me in the same transaction — there is never a moment with two Admins or none, because
+    the Admin is also the payer
+  - **[Edge]** **Given** the trial expires or payment fails **When** the family is notified
+    **Then** any member may take over as Admin and pay (D-17), and monitoring continues through the
+    hand-over window rather than stopping and restarting
   - **[Edge]** **Given** I am the only person in the family **When** I leave **Then** there is no
     successor and this is account deletion, routed to the existing erasure flow rather than a
     silent orphaning
@@ -387,6 +430,9 @@ defensible precisely because it is not a notes feature.
 | OQ-10 | What shape is a typed Family ID — length, alphabet, checksum? Must be non-sequential and rate-limited; shorter is friendlier and weaker | Eng + Security | D2 | Before D2 |
 | OQ-11 | Does `UserContext` need an active-org concept, or can every call be member-scoped? Five of six call sites are in `OnboardingController`, which suggests member-scoping is enough | Eng | D1 | Before D1 |
 | OQ-12 | On Admin succession, how does the successor accept once Stripe exists — and what happens to the subscription mid-period? | Product + Eng | D5 in R2 terms | R2 billing |
+| OQ-13 | Does the erasure path correlate duplicate CardiMembers by `HealthUserId` before reporting completion? Without it, D-15 leaves a half-honoured erasure | Eng + Compliance | D-15 being safe to ship | Before D4 |
+| OQ-14 | Does Google count one wearer authorising from two families as one connected wearer or two, against the 100-wearer cap? | Eng/Ops | Whether D-15 halves the ceiling | Before beta grows |
+| OQ-15 | Two families alerting on one episode: does either learn the other exists, or is duplicate contact accepted? | Product | Story 4.3 fan-out scope | Before D3 |
 | OQ-7 | Does Google restricted-scope verification change the reach ceiling? Still ⬜ not started as of the last matrix read | Eng/Ops | Reach in §9 | R1→R2 gate |
 
 ## 7. Risk & Dependency Check
@@ -396,6 +442,7 @@ defensible precisely because it is not a notes feature.
 | **Value** | Not a demand bet: the escalation rung and the erasure release-branch are both built and unreachable, and the pricing page already sells this. The unknown is only *how many* invite (OQ-1). Competitors treating seats as free and unlimited confirms it is table stakes, not differentiation | 🟢 | OQ-1 after 30 beta days |
 | **Usability** | The invite is easy; explaining the grant is not. A 45–65 caregiver must be able to state what their sibling will see. Aloe Care needed four access levels to make this legible at scale — we are betting three booleans suffice for a small family circle | 🟠 | Prototype the grant screen; 5 caregivers state correctly what the invitee sees |
 | **Feasibility** | Cheapest major feature left. `DeviceConnectionInvite` (#1131–#1137) is a shipped, reviewed invitation primitive to mirror; `CardiMemberAccessService`, the push spine, the ladder and the audit middleware all exist. The one genuinely new piece is redemption ending in an authenticated account rather than anonymously | 🟢 | — |
+| **Compliance (D-15)** | Two records for one person with nothing correlating them means an erasure can be half-honoured and the survivor is unfindable. `HealthUserId` is the available key and is already captured, but it is null until a device syncs | 🟠 | OQ-13 resolved and D6 built before duplicates are possible in prod |
 | **Security** | New with D-11. A typed Family ID is brute-forceable by construction, so mandatory approval, per-user and per-IP rate limiting, and a response that never confirms a family's existence are all load-bearing. The link path is unguessable and carries no such burden | 🟠 | Threat-model the join endpoint before D2 ships; `security-architect` review of the enumeration surface |
 | **Feasibility (D-9)** | Measured, not guessed: 62 `OrganizationId` references outside migrations, nine in the API, five of those in `OnboardingController`. Concentrated and mechanical | 🟢 | — |
 | **Viability** | Was 🔴 on 2026-09-05 because erasure was unbuilt while the privacy policy promised 30-day deletion. Erasure shipped 2026-09-14 (#1088/#1089/#1090/#1094) with a tested cascade and upstream OAuth revocation — **but dev-only and in rehearsal**. Widening PHI access to a second human is defensible once erasure actually runs in prod, and not before. The residual gap is that the wearer still neither grants nor sees who watches them, where Apple's comparable feature is wearer-granted | 🟠 | OQ-6 (prod erasure live) + OQ-3 direction |
@@ -448,11 +495,12 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | D2 | Family | Family ID (non-sequential) + 256-bit join link; join-request entity; rate limiting and a non-confirming response (D-11) | 0.35 pm | — |
 | D3 | Family | Approval queue with member picker and role (D-10) | 0.3 pm | — |
 | D4 | Family | Onboarding fork: name a family, or join as a guest with no org and no trial; lazy org creation on first member (D-12) | 0.35 pm | — |
-| D5 | Family | Admin succession with explicit acceptance; leave-family; solo-Admin routed to erasure (D-13) | 0.2 pm | — |
+| D5 | Family | Single-Admin-is-payer invariant, succession as one transaction, lapse takeover, leave-family, solo-Admin routed to erasure (D-13/14/17) | 0.3 pm | — |
+| D6 | Family | Erasure correlates duplicate members by `HealthUserId` and reports uncorrelated records honestly (D-15, OQ-13) | 0.2 pm | — |
 | C | Docs | Correct `family.md` (drop `viewer`), DPIA lines for `CaregiverInvites`, `UserOrganization` and join requests, notification-engine §6.3 | 0.15 pm | — |
 
-**Total ≈ 3.3 person-months** — 1.7 for the caregiver slice, 1.7 for the family model (D-9…D-13),
-0.15 docs. For one builder that is roughly fourteen weeks.
+**Total ≈ 3.6 person-months** — 1.7 for the caregiver slice, 1.75 for the family model
+(D-9…D-17), 0.15 docs. For one builder that is roughly fifteen weeks.
 
 **Two cut lines, not one.** After **A4** the safety gap is closed — that is the ~1.1 pm that
 justifies being in R1 at all. After **B3** the caregiver slice is complete and coherent without any
@@ -487,7 +535,7 @@ empty table. This is the same argument that decided roles in D-5.
 | Item | Reach (users/qtr) | Impact | Confidence | Effort (pm) | RICE | Wave | Notes |
 |---|---|---|---|---|---|---|---|
 | Second-caregiver slice (Phases A+B) | 50 | 2 | 80% | 1.7 | **47** | R1 | 1.0 base; +0.4 roles (D-5), +0.2 configurable fan-out (D-6/7), +0.1 forced choice (D-8) |
-| Family model — multi-org, join, approval, succession (Phase D) | 50 | 1 | 50% | 1.7 | **15** | R1 by decision | Scores like the deferred R3 items, and is in R1 by product choice rather than by score. Recorded, not contested |
+| Family model — multi-org, join, approval, succession, duplicate-safe erasure (Phase D) | 50 | 1 | 50% | 1.75 | **14** | R1 by decision | Scores like the deferred R3 items, and is in R1 by product choice rather than by score. Recorded, not contested |
 | — of which Phase A alone (closes the gap) | 50 | 2 | 80% | 1.1 | **73** | R1 | The cut line if the R1 date must hold |
 | Fan-out activation (Story 4.3) | 50 | 2 | 80% | 0.25 | **320** | R1 | Only scoreable *after* A1–A3; not independent |
 | Shared notes + @mentions | 50 | 1 | 50% | 2.0 | **12.5** | R3 | Crowded field (§4) |
