@@ -35,11 +35,24 @@ reader knows it was weighed, not missed.
 | D-6 | **Fan-out vs quiet hours is configurable, per receiving caregiver, evaluated in that caregiver's own `User.TimeZoneId`** | Quiet hours are already a per-user preference; the person whose sleep is at stake decides, and a cross-timezone sibling is judged by their own clock | A single account-level policy |
 | D-7 | **Default: respect quiet hours** | Conservative default | Override-by-default (my recommendation) |
 | D-8 | **Choice forced at invite acceptance** | Contains D-7: an accepting caregiver must decide whether escalated red alerts wake them, so the default rarely applies | Silent default |
+| D-9 | **Real multi-org membership** — a `UserOrganization` join table; a user genuinely belongs to several families and keeps their own | A true roster, a clean "switch family" concept, and zero rows expresses "guest" naturally (D-12) | My grants-only recommendation |
+| D-10 | **Admin picks which members a joiner gets, at approval** | HIPAA minimum-necessary; handles a family watching two parents where different siblings handle each | All-members-on-join |
+| D-11 | **Both join paths: typed Family ID and 256-bit link** | A code you can read down the phone, and a safe link for everything else | Link-only (my recommendation) |
+| D-12 | **A joiner gets no organization and no trial — they are a guest** | Cleanest expression of "only Admin pays"; the trial stops being burned by people who never asked for one | Always-create-an-org |
+| D-13 | **An Admin leaves only by assigning another Admin** | The family never ends up unowned, and with "only Admin pays" the bill always has a named owner | — |
 
-**Standing assumption from D-2 + D-3, recorded because it is not free:** one builder absorbing
-~1.7 person-months moves the R1 beta date by roughly seven weeks. The date was not chosen as the
-thing to give, so it gives implicitly. If that is not acceptable, the lever is D-2 — take the
-thinner slice (Phase A only, ~1.1 pm) and let Phase B follow in R2.
+**Standing assumption from D-2 + D-3, recorded because it is not free:** one builder absorbing the
+whole of this — ~3.3 person-months once D-9 to D-13 are counted — moves the R1 beta date by roughly
+fourteen weeks. The date was not chosen as the thing to give, so it gives implicitly, and it has now
+given twice. If that is not acceptable, the lever is D-2: Phase A (~1.1 pm) closes the safety gap on
+its own, and Phases B and D can follow in R2 without reopening anything.
+
+**Blast radius of D-9, measured rather than estimated (2026-09-22):** 62 `OrganizationId` references
+in `src/` outside migrations — 23 Application, 21 Infrastructure, 9 API, 6 Domain, 3 Worker. Of the
+six presentation call sites, five are in `OnboardingController` and one is the
+`SetFullUserContext` line in `UserContextMiddleware`. Concentrated, not diffuse. An earlier draft of
+this PRD warned that multi-org membership meant auditing usages "all over the code"; that was wrong
+and is corrected here, because it priced the decision higher than it costs.
 
 **Tension to watch (D-1 vs D-7):** most unacknowledged red alerts happen at night, which is exactly
 when quiet hours apply, so respect-by-default switches the safety fix off in the hours it exists
@@ -53,6 +66,11 @@ D-7 is the first thing to revisit.
 Caregiving for an elderly parent is shared between siblings, but a CardiTrack account holds exactly
 one caregiver — so the red-alert escalation ladder's fan-out rung has nobody to fan out to, and the
 "up to 5 / 20 family members" on the pricing page cannot be delivered.
+
+Alongside it, a second problem decided on 2026-09-22: a family is not the unit CardiTrack models.
+A user belongs to exactly one organization, so joining a sibling's family means giving up their own.
+Decisions D-9 to D-13 make family membership a many-to-many relation with a joinable Family ID, an
+Admin who approves and pays, and a succession rule.
 
 **Evidence — three independent sources, none of them a user-behaviour assumption:**
 
@@ -106,6 +124,15 @@ see [apm_setup_runbook.md](../technical/apm_setup_runbook.md).
 - **Wearer-approved caregiver admission** — **prototype first, not in this slice.** See OQ-3; it is
   the strongest answer to the consent risk but needs per-metric consent recording, which is
   ⬜ not started.
+- **Switching the "active" family in the UI** — **out of this PRD.** D-9 makes multi-family
+  membership real in the data model; a family switcher on the mobile shell is a navigation design
+  problem with no Figma frame and no agreed shape. Until it exists, a user sees every member they
+  have a grant for, in one list, regardless of which family owns them — which is what the
+  link-based access path already does.
+- **Guest-to-owner upgrades beyond the lazy path** — **out.** A guest who adds their first
+  CardiMember gets a family and a trial (D-12). Anything more elaborate (claiming a family,
+  merging two families, moving a member between families) is not in scope and has no agreed
+  behaviour.
 - **SMS/email invitations** — **dropped.** SMS is permanently out of scope
   ([solution_manifest.md](../solution_manifest.md)); the caregiver shares the link through their own
   phone's share sheet, exactly as `DeviceConnectionInvite` already does, so we never learn who they
@@ -277,6 +304,76 @@ defensible precisely because it is not a notes feature.
   [family.md](../execution/backend/api/family.md), whose `viewer` role does not exist and must go
 - **Wave:** R1 · **Plan gate:** none
 
+**Story 4.6: Starting or joining a family at onboarding** _(P0 — Must Have)_
+- **As a** new user
+- **I want to** either name my own family or join one that already exists
+- **So that** I am not forced to duplicate a family my sibling already set up
+- **Acceptance Criteria:**
+  - **Given** onboarding **When** I reach the family step **Then** I can name a new family, enter a
+    Family ID, or arrive with one already filled in from a link I tapped
+  - **Given** I name a new family **Then** an `Organization`, a trial subscription and my Admin
+    membership are created in one transaction, exactly as today
+  - **Given** I join an existing family **Then** **no organization and no subscription are created
+    for me** (D-12) — I am a guest until I create a family of my own
+  - **Given** I am a guest **When** I later add a CardiMember of my own **Then** my own family and
+    its trial are created at that moment, and my trial starts when it means something
+  - **[Edge]** **Given** `User.OrganizationId` is non-nullable today and onboarding is one atomic
+    transaction **Then** the join path requires that invariant to change — membership moves to
+    `UserOrganization` rows (D-9), and zero rows is the guest state
+  - **[Edge]** **Given** a retried onboarding after a lost response **When** it replays **Then** it
+    returns the existing account rather than creating a second family, as `SetupAsync` already does
+- **Screens:** no Figma M1 frame — **needs design sync** (family step is new; M1-04 follows it)
+- **API:** `POST /api/v1/onboarding/setup` gains a join branch
+- **Wave:** R1 · **Plan gate:** none
+
+**Story 4.7: Asking to join, and being approved** _(P0 — Must Have)_
+- **As an** Admin
+- **I want to** approve who joins my family and choose what they can see
+- **So that** knowing a Family ID is never the same as having access
+- **Acceptance Criteria:**
+  - **Given** someone submits a Family ID or opens a join link **Then** a join request is created
+    and they are told only that it was sent
+  - **Given** a join request **When** I review it **Then** I see who is asking, and I choose which
+    CardiMembers they get and their role before approving (D-10)
+  - **Given** I approve **Then** a `UserOrganization` row and one `UserCardiMember` grant per chosen
+    member are created together, and the requester is notified
+  - **[Edge]** **Given** a typed Family ID that does not exist **Then** the response is
+    indistinguishable from one that does — no family name, no member names, no existence signal —
+    and repeated attempts are rate-limited per user and per IP
+  - **[Edge]** **Given** a typed Family ID is short enough to brute-force by construction (D-11)
+    **Then** approval is the control that makes guessing worthless, and that is written down as a
+    security property rather than a product preference
+  - **[Edge]** **Given** a pending request **When** the Admin never acts **Then** it expires, and the
+    requester can ask again without the Admin seeing a duplicate queue
+  - **[Edge]** **Given** the family is at its tier's family-member ceiling **When** I approve
+    **Then** `MEMBER_LIMIT_REACHED` (422) names the count and the ceiling
+- **Screens:** no Figma M1 frame — **needs design sync** (join request queue; approval sheet with
+  member picker)
+- **API:** new — `POST /api/v1/families/{familyId}/join-requests`,
+  `GET|POST /api/v1/families/{familyId}/join-requests/{id}/approve`
+- **Wave:** R1 · **Plan gate:** none
+
+**Story 4.8: An Admin handing the family on** _(P1 — Should Have)_
+- **As an** Admin who no longer wants to run the family
+- **I want to** hand Admin to someone else and leave
+- **So that** the family is never left unowned
+- **Acceptance Criteria:**
+  - **Given** I am the only Admin **When** I try to leave **Then** I am refused until I promote
+    someone (D-13), consistent with `CANNOT_DEMOTE_LAST_ADMIN`
+  - **Given** I promote another member and leave **Then** they become Admin, my `UserOrganization`
+    row and my grants for that family's members are removed, and the handover is audited
+  - **[Edge]** **Given** "only Admin pays" **When** Admin changes **Then** the successor must
+    *accept*, not merely be nominated — in R1 this is a role change, but in R2 it transfers who owes
+    money, and an R1 flow that makes it look free would mislead once Stripe lands
+  - **[Edge]** **Given** I am the only person in the family **When** I leave **Then** there is no
+    successor and this is account deletion, routed to the existing erasure flow rather than a
+    silent orphaning
+  - **[Edge]** **Given** I leave a family where I was the last active watcher of a member **Then**
+    `AccountErasureService`'s existing release-or-erase branch decides that member's fate
+- **Screens:** no Figma M1 frame — **needs design sync**
+- **API:** new — `PUT /api/v1/families/{familyId}/admin`, `DELETE /api/v1/families/{familyId}/members/me`
+- **Wave:** R1 · **Plan gate:** none
+
 ## 6. Open Questions
 
 | # | Question | Owner | Blocks | Needed by |
@@ -286,6 +383,10 @@ defensible precisely because it is not a notes feature.
 | OQ-3 | Can the wearer admit a caregiver via the link/QR pattern, as Apple's model does? Needs per-metric consent recording (⬜ not started) | Legal/DPO + Product | Nothing in this slice — it is the follow-on prototype | R3 planning |
 | OQ-6 | Is prod erasure out of rehearsal? `retention_worker_dry_run = true` in dev; prod has none of it | Eng | **Prod** release of this slice, not dev | Before prod enablement |
 | OQ-8 | Does beta ack-latency show fan-outs being suppressed at night? If so, revisit D-7 | Product | Whether respect-by-default survives | Beta + 30 days |
+| OQ-9 | Which org's tier governs a member's features when the viewer belongs to several families? Proposed: the org that **owns the CardiMember**, never the viewer's | Product + Eng | Plan enforcement, whenever it lands | Before D3 |
+| OQ-10 | What shape is a typed Family ID — length, alphabet, checksum? Must be non-sequential and rate-limited; shorter is friendlier and weaker | Eng + Security | D2 | Before D2 |
+| OQ-11 | Does `UserContext` need an active-org concept, or can every call be member-scoped? Five of six call sites are in `OnboardingController`, which suggests member-scoping is enough | Eng | D1 | Before D1 |
+| OQ-12 | On Admin succession, how does the successor accept once Stripe exists — and what happens to the subscription mid-period? | Product + Eng | D5 in R2 terms | R2 billing |
 | OQ-7 | Does Google restricted-scope verification change the reach ceiling? Still ⬜ not started as of the last matrix read | Eng/Ops | Reach in §9 | R1→R2 gate |
 
 ## 7. Risk & Dependency Check
@@ -295,6 +396,8 @@ defensible precisely because it is not a notes feature.
 | **Value** | Not a demand bet: the escalation rung and the erasure release-branch are both built and unreachable, and the pricing page already sells this. The unknown is only *how many* invite (OQ-1). Competitors treating seats as free and unlimited confirms it is table stakes, not differentiation | 🟢 | OQ-1 after 30 beta days |
 | **Usability** | The invite is easy; explaining the grant is not. A 45–65 caregiver must be able to state what their sibling will see. Aloe Care needed four access levels to make this legible at scale — we are betting three booleans suffice for a small family circle | 🟠 | Prototype the grant screen; 5 caregivers state correctly what the invitee sees |
 | **Feasibility** | Cheapest major feature left. `DeviceConnectionInvite` (#1131–#1137) is a shipped, reviewed invitation primitive to mirror; `CardiMemberAccessService`, the push spine, the ladder and the audit middleware all exist. The one genuinely new piece is redemption ending in an authenticated account rather than anonymously | 🟢 | — |
+| **Security** | New with D-11. A typed Family ID is brute-forceable by construction, so mandatory approval, per-user and per-IP rate limiting, and a response that never confirms a family's existence are all load-bearing. The link path is unguessable and carries no such burden | 🟠 | Threat-model the join endpoint before D2 ships; `security-architect` review of the enumeration surface |
+| **Feasibility (D-9)** | Measured, not guessed: 62 `OrganizationId` references outside migrations, nine in the API, five of those in `OnboardingController`. Concentrated and mechanical | 🟢 | — |
 | **Viability** | Was 🔴 on 2026-09-05 because erasure was unbuilt while the privacy policy promised 30-day deletion. Erasure shipped 2026-09-14 (#1088/#1089/#1090/#1094) with a tested cascade and upstream OAuth revocation — **but dev-only and in rehearsal**. Widening PHI access to a second human is defensible once erasure actually runs in prod, and not before. The residual gap is that the wearer still neither grants nor sees who watches them, where Apple's comparable feature is wearer-granted | 🟠 | OQ-6 (prod erasure live) + OQ-3 direction |
 
 **Verdict: Pursue — R1, as the five stories above (D-1).** The R3 row "Family invitations + roles"
@@ -341,10 +444,26 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | B1 | Correctness | `User.Role` Admin/Member enforcement, `CANNOT_DEMOTE_LAST_ADMIN` | 0.25 pm | — |
 | B2 | Correctness | `MaxUsers` + `MaxCardiMembers` enforcement, one pass | 0.15 pm | — |
 | B3 | Correctness | Caregiver list, removal, night-coverage line | 0.25 pm | — |
-| C | Docs | Correct `family.md` (drop `viewer`), DPIA line for `CaregiverInvites`, notification-engine §6.3 update | 0.1 pm | — |
+| D1 | Family | `UserOrganization` join table; `User.OrganizationId` retired into it; active-org resolution in `UserContextMiddleware`; the nine API references corrected (D-9) | 0.5 pm | — |
+| D2 | Family | Family ID (non-sequential) + 256-bit join link; join-request entity; rate limiting and a non-confirming response (D-11) | 0.35 pm | — |
+| D3 | Family | Approval queue with member picker and role (D-10) | 0.3 pm | — |
+| D4 | Family | Onboarding fork: name a family, or join as a guest with no org and no trial; lazy org creation on first member (D-12) | 0.35 pm | — |
+| D5 | Family | Admin succession with explicit acceptance; leave-family; solo-Admin routed to erasure (D-13) | 0.2 pm | — |
+| C | Docs | Correct `family.md` (drop `viewer`), DPIA lines for `CaregiverInvites`, `UserOrganization` and join requests, notification-engine §6.3 | 0.15 pm | — |
 
-**Total ≈ 1.7 person-months.** Phase A alone is ~1.1. The cut line, if the R1 date has to hold, is
-after A4.
+**Total ≈ 3.3 person-months** — 1.7 for the caregiver slice, 1.7 for the family model (D-9…D-13),
+0.15 docs. For one builder that is roughly fourteen weeks.
+
+**Two cut lines, not one.** After **A4** the safety gap is closed — that is the ~1.1 pm that
+justifies being in R1 at all. After **B3** the caregiver slice is complete and coherent without any
+of the family-model work. Phase D is a separate product decision that happens to have been taken at
+the same time; it can move to R2 whole without leaving anything half-built, because a caregiver
+invited by link needs none of it.
+
+**Sequencing constraint:** D1 should land *before* A3, or not at all in R1. The accept flow writes
+membership, so if `UserOrganization` is coming, it should exist before the first live grant is
+written — otherwise D1 becomes a data migration of real families rather than a schema change to an
+empty table. This is the same argument that decided roles in D-5.
 
 ## 9. Surface & Release Placement
 
@@ -367,7 +486,8 @@ after A4.
 
 | Item | Reach (users/qtr) | Impact | Confidence | Effort (pm) | RICE | Wave | Notes |
 |---|---|---|---|---|---|---|---|
-| Second-caregiver slice (this PRD, Phases A+B+C) | 50 | 2 | 80% | 1.7 | **47** | R1 | 1.0 base; +0.4 roles (D-5), +0.2 configurable fan-out (D-6/7), +0.1 forced choice (D-8) |
+| Second-caregiver slice (Phases A+B) | 50 | 2 | 80% | 1.7 | **47** | R1 | 1.0 base; +0.4 roles (D-5), +0.2 configurable fan-out (D-6/7), +0.1 forced choice (D-8) |
+| Family model — multi-org, join, approval, succession (Phase D) | 50 | 1 | 50% | 1.7 | **15** | R1 by decision | Scores like the deferred R3 items, and is in R1 by product choice rather than by score. Recorded, not contested |
 | — of which Phase A alone (closes the gap) | 50 | 2 | 80% | 1.1 | **73** | R1 | The cut line if the R1 date must hold |
 | Fan-out activation (Story 4.3) | 50 | 2 | 80% | 0.25 | **320** | R1 | Only scoreable *after* A1–A3; not independent |
 | Shared notes + @mentions | 50 | 1 | 50% | 2.0 | **12.5** | R3 | Crowded field (§4) |
