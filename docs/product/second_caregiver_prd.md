@@ -37,7 +37,7 @@ reader knows it was weighed, not missed.
 | D-8 | **Choice forced at invite acceptance** | Contains D-7: an accepting caregiver must decide whether escalated red alerts wake them, so the default rarely applies | Silent default |
 | D-9 | **Real multi-org membership** — a `UserOrganization` join table; a user genuinely belongs to several families and keeps their own | A true roster, a clean "switch family" concept, and zero rows expresses "guest" naturally (D-12) | My grants-only recommendation |
 | D-10 | **Admin picks which members a joiner gets, at approval** | HIPAA minimum-necessary; handles a family watching two parents where different siblings handle each | All-members-on-join |
-| D-11 | **Both join paths: typed Family ID and 256-bit link** | A code you can read down the phone, and a safe link for everything else | Link-only (my recommendation) |
+| D-11 | **One secret, two ways to enter it: the Family ID is typed, or carried by a link that auto-fills it** | The link is a convenience wrapper around the same identifier, not a second, stronger channel. Corrected 2026-09-22 — an earlier revision invented a separate 256-bit link token, which is not what was specified | Link-only (my recommendation) |
 | D-12 | **A joiner gets no organization and no trial — they are a guest** | Cleanest expression of "only Admin pays"; the trial stops being burned by people who never asked for one | Always-create-an-org |
 | D-13 | **An Admin leaves only by assigning another Admin** | The family never ends up unowned, and with "only Admin pays" the bill always has a named owner | — |
 | D-14 | **Exactly one Admin per family, and that Admin is the payer** | Resolves an ambiguity in the spec: with several Admins, "only Admin pays" does not name a payer. Assigning another Admin (D-13) is therefore a transfer of ownership and of the bill in one act | Several Admins with a separate Owner |
@@ -377,9 +377,12 @@ defensible precisely because it is not a notes feature.
   - **[Edge]** **Given** a typed Family ID that does not exist **Then** the response is
     indistinguishable from one that does — no family name, no member names, no existence signal —
     and repeated attempts are rate-limited per user and per IP
-  - **[Edge]** **Given** a typed Family ID is short enough to brute-force by construction (D-11)
-    **Then** approval is the control that makes guessing worthless, and that is written down as a
-    security property rather than a product preference
+  - **[Edge]** **Given** the Family ID is an identifier rather than a secret (D-11) **Then**
+    guessing one buys only the right to ask, approval is the sole access gate, and that is written
+    down as a security property rather than a product preference
+  - **[Edge]** **Given** a link that auto-fills the Family ID **Then** it is treated exactly as
+    typed entry — same rate limits, same non-confirming response — because it carries the same
+    value and is no safer
   - **[Edge]** **Given** a pending request **When** the Admin never acts **Then** it expires, and the
     requester can ask again without the Admin seeing a duplicate queue
   - **[Edge]** **Given** the family is at its tier's family-member ceiling **When** I approve
@@ -427,7 +430,7 @@ defensible precisely because it is not a notes feature.
 | OQ-6 | Is prod erasure out of rehearsal? `retention_worker_dry_run = true` in dev; prod has none of it | Eng | **Prod** release of this slice, not dev | Before prod enablement |
 | OQ-8 | Does beta ack-latency show fan-outs being suppressed at night? If so, revisit D-7 | Product | Whether respect-by-default survives | Beta + 30 days |
 | OQ-9 | Which org's tier governs a member's features when the viewer belongs to several families? Proposed: the org that **owns the CardiMember**, never the viewer's | Product + Eng | Plan enforcement, whenever it lands | Before D3 |
-| OQ-10 | What shape is a typed Family ID — length, alphabet, checksum? Must be non-sequential and rate-limited; shorter is friendlier and weaker | Eng + Security | D2 | Before D2 |
+| OQ-10 | What shape is the Family ID — length, alphabet, checksum? Since D-11 makes it an identifier rather than a secret, it can be short and friendly; non-sequential and rate-limited is enough, and entropy is no longer the lever it looked like | Eng + Security | D2 | Before D2 |
 | OQ-11 | Does `UserContext` need an active-org concept, or can every call be member-scoped? Five of six call sites are in `OnboardingController`, which suggests member-scoping is enough | Eng | D1 | Before D1 |
 | OQ-12 | On Admin succession, how does the successor accept once Stripe exists — and what happens to the subscription mid-period? | Product + Eng | D5 in R2 terms | R2 billing |
 | OQ-13 | Does the erasure path correlate duplicate CardiMembers by `HealthUserId` before reporting completion? Without it, D-15 leaves a half-honoured erasure | Eng + Compliance | D-15 being safe to ship | Before D4 |
@@ -443,7 +446,7 @@ defensible precisely because it is not a notes feature.
 | **Usability** | The invite is easy; explaining the grant is not. A 45–65 caregiver must be able to state what their sibling will see. Aloe Care needed four access levels to make this legible at scale — we are betting three booleans suffice for a small family circle | 🟠 | Prototype the grant screen; 5 caregivers state correctly what the invitee sees |
 | **Feasibility** | Cheapest major feature left. `DeviceConnectionInvite` (#1131–#1137) is a shipped, reviewed invitation primitive to mirror; `CardiMemberAccessService`, the push spine, the ladder and the audit middleware all exist. The one genuinely new piece is redemption ending in an authenticated account rather than anonymously | 🟢 | — |
 | **Compliance (D-15)** | Two records for one person with nothing correlating them means an erasure can be half-honoured and the survivor is unfindable. `HealthUserId` is the available key and is already captured, but it is null until a device syncs | 🟠 | OQ-13 resolved and D6 built before duplicates are possible in prod |
-| **Security** | New with D-11. A typed Family ID is brute-forceable by construction, so mandatory approval, per-user and per-IP rate limiting, and a response that never confirms a family's existence are all load-bearing. The link path is unguessable and carries no such burden | 🟠 | Threat-model the join endpoint before D2 ships; `security-architect` review of the enumeration surface |
+| **Security** | The Family ID is an **identifier, not a capability**: both paths carry the same value, so neither is the safer one, and knowing it grants only the right to *ask*. Approval (D-10) is the sole access gate and carries the full weight for both. Rate limiting and a response that never confirms a family's existence apply equally to typed entry and to a followed link | 🟠 | Threat-model the join endpoint before D2 ships; `security-architect` review of the enumeration surface |
 | **Feasibility (D-9)** | Measured, not guessed: 62 `OrganizationId` references outside migrations, nine in the API, five of those in `OnboardingController`. Concentrated and mechanical | 🟢 | — |
 | **Viability** | Was 🔴 on 2026-09-05 because erasure was unbuilt while the privacy policy promised 30-day deletion. Erasure shipped 2026-09-14 (#1088/#1089/#1090/#1094) with a tested cascade and upstream OAuth revocation — **but dev-only and in rehearsal**. Widening PHI access to a second human is defensible once erasure actually runs in prod, and not before. The residual gap is that the wearer still neither grants nor sees who watches them, where Apple's comparable feature is wearer-granted | 🟠 | OQ-6 (prod erasure live) + OQ-3 direction |
 
@@ -492,7 +495,7 @@ gap is closed at the end of it and not before, because fan-out needs a second ca
 | B2 | Correctness | `MaxUsers` + `MaxCardiMembers` enforcement, one pass | 0.15 pm | — |
 | B3 | Correctness | Caregiver list, removal, night-coverage line | 0.25 pm | — |
 | D1 | Family | `UserOrganization` join table; `User.OrganizationId` retired into it; active-org resolution in `UserContextMiddleware`; the nine API references corrected (D-9) | 0.5 pm | — |
-| D2 | Family | Family ID (non-sequential) + 256-bit join link; join-request entity; rate limiting and a non-confirming response (D-11) | 0.35 pm | — |
+| D2 | Family | Family ID (short, human-typeable, non-sequential) + deep link that auto-fills it; join-request entity; rate limiting and a non-confirming response on both paths (D-11) | 0.3 pm | — |
 | D3 | Family | Approval queue with member picker and role (D-10) | 0.3 pm | — |
 | D4 | Family | Onboarding fork: name a family, or join as a guest with no org and no trial; lazy org creation on first member (D-12) | 0.35 pm | — |
 | D5 | Family | Single-Admin-is-payer invariant, succession as one transaction, lapse takeover, leave-family, solo-Admin routed to erasure (D-13/14/17) | 0.3 pm | — |
