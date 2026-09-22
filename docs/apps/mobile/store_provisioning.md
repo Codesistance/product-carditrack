@@ -2,10 +2,12 @@
 
 One-time setup that enables CI (`deploy-apps-dev.yml` to build, `deploy-mobile-dev.yml` to push) to deliver signed mobile
 builds to **TestFlight** (iOS) and the **Google Play internal testing track** (Android). Everything
-lands in GCP Secret Manager as the twelve `carditrack-common-*` secrets defined in
-`infrastructure/common/secret_manager.tf` — nine read by CI, plus three **operator-only** APNs
-secrets (`apns-auth-key-p8`, `apns-key-id`, `apple-team-id` — see section F) that no deploy
-workflow reads. Run *Deploy Infrastructure → Common* first so the
+lands in GCP Secret Manager as the `carditrack-common-*` secrets defined in
+`infrastructure/common/secret_manager.tf`: eleven read by the mobile workflows (the nine signing
+and store credentials plus the two Firebase client configs, section G), two Slack secrets read
+only by `post-digest.yml` (`slack-bot-token`, `slack-channel-id`, not covered here), and three
+**operator-only** APNs secrets (`apns-auth-key-p8`, `apns-key-id`, `apple-team-id` — see
+section F) that no deploy workflow reads. Run *Deploy Infrastructure → Common* first so the
 secrets exist (seeded `REPLACE_ME`). Until a secret holds a real value, the corresponding
 *build* job in `deploy-apps-dev.yml` skips with a warning; a *push* requested from
 `deploy-mobile-dev.yml` for that platform fails, on purpose, because uploading is the only

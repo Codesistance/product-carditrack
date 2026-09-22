@@ -187,29 +187,35 @@
 	     _CardiTrackRequireFirebaseConfig target below turns the silent runtime failure into a build
 	     error for the builds that ship: a signed Android publish or an iOS archive without the
 	     config is the 2026-08-13 incident again, and must not get as far as the store. -->
+	<!-- Forward slashes throughout: MSBuild accepts them on every OS, and the recovery command in
+	     the error is meant to be pasted into a shell from the repository root, where a backslash
+	     path is an escape sequence on macOS/Linux and a project-relative one lands in the wrong
+	     directory anyway. -->
 	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
-		<_CardiTrackFirebaseConfig>Platforms\Android\google-services.json</_CardiTrackFirebaseConfig>
+		<_CardiTrackFirebaseConfig>$(MSBuildProjectDirectory)/Platforms/Android/google-services.json</_CardiTrackFirebaseConfig>
+		<_CardiTrackFirebaseConfigRepoPath>src/Presentation/CardiTrack.Mobile/Platforms/Android/google-services.json</_CardiTrackFirebaseConfigRepoPath>
 		<_CardiTrackFirebaseConfigSecret>carditrack-common-firebase-android-config</_CardiTrackFirebaseConfigSecret>
 		<_CardiTrackFirebaseConfigRequired Condition="'$(AndroidKeyStore)' == 'true'">true</_CardiTrackFirebaseConfigRequired>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-		<_CardiTrackFirebaseConfig>Platforms\iOS\GoogleService-Info.plist</_CardiTrackFirebaseConfig>
+		<_CardiTrackFirebaseConfig>$(MSBuildProjectDirectory)/Platforms/iOS/GoogleService-Info.plist</_CardiTrackFirebaseConfig>
+		<_CardiTrackFirebaseConfigRepoPath>src/Presentation/CardiTrack.Mobile/Platforms/iOS/GoogleService-Info.plist</_CardiTrackFirebaseConfigRepoPath>
 		<_CardiTrackFirebaseConfigSecret>carditrack-common-firebase-ios-config</_CardiTrackFirebaseConfigSecret>
 		<_CardiTrackFirebaseConfigRequired Condition="'$(ArchiveOnBuild)' == 'true'">true</_CardiTrackFirebaseConfigRequired>
 	</PropertyGroup>
 
 	<Target Name="_CardiTrackRequireFirebaseConfig" BeforeTargets="BeforeBuild" Condition="'$(_CardiTrackFirebaseConfigRequired)' == 'true'">
-		<Error Condition="!Exists('$(MSBuildProjectDirectory)\$(_CardiTrackFirebaseConfig)')"
-		       Text="$(_CardiTrackFirebaseConfig) is missing. A store build without the Firebase config ships an app that can never register for push. Fetch it from Secret Manager: gcloud secrets versions access latest --secret=$(_CardiTrackFirebaseConfigSecret) --project=carditrack-490120 > $(_CardiTrackFirebaseConfig)" />
+		<Error Condition="!Exists('$(_CardiTrackFirebaseConfig)')"
+		       Text="$(_CardiTrackFirebaseConfigRepoPath) is missing. A store build without the Firebase config ships an app that can never register for push. From the repository root: gcloud secrets versions access latest --secret=$(_CardiTrackFirebaseConfigSecret) --project=carditrack-490120 > $(_CardiTrackFirebaseConfigRepoPath)" />
 	</Target>
 
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
-		<GoogleServicesJson Include="Platforms\Android\google-services.json" Condition="Exists('$(MSBuildProjectDirectory)\Platforms\Android\google-services.json')" />
+		<GoogleServicesJson Include="Platforms/Android/google-services.json" Condition="Exists('$(_CardiTrackFirebaseConfig)')" />
 	</ItemGroup>
 
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
-		<BundleResource Include="Platforms\iOS\GoogleService-Info.plist" LogicalName="GoogleService-Info.plist" Condition="Exists('$(MSBuildProjectDirectory)\Platforms\iOS\GoogleService-Info.plist')" />
+		<BundleResource Include="Platforms/iOS/GoogleService-Info.plist" LogicalName="GoogleService-Info.plist" Condition="Exists('$(_CardiTrackFirebaseConfig)')" />
 		<!-- APNs custom sound: must sit in the main bundle under this exact filename. The FCM
 		     payload's aps.sound names NotificationChannels.AlertSoundFile. Remove the SDK's
 		     implicit include first so we don't embed the same file twice. -->
