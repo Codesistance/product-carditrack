@@ -28,6 +28,8 @@ any environment with `keytool`, `openssl`, and `gcloud` works the same way.
 | `carditrack-common-android-keystore` | Upload keystore (.jks, key alias `carditrack`) | base64 |
 | `carditrack-common-android-keystore-password` | Keystore **and** key password (same value) | plain text |
 | `carditrack-common-play-service-account-key` | Play publisher service-account key | JSON text |
+| `carditrack-common-firebase-android-config` | Firebase `google-services.json` for the app (section G) | JSON text |
+| `carditrack-common-firebase-ios-config` | Firebase `GoogleService-Info.plist` for the app (section G) | plist XML text |
 | `carditrack-common-apple-distribution-cert-p12` | Apple Distribution certificate + private key | base64 |
 | `carditrack-common-apple-cert-password` | .p12 export password | plain text |
 | `carditrack-common-appstore-provisioning-profile` | App Store profile named `CardiTrack Distribution` | base64 |
@@ -217,12 +219,47 @@ operator uses for push-notification delivery.
    - the Key ID → `carditrack-common-apns-key-id`
    - the Team ID → `carditrack-common-apple-team-id`
 
+## G. Firebase client config
+
+`google-services.json` and `GoogleService-Info.plist` are the Firebase SDK's per-app config
+files. Each carries a Google API key, which GitHub secret scanning flags, so **they are not in
+git**: both paths are git-ignored, the signed Android and iOS device jobs in `deploy-apps-dev.yml`
+(and the iOS prod job) write them into `src/Presentation/CardiTrack.Mobile/Platforms/…` from
+these two secrets before publishing, and the csproj fails a store build that has no config
+(`_CardiTrackRequireFirebaseConfig`). Until both secrets are populated the signed builds are
+skipped with a warning, like the signing secrets above.
+
+1. [Firebase console](https://console.firebase.google.com/project/carditrack-490120/settings/general)
+   → **Your apps** → the Android app (`com.codesistance.carditrack.mobile`) → download
+   `google-services.json`; the Apple app → download `GoogleService-Info.plist`. Both apps are
+   Terraform-managed (`infrastructure/deployments/firebase.tf`).
+2. Restrict the key each file carries (GCP console → **APIs & Services → Credentials**):
+   API restrictions to the Firebase services the app uses (Firebase Installations, FCM
+   Registration, Firebase Remote Config if enabled), application restrictions to the Android
+   package name plus the upload-key and Play app-signing SHA-1s, and the iOS bundle ID. Without
+   restrictions the key can be used against any API enabled on the project by anyone holding a
+   copy of the app.
+3. Load them as text (no base64):
+
+   ```bash
+   gcloud secrets versions add carditrack-common-firebase-android-config \
+     --data-file=google-services.json --project=carditrack-490120
+   gcloud secrets versions add carditrack-common-firebase-ios-config \
+     --data-file=GoogleService-Info.plist --project=carditrack-490120
+   ```
+
+4. Rotating: delete the key in **Credentials** (Firebase creates a replacement for the app on
+   the next config download), re-download both files and add new secret versions. Builds pick
+   up `latest` on their next run; installed apps keep working on the old key only until it is
+   deleted, so ship a build with the new config before deleting the old key.
+
 ## Verification
 
 1. Confirm no placeholders remain:
 
    ```bash
    for s in android-keystore android-keystore-password play-service-account-key \
+            firebase-android-config firebase-ios-config \
             apple-distribution-cert-p12 apple-cert-password appstore-provisioning-profile \
             appstore-connect-issuer-id appstore-connect-api-key-id appstore-connect-api-private-key \
             apns-auth-key-p8 apns-key-id apple-team-id; do

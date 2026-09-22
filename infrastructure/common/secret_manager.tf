@@ -49,6 +49,8 @@ locals {
     "android-keystore",                 # Android upload keystore (.jks, base64, key alias: carditrack)
     "android-keystore-password",        # Password for the upload keystore and key
     "play-service-account-key",         # Google Play service account key (JSON)
+    "firebase-android-config",          # Firebase google-services.json for CardiTrack.Mobile (JSON text)
+    "firebase-ios-config",              # Firebase GoogleService-Info.plist for CardiTrack.Mobile (plist XML text)
     "slack-bot-token",                  # Slack bot token (xoxb-..., chat:write scope)
     "slack-channel-id",                 # Digest channel ID (C0XXXXXXX, not "#name")
   ])
