@@ -21,13 +21,22 @@ namespace CardiTrack.Application.Interfaces.Services;
 /// Storage objects the rows named that could not be deleted. Empty is the expected result;
 /// anything here is a manual job and the erasure is not complete until it is done.
 /// </param>
+/// <param name="DuplicatesElsewhere">
+/// Records for the same wearer, in <em>other</em> families, that this erasure did not touch.
+/// </param>
+/// <param name="UncorrelatedMembers">
+/// Members erased here whose duplicates could not be looked for at all, because no device was ever
+/// connected to them and so nothing identifies the person behind the record.
+/// </param>
 public sealed record AccountErasureReport(
     Guid UserId,
     IReadOnlyList<Guid> MembersErased,
     IReadOnlyList<Guid> MembersReleased,
     IReadOnlyList<(string Table, int Rows)> RowsByTable,
     IReadOnlyList<Guid> UnrevokedGrants,
-    IReadOnlyList<string> OrphanedObjects);
+    IReadOnlyList<string> OrphanedObjects,
+    IReadOnlyList<Guid> DuplicatesElsewhere,
+    IReadOnlyList<Guid> UncorrelatedMembers);
 
 /// <summary>
 /// Closes one caregiver's account: erases the members only they watched, releases the ones other

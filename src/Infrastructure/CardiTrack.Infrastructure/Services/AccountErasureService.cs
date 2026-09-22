@@ -99,7 +99,7 @@ public class AccountErasureService : IAccountErasureService
             _logger.LogInformation(
                 "Account erasure for {UserId} found no user row; treating as already complete.",
                 userId);
-            return new AccountErasureReport(userId, [], [], [], [], []);
+            return new AccountErasureReport(userId, [], [], [], [], [], [], []);
         }
 
         var auth0UserId = user.Auth0UserId;
@@ -111,6 +111,10 @@ public class AccountErasureService : IAccountErasureService
         var unrevoked = new List<Guid>();
         var erased = new List<Guid>();
         var released = toRelease.ToList();
+
+        // Asked now, before anything is deleted: the correlation lives on the device connections,
+        // and after the cascade there is nothing left to correlate with.
+        var (duplicatesElsewhere, uncorrelated) = await FindDuplicatesElsewhereAsync(toErase, ct);
 
         // The members about to go. Named as a set because the organisation check below has to
         // ignore them: they still have rows at that point in the loop's own transaction history,
@@ -277,13 +281,95 @@ public class AccountErasureService : IAccountErasureService
         if (!string.IsNullOrWhiteSpace(auth0UserId))
             await _auth0.TryDeleteUserAsync(auth0UserId, CancellationToken.None);
 
+        // Warned rather than logged flat, because both of these are somebody's unfinished business:
+        // a duplicate still holding the wearer's data, or a record nothing could identify a person
+        // behind. Neither is an error in this cascade — they are work the runbook has to pick up.
+        if (duplicatesElsewhere.Count > 0)
+        {
+            _logger.LogWarning(
+                "Account erasure for {UserId} left {Count} record(s) of the same wearer in other "
+                + "families untouched: {Duplicates}. Erasing them is a separate decision — they "
+                + "belong to families that did not ask to be forgotten.",
+                userId, duplicatesElsewhere.Count, duplicatesElsewhere);
+        }
+
+        if (uncorrelated.Count > 0)
+        {
+            _logger.LogWarning(
+                "Account erasure for {UserId} could not look for duplicates of {Count} member(s): "
+                + "{Members} never had a device connected, so nothing identifies the person behind "
+                + "the record.",
+                userId, uncorrelated.Count, uncorrelated);
+        }
+
         _logger.LogInformation(
             "Account erasure for {UserId} complete. Members erased: {Erased}, released: " +
             "{Released}, tables touched: {Tables}, unrevoked grants: {Unrevoked}, " +
             "orphaned objects: {Orphaned}.",
             userId, erased.Count, released.Count, rows.Count, unrevoked.Count, orphaned.Count);
 
-        return new AccountErasureReport(userId, erased, released, rows, unrevoked, orphaned);
+        return new AccountErasureReport(
+            userId, erased, released, rows, unrevoked, orphaned, duplicatesElsewhere, uncorrelated);
+    }
+
+    /// <summary>
+    /// Records of the same wearer that this erasure will not touch, and the members it could not
+    /// even check.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A CardiMember is unique as created, so two families watching one person hold two
+    /// independent records with nothing linking them. Erasing through one family therefore leaves
+    /// the other intact, holding her health data, and — without this — unfindable. The provider's
+    /// own subject id is the only thing the two records share, so it is what the correlation runs
+    /// on.
+    /// </para>
+    /// <para>
+    /// <strong>It reports rather than erases.</strong> The other record belongs to a family that
+    /// did not ask to be forgotten, and whose members this caregiver has no authority over.
+    /// Deleting it here would be this cascade reaching into a household it was never given. What
+    /// the report gives instead is the one thing the manual runbook cannot reconstruct afterwards:
+    /// which records exist and where.
+    /// </para>
+    /// <para>
+    /// A member with no device ever connected cannot be correlated at all — there is no subject id
+    /// to match on — and is named separately rather than silently counted as "no duplicates".
+    /// Saying "we looked and found none" when nothing was looked at is the failure this whole
+    /// finding exists to prevent.
+    /// </para>
+    /// </remarks>
+    private async Task<(IReadOnlyList<Guid> Elsewhere, IReadOnlyList<Guid> Uncorrelated)>
+        FindDuplicatesElsewhereAsync(IReadOnlyCollection<Guid> memberIds, CancellationToken ct)
+    {
+        if (memberIds.Count == 0)
+            return ([], []);
+
+        // Every connection these members have ever had, live or not: a wearer who disconnected one
+        // watch and paired another is the same person, and looking only at active rows would miss
+        // the duplicate that matters.
+        var subjectsByMember = await _db.DeviceConnections
+            .AsNoTracking()
+            .Where(dc => memberIds.Contains(dc.CardiMemberId) && dc.HealthUserId != null)
+            .Select(dc => new { dc.CardiMemberId, HealthUserId = dc.HealthUserId! })
+            .ToListAsync(ct);
+
+        var subjectIds = subjectsByMember.Select(x => x.HealthUserId).Distinct().ToList();
+        var correlatable = subjectsByMember.Select(x => x.CardiMemberId).ToHashSet();
+        var uncorrelated = memberIds.Where(id => !correlatable.Contains(id)).ToList();
+
+        if (subjectIds.Count == 0)
+            return ([], uncorrelated);
+
+        var elsewhere = await _db.DeviceConnections
+            .AsNoTracking()
+            .Where(dc => dc.HealthUserId != null
+                         && subjectIds.Contains(dc.HealthUserId)
+                         && !memberIds.Contains(dc.CardiMemberId))
+            .Select(dc => dc.CardiMemberId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return (elsewhere, uncorrelated);
     }
 
     /// <summary>

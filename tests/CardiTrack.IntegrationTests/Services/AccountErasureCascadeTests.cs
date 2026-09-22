@@ -255,6 +255,115 @@ public class AccountErasureCascadeTests : IAsyncLifetime
             m => m.UserId == joiner && m.OrganizationId == organizationId));
     }
 
+    /// <summary>
+    /// Two families watching one person hold two independent records with nothing linking them, so
+    /// erasing through one leaves the other intact — holding her health data, and unfindable. The
+    /// provider's own subject id is the only thing both records share, and the report names what
+    /// it found rather than quietly reaching into a family that never asked to be forgotten.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_NamesTheSameWearersRecordInAnotherFamily()
+    {
+        Guid leaving, survivingMemberId;
+        using (var seedScope = _services.CreateScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+            var mine = new Organization { Name = "Okafor family", Type = OrganizationType.Family };
+            var theirs = new Organization { Name = "Adeyemi family", Type = OrganizationType.Family };
+            db.Organizations.AddRange(mine, theirs);
+
+            var me = NewUser(mine.Id, "Jane Okafor");
+            var them = NewUser(theirs.Id, "Bisi Adeyemi");
+            db.Users.AddRange(me, them);
+
+            // The same person, recorded twice — once by each family that watches her.
+            var myRecord = NewMember(mine.Id, "Margaret");
+            var theirRecord = NewMember(theirs.Id, "Margaret");
+            db.CardiMembers.AddRange(myRecord, theirRecord);
+
+            db.UserCardiMembers.AddRange(
+                new UserCardiMember { UserId = me.Id, CardiMemberId = myRecord.Id },
+                new UserCardiMember { UserId = them.Id, CardiMemberId = theirRecord.Id });
+
+            // One wearer, one Google account, two connections.
+            const string wearer = "users/margaret-okafor";
+            db.DeviceConnections.AddRange(
+                NewConnection(myRecord.Id, wearer),
+                NewConnection(theirRecord.Id, wearer));
+
+            await db.SaveChangesAsync();
+            (leaving, survivingMemberId) = (me.Id, theirRecord.Id);
+        }
+
+        var report = await EraseAsync(leaving);
+
+        Assert.Equal([survivingMemberId], report.DuplicatesElsewhere);
+        Assert.Empty(report.UncorrelatedMembers);
+
+        // Named, not erased: that record belongs to a family this caregiver has no authority over.
+        using var check = _services.CreateScope();
+        var checkDb = check.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(1, await checkDb.CardiMembers.CountAsync(m => m.Id == survivingMemberId));
+    }
+
+    /// <summary>
+    /// A member who never had a device connected cannot be correlated at all — there is no subject
+    /// id to match on. Reported separately rather than counted as "no duplicates", because saying
+    /// we looked and found none when nothing was looked at is the failure this finding exists to
+    /// prevent.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWithNoDeviceEverConnected_IsReportedAsUncheckable()
+    {
+        var seed = await SeedAsync();
+
+        var report = await EraseAsync(seed.UserId);
+
+        Assert.NotEmpty(report.UncorrelatedMembers);
+        Assert.Subset(report.MembersErased.ToHashSet(), report.UncorrelatedMembers.ToHashSet());
+        Assert.Empty(report.DuplicatesElsewhere);
+    }
+
+    /// <summary>A connection for a member nobody else shares finds nothing, and says so plainly.</summary>
+    [Fact]
+    public async Task ASoleRecordOfAWearer_HasNoDuplicatesAnywhere()
+    {
+        Guid leaving;
+        using (var seedScope = _services.CreateScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var organization = new Organization { Name = "Okafor family", Type = OrganizationType.Family };
+            db.Organizations.Add(organization);
+
+            var me = NewUser(organization.Id, "Jane Okafor");
+            db.Users.Add(me);
+
+            var member = NewMember(organization.Id, "Margaret");
+            db.CardiMembers.Add(member);
+            db.UserCardiMembers.Add(new UserCardiMember { UserId = me.Id, CardiMemberId = member.Id });
+            db.DeviceConnections.Add(NewConnection(member.Id, "users/only-one"));
+
+            await db.SaveChangesAsync();
+            leaving = me.Id;
+        }
+
+        var report = await EraseAsync(leaving);
+
+        Assert.Empty(report.DuplicatesElsewhere);
+        Assert.Empty(report.UncorrelatedMembers);
+    }
+
+    private static DeviceConnection NewConnection(Guid cardiMemberId, string healthUserId) => new()
+    {
+        CardiMemberId = cardiMemberId,
+        DeviceType = DeviceType.Fitbit,
+        DeviceName = "Margaret's watch",
+        ConnectionStatus = ConnectionStatus.Connected,
+        HealthUserId = healthUserId,
+        IsActive = true,
+    };
+
     /// <summary>Two caregivers sharing one household, so the organisation has somebody left.</summary>
     private async Task<(Guid OrganizationId, Guid Leaving, Guid Staying)> SeedSharedHouseholdAsync()
     {

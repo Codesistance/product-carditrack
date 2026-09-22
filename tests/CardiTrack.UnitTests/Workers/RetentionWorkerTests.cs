@@ -239,7 +239,7 @@ public class RetentionWorkerTests
                 DeletionRequestedAtUtc = Now.UtcDateTime.AddDays(-45),
             });
             _accounts.EraseAsync(userId, Arg.Any<CancellationToken>())
-                .Returns(new AccountErasureReport(userId, [], [], [], [], []));
+                .Returns(new AccountErasureReport(userId, [], [], [], [], [], [], []));
         }
     }
 
