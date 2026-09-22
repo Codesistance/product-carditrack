@@ -26,50 +26,30 @@ public class TestDatabaseFixture : IAsyncLifetime
                    .EnableDetailedErrors()
                    .EnableSensitiveDataLogging());
 
-        services.AddScoped<IOrganizationRepository, OrganizationRepository>();
-        services.AddScoped<ICardiMemberRepository, CardiMemberRepository>();
-        services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
-        services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
-        services.AddScoped<IDeviceActivityLogRepository, DeviceActivityLogRepository>();
-        services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
-        services.AddScoped<IUserRepository, UserRepository>();
-        services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
-        services.AddScoped<IUserCardiMemberRepository, UserCardiMemberRepository>();
-        services.AddScoped<IDeviceRepository, DeviceRepository>();
-        services.AddScoped<IAlertRepository, AlertRepository>();
-        services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
-        services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
-        // The repositories below take IMemberWriteGuard. The pass-through stands in for it: the
-        // real guard takes a row lock on CardiMembers, and these tests deliberately write for
-        // member ids they never seeded — a real guard would refuse every one of them. What the
-        // guard actually does is proven in ErasureDuringGenerationTests against a real Postgres.
+        // UnitOfWork takes every repository, and they all construct from the DbContext (plus, for
+        // a few, the write guard below). Registering each constructor parameter's interface against
+        // the one Infrastructure class implementing it keeps this fixture from being a hand-written
+        // list that silently breaks every test in the project the next time a repository is added —
+        // which is exactly what it did twice while family sharing was being built.
+        var infrastructure = typeof(UnitOfWork).Assembly;
+        foreach (var parameter in typeof(UnitOfWork).GetConstructors().Single().GetParameters())
+        {
+            if (parameter.ParameterType == typeof(CardiTrackDbContext))
+                continue;
+
+            var implementation = infrastructure.GetTypes().Single(t =>
+                t.IsClass && !t.IsAbstract && parameter.ParameterType.IsAssignableFrom(t));
+            services.AddScoped(parameter.ParameterType, implementation);
+        }
+
+        // Not UnitOfWork constructor parameters, so the loop above never reaches them.
+        //
+        // The write guard is a pass-through here: the real one takes a row lock on CardiMembers,
+        // and these tests deliberately write for member ids they never seeded — a real guard would
+        // refuse every one of them. What the guard actually does is proven in
+        // ErasureDuringGenerationTests against a real Postgres.
         services.AddScoped<IMemberWriteGuard, CardiTrack.UnitTests.Services.PassThroughWriteGuard>();
-        services.AddScoped<IDigestRepository, DigestRepository>();
-        services.AddScoped<IRealtimeAssessmentRepository, RealtimeAssessmentRepository>();
-        services.AddScoped<IMemberQuestionnaireRepository, MemberQuestionnaireRepository>();
-        services.AddScoped<IEnvironmentalReadingRepository, EnvironmentalReadingRepository>();
-        services.AddScoped<INotificationRepository, NotificationRepository>();
-        services.AddScoped<INotificationMuteRepository, NotificationMuteRepository>();
-        services.AddScoped<INotificationDeliveryRepository, NotificationDeliveryRepository>();
-        services.AddScoped<IPushDeviceTokenRepository, PushDeviceTokenRepository>();
-        services.AddScoped<INotificationPreferenceRepository, NotificationPreferenceRepository>();
-        services.AddScoped<IAlertPreferenceRepository, AlertPreferenceRepository>();
-        services.AddScoped<IMetricAlarmRepository, MetricAlarmRepository>();
-        services.AddScoped<IMetricAlarmStateRepository, MetricAlarmStateRepository>();
-        services.AddScoped<IMemberChatSessionRepository, MemberChatSessionRepository>();
-        services.AddScoped<IMemberChatTurnRepository, MemberChatTurnRepository>();
-        services.AddScoped<IMemberChatTurnUsageRepository, MemberChatTurnUsageRepository>();
-        services.AddScoped<IMemberStatusLineRepository, MemberStatusLineRepository>();
-        services.AddScoped<IReportRepository, ReportRepository>();
-        services.AddScoped<IExportConsentRepository, ExportConsentRepository>();
-        services.AddScoped<IMemberAdviseRepository, MemberAdviseRepository>();
-        services.AddScoped<IMemberAdviseObservationRepository, MemberAdviseObservationRepository>();
-        services.AddScoped<IMemberInsightRepository, MemberInsightRepository>();
-        services.AddScoped<IMemberAiHoldRepository, MemberAiHoldRepository>();
-        services.AddScoped<IGenerationLeaseRepository, GenerationLeaseRepository>();
-        services.AddScoped<IDeviceHistoryRepullRepository, DeviceHistoryRepullRepository>();
-        services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
-        services.AddScoped<ICardiMemberCreationKeyRepository, CardiMemberCreationKeyRepository>();
+        services.AddScoped<IActivityLogAggregationService, ActivityLogAggregationService>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<ITimeSeriesPartitionService, TimeSeriesPartitionService>();
         services.AddLogging();

@@ -26,7 +26,7 @@ public static class EscalationPolicy
 
         var elapsed = context.UtcNow - context.SentDate.Value;
 
-        return (context.CurrentStage, elapsed) switch
+        var action = (context.CurrentStage, elapsed) switch
         {
             (EscalationStage.Initial, var e) when e >= UndeliveredAfter => EscalationAction.MarkUndeliveredCritical,
             (EscalationStage.Initial, var e) when e >= FanOutAfter => EscalationAction.FanOutToOtherCaregivers,
@@ -39,6 +39,20 @@ public static class EscalationPolicy
 
             _ => EscalationAction.None
         };
+
+        // A copy never fans out again. It is an ordinary red row in every other respect, so
+        // without this its own t+300s rung would copy it to everybody else — the original
+        // recipient included — and each of those would do the same 300 seconds later. A family of
+        // four turns three pushes into nine and then twenty-seven, which is the alarm fatigue this
+        // whole engine exists to prevent, and it would page ops once per copy.
+        //
+        // Held to the rung, not exempted from the ladder: the copy still re-pushes at t+120s, and
+        // still reaches UNDELIVERED_CRITICAL at t+900s if nobody answers, because a family with no
+        // cover has to find that out from the product rather than from the morning.
+        if (action == EscalationAction.FanOutToOtherCaregivers && context.IsEscalatedCopy)
+            return EscalationAction.None;
+
+        return action;
     }
 }
 
@@ -48,11 +62,11 @@ public enum EscalationAction
     Repush,
 
     /// <summary>
-    /// Copy every other caregiver with <c>ReceiveAlerts</c> on. In R1 (<c>MaxUsers = 1</c>) this
-    /// finds zero secondary caregivers and falls straight through — the branch still runs, rather
-    /// than being special-cased away, so nothing needs removing when family invitations (R3) add
-    /// real targets. The fan-out copy never names who failed to respond (§6.3) — that is a caller
-    /// concern (rendering), not this policy's.
+    /// Copy every other caregiver with <c>ReceiveAlerts</c> on — the rung family sharing exists
+    /// to make real. Under the old <c>MaxUsers = 1</c> it found zero secondary caregivers and fell
+    /// straight through; the branch was left running rather than special-cased away, so activating
+    /// it needed nothing removed. The fan-out copy never names who failed to respond (§6.3) — that
+    /// is a caller concern (rendering), not this policy's.
     /// </summary>
     FanOutToOtherCaregivers,
     MarkUndeliveredCritical
@@ -64,4 +78,15 @@ public sealed record EscalationContext
     public required bool Escalates { get; init; }
     public required EscalationStage CurrentStage { get; init; }
     public DateTime? SentDate { get; init; }
+
+    /// <summary>
+    /// Whether this delivery is itself a copy the fan-out rung wrote to a second caregiver.
+    /// </summary>
+    /// <remarks>
+    /// Defaults false, which is the original recipient's row and the behaviour every caller had
+    /// before copies could exist. Set from
+    /// <see cref="Domain.Entities.NotificationDelivery.IsEscalation"/>, which is why that column
+    /// is stored rather than derived.
+    /// </remarks>
+    public bool IsEscalatedCopy { get; init; }
 }

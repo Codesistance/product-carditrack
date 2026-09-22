@@ -41,6 +41,9 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
     public async Task<IReadOnlyList<NotificationDelivery>> ClaimDueAsync(
         int batchSize, DateTime utcNow, CancellationToken ct = default)
     {
+        // `RETURNING *, xmin` rather than `RETURNING *`: the table carries Postgres's row version
+        // as its concurrency token (NotificationDeliveryConfiguration), and `*` does not include
+        // system columns, so EF cannot materialise the claimed rows without naming it.
         var leaseUntil = utcNow + ClaimLease;
 
         var claimed = await _dbSet.FromSqlInterpolated($"""
@@ -55,7 +58,7 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
                 LIMIT {batchSize}
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING *
+            RETURNING *, xmin
             """)
             .ToListAsync(ct);
 
@@ -64,6 +67,32 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
 
     public async Task<NotificationDelivery?> GetByDedupKeyAsync(string dedupKey, CancellationToken ct = default) =>
         await _dbSet.FirstOrDefaultAsync(d => d.DedupKey == dedupKey, ct);
+
+    public async Task<IReadOnlyList<NotificationDelivery>> GetAnsweredForAlertAsync(
+        Guid alertId, CancellationToken ct = default) =>
+        await _dbSet
+            .Where(d => d.SourceType == Domain.Enums.DeliverySourceType.Alert
+                        && d.SourceId == alertId
+                        && d.State == Domain.Enums.DeliveryState.Answered)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Guid>> GetNotifiedUserIdsForAlertAsync(
+        Guid alertId, CancellationToken ct = default) =>
+        await _dbSet
+            .Where(d => d.SourceType == Domain.Enums.DeliverySourceType.Alert && d.SourceId == alertId)
+            .Select(d => d.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<NotificationDelivery>> GetUnfinishedForAlertAsync(
+        Guid alertId, CancellationToken ct = default) =>
+        await _dbSet
+            .Where(d => d.SourceType == Domain.Enums.DeliverySourceType.Alert
+                        && d.SourceId == alertId
+                        && (d.State == Domain.Enums.DeliveryState.Pending
+                            || d.State == Domain.Enums.DeliveryState.Sent
+                            || d.State == Domain.Enums.DeliveryState.Failed))
+            .ToListAsync(ct);
 
     public async Task<IReadOnlyList<NotificationDelivery>> GetDueForEscalationAsync(
         DateTime utcNow, CancellationToken ct = default)
@@ -87,6 +116,7 @@ public class NotificationDeliveryRepository : Repository<NotificationDelivery>, 
                         && d.State != Domain.Enums.DeliveryState.Delivered
                         && d.State != Domain.Enums.DeliveryState.DeadLettered
                         && d.State != Domain.Enums.DeliveryState.Undelivered
-                        && d.State != Domain.Enums.DeliveryState.Suppressed)
+                        && d.State != Domain.Enums.DeliveryState.Suppressed
+                        && d.State != Domain.Enums.DeliveryState.Answered)
             .ToListAsync(ct);
 }

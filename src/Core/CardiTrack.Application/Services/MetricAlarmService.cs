@@ -391,7 +391,8 @@ public class MetricAlarmService : IMetricAlarmService
         if (user is null || !user.IsActive)
             throw new KeyNotFoundException(DeniedMessage);
 
-        return user.OrganizationId;
+        // Account-level alarms are keyed on the home family; a guest has none to key them on.
+        return user.OrganizationId ?? throw new KeyNotFoundException(DeniedMessage);
     }
 
     private async Task<CardiMember> RequireMemberAsync(Guid cardiMemberId)

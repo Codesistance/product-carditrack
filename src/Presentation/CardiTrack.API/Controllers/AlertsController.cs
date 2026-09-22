@@ -1,6 +1,7 @@
 using CardiTrack.API.Infrastructure.Auditing;
 using CardiTrack.API.Infrastructure.UserContext;
 using CardiTrack.Application.DTOs.Common;
+using CardiTrack.Application.DTOs.Requests;
 using CardiTrack.Application.DTOs.Responses;
 using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Services;
@@ -89,14 +90,24 @@ public class AlertsController : BaseApiController
         }
     }
 
-    /// <summary>Marks an alert as handled by the signed-in caregiver.</summary>
+    /// <summary>
+    /// Marks an alert as handled by the signed-in caregiver, optionally saying what they did.
+    /// </summary>
+    /// <remarks>
+    /// The body is optional and so is every field in it — the bodiless form that shipped first
+    /// still works and means the same thing. A <c>responseCode</c> must come from this alert's
+    /// <c>responseOptions</c>; anything else is 400 naming the codes that would have been
+    /// accepted, because a stale app needs to be told what to re-sync to rather than simply
+    /// refused.
+    /// </remarks>
     [HttpPost("alerts/{alertId:guid}/acknowledge")]
     [AuditHealthDataAccess("AcknowledgeAlert")]
     [ProducesResponseType(typeof(ApiResponse<AlertAcknowledgementResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ApiResponse<AlertAcknowledgementResponse>>> Acknowledge(
-        Guid alertId, CancellationToken ct)
+        Guid alertId, [FromBody] AlertAnswerRequest? request, CancellationToken ct)
     {
         if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
         {
@@ -105,12 +116,56 @@ public class AlertsController : BaseApiController
 
         try
         {
-            var result = await _alertService.AcknowledgeAsync(UserContext.UserId, alertId, ct);
+            var result = await _alertService.AcknowledgeAsync(
+                UserContext.UserId, alertId, request?.ResponseCode, request?.Note, ct);
             return Success(result, "Marked as handled.");
         }
         catch (KeyNotFoundException ex)
         {
             return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (AlertResponseCodeException ex)
+        {
+            return Error(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Closes an alert: the family has dealt with it, and the rule may fire again.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately has no <c>DELETE</c> counterpart. Acknowledging is a claim a caregiver can
+    /// take back; closing says the episode is over, which is the same claim CardiTrack's own
+    /// producers make when a condition passes — and it re-arms the rule, so a condition that has
+    /// not really passed raises a fresh alert rather than being reopened by hand.
+    /// </remarks>
+    [HttpPost("alerts/{alertId:guid}/close")]
+    [AuditHealthDataAccess("CloseAlert")]
+    [ProducesResponseType(typeof(ApiResponse<AlertAcknowledgementResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<AlertAcknowledgementResponse>>> Close(
+        Guid alertId, [FromBody] AlertAnswerRequest? request, CancellationToken ct)
+    {
+        if (!UserContext.IsAuthenticated || UserContext.UserId == Guid.Empty)
+        {
+            return Error("We couldn't find your account — please sign in again.", StatusCodes.Status403Forbidden);
+        }
+
+        try
+        {
+            var result = await _alertService.CloseAsync(
+                UserContext.UserId, alertId, request?.ResponseCode, request?.Note, ct);
+            return Success(result, "Closed.");
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Error(ex.Message, StatusCodes.Status404NotFound);
+        }
+        catch (AlertResponseCodeException ex)
+        {
+            return Error(ex.Message);
         }
     }
 

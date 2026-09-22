@@ -99,7 +99,14 @@ public sealed record EnqueueRequest(
     AlertSeverity? Severity,
     string DedupKey,
     string? CollapseKey,
-    AlertType? AlertType = null);
+    AlertType? AlertType = null,
+    /// <summary>
+    /// True for the copy the escalation ladder sends to a second caregiver. It changes exactly one
+    /// thing — whether the recipient's quiet hours are pierced — and is passed rather than inferred
+    /// because nothing on a delivery otherwise distinguishes "you are the caregiver" from "nobody
+    /// else answered".
+    /// </summary>
+    bool IsEscalation = false);
 
 /// <summary>
 /// The "immediate send, durable retry" orchestration from §2. Awaited within the caller's request
@@ -171,9 +178,14 @@ public class DispatchService : IDispatchService
             return null;
         }
 
+        // The recipient's own timezone, not the member's: a sibling three timezones away is
+        // judged by their own clock, which is what makes "holds 22:00–06:00 Lagos" mean anything.
         var timeZoneId = user?.TimeZoneId ?? "UTC";
         var (isWithinQuietHours, quietHoursEndUtc) =
             await _preferences.EvaluateQuietHoursAsync(request.UserId, timeZoneId, utcNow, ct);
+
+        var escalatedPiercesQuietHours = request.IsEscalation
+            && await _preferences.EscalatedAlertsPierceQuietHoursAsync(request.UserId, ct);
 
         var plan = DeliveryPlanner.Plan(new DeliveryPlanningContext
         {
@@ -183,7 +195,9 @@ public class DispatchService : IDispatchService
             DedupKey = request.DedupKey,
             CollapseKey = request.CollapseKey,
             IsWithinQuietHours = isWithinQuietHours,
-            QuietHoursEndUtc = quietHoursEndUtc
+            QuietHoursEndUtc = quietHoursEndUtc,
+            IsEscalation = request.IsEscalation,
+            EscalatedAlertsPierceQuietHours = escalatedPiercesQuietHours
         });
 
         var delivery = new NotificationDelivery
@@ -200,7 +214,10 @@ public class DispatchService : IDispatchService
             DedupKey = plan.DedupKey,
             CollapseKey = plan.CollapseKey,
             ExpiresAt = plan.ExpiresAt,
-            ScheduledFor = plan.ScheduledFor
+            ScheduledFor = plan.ScheduledFor,
+            // Stored, because the escalation sweep reads it back off the row to decide whether
+            // this copy may fan out again. It may not: see NotificationDelivery.IsEscalation.
+            IsEscalation = request.IsEscalation
         };
 
         await _unitOfWork.NotificationDeliveries.AddAsync(delivery);
@@ -367,7 +384,7 @@ public class DispatchService : IDispatchService
         // to perform the 120s repush (EscalationAction.Repush in NotificationDispatchWorker), so
         // returning early on Sent would silently turn every repush into a no-op.
         if (delivery.State is DeliveryState.Delivered or DeliveryState.DeadLettered
-            or DeliveryState.Undelivered or DeliveryState.Suppressed)
+            or DeliveryState.Undelivered or DeliveryState.Suppressed or DeliveryState.Answered)
             return;
 
         // Ahead of everything else, because it is the more fundamental reason to stop: a
@@ -536,6 +553,9 @@ public class DispatchService : IDispatchService
         DedupKey = $"{source.DedupKey}:{Guid.NewGuid():N}",
         CollapseKey = source.CollapseKey,
         ExpiresAt = source.ExpiresAt,
-        ScheduledFor = source.ScheduledFor
+        ScheduledFor = source.ScheduledFor,
+        // Carried, or a caregiver with two phones gets one row the ladder treats as an original
+        // and fans out from all over again. The flag describes the message, not the handset.
+        IsEscalation = source.IsEscalation
     };
 }

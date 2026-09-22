@@ -3,6 +3,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 using CardiTrack.UnitTests.Notifications;
 using NSubstitute;
 
@@ -14,6 +15,7 @@ public class UserServiceTests
     private readonly IUserRepository _users = Substitute.For<IUserRepository>();
     private readonly IOrganizationRepository _organizations = Substitute.For<IOrganizationRepository>();
     private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
+    private readonly IUserOrganizationRepository _memberships = Substitute.For<IUserOrganizationRepository>();
     private readonly IDeviceConnectionRepository _deviceConnections = Substitute.For<IDeviceConnectionRepository>();
 
     private readonly Guid _userId = Guid.NewGuid();
@@ -23,6 +25,7 @@ public class UserServiceTests
         _unitOfWork.Users.Returns(_users);
         _unitOfWork.Organizations.Returns(_organizations);
         _unitOfWork.UserCardiMembers.Returns(_links);
+        _unitOfWork.UserOrganizations.Returns(_memberships);
         _unitOfWork.DeviceConnections.Returns(_deviceConnections);
         _links.GetByUserIdAsync(_userId).Returns([]);
         _deviceConnections.AnyActiveForCardiMembersAsync(Arg.Any<IEnumerable<Guid>>()).Returns(false);
@@ -30,67 +33,13 @@ public class UserServiceTests
 
     private UserService CreateSut() => new(_unitOfWork, new NoOpNotificationGapResolver());
 
-    private static CreateUserRequest Request(bool? emailVerified) => new()
-    {
-        Auth0UserId = "auth0|abc",
-        Email = "carer@example.com",
-        Name = "Jane Carer",
-        OrganizationId = Guid.NewGuid(),
-        EmailVerified = emailVerified,
-    };
-
-    [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, false)]
-    [InlineData(null, false)] // claim absent from the token => unverified, not assumed true
-    public async Task CreateUser_StoresTheRealVerificationClaim(bool? claim, bool expected)
-    {
-        User? added = null;
-        await _users.AddAsync(Arg.Do<User>(u => added = u));
-
-        await CreateSut().CreateUserAsync(Request(claim));
-
-        Assert.NotNull(added);
-        Assert.Equal(expected, added!.EmailVerified);
-    }
-
-    [Fact]
-    public async Task CreateUser_ThrowsDuplicateEmail_WhenEmailOwnedByDifferentSub()
-    {
-        _users.GetByEmailAsync("carer@example.com").Returns(
-            new User { Auth0UserId = "auth0|someone-else", Email = "carer@example.com" });
-
-        await Assert.ThrowsAsync<DuplicateEmailException>(() =>
-            CreateSut().CreateUserAsync(Request(emailVerified: true)));
-
-        await _users.DidNotReceive().AddAsync(Arg.Any<User>());
-        await _unitOfWork.DidNotReceive().SaveChangesAsync();
-    }
-
-    [Fact]
-    public async Task CreateUser_ConcurrentInsert_EmailRace_ThrowsDuplicateEmail_InsteadOfRethrowing()
-    {
-        // The insert loses a race on the Email unique index: the pre-check missed
-        // (email unowned yet), but by the time SaveChanges runs a concurrent request
-        // has already claimed it under a different sub.
-        _users.GetByEmailAsync("carer@example.com").Returns(
-            _ => (User?)null,
-            _ => new User { Auth0UserId = "auth0|winner", Email = "carer@example.com" });
-        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(_ => throw new InvalidOperationException("unique violation"));
-
-        await Assert.ThrowsAsync<DuplicateEmailException>(() =>
-            CreateSut().CreateUserAsync(Request(emailVerified: true)));
-    }
-
-    [Fact]
-    public async Task CreateUser_Rethrows_WhenSaveFails_AndNoConcurrentOwnerExists()
-    {
-        _users.GetByEmailAsync("carer@example.com").Returns((User?)null);
-        _unitOfWork.SaveChangesAsync().Returns<Task<int>>(_ => throw new InvalidOperationException("db down"));
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            CreateSut().CreateUserAsync(Request(emailVerified: true)));
-    }
+    // The CreateUser_* tests that stood here are gone with the endpoint they covered
+    // (POST /onboarding/user, removed 2026-09-22). Nothing they asserted is untested: the
+    // verification claim, the duplicate-email refusal, the concurrent-insert race, the rethrow on
+    // an unrelated save failure and "the person who starts a family is its admin" all live on the
+    // surviving single-call path and are covered by OnboardingServiceTests. The three that pinned
+    // who may claim an organization are moot rather than merely moved — the seam they guarded no
+    // longer exists.
 
     [Fact]
     public async Task OnboardingStatus_SyncsVerificationWhenTheClaimFlips()

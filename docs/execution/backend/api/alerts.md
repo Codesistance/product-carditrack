@@ -44,7 +44,9 @@ Response shape differs from the design below in three ways, all because the impl
 - `severity` is the lowercase `AlertSeverity` name (`green`/`yellow`/`orange`/`red`), and the `status` a row *reports* is derived from `AcknowledgedDate` + `IsResolved` rather than stored — see `AlertStatus`. The `status` a caller *filters* by is `AlertStatusFilter`, which is the same three names plus `open`: a row sits in one lifecycle position, but a filter may name a set, and `open` names `new` and `acknowledged` together. `open` is the set `ComputeHealthStatus` colours the dashboard hero from, so a caller showing "current alerts" should ask for it rather than for everything — an unfiltered page is shared with resolved rows and can run out before an alert the hero is still speaking about.
 - Each summary carries `cardiMemberName`, `emergencyContactPhone` and `emergencyContactName` so the M1-10 card can render its avatar and Call action without a second round-trip. `cardiMemberPhotoUrl` is present but always null: no member photo storage exists yet. `aboutDate` is the civil day the alert is **about** — yesterday for `activity_decline` / `elevated_heart_rate` / `long_term_trend`, the night judged for `irregular_sleep`, the firing day otherwise. The list groups by `aboutDate`, not `triggeredAt`, so a quieter yesterday is not filed under Today because the worker noticed it this afternoon. `triggeredAt` remains the raise instant (relative "2 hours ago" on the card).
 
-**Still not implemented:** status transitions (`PUT .../status`), notes, photos, and history. The M1-11 "More Options" rows follow the same line: `View Detailed Activity Data` and `Share with Family` ship because they need no backend, while `Adjust Baseline`, `Add Note About This Alert` and `Book a Doctor Visit` are absent from the screen entirely — there is no baseline-override endpoint, no `AlertNote` store, and no clinician or consent architecture behind them. Per-CardiMember alert preferences remain unbuilt too, though quiet hours and per-category push muting now exist **at user scope** — see "Sensitivity and preferences" below. Acknowledgment takes no `note`/`actionTaken` — notes would need a schema change (`AlertNote`).
+**Still not implemented:** status transitions (`PUT .../status`), photos, and history. The M1-11 "More Options" rows follow the same line: `View Detailed Activity Data` and `Share with Family` ship because they need no backend, while `Adjust Baseline` and `Book a Doctor Visit` are absent from the screen entirely — there is no baseline-override endpoint, and no clinician or consent architecture behind either. Per-CardiMember alert preferences remain unbuilt too, though quiet hours and per-category push muting now exist **at user scope** — see "Sensitivity and preferences" below.
+
+**Notes on an alert now exist (2026-09-22)** — as *answers*, not as a separate notes feature. `Add Note About This Alert` is served by the acknowledge and close bodies below; there is no `AlertNote` store and the planned `PUT .../status` is not how an alert gets resolved. See "Answering an alert" below.
 
 Alert **summaries** also surface in the dashboard's `recentAlerts` array — see [health-data.md](health-data.md).
 
@@ -169,7 +171,9 @@ Same schema as `GET /api/v1/alerts`.
 
 ## GET `/api/v1/alerts/{alertId}`
 
-> **Implemented** — see "The M1-10 slice" above. The live payload is `AlertDetailResponse`: list fields plus `rule`, `reason`, `phone`, `acknowledgedByName`, a single `chart` (or null), `comparison`, and silence/no-morning context. It does not return `recommendedActions`, `notes`, or `photos`.
+> **Implemented** — see "The M1-10 slice" above. The live payload is `AlertDetailResponse`: list fields plus `rule`, `reason`, `phone`, `acknowledgedByName`, a single `chart` (or null), `comparison`, and silence/no-morning context. It does not return `photos`.
+>
+> Since 2026-09-22 it also returns **`responseOptions`** (the design's `recommendedActions`, renamed and re-scoped — see "Answering an alert"), **`responses`** (what the family did, newest first, each with who, when, the code's current label and the note), and **`resolvedByUserId`** / **`resolvedByName`**. The last pair is what tells "this cleared up on its own" from "Jane checked and it was nothing": `status` says `resolved` either way, and a screen that cannot tell them apart either credits the product for a person's work or credits a person for the product's. Null means CardiTrack resolved it.
 
 `reason` is a coarse key for the detail screen's icon — `activity`, `heart`, `sleep`, `device` or `monitoring` — derived from `rule`, falling back to `AlertType` for rows written before rule markers. `hrv_drop` and `elevated_zone_without_movement` take `heart`, `daytime_inactivity_block` takes `activity`, and `overnight_breathing_up` takes `monitoring` — the icons are hand-authored and there is no lungs artwork, so filing a breathing finding under the heart icon would name the wrong organ at a glance. It is deliberately *not* the severity: the banner already carries that in colour, so an icon repeating it says nothing new. Clients should fall back to `monitoring` for an unrecognised value rather than rendering no icon.
 
@@ -208,30 +212,28 @@ Heart-rate and sleep charts set none of these: a resting heart rate and a night'
     "currentTime": "11:00",
     "frequencyNote": "This is the first time this month."
   },
-  "recommendedActions": [
-    {
-      "id": "call",
-      "label": "Call now",
-      "actionType": "phone_call",
-      "isPrimary": true
-    },
-    {
-      "id": "check_in_person",
-      "label": "I'm checking in person",
-      "actionType": "acknowledge_with_note",
-      "isPrimary": false
-    },
-    {
-      "id": "dismiss_with_note",
-      "label": "He told me he'd sleep in today",
-      "actionType": "acknowledge_with_note",
-      "isPrimary": false
-    }
-  ],
+  "responseOptions": {
+    "acknowledge": [
+      { "code": "calling", "label": "Calling them now" },
+      { "code": "checking_in_person", "label": "Going to check in person" },
+      { "code": "contacting_someone", "label": "Asking someone nearby to check" },
+      { "code": "aware", "label": "I know about this" }
+    ],
+    "close": [
+      { "code": "awake_and_fine", "label": "Spoke to them — awake and fine" },
+      { "code": "slept_in", "label": "They slept in" },
+      { "code": "away_from_home", "label": "They're away from home" },
+      { "code": "not_wearing_watch", "label": "Watch wasn't on" },
+      { "code": "seen_by_clinician", "label": "Seen by a doctor or nurse" },
+      { "code": "handled_other", "label": "Dealt with another way" }
+    ]
+  },
+  "responses": [],
   "triggeredAt": "2026-03-09T09:00:00Z",
   "acknowledgedAt": null,
   "acknowledgedBy": null,
-  "notes": [],
+  "resolvedByUserId": null,
+  "resolvedByName": null,
   "photos": []
 }
 ```
@@ -244,43 +246,112 @@ Heart-rate and sleep charts set none of these: a resting heart rate and a night'
 
 ---
 
-## POST `/api/v1/alerts/{alertId}/acknowledge`
+## Answering an alert
 
-> **Partially implemented** — acknowledgment works and is idempotent; the optional note, `actionTaken`, and the family notification are not built.
+> **Implemented (2026-09-22).** The design's `actionTaken` is shipped as **`responseCode`**, and
+> the design's `recommendedActions` on the detail response is shipped as **`responseOptions`** —
+> renamed because they are the caregiver's answers, not the product's advice about what a family
+> should do for somebody's health.
 
-Acknowledge an alert with an optional note. Notifies all other family members that the alert has been handled.
+With one caregiver, "handled" was the whole answer. With several, the question the family has is
+*what was done and by whom*, so an alert takes answers: a canned line picked in one tap, a note in
+their own words, or both. Every answer is kept, per caregiver, and appended — a second caregiver
+answering adds a row and never overwrites one.
 
-**Priority:** P0 | **Auth Required:** Yes
+**Acknowledge and close answer different questions.** Acknowledging says somebody has this; the
+alert stays open. Closing says it is dealt with — it sets `IsResolved`, and because one unresolved
+alert per rule is the whole of the producer cooldown, closing **re-arms the rule**: a condition
+that has not really passed raises a fresh alert rather than staying silent behind somebody's note.
+That is why close is its own action and why it has no undo, while `DELETE .../acknowledge` still
+does.
 
-### Request Body
+Answering also **halts the escalation ladder** for that alert. Until now only a push ack did, so a
+caregiver who opened the app, read the alert and dealt with it was still escalated against.
+Outstanding deliveries move to the `Answered` state, which is terminal and distinct from
+`Delivered` — the latter is a claim that a specific handset posted `/delivered`, and the
+time-to-ack SLO is measured from exactly those.
+
+**Not built:** the in-app notification to every *other* caregiver. Nothing reads in-app deliveries
+back — there is no feed endpoint — so writing rows for one would be a write nothing surfaces. What
+the family sees is the answer on the alert itself, in `responses` on the detail response.
+
+### POST `/api/v1/alerts/{alertId}/acknowledge`
+
+**Priority:** P0 | **Auth Required:** Yes | **Audited:** `AcknowledgeAlert`
+
+The body and every field in it are optional; the bodiless form that shipped first still works and
+means the same thing. Idempotent on the alert — a second caregiver keeps the first one's
+`acknowledgedBy` — and still appends their answer.
 
 ```json
 {
-  "note": "Called, she had a cold but is fine.",
-  "actionTaken": "call"
+  "responseCode": "calling",
+  "note": "Ringing her now, no answer yet."
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `note` | string | No | Free-text note about action taken |
-| `actionTaken` | string | No | ID from `recommendedActions` (for analytics) |
+| `responseCode` | string | No | A code from this alert's `responseOptions.acknowledge` |
+| `note` | string | No | Free text, ≤ 500 characters. **AES-encrypted at rest** |
 
-### Response `200 OK`
+### POST `/api/v1/alerts/{alertId}/close`
+
+**Priority:** P0 | **Auth Required:** Yes | **Audited:** `CloseAlert`
+
+Same body, validated against `responseOptions.close`. Sets `IsResolved` and `resolvedByUserId`;
+first close wins the attribution and a second caregiver closing seconds later is not an error.
+An alert CardiTrack already resolved keeps its null resolver and still records the response —
+they may still want to say what happened.
+
+### Response `200 OK` (both)
 
 ```json
 {
   "alertId": "alert_xyz_001",
   "status": "acknowledged",
   "acknowledgedAt": "2026-03-09T11:15:00Z",
-  "acknowledgedBy": {
+  "acknowledgedByUserId": "usr_01J8K2...",
+  "resolvedByUserId": null,
+  "unreadCount": 3,
+  "response": {
+    "id": "resp_01J8K2...",
+    "kind": "acknowledge",
     "userId": "usr_01J8K2...",
-    "name": "Jane Doe"
+    "userName": "Jane Okafor",
+    "responseCode": "calling",
+    "responseLabel": "Calling them now",
+    "note": "Ringing her now, no answer yet.",
+    "createdAt": "2026-03-09T11:15:00Z"
   },
-  "note": "Called, she had a cold but is fine.",
-  "familyNotified": true
+  "familyNotified": 2
 }
 ```
+
+`response` is null when the caller sent no code and no note — a row saying only "somebody tapped
+something" would pad every alert's history with entries that answer nothing, and the alert's own
+`acknowledgedByUserId` already records the tap. `familyNotified` counts the *other* live
+caregivers on that member; zero is the ordinary answer for a family of one and is not a failure.
+
+### Errors
+
+| Code | Status | Description |
+|------|--------|-------------|
+| `ALERT_NOT_FOUND` | 404 | Not found, inactive, or on a member the caller may not read |
+| — | 400 | `responseCode` is not one this alert's rule offers. The message **names the codes that are**, so a stale client can re-sync rather than simply failing |
+
+### The catalogue
+
+`AlertResponseCatalog` keys two short lists per rule. Most rules share the generic ones; a rule
+gets its own only where the generic wording would fit worse than free text — `device_silence` is
+the clearest case, being the one rule whose alert is about the equipment rather than the person,
+so "spoke to them, they're fine" answers a question nobody asked about a flat battery. A rule with
+no entry, a caregiver's own alarm (`custom:{alarmId}`), and a row raised before rule markers
+existed all fall back to the generic lists rather than to an empty one: a sheet with no chips is a
+sheet that demands typing.
+
+Codes are stable and stored; labels are free to change, and a retired code reads back with a null
+`responseLabel` rather than disappearing.
 
 ---
 
@@ -490,4 +561,4 @@ The bulk PUT that carried channels / quiet hours / family routing is superseded 
 
 **Related:** [readme.md](readme.md) | [notifications.md](notifications.md) | [family.md](family.md) | [User Stories 3.1, 3.2, 3.3, 11.1–11.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** September 6, 2026
+**Last Updated:** September 22, 2026

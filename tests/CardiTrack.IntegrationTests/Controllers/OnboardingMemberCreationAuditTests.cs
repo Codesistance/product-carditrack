@@ -40,12 +40,12 @@ public class OnboardingMemberCreationAuditTests
         return new OnboardingController(
             _userContext,
             Substitute.For<ILogger<OnboardingController>>(),
-            Substitute.For<IOrganizationService>(),
             Substitute.For<IUserService>(),
             _members,
             Substitute.For<IOnboardingService>(),
             Substitute.For<IValidator<CreateOrganizationRequest>>(),
-            memberValidator)
+            memberValidator,
+            GuestFamilies(_organizationId))
         {
             ControllerContext = new ControllerContext { HttpContext = _httpContext }
         };
@@ -95,5 +95,18 @@ public class OnboardingMemberCreationAuditTests
             () => CreateSut().CreateCardiMember(Request()));
 
         Assert.Null(HandedOverId);
+    }
+
+    /// <summary>
+    /// Stands in for the provisioner that gives a guest a family on their first member. These
+    /// tests are about the member-creation path for somebody who already has one, so it simply
+    /// hands back the organization they are in.
+    /// </summary>
+    private static IGuestFamilyProvisioner GuestFamilies(Guid organizationId)
+    {
+        var provisioner = Substitute.For<IGuestFamilyProvisioner>();
+        provisioner.ResolveHomeOrganizationAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(organizationId);
+        return provisioner;
     }
 }

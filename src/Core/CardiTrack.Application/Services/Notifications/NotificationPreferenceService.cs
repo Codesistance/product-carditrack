@@ -14,6 +14,7 @@ public interface INotificationPreferenceService
         TimeOnly? quietHoursEnd,
         bool showDetailsOnLockScreen,
         string mutedCategoriesJson,
+        bool escalatedAlertsPierceQuietHours = false,
         CancellationToken ct = default);
 
     /// <summary>
@@ -24,6 +25,18 @@ public interface INotificationPreferenceService
     /// </summary>
     Task<(bool IsWithinQuietHours, DateTime? EndsAtUtc)> EvaluateQuietHoursAsync(
         Guid userId, string userTimeZoneId, DateTime utcNow, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether this person asked to be woken by an alert escalated to them — one nobody else
+    /// answered — inside their own quiet hours.
+    /// </summary>
+    /// <remarks>
+    /// False for a missing preference row, which is the same answer as an explicit no. Unlike the
+    /// quiet-hours evaluation above, the conservative default here is to hold rather than to send:
+    /// this is a second caregiver being escalated to, and waking somebody who never agreed to be
+    /// woken is the failure that teaches a family to mute the app.
+    /// </remarks>
+    Task<bool> EscalatedAlertsPierceQuietHoursAsync(Guid userId, CancellationToken ct = default);
 }
 
 public class NotificationPreferenceService : INotificationPreferenceService
@@ -45,6 +58,7 @@ public class NotificationPreferenceService : INotificationPreferenceService
         TimeOnly? quietHoursEnd,
         bool showDetailsOnLockScreen,
         string mutedCategoriesJson,
+        bool escalatedAlertsPierceQuietHours = false,
         CancellationToken ct = default)
     {
         var existing = await _unitOfWork.NotificationPreferences.GetByUserIdAsync(userId, ct);
@@ -53,6 +67,7 @@ public class NotificationPreferenceService : INotificationPreferenceService
         entity.QuietHoursStart = quietHoursStart;
         entity.QuietHoursEnd = quietHoursEnd;
         entity.ShowDetailsOnLockScreen = showDetailsOnLockScreen;
+        entity.EscalatedAlertsPierceQuietHours = escalatedAlertsPierceQuietHours;
         entity.MutedCategories = mutedCategoriesJson;
 
         if (existing is null)
@@ -62,6 +77,13 @@ public class NotificationPreferenceService : INotificationPreferenceService
 
         await _unitOfWork.SaveChangesAsync();
         return entity;
+    }
+
+    public async Task<bool> EscalatedAlertsPierceQuietHoursAsync(
+        Guid userId, CancellationToken ct = default)
+    {
+        var prefs = await _unitOfWork.NotificationPreferences.GetByUserIdAsync(userId, ct);
+        return prefs?.EscalatedAlertsPierceQuietHours ?? false;
     }
 
     public async Task<(bool, DateTime?)> EvaluateQuietHoursAsync(

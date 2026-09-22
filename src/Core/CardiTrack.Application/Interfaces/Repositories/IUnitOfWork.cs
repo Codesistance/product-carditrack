@@ -7,11 +7,15 @@ public interface IUnitOfWork : IDisposable
     ICardiMemberRepository CardiMembers { get; }
     ISubscriptionRepository Subscriptions { get; }
     IUserCardiMemberRepository UserCardiMembers { get; }
+    IUserOrganizationRepository UserOrganizations { get; }
+    ICaregiverInviteRepository CaregiverInvites { get; }
+    IFamilyJoinRequestRepository FamilyJoinRequests { get; }
     IDeviceConnectionRepository DeviceConnections { get; }
     IActivityLogRepository ActivityLogs { get; }
     IDeviceActivityLogRepository DeviceActivityLogs { get; }
     IDeviceRepository Devices { get; }
     IAlertRepository Alerts { get; }
+    IAlertResponseRepository AlertResponses { get; }
     IPatternBaselineRepository PatternBaselines { get; }
     IGranularMetricRepository GranularMetrics { get; }
     IDigestRepository Digests { get; }

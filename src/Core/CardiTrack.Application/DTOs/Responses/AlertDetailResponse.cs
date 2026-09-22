@@ -75,6 +75,28 @@ public class AlertDetailResponse
     public Guid? AcknowledgedByUserId { get; set; }
     public string? AcknowledgedByName { get; set; }
 
+    /// <summary>
+    /// Who closed it, or null when it is open — or when CardiTrack resolved it because the
+    /// condition passed. <see cref="Status"/> says "resolved" either way; this is what tells
+    /// "it cleared up" from "Jane checked and it was nothing".
+    /// </summary>
+    public Guid? ResolvedByUserId { get; set; }
+
+    /// <summary>Who closed it, by name, or null for a system resolution.</summary>
+    public string? ResolvedByName { get; set; }
+
+    /// <summary>
+    /// What the family did about this alert, newest first. Empty when nobody has answered.
+    /// </summary>
+    public List<AlertResponseEntry> Responses { get; set; } = [];
+
+    /// <summary>
+    /// The canned answers to offer for this alert's rule — one list for acknowledging, one for
+    /// closing. Never empty: a rule with no entry of its own gets the generic lists, because a
+    /// sheet with no chips is a sheet that demands typing.
+    /// </summary>
+    public AlertResponseOptionsResponse ResponseOptions { get; set; } = new();
+
     /// <summary>The two-column "current vs usual" block, or null when the rule has no scalars.</summary>
     public AlertComparisonResponse? Comparison { get; set; }
 

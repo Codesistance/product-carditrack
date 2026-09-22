@@ -16,6 +16,28 @@ public class NotificationPreference : BaseEntity
     public TimeOnly? QuietHoursEnd { get; set; }
 
     /// <summary>
+    /// Whether an alert escalated to this person — one nobody else answered — may wake them inside
+    /// their own quiet hours.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Defaults to false: hold it. That is deliberately the conservative reading, and it is not
+    /// the same rule the first caregiver gets. Somebody who added a member chose to be woken about
+    /// them, and red and Safety deliveries pierce their quiet hours unconditionally. A second
+    /// caregiver is being escalated <em>to</em>, often by a family they joined rather than started,
+    /// so they choose.
+    /// </para>
+    /// <para>
+    /// <strong>The cost of the default is real and is the point of the accept-flow question.</strong>
+    /// A family where everyone holds has no night cover: an unanswered red alert reaches nobody
+    /// until the ladder marks it undelivered. That is why accepting an invitation asks rather than
+    /// letting this default decide, and why the caregiver list shows a family whose cover is
+    /// missing.
+    /// </para>
+    /// </remarks>
+    public bool EscalatedAlertsPierceQuietHours { get; set; }
+
+    /// <summary>
     /// Opt-in richness (§7.1). Default false — the fail-closed default is content-free, so a
     /// null, unreadable or unmigrated value must resolve to <c>false</c>, never <c>true</c>.
     /// </summary>

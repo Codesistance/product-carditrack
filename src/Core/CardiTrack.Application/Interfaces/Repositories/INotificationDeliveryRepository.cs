@@ -17,6 +17,37 @@ public interface INotificationDeliveryRepository : IRepository<NotificationDeliv
     Task<NotificationDelivery?> GetByDedupKeyAsync(string dedupKey, CancellationToken ct = default);
 
     /// <summary>
+    /// Every delivery this alert's answer stopped — the rows sitting in
+    /// <see cref="Domain.Enums.DeliveryState.Answered"/>.
+    /// </summary>
+    Task<IReadOnlyList<NotificationDelivery>> GetAnsweredForAlertAsync(
+        Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The users who already have a delivery row for this alert, whatever state it is in.
+    /// </summary>
+    /// <remarks>
+    /// Asked by the fan-out rung, which exists to reach caregivers the original send did not.
+    /// Every state counts, including the terminal ones: somebody whose copy was suppressed or
+    /// dead-lettered was still addressed, and re-addressing them is a second push about one event
+    /// rather than the cover the rung is for.
+    /// </remarks>
+    Task<IReadOnlyList<Guid>> GetNotifiedUserIdsForAlertAsync(
+        Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every delivery about one alert that has not reached a terminal state — what is left to
+    /// stop when somebody answers the alert itself.
+    /// </summary>
+    /// <remarks>
+    /// Pending rows as well as Sent ones. A copy deferred to the end of a caregiver's quiet hours
+    /// is the one most worth catching: left alone it pushes at 06:00 about something dealt with
+    /// at midnight, which reads as the product not knowing what its own family has already done.
+    /// </remarks>
+    Task<IReadOnlyList<NotificationDelivery>> GetUnfinishedForAlertAsync(
+        Guid alertId, CancellationToken ct = default);
+
+    /// <summary>
     /// <c>Sent</c> rows at least <see cref="Services.Notifications.EscalationPolicy.RepushAfter"/> old —
     /// the earliest any stage can take an action, so this excludes rows too young to matter
     /// rather than returning every outstanding Sent row on every tick.

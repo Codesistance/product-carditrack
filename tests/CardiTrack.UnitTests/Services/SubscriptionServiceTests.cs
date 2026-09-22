@@ -52,13 +52,20 @@ public class SubscriptionServiceTests
     /// and allows 3 now — a trial above the tier ceiling becomes a downgrade cliff once limits
     /// are enforced, because the triallist cannot convert without deleting members.
     /// </summary>
+    /// <remarks>
+    /// The member ceiling and the caregiver ceiling are not the same promise and no longer move
+    /// together. Members are what is billed for; caregivers are who watches them, and capping
+    /// those at one was what made a family of one person — the thing family sharing exists to
+    /// undo. A family may now add caregivers up to the same twenty a business gets, on a trial
+    /// as on a paid plan, because a trial that cannot show the product working converts nobody.
+    /// </remarks>
     [Fact]
-    public async Task FamilyTrial_LimitsToThreeMembersAndOneUser()
+    public async Task FamilyTrial_LimitsMembersToThree_ButNotTheCaregiversWatchingThem()
     {
         var subscription = await CreateTrialAsync(OrganizationType.Family);
 
         Assert.Equal(3, subscription.MaxCardiMembers);
-        Assert.Equal(1, subscription.MaxUsers);
+        Assert.Equal(20, subscription.MaxUsers);
     }
 
     [Fact]

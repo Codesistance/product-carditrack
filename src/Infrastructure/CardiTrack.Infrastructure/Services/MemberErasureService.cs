@@ -126,6 +126,15 @@ public class MemberErasureService : IMemberErasureService
             await Step("NotificationMutes", _db.NotificationMutes.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("Notifications", _db.Notifications.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("AlertPreferences", _db.AlertPreferences.Where(x => x.CardiMemberId == cardiMemberId));
+            // Before Alerts, and it is the reason this list is ordered children-first: an
+            // answer carries the caregiver's own encrypted words about this member, and
+            // nothing in the schema would take it with the alert.
+            // An invitation names the member it shares. Left behind it is both a dangling
+            // reference and a live offer: redeeming one would write a fresh grant on somebody who
+            // no longer exists.
+            await Step("CaregiverInvites", _db.CaregiverInvites.Where(x => x.CardiMemberId == cardiMemberId));
+            await Step("AlertResponses", _db.AlertResponses
+                .Where(r => _db.Alerts.Any(a => a.Id == r.AlertId && a.CardiMemberId == cardiMemberId)));
             await Step("Alerts", _db.Alerts.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("PatternBaselines", _db.PatternBaselines.Where(x => x.CardiMemberId == cardiMemberId));
             await Step("RealtimeAssessments", _db.RealtimeAssessments.Where(x => x.CardiMemberId == cardiMemberId));

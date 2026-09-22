@@ -14,6 +14,9 @@ public class CardiTrackDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<CardiMember> CardiMembers => Set<CardiMember>();
     public DbSet<UserCardiMember> UserCardiMembers => Set<UserCardiMember>();
+    public DbSet<UserOrganization> UserOrganizations => Set<UserOrganization>();
+    public DbSet<CaregiverInvite> CaregiverInvites => Set<CaregiverInvite>();
+    public DbSet<FamilyJoinRequest> FamilyJoinRequests => Set<FamilyJoinRequest>();
 
     // Device & Health Data
     public DbSet<DeviceConnection> DeviceConnections => Set<DeviceConnection>();
@@ -23,6 +26,7 @@ public class CardiTrackDbContext : DbContext
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
     public DbSet<DeviceActivityLog> DeviceActivityLogs => Set<DeviceActivityLog>();
     public DbSet<Alert> Alerts => Set<Alert>();
+    public DbSet<AlertResponse> AlertResponses => Set<AlertResponse>();
     public DbSet<PatternBaseline> PatternBaselines => Set<PatternBaseline>();
     public DbSet<DeviceTypeSyncProfile> DeviceTypeSyncProfiles => Set<DeviceTypeSyncProfile>();
     public DbSet<GranularMetricHour> GranularMetricHours => Set<GranularMetricHour>();

@@ -150,10 +150,61 @@ public class AccountErasureCascadeTests : IAsyncLifetime
 
         var alert = await db.Alerts.SingleAsync(a => a.CardiMemberId == seed.SharedMemberId);
         Assert.Null(alert.AcknowledgedByUserId);
+        Assert.Null(alert.ResolvedByUserId);
 
         var questionnaire = await db.MemberQuestionnaires
             .SingleAsync(q => q.CardiMemberId == seed.SharedMemberId);
         Assert.Null(questionnaire.AnsweredByUserId);
+
+        // The answer itself stays. It says what was done about a member somebody else is still
+        // watching, and is what stops the next caregiver repeating a phone call this one made.
+        var response = await db.AlertResponses.SingleAsync(r => r.AlertId == alert.Id);
+        Assert.Null(response.UserId);
+        Assert.Equal("resting_day", response.ResponseCode);
+        Assert.NotNull(response.Note);
+    }
+
+    /// <summary>
+    /// The other direction: when the member goes, so does everything said about them — including
+    /// the caregiver's own encrypted words on their alerts.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_TakesTheAnswersOnAnErasedMembersAlertsWithThem()
+    {
+        var seed = await SeedAsync();
+
+        Guid removedAlertId;
+        using (var seeding = _services.CreateScope())
+        {
+            var seedDb = seeding.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var alert = new Alert
+            {
+                CardiMemberId = seed.RemovedMemberId,
+                Title = "No movement this morning",
+                Message = "No steps well after their usual wake time.",
+            };
+            seedDb.Alerts.Add(alert);
+            seedDb.AlertResponses.Add(new AlertResponse
+            {
+                AlertId = alert.Id,
+                UserId = seed.UserId,
+                Kind = AlertResponseKind.Close,
+                Note = "v1:0000000000000000:not-real-ciphertext",
+            });
+            await seedDb.SaveChangesAsync();
+            removedAlertId = alert.Id;
+        }
+
+        await EraseAsync(seed.UserId);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+        // Nothing in the schema would have taken these with the alert — no foreign key, by
+        // design — so an answer left behind would be encrypted health information about an erased
+        // person, orphaned and unfindable.
+        Assert.Equal(0, await db.AlertResponses.CountAsync(r => r.AlertId == removedAlertId));
+        Assert.Equal(0, await db.Alerts.CountAsync(a => a.Id == removedAlertId));
     }
 
     /// <summary>
@@ -178,6 +229,191 @@ public class AccountErasureCascadeTests : IAsyncLifetime
         Assert.Equal(1, await db.MetricAlarms.CountAsync(
             x => x.OrganizationId == organizationId && x.CardiMemberId == null));
     }
+
+    /// <summary>
+    /// A membership is a row about a person, so it goes with them — every family they were in
+    /// forgets them at once, the home one included.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_RemovesEveryFamilyMembershipTheyHeld()
+    {
+        var (organizationId, leaving, staying) = await SeedSharedHouseholdAsync();
+        Guid otherFamilyId;
+        using (var seedScope = _services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var otherFamily = new Organization { Name = "Osei family", Type = OrganizationType.Family };
+            seedDb.Organizations.Add(otherFamily);
+            otherFamilyId = otherFamily.Id;
+            seedDb.UserOrganizations.AddRange(
+                new UserOrganization { UserId = leaving, OrganizationId = organizationId, Role = UserRole.Admin },
+                new UserOrganization { UserId = leaving, OrganizationId = otherFamily.Id, Role = UserRole.Member },
+                new UserOrganization { UserId = staying, OrganizationId = organizationId, Role = UserRole.Member });
+            await seedDb.SaveChangesAsync();
+        }
+
+        await EraseAsync(leaving);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.UserOrganizations.CountAsync(m => m.UserId == leaving));
+        Assert.Equal(1, await db.UserOrganizations.CountAsync(m => m.UserId == staying));
+        // The family they had merely joined is untouched by their leaving.
+        Assert.Equal(1, await db.Organizations.CountAsync(o => o.Id == otherFamilyId));
+    }
+
+    /// <summary>
+    /// With family sharing, "nobody left in it" has to count members as well as people who call
+    /// it home: a sibling who joined this family without starting one keeps it — and its
+    /// subscription — alive when the person who started it closes their account.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_KeepsTheOrganisationSomeoneElseIsStillAMemberOf()
+    {
+        Guid organizationId, leaving, joiner;
+        using (var seedScope = _services.CreateScope())
+        {
+            var seedDb = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var organization = new Organization { Name = "Reid family", Type = OrganizationType.Family };
+            var elsewhere = new Organization { Name = "Osei family", Type = OrganizationType.Family };
+            seedDb.Organizations.AddRange(organization, elsewhere);
+            var leavingUser = NewUser(organization.Id, "Anna Reid");
+            var joinerUser = NewUser(elsewhere.Id, "Kofi Osei");   // home is the other family
+            seedDb.Users.AddRange(leavingUser, joinerUser);
+            seedDb.UserOrganizations.AddRange(
+                new UserOrganization { UserId = leavingUser.Id, OrganizationId = organization.Id, Role = UserRole.Admin },
+                new UserOrganization { UserId = joinerUser.Id, OrganizationId = elsewhere.Id, Role = UserRole.Admin },
+                new UserOrganization { UserId = joinerUser.Id, OrganizationId = organization.Id, Role = UserRole.Member });
+            seedDb.Subscriptions.Add(new Subscription
+            {
+                OrganizationId = organization.Id,
+                Tier = SubscriptionTier.Complete,
+                Status = SubscriptionStatus.Trial,
+                StartDate = DateTime.UtcNow.AddDays(-10),
+            });
+            await seedDb.SaveChangesAsync();
+            (organizationId, leaving, joiner) = (organization.Id, leavingUser.Id, joinerUser.Id);
+        }
+
+        await EraseAsync(leaving);
+
+        using var scope = _services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(0, await db.Users.CountAsync(u => u.Id == leaving));
+        Assert.Equal(1, await db.Organizations.CountAsync(o => o.Id == organizationId));
+        Assert.Equal(1, await db.Subscriptions.CountAsync(x => x.OrganizationId == organizationId));
+        Assert.Equal(1, await db.UserOrganizations.CountAsync(
+            m => m.UserId == joiner && m.OrganizationId == organizationId));
+    }
+
+    /// <summary>
+    /// Two families watching one person hold two independent records with nothing linking them, so
+    /// erasing through one leaves the other intact — holding her health data, and unfindable. The
+    /// provider's own subject id is the only thing both records share, and the report names what
+    /// it found rather than quietly reaching into a family that never asked to be forgotten.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAnAccount_NamesTheSameWearersRecordInAnotherFamily()
+    {
+        Guid leaving, survivingMemberId;
+        using (var seedScope = _services.CreateScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+
+            var mine = new Organization { Name = "Okafor family", Type = OrganizationType.Family };
+            var theirs = new Organization { Name = "Adeyemi family", Type = OrganizationType.Family };
+            db.Organizations.AddRange(mine, theirs);
+
+            var me = NewUser(mine.Id, "Jane Okafor");
+            var them = NewUser(theirs.Id, "Bisi Adeyemi");
+            db.Users.AddRange(me, them);
+
+            // The same person, recorded twice — once by each family that watches her.
+            var myRecord = NewMember(mine.Id, "Margaret");
+            var theirRecord = NewMember(theirs.Id, "Margaret");
+            db.CardiMembers.AddRange(myRecord, theirRecord);
+
+            db.UserCardiMembers.AddRange(
+                new UserCardiMember { UserId = me.Id, CardiMemberId = myRecord.Id },
+                new UserCardiMember { UserId = them.Id, CardiMemberId = theirRecord.Id });
+
+            // One wearer, one Google account, two connections.
+            const string wearer = "users/margaret-okafor";
+            db.DeviceConnections.AddRange(
+                NewConnection(myRecord.Id, wearer),
+                NewConnection(theirRecord.Id, wearer));
+
+            await db.SaveChangesAsync();
+            (leaving, survivingMemberId) = (me.Id, theirRecord.Id);
+        }
+
+        var report = await EraseAsync(leaving);
+
+        Assert.Equal([survivingMemberId], report.DuplicatesElsewhere);
+        Assert.Empty(report.UncorrelatedMembers);
+
+        // Named, not erased: that record belongs to a family this caregiver has no authority over.
+        using var check = _services.CreateScope();
+        var checkDb = check.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+        Assert.Equal(1, await checkDb.CardiMembers.CountAsync(m => m.Id == survivingMemberId));
+    }
+
+    /// <summary>
+    /// A member who never had a device connected cannot be correlated at all — there is no subject
+    /// id to match on. Reported separately rather than counted as "no duplicates", because saying
+    /// we looked and found none when nothing was looked at is the failure this finding exists to
+    /// prevent.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWithNoDeviceEverConnected_IsReportedAsUncheckable()
+    {
+        var seed = await SeedAsync();
+
+        var report = await EraseAsync(seed.UserId);
+
+        Assert.NotEmpty(report.UncorrelatedMembers);
+        Assert.Subset(report.MembersErased.ToHashSet(), report.UncorrelatedMembers.ToHashSet());
+        Assert.Empty(report.DuplicatesElsewhere);
+    }
+
+    /// <summary>A connection for a member nobody else shares finds nothing, and says so plainly.</summary>
+    [Fact]
+    public async Task ASoleRecordOfAWearer_HasNoDuplicatesAnywhere()
+    {
+        Guid leaving;
+        using (var seedScope = _services.CreateScope())
+        {
+            var db = seedScope.ServiceProvider.GetRequiredService<CardiTrackDbContext>();
+            var organization = new Organization { Name = "Okafor family", Type = OrganizationType.Family };
+            db.Organizations.Add(organization);
+
+            var me = NewUser(organization.Id, "Jane Okafor");
+            db.Users.Add(me);
+
+            var member = NewMember(organization.Id, "Margaret");
+            db.CardiMembers.Add(member);
+            db.UserCardiMembers.Add(new UserCardiMember { UserId = me.Id, CardiMemberId = member.Id });
+            db.DeviceConnections.Add(NewConnection(member.Id, "users/only-one"));
+
+            await db.SaveChangesAsync();
+            leaving = me.Id;
+        }
+
+        var report = await EraseAsync(leaving);
+
+        Assert.Empty(report.DuplicatesElsewhere);
+        Assert.Empty(report.UncorrelatedMembers);
+    }
+
+    private static DeviceConnection NewConnection(Guid cardiMemberId, string healthUserId) => new()
+    {
+        CardiMemberId = cardiMemberId,
+        DeviceType = DeviceType.Fitbit,
+        DeviceName = "Margaret's watch",
+        ConnectionStatus = ConnectionStatus.Connected,
+        HealthUserId = healthUserId,
+        IsActive = true,
+    };
 
     /// <summary>Two caregivers sharing one household, so the organisation has somebody left.</summary>
     private async Task<(Guid OrganizationId, Guid Leaving, Guid Staying)> SeedSharedHouseholdAsync()
@@ -521,12 +757,23 @@ public class AccountErasureCascadeTests : IAsyncLifetime
 
         // On the shared member, so the assertion is that a surviving member keeps their alert
         // with the departing caregiver's name taken off it.
-        db.Alerts.Add(new Alert
+        var sharedAlert = new Alert
         {
             CardiMemberId = shared.Id,
             Title = "Quieter than usual",
             Message = "Fewer steps than their usual pattern.",
             AcknowledgedByUserId = leaving.Id,
+            IsResolved = true,
+            ResolvedByUserId = leaving.Id,
+        };
+        db.Alerts.Add(sharedAlert);
+        db.AlertResponses.Add(new AlertResponse
+        {
+            AlertId = sharedAlert.Id,
+            UserId = leaving.Id,
+            Kind = AlertResponseKind.Close,
+            ResponseCode = "resting_day",
+            Note = "v1:0000000000000000:not-real-ciphertext",
         });
         db.MemberQuestionnaires.Add(new MemberQuestionnaire
         {

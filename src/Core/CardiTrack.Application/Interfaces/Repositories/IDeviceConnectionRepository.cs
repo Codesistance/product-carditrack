@@ -95,4 +95,5 @@ public interface IDeviceConnectionRepository : IRepository<DeviceConnection>
     /// must never resurrect collection for a paused or removed member.
     /// </summary>
     Task<IEnumerable<DeviceConnection>> GetSyncableByHealthUserIdAsync(string healthUserId);
+
 }

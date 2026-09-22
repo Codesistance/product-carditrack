@@ -99,7 +99,7 @@ public class AccountErasureService : IAccountErasureService
             _logger.LogInformation(
                 "Account erasure for {UserId} found no user row; treating as already complete.",
                 userId);
-            return new AccountErasureReport(userId, [], [], [], [], []);
+            return new AccountErasureReport(userId, [], [], [], [], [], [], []);
         }
 
         var auth0UserId = user.Auth0UserId;
@@ -111,6 +111,10 @@ public class AccountErasureService : IAccountErasureService
         var unrevoked = new List<Guid>();
         var erased = new List<Guid>();
         var released = toRelease.ToList();
+
+        // Asked now, before anything is deleted: the correlation lives on the device connections,
+        // and after the cascade there is nothing left to correlate with.
+        var (duplicatesElsewhere, uncorrelated) = await FindDuplicatesElsewhereAsync(toErase, ct);
 
         // The members about to go. Named as a set because the organisation check below has to
         // ignore them: they still have rows at that point in the loop's own transaction history,
@@ -173,11 +177,17 @@ public class AccountErasureService : IAccountErasureService
             // every organisation-scoped read rather than merely unwatched by this caregiver.
             // Asked inside the transaction, and as late as possible, because afterwards the
             // question cannot be asked at all.
-            var organizationSpent =
-                !await _db.Users.AnyAsync(
-                    u => u.OrganizationId == user.OrganizationId && u.Id != userId, rest)
+            // A guest has no home organisation to spend. Otherwise it is spent only when nobody else
+            // calls it home, nobody else is a member of it (family sharing), and no member record
+            // still belongs to it.
+            var homeOrganizationId = user.OrganizationId ?? Guid.Empty;
+            var organizationSpent = user.OrganizationId.HasValue
+                && !await _db.Users.AnyAsync(
+                    u => u.OrganizationId == homeOrganizationId && u.Id != userId, rest)
+                && !await _db.UserOrganizations.AnyAsync(
+                    uo => uo.OrganizationId == homeOrganizationId && uo.UserId != userId && uo.IsActive, rest)
                 && !await _db.CardiMembers.AnyAsync(
-                    m => m.OrganizationId == user.OrganizationId && !toEraseSet.Contains(m.Id), rest);
+                    m => m.OrganizationId == homeOrganizationId && !toEraseSet.Contains(m.Id), rest);
 
             async Task Step<T>(string table, IQueryable<T> query) where T : class =>
                 rows.Add((table, await query.ExecuteDeleteAsync(rest)));
@@ -188,6 +198,15 @@ public class AccountErasureService : IAccountErasureService
             rows.Add(("Alerts.AcknowledgedByUserId (nulled)", await _db.Alerts
                 .Where(a => a.AcknowledgedByUserId == userId)
                 .ExecuteUpdateAsync(s => s.SetProperty(a => a.AcknowledgedByUserId, (Guid?)null), rest)));
+            rows.Add(("Alerts.ResolvedByUserId (nulled)", await _db.Alerts
+                .Where(a => a.ResolvedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.ResolvedByUserId, (Guid?)null), rest)));
+            // The note stays: it says what was done about a member somebody else may still be
+            // watching, and is the record that stops the next caregiver repeating a phone call
+            // this one already made. Only the name goes.
+            rows.Add(("AlertResponses.UserId (nulled)", await _db.AlertResponses
+                .Where(r => r.UserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.UserId, (Guid?)null), rest)));
             rows.Add(("MemberQuestionnaires.AnsweredByUserId (nulled)", await _db.MemberQuestionnaires
                 .Where(q => q.AnsweredByUserId == userId)
                 .ExecuteUpdateAsync(s => s.SetProperty(q => q.AnsweredByUserId, (Guid?)null), rest)));
@@ -201,6 +220,27 @@ public class AccountErasureService : IAccountErasureService
             await Step("MemberChatTurns", _db.MemberChatTurns
                 .Where(t => _db.MemberChatSessions.Any(s => s.Id == t.SessionId && s.UserId == userId)));
             await Step("MemberChatSessions", _db.MemberChatSessions.Where(s => s.UserId == userId));
+
+            // Rows this account owns. Both carry a required user id, so neither can be nulled the
+            // way the alert's acknowledger is — and both are live offers as well as dangling
+            // references. An invitation this account sent would still be redeemable into a family
+            // it is no longer in; a join request it made would still sit in somebody's queue
+            // waiting on an answer for a person who no longer exists.
+            await Step("CaregiverInvites", _db.CaregiverInvites.Where(i => i.CreatedByUserId == userId));
+            await Step("FamilyJoinRequests",
+                _db.FamilyJoinRequests.Where(r => r.RequestedByUserId == userId));
+
+            // Rows this account only *touched*. These belong to other people — somebody else's
+            // request that this admin answered, somebody else's invitation that this account
+            // accepted — so the name comes off and the row stays, the same rule row 40 applies to
+            // an alert's acknowledger. Deleting them would erase another person's record of what
+            // happened to them.
+            rows.Add(("FamilyJoinRequests.ResolvedByUserId (nulled)", await _db.FamilyJoinRequests
+                .Where(r => r.ResolvedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.ResolvedByUserId, (Guid?)null), rest)));
+            rows.Add(("CaregiverInvites.AcceptedByUserId (nulled)", await _db.CaregiverInvites
+                .Where(i => i.AcceptedByUserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.AcceptedByUserId, (Guid?)null), rest)));
 
             // RequestedByUserId is required, so these cannot be nulled the way an
             // acknowledgement can. The member's 48-hour re-pull cooldown resets — a smaller
@@ -217,6 +257,7 @@ public class AccountErasureService : IAccountErasureService
             await Step("Reports", _db.Reports.Where(x => x.OwnerUserId == userId));
             await Step("CardiMemberCreationKeys", _db.CardiMemberCreationKeys.Where(x => x.UserId == userId));
             await Step("UserCardiMembers", _db.UserCardiMembers.Where(x => x.UserId == userId));
+            await Step("UserOrganizations", _db.UserOrganizations.Where(x => x.UserId == userId));
 
             if (organizationSpent)
             {
@@ -229,23 +270,23 @@ public class AccountErasureService : IAccountErasureService
                 await Step("MetricAlarmStates (account alarms)", _db.MetricAlarmStates
                     .Where(s => _db.MetricAlarms.Any(a =>
                         a.Id == s.MetricAlarmId
-                        && a.OrganizationId == user.OrganizationId
+                        && a.OrganizationId == homeOrganizationId
                         && a.CardiMemberId == null)));
                 await Step("MetricAlarms (account rows)", _db.MetricAlarms
-                    .Where(a => a.OrganizationId == user.OrganizationId && a.CardiMemberId == null));
+                    .Where(a => a.OrganizationId == homeOrganizationId && a.CardiMemberId == null));
 
                 // Trial and plan records, not a billing ledger: no payment has ever been taken
                 // (Stripe is R2, unbuilt), so there is nothing here that UK tax law requires be
                 // kept. Revisit when billing ships — an invoice is not a subscription row, and
                 // whatever holds one will need an exception of its own.
                 await Step("Subscriptions", _db.Subscriptions
-                    .Where(s => s.OrganizationId == user.OrganizationId));
+                    .Where(s => s.OrganizationId == homeOrganizationId));
             }
 
             await Step("Users", _db.Users.Where(u => u.Id == userId));
 
             if (organizationSpent)
-                await Step("Organizations", _db.Organizations.Where(o => o.Id == user.OrganizationId));
+                await Step("Organizations", _db.Organizations.Where(o => o.Id == homeOrganizationId));
 
             await transaction.CommitAsync(rest);
         }
@@ -270,13 +311,95 @@ public class AccountErasureService : IAccountErasureService
         if (!string.IsNullOrWhiteSpace(auth0UserId))
             await _auth0.TryDeleteUserAsync(auth0UserId, CancellationToken.None);
 
+        // Warned rather than logged flat, because both of these are somebody's unfinished business:
+        // a duplicate still holding the wearer's data, or a record nothing could identify a person
+        // behind. Neither is an error in this cascade — they are work the runbook has to pick up.
+        if (duplicatesElsewhere.Count > 0)
+        {
+            _logger.LogWarning(
+                "Account erasure for {UserId} left {Count} record(s) of the same wearer in other "
+                + "families untouched: {Duplicates}. Erasing them is a separate decision — they "
+                + "belong to families that did not ask to be forgotten.",
+                userId, duplicatesElsewhere.Count, duplicatesElsewhere);
+        }
+
+        if (uncorrelated.Count > 0)
+        {
+            _logger.LogWarning(
+                "Account erasure for {UserId} could not look for duplicates of {Count} member(s): "
+                + "{Members} never had a device connected, so nothing identifies the person behind "
+                + "the record.",
+                userId, uncorrelated.Count, uncorrelated);
+        }
+
         _logger.LogInformation(
             "Account erasure for {UserId} complete. Members erased: {Erased}, released: " +
             "{Released}, tables touched: {Tables}, unrevoked grants: {Unrevoked}, " +
             "orphaned objects: {Orphaned}.",
             userId, erased.Count, released.Count, rows.Count, unrevoked.Count, orphaned.Count);
 
-        return new AccountErasureReport(userId, erased, released, rows, unrevoked, orphaned);
+        return new AccountErasureReport(
+            userId, erased, released, rows, unrevoked, orphaned, duplicatesElsewhere, uncorrelated);
+    }
+
+    /// <summary>
+    /// Records of the same wearer that this erasure will not touch, and the members it could not
+    /// even check.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A CardiMember is unique as created, so two families watching one person hold two
+    /// independent records with nothing linking them. Erasing through one family therefore leaves
+    /// the other intact, holding her health data, and — without this — unfindable. The provider's
+    /// own subject id is the only thing the two records share, so it is what the correlation runs
+    /// on.
+    /// </para>
+    /// <para>
+    /// <strong>It reports rather than erases.</strong> The other record belongs to a family that
+    /// did not ask to be forgotten, and whose members this caregiver has no authority over.
+    /// Deleting it here would be this cascade reaching into a household it was never given. What
+    /// the report gives instead is the one thing the manual runbook cannot reconstruct afterwards:
+    /// which records exist and where.
+    /// </para>
+    /// <para>
+    /// A member with no device ever connected cannot be correlated at all — there is no subject id
+    /// to match on — and is named separately rather than silently counted as "no duplicates".
+    /// Saying "we looked and found none" when nothing was looked at is the failure this whole
+    /// finding exists to prevent.
+    /// </para>
+    /// </remarks>
+    private async Task<(IReadOnlyList<Guid> Elsewhere, IReadOnlyList<Guid> Uncorrelated)>
+        FindDuplicatesElsewhereAsync(IReadOnlyCollection<Guid> memberIds, CancellationToken ct)
+    {
+        if (memberIds.Count == 0)
+            return ([], []);
+
+        // Every connection these members have ever had, live or not: a wearer who disconnected one
+        // watch and paired another is the same person, and looking only at active rows would miss
+        // the duplicate that matters.
+        var subjectsByMember = await _db.DeviceConnections
+            .AsNoTracking()
+            .Where(dc => memberIds.Contains(dc.CardiMemberId) && dc.HealthUserId != null)
+            .Select(dc => new { dc.CardiMemberId, HealthUserId = dc.HealthUserId! })
+            .ToListAsync(ct);
+
+        var subjectIds = subjectsByMember.Select(x => x.HealthUserId).Distinct().ToList();
+        var correlatable = subjectsByMember.Select(x => x.CardiMemberId).ToHashSet();
+        var uncorrelated = memberIds.Where(id => !correlatable.Contains(id)).ToList();
+
+        if (subjectIds.Count == 0)
+            return ([], uncorrelated);
+
+        var elsewhere = await _db.DeviceConnections
+            .AsNoTracking()
+            .Where(dc => dc.HealthUserId != null
+                         && subjectIds.Contains(dc.HealthUserId)
+                         && !memberIds.Contains(dc.CardiMemberId))
+            .Select(dc => dc.CardiMemberId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        return (elsewhere, uncorrelated);
     }
 
     /// <summary>

@@ -286,16 +286,186 @@ public class NotificationDispatchWorkerTests
         options.Get(nameof(NotificationDispatchWorker))
             .Returns(new WorkerOptions { CronExpression = "*/30 * * * * *" });
 
-        return new TestableDispatchWorker(options, scopeFactory, NullLogger<NotificationDispatchWorker>.Instance);
+        return new TestableDispatchWorker(
+            options, scopeFactory, NullLogger<NotificationDispatchWorker>.Instance,
+            new FixedClock(UtcNow));
     }
 
     /// <summary>Exposes the protected tick, so the test drives one sweep rather than the cron loop.</summary>
     private sealed class TestableDispatchWorker(
         IOptionsMonitor<WorkerOptions> options,
         IServiceScopeFactory scopeFactory,
-        Microsoft.Extensions.Logging.ILogger<NotificationDispatchWorker> logger)
-        : NotificationDispatchWorker(options, scopeFactory, logger)
+        Microsoft.Extensions.Logging.ILogger<NotificationDispatchWorker> logger,
+        TimeProvider timeProvider)
+        : NotificationDispatchWorker(options, scopeFactory, logger, timeProvider)
     {
         public Task RunOnceAsync(CancellationToken ct) => ExecuteJobAsync(ct);
+    }
+
+    // ── Fan-out to the rest of the family ──────────────────────────────────
+    //
+    // The t+300s rung, which found nobody for as long as a family was one person. It is the
+    // whole reason the ladder has a third step, so what it sends is worth pinning.
+
+    private static readonly DateTime UtcNow = new(2026, 8, 11, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>A still clock, so "301 seconds ago" stays 301 seconds ago for the whole tick.</summary>
+    private sealed class FixedClock(DateTime utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(utcNow, TimeSpan.Zero);
+    }
+
+    private readonly IUserCardiMemberRepository _links = Substitute.For<IUserCardiMemberRepository>();
+
+    /// <summary>
+    /// A red alert sent 301 seconds ago and still unacknowledged — due for the fan-out rung on
+    /// this tick — with <paramref name="others"/> as the member's other caregivers.
+    /// </summary>
+    private (NotificationDelivery Original, Guid MemberId) StageFanOutDue(params UserCardiMember[] others)
+    {
+        var memberId = Guid.NewGuid();
+        var original = new NotificationDelivery
+        {
+            Id = Guid.NewGuid(),
+            SourceType = DeliverySourceType.Alert,
+            SourceId = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            CardiMemberId = memberId,
+            Category = DeliveryCategory.Health,
+            Severity = AlertSeverity.Red,
+            AlertType = AlertType.HeartRate,
+            Channel = DeliveryChannel.Push,
+            State = DeliveryState.Sent,
+            DedupKey = "alert:abc",
+            CollapseKey = "alert-abc",
+            SentDate = UtcNow.AddSeconds(-301),
+            ExpiresAt = UtcNow.AddMinutes(25),
+            EscalationStage = EscalationStage.Repushed
+        };
+
+        _unitOfWork.UserCardiMembers.Returns(_links);
+        _deliveries.GetDueForEscalationAsync(Arg.Any<DateTime>(), Arg.Any<CancellationToken>())
+            .Returns([original]);
+        _links.GetByCardiMemberIdAsync(memberId).Returns(others);
+
+        // Who the t+0 send already reached. Defaults to the original's own recipient, which is
+        // the minimum true statement about any alert that got this far.
+        _deliveries.GetNotifiedUserIdsForAlertAsync(original.SourceId, Arg.Any<CancellationToken>())
+            .Returns([original.UserId]);
+
+        return (original, memberId);
+    }
+
+    [Fact]
+    public async Task FanOut_CopiesEveryOtherCaregiverWhoReceivesAlerts_MarkedAsAnEscalation()
+    {
+        var sibling = Guid.NewGuid();
+        var (original, memberId) = StageFanOutDue(
+            new UserCardiMember { UserId = sibling, IsActive = true, ReceiveAlerts = true });
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _dispatch.Received(1).EnqueueAsync(
+            Arg.Is<EnqueueRequest>(r =>
+                r.UserId == sibling
+                && r.CardiMemberId == memberId
+                && r.Severity == AlertSeverity.Red
+                // Marked as an escalation, which is the whole of what lets the sibling's own
+                // quiet hours decide whether this wakes them rather than the owner's.
+                && r.IsEscalation
+                // And carrying the alert type, so the copy can say what it is about — without it
+                // the second caregiver gets a push more urgent and less informative than the first.
+                && r.AlertType == original.AlertType),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FanOut_SkipsTheOriginalRecipientAndAnyoneWhoOptedOut()
+    {
+        var optedOut = Guid.NewGuid();
+        var inactive = Guid.NewGuid();
+        var (original, _) = StageFanOutDue();
+
+        _links.GetByCardiMemberIdAsync(original.CardiMemberId!.Value).Returns(
+        [
+            new UserCardiMember { UserId = original.UserId, IsActive = true, ReceiveAlerts = true },
+            new UserCardiMember { UserId = optedOut, IsActive = true, ReceiveAlerts = false },
+            new UserCardiMember { UserId = inactive, IsActive = false, ReceiveAlerts = true },
+        ]);
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        // Nobody: the owner already has it, and the other two said no in the two ways there are.
+        await _dispatch.DidNotReceive().EnqueueAsync(Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FanOut_SaysNothingToACaregiverTheAlertAlreadyReached()
+    {
+        var sibling = Guid.NewGuid();
+        var (original, _) = StageFanOutDue(
+            new UserCardiMember { UserId = sibling, IsActive = true, ReceiveAlerts = true });
+
+        // The t+0 send addresses every caregiver with ReceiveAlerts, not one primary recipient —
+        // so by the time this rung fires the sibling already has the alert.
+        _deliveries.GetNotifiedUserIdsForAlertAsync(original.SourceId, Arg.Any<CancellationToken>())
+            .Returns([original.UserId, sibling]);
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        // Without this, each of the N original rows reaches this rung and copies to the other
+        // N-1: a household of four turns one alert into twelve extra pushes about something
+        // everybody was already told about.
+        await _dispatch.DidNotReceive().EnqueueAsync(Arg.Any<EnqueueRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FanOut_StillReachesACaregiverAddedAfterTheAlertFired()
+    {
+        var added = Guid.NewGuid();
+        var (original, _) = StageFanOutDue(
+            new UserCardiMember { UserId = added, IsActive = true, ReceiveAlerts = true });
+
+        // Nobody but the original recipient was addressed at t+0, because this one was not a
+        // caregiver yet. This is the case the rung actually exists for, and it must still fire.
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        await _dispatch.Received(1).EnqueueAsync(
+            Arg.Is<EnqueueRequest>(r => r.UserId == added && r.IsEscalation),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FanOut_GivesEachCopyItsOwnDedupKey_SoOneFamilyMemberDoesNotDedupeAnother()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var (original, _) = StageFanOutDue(
+            new UserCardiMember { UserId = first, IsActive = true, ReceiveAlerts = true },
+            new UserCardiMember { UserId = second, IsActive = true, ReceiveAlerts = true });
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        // Shared keys would mean the first sibling's copy silently swallowed the second's — a
+        // family of four with one notified, and no failure anywhere to say so.
+        await _dispatch.Received(1).EnqueueAsync(
+            Arg.Is<EnqueueRequest>(r => r.DedupKey == $"{original.DedupKey}:escalated:{first}"),
+            Arg.Any<CancellationToken>());
+        await _dispatch.Received(1).EnqueueAsync(
+            Arg.Is<EnqueueRequest>(r => r.DedupKey == $"{original.DedupKey}:escalated:{second}"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task FanOut_RecordsTheRungBeforeSending_SoTheNextTickDoesNotFanOutAgain()
+    {
+        var (original, _) = StageFanOutDue(
+            new UserCardiMember { UserId = Guid.NewGuid(), IsActive = true, ReceiveAlerts = true });
+
+        await CreateWorker().RunOnceAsync(CancellationToken.None);
+
+        // The stage is committed before the copies go out. A tick that crashed halfway would
+        // otherwise re-enter here every 30 seconds and push the same family repeatedly.
+        Assert.Equal(EscalationStage.FannedOut, original.EscalationStage);
     }
 }

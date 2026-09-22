@@ -1,6 +1,11 @@
 # Family Collaboration API
 
-> **Status: Planned — not yet implemented.** None of the endpoints below exist yet. See "Implemented today" for current coverage.
+> **Status: partly implemented (2026-09-22).** A family is now a thing people join, leave and are
+> admitted to, and the endpoints for that are live — see "Implemented today". The shared-notes and
+> audit-log read endpoints below remain **planned**, and the `/api/v1/family-members/*` routes in
+> this doc were never built: the shipped surface uses `/api/v1/families/*` and
+> `/api/v1/cardimembers/{id}/caregiver-invites`, described below. The planned contracts are kept
+> as design intent, and where the shipped one differs it is the shipped one that is right.
 
 Manages family member accounts, role-based access, email invitations, shared care notes with @mention support, and the HIPAA-compliant activity audit log.
 
@@ -10,7 +15,50 @@ Manages family member accounts, role-based access, email invitations, shared car
 
 ## Implemented today
 
-There are no family-member, invitation, shared-note, or audit-log endpoints. The collaboration primitive that **does** exist is the **`UserCardiMember` link entity** — the per-user, per-member access grant every implemented endpoint authorizes against:
+### Membership is a relation, not a column
+
+Until 2026-09-22 a user's family was a column on their row (`User.OrganizationId`), which made "belongs to a family" and "has a role" the same fact and allowed exactly one of each. Membership now lives in **`UserOrganization`** (`UserId`, `OrganizationId`, `Role`, `JoinedDate`, `IsActive`), and the role lives there with it — a role is held *in* a family, not by a person, so somebody can be the admin of their own and an ordinary member of their mother's.
+
+`User.OrganizationId` survives as the **home family**: the one a person's own members and subscription belong to. It is nullable, because somebody who signed up to join a family somebody else runs has no family of their own until they add their first member.
+
+### Joining, and being let in
+
+| What | How |
+|------|-----|
+| **Family ID** | Eight characters from a 31-letter alphabet (`KTR7-M2Q9`), minted per family, read aloud or auto-filled from a link. Stored unseparated; the hyphen is for reading. It is **not a secret** and is not sized as one — knowing it buys the right to *ask*, which is worth nothing on its own |
+| **Join request** | `POST /api/v1/families/join-requests` with a Family ID. Returns an identical empty receipt for an unknown code, a malformed one, and a family the caller is already in — so the endpoint cannot be used to discover which families exist. Rate-limited |
+| **Admin approval** | `GET /api/v1/families/{id}/join-requests`, then `POST .../approve` or `POST .../decline`. Mandatory: nothing admits anybody without it |
+| **Caregiver invitation** | `POST /api/v1/cardimembers/{id}/caregiver-invites` — the other direction, where an admin offers a specific person a share of watching a specific member. Token-based, and redemption claims the invitation before writing any grant. **Always admits as `Member`**: an invitation says "come and help me watch Mum", and handing the family and its billing to somebody is its own deliberate act (`PUT /api/v1/families/{id}/admin`), not a field on a message sent a week earlier |
+
+### Roles, and the one admin
+
+**`UserRole` is `Member` (1), `Admin` (2), `Staff` (3)** — integers on the wire, and **there is no `viewer` role**, here or anywhere. The JSON examples further down this document show `"role": "viewer"` as strings; both are wrong and are kept only because the surrounding contract is still design intent.
+
+Leaving a family clears the home pointer too. `User.OrganizationId` is what `UserContextMiddleware` serves as the caller's organization, and organization-scoped reads trust it; while it *was* membership the two ended together, so removal now clears it explicitly (or repoints it at another family they are still in). Otherwise a removed caregiver keeps reading the family's members.
+
+A family has exactly one admin, and only the admin pays. An admin cannot simply leave: `PUT /api/v1/families/{id}/admin` hands the family and its plan to somebody else and demotes the caller in the same save, and only then can they go. `Staff` stays unused by Family organizations — it belongs to the Enterprise offering.
+
+### The shipped routes
+
+| Route | What it does |
+|-------|--------------|
+| `GET /api/v1/families/mine` | Every family this user belongs to, with their role in each |
+| `GET /api/v1/families/{id}/members` | The roster |
+| `PUT /api/v1/families/{id}/admin` | Hands over the family and its plan; promote and demote in one save |
+| `DELETE /api/v1/families/{id}/members/{userId}` | Admin removes somebody |
+| `DELETE /api/v1/families/{id}/members/me` | Leave. Refused for the last admin, who must hand over first |
+| `POST /api/v1/families/join-requests` | Ask to join, by Family ID |
+| `GET /api/v1/families/join-requests/mine` | What the caller has asked for |
+| `DELETE /api/v1/families/join-requests/{id}` | Withdraw an ask |
+| `GET /api/v1/families/{id}/join-requests` | Admin: who is asking |
+| `POST /api/v1/families/{id}/join-requests/{requestId}/approve` \| `.../decline` | Admin decides, and chooses what the joiner gets |
+| `POST` \| `GET` \| `DELETE /api/v1/cardimembers/{id}/caregiver-invites[/{inviteId}]` | Issue, list and revoke invitations to watch one member |
+| `GET /api/v1/caregiver-invites/{token}` | The landing page's view of an invitation |
+| `POST /api/v1/caregiver-invites/{token}/accept` \| `.../decline` | The invitee's answer |
+
+### Still the per-member grant underneath
+
+Belonging to a family is not the same as being able to see a member's health data. Every read is still authorized against the **`UserCardiMember` link entity** — the per-user, per-member access grant, which is what an approval or an accepted invitation actually writes:
 
 | Field | Purpose |
 |-------|---------|
@@ -21,9 +69,7 @@ There are no family-member, invitation, shared-note, or audit-log endpoints. The
 | `ReceiveAlerts` | The live recipient-resolution predicate: `IDispatchService.EnqueueForAlertAsync` filters links on `IsActive && ReceiveAlerts` to decide who gets pushed for an alert |
 | `IsActive` | Soft enable/disable of the link |
 
-Links are created automatically when a CardiMember is added during onboarding; there is no API to grant another user access yet.
-
-**Roles:** the implemented `UserRole` enum is `Member` (1), `Admin` (2), `Staff` (3) — **integers on the wire, and there is no `viewer` role**. No endpoint currently enforces role-based restrictions; authorization is member-link based.
+Links are no longer created only by onboarding: an approved join request and an accepted caregiver invitation both write one, with exactly the `CanViewHealthData` / `ReceiveAlerts` the admin chose.
 
 **Naming collision warning:** this doc's "activity log" means the HIPAA **audit trail**. The write side of it is live: `AuditLoggingMiddleware` writes an `AuditLog` row (user, member, action, path, method, IP, user-agent, response status) for every endpoint carrying `[AuditHealthDataAccess]` — applied across Alerts, CardiMembers, Dashboard, Devices, Insights, MemberChat, MetricAlarms, Onboarding (member creation only), Questionnaires, Reports as of 2026-09-13. Repeated GETs coalesce for 15 minutes. What remains **planned** is the read/query endpoint below. The codebase's `ActivityLog` entity is something else entirely: **daily health metrics** (steps, heart rate, sleep) synced from wearables.
 
@@ -384,4 +430,4 @@ HIPAA-compliant audit log of all access events — who viewed what data and when
 
 **Related:** [readme.md](readme.md) | [alerts.md](alerts.md) | [notifications.md](notifications.md) | [User Stories 4.1, 4.2, 8.3](../../ui/mobile/user_stories.md)
 
-**Last Updated:** August 14, 2026
+**Last Updated:** September 22, 2026

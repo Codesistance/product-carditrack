@@ -308,7 +308,8 @@ public class NotificationDispatchWorker : CronBackgroundService
                 Escalates = delivery.Category == DeliveryCategory.Safety
                     || (delivery.Category == DeliveryCategory.Health && delivery.Severity == AlertSeverity.Red),
                 CurrentStage = delivery.EscalationStage,
-                SentDate = delivery.SentDate
+                SentDate = delivery.SentDate,
+                IsEscalatedCopy = delivery.IsEscalation
             });
 
             try
@@ -323,10 +324,18 @@ public class NotificationDispatchWorker : CronBackgroundService
                         break;
 
                     case EscalationAction.FanOutToOtherCaregivers:
+                        // Copies first, rung afterwards. Marking the rung spent up front meant a
+                        // failure partway through the loop left the family with a prefix — some
+                        // caregivers copied, the rest never reached, and no retry, because the
+                        // original had already moved past the action that would have produced
+                        // them. Ordering it this way means a failure leaves the rung unspent and
+                        // the next thirty-second sweep runs it again; the per-recipient dedup keys
+                        // make that repeat idempotent, so nobody who was reached gets a second
+                        // push.
+                        await FanOutAsync(delivery, dispatch, unitOfWork, ct);
                         delivery.EscalationStage = EscalationStage.FannedOut;
                         unitOfWork.NotificationDeliveries.Update(delivery);
                         await unitOfWork.SaveChangesAsync();
-                        await FanOutAsync(delivery, dispatch, unitOfWork, ct);
                         PushTelemetry.Escalated.Add(1,
                             new KeyValuePair<string, object?>(PushTelemetry.StageTag, nameof(EscalationStage.FannedOut)));
                         break;
@@ -351,20 +360,46 @@ public class NotificationDispatchWorker : CronBackgroundService
     }
 
     /// <summary>
-    /// Copies every other caregiver with <c>ReceiveAlerts</c> on — a no-op in R1 under
-    /// <c>MaxUsers = 1</c>, left unconditional rather than special-cased away (§6.3). The
-    /// fan-out copy is a rendering concern (never names who failed to respond) and lives in
-    /// Mobile, not here — this only creates the additional deliveries.
+    /// Copies the alert to caregivers it has not already reached.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>Usually that is nobody, and that is correct.</strong> §6.3 describes this rung as
+    /// "push to the primary recipient, then at t+300s fan out to the others", but the dispatch
+    /// layer has never worked that way: <c>EnqueueForAlertAsync</c> addresses every caregiver with
+    /// <c>ReceiveAlerts</c> at t+0. Under <c>MaxUsers = 1</c> the two readings were the same thing
+    /// and the difference could not show. With a real family they are not: each of the N original
+    /// rows reaches this rung and would copy to the other N-1, so a household of four would take
+    /// one alert and turn it into twelve extra pushes about an event everybody had already been
+    /// told about.
+    /// </para>
+    /// <para>
+    /// So the rung is what it was always for rather than what the prose said: a net under the
+    /// original send. It catches a caregiver added after the alert fired, or one whose delivery
+    /// was suppressed — and finding nobody is the ordinary, healthy outcome, not a rung falling
+    /// through.
+    /// </para>
+    /// <para>
+    /// The copies are marked as escalations, which is what lets each recipient's own quiet-hours
+    /// preference decide whether it wakes them. The copy's wording never names who failed to
+    /// respond (§6.3) — that is Mobile's concern; this only creates the deliveries.
+    /// </para>
+    /// </remarks>
     private static async Task FanOutAsync(
         Domain.Entities.NotificationDelivery original, IDispatchService dispatch, IUnitOfWork unitOfWork, CancellationToken ct)
     {
         if (original.CardiMemberId is not { } cardiMemberId)
             return;
 
+        // Everyone this alert has already been addressed to, not just this row's recipient. The
+        // t+0 send reached all of them, and every one of their rows arrives at this rung too.
+        var alreadyNotified = (await unitOfWork.NotificationDeliveries
+                .GetNotifiedUserIdsForAlertAsync(original.SourceId, ct))
+            .ToHashSet();
+
         var links = await unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cardiMemberId);
         var otherRecipients = links
-            .Where(l => l.IsActive && l.ReceiveAlerts && l.UserId != original.UserId)
+            .Where(l => l.IsActive && l.ReceiveAlerts && !alreadyNotified.Contains(l.UserId))
             .Select(l => l.UserId)
             .Distinct();
 
@@ -378,7 +413,9 @@ public class NotificationDispatchWorker : CronBackgroundService
                 Category: original.Category,
                 Severity: original.Severity,
                 DedupKey: $"{original.DedupKey}:escalated:{userId}",
-                CollapseKey: original.CollapseKey), ct);
+                CollapseKey: original.CollapseKey,
+                AlertType: original.AlertType,
+                IsEscalation: true), ct);
         }
     }
 

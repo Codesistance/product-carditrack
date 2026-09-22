@@ -41,6 +41,55 @@ public interface IAlertService
         Guid requestingUserId, Guid alertId, CancellationToken ct = default);
 
     /// <summary>
+    /// Acknowledges, and records what the caregiver said about it: a canned code from the alert's
+    /// <c>responseOptions</c>, a line of their own, or both.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The alert's own first-wins acknowledgement is unchanged — this appends, it does not
+    /// overwrite. A second caregiver answering an already-acknowledged alert keeps the first one's
+    /// attribution and still has their say recorded, which is the point: with more than one person
+    /// watching, "who is on this" and "what has been done" are different questions.
+    /// </para>
+    /// <para>
+    /// Answering also halts the escalation ladder for this alert, which acknowledging in the app
+    /// did not previously do — only a push ack did. Throws
+    /// <see cref="Exceptions.AlertResponseCodeException"/> for a code this alert's rule does not
+    /// offer, naming the ones it does.
+    /// </para>
+    /// </remarks>
+    Task<AlertAcknowledgementResponse> AcknowledgeAsync(
+        Guid requestingUserId, Guid alertId, string? responseCode, string? note,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Closes an alert on the family's behalf: it is dealt with, and here is what was done.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Closing resolves the alert, which is also what re-arms the producer's cooldown — one
+    /// unresolved alert per rule suppresses that rule, so a condition that persists raises a fresh
+    /// alert the next time it is evaluated rather than staying silent behind somebody's note. That
+    /// is the whole reason close exists as a separate action from acknowledge.
+    /// </para>
+    /// <para>
+    /// <strong>There is no undo.</strong> <see cref="UnacknowledgeAsync"/> exists because
+    /// "handled" is a claim somebody can make in error and take back; a close says the episode is
+    /// over, which is the same claim CardiTrack's own producers make when a condition passes, and
+    /// they cannot take it back either. Reopening is what the next alert is for.
+    /// </para>
+    /// <para>
+    /// Two caregivers closing within seconds is not an error: the first sets
+    /// <see cref="Domain.Entities.Alert.ResolvedByUserId"/>, both responses are kept, and the
+    /// second's result carries the first's attribution. An alert CardiTrack already resolved keeps
+    /// its null resolver and still records the response.
+    /// </para>
+    /// </remarks>
+    Task<AlertAcknowledgementResponse> CloseAsync(
+        Guid requestingUserId, Guid alertId, string? responseCode, string? note,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Puts an acknowledged alert back to unhandled. "Handled" is a claim a caregiver makes about
     /// themselves, and they can be wrong about it — tapping the wrong row, or acknowledging on the
     /// way to doing something they then could not do. Without this the mistake is permanent and

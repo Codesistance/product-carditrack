@@ -62,6 +62,13 @@ public static class DeliveryPlanner
         var overridesQuietHours = context.Category == DeliveryCategory.Safety
             || (context.Category == DeliveryCategory.Health && context.Severity == AlertSeverity.Red);
 
+        // An escalated copy is the one case where a red or Safety row does not pierce quiet hours
+        // by default. The first caregiver chose to watch this person; a second is being escalated
+        // to, so their own preference decides. Held rather than dropped — the alert is waiting when
+        // they wake, and the rung is recorded as attempted so the ladder still advances on time.
+        if (context.IsEscalation && !context.EscalatedAlertsPierceQuietHours)
+            overridesQuietHours = false;
+
         DateTime? scheduledFor = null;
         if (pushes && !overridesQuietHours && context.IsWithinQuietHours)
         {
@@ -111,6 +118,12 @@ public sealed record DeliveryPlanningContext
     public string? CollapseKey { get; init; }
 
     public required bool IsWithinQuietHours { get; init; }
+
+    /// <summary>True when this is the ladder's copy to a second caregiver rather than the original.</summary>
+    public bool IsEscalation { get; init; }
+
+    /// <summary>Whether that second caregiver asked to be woken by one. Default false — hold it.</summary>
+    public bool EscalatedAlertsPierceQuietHours { get; init; }
     public DateTime? QuietHoursEndUtc { get; init; }
 }
 

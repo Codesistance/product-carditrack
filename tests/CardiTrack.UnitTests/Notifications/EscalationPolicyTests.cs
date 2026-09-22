@@ -111,4 +111,67 @@ public class EscalationPolicyTests
 
         Assert.Equal(EscalationAction.None, action);
     }
+
+    // ── An escalated copy never widens the blast radius ─────────────────────────
+    //
+    // The copy is an ordinary red row in every other respect, so without this it reaches its own
+    // t+300s rung and copies itself to everybody else — the original recipient included. Each of
+    // those does the same 300 seconds later. A family of four turns three pushes into nine and
+    // then twenty-seven, and pages ops once per copy.
+
+    private static EscalationContext Copy(TimeSpan elapsed, EscalationStage stage) => new()
+    {
+        UtcNow = SentAt + elapsed,
+        Escalates = true,
+        CurrentStage = stage,
+        SentDate = SentAt,
+        IsEscalatedCopy = true
+    };
+
+    [Theory]
+    [InlineData(EscalationStage.Initial)]
+    [InlineData(EscalationStage.Repushed)]
+    public void AnEscalatedCopy_NeverFansOutAgain(EscalationStage stage)
+    {
+        var action = EscalationPolicy.Evaluate(Copy(EscalationPolicy.FanOutAfter, stage));
+
+        Assert.NotEqual(EscalationAction.FanOutToOtherCaregivers, action);
+        Assert.Equal(EscalationAction.None, action);
+    }
+
+    [Fact]
+    public void AnEscalatedCopy_StillRePushesAtTheFirstRung()
+    {
+        // Held to the one rung that would widen the fan-out, not exempted from the ladder. The
+        // sibling's own phone still deserves a second push.
+        Assert.Equal(
+            EscalationAction.Repush,
+            EscalationPolicy.Evaluate(Copy(EscalationPolicy.RepushAfter, EscalationStage.Initial)));
+    }
+
+    [Theory]
+    [InlineData(EscalationStage.Initial)]
+    [InlineData(EscalationStage.Repushed)]
+    [InlineData(EscalationStage.FannedOut)]
+    public void AnEscalatedCopy_StillReachesUndeliveredCritical(EscalationStage stage)
+    {
+        // The outcome the family most needs to exist. A copy nobody answered means there was no
+        // cover, and silently dropping it would report cover that was never there.
+        Assert.Equal(
+            EscalationAction.MarkUndeliveredCritical,
+            EscalationPolicy.Evaluate(Copy(EscalationPolicy.UndeliveredAfter, stage)));
+    }
+
+    [Fact]
+    public void TheOriginalDelivery_StillFansOut()
+    {
+        // The regression guard: the exemption must reach copies only, or the rung family sharing
+        // exists to make real is switched off for everybody.
+        var original = Copy(EscalationPolicy.FanOutAfter, EscalationStage.Initial) with
+        {
+            IsEscalatedCopy = false
+        };
+
+        Assert.Equal(EscalationAction.FanOutToOtherCaregivers, EscalationPolicy.Evaluate(original));
+    }
 }

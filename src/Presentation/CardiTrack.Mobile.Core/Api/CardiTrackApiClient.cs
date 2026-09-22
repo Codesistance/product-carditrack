@@ -56,11 +56,7 @@ public sealed class CardiTrackApiClient : ICardiTrackApiClient
     public Task<OnboardingSetupResponse> SetupAsync(OnboardingSetupRequest request, CancellationToken ct = default) =>
         PostAsync<OnboardingSetupRequest, OnboardingSetupResponse>("api/Onboarding/setup", request, ct);
 
-    public Task<OrganizationResponse> CreateOrganizationAsync(CreateOrganizationRequest request, CancellationToken ct = default) =>
-        PostAsync<CreateOrganizationRequest, OrganizationResponse>("api/Onboarding/organization", request, ct);
 
-    public Task<UserResponse> CreateUserAsync(CreateUserRequest request, CancellationToken ct = default) =>
-        PostAsync<CreateUserRequest, UserResponse>("api/Onboarding/user", request, ct);
 
     public async Task<CardiMemberResponse> CreateCardiMemberAsync(
         CreateCardiMemberRequest request, CancellationToken ct = default, string? idempotencyKey = null)

@@ -5,6 +5,5 @@ namespace CardiTrack.Application.Interfaces.Services;
 
 public interface IOrganizationService
 {
-    Task<OrganizationResponse> CreateOrganizationAsync(CreateOrganizationRequest request);
     Task<OrganizationResponse?> GetByIdAsync(Guid id);
 }

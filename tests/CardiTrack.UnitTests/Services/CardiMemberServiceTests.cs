@@ -249,28 +249,98 @@ public class CardiMemberServiceTests
     }
 
     [Fact]
-    public async Task GetByOrganizationId_MapsEachMemberWithItsRelationship()
+    public async Task GetForUserInOrganization_ListsOnlyTheMembersTheCallerHasAGrantOn()
     {
-        var first = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
-        var second = new CardiMember { OrganizationId = _organizationId, Name = "Arthur Doe" };
-        _members.GetByOrganizationIdAsync(_organizationId).Returns([first, second]);
-        _links.GetByCardiMemberIdAsync(first.Id).Returns(
+        var mine = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        var theirs = new CardiMember { OrganizationId = _organizationId, Name = "Arthur Doe" };
+        _members.GetByOrganizationIdAsync(_organizationId).Returns([mine, theirs]);
+        _links.GetByCardiMemberIdAsync(mine.Id).Returns(
         [
             new UserCardiMember
             {
                 UserId = _userId,
-                CardiMemberId = first.Id,
+                CardiMemberId = mine.Id,
                 RelationshipType = RelationshipType.Parent,
                 IsPrimaryCaregiver = true,
+                IsActive = true,
             },
         ]);
-        _links.GetByCardiMemberIdAsync(second.Id).Returns([]);
+        // Somebody else's grant on the same family's other member.
+        _links.GetByCardiMemberIdAsync(theirs.Id).Returns(
+        [
+            new UserCardiMember
+            {
+                UserId = Guid.NewGuid(),
+                CardiMemberId = theirs.Id,
+                RelationshipType = RelationshipType.Parent,
+                IsActive = true,
+            },
+        ]);
 
-        var responses = await CreateSut().GetByOrganizationIdAsync(_organizationId);
+        var responses = await CreateSut().GetForUserInOrganizationAsync(_userId, _organizationId);
 
-        Assert.Equal(2, responses.Count);
-        Assert.Equal(RelationshipType.Parent, responses[0].Relationship);
-        Assert.Equal(RelationshipType.Other, responses[1].Relationship);
+        // Being in a family is not being allowed to see everybody in it. A caregiver invited to
+        // watch one person gets a link to that person, and this list used to answer from the
+        // organization alone — the same set while a family held one caregiver, a way to see the
+        // whole household once it holds several.
+        var only = Assert.Single(responses);
+        Assert.Equal("Margaret Doe", only.Name);
+        Assert.Equal(RelationshipType.Parent, only.Relationship);
+        Assert.True(only.IsPrimaryCaregiver);
+    }
+
+    [Fact]
+    public async Task GetForUserInOrganization_ReportsTheCallersOwnRelationship_NotAnothersGrant()
+    {
+        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
+        _links.GetByCardiMemberIdAsync(member.Id).Returns(
+        [
+            // First in the list, and not the caller: the daughter who set the member up.
+            new UserCardiMember
+            {
+                UserId = Guid.NewGuid(),
+                CardiMemberId = member.Id,
+                RelationshipType = RelationshipType.Parent,
+                IsPrimaryCaregiver = true,
+                IsActive = true,
+            },
+            new UserCardiMember
+            {
+                UserId = _userId,
+                CardiMemberId = member.Id,
+                RelationshipType = RelationshipType.Grandparent,
+                IsPrimaryCaregiver = false,
+                IsActive = true,
+            },
+        ]);
+
+        var only = Assert.Single(
+            await CreateSut().GetForUserInOrganizationAsync(_userId, _organizationId));
+
+        // It used to take whichever link came back first, which was the only one there was. Now
+        // that would tell a grandchild they are the member's parent and the primary caregiver.
+        Assert.Equal(RelationshipType.Grandparent, only.Relationship);
+        Assert.False(only.IsPrimaryCaregiver);
+    }
+
+    [Fact]
+    public async Task GetForUserInOrganization_IgnoresARevokedGrant()
+    {
+        var member = new CardiMember { OrganizationId = _organizationId, Name = "Margaret Doe" };
+        _members.GetByOrganizationIdAsync(_organizationId).Returns([member]);
+        _links.GetByCardiMemberIdAsync(member.Id).Returns(
+        [
+            new UserCardiMember
+            {
+                UserId = _userId,
+                CardiMemberId = member.Id,
+                RelationshipType = RelationshipType.Parent,
+                IsActive = false,
+            },
+        ]);
+
+        Assert.Empty(await CreateSut().GetForUserInOrganizationAsync(_userId, _organizationId));
     }
 
     // ── M1-13 detail ────────────────────────────────────────────────────────────

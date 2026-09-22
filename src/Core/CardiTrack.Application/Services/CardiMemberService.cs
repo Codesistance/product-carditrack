@@ -107,6 +107,10 @@ public class CardiMemberService : ICardiMemberService
             }
         }
 
+        // Checked after the idempotency replay above, so a retry of a creation that already
+        // succeeded returns the member rather than being refused by the limit that member filled.
+        await PlanLimits.RequireRoomForAnotherCardiMemberAsync(_unitOfWork, organizationId);
+
         var cardiMember = new CardiMember
         {
             OrganizationId = organizationId,
@@ -345,7 +349,8 @@ public class CardiMemberService : ICardiMemberService
         };
     }
 
-    public async Task<List<CardiMemberResponse>> GetByOrganizationIdAsync(Guid organizationId)
+    public async Task<List<CardiMemberResponse>> GetForUserInOrganizationAsync(
+        Guid requestingUserId, Guid organizationId)
     {
         var cardiMembers = await _unitOfWork.CardiMembers.GetByOrganizationIdAsync(organizationId);
         var responses = new List<CardiMemberResponse>();
@@ -353,7 +358,25 @@ public class CardiMemberService : ICardiMemberService
         foreach (var cm in cardiMembers)
         {
             var relationships = await _unitOfWork.UserCardiMembers.GetByCardiMemberIdAsync(cm.Id);
-            var primaryRelationship = relationships.FirstOrDefault();
+
+            // The caller's own grant, and nothing without one. Belonging to a family is not the
+            // same as being allowed to see everybody in it: a caregiver invited to watch one
+            // person gets a link to that person, and this list is the only member read that used
+            // to answer from the organization alone. With one caregiver per family the two were
+            // the same set, so the difference could not show.
+            // View permission, the same test CardiMemberAccessService applies everywhere else — an
+            // active link alone is not it. A caregiver admitted for alerts only
+            // (CanViewHealthData = false) holds a link, and this list carries date of birth, email
+            // and phone.
+            var mine = relationships.FirstOrDefault(
+                r => r.UserId == requestingUserId && r.IsActive && r.CanViewHealthData);
+            if (mine is null)
+                continue;
+
+            // Their own relationship, too. It used to take whichever link came back first, which
+            // was the only one there was — now it would show a caregiver somebody else's
+            // relationship to the member, and somebody else's primary-caregiver flag.
+            var primaryRelationship = mine;
 
             responses.Add(new CardiMemberResponse
             {

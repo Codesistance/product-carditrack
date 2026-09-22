@@ -14,11 +14,15 @@ public class UnitOfWork : IUnitOfWork
     public ICardiMemberRepository CardiMembers { get; }
     public ISubscriptionRepository Subscriptions { get; }
     public IUserCardiMemberRepository UserCardiMembers { get; }
+    public IUserOrganizationRepository UserOrganizations { get; }
+    public ICaregiverInviteRepository CaregiverInvites { get; }
+    public IFamilyJoinRequestRepository FamilyJoinRequests { get; }
     public IDeviceConnectionRepository DeviceConnections { get; }
     public IActivityLogRepository ActivityLogs { get; }
     public IDeviceActivityLogRepository DeviceActivityLogs { get; }
     public IDeviceRepository Devices { get; }
     public IAlertRepository Alerts { get; }
+    public IAlertResponseRepository AlertResponses { get; }
     public IPatternBaselineRepository PatternBaselines { get; }
     public IGranularMetricRepository GranularMetrics { get; }
     public IDigestRepository Digests { get; }
@@ -55,11 +59,15 @@ public class UnitOfWork : IUnitOfWork
         ICardiMemberRepository cardiMembers,
         ISubscriptionRepository subscriptions,
         IUserCardiMemberRepository userCardiMembers,
+        IUserOrganizationRepository userOrganizations,
+        ICaregiverInviteRepository caregiverInvites,
+        IFamilyJoinRequestRepository familyJoinRequests,
         IDeviceConnectionRepository deviceConnections,
         IActivityLogRepository activityLogs,
         IDeviceActivityLogRepository deviceActivityLogs,
         IDeviceRepository devices,
         IAlertRepository alerts,
+        IAlertResponseRepository alertResponses,
         IPatternBaselineRepository patternBaselines,
         IGranularMetricRepository granularMetrics,
         IDigestRepository digests,
@@ -95,11 +103,15 @@ public class UnitOfWork : IUnitOfWork
         CardiMembers = cardiMembers;
         Subscriptions = subscriptions;
         UserCardiMembers = userCardiMembers;
+        UserOrganizations = userOrganizations;
+        CaregiverInvites = caregiverInvites;
+        FamilyJoinRequests = familyJoinRequests;
         DeviceConnections = deviceConnections;
         ActivityLogs = activityLogs;
         DeviceActivityLogs = deviceActivityLogs;
         Devices = devices;
         Alerts = alerts;
+        AlertResponses = alertResponses;
         PatternBaselines = patternBaselines;
         GranularMetrics = granularMetrics;
         Digests = digests;

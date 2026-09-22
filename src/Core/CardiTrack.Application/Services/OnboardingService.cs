@@ -4,6 +4,7 @@ using CardiTrack.Application.Exceptions;
 using CardiTrack.Application.Interfaces.Repositories;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Domain.Entities;
+using CardiTrack.Domain.Enums;
 
 namespace CardiTrack.Application.Services;
 
@@ -28,12 +29,14 @@ public class OnboardingService : IOnboardingService
         var existingUser = await _unitOfWork.Users.GetByAuth0UserIdAsync(auth0UserId);
         if (existingUser is not null)
         {
-            var existingOrg = await _unitOfWork.Organizations.GetWithSubscriptionAsync(existingUser.OrganizationId);
+            var existingOrg = existingUser.OrganizationId is { } existingOrgId
+                ? await _unitOfWork.Organizations.GetWithSubscriptionAsync(existingOrgId)
+                : null;
             return new OnboardingSetupResponse
             {
                 Organization = existingOrg is not null
                     ? MapOrganization(existingOrg)
-                    : new OrganizationResponse { Id = existingUser.OrganizationId },
+                    : new OrganizationResponse { Id = existingUser.OrganizationId ?? Guid.Empty },
                 User = MapUser(existingUser)
             };
         }
@@ -45,14 +48,24 @@ public class OnboardingService : IOnboardingService
         // insert anyway, but as an opaque 500.
         await ThrowIfEmailOwnedElsewhereAsync(request.User.Email, auth0UserId, emailVerified);
 
-        var organization = new Organization
+        // No organization asked for means a guest: somebody signing up to join a family that
+        // already exists. They get an account and nothing else — no family, no trial — until they
+        // add a CardiMember of their own. See the remarks on OnboardingSetupRequest.
+        Organization? organization = null;
+        if (request.Organization is { } wanted)
         {
-            Name = request.Organization.Name,
-            Type = request.Organization.Type,
-            IsActive = true
-        };
-        await _unitOfWork.Organizations.AddAsync(organization);
-        await _subscriptionService.CreateTrialSubscriptionAsync(organization.Id, request.Organization.Type);
+            organization = new Organization
+            {
+                Name = wanted.Name,
+                Type = wanted.Type,
+                // Minted here rather than by the database so the code is known before the save,
+                // and so onboarding can hand it back in the same response that created the family.
+                FamilyId = FamilyIdentifier.Mint(),
+                IsActive = true
+            };
+            await _unitOfWork.Organizations.AddAsync(organization);
+            await _subscriptionService.CreateTrialSubscriptionAsync(organization.Id, wanted.Type);
+        }
 
         var user = new User
         {
@@ -60,16 +73,33 @@ public class OnboardingService : IOnboardingService
             Email = request.User.Email,
             Name = request.User.Name,
             Phone = request.User.Phone,
-            Role = request.User.Role,
+            // Mirrors the membership written below rather than trusting the body: this column is
+            // legacy and authorizes nothing, but UserContext still reports it, and it should not
+            // be the one place a client gets to say what it is.
+            Role = organization is not null ? UserRole.Admin : UserRole.Member,
             Locale = request.User.Locale,
             TimeZoneId = request.User.TimeZoneId,
-            OrganizationId = organization.Id,
+            OrganizationId = organization?.Id,
             IsActive = true,
             // Real claim from the access token (via the tenant's post-login Action).
             // Absent claim => unverified until a later login proves otherwise.
             EmailVerified = emailVerified ?? false
         };
         await _unitOfWork.Users.AddAsync(user);
+
+        // The person who starts a family is its one Admin — and its payer. The role held in a
+        // family lives on the membership row, not on the user, because the same person is a
+        // Member of any family they are later let into.
+        // A guest has no family to be admin of yet.
+        if (organization is not null)
+        {
+            await _unitOfWork.UserOrganizations.AddAsync(new UserOrganization
+            {
+                UserId = user.Id,
+                OrganizationId = organization.Id,
+                Role = UserRole.Admin
+            });
+        }
 
         // Single SaveChanges = single database transaction: the organization, its
         // trial subscription, and the user commit together or not at all, so no
@@ -91,14 +121,24 @@ public class OnboardingService : IOnboardingService
                 throw;
             }
 
-            var concurrentOrg = await _unitOfWork.Organizations.GetWithSubscriptionAsync(concurrentUser.OrganizationId);
+            var concurrentOrg = concurrentUser.OrganizationId is { } concurrentOrgId
+                ? await _unitOfWork.Organizations.GetWithSubscriptionAsync(concurrentOrgId)
+                : null;
             return new OnboardingSetupResponse
             {
                 Organization = concurrentOrg is not null
                     ? MapOrganization(concurrentOrg)
-                    : new OrganizationResponse { Id = concurrentUser.OrganizationId },
+                    : new OrganizationResponse { Id = concurrentUser.OrganizationId ?? Guid.Empty },
                 User = MapUser(concurrentUser)
             };
+        }
+
+        // A guest has no family to describe, so the response carries an empty organization rather
+        // than inventing one. The client reads User.OrganizationId being null as "you have no
+        // family yet", which is the same thing the Family tab reads.
+        if (organization is null)
+        {
+            return new OnboardingSetupResponse { User = MapUser(user) };
         }
 
         var orgWithSubscription = await _unitOfWork.Organizations.GetWithSubscriptionAsync(organization.Id);
@@ -128,6 +168,7 @@ public class OnboardingService : IOnboardingService
     {
         Id = organization.Id,
         Name = organization.Name,
+        FamilyId = FamilyIdentifier.ToDisplay(organization.FamilyId),
         Type = organization.Type,
         IsActive = organization.IsActive,
         CreatedDate = organization.CreatedDate,

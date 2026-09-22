@@ -93,6 +93,26 @@ public class NotificationDelivery : BaseEntity
 
     public EscalationStage EscalationStage { get; set; } = EscalationStage.Initial;
 
+    /// <summary>
+    /// Whether this row is itself an escalated copy — written by the ladder's fan-out rung to a
+    /// caregiver who is not the alert's original recipient.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Persisted rather than derived, for one reason: the ladder must not fan a copy out again.
+    /// A copy is an ordinary red Health row in every other respect, so the escalation sweep would
+    /// otherwise reach its own t+300s rung, copy it to everybody else — the original recipient
+    /// included — and repeat. A family of four turns three pushes into nine and then
+    /// twenty-seven, which is precisely the alarm fatigue this engine exists to prevent.
+    /// </para>
+    /// <para>
+    /// It does not stop the ladder entirely: a copy nobody answers still re-pushes at t+120s and
+    /// still reaches <c>UNDELIVERED_CRITICAL</c> at t+900s, because a family with no cover has to
+    /// find that out. Only the rung that would widen the blast radius is spent.
+    /// </para>
+    /// </remarks>
+    public bool IsEscalation { get; set; }
+
     /// <summary>Set on a re-push/fan-out row, pointing back at the delivery it escalated from.</summary>
     public Guid? EscalatedFrom { get; set; }
 }

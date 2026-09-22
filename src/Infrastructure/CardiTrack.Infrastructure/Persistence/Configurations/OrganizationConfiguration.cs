@@ -10,6 +10,16 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
     {
         builder.ToTable("Organizations");
 
+        // Eight characters, unique: it is how a person names this family to us, so two families
+        // answering to one code would make the join flow ambiguous in the worst possible place.
+        builder.Property(o => o.FamilyId)
+            .IsRequired()
+            .HasMaxLength(16);
+
+        builder.HasIndex(o => o.FamilyId)
+            .IsUnique()
+            .HasFilter("\"FamilyId\" <> ''");
+
         builder.HasKey(o => o.Id);
 
         builder.Property(o => o.Name)

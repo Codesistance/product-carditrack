@@ -22,7 +22,18 @@ public interface ICardiMemberService
         string? idempotencyKey = null);
 
     Task<CardiMemberResponse?> GetByIdAsync(Guid id);
-    Task<List<CardiMemberResponse>> GetByOrganizationIdAsync(Guid organizationId);
+    /// <summary>
+    /// The members of one family that this caller actually has a grant on, with their own
+    /// relationship to each.
+    /// </summary>
+    /// <remarks>
+    /// Grant-scoped, not organization-scoped. Every other member read authorizes against
+    /// <c>UserCardiMember</c>; this one answered from the organization alone, which was
+    /// indistinguishable while a family held one caregiver and is a way to see a household you
+    /// were only partly admitted to once it holds several.
+    /// </remarks>
+    Task<List<CardiMemberResponse>> GetForUserInOrganizationAsync(
+        Guid requestingUserId, Guid organizationId);
 
     /// <summary>
     /// The full M1-13 detail payload. Requires view access; throws

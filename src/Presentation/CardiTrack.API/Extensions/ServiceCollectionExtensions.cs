@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IValidator<PauseMonitoringRequest>, PauseMonitoringValidator>();
         services.AddScoped<IValidator<ConnectDeviceRequest>, ConnectDeviceValidator>();
         services.AddScoped<IValidator<CreateDeviceInviteRequest>, CreateDeviceInviteValidator>();
+        services.AddScoped<IValidator<CreateCaregiverInviteRequest>, CreateCaregiverInviteValidator>();
         services.AddScoped<IValidator<OAuthCallbackRequest>, OAuthCallbackValidator>();
         services.AddScoped<IValidator<HistoryRepullRequest>, HistoryRepullValidator>();
         services.AddScoped<IValidator<AnswerQuestionnaireRequest>, AnswerQuestionnaireValidator>();
@@ -83,11 +84,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICardiMemberRepository, CardiTrack.Infrastructure.Repositories.CardiMemberRepository>();
         services.AddScoped<ISubscriptionRepository, CardiTrack.Infrastructure.Repositories.SubscriptionRepository>();
         services.AddScoped<IUserCardiMemberRepository, CardiTrack.Infrastructure.Repositories.UserCardiMemberRepository>();
+        services.AddScoped<IUserOrganizationRepository, CardiTrack.Infrastructure.Repositories.UserOrganizationRepository>();
+        services.AddScoped<ICaregiverInviteRepository, CardiTrack.Infrastructure.Repositories.CaregiverInviteRepository>();
+        services.AddScoped<IFamilyJoinRequestRepository, CardiTrack.Infrastructure.Repositories.FamilyJoinRequestRepository>();
         services.AddScoped<IDeviceConnectionRepository, CardiTrack.Infrastructure.Repositories.DeviceConnectionRepository>();
         services.AddScoped<IActivityLogRepository, CardiTrack.Infrastructure.Repositories.ActivityLogRepository>();
         services.AddScoped<IDeviceActivityLogRepository, CardiTrack.Infrastructure.Repositories.DeviceActivityLogRepository>();
         services.AddScoped<IDeviceRepository, DeviceRepository>();
         services.AddScoped<IAlertRepository, CardiTrack.Infrastructure.Repositories.AlertRepository>();
+        services.AddScoped<IAlertResponseRepository, CardiTrack.Infrastructure.Repositories.AlertResponseRepository>();
         services.AddScoped<IPatternBaselineRepository, CardiTrack.Infrastructure.Repositories.PatternBaselineRepository>();
         services.AddScoped<IGranularMetricRepository, CardiTrack.Infrastructure.Repositories.GranularMetricRepository>();
         services.AddScoped<IDigestRepository, CardiTrack.Infrastructure.Repositories.DigestRepository>();
@@ -125,6 +130,7 @@ public static class ServiceCollectionExtensions
 
         // Unit of Work
         services.AddScoped<IMemberWriteGuard, CardiTrack.Infrastructure.Services.MemberWriteGuard>();
+        services.AddScoped<IFamilyWriteGuard, CardiTrack.Infrastructure.Services.FamilyWriteGuard>();
         services.AddScoped<IUnitOfWork, CardiTrack.Infrastructure.Repositories.UnitOfWork>();
 
         // AI services
@@ -149,6 +155,25 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(CardiTrack.Infrastructure.Settings.DeviceInviteOptions.SectionName));
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IDeviceConnectionInviteService,
             CardiTrack.Infrastructure.Services.DeviceConnectionInviteService>();
+
+        // Caregiver invitations: an admin offers somebody a share of the watching. Same shape as
+        // the wearer invitation above, and request-scoped for the same reason.
+        services.Configure<CardiTrack.Infrastructure.Settings.CaregiverInviteOptions>(
+            configuration.GetSection(CardiTrack.Infrastructure.Settings.CaregiverInviteOptions.SectionName));
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.ICaregiverInviteService,
+            CardiTrack.Infrastructure.Services.CaregiverInviteService>();
+
+        // Families and the people in them. Pure Application: it reads and writes membership rows
+        // through the unit of work and touches nothing outside it.
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IFamilyService,
+            CardiTrack.Application.Services.FamilyService>();
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IFamilyJoinService,
+            CardiTrack.Application.Services.FamilyJoinService>();
+
+        // Gives a guest their own family the first time they add somebody to watch — see the
+        // remarks on IGuestFamilyProvisioner for why that moment rather than signup.
+        services.AddScoped<CardiTrack.Application.Interfaces.Services.IGuestFamilyProvisioner,
+            CardiTrack.Application.Services.GuestFamilyProvisioner>();
         // Caregiver-triggered sync (issue #67). Request-scoped, not a background job — the
         // scheduled pull stays CardiTrack.Worker's, per CLAUDE.md.
         services.AddScoped<CardiTrack.Application.Interfaces.Services.IManualDeviceSyncService,

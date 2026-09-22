@@ -44,6 +44,17 @@ public class NotificationDeliveryConfiguration : IEntityTypeConfiguration<Notifi
             .HasConversion<string>()
             .HasMaxLength(50);
 
+        // Postgres's own row version as the concurrency token, the same way MetricAlarms and
+        // AlertPreferences carry one. Two writers reach this row by different doors: the API, when
+        // a caregiver answers the alert in the app, and the Worker's escalation sweep, which loads
+        // a batch of Sent rows and saves them a moment later. Without this the sweep's stale entity
+        // wins by arriving second and writes State back to Sent — resurrecting a ladder that was
+        // deliberately stopped, and paging a family about something already dealt with.
+        //
+        // A losing write throws DbUpdateConcurrencyException, which the sweep's per-row try/catch
+        // already logs; the row is simply re-read on the next tick with the truth on it.
+        builder.Property<uint>("xmin").IsRowVersion();
+
         builder.Property(d => d.PushDeviceTokenId);
 
         builder.Property(d => d.DedupKey)

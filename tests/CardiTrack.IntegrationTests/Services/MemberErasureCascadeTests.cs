@@ -242,6 +242,8 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             "NotificationMutes",
             "Notifications",
             "AlertPreferences",
+            "CaregiverInvites",
+            "AlertResponses",
             "Alerts",
             "PatternBaselines",
             "RealtimeAssessments",
@@ -434,11 +436,32 @@ public class MemberErasureCascadeTests : IAsyncLifetime
             CalculatedDate = DateTime.UtcNow,
             AvgSteps = 4100,
         });
-        db.Alerts.Add(new Alert
+        var alert = new Alert
         {
             CardiMemberId = member.Id,
             Title = "Quieter than usual",
             Message = "Fewer steps than their usual pattern.",
+        };
+        db.Alerts.Add(alert);
+        db.CaregiverInvites.Add(new CaregiverInvite
+        {
+            CardiMemberId = member.Id,
+            OrganizationId = organization.Id,
+            CreatedByUserId = user.Id,
+            Role = UserRole.Member,
+            CanViewHealthData = true,
+            ReceiveAlerts = true,
+            TokenHash = "not-a-real-hash",
+            Status = CaregiverInviteStatus.Pending,
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+        });
+        db.AlertResponses.Add(new AlertResponse
+        {
+            AlertId = alert.Id,
+            UserId = user.Id,
+            Kind = AlertResponseKind.Close,
+            ResponseCode = "resting_day",
+            Note = "v1:0000000000000000:not-real-ciphertext",
         });
         db.AlertPreferences.Add(new AlertPreference { CardiMemberId = member.Id });
         db.Notifications.Add(new Notification

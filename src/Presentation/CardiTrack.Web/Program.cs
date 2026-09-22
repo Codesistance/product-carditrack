@@ -50,11 +50,15 @@ try
     builder.Services.AddScoped<ICardiMemberRepository, CardiMemberRepository>();
     builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
     builder.Services.AddScoped<IUserCardiMemberRepository, UserCardiMemberRepository>();
+    builder.Services.AddScoped<IUserOrganizationRepository, UserOrganizationRepository>();
+    builder.Services.AddScoped<ICaregiverInviteRepository, CaregiverInviteRepository>();
+    builder.Services.AddScoped<IFamilyJoinRequestRepository, FamilyJoinRequestRepository>();
     builder.Services.AddScoped<IDeviceConnectionRepository, DeviceConnectionRepository>();
     builder.Services.AddScoped<IActivityLogRepository, ActivityLogRepository>();
     builder.Services.AddScoped<IDeviceActivityLogRepository, DeviceActivityLogRepository>();
     builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
     builder.Services.AddScoped<IAlertRepository, AlertRepository>();
+    builder.Services.AddScoped<IAlertResponseRepository, AlertResponseRepository>();
     builder.Services.AddScoped<IPatternBaselineRepository, PatternBaselineRepository>();
     builder.Services.AddScoped<IGranularMetricRepository, GranularMetricRepository>();
     builder.Services.AddScoped<IDigestRepository, DigestRepository>();
@@ -84,6 +88,7 @@ try
     builder.Services.AddScoped<IDeviceConnectionInviteRepository, DeviceConnectionInviteRepository>();
     builder.Services.AddPushRepositories();
     builder.Services.AddScoped<IMemberWriteGuard, CardiTrack.Infrastructure.Services.MemberWriteGuard>();
+    builder.Services.AddScoped<IFamilyWriteGuard, CardiTrack.Infrastructure.Services.FamilyWriteGuard>();
     builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
     builder.Services.AddScoped<IUserService, UserService>();
 
