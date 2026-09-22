@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CardiTrack.Application.Interfaces.Clients;
@@ -8,6 +9,7 @@ using CardiTrack.Application.Services;
 using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Domain.Extensions;
+using CardiTrack.Infrastructure.Diagnostics;
 using CardiTrack.Infrastructure.Services.PromptContext;
 using Microsoft.Extensions.Logging;
 
@@ -220,6 +222,13 @@ public class StatisticalAlertService : IStatisticalAlertService
 
     private async Task<int> EvaluateMemberAsync(Guid memberId, DateTime utcNow, CancellationToken ct)
     {
+        // One span per member per pass, under the job's root span. Everything from here down used
+        // to be unobservable: three ways to leave on the next line alone, none of them logged, and
+        // a member skipped for a paused monitor looked exactly like a member with nothing off.
+        // See JudgementTelemetry for why the member's id is not a tag on it.
+        using var activity = JudgementTelemetry.Source.StartActivity(
+            "judgement.member", ActivityKind.Internal);
+
         var member = await _unitOfWork.CardiMembers.GetByIdAsync(memberId);
         if (member is null || !member.IsActive || member.IsMonitoringPaused(utcNow))
             return 0;
@@ -365,8 +374,12 @@ public class StatisticalAlertService : IStatisticalAlertService
         // treating the second as "the episode has passed" would resolve a standing alert on a day
         // that produced no evidence either way. On a health screen that is the wrong failure —
         // better a rule that stays latched than one that quietly stands down in the dark.
+        activity?.SetTag(JudgementTelemetry.FindingsTag, findings.Count);
         if (findings.Count == 0)
             return 0;
+
+        activity?.SetTag(
+            JudgementTelemetry.RulesTag, string.Join(',', findings.Select(f => f.Rule)));
 
         // Soft-deleted rows are part of the history a daily rule already judged. Fetching only
         // standing alerts meant deleting a card re-armed the same quieter day on the next tick
@@ -403,6 +416,7 @@ public class StatisticalAlertService : IStatisticalAlertService
             toJudge.Add(finding);
         }
 
+        activity?.SetTag(JudgementTelemetry.JudgedTag, toJudge.Count);
         if (toJudge.Count == 0)
             return 0;
 
@@ -481,6 +495,7 @@ public class StatisticalAlertService : IStatisticalAlertService
             created.Add(alert);
         }
 
+        activity?.SetTag(JudgementTelemetry.RaisedTag, created.Count);
         if (created.Count == 0)
             return 0;
 

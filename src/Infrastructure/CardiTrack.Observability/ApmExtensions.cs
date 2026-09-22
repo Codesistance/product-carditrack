@@ -205,9 +205,12 @@ public static class ApmExtensions
                     // AI client calls (MedGemma): one GenAI-semconv span per call, defined
                     // in CardiTrack.Infrastructure's AiTelemetry.
                     .AddSource(TelemetryNames.AiSource)
-                    // Realtime notification pipeline: one span per pulled Pub/Sub message,
-                    // linked back to the publishing webhook-receiver span. Defined in
-                    // CardiTrack.PipelineJobs' PipelineTelemetry.
+                    // Pipeline work, on two instances of one name: CardiTrack.PipelineJobs'
+                    // PipelineTelemetry (the job's root span, and one span per pulled Pub/Sub
+                    // message linked back to the publishing webhook-receiver span) and
+                    // CardiTrack.Infrastructure's JudgementTelemetry (one span per member per
+                    // pass, under that root). Without the root span the arm's AI and Npgsql spans
+                    // were parentless and its log lines carried no trace_id at all.
                     .AddSource(TelemetryNames.PipelineSource)
                     // Push delivery spine: one span per FCM send. Load-bearing, not optional —
                     // FirebaseAdmin manages its own transport outside IHttpClientFactory, so

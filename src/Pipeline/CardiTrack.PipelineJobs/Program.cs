@@ -1,4 +1,5 @@
 ﻿using CardiTrack.Application.Interfaces.Repositories;
+using System.Diagnostics;
 using CardiTrack.Application.Interfaces.Security;
 using CardiTrack.Application.Interfaces.Services;
 using CardiTrack.Application.Services;
@@ -167,6 +168,17 @@ if (jobName == "assess")
 
 var app = builder.Build();
 
+// The job's root span. Declared out here, rather than as a `using var` inside the try, so the
+// catch below can mark it failed: a span that ends green on a run that exited non-zero is worse
+// than no span, because it is the one an alert would trust.
+//
+// Until this existed, every arm but `notify` produced a scatter of parentless spans — one per
+// MedGemma call, one per Npgsql command — with nothing tying them to a pass, a member or a rule,
+// and none of the arm's log lines carried a trace_id, because ActivityLogEnricher reads
+// Activity.Current and a job that starts no activity has none. The AI and database spans were
+// always shipping; what was missing was something to hang them from.
+Activity? jobActivity = null;
+
 // No app.Run(): a job executes one pass and exits, and never listens.
 try
 {
@@ -181,6 +193,11 @@ try
     // throw on a malformed endpoint. Outside, that would be an unhandled exception on a path
     // whose whole purpose is to exit non-zero with a fatal log explaining why.
     app.Services.StartTelemetry();
+
+    // After StartTelemetry, necessarily: before the provider is resolved there is no
+    // ActivityListener, so this would return null and the whole run would go untraced.
+    jobActivity = PipelineTelemetry.Source.StartActivity($"pipeline.{jobName}", ActivityKind.Internal);
+    jobActivity?.SetTag("pipeline.job", jobName);
 
     Log.Information("PipelineJobs run starting: {Job}.", jobName);
 
@@ -300,11 +317,17 @@ try
 catch (Exception ex)
 {
     // A non-zero exit marks the execution failed in Cloud Run, which is what alerting keys on.
+    jobActivity?.AddException(ex);
+    jobActivity?.SetStatus(ActivityStatusCode.Error, ex.Message);
     Log.Fatal(ex, "PipelineJobs run failed: {Job}.", jobName);
     return 1;
 }
 finally
 {
+    // Before the flushes: a span still open when its provider is flushed is a span that never
+    // ships, and this is the one the rest of the run's telemetry hangs from.
+    jobActivity?.Dispose();
+
     // Guarded, and first, so the two flushes cannot take each other down. Both resolve providers
     // that may be the very thing that failed above, and an exception thrown here would replace
     // the outcome the catch just recorded — losing the fatal log that explains the run, which is

@@ -16,8 +16,11 @@ public static class TelemetryNames
     public const string AiSource = "CardiTrack.Ai";
 
     /// <summary>
-    /// ActivitySource name for the realtime notification pipeline (webhook-receiver's publish
-    /// through pipeline-jobs' drain). One name so ApmExtensions can register it for export.
+    /// ActivitySource name for pipeline work: the job's own root span, the realtime notification
+    /// pipeline (webhook-receiver's publish through pipeline-jobs' drain), and the per-member
+    /// spans inside a pass. One name so ApmExtensions can register it for export, and two
+    /// instances of it — PipelineJobs' <c>PipelineTelemetry</c> and Infrastructure's
+    /// <c>JudgementTelemetry</c> — for the same reason <see cref="PushSource"/> has two.
     /// </summary>
     public const string PipelineSource = "CardiTrack.Pipeline";
 
