@@ -9,9 +9,11 @@
          are drawn for the full-width cards the style was written for, and on a 245-wide tile
          they eat the corners and pool underneath. 14 and a shadow half the spread at two thirds
          the opacity, sitting 2 down rather than 4, leave the strip reading as a row of cards
-         rather than a row of pills. Overridden here rather than in the style, which every
-         full-width card on every page shares. -->
-    <Border Style="{StaticResource ElevatedCard}" WidthRequest="245">
+         rather than a row of pills. The padding comes in too, from the style's 14,14,13,17 —
+         drawn for a full-width card, and a wide frame on a 245 tile — to an even 12,10.
+         Overridden here rather than in the style, which every full-width card on every page
+         shares. -->
+    <Border Style="{StaticResource ElevatedCard}" WidthRequest="245" Padding="12,10">
         <Border.StrokeShape>
             <RoundRectangle CornerRadius="14"/>
         </Border.StrokeShape>
@@ -24,13 +26,17 @@
 
         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="11">
 
+            <!-- 56 rather than the 46 this tile carried while the labels were smaller: the two
+                 lines of title plus the timestamp measure a shade under 57, and a tile shorter
+                 than the text beside it leaves the card looking bottom-heavy. The glyph keeps
+                 the tile's old proportion — 26 of 46 — so 32 of 56. -->
             <Border x:Name="IconTileBorder"
                     Grid.Column="0"
                     Style="{StaticResource IconTile}"
-                    WidthRequest="46" HeightRequest="46"
+                    WidthRequest="56" HeightRequest="56"
                     VerticalOptions="Center">
                 <Image x:Name="TypeIcon"
-                       WidthRequest="26" HeightRequest="26"/>
+                       WidthRequest="32" HeightRequest="32"/>
             </Border>
 
             <!-- Sized for reading first and for the tile second. The title keeps two lines —
