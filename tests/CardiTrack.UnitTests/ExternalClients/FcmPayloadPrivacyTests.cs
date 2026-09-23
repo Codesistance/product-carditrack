@@ -4,6 +4,10 @@ using CardiTrack.Domain.Entities;
 using CardiTrack.Domain.Enums;
 using CardiTrack.Infrastructure.ExternalClients.Push;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
+// The FCM request body is Newtonsoft-serialised by FirebaseAdmin itself — the event_time test
+// below asserts what actually goes on the wire, so it uses the same serialiser the SDK does.
+using Newtonsoft.Json;
 using NSubstitute;
 
 namespace CardiTrack.UnitTests.ExternalClients;
@@ -32,8 +36,8 @@ public class FcmPayloadPrivacyTests
 
     // BuildMessage never touches the FirebaseMessaging client — passing null keeps this test
     // independent of the FirebaseAdmin SDK entirely (it isn't mockable, and doesn't need to be).
-    private FcmNotificationChannel CreateSut() =>
-        new(null!, _encryption, _ackTokens, NullLogger<FcmNotificationChannel>.Instance);
+    private FcmNotificationChannel CreateSut(TimeProvider? timeProvider = null) =>
+        new(null!, _encryption, _ackTokens, NullLogger<FcmNotificationChannel>.Instance, timeProvider);
 
     private static NotificationDelivery Delivery(
         DeliveryCategory category = DeliveryCategory.Nudge,
@@ -142,6 +146,50 @@ public class FcmPayloadPrivacyTests
         var android = CreateSut().BuildMessage(Delivery(category), Token()).Android.Notification;
 
         Assert.Equal(expectedChannel, android.ChannelId);
+    }
+
+    // ── event_time: the header date Android renders (#498) ────────────────────
+
+    [Fact]
+    public void AndroidNotification_StampsTheEventTime_WithTheDeliverysEnqueueTime()
+    {
+        var delivery = Delivery(DeliveryCategory.Health, AlertSeverity.Orange, alertType: AlertType.PatternBreak);
+        delivery.CreatedDate = new DateTime(2026, 9, 1, 18, 10, 0, DateTimeKind.Utc);
+
+        var android = CreateSut().BuildMessage(delivery, Token()).Android.Notification;
+
+        Assert.Equal(delivery.CreatedDate, android.EventTimestamp);
+    }
+
+    [Fact]
+    public void AndroidNotification_NeverSerialisesTheYearOneDefault_IntoEventTime()
+    {
+        // The regression itself, asserted on the wire rather than on the property: FirebaseAdmin
+        // declares EventTimestamp as a non-nullable DateTime and emits `event_time` whether or
+        // not it was set, so "we didn't set it" shipped 0001-01-01 to every Android handset and
+        // the push arrived headed 02/01/1. The shape of the bug is invisible from the C# side —
+        // only the serialised body shows it — so this test reads the body.
+        var delivery = Delivery(DeliveryCategory.Health, AlertSeverity.Red);
+        delivery.CreatedDate = new DateTime(2026, 9, 1, 18, 10, 0, DateTimeKind.Utc);
+
+        var json = JsonConvert.SerializeObject(CreateSut().BuildMessage(delivery, Token()).Android.Notification);
+
+        Assert.Contains("\"event_time\":\"2026-09-01T18:10:00", json);
+        Assert.DoesNotContain("0001-01-01", json);
+    }
+
+    [Fact]
+    public void AndroidNotification_FallsBackToSendTime_WhenTheRowHasNoCreationTime()
+    {
+        // Wrong by minutes beats wrong by two thousand years: whatever leaves CreatedDate unset,
+        // the one field that cannot be omitted must not go out as year 1.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 23, 7, 0, 0, TimeSpan.Zero));
+        var delivery = Delivery();
+        delivery.CreatedDate = default;
+
+        var android = CreateSut(clock).BuildMessage(delivery, Token()).Android.Notification;
+
+        Assert.Equal(new DateTime(2026, 9, 23, 7, 0, 0, DateTimeKind.Utc), android.EventTimestamp);
     }
 
     [Theory]
