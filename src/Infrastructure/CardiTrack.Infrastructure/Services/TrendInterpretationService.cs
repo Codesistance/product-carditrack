@@ -653,10 +653,13 @@ public class TrendInterpretationService
 
         // The slot boundary. The read may repeat a name out of the decrypted caregiver notes it
         // was given, so it crosses flattened and redacted, as every other rewrite here does.
-        var flattenedRead = MedicalPromptBlocks.Flatten(read.Summary);
+        // FlattenWhole for both, for the reason the journals found first: the summary and the
+        // findings are generated prose within the 2,000-character insight budget, and the note
+        // cap would rewrite a quarter's narrative as if the omitted findings did not exist.
+        var flattenedRead = MedicalPromptBlocks.FlattenWhole(read.Summary);
         var redactedRead = NamePlaceholder.Redact(flattenedRead, member.Name) ?? flattenedRead;
         var redactedFindings = read.KeyFindings
-            .Select(finding => MedicalPromptBlocks.Flatten(finding))
+            .Select(finding => MedicalPromptBlocks.FlattenWhole(finding))
             .Select(finding => NamePlaceholder.Redact(finding, member.Name) ?? finding)
             .ToList();
 

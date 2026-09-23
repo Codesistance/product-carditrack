@@ -545,7 +545,10 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         if (string.IsNullOrWhiteSpace(assessment.ModelOutput))
             return NonClinicalObservation;
 
-        var flattened = MedicalPromptBlocks.Flatten(assessment.ModelOutput);
+        // FlattenWhole: ClinicalRead deliberately allows 4,000 characters here, so the note cap
+        // would drop three quarters of a long read — including a conclusion that arrives late in
+        // it — before the sentence a family is paged with is written from it.
+        var flattened = MedicalPromptBlocks.FlattenWhole(assessment.ModelOutput);
         var read = NamePlaceholder.Redact(flattened, member.Name) ?? flattened;
 
         AlertRewriteAiResponse rewritten;

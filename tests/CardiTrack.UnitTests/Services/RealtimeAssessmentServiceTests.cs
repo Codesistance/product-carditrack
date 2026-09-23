@@ -647,4 +647,38 @@ public class RealtimeAssessmentServiceTests
         Assert.Contains("31°C", prompt);
         Assert.Contains("air quality Moderate", prompt);
     }
+
+    /// <summary>
+    /// The whole clinical read crosses to the Rewrite slot, not the first thousand characters.
+    /// </summary>
+    /// <remarks>
+    /// <c>ClinicalRead</c> deliberately allows 4,000 characters here, and the boundary first shipped
+    /// running the read through <c>MedicalPromptBlocks.Flatten</c>, whose 1,000-character cap is
+    /// sized for a caregiver note. A long read would have arrived at the rewrite ending in
+    /// "… (truncated)" and the sentence a family is paged with would have been written without its
+    /// conclusion. The journals hit the same bug first; this pins the assessment's own crossing.
+    /// </remarks>
+    [Fact]
+    public async Task The_whole_clinical_read_reaches_the_alert_rewrite()
+    {
+        var longRead = "Resting rate ran above this person's usual through the evening. "
+            + new string('x', 2_000) + " The rise resolved before morning.";
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = longRead,
+                Severity = "high",
+            });
+
+        await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        var prompt = _rewriteAi.ReceivedCalls()
+            .Select(c => c.GetArguments()[0] as string)
+            .Last(arg => arg is not null && arg.Contains("Clinical read to write from", StringComparison.Ordinal))!;
+
+        Assert.DoesNotContain("(truncated)", prompt, StringComparison.Ordinal);
+        Assert.Contains("The rise resolved before morning.", prompt, StringComparison.Ordinal);
+    }
 }
+

@@ -675,7 +675,10 @@ public class StatisticalAlertService : IStatisticalAlertService
             "\n\n",
             judged.Select(j =>
             {
-                var flattened = MedicalPromptBlocks.Flatten(j.Read);
+                // FlattenWhole like every other crossing here. The brief asks for at most 80
+                // words, which is well inside the note cap — but a brief is a request and not a
+                // guarantee, and this is the one boundary where exceeding it would be silent.
+                var flattened = MedicalPromptBlocks.FlattenWhole(j.Read);
                 var redacted = NamePlaceholder.Redact(flattened, member.Name) ?? flattened;
                 return $"rule: {j.Finding.Rule}\nseriousness: {j.SeverityWord}\nfinding: {redacted}";
             }));

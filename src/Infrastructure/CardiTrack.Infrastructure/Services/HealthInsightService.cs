@@ -300,7 +300,10 @@ public class HealthInsightService : IHealthInsightService
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
 
-        var flattened = MedicalPromptBlocks.Flatten(text);
+        // FlattenWhole: these are whole generations bound by the 2,000-character insight columns,
+        // not caregiver notes, and Flatten's 1,000-character cap would hand the rewrite a read
+        // ending in "… (truncated)" and let it write a card from half a read.
+        var flattened = MedicalPromptBlocks.FlattenWhole(text);
         return NamePlaceholder.Redact(flattened, memberName) ?? flattened;
     }
 
