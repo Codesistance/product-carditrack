@@ -284,14 +284,15 @@ public class FcmNotificationChannel : INotificationChannel
     }
 
     /// <summary>
-    /// When the thing being notified about happened — the outbox row's enqueue time, which
-    /// <c>DeliveryPlanner</c> writes as the alert is raised.
+    /// When the thing being notified about happened — the outbox row's creation time, stamped by
+    /// <c>BaseEntity</c>'s constructor as <c>DispatchService</c> enqueues the delivery (the
+    /// column's <c>NOW()</c> default stands behind it).
     /// </summary>
     /// <remarks>
     /// The row's own timestamp rather than the source <see cref="Alert"/>'s, deliberately: the
     /// payload is built without loading the source (see the deep-link comment above), and the two
-    /// are the same enqueue for every delivery the planner creates. An escalated copy carries its
-    /// own creation time, which is when *that* page went out — what its recipient is being told.
+    /// are the same enqueue for every delivery. An escalated copy carries its own creation time,
+    /// which is when *that* page went out — what its recipient is being told.
     /// <para>
     /// A quiet-hours deferral therefore shows the caregiver when the reading came in, not when the
     /// OS was finally allowed to buzz. That is the honest answer for a health alert: "this
