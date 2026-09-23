@@ -1,7 +1,9 @@
 # Art. 22 Analysis & Model Validation Plan — Automated Alerting
 
 > **Status: DRAFT — pending review by a qualified privacy professional.** Prepared 2026-08-10
-> against the code as merged that day. This document discharges the *drafting* half of DPIA
+> against the code as merged that day (the original baseline: §1–§6 as first written);
+> **revised 2026-09-23** against `main` as merged that day — §1 producer table, the §2.1 re-run,
+> V2b in §5 and the §6 verdict table are the as-built analysis. This document discharges the *drafting* half of DPIA
 > risk **R-B1** ("Art. 22 analysis; human-review pathway; documented model validation") for the
 > alerting that now exists; the *execution* half — running the validation protocol in §5 and
 > recording results — remains outstanding and **gates prod alerting** (production setup
@@ -18,7 +20,7 @@ in the pipeline's assessor job, gated on `enable_pipeline_jobs`, which prod has 
 |---|---|---|---|
 | Real-time assessor | **LLM-routed**: SSA features → MedGemma verdict → severity parse | `HeartRate` red/orange | `RealtimeAssessmentService`, `AssessmentSeverityParser` |
 | Inactivity detector | Deterministic rule (device silence) | `Inactivity` yellow | `InactivityDetectionService` |
-| Statistical engine (R1) | Nine deterministic rules vs 30-day baseline produce *findings*; **since 2026-09-19 LLM-routed** — MedGemma returns the severity, headline and message (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`) | yellow/orange/red per the model's verdict, mapped strictly, fail closed | `StatisticalAlertRules`, `StatisticalAlertService` (pipeline `assess` job) |
+| Statistical engine (R1) | Eleven deterministic rules produce *findings* — nine **comparative** rules vs the 30-day baseline (silent without one) and two **measured** rhythm rules (`irregular_rhythm`, `ecg_afib`, DPIA A26) that relay a finding the wearer's device already classified and are deliberately not gated on a baseline; **since 2026-09-19 LLM-routed** — MedGemma returns the severity, headline and message for every finding (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`) | yellow/orange/red per the model's verdict, mapped strictly, fail closed | `StatisticalAlertRules`, `StatisticalAlertService` (pipeline `assess` job) |
 | Caregiver-defined alarms (R2) | Deterministic threshold arithmetic, **on numbers the caregiver chose** | yellow/orange/red, chosen by the caregiver | `MetricAlarmEvaluator`, `MetricAlarmEngine` |
 
 The first and third involve a model; the other two are pure arithmetic against the member's own
@@ -82,9 +84,10 @@ section's facts under a different test. Four things changed since §2 was writte
    assessor. This **widens the profiling footprint** — every R1 alert is a model verdict on a
    person's deviation from their own pattern — and with it the Arts. 13–15 duty to explain the
    logic. It does not move the Art. 22 test: the output is still an `Alert` row awaiting a named
-   caregiver's acknowledgment, the nine thresholds still decide whether a finding reaches the
-   model at all (algorithm card §2), and the fail-closed parse and strict mapping carry over
-   (§3). R1 rows now fall under V2/V3.
+   caregiver's acknowledgment, the eleven rules still decide whether a finding reaches the
+   model at all (nine baseline thresholds, algorithm card §2; two device-measured rhythm
+   findings, DPIA A26), and the fail-closed parse and strict mapping carry over (§3). R1 rows
+   now fall under **V2b** and V3 (§5) — V2 as written cannot cover them, see V2b.
 3. **Member chat can change alert settings** (2026-09-17; DPIA A20 restated). A model reads
    which rule or alarm the caregiver meant; the change is proposed in one turn and applied only
    on the caregiver's explicit yes in the next, through the same services and primary-caregiver
@@ -161,10 +164,26 @@ rate, **split by age band and sex** (the per-cohort requirement). Acceptance to 
 sign-off: FN rate on reference-red windows ≈ 0 within the sample; FP consistent with the <5%
 product target.
 
-**V3 — Prod shadow period (to run at enablement):** enable the assessor in prod with alert
-audience restricted to staff-owned test members for ≥2 weeks; measure alert volume, FP rate
-(staff adjudication), and cooldown behavior under real load before any real family is
-enrolled. This slots between runbook steps 6 and 10's lift.
+**V2b — Retrospective benchmark for the model-judged R1 path (to run, dev data; added
+2026-09-23):** V2 cannot cover R1 because its negative class does not exist: a finding the model
+judges benign is written nowhere (`StatisticalAlertService` remarks — deliberate, so the finding
+is re-judged as the day's readings arrive), so stored rows are alerts only. Protocol: (a) for
+every R1 `Alert` row since 2026-09-19, compare the model's severity with the rule's former
+constant (the lineage column in the algorithm card §2), by rule, **age band and sex** —
+agreement, escalation and de-escalation rates, with every de-escalation of a former red read
+individually; (b) a **shadow log of judged findings including benign verdicts** (rule, finding
+values, raw and mapped severity) for a bounded period in dev — the "judged-day marker" the
+service's own remarks name as the follow-up — which gives V2b its negative class and lets the
+false-negative rate be estimated the way V2 does for the assessor; (c) the two measured rhythm
+rules are reported separately, since their finding is the device's classification and the only
+question for the model is severity. Acceptance to propose at sign-off, as V2's.
+
+**V3 — Prod shadow period (to run at enablement):** enable the pipeline's assessor job in prod
+with alert audience restricted to staff-owned test members for ≥2 weeks; measure alert volume,
+FP rate (staff adjudication), and cooldown behavior under real load before any real family is
+enrolled. Since 2026-09-23 this covers **both LLM-routed producers**: the assessor's heart-rate
+alerts and the R1 judged alerts alike are adjudicated as warranted or not, reported per rule and
+per cohort (age band, sex). This slots between runbook steps 6 and 10's lift.
 
 **V4 — Change control (standing):** any change to a `CARDITRACK_*` prompt, the model tag,
 the severity mapping, **or the numerical engine that produces SSA features / baseline
@@ -182,7 +201,7 @@ different solver, and must not be treated as bit-stable against post-swap rows.
 |---|---|---|
 | 2026-08-14 | Jacobi → Math.NET EVD for SSA | Same algebra, different solver. Stored `HrDeviationScore` values are not bit-stable across the swap and must not be pooled in a V2 claim |
 | 2026-09-06 | **Caregiver-defined alarms** (`MetricAlarm`) — a fourth producer whose thresholds are set by the user | See below |
-| 2026-09-19 | **Statistical rules become findings; MedGemma returns the verdict** (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`, `StatisticalAlertService`, moved from the Worker to the pipeline's assessor job) | Thresholds in the algorithm card's §2 are unchanged and still decide *whether a finding is put to the model*; what changed is who decides the severity and writes the copy. Every R1 alert row from this date carries a model verdict, so pre/post rows must not be pooled in a V2 claim about R1 severities. The severity mapping, parser strictness and fail-closed behaviour are the assessor's, pinned by the same unit-test contract (V1). The R1 rows now fall under the LLM-routed producer's validation (V2/V3), not the boundary-test exemption above |
+| 2026-09-19 | **Statistical rules become findings; MedGemma returns the verdict** (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`, `StatisticalAlertService`, moved from the Worker to the pipeline's assessor job) | Thresholds in the algorithm card's §2 are unchanged and still decide *whether a finding is put to the model*; what changed is who decides the severity and writes the copy. Every R1 alert row from this date carries a model verdict, so pre/post rows must not be pooled in a V2 claim about R1 severities. The severity mapping, parser strictness and fail-closed behaviour are the assessor's, pinned by the same unit-test contract (V1). The R1 rows now fall under the LLM-routed producer's validation (**V2b**/V3, added 2026-09-23), not the boundary-test exemption above |
 
 **On the 2026-09-06 change.** It does not alter any threshold in the algorithm card's §2: the nine
 statistical rules run unchanged, and `AlertSensitivity` still drives nothing. What it adds is a
