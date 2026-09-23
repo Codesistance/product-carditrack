@@ -767,6 +767,90 @@ public class CardiTrackApiClientTests
         Assert.True(cache.Items.ContainsKey($"api/v1/insights/members/{memberId}/trend"));
     }
 
+    /// <summary>
+    /// Two reads of the same path are routinely out at once — a screen pulled down while its
+    /// first read is still in flight — and nothing makes the answers come back in the order they
+    /// were sent. A screen can drop the loser before it draws it; the cache is written underneath
+    /// that, for every screen, so an older body landing last would be read by the next screen to
+    /// peek. Ordered by when each read started, because the server only moves forward.
+    /// </summary>
+    [Fact]
+    public async Task Get_DoesNotLetAnOlderReadOverwriteANewerCachedBody()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        var memberId = Guid.NewGuid();
+
+        var olderIsOut = new TaskCompletionSource();
+        var releaseOlder = new TaskCompletionSource();
+
+        // Answers the read that started first, and answers it last.
+        http.Enqueue(_ =>
+        {
+            olderIsOut.TrySetResult();
+            releaseOlder.Task.GetAwaiter().GetResult();
+            return Json(DigestEnvelope(memberId, "The older answer."));
+        });
+        http.Enqueue(_ => Json(DigestEnvelope(memberId, "The newer answer.")));
+
+        var older = Task.Run(() => client.GetDigestAsync(memberId));
+        await olderIsOut.Task;
+
+        await client.GetDigestAsync(memberId);
+
+        releaseOlder.SetResult();
+        await older;
+
+        Assert.Contains(
+            "The newer answer.",
+            cache.Items[$"api/v1/insights/members/{memberId}/digest"].Payload);
+    }
+
+    /// <summary>
+    /// And the guard only holds an older answer off: the next read of that key writes as usual,
+    /// or one overlap would leave the key frozen for the life of the client.
+    /// </summary>
+    [Fact]
+    public async Task Get_CachesTheNextReadAfterAnOlderOneWasHeldOff()
+    {
+        var cache = new MemoryOfflineCache();
+        var (client, http) = CreateSut(cache);
+        var memberId = Guid.NewGuid();
+
+        var olderIsOut = new TaskCompletionSource();
+        var releaseOlder = new TaskCompletionSource();
+
+        http.Enqueue(_ =>
+        {
+            olderIsOut.TrySetResult();
+            releaseOlder.Task.GetAwaiter().GetResult();
+            return Json(DigestEnvelope(memberId, "The older answer."));
+        });
+        http.Enqueue(_ => Json(DigestEnvelope(memberId, "The newer answer.")));
+
+        var older = Task.Run(() => client.GetDigestAsync(memberId));
+        await olderIsOut.Task;
+        await client.GetDigestAsync(memberId);
+        releaseOlder.SetResult();
+        await older;
+
+        http.Enqueue(_ => Json(DigestEnvelope(memberId, "Later still.")));
+        await client.GetDigestAsync(memberId);
+
+        Assert.Contains(
+            "Later still.",
+            cache.Items[$"api/v1/insights/members/{memberId}/digest"].Payload);
+    }
+
+    private static string DigestEnvelope(Guid memberId, string text) => """
+        {"success":true,"message":"ok","data":{"cardiMemberId":"%M%","localDate":"2026-08-01",
+         "audience":"daybook","text":"%T%","generatedAtUtc":"2026-08-01T22:00:00Z"},
+         "timestamp":"2026-08-01T00:00:00Z"}
+        """.Replace("%M%", memberId.ToString()).Replace("%T%", text);
+
+    private static HttpResponseMessage Json(string body) =>
+        new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+
     [Fact]
     public async Task Get_StillCachesAReadThatBeganAfterTheEviction()
     {

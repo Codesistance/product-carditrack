@@ -36,6 +36,23 @@ public static class GeneratedContentRefresh
     public static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
 
     /// <summary>
+    /// How long one screen's claim on a card holds another screen's read off, before the claim is
+    /// treated as lost and the card is due again.
+    /// </summary>
+    /// <remarks>
+    /// The point of a lease rather than a plain flag: a claim is released by the pass that took
+    /// it, and a pass that never gets there — a request that hangs, a page faulted mid-load —
+    /// would otherwise hold its card for the life of the app. A card nobody may read is a worse
+    /// failure than the duplicate read the claim exists to prevent, so the claim expires on its
+    /// own.
+    /// Sized from the request budget it is covering: <c>TimeoutHandler</c> holds every ordinary
+    /// call to thirty seconds, and the claim is only held across the member load, so a minute is
+    /// twice as long as the thing it is waiting for can legitimately take. It is also well inside
+    /// <see cref="Interval"/>, so a lost claim costs part of one window and never a whole one.
+    /// </remarks>
+    public static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(1);
+
+    /// <summary>
     /// Whether this pass should re-read the generated cards.
     /// </summary>
     /// <param name="requestedByCaregiver">
