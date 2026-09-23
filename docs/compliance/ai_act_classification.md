@@ -233,7 +233,11 @@ Survey of the user-facing surfaces on 2026-09-23:
   (insights and trend narratives), A11 (summaries, journal entries), A13 (the real-time
   assessor's message, copied into `Alert.Message`), A15 (alert headline and message), A19
   (`QuestionnaireResponse.QuestionText` and `TriggerContext`), A20 (chat turns), A22 (Advise)
-  and A24 (status line).
+  and A24 (status line). A6 is different in kind: the report endpoint returns only a queued or
+  status response and the generated narrative lives in the downloaded artifact, so its marking
+  would be **artifact-level** (PDF metadata or a marked line in the file, beside the
+  human-readable banner the PDF already carries; the CSV path has neither). Whether 50(2)
+  reaches exported files at all is part of OI-15 (c).
 
 Together with the Art. 4 record in §7.2 these are the open AI Act obligations on CardiTrack
 today; #1244 is the only one on a product surface.
