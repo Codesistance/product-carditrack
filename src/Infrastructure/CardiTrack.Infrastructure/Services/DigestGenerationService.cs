@@ -1248,7 +1248,7 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// renders; the body is what could not be allowed through unchecked. Both fields are nullable
     /// in the entity, so there is somewhere for "nothing" to go.
     /// </remarks>
-    private string? JournalField(string? text, string bookName, Guid memberId)
+    private string? JournalField(string? text, string bookName, string surface, Guid memberId)
     {
         if (string.IsNullOrWhiteSpace(text))
             return null;
@@ -1259,7 +1259,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Dropped a {BookName} field for CardiMember {CardiMemberId}: it carries a token the "
                 + "member's record cannot settle.",
                 bookName, memberId);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
             return null;
         }
 
@@ -1269,7 +1269,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Dropped a {BookName} field for CardiMember {CardiMemberId}: it names a condition "
                 + "or a treatment ({Marker}).",
                 bookName, memberId, condition);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonNamesACondition);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonNamesACondition);
             return null;
         }
 
@@ -1362,6 +1362,19 @@ public partial class DigestGenerationService : IDigestGenerationService
     }
 
     /// <summary>
+    /// The value a book's discarded copy is counted under: <c>daybook</c>, <c>weekbook</c> or
+    /// <c>monthbook</c>. The same three strings <see cref="RewriteJournalAsync"/> forms from its
+    /// period, so a book's rewrite failures and its register rejections land on one series.
+    /// </summary>
+    private static string JournalSurface(DigestAudience audience) => audience switch
+    {
+        DigestAudience.Daybook => "daybook",
+        DigestAudience.Weekbook => "weekbook",
+        DigestAudience.Monthbook => "monthbook",
+        _ => throw new ArgumentOutOfRangeException(nameof(audience), audience, "Not a CardiJournal book."),
+    };
+
+    /// <summary>
     /// The shared accept path for a Daybook, Weekbook or Monthbook: refuse empty, instruction-echo,
     /// diagnostic, unglossed or over-long copy, then store with the name resolved. Week and month
     /// books also need a minimum sentence count — a day can be one paragraph.
@@ -1389,13 +1402,19 @@ public partial class DigestGenerationService : IDigestGenerationService
             _ => throw new ArgumentOutOfRangeException(nameof(audience), audience, "Not a CardiJournal book."),
         };
 
+        // Not bookName. That one reads as prose in the log lines below it — "Discarded the daybook
+        // entry" — and a counter dimension is not prose: tagged with it, a day's discards would
+        // land under "daybook entry" here and under "daybook" where RewriteJournalAsync counts its
+        // own, splitting one surface across two series for the same book.
+        var surface = JournalSurface(audience);
+
         if (text.Length == 0 || readsLikeInstructions(text))
         {
             _logger.LogWarning(
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: the model "
                 + "returned empty text or restated its own instructions.",
                 bookName, memberId, periodPhrase);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonReadsLikeInstructions);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonReadsLikeInstructions);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
@@ -1405,7 +1424,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it names a "
                 + "condition or a treatment ({Marker}).",
                 bookName, memberId, periodPhrase, condition);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonNamesACondition);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonNamesACondition);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
@@ -1416,7 +1435,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: "
                 + "its sentence count ({Sentences}) is below the minimum.",
                 bookName, memberId, periodPhrase, JournalRegisterGuards.SentenceCount(text));
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonTooFewSentences);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonTooFewSentences);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
@@ -1435,7 +1454,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it uses "
                 + "'{Term}' without explaining it where it is first used.",
                 bookName, memberId, periodPhrase, term);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnglossedTerm);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnglossedTerm);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
@@ -1455,7 +1474,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it states a "
                 + "sex the record does not bear out.",
                 bookName, memberId, periodPhrase);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnsupportedSex);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnsupportedSex);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
         var name = voice.FirstName;
@@ -1465,7 +1484,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it names the "
                 + "member through the placeholder, but no name is on file to resolve it to.",
                 bookName, memberId, periodPhrase);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
@@ -1476,7 +1495,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: it carries a "
                 + "pronoun token the member's record cannot settle.",
                 bookName, memberId, periodPhrase);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonUnresolvablePlaceholder);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
@@ -1486,7 +1505,7 @@ public partial class DigestGenerationService : IDigestGenerationService
                 "Discarded the {BookName} for CardiMember {CardiMemberId} {PeriodPhrase}: "
                 + "{Length} characters is over the {Max} the table holds.",
                 bookName, memberId, periodPhrase, storedText.Length, DigestEntry.MaxTextLength);
-            CopyGuardTelemetry.Count(bookName, CopyGuardTelemetry.ReasonTooLong);
+            CopyGuardTelemetry.Count(surface, CopyGuardTelemetry.ReasonTooLong);
             return JournalComposition.Discarded(usage, rewriteUsage);
         }
 
@@ -1496,10 +1515,10 @@ public partial class DigestGenerationService : IDigestGenerationService
             LocalDate = periodEnd,
             Audience = audience,
             Headline = JournalField(
-                voice.Resolve(CleanHeadline(headline, memberId, periodEnd)), bookName, memberId),
+                voice.Resolve(CleanHeadline(headline, memberId, periodEnd)), bookName, surface, memberId),
             Text = storedText,
             Suggestion = JournalField(
-                voice.Resolve(CleanSuggestion(suggestion, memberId, periodEnd)), bookName, memberId),
+                voice.Resolve(CleanSuggestion(suggestion, memberId, periodEnd)), bookName, surface, memberId),
             Urgency = ParseUrgency(urgency, memberId, periodEnd),
             GeneratedAtUtc = utcNow,
             PromptVersion = CurrentPromptVersion,
