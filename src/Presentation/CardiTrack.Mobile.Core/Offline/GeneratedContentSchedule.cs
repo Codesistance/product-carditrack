@@ -38,6 +38,26 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
     /// </summary>
     private readonly ConcurrentDictionary<(Guid Member, GeneratedCard Card), (int Session, DateTime At)> _lastRead = new();
 
+    /// <summary>
+    /// The reads that are out right now: which pass holds each card, and when it took it. What
+    /// <see cref="_lastRead"/> cannot answer, because a pass writes there only once its member
+    /// load has settled and a second page can be built inside that window.
+    /// </summary>
+    /// <remarks>
+    /// Entries leave three ways — recorded, abandoned, or simply too old to believe
+    /// (<see cref="GeneratedContentRefresh.ClaimLease"/>). The third is what keeps a pass that
+    /// never comes back from holding a card shut for the life of the app.
+    /// Stamped with the session for the same reason <see cref="_lastRead"/> is: a claim from a
+    /// caregiver who has since signed out must not hold the next one's cards.
+    /// </remarks>
+    private readonly ConcurrentDictionary<(Guid Member, GeneratedCard Card), (int Session, int Ticket, DateTime At)> _inFlight = new();
+
+    /// <summary>
+    /// Hands out claim tickets. Only ever incremented, and never zero, so <see cref="ReadClaim.None"/>
+    /// can be the default value of the struct and still be told apart from a real hold.
+    /// </summary>
+    private int _ticket;
+
     private int _generation;
 
     /// <param name="utcNow">
@@ -53,12 +73,13 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
         _generation = session.Current;
     }
 
-    public bool IsDue(Guid cardiMemberId, GeneratedCard card, bool requestedByCaregiver)
+    public ReadClaim ClaimIfDue(Guid cardiMemberId, GeneratedCard card, bool requestedByCaregiver)
     {
         DropIfSessionChanged();
 
+        var key = (cardiMemberId, card);
         var session = _session.Current;
-        var lastRead = _lastRead.TryGetValue((cardiMemberId, card), out var entry) && entry.Session == session
+        var lastRead = _lastRead.TryGetValue(key, out var entry) && entry.Session == session
             ? entry.At
             : DateTime.MinValue;
 
@@ -67,17 +88,37 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
         // who replaced them — and their API cache was wiped at sign-out, so the peek behind that
         // answer finds nothing and the card sits empty. When in doubt, due: a read nobody needed
         // costs a request, and the alternative costs a caregiver the summary.
+        var now = _utcNow();
         if (_session.Current != session)
-            return true;
+            return Claim(key, session, now);
 
-        return GeneratedContentRefresh.IsDue(requestedByCaregiver, lastRead, _utcNow());
+        if (!GeneratedContentRefresh.IsDue(requestedByCaregiver, lastRead, now))
+            return ReadClaim.None;
+
+        // Due, and nobody has read it yet — but somebody may be reading it right now. This is the
+        // window the timestamp cannot cover: the holder writes its stamp only once its member load
+        // has settled, and a second page built inside that second finds every card due again.
+        //
+        // A caregiver's own request goes through regardless. It is the one case where being told
+        // "a read is already on its way" is not good enough: the answer may be moments away, but
+        // it belongs to a pass that may yet abandon it, and a pull that quietly returned the
+        // screen it was already showing would make the gesture a lie.
+        if (!requestedByCaregiver && IsBeingRead(key, session, now))
+            return ReadClaim.None;
+
+        return Claim(key, session, now);
     }
 
-    public int CurrentSession => _session.Current;
-
-    public void Record(Guid cardiMemberId, GeneratedCard card, int session)
+    public void Record(Guid cardiMemberId, GeneratedCard card, ReadClaim claim)
     {
+        // A card this pass never claimed — the cadence said no, or somebody else's read was
+        // already out for it. There is nothing of ours to write down and nothing to give back.
+        if (!claim.IsDue)
+            return;
+
         DropIfSessionChanged();
+
+        var session = claim.Session;
 
         // Checked after the drop, not before it. The drop only notices that the session moved
         // since this object last looked; by the time a read from a signed-out caregiver lands,
@@ -95,11 +136,53 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
         // session can have recorded the same card, and a plain assignment would put the older
         // one back — after which every reader in the new session ignores it and re-reads. The
         // sessions only ever increase, so "keep the higher" is the whole rule.
+        var key = (cardiMemberId, card);
         var now = _utcNow();
         _lastRead.AddOrUpdate(
-            (cardiMemberId, card),
+            key,
             (session, now),
             (_, existing) => existing.Session > session ? existing : (session, now));
+
+        // The stamp is what holds the card now, so the claim has done its work. Released after
+        // the write, never before: between the two there must be no moment where the card is
+        // neither claimed nor recorded, or the second page this exists for would slip through it.
+        Release(key, claim);
+    }
+
+    public void Abandon(Guid cardiMemberId, GeneratedCard card, ReadClaim claim)
+    {
+        if (!claim.IsDue)
+            return;
+
+        // No DropIfSessionChanged and no session check: this only ever removes something, and a
+        // claim from a session that has moved on is already being ignored by every reader.
+        Release((cardiMemberId, card), claim);
+    }
+
+    /// <summary>Takes the card, and hands back the proof of it.</summary>
+    private ReadClaim Claim((Guid Member, GeneratedCard Card) key, int session, DateTime now)
+    {
+        var ticket = Interlocked.Increment(ref _ticket);
+        _inFlight[key] = (session, ticket, now);
+        return new ReadClaim(session, ticket);
+    }
+
+    /// <summary>Whether a read of this card is out now, under a claim still worth believing.</summary>
+    private bool IsBeingRead((Guid Member, GeneratedCard Card) key, int session, DateTime now) =>
+        _inFlight.TryGetValue(key, out var held)
+        && held.Session == session
+        && now - held.At < GeneratedContentRefresh.ClaimLease;
+
+    /// <summary>
+    /// Gives a card back, but only for the pass that still holds it. A caregiver's request takes
+    /// a claim over (see <see cref="ClaimIfDue"/>), and the pass it was taken from must not then
+    /// release a hold that has become somebody else's — that would open the window under the read
+    /// that is now out.
+    /// </summary>
+    private void Release((Guid Member, GeneratedCard Card) key, ReadClaim claim)
+    {
+        if (_inFlight.TryGetValue(key, out var held) && held.Ticket == claim.Ticket)
+            _inFlight.TryRemove(new KeyValuePair<(Guid, GeneratedCard), (int, int, DateTime)>(key, held));
     }
 
     /// <summary>
@@ -139,6 +222,7 @@ public sealed class GeneratedContentSchedule : IGeneratedContentSchedule
             if (Interlocked.CompareExchange(ref _generation, current, seen) == seen)
             {
                 _lastRead.Clear();
+                _inFlight.Clear();
                 return;
             }
         }

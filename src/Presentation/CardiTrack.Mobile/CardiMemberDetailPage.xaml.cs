@@ -346,6 +346,15 @@ public partial class CardiMemberDetailPage : ContentPage
         var memberOnScreen = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // Taken inside the try below and given back in its finally, which is why they are
+        // declared out here. A pass owns the cards it claimed until it says otherwise, and every
+        // way out of the load — superseded, a 404 over nothing, a fault while drawing — is a pass
+        // that will never record them.
+        var digestClaim = ReadClaim.None;
+        var adviseClaim = ReadClaim.None;
+        var questionsClaim = ReadClaim.None;
+        var recorded = false;
+
         try
         {
             // Started before the member is awaited, not after it. These three only ever needed
@@ -358,12 +367,16 @@ public partial class CardiMemberDetailPage : ContentPage
             // intent left the summary on its placeholder for a whole cadence window while the
             // tick that finally fetched the member declined to fetch the summary beside it. The
             // reads are recorded below, once the member load has settled.
-            // Captured before the reads start, checked when they are written down. A load is not
-            // cancelled by sign-out, so this pass can land after the next caregiver has signed in.
-            var session = _schedule.CurrentSession;
-
-            var digestDue = _schedule.IsDue(memberId, GeneratedCard.Digest, requested);
-            var adviseDue = _schedule.IsDue(memberId, GeneratedCard.Advise, requested);
+            //
+            // What is taken here is the claim, which is the other half of that: between this line
+            // and the recording below, the schedule has no timestamp to show, and this page is
+            // transient — a caregiver who leaves and comes back inside that second gets a second
+            // page, which would find all three cards due and read them again beside these. The
+            // claim says the read is already out; the claim's session is checked when it is handed
+            // back, because a load is not cancelled by sign-out and this pass can land after the
+            // next caregiver has signed in.
+            digestClaim = _schedule.ClaimIfDue(memberId, GeneratedCard.Digest, requested);
+            adviseClaim = _schedule.ClaimIfDue(memberId, GeneratedCard.Advise, requested);
 
             // The question has its own reason not to run: an editor someone is typing in makes
             // this pass skip it and nothing else. A skipped read is not recorded either, or
@@ -374,8 +387,9 @@ public partial class CardiMemberDetailPage : ContentPage
             var changedElsewhere = _questionsChangedElsewhere;
             _questionsChangedElsewhere = false;
 
-            var questionsDue = !PendingQuestionCard.IsEditing
-                && _schedule.IsDue(memberId, GeneratedCard.Questions, requested || changedElsewhere);
+            questionsClaim = PendingQuestionCard.IsEditing
+                ? ReadClaim.None
+                : _schedule.ClaimIfDue(memberId, GeneratedCard.Questions, requested || changedElsewhere);
 
             // Fire-and-forget, not awaited: each is a separate round trip that shouldn't hold
             // up the rest of the screen or the pull-to-refresh spinner.
@@ -396,11 +410,12 @@ public partial class CardiMemberDetailPage : ContentPage
             var rendered = memberOnScreen.Task;
             var pass = _followUps.Begin();
             _ = LoadThenRestoreAsync(
-                LoadDigestAsync(memberId, pass, rendered, digestDue), anchor, focusAdvise);
+                LoadDigestAsync(memberId, pass, rendered, digestClaim.IsDue), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(
-                LoadAdviseAsync(memberId, pass, rendered, adviseDue), anchor, focusAdvise);
+                LoadAdviseAsync(memberId, pass, rendered, adviseClaim.IsDue), anchor, focusAdvise);
             _ = LoadThenRestoreAsync(
-                LoadQuestionnairesAsync(memberId, pass, rendered, questionsDue), anchor, focusAdvise);
+                LoadQuestionnairesAsync(memberId, pass, rendered, questionsClaim.IsDue),
+                anchor, focusAdvise);
 
             var outcome = await SnapshotRefresh.RunAsync(
                 _api, _gate, ticket,
@@ -451,12 +466,13 @@ public partial class CardiMemberDetailPage : ContentPage
             memberOnScreen.TrySetResult(showingThisMember);
             if (showingThisMember)
             {
-                if (digestDue)
-                    _schedule.Record(memberId, GeneratedCard.Digest, session);
-                if (adviseDue)
-                    _schedule.Record(memberId, GeneratedCard.Advise, session);
-                if (questionsDue)
-                    _schedule.Record(memberId, GeneratedCard.Questions, session);
+                // Handed back card by card, including the ones this pass never claimed: Record
+                // knows an empty claim when it sees one, and sorting them here would only be this
+                // rule written down twice.
+                _schedule.Record(memberId, GeneratedCard.Digest, digestClaim);
+                _schedule.Record(memberId, GeneratedCard.Advise, adviseClaim);
+                _schedule.Record(memberId, GeneratedCard.Questions, questionsClaim);
+                recorded = true;
             }
 
             if (outcome.IsFresh)
@@ -489,6 +505,18 @@ public partial class CardiMemberDetailPage : ContentPage
             // failed refresh that left the previous member's page up, or a fault inside Apply.
             // A no-op once the render has already set it.
             memberOnScreen.TrySetResult(false);
+
+            // Every one of those paths is a pass that read for a member it never put on screen,
+            // so its cards go back unread rather than being written down — and go back now rather
+            // than waiting out the lease, so the pass that does show this member is not made to
+            // wait on this one's failure.
+            if (!recorded)
+            {
+                _schedule.Abandon(memberId, GeneratedCard.Digest, digestClaim);
+                _schedule.Abandon(memberId, GeneratedCard.Advise, adviseClaim);
+                _schedule.Abandon(memberId, GeneratedCard.Questions, questionsClaim);
+            }
+
             _gate.Release(ticket);
         }
     }
@@ -827,9 +855,12 @@ public partial class CardiMemberDetailPage : ContentPage
             // nothing saved. That happens for two reasons and neither wants a request here. The
             // member may have no summary yet, in which case the placeholder is the right answer
             // and fetching on every tick to be told so again is the cost this whole change
-            // exists to remove. Or another pass's read is still in flight, in which case its
-            // answer lands in the cache within moments and the peek above — which runs on every
-            // pass while the card is empty — picks it up on the next tick.
+            // exists to remove. Or another pass's read is still in flight — which is now a thing
+            // the schedule says outright, holding this pass off the wire rather than letting it
+            // ask for what is already on its way — in which case that answer lands in the cache
+            // within moments and the peek above, which runs on every pass while the card is
+            // empty, picks it up on the next tick. That wait is the price of the claim, and it is
+            // the same wait the cadence already asks a skipped read to take.
             if (fetch is null)
                 return;
 
