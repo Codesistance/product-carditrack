@@ -174,6 +174,9 @@ GDPR Article 22 analysis of the alerting/severity-routing chain — whether auto
 #### [alerting_algorithm_card.md](./compliance/alerting_algorithm_card.md)
 Shipped alerting logic in one place: 30% of mean, 2σ with 5 bpm floor, 5%/week × 4, 80% coverage, provisional never alerts, named SSA engine, MedGemma interprets only.
 
+#### [ai_act_classification.md](./compliance/ai_act_classification.md)
+EU AI Act (Regulation (EU) 2024/1689) risk classification of every AI surface — provider role, Art. 5 check, Annex I (follows OI-2), Annex III point 5(d) argued not engaged, and the Art. 50 / Art. 4 obligations that apply now regardless; decisions tracked as DPIA OI-15.
+
 ---
 
 ### Additional Documentation
