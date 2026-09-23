@@ -1,7 +1,9 @@
 # Art. 22 Analysis & Model Validation Plan — Automated Alerting
 
 > **Status: DRAFT — pending review by a qualified privacy professional.** Prepared 2026-08-10
-> against the code as merged that day. This document discharges the *drafting* half of DPIA
+> against the code as merged that day (the original baseline: §1–§6 as first written);
+> **revised 2026-09-23** against `main` as merged that day — §1 producer table, the §2.1 re-run,
+> V2b in §5 and the §6 verdict table are the as-built analysis. This document discharges the *drafting* half of DPIA
 > risk **R-B1** ("Art. 22 analysis; human-review pathway; documented model validation") for the
 > alerting that now exists; the *execution* half — running the validation protocol in §5 and
 > recording results — remains outstanding and **gates prod alerting** (production setup
@@ -10,20 +12,23 @@
 
 ## 1. What is being analysed
 
-Three automated alert producers exist. The **LLM-routed producer is dev-only** (gated on
-`enable_pipeline_jobs`); the two **deterministic Worker producers run in every environment
-the Worker deploys to**. All alert a test-user population today:
+Four automated alert producers exist. The two **LLM-routed producers are dev-only** (they run
+in the pipeline's assessor job, gated on `enable_pipeline_jobs`, which prod has off); the two
+**deterministic producers run in every environment**. All alert a test-user population today:
 
 | Producer | Nature | Alert | Code |
 |---|---|---|---|
 | Real-time assessor | **LLM-routed**: SSA features → MedGemma verdict → severity parse | `HeartRate` red/orange | `RealtimeAssessmentService`, `AssessmentSeverityParser` |
 | Inactivity detector | Deterministic rule (device silence) | `Inactivity` yellow | `InactivityDetectionService` |
-| Statistical engine (R1) | Five deterministic rules vs 30-day baseline | yellow/orange/red per taxonomy | `StatisticalAlertRules`, `StatisticalAlertService` |
+| Statistical engine (R1) | Eleven deterministic rules produce *findings* — nine **comparative** rules vs the 30-day baseline (silent without one) and two **measured** rhythm rules (`irregular_rhythm`, `ecg_afib`, DPIA A26) that relay a finding the wearer's device already classified and are deliberately not gated on a baseline; **since 2026-09-19 LLM-routed** — MedGemma returns the severity, headline and message for every finding (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`) | yellow/orange/red per the model's verdict, mapped strictly, fail closed | `StatisticalAlertRules`, `StatisticalAlertService` (pipeline `assess` job) |
 | Caregiver-defined alarms (R2) | Deterministic threshold arithmetic, **on numbers the caregiver chose** | yellow/orange/red, chosen by the caregiver | `MetricAlarmEvaluator`, `MetricAlarmEngine` |
 
-Only the first involves a model; the other two are pure arithmetic against the member's own
-baseline. All three produce the same artifact: an `Alert` row a caregiver sees, acknowledges,
-and resolves. Since 2026-08-11, Red/Orange alerts are additionally **dispatched by push (FCM
+The first and third involve a model; the other two are deterministic — the inactivity detector
+a fixed silence rule (more than two hours without a granular reading during waking hours, in
+the Worker), the alarms threshold arithmetic on numbers the caregiver chose. Their inputs are
+deterministic and their outputs conditional: when a producer fires, the artifact is the same
+`Alert` row a caregiver sees, acknowledges and resolves; when the model judges a finding benign,
+nothing is written at all. Since 2026-08-11, Red/Orange alerts are additionally **dispatched by push (FCM
 HTTP v1 with APNs passthrough)** with a 120s/300s/900s escalation ladder (re-push → fan-out to
 other caregivers → `UNDELIVERED_CRITICAL`) and quiet hours. **No alert triggers any action
 beyond notifying humans** — there is no SMS fallback, no effect on any service, price, or
@@ -61,9 +66,53 @@ moment push/SMS dispatch lands (a notification that wakes a family at 3am moves 
 > **Trigger FIRED — 2026-08-11.** The stated re-run condition ("before enabling push
 > dispatch") was overtaken: the push delivery spine shipped on 2026-08-11, so push dispatch
 > is now enabled and the boundary analysis in §2 was written against a system that no longer
-> exists. **The re-run is an open action**, feeding DPIA §13 (recorded in DPIA v0.6's
-> changelog); until it is done, §2's "most likely outside Art. 22(1)" conclusion should be
-> treated as unreviewed for the as-built system. SMS remains absent.
+> exists. **Re-run drafted 2026-09-23 — see §2.1.** SMS remains absent.
+
+### 2.1 Re-run — 2026-09-23, against the as-built system
+
+Drafted alongside the [AI Act classification](ai_act_classification.md), which reuses this
+section's facts under a different test. Four things changed since §2 was written against the
+2026-08-10 code:
+
+1. **Push dispatch and the escalation ladder** (2026-08-11; DPIA A18). *Solely automated?* No
+   change: the ladder alters who is notified and how insistently — re-push, fan-out to the
+   member's other caregivers, then an `UNDELIVERED_CRITICAL` record — never what is done. The
+   terminal state is a stored fact, not an action on anyone. *Similarly significant?* A push that
+   wakes a caregiver is a real intrusion, but it lands on the person who registered the device
+   and chose the categories and quiet hours (`NotificationPreferences`); the wearer's position
+   relative to not having the product is unchanged. **§2's conclusion holds.**
+2. **R1 severity, headline and message are now MedGemma's** (2026-09-19; DPIA A15; V4 entry in
+   §5). The model is in the severity path of the main producer, not only the dev-only heart-rate
+   assessor. This **widens the profiling footprint** — every alert from the nine comparative
+   rules is now a model verdict on a person's deviation from their own pattern (the two measured
+   rhythm rules relay the device's own classification and are judged for severity only, so they
+   add model-written words but no new profiling) — and with it the Arts. 13–15 duty to explain
+   the logic. It does not move the Art. 22 test: the output is still an `Alert` row awaiting a named
+   caregiver's acknowledgment, the eleven rules still decide whether a finding reaches the
+   model at all (nine baseline thresholds, algorithm card §2; two device-measured rhythm
+   findings, DPIA A26), and the fail-closed parse and strict mapping carry over (§3). R1 rows
+   now fall under **V2b** and V3 (§5) — V2 as written cannot cover them, see V2b.
+3. **Member chat can change alert settings** (2026-09-17; DPIA A20 restated). A model reads
+   which rule or alarm the caregiver meant; the change is proposed in one turn and applied only
+   on the caregiver's explicit yes in the next, through the same services and primary-caregiver
+   check the settings pages use. The human confirms every write, so this **strengthens** §2's
+   position in the same way caregiver-defined alarms did (§5, 2026-09-06). The residual risk is
+   a misread intent, mitigated by the proposal being composed in code from the parsed request
+   and shown before the yes.
+4. **Prod runs neither LLM-routed producer** (`infrastructure/environments/prod.tfvars`,
+   `enable_pipeline_jobs = false`); only the Worker's inactivity detector and caregiver-defined
+   alarms run there. The conclusions above describe dev, and prod after the flag flips — which
+   is why the flip is now a DPIA §13 trigger.
+
+**Re-run conclusion (draft):** the as-built alerting most likely remains **outside Art. 22(1)**
+— there is still no solely-automated decision with significant effect, and the human in the
+loop is the decision-maker, not a reviewer. The conservative posture (Art. 22-grade safeguards
+regardless) is retained. One new transparency observation: since item 2, the words a caregiver
+reads on an alert are the model's. The detail screen already names the yardstick in code
+(`AlertEvidenceComposer`) and shows the model's narrative in its own card; what it lacks is a
+line saying the headline and message were model-written — the same product-surface disclosure
+the AI Act's Art. 50 asks for, tracked with the classification document. **Still pending
+review by a qualified privacy professional.**
 
 ## 3. Safeguards already engineered (with citations)
 
@@ -119,10 +168,44 @@ rate, **split by age band and sex** (the per-cohort requirement). Acceptance to 
 sign-off: FN rate on reference-red windows ≈ 0 within the sample; FP consistent with the <5%
 product target.
 
-**V3 — Prod shadow period (to run at enablement):** enable the assessor in prod with alert
-audience restricted to staff-owned test members for ≥2 weeks; measure alert volume, FP rate
-(staff adjudication), and cooldown behavior under real load before any real family is
-enrolled. This slots between runbook steps 6 and 10's lift.
+**V2b — Retrospective benchmark for the model-judged R1 path (to run, dev data; added
+2026-09-23):** V2 cannot cover R1 because its negative class does not exist: a finding the model
+judges benign is written nowhere (`StatisticalAlertService` remarks — deliberate, so the finding
+is re-judged as the day's readings arrive), so stored rows are alerts only. Protocol: (a) for
+every `Alert` row from the **nine comparative rules** since 2026-09-19, compare the model's
+severity with the rule's former constant (the lineage column in the algorithm card §2), by rule,
+**age band and sex** — agreement, escalation and de-escalation rates, with every de-escalation of
+a former red read individually; (b) a **shadow log of judged findings including benign
+verdicts** (rule, finding values, raw and mapped severity) for a bounded period in dev — the
+"judged-day marker" the service's own remarks name as the follow-up — which gives V2b its
+negative class and lets the false-negative rate be estimated the way V2 does for the assessor;
+(c) the two **measured rhythm rules** have no former constant to compare against (their
+severity has only ever been the model's), so their report is separate and different in kind:
+the distribution of model severities per rule against the device classification that raised
+the finding, every benign or yellow verdict on an `ecg_afib` or `irregular_rhythm` finding read
+individually, and the
+same shadow log as (b). Acceptance to propose at sign-off, as V2's.
+
+**V3 — Prod shadow period (to run at enablement):** enable the pipeline's assessor job in prod
+with alert audience restricted to staff-owned test members for ≥2 weeks; measure alert volume,
+FP rate (staff adjudication), and cooldown behavior under real load before any real family is
+enrolled. Since 2026-09-23 this covers **both LLM-routed producers**: the assessor's heart-rate
+alerts and the R1 judged alerts alike are adjudicated as warranted or not, reported per rule and
+per cohort (age band, sex). This slots between runbook steps 6 and 10's lift.
+
+> **V3 precondition — recorded 2026-09-23, not yet met.** Nothing in code or Terraform can
+> restrict the audience today: `enable_pipeline_jobs` provisions and schedules the digest,
+> assessor, trend and themer jobs together (`infrastructure/deployments/cloud_run.tf`), and the
+> assessor's member selection is every active member with recent activity
+> (`StatisticalAlertService.AssessDueMembersAsync`, `RealtimeAssessmentService`) — there is no
+> staff or test-member allowlist. Flipping the flag in prod as it stands would judge and push
+> alerts for every enrolled family, before the shadow gate. V3 therefore requires, **before the
+> flag is flipped**: (i) a production member allowlist enforced in both LLM-routed producers'
+> member selection (or a staff-only project), and (ii) an assessor schedule that can be enabled
+> independently of the digest job. Both are code and Terraform work outside this document;
+> until they exist, V3 cannot be run and prod's **LLM-routed** alerting stays gated (§6). The
+> deterministic producers — the Worker's inactivity detector and caregiver-defined alarms — run
+> in prod today and are not what this precondition holds back.
 
 **V4 — Change control (standing):** any change to a `CARDITRACK_*` prompt, the model tag,
 the severity mapping, **or the numerical engine that produces SSA features / baseline
@@ -140,7 +223,7 @@ different solver, and must not be treated as bit-stable against post-swap rows.
 |---|---|---|
 | 2026-08-14 | Jacobi → Math.NET EVD for SSA | Same algebra, different solver. Stored `HrDeviationScore` values are not bit-stable across the swap and must not be pooled in a V2 claim |
 | 2026-09-06 | **Caregiver-defined alarms** (`MetricAlarm`) — a fourth producer whose thresholds are set by the user | See below |
-| 2026-09-19 | **Statistical rules become findings; MedGemma returns the verdict** (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`, `StatisticalAlertService`, moved from the Worker to the pipeline's assessor job) | Thresholds in the algorithm card's §2 are unchanged and still decide *whether a finding is put to the model*; what changed is who decides the severity and writes the copy. Every R1 alert row from this date carries a model verdict, so pre/post rows must not be pooled in a V2 claim about R1 severities. The severity mapping, parser strictness and fail-closed behaviour are the assessor's, pinned by the same unit-test contract (V1). The R1 rows now fall under the LLM-routed producer's validation (V2/V3), not the boundary-test exemption above |
+| 2026-09-19 | **Statistical rules become findings; MedGemma returns the verdict** (`CARDITRACK_STATISTICAL_JUDGEMENT_PROMPT`, `StatisticalAlertService`, moved from the Worker to the pipeline's assessor job) | Thresholds in the algorithm card's §2 are unchanged and still decide *whether a finding is put to the model*; what changed is who decides the severity and writes the copy. Every R1 alert row from this date carries a model verdict, so pre/post rows must not be pooled in a V2 claim about R1 severities. The severity mapping, parser strictness and fail-closed behaviour are the assessor's, pinned by the same unit-test contract (V1). The R1 rows now fall under the LLM-routed producer's validation (**V2b**/V3, added 2026-09-23), not the boundary-test exemption above |
 
 **On the 2026-09-06 change.** It does not alter any threshold in the algorithm card's §2: the nine
 statistical rules run unchanged, and `AlertSensitivity` still drives nothing. What it adds is a
@@ -161,8 +244,8 @@ producer that evaluates a number the caregiver chose. Three observations for who
    clinical definition (bradycardia), are documented in
    [alarm_catalogue.md](../technical/alarm_catalogue.md) §3.1 and §7.
 
-**Still outstanding, and unaffected by this change:** the §2 re-run that push dispatch triggered on
-2026-08-11.
+**The §2 re-run that push dispatch triggered on 2026-08-11 was drafted 2026-09-23 (§2.1);** it
+remains unreviewed by a qualified privacy professional, as does the rest of this document.
 
 **Results ledger:** append V2/V3 results to this document when executed; prod alerting for
 real families is gated on both being recorded here.
@@ -173,5 +256,5 @@ real families is gated on both being recorded here.
 |---|---|
 | Is built alerting Art. 22(1) ADM? | Most likely **no** (human decision-maker, no significant automated effect) — treated conservatively as if yes |
 | Are Art. 22(3)-grade safeguards present? | Yes — engineered and cited above; one deliberate gap (`no clinical review tier`) flagged for sign-off |
-| What blocks prod alerting? | Executing V2 + V3 and recording results here; sign-off by a qualified reviewer. Privacy-policy alerting text and the algorithm card now exist; the rest of `/privacy` is still a short placeholder |
-| What re-opens this analysis? | **Push dispatch landed 2026-08-11 — this trigger has FIRED and the re-run is an open action (see §2, DPIA §13).** Also: SMS dispatch landing; any prompt/model/severity-mapping change; wearer-population change (e.g. exceeding the 100-user cap) |
+| What blocks prod **LLM-routed** alerting? (The deterministic Worker producers already run in prod, §1.) | Executing V2, **V2b** and V3 and recording results here; the V3 precondition (a production audience allowlist and an independently schedulable assessor — neither exists yet, §5); sign-off by a qualified reviewer. Privacy-policy alerting text and the algorithm card now exist; the rest of `/privacy` is still a short placeholder |
+| What re-opens this analysis? | Push dispatch (2026-08-11) fired the first re-run, drafted 2026-09-23 (§2.1). Next: **enabling the pipeline jobs in prod**; SMS dispatch landing; any prompt/model/severity-mapping change; wearer-population change (e.g. exceeding the 100-user cap); any of the re-classification events in [ai_act_classification.md](ai_act_classification.md) §6.3 |

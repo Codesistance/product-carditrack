@@ -1,6 +1,6 @@
 # Alerting algorithm card
 
-**Status:** Matches the code as of 2026-09-06. Companion to [art22_alerting_analysis.md](art22_alerting_analysis.md) and [mathnet_numerics.md](../technical/mathnet_numerics.md). Caregiver-facing summary lives on `/privacy` (“How alerting works”). This card is the Art. 15 artefact: named formulas, named engine, named constants.
+**Status:** Matches the code as of 2026-09-23 (the two measured rhythm rules of 2026-09-22 added to §1 and §2). Companion to [art22_alerting_analysis.md](art22_alerting_analysis.md) and [mathnet_numerics.md](../technical/mathnet_numerics.md). Caregiver-facing summary lives on `/privacy` (“How alerting works”). This card is the Art. 15 artefact: named formulas, named engine, named constants.
 
 CardiTrack computes every number in-process. MedGemma only interprets numbers it is given. It never sets a threshold, never writes an `Alert` by mumbling, and never replaces the rules below.
 
@@ -10,9 +10,9 @@ CardiTrack computes every number in-process. MedGemma only interprets numbers it
 |---|---|---|
 | Coverage | A baseline is written only when ≥80% of the window has data (24 of 30 days; 6 of 7 for the shortest provisional window) | `BaselineCalculator.RequiredCoverage` |
 | Per-metric floor | Each metric needs 7 samples of its own (scaled to the window’s coverage bar on windows shorter than 9 days); a thin metric is left null | `BaselineCalculator` |
-| Established window only | Statistical alerts fetch the **30-day** baseline. 7- and 14-day *provisional* rows colour the dashboard and never page | `StatisticalAlertService` |
+| Established window only | Statistical alerts fetch the **30-day** baseline. 7- and 14-day *provisional* rows colour the dashboard and never page. The two **measured** rhythm rules in §2 are the deliberate exception: they need no baseline because the finding is the device's, not a comparison | `StatisticalAlertService` |
 | Null ≠ zero | A missing reading is “not measured”, not “did nothing”. The one red no-morning rule requires a **measured** zero steps | `StatisticalAlertRules` |
-| The nine rules below are not tunable | Only the hard-coded “medium” profile exists (30%). `AlertSensitivity` (low/high) is still stored and still unused by every producer. Per-CardiMember **rule enablement** (on by default; off skips evaluation) is separate — see `AlertPreference` / `AlertRuleCatalogue` | `StatisticalAlertRules.DeviationFraction`; `AlertPreferenceService` |
+| The eleven rules below are not tunable | Only the hard-coded “medium” profile exists (30%). `AlertSensitivity` (low/high) is still stored and still unused by every producer. Per-CardiMember **rule enablement** (on by default; off skips evaluation) is separate — see `AlertPreference` / `AlertRuleCatalogue` | `StatisticalAlertRules.DeviationFraction`; `AlertPreferenceService` |
 | Caregiver-defined alarms are a **separate producer**, not a retuning of these rules | `MetricAlarm` (R2) evaluates thresholds a caregiver set themselves and writes `Alert` rows stamped `rule: "custom:{alarmId}"`. It cannot change any threshold in §2, and it is bounded by its own controls — see §2a | `MetricAlarmEvaluator`; [alarm_catalogue.md](../technical/alarm_catalogue.md) |
 
 Mean and sample σ (n−1) are computed in `BaselineCalculator` (package-free Application). Median and unscaled MAD are computed via `IDescriptiveStatistics` (Math.NET in Infrastructure) and **persisted on the same `PatternBaseline` row**. Live R1 rules still threshold on the mean / σ. Median/MAD exist so G2 (MAD/IQR fences for steps and sleep) can be shadow-evaluated without retuning production.
@@ -40,6 +40,8 @@ Three of the four rules added on 2026-08-22 threshold on data types CardiTrack d
 **Elevated zone without movement is a pairing, not a threshold.** Raised-zone minutes after a walk are what exercise looks like; the finding is those minutes on a day the activity-decline rule already calls quiet. It reuses that rule rather than restating its threshold, so the two cannot disagree about what a quiet day is.
 
 Bedtime / wake time on the baseline are a **circular mean** on the 24-hour clock (UTC as stored). There is no Math.NET circular clock-mean; that formula stays homemade.
+
+**Two measured rules (2026-09-22, DPIA A26).** `ecg_afib` fires on an ECG the wearer's device classified as atrial fibrillation; `irregular_rhythm` fires on an irregular-rhythm notification the device raised. Neither compares anything to a baseline — the finding is the device's own classification, so there is no inference in it for a thin window to weaken — and neither is gated by §1's established-window rule, on purpose: a member two weeks into wearing a watch must still hear that it reported atrial fibrillation. Both go to the same MedGemma judgement call as the nine rules above, which decides severity, headline and message; nothing in code supplies a severity for them. Eleven rules in all. Both are `AlertType.Rhythm`; the beat-level intervals A26 stores never reach a prompt.
 
 ## 2a. Caregiver-defined alarms (R2) — Worker, every five minutes
 

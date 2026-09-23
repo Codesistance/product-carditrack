@@ -58,7 +58,7 @@ public sealed record AlarmMetricDefinition(
 /// is a number with no physical meaning. The mobile builder reads the same catalogue over the API,
 /// so an illegal combination is unreachable in the UI rather than merely refused by the server.
 /// <para>
-/// Sibling to <see cref="AlertRuleCatalogue"/>, which does the same job for the nine built-in rules.
+/// Sibling to <see cref="AlertRuleCatalogue"/>, which does the same job for the eleven built-in rules.
 /// </para>
 /// </summary>
 public static class AlarmMetricCatalogue

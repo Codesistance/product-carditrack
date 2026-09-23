@@ -1,7 +1,7 @@
 # Alarm catalogue — the suggested defaults, and where their numbers come from
 
 **Status: reference for the user-defined alarm feature (`MetricAlarm`, R2).** Companion to
-[alerting_algorithm_card.md](../compliance/alerting_algorithm_card.md), which covers the nine rules
+[alerting_algorithm_card.md](../compliance/alerting_algorithm_card.md), which covers the eleven rules
 CardiTrack runs on its own. This document covers the alarms a **caregiver** sets, the numbers we
 suggest as starting points, and the published guidance behind each one.
 
@@ -134,7 +134,8 @@ appears.
 CardiTrack's baseline-relative threshold kinds (`BaselinePercent`, `BaselineSigma`) resolve against
 the **established 30-day** `PatternBaseline` only. A member without one gets
 `AlarmEvaluationState.InsufficientData` and no alert — the same provisional-never-alerts rule the
-nine built-in rules follow, reached the same way: by what the engine fetches.
+nine comparative built-in rules follow, reached the same way: by what the engine fetches (the two
+measured rhythm rules are the deliberate exception — see the algorithm card §2).
 
 This is the direct analogue of CloudWatch's `ANOMALY_DETECTION_BAND`, which builds a confidence band
 from a metric's own history rather than a fixed line. Naming that parallel is useful when explaining

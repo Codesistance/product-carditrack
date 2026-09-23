@@ -35,9 +35,12 @@ public sealed record StatisticalFinding(
 /// constant was paging families with no model in the loop; that is the breach this shape closes.
 /// </para>
 /// <para>
-/// Every rule takes the <b>established 30-day</b> baseline only — provisional 7/14-day
-/// baselines never alert (a statistically thin window would trade the &lt;5% false-positive
-/// target for early noise), which the orchestrator enforces by what it fetches.
+/// Every <b>comparative</b> rule takes the <b>established 30-day</b> baseline only — provisional
+/// 7/14-day baselines never alert (a statistically thin window would trade the &lt;5%
+/// false-positive target for early noise), which the orchestrator enforces by what it fetches.
+/// The two <b>measured</b> rules (<see cref="IrregularRhythmRule"/>, <see cref="EcgAtrialFibrillationRule"/>)
+/// relay a finding the wearer's device already classified, so they need no baseline and run
+/// without one.
 /// </para>
 /// <para>
 /// Null readings never fire anything: null means "not measured", and the null-vs-zero

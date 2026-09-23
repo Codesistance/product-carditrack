@@ -133,7 +133,7 @@ This document provides an overview of the CardiTrack domain entities. The number
 - Contains: OrganizationId, **CardiMemberId (nullable)**, DerivedFromAlarmId (nullable), Name, Metric, Statistic, Operator, ThresholdKind, ThresholdValue, PeriodMinutes, EvaluationPeriods, DatapointsToAlarm, MissingDataTreatment, Severity, ContextGate, IsEnabled
 - **Scope is the nullable CardiMemberId**: null = an account-level default every member inherits; set = that member alone. A member row naming an account row in `DerivedFromAlarmId` *replaces* it for that member, and replacing it with `IsEnabled = false` is how a member opts out of an inherited alarm
 - Soft-deletable. Enums persist as **names** (`HasConversion<string>`), like the rest of the schema
-- Distinct from `AlertPreference`, which toggles CardiTrack's own nine rules: that one is keyed by compile-time catalogue strings, this one by Guid, and `AlertRuleOverrides` drops ids its catalogue does not know
+- Distinct from `AlertPreference`, which toggles CardiTrack's own built-in alert rules (the eleven statistical rules, the real-time heart-rate assessor and device silence — whatever `AlertRuleCatalogue` implements): that one is keyed by compile-time catalogue strings, this one by Guid, and `AlertRuleOverrides` drops ids its catalogue does not know
 
 #### 12. **MetricAlarmState** *(R2)*
 - Where one alarm stands for one member: State (Ok/Alarm/InsufficientData), StateSinceUtc, LastEvaluatedUtc, LastAlertId

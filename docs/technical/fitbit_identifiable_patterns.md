@@ -66,7 +66,10 @@ API calls plus 5 granular series per day-in-window.
 | Temperature | `daily-sleep-temperature-derivations` | Nightly wrist temperature vs the device's own baseline |
 | Not pulled | `electrocardiogram`, `irregular-rhythm-notification`, `weight`, `blood-glucose`, `core-body-temperature`, `exercise` GPS | — |
 
-The nine built-in rules and the R2 alarm builder can only watch this set.
+The nine comparative built-in rules and the R2 alarm builder can only watch this set. The two
+measured rhythm rules added on 2026-09-22 (DPIA A26) read `electrocardiogram` and
+`irregular-rhythm-notification`, still listed above as not pulled because neither restricted
+scope is granted yet (#39).
 `AlertRuleCatalogue` already *reserves* ids for `fragmented_sleep`,
 `overnight_vitals`, `multi_signal_cluster` and `baseline_shift`; those
 producers are not shipped.
