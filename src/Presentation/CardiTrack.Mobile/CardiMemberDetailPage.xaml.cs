@@ -872,6 +872,10 @@ public partial class CardiMemberDetailPage : ContentPage
             if (fetch is null)
                 return;
 
+            // Only what is drawn is decided here. The answer has already been written to the
+            // device's cache by the time it gets back — the client saves every successful GET —
+            // so a superseded one is kept from putting older words back there by the client's own
+            // ordering, not by this check, which cannot reach that far.
             var digest = await fetch;
             if (!MayDrawLive(memberId, pass, GeneratedCard.Digest))
                 return;
