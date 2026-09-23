@@ -580,8 +580,9 @@ public class StatisticalAlertService : IStatisticalAlertService
         // Nothing is written yet, and a pass where nothing survives never reaches the Rewrite slot
         // at all — a benign day costs exactly the one call it always did.
         var judged = new List<JudgedFinding>();
-        foreach (var finding in toJudge)
+        for (var i = 0; i < toJudge.Count; i++)
         {
+            var finding = toJudge[i];
             // Matched by rule, never by position: a model that drops or reorders a verdict must
             // not have its answer about one finding written against another.
             var verdict = response.Verdicts?.FirstOrDefault(v =>
@@ -648,20 +649,46 @@ public class StatisticalAlertService : IStatisticalAlertService
                 // judged worth paging a family about. A cache that exists to save an inference must
                 // not be able to cost an alert; not remembering costs one re-judgement next pass,
                 // which is exactly what the table is an optimisation of.
+                bool memberLives;
                 try
                 {
-                    await _guard.WriteIfMemberLivesAsync(
+                    memberLives = await _guard.WriteIfMemberLivesAsync(
                         memberId,
                         token => _unitOfWork.BenignJudgements.RecordAsync(judgement, token),
                         ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    // A throw says the write failed, not that the member is gone. Swallowed, as
+                    // above; the walk continues.
+                    memberLives = true;
                     _logger.LogWarning(
                         ex,
                         "Could not remember the benign verdict for rule {Rule} on CardiMember "
                         + "{CardiMemberId}; it will be judged again next pass.",
                         finding.Rule, memberId);
+                }
+
+                // A refusal is not a failed write, it is an answer: the member has been erased,
+                // and this is the earliest the pass can learn it. Discarding that answer — which
+                // is what this did until 2026-09-23 — let the walk carry on and send a later
+                // finding's clinical read to the Rewrite slot for someone the product has
+                // forgotten. The guarded save at the end refuses to store the alert, but A20's
+                // boundary is about what is sent, and nothing downstream un-sends it.
+                if (!memberLives)
+                {
+                    foreach (var abandoned in judged.Select(j => j.Finding.Rule)
+                        .Concat(toJudge.Skip(i).Select(f => f.Rule)))
+                    {
+                        CountVerdict(JudgementTelemetry.OutcomeWriteRefused, abandoned);
+                    }
+
+                    _logger.LogWarning(
+                        "CardiMember {CardiMemberId} was erased while their findings were being "
+                        + "judged; the rest of the pass for them was abandoned and nothing crossed "
+                        + "to the Rewrite slot.",
+                        memberId);
+                    return 0;
                 }
 
                 continue;

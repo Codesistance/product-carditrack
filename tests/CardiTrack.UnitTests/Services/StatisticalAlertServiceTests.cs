@@ -164,9 +164,10 @@ public class StatisticalAlertServiceTests
             });
     }
 
-    private StatisticalAlertService CreateSut() =>
+    private StatisticalAlertService CreateSut(IMemberWriteGuard? guard = null) =>
         new(_unitOfWork, _medicalAi, _rewriteAi, PromptContextFactory.Composer(_unitOfWork),
-            InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance, new PassThroughWriteGuard(), _enqueue);
+            InertStatusLineGenerator.Create(), NullLogger<StatisticalAlertService>.Instance,
+            guard ?? new PassThroughWriteGuard(), _enqueue);
 
     // ── The verdict is the model's ────────────────────────────────────────────────────────
 
@@ -1141,6 +1142,42 @@ public class StatisticalAlertServiceTests
         });
 
         var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _rewriteAi.DidNotReceive()
+            .GenerateStructuredAsync<StatisticalAlertService.JudgementRewriteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+
+    /// <summary>
+    /// The benign cache's guarded write is the earliest point a pass can learn that the member has
+    /// been erased, because it is the first write after a model call that can run for minutes. Its
+    /// answer was being discarded: the walk carried on, and a later finding's clinical read went to
+    /// the Rewrite slot for someone the product had forgotten. The guarded save at the end refuses
+    /// to store the alert, but DPIA A20's boundary is about what is <em>sent</em>, and nothing
+    /// downstream un-sends it.
+    /// </summary>
+    [Fact]
+    public async Task AnErasureLearnedMidWalk_StopsThePass_BeforeAnythingCrossesToTheRewriteSlot()
+    {
+        // Two findings from one row, in the order the engine assembles them: the quiet day is
+        // judged benign and its cache write meets the erasure, and the raised resting heart rate
+        // is the one that would otherwise have crossed.
+        SetupLogs(new ActivityLog
+        {
+            CardiMemberId = _memberId,
+            Date = Yesterday,
+            Steps = 1000,
+            RestingHeartRate = 75,
+        });
+        ModelJudges(
+        [
+            Verdict(StatisticalAlertRules.ActivityDeclineRule, "low"),
+            Verdict(StatisticalAlertRules.ElevatedHeartRateRule, "critical"),
+        ]);
+
+        var raised = await CreateSut(new ErasedMemberWriteGuard()).EvaluateAsync(UtcNow);
 
         Assert.Equal(0, raised);
         await _rewriteAi.DidNotReceive()
