@@ -101,8 +101,10 @@ public class StructuredSchemaGrammarTests
     [Fact]
     public void Schema_KeepsNullOnAPropertyThatIsGenuinelyOptional()
     {
+        // The suggestion moved to the journal rewrite when the books were split; it is still the
+        // one field on that path a book may legitimately have nothing to put in.
         var schemaText = SchemaTextFor(
-            typeof(CardiTrack.Infrastructure.Services.DigestGenerationService.DaybookAiResponse));
+            typeof(CardiTrack.Infrastructure.Services.JournalRewritePrompt.JournalRewriteAiResponse));
 
         Assert.Contains("\"suggestion\":{\"type\":[\"string\",\"null\"]", schemaText);
     }

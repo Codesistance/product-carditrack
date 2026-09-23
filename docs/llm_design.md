@@ -537,7 +537,7 @@ afterwards is a caregiver asking for it in chat — see *Managing the books from
 that path runs the same prompt under the same guards, replacing the old book only once the new one
 has passed them.
 
-`CARDITRACK_DAYBOOK_PROMPT` — the account of one **finished** day, written once and never
+`CARDITRACK_DAYBOOK_PROMPT` (clinical half, split 2026-09-23) — the account of one **finished** day, written once and never
 recomputed. Everything else on this platform describes a day still in progress and is rewritten as
 it moves; the Daybook is the opposite, and the difference drives every design choice below. It is
 a **separate series** from the rolling family digest: the digest stays on member detail answering
@@ -612,7 +612,7 @@ and the answer would arrive a day after the day it was about.
 
 ### The CardiJournal — the Weekbook (built today)
 
-`CARDITRACK_WEEKBOOK_PROMPT` — the account of one **finished week**, written once and never
+`CARDITRACK_WEEKBOOK_PROMPT` (clinical half, split 2026-09-23) — the account of one **finished week**, written once and never
 recomputed, in the same register as the Daybook and at a different altitude.
 
 - **A week is not a longer day.** The Daybook's job is completeness — every reading the day
@@ -659,7 +659,7 @@ wording of one brief.
 
 ### The CardiJournal — the Monthbook (built today)
 
-`CARDITRACK_MONTHBOOK_PROMPT` — the account of one **finished calendar month**, written once on
+`CARDITRACK_MONTHBOOK_PROMPT` (clinical half, split 2026-09-23) — the account of one **finished calendar month**, written once on
 the first of the next one.
 
 - **The third altitude.** A Daybook is asked for completeness, a Weekbook for trajectory; a
@@ -720,6 +720,8 @@ could see readings for and no book to read — and the schedule only ever writes
   appearing, so a rewritten or deleted book shows on the next visit.
 
 ### Advise — "Something to try" (built today)
+
+All three CardiJournal books share one rewrite half on the **Rewrite** slot (`JournalRewritePrompt.Instructions`, 2026-09-23): each clinical half reads its own period against its own data constraints and returns a `finding` plus an `urgency`, and the shared rewrite turns that read into the summary, headline and suggestion a family reads. The period and the account length travel in the read rather than the brief, so the three books share one cacheable prefix. Urgency stays with the clinical half — it is judged from readings the rewrite is never shown. Unlike the trend and insight cards, a brief change does **not** retire a stored book: a journal is an account of a finished period and a better brief is not a reason to rewrite one somebody has already read.
 
 `CARDITRACK_ADVISE_PROMPT` — the suggestion card on CardiMember Details, one row per topic
 (`Sleep`, `Activity`, `HeartRate`, `General`), served read-only from `MemberAdvises` by the API

@@ -1033,13 +1033,18 @@ public partial class DigestGenerationService : IDigestGenerationService
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<DaybookAiResponse>(prompt, ct);
-        var aiResponse = generated.Result;
+        var read = generated.Result;
+
+        var rewritten = await RewriteJournalAsync(
+            read.Finding, "day", "6-12", member, ct);
+        if (rewritten is null)
+            return JournalComposition.Discarded(generated.Usage);
 
         // A daybook is written once, so a bad one is not replaced half an hour later; discarding
         // costs the member that day's review and nothing else.
         return FinishJournalCopy(
             memberId, reviewedDate, DigestAudience.Daybook, utcNow, member,
-            aiResponse.Summary.Trim(), aiResponse.Headline, aiResponse.Suggestion, aiResponse.Urgency,
+            rewritten.Summary.Trim(), rewritten.Headline, rewritten.Suggestion, read.Urgency,
             generated.Usage, DaybookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: false);
     }
 
@@ -1109,12 +1114,17 @@ public partial class DigestGenerationService : IDigestGenerationService
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<WeekbookAiResponse>(prompt, ct);
-        var aiResponse = generated.Result;
+        var read = generated.Result;
+
+        var rewritten = await RewriteJournalAsync(
+            read.Finding, "week", "6-12", member, ct);
+        if (rewritten is null)
+            return JournalComposition.Discarded(generated.Usage);
 
         // A Weekbook is written once, so a bad one is not replaced next pass.
         return FinishJournalCopy(
             memberId, weekEnd, DigestAudience.Weekbook, utcNow, member,
-            aiResponse.Summary.Trim(), aiResponse.Headline, aiResponse.Suggestion, aiResponse.Urgency,
+            rewritten.Summary.Trim(), rewritten.Headline, rewritten.Suggestion, read.Urgency,
             generated.Usage, WeekbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
     }
 
@@ -1183,12 +1193,69 @@ public partial class DigestGenerationService : IDigestGenerationService
             """;
 
         var generated = await _medicalAi.GenerateStructuredWithUsageAsync<MonthbookAiResponse>(prompt, ct);
-        var aiResponse = generated.Result;
+        var read = generated.Result;
+
+        var rewritten = await RewriteJournalAsync(
+            read.Finding, "month", "8-14", member, ct);
+        if (rewritten is null)
+            return JournalComposition.Discarded(generated.Usage);
 
         return FinishJournalCopy(
             memberId, monthEnd, DigestAudience.Monthbook, utcNow, member,
-            aiResponse.Summary.Trim(), aiResponse.Headline, aiResponse.Suggestion, aiResponse.Urgency,
+            rewritten.Summary.Trim(), rewritten.Headline, rewritten.Suggestion, read.Urgency,
             generated.Usage, MonthbookPrompt.ReadsLikeTheInstructions, requireMinimumSentences: true);
+    }
+
+    /// <summary>
+    /// Turns a book's clinical read into the account a family reads, on the Rewrite slot. Null
+    /// when there is nothing to write from or the call failed — the caller discards the book.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Shared by all three books because all three want the same thing of it; what differs is the
+    /// period noun and the length, and both travel in the read rather than in the brief, so the
+    /// cacheable prefix stays one prefix.
+    /// </para>
+    /// <para>
+    /// Discarding on failure rather than storing the clinical read is the same call the journal
+    /// guards already make several times over: a book is written once and not replaced next pass,
+    /// so the cost is that period's account, and the apps' own "no review yet" copy is a better
+    /// thing to show a caregiver than a clinical read written for another model.
+    /// </para>
+    /// <para>
+    /// The read crosses the slot boundary flattened and redacted — MedGemma is handed the family's
+    /// own answers and the caregiver's notes, and can repeat a name out of them.
+    /// </para>
+    /// </remarks>
+    private async Task<JournalRewritePrompt.JournalRewriteAiResponse?> RewriteJournalAsync(
+        string finding, string period, string sentences, CardiMember member, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(finding))
+        {
+            CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonReadBlank);
+            return null;
+        }
+
+        // FlattenWhole, not Flatten: a book runs to thousands of characters and Flatten's cap is
+        // sized for a caregiver note, so it would hand the rewrite the first thousand characters
+        // of the account and nothing else.
+        var flattened = MedicalPromptBlocks.FlattenWhole(finding);
+        var read = NamePlaceholder.Redact(flattened, member.Name) ?? flattened;
+
+        try
+        {
+            return await _rewriteAi.GenerateStructuredAsync<JournalRewritePrompt.JournalRewriteAiResponse>(
+                JournalRewritePrompt.Build(JournalRewritePrompt.Render(period, sentences, read)), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonRewriteFailed);
+            _logger.LogWarning(
+                ex,
+                "The {Period}book rewrite failed for CardiMember {CardiMemberId}; nothing stored.",
+                period, member.Id);
+            return null;
+        }
     }
 
     /// <summary>
@@ -2947,24 +3014,11 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record DaybookAiResponse
     {
         [Description(
-            "6-12 sentences giving the family an account of CardiTrackCardiMember's whole day, in the past "
-            + "tense, grouped as the readings are grouped. Says what was measured, what their "
-            + "usual is, and where each reading sat against it and against any published band. "
-            + "Not a restatement of the instructions.")]
-        public required string Summary { get; init; }
-
-        [Description(
-            "A five-to-six-word qualification of the day described above, in sentence case — "
-            + "what kind of day it was, never a generic label that could title any day at all. "
-            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
-            + "not a sentence.")]
-        public required string Headline { get; init; }
-
-        [Description(
-            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
-            + "answering something in the day's readings. Never a diagnosis, never a medical "
-            + "condition, never a change to any treatment.")]
-        public string? Suggestion { get; init; }
+            "6-12 sentences reading CardiTrackCardiMember's whole day in clinical terms, in the past "
+            + "tense. Says what was measured, what their own usual is, and where each reading sat "
+            + "against it and against any published band, keeping every figure. Read by the model that "
+            + "writes the family's account, not by a family. Not a restatement of the instructions.")]
+        public required string Finding { get; init; }
 
         [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
@@ -2981,24 +3035,11 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record WeekbookAiResponse
     {
         [Description(
-            "6-12 sentences giving the family an account of CardiTrackCardiMember's whole week, in the past "
-            + "tense. Says what moved and what held steady across the seven days, which day stood "
-            + "apart and why, and how much of the week each reading covered. An account of the "
-            + "week as a whole, not a list of its days. Not a restatement of the instructions.")]
-        public required string Summary { get; init; }
-
-        [Description(
-            "A five-to-six-word qualification of the week described above, in sentence case — "
-            + "what kind of week it was, never a generic label that could title any week at all. "
-            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
-            + "not a sentence.")]
-        public required string Headline { get; init; }
-
-        [Description(
-            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
-            + "answering something in the week's readings. Never a diagnosis, never a medical "
-            + "condition, never a change to any treatment.")]
-        public string? Suggestion { get; init; }
+            "6-12 sentences reading CardiTrackCardiMember's whole week in clinical terms, in the past "
+            + "tense. Says what was measured, what their own usual is, and where each reading sat "
+            + "against it and against any published band, keeping every figure. Read by the model that "
+            + "writes the family's account, not by a family. Not a restatement of the instructions.")]
+        public required string Finding { get; init; }
 
         [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(
@@ -3011,25 +3052,11 @@ public partial class DigestGenerationService : IDigestGenerationService
     internal sealed record MonthbookAiResponse
     {
         [Description(
-            "8-14 sentences giving the family an account of CardiTrackCardiMember's whole month, in the past "
-            + "tense. Says what held across the month and what changed within it, which week "
-            + "differed from the others and how, and how much of the month each reading covered. "
-            + "An account of the month as a whole, not a list of its days or its weeks. Not a "
-            + "restatement of the instructions.")]
-        public required string Summary { get; init; }
-
-        [Description(
-            "A five-to-six-word qualification of the month described above, in sentence case — "
-            + "what kind of month it was, never a generic label that could title any month at all. "
-            + "No full stop, no quotation marks, no name and no CardiTrackCardiMember. A label, "
-            + "not a sentence.")]
-        public required string Headline { get; init; }
-
-        [Description(
-            "One specific, supportive, actionable suggestion in plain language, at most 25 words, "
-            + "answering something in the month's readings. Never a diagnosis, never a medical "
-            + "condition, never a change to any treatment.")]
-        public string? Suggestion { get; init; }
+            "8-14 sentences reading CardiTrackCardiMember's whole month in clinical terms, in the past "
+            + "tense. Says what was measured, what their own usual is, and where each reading sat "
+            + "against it and against any published band, keeping every figure. Read by the model that "
+            + "writes the family's account, not by a family. Not a restatement of the instructions.")]
+        public required string Finding { get; init; }
 
         [AllowedValues(WatchTier, CheckInTier, ConcerningTier, ActNowTier)]
         [Description(

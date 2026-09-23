@@ -38,6 +38,7 @@ public class MedicalPromptToneTests
         typeof(DaybookPrompt),
         typeof(WeekbookPrompt),
         typeof(MonthbookPrompt),
+        typeof(JournalRewritePrompt),
         typeof(MemberChatService),
         typeof(AdviseGenerationService),
     ];
@@ -311,6 +312,7 @@ public class MedicalPromptToneTests
         "DigestGenerationService.FamilyDigestRewriteInstructions",
         "HealthInsightService.AlertRewriteInstructions",
         "HealthInsightService.BaselineRewriteInstructions",
+        "JournalRewritePrompt.Instructions",
         "RealtimeAssessmentService.RewriteInstructions",
         "StatisticalAlertService.RewriteInstructions",
         "StatusLineGenerationService.RewriteInstructions",
@@ -330,6 +332,7 @@ public class MedicalPromptToneTests
         "DigestGenerationService.FamilyDigestRewriteInstructions",
         "HealthInsightService.AlertRewriteInstructions",
         "HealthInsightService.BaselineRewriteInstructions",
+        "JournalRewritePrompt.Instructions",
         "MemberChatService.RewriteInstructions",
         "RealtimeAssessmentService.RewriteInstructions",
         "StatisticalAlertService.RewriteInstructions",

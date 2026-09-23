@@ -32,6 +32,7 @@ public class JournalRewriteTests
     private readonly IGranularMetricRepository _granular = Substitute.For<IGranularMetricRepository>();
     private readonly IDeviceActivityLogRepository _deviceLogs = Substitute.For<IDeviceActivityLogRepository>();
     private readonly IMedicalAiService _medicalAi = Substitute.For<IMedicalAiService>();
+    private readonly IRewriteAiService _rewriteAi = Substitute.For<IRewriteAiService>();
 
     private readonly Guid _memberId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
@@ -115,20 +116,24 @@ public class JournalRewriteTests
             .Returns(logs);
     }
 
-    private void SetupModelReply(string headline, string summary) =>
+    private void SetupModelReply(string headline, string summary)
+    {
+        // The clinical half reads; the rewrite half writes what a family reads, echoing the
+        // read back so these tests still assert on the text they always did.
+        JournalRewriteEcho.Wire(_rewriteAi, headline);
         _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.WeekbookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DigestGenerationService.WeekbookAiResponse>(
                 new DigestGenerationService.WeekbookAiResponse
                 {
-                    Headline = headline,
-                    Summary = summary,
+                    Finding = summary,
                     Urgency = "watch",
                 },
                 new AiUsage { ModelName = "test-medical", InputTokens = 900, OutputTokens = 120 }));
+    }
 
     private DigestGenerationService CreateSut() =>
-        new(_unitOfWork, _medicalAi, Substitute.For<IRewriteAiService>(),
+        new(_unitOfWork, _medicalAi, _rewriteAi,
             PromptContextFactory.Composer(_unitOfWork),
             PromptContextFactory.Encryption, InertStatusLineGenerator.Create(),
             InertAdviseGenerator.Create(), NullLogger<DigestGenerationService>.Instance, new PassThroughWriteGuard());
@@ -246,13 +251,13 @@ public class JournalRewriteTests
     public async Task Composes_a_daybook_for_a_finished_day()
     {
         string? prompt = null;
+        JournalRewriteEcho.Wire(_rewriteAi, "A settled Sunday");
         _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.DaybookAiResponse>(
                 Arg.Do<string>(p => prompt = p), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DigestGenerationService.DaybookAiResponse>(
                 new DigestGenerationService.DaybookAiResponse
                 {
-                    Headline = "A settled Sunday",
-                    Summary = "Ada slept close to her usual and was up and about by mid-morning. Her resting "
+                    Finding = "Ada slept close to her usual and was up and about by mid-morning. Her resting "
                         + "heart rate held steady through the day.",
                     Urgency = "watch",
                 },
@@ -296,13 +301,13 @@ public class JournalRewriteTests
         var monthStart = new DateOnly(2026, 7, 1);
         var monthEnd = new DateOnly(2026, 7, 31);
         SetupDays(monthStart, daysWithData: 20);
+        JournalRewriteEcho.Wire(_rewriteAi, "A steady month for sleep");
         _medicalAi.GenerateStructuredWithUsageAsync<DigestGenerationService.MonthbookAiResponse>(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(new AiGenerationResult<DigestGenerationService.MonthbookAiResponse>(
                 new DigestGenerationService.MonthbookAiResponse
                 {
-                    Headline = "A steady month for sleep",
-                    Summary = "Ada's July held together well. Sleep ran a little longer than her usual across "
+                    Finding = "Ada's July held together well. Sleep ran a little longer than her usual across "
                         + "all four weeks. The week of 20 July was the quietest for steps.",
                     Urgency = "watch",
                 },
