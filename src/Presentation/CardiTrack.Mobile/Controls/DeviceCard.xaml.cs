@@ -59,11 +59,15 @@ public partial class DeviceCard : ContentView
             // "token_expired" is the one wire status Refresh Connection cannot fix — the
             // provider itself rejected the refresh (expired grant, or the wearer revoked
             // access), so the identity/sharing/stats read as stale until the caregiver redoes
-            // consent, and Refresh Connection gives way to Reconnect below.
+            // consent, and Refresh Connection gives way to Reconnect below. Re-pull History and
+            // Set as Primary are withheld too — both would only queue against a connection that
+            // cannot currently pull anything.
             var needsReconnect = device.Status == "token_expired";
             DeviceInfoSection.Opacity = needsReconnect ? 0.55 : 1;
             ReconnectRow.IsVisible = needsReconnect;
             RefreshRow.IsVisible = !needsReconnect;
+            RepullRow.IsVisible = !needsReconnect;
+            PrimaryRow.IsVisible = !needsReconnect;
             SemanticProperties.SetDescription(ReconnectRow,
                 $"{device.DisplayName} needs reconnecting. Opens sign-in to restore the connection.");
 

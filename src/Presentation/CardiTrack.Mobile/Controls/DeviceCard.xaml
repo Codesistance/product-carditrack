@@ -211,7 +211,7 @@
                 </VerticalStackLayout>
             </Grid>
 
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="40">
+            <Grid x:Name="PrimaryRow" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" HeightRequest="40">
                 <Image Grid.Column="0" Source="icon_star.svg"
                        WidthRequest="20" HeightRequest="20" VerticalOptions="Center"/>
                 <Label Grid.Column="1" Text="Set as Primary"
