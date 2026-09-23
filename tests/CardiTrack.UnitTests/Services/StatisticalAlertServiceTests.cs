@@ -1119,5 +1119,34 @@ public class StatisticalAlertServiceTests
         _benign.GetJudgedFingerprintsAsync(
                 Arg.Any<Guid>(), Arg.Any<IReadOnlyCollection<DateOnly>>(), Arg.Any<CancellationToken>())
             .Returns(fingerprints);
+    /// <summary>
+    /// NamePlaceholder.Redact hands the text straight back when there is no usable name, so a
+    /// crossing that proceeds on one sends the clinical read to Vertex unredacted — and that read
+    /// is built from the decrypted caregiver notes DemographicsContextSource serves, which can
+    /// name the member. The first sweep for this looked for `member?.Name` and so missed every
+    /// site passing a non-nullable name that is merely blank.
+    /// Fail-closed here, like every other exit on this pass: nothing is persisted, so the next
+    /// pass re-judges the same findings once there is a name to redact against.
+    /// </summary>
+    [Fact]
+    public async Task NoNameToRedactAgainst_RaisesNothing_AndNeverReachesTheRewriteSlot()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = new DateOnly(1948, 3, 2),
+            Gender = Gender.Female,
+            IsActive = true,
+        });
+
+        var raised = await CreateSut().EvaluateAsync(UtcNow);
+
+        Assert.Equal(0, raised);
+        await _rewriteAi.DidNotReceive()
+            .GenerateStructuredAsync<StatisticalAlertService.JudgementRewriteAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
 }
 

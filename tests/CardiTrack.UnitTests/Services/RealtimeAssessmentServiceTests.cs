@@ -717,5 +717,44 @@ public class RealtimeAssessmentServiceTests
             a.Message == RealtimeAssessmentService.NonClinicalObservation
             && a.Severity == AlertSeverity.Orange));
     }
+    /// <summary>
+    /// NamePlaceholder.Redact hands the text straight back when there is no usable name, so a
+    /// crossing that proceeds on one sends the clinical read to Vertex unredacted — and that read
+    /// is built from the decrypted caregiver notes DemographicsContextSource serves, which can
+    /// name the member. The first sweep for this looked for `member?.Name` and so missed every
+    /// site passing a non-nullable name that is merely blank.
+    /// This path is fail-safe by design, which is what makes the refusal cheap: the alert is still
+    /// raised, carrying the fixed non-clinical observation, so a missing name costs the family a
+    /// sentence rather than the page.
+    /// </summary>
+    [Fact]
+    public async Task NoNameToRedactAgainst_StillRaisesTheAlert_WithoutCrossingToTheRewriteSlot()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = new DateOnly(1948, 3, 2),
+            Gender = Gender.Female,
+            IsActive = true,
+            MedicalNotes = "On beta blockers.",
+        });
+        _medicalAi.GenerateStructuredAsync<RealtimeAssessmentService.AssessmentAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new RealtimeAssessmentService.AssessmentAiResponse
+            {
+                Message = "This hour is consistent with tachycardia and may indicate arrhythmia.",
+                Severity = "high",
+            });
+
+        await CreateSut().AssessDueMembersAsync(UtcNow);
+
+        await _alerts.Received(1).AddAsync(Arg.Is<Alert>(a =>
+            a.Message == RealtimeAssessmentService.NonClinicalObservation
+            && a.Severity == AlertSeverity.Orange));
+        await _rewriteAi.DidNotReceive().GenerateStructuredAsync<RealtimeAssessmentService.AlertRewriteAiResponse>(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
 }
 

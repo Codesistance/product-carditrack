@@ -685,6 +685,21 @@ public class StatisticalAlertService : IStatisticalAlertService
         if (judged.Count == 0)
             return 0;
 
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand each read
+        // straight back — see CanRedactAgainst. Refused before the reads are assembled, so the
+        // clinical text never reaches the prompt at all. Counted per finding like every other
+        // exit here, and fail-closed like them: nothing was persisted, so the next pass re-judges.
+        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            foreach (var judgedFinding in judged)
+                CountVerdict(JudgementTelemetry.OutcomeMessageRejected, judgedFinding.Finding.Rule);
+            _logger.LogWarning(
+                "Nothing was raised for CardiMember {CardiMemberId}: no name on file to redact the "
+                + "clinical reads against, so none could cross to the Rewrite slot.",
+                memberId);
+            return 0;
+        }
+
         // The slot boundary. DemographicsContextSource decrypts caregiver notes but does not redact
         // the member's name from them, and MedGemma may repeat that name in its read; wrapping it
         // unchanged would send the identifier to Vertex. Flatten first so a line break between

@@ -651,6 +651,18 @@ public class TrendInterpretationService
             return false;
         }
 
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
+        // straight back — see CanRedactAgainst. Nothing stored, like every other refusal on this
+        // path: the previous narrative stands and ages out of InsightServability on its own.
+        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            _logger.LogWarning(
+                "Trend rewrite for CardiMember {CardiMemberId} was not attempted: no name on file "
+                + "to redact the clinical read against; nothing stored.",
+                cardiMemberId);
+            return false;
+        }
+
         // The slot boundary. The read may repeat a name out of the decrypted caregiver notes it
         // was given, so it crosses flattened and redacted, as every other rewrite here does.
         // FlattenWhole for both, for the reason the journals found first: the summary and the

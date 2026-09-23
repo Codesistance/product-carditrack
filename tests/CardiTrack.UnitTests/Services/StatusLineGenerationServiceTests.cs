@@ -895,4 +895,32 @@ public class StatusLineGenerationServiceTests
                 .OrderByDescending(a => a.TriggeredDate)
                 .ToList());
 
+    /// <summary>
+    /// NamePlaceholder.Redact hands the text straight back when there is no usable name, so a
+    /// crossing that proceeds on one sends the clinical read to Vertex unredacted — and that read
+    /// is built from the decrypted caregiver notes DemographicsContextSource serves, which can
+    /// name the member. The first sweep for this looked for `member?.Name` and so missed every
+    /// site passing a non-nullable name that is merely blank.
+    /// This crossing predates the clinical/rewrite split and carried the same gap. The previous
+    /// line stands, which is what this path does with every other failure.
+    /// </summary>
+    [Fact]
+    public async Task NoNameToRedactAgainst_KeepsThePreviousLine_WithoutCrossingToTheRewriteSlot()
+    {
+        _members.GetByIdAsync(_memberId).Returns(new CardiMember
+        {
+            Id = _memberId,
+            Name = "   ",
+            DateOfBirth = new DateOnly(1948, 3, 2),
+            Gender = Gender.Female,
+            IsActive = true,
+        });
+
+        await CreateSut().RegenerateAsync(_memberId);
+
+        await _rewriteAi.DidNotReceive()
+            .GenerateStructuredAsync<StatusLineGenerationService.CurrentStatusAiResponse>(
+                Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
 }

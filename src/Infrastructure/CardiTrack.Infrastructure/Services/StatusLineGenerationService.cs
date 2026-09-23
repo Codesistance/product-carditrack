@@ -250,6 +250,19 @@ public class StatusLineGenerationService
             return;
         }
 
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand the finding
+        // straight back — see CanRedactAgainst. The previous line stands, which is what this path
+        // does with every other failure. This crossing predates the clinical/rewrite split and
+        // carried the same gap; it is fixed here because it is the same boundary, one file over.
+        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            _logger.LogWarning(
+                "Status line for CardiMember {CardiMemberId} was not rewritten: no name on file to "
+                + "redact the clinical read against; keeping the previous line.",
+                cardiMemberId);
+            return;
+        }
+
         // DemographicsContextSource decrypts caregiver notes but does not redact the member's
         // name from them. MedGemma may repeat that name in the finding; wrapping it unchanged
         // would send the identifier to Vertex. Flatten first so a line-break between first name

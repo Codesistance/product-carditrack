@@ -419,7 +419,7 @@ public class HealthInsightService : IHealthInsightService
         // name out of the caregiver notes DemographicsContextSource decrypts without redacting.
         // The guarded write at the end refuses to store the card, but the name has reached Vertex
         // by then — and A20's boundary is about what is sent, not about what is kept.
-        if (member is null || string.IsNullOrWhiteSpace(member.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member?.Name))
         {
             CopyGuardTelemetry.Count(AlertSurface, CopyGuardTelemetry.ReasonReadBlank);
             return false;
@@ -737,7 +737,7 @@ public class HealthInsightService : IHealthInsightService
 
         // Same boundary as the alert path above, same reason: no member, no redaction, so
         // nothing crosses.
-        if (member is null || string.IsNullOrWhiteSpace(member.Name))
+        if (!NamePlaceholder.CanRedactAgainst(member?.Name))
         {
             CopyGuardTelemetry.Count(BaselineSurface, CopyGuardTelemetry.ReasonReadBlank);
             return false;

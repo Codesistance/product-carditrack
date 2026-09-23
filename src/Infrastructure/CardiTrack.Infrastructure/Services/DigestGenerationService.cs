@@ -565,16 +565,32 @@ public partial class DigestGenerationService : IDigestGenerationService
     /// context, no readings, no monitoring section. Flattened per field, so a multi-line finding
     /// cannot forge a section heading in the prompt it is pasted into.
     /// </summary>
-    private static string RenderClinicalRead(DigestClinicalAiResponse clinical)
+    /// <remarks>
+    /// <b>Redacted, which it was not until 2026-09-23.</b> This crossing shipped with #507 and
+    /// flattened the read without ever swapping the member's name out of it — unlike the status
+    /// line, the trend, the journals and both alert paths, which all do. It is the same exposure
+    /// they guard against, and it was open on the most frequently written surface in the product:
+    /// <c>DemographicsContextSource</c> serves <c>PromptPurpose.All</c>, so the digest's clinical
+    /// prompt is given the decrypted caregiver notes, and MedGemma can repeat a name out of them
+    /// into a read that then crossed to Vertex whole. Found while sweeping this boundary after a
+    /// review flagged the blank-name variant of it on five other crossings.
+    /// </remarks>
+    private static string RenderClinicalRead(DigestClinicalAiResponse clinical, string memberName)
     {
-        var lines = new List<string> { $"finding: {MedicalPromptBlocks.Flatten(clinical.Finding)}" };
+        string Crossing(string? text)
+        {
+            var flattened = MedicalPromptBlocks.Flatten(text ?? string.Empty);
+            return NamePlaceholder.Redact(flattened, memberName) ?? flattened;
+        }
+
+        var lines = new List<string> { $"finding: {Crossing(clinical.Finding)}" };
 
         if (!string.IsNullOrWhiteSpace(clinical.ActionBasis))
-            lines.Add($"what would help: {MedicalPromptBlocks.Flatten(clinical.ActionBasis)}");
+            lines.Add($"what would help: {Crossing(clinical.ActionBasis)}");
 
         // The topic only — the scope travels in code, and the rewrite has no use for it.
         if (!string.IsNullOrWhiteSpace(clinical.QuestionTopic))
-            lines.Add($"worth asking the family about: {MedicalPromptBlocks.Flatten(clinical.QuestionTopic)}");
+            lines.Add($"worth asking the family about: {Crossing(clinical.QuestionTopic)}");
 
         return string.Join("\n", lines);
     }
@@ -1315,6 +1331,20 @@ public partial class DigestGenerationService : IDigestGenerationService
             return new JournalRewriteAttempt(null, null);
         }
 
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
+        // straight back — see CanRedactAgainst. The book is discarded rather than written from a
+        // read that could carry the member's name to Vertex; the apps' own "no review yet" copy
+        // is a better thing to show a caregiver than an off-estate disclosure.
+        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            CopyGuardTelemetry.Count($"{period}book", CopyGuardTelemetry.ReasonReadBlank);
+            _logger.LogWarning(
+                "The {Period}book for CardiMember {CardiMemberId} was not rewritten: no name on "
+                + "file to redact the clinical read against.",
+                period, member.Id);
+            return new JournalRewriteAttempt(null, null);
+        }
+
         // FlattenWhole, not Flatten: a book runs to thousands of characters and Flatten's cap is
         // sized for a caregiver note, so it would hand the rewrite the first thousand characters
         // of the account and nothing else.
@@ -1881,9 +1911,20 @@ public partial class DigestGenerationService : IDigestGenerationService
             return false;
         }
 
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
+        // straight back — see CanRedactAgainst. Nothing crosses; the previous summary stands.
+        if (member is null || !NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            _logger.LogWarning(
+                "Discarded the generated summary for CardiMember {CardiMemberId} on {LocalDate}: no "
+                + "name on file to redact the clinical read against.",
+                memberId, describedDate);
+            return false;
+        }
+
         // The A20 boundary as a type: the rewrite builder takes DeidentifiedFindings and cannot be
         // handed the member context or the readings, whatever a future edit here tries to pass.
-        var read = RenderClinicalRead(clinical);
+        var read = RenderClinicalRead(clinical, member.Name);
 
         // The yardstick the copy coming back is measured against — a summary or a headline may
         // only name a reading this text named. Narrower than what the prompt is sent, on purpose:

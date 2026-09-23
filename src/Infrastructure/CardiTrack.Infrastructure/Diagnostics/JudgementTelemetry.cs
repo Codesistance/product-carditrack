@@ -61,12 +61,14 @@ public static class JudgementTelemetry
     /// successful exits do not log at all, so there was not even a denominator to compare against.
     /// </para>
     /// <para>
-    /// Cardinality is bounded and small: eight outcomes by eleven rules. The outcomes are
+    /// Cardinality is bounded and small: nine outcomes by eleven rules. The outcomes are
     /// unmatched, severity_unmapped, benign, read_blank, rewrite_failed, rewrite_missing,
-    /// message_rejected and raised — the four that existed when this was written, plus the
-    /// three exits the clinical/rewrite split added and the successful one. No member identifier, and
-    /// no model output — the same standard <see cref="AiTelemetry"/> and <see cref="PushTelemetry"/>
-    /// hold to.
+    /// message_rejected, write_refused and raised — the four that existed when this was written,
+    /// plus the three exits the clinical/rewrite split added, the erasure race, and the successful
+    /// one. Kept in step with the constants below deliberately: a dashboard built from this
+    /// paragraph and missing a series is how an exit stops being observable again. No member
+    /// identifier, and no model output — the same standard <see cref="AiTelemetry"/> and
+    /// <see cref="PushTelemetry"/> hold to.
     /// </para>
     /// </remarks>
     public static readonly Counter<long> Verdicts = Meter.CreateCounter<long>(

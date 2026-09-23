@@ -545,6 +545,20 @@ public class RealtimeAssessmentService : IRealtimeAssessmentService
         if (string.IsNullOrWhiteSpace(assessment.ModelOutput))
             return NonClinicalObservation;
 
+        // No name, nothing to redact against, and NamePlaceholder.Redact would hand the read
+        // straight back — see CanRedactAgainst. This path is fail-safe by design, and that is
+        // exactly what makes the refusal cheap here: the alert is still raised, carrying the
+        // fixed non-clinical observation, so a missing name costs the family a sentence rather
+        // than the page.
+        if (!NamePlaceholder.CanRedactAgainst(member.Name))
+        {
+            _logger.LogWarning(
+                "The heart-rate alert for CardiMember {CardiMemberId} was raised without the "
+                + "model's sentence: no name on file to redact the clinical read against.",
+                assessment.CardiMemberId);
+            return NonClinicalObservation;
+        }
+
         // FlattenWhole: ClinicalRead deliberately allows 4,000 characters here, so the note cap
         // would drop three quarters of a long read — including a conclusion that arrives late in
         // it — before the sentence a family is paged with is written from it.
